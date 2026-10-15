@@ -65,6 +65,8 @@ pub(super) struct PoiListQuery {
     pub(super) has_device: Option<String>,
     /// "true" = uniquement les POI dont le device transmet une position GPS.
     pub(super) has_position: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    pub(super) label: Option<String>,
     pub(super) limit: Option<String>,
     pub(super) offset: Option<String>,
 }
@@ -92,5 +94,6 @@ pub(super) fn pin_filters<'a>(
         emoji: emoji.as_deref(),
         has_device: has_device.as_deref().is_some_and(|v| v == "true"),
         has_position: has_position.as_deref().is_some_and(|v| v == "true"),
+        ids: None,
     }
 }

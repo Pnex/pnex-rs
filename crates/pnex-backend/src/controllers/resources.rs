@@ -92,6 +92,29 @@ async fn require_resource(ctx: &AppContext, org: &OrgContext, kind: &str, id: &s
 
 // ─────────────────────────── labels ───────────────────────────
 
+/// A label target (D218): an ontology resource, or a row of a label-only
+/// kind (function, control, stream…), checked in the org (R1).
+async fn require_label_target(
+    ctx: &AppContext,
+    org: &OrgContext,
+    kind: &str,
+    id: &str,
+) -> Result<()> {
+    match svc::labels::label_only_exists(&ctx.db, org.org.id, kind, id)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+    {
+        Some(true) => Ok(()),
+        Some(false) => Err(Error::NotFound),
+        None => require_resource(ctx, org, kind, id).await,
+    }
+}
+
+/// Whether `kind` can carry labels in this org.
+fn labelable(reg: &svc::registry::Registry, kind: &str) -> bool {
+    reg.entry(kind).is_some() || pnex_core::resources::LABEL_ONLY_KINDS.contains(&kind)
+}
+
 #[derive(Serialize)]
 struct LabelsDto {
     kind: String,
@@ -107,30 +130,13 @@ fn labels_dto(kind: &str, id: &str, labels: &pnex_core::resources::LabelSet) -> 
     }
 }
 
-#[derive(Serialize)]
-struct EffectiveLabelsDto {
-    kind: String,
-    id: String,
-    /// Fusion « le plus proche gagne ».
-    merged: pnex_core::resources::LabelSet,
-    /// Héritage détaillé (feuille → racine) — « hérité de Serre ».
-    inherited: Vec<InheritedFrom>,
-}
-
-#[derive(Serialize)]
-struct InheritedFrom {
-    kind: String,
-    id: String,
-    labels: pnex_core::resources::LabelSet,
-}
-
-/// `GET /api/v1/resources/{kind}/{id}/labels` — propres uniquement.
+/// `GET /api/v1/resources/{kind}/{id}/labels`.
 async fn get_labels(
     ctx: State<AppContext>,
     org: OrgContext,
     Path((kind, id)): Path<(String, String)>,
 ) -> Result<Response> {
-    require_resource(&ctx, &org, &kind, &id).await?;
+    require_label_target(&ctx, &org, &kind, &id).await?;
     let labels = svc::labels::get_labels(&ctx.db, org.org.id, &kind, &id)
         .await
         .map_err(|_| Error::InternalServerError)?
@@ -151,7 +157,7 @@ async fn put_labels(
             "Write access restricted to owner/admin/member roles.",
         ));
     }
-    require_resource(&ctx, &org, &kind, &id).await?;
+    require_label_target(&ctx, &org, &kind, &id).await?;
     let Some(doc) = body.get("labels") else {
         return Ok(field_status("labels", err_codes::FIELD_REQUIRED));
     };
@@ -184,27 +190,6 @@ async fn put_labels(
     }
 }
 
-/// `GET /api/v1/resources/{kind}/{id}/labels/effective` — fusion au read.
-async fn get_effective_labels(
-    ctx: State<AppContext>,
-    org: OrgContext,
-    Path((kind, id)): Path<(String, String)>,
-) -> Result<Response> {
-    require_resource(&ctx, &org, &kind, &id).await?;
-    let (merged, inherited) = svc::labels::effective(&ctx.db, org.org.id, &kind, &id)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    format::json(EffectiveLabelsDto {
-        kind,
-        id,
-        merged,
-        inherited: inherited
-            .into_iter()
-            .map(|(kind, id, labels)| InheritedFrom { kind, id, labels })
-            .collect(),
-    })
-}
-
 // ─────────────────────────── labels batch ───────────────────────────
 
 /// Most ids per batch (a list page is 20–100 rows).
@@ -227,7 +212,7 @@ async fn labels_batch(
     let reg = svc::registry::for_org(&ctx.db, org.org.id)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    if reg.entry(&body.kind).is_none() {
+    if !labelable(&reg, &body.kind) {
         return Ok(field_status(
             "kind",
             "kind inconnu de la couche d'organisation.",
@@ -799,9 +784,9 @@ async fn delete_folder(
 
 #[derive(Deserialize)]
 struct SearchBody {
-    /// Kinds ciblés (absent = tous les kinds vivants).
+    /// Kinds ciblés (absent = tous les kinds étiquetables).
     kinds: Option<Vec<String>>,
-    /// Filtre label effectif `name` ou `name:valeur`.
+    /// Label filter `name` or `name:value` (own labels, D218).
     label: String,
 }
 
@@ -828,29 +813,25 @@ async fn search(
     let reg = svc::registry::for_org(&ctx.db, org.org.id)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let kinds: Vec<String> = match p.kinds {
+    let kinds: Option<Vec<String>> = match p.kinds {
         Some(kinds) if !kinds.is_empty() => {
             for k in &kinds {
-                if reg.entry(k).is_none() {
+                if !labelable(&reg, k) {
                     return Ok(field_status("kinds", "kind inconnu"));
                 }
             }
-            kinds
+            Some(kinds)
         }
-        _ => reg.kinds().into_iter().map(str::to_string).collect(),
+        _ => None,
     };
-    let mut results = Vec::new();
-    for kind in &kinds {
-        let ids = svc::labels::ids_with_effective_label(&ctx.db, org.org.id, &filter, Some(kind))
+    let mut results: Vec<SearchResultItem> =
+        svc::labels::ids_with_label(&ctx.db, org.org.id, &filter, None)
             .await
-            .map_err(|_| Error::InternalServerError)?;
-        for (k, id) in ids {
-            results.push(SearchResultItem { kind: k, id });
-        }
-        if results.len() >= 500 {
-            break;
-        }
-    }
+            .map_err(|_| Error::InternalServerError)?
+            .into_iter()
+            .filter(|(k, _)| kinds.as_ref().is_none_or(|ks| ks.contains(k)))
+            .map(|(kind, id)| SearchResultItem { kind, id })
+            .collect();
     results.truncate(500);
     format::json(serde_json::json!({ "count": results.len(), "results": results }))
 }
@@ -875,7 +856,6 @@ pub fn routes() -> Routes {
         )
         .add("/search", post(search))
         .add("/{kind}/{id}/labels", get(get_labels).put(put_labels))
-        .add("/{kind}/{id}/labels/effective", get(get_effective_labels))
         .add("/{kind}/{id}/location", get(get_location))
         .add(
             "/{kind}/{id}/containment",

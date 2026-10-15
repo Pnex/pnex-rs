@@ -21,9 +21,24 @@ pub static CONTROL_KEYS: GlobalSignal<BTreeMap<Uuid, String>> = GlobalSignal::ne
 /// `GET /api/v1/controls` — every control of the org (refreshes
 /// [`CONTROL_KEYS`]).
 pub async fn list() -> Result<Vec<UiControl>, ApiError> {
-    let controls: Vec<UiControl> = client::request_all("/api/v1/controls").await?;
-    let keys: BTreeMap<Uuid, String> = controls.iter().map(|c| (c.id, c.key.clone())).collect();
-    *CONTROL_KEYS.write() = keys;
+    list_labeled(None).await
+}
+
+/// Same as [`list`], filtered by an effective label (`name` or `name:value`, D42).
+/// A filtered call only adds to [`CONTROL_KEYS`]: it sees a subset of the org.
+pub async fn list_labeled(label: Option<String>) -> Result<Vec<UiControl>, ApiError> {
+    let label = label.filter(|v| !v.is_empty());
+    let path = match &label {
+        Some(v) => format!("/api/v1/controls?label={}", crate::api::tours::urlencode(v)),
+        None => "/api/v1/controls".to_string(),
+    };
+    let controls: Vec<UiControl> = client::request_all(&path).await?;
+    let keys = controls.iter().map(|c| (c.id, c.key.clone()));
+    if label.is_some() {
+        CONTROL_KEYS.write().extend(keys);
+    } else {
+        *CONTROL_KEYS.write() = keys.collect();
+    }
     Ok(controls)
 }
 

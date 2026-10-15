@@ -59,6 +59,9 @@ struct SearchHit {
     title: String,
     subtitle: Option<String>,
     updated_at: String,
+    /// Kind of the hit when the group mixes kinds (labels, D218).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
 }
 
 /// Results grouped by entity type, canonical order, empty groups omitted.
@@ -166,6 +169,7 @@ async fn fetch_devices(
                 title: r.device_id,
                 subtitle: None,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -200,6 +204,7 @@ async fn fetch_pois(
                 title: r.label,
                 subtitle: r.location_detail,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -229,6 +234,7 @@ async fn fetch_tours(
                 title: r.name,
                 subtitle: r.description,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -258,6 +264,7 @@ async fn fetch_media(
                 title: r.name,
                 subtitle: r.description,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -291,6 +298,7 @@ async fn fetch_layers(
                 title: r.name,
                 subtitle: r.description,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -320,6 +328,7 @@ async fn fetch_functions(
                 title: r.name,
                 subtitle: Some(r.language),
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -349,6 +358,7 @@ async fn fetch_flows(
                 title: r.name,
                 subtitle: Some(r.status),
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -378,6 +388,7 @@ async fn fetch_dashboards(
                 title: r.name,
                 subtitle: r.description,
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -414,6 +425,7 @@ async fn fetch_edge_refs(
             title: r.ssid,
             subtitle: Some("wifi".to_string()),
             updated_at: r.updated_at.to_rfc3339(),
+            kind: None,
         },
     }));
     out.extend(hosts.into_iter().map(|r| Candidate {
@@ -423,6 +435,7 @@ async fn fetch_edge_refs(
             title: r.host,
             subtitle: Some("host".to_string()),
             updated_at: r.updated_at.to_rfc3339(),
+            kind: None,
         },
     }));
     Ok(out)
@@ -460,6 +473,7 @@ async fn fetch_objects(
                 title: r.title,
                 subtitle: Some(r.type_key),
                 updated_at: r.updated_at.to_rfc3339(),
+                kind: None,
             },
         })
         .collect())
@@ -486,9 +500,64 @@ async fn fetch_documents(
                 title: h.asset_name,
                 subtitle: Some(h.snippet.replace(['⟦', '⟧'], "")),
                 updated_at: String::new(),
+                kind: None,
             },
         })
         .collect())
+}
+
+/// Labelled objects of any kind (D218): `#value` / `#name:value` matches a
+/// whole label, plain text a contained one. Subtitle = the labels.
+async fn fetch_labels(
+    db: &DatabaseConnection,
+    org_id: i64,
+    term: &str,
+    candidate_limit: u64,
+) -> Fetched {
+    use crate::services::resources::{labels, registry};
+    let (exact, needle) = match term.strip_prefix('#') {
+        Some(rest) => (true, rest.trim()),
+        None => (false, term),
+    };
+    if needle.is_empty() {
+        return Ok(Vec::new());
+    }
+    let hits = labels::search_labeled(db, org_id, needle, exact, candidate_limit).await?;
+    if hits.is_empty() {
+        return Ok(Vec::new());
+    }
+    let reg = registry::for_org(db, org_id).await?;
+    let mut out = Vec::new();
+    for (kind, id, set) in hits {
+        let name = match labels::label_only_name(db, org_id, &kind, &id).await? {
+            Some(n) => Some(n),
+            None => match reg.entry(&kind) {
+                Some(e) => e.resolver.display_name(db, org_id, &id).await?,
+                None => None,
+            },
+        };
+        // A row deleted since (or of an unknown kind) is not shown.
+        let Some(title) = name else { continue };
+        let subtitle = set
+            .iter()
+            .map(|(k, v)| match v {
+                Some(v) => format!("{k}:{v}"),
+                None => k.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        out.push(Candidate {
+            prefix: exact,
+            hit: SearchHit {
+                id,
+                title,
+                subtitle: Some(subtitle),
+                updated_at: String::new(),
+                kind: Some(kind),
+            },
+        });
+    }
+    Ok(out)
 }
 
 /// Stable ranking: prefix matches first, recency order preserved within
@@ -526,7 +595,8 @@ async fn search(
     let candidate_limit = (take as u64 * OVERSHOOT).clamp(6, 30);
     let org_id = org.org.id;
 
-    let (dev, poi, tour, media, docs, layer, func, flow, dash, refs, objs) = tokio::join!(
+    let (labels, dev, poi, tour, media, docs, layer, func, flow, dash, refs, objs) = tokio::join!(
+        fetch_labels(&ctx.db, org_id, term, candidate_limit),
         fetch_devices(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_pois(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_tours(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
@@ -542,6 +612,7 @@ async fn search(
 
     let mut groups = Vec::new();
     for (entity_type, fetched) in [
+        ("label", labels),
         ("device", dev),
         ("poi", poi),
         ("tour", tour),

@@ -179,6 +179,16 @@ pub fn OntologyObject(id: String) -> Element {
                     crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {
                     PropertiesPanel { object: o.clone(), type_view: tv.clone() }
+                    // D218: labels stay discreet, after type and properties
+                    // (the labels API keys an object by its type and native id).
+                    div { class: "mt-6",
+                        crate::components::labels_editor::LabelsEditor {
+                            key: "{o.id}",
+                            kind: o.type_key.clone(),
+                            id: o.native_id.clone(),
+                            can_write: can_write && !archived,
+                        }
+                    }
                 }
             }
             if editing() {

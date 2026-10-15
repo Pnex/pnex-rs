@@ -2061,13 +2061,14 @@ err-firmware-version-conflict = Someone saved a newer revision first — the edi
 
 # Global search (D69) — sidebar typeahead
 search-title = Global search
-search-placeholder = Search…
+search-placeholder = Search… or #label
 search-no-result = No results
 search-error = Search unavailable
 search-group-device = Devices
 search-group-poi = POIs
 search-group-tour = 3D tours
 search-group-media = Media
+search-group-label = Labels
 search-group-document = Documents
 search-group-layer = Annotation layers
 search-group-function = Functions

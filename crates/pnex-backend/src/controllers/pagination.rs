@@ -125,6 +125,35 @@ pub fn sql_contains(
         .like(LikeExpr::new(pattern.to_string()).escape(LIKE_ESCAPE))
 }
 
+/// D218 list filter `label=name` / `label=name:value` for one kind:
+/// `Ok(None)` without filter, `Ok(Some(ids))` the stringified PKs carrying
+/// the label, `Err` a ready response (400 on the `label` field, or 500).
+pub async fn label_ids(
+    db: &sea_orm::DatabaseConnection,
+    org_id: i64,
+    raw: Option<&str>,
+    kind: &str,
+) -> Result<Option<Vec<String>>, axum::response::Response> {
+    use crate::services::resources::labels::{list_filter, ListLabelFilterError};
+    use axum::response::IntoResponse;
+    match list_filter(db, org_id, raw, kind).await {
+        Ok(ids) => Ok(ids.map(|set| set.into_iter().collect())),
+        Err(ListLabelFilterError::Invalid(reason)) => Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({ "label": reason })),
+        )
+            .into_response()),
+        Err(ListLabelFilterError::Db(_)) => {
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+/// PKs of a label filter parsed to the table's id type.
+pub fn parse_ids<T: std::str::FromStr>(ids: &[String]) -> Vec<T> {
+    ids.iter().filter_map(|i| i.parse().ok()).collect()
+}
+
 /// `COUNT(*)` of the filtered select + its page (`OFFSET`/`LIMIT`); the
 /// caller sets the ORDER BY before.
 pub async fn sql_page<E>(

@@ -260,6 +260,14 @@ matériel (à traiter avec D223).
   étiquette sur tous les types (`POST /resources/search`) ; une saisie
   libre trouve aussi les objets dont une étiquette contient le texte
   (groupe « Étiquettes »).
+- **Surface, pas profondeur** : une étiquette appartient à l'objet qui la
+  porte et à rien d'autre — pas d'héritage par dossier (supprimé le
+  2026-10-15), pas de lien avec l'ontologie, le rangement ou les liens.
+  Les types qui ne sont pas de l'ontologie (fonctions, firmwares,
+  contrôles, flux, modèles, canaux et modèles de notification, calques
+  d'annotations) portent des étiquettes sans devenir des objets
+  d'ontologie (`LABEL_ONLY_KINDS`) ; leur suppression purge les étiquettes
+  en base (trigger `pnex_labels_purge`).
 - Un seul mot : « Étiquettes » / « Labels », jamais « label » en français.
 
 ### D219 — Annotations : ce qui est posé sur un média visuel

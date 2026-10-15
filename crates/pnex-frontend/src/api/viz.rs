@@ -106,6 +106,8 @@ pub struct PoiFilters {
     pub emoji: Option<String>,
     pub has_device: bool,
     pub has_position: bool,
+    /// D218: own label filter (`name` or `name:value`), list endpoint only.
+    pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -132,6 +134,9 @@ impl PoiFilters {
 
     fn to_query(&self) -> String {
         let mut pairs = self.filter_pairs();
+        if let Some(label) = self.label.as_deref().filter(|v| !v.is_empty()) {
+            pairs.push(format!("label={}", urlencode(label)));
+        }
         if let Some(limit) = self.limit {
             pairs.push(format!("limit={limit}"));
         }

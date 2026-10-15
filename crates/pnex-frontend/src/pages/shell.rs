@@ -879,6 +879,7 @@ fn search_group_key(entity_type: &str) -> &'static str {
     match entity_type {
         "poi" => "search-group-poi",
         "tour" => "search-group-tour",
+        "label" => "search-group-label",
         "media" => "search-group-media",
         "document" => "search-group-document",
         "layer" => "search-group-layer",
@@ -901,6 +902,55 @@ fn open_hit(
     hit: &crate::api::search::SearchHit,
 ) {
     match entity_type {
+        // A labelled object of any kind (D218): opened like its own group.
+        "label" => {
+            use pnex_core::resources as r;
+            let kind = hit.kind.clone().unwrap_or_default();
+            let same_as = match kind.as_str() {
+                k if k == r::KIND_DEVICE => Some("device"),
+                k if k == r::KIND_MEDIA_ASSET => Some("media"),
+                k if k == r::KIND_TOUR => Some("tour"),
+                k if k == r::KIND_MAP_PIN => Some("poi"),
+                k if k == r::KIND_ANNOTATION_LAYER => Some("layer"),
+                k if k == r::KIND_FUNCTION => Some("function"),
+                k if k == r::KIND_FLOW => Some("flow"),
+                k if k == r::KIND_DASHBOARD => Some("dashboard"),
+                _ => None,
+            };
+            if let Some(group) = same_as {
+                open_hit(navigator, group, hit);
+                return;
+            }
+            match kind.as_str() {
+                k if k == r::KIND_DOC => {
+                    navigator.push(Route::Docs { id: hit.id.clone() });
+                }
+                k if k == r::KIND_CONTROL => {
+                    navigator.push(Route::Controls {});
+                }
+                k if k == r::KIND_FIRMWARE_PROJECT => {
+                    navigator.push(Route::Firmware {});
+                }
+                k if k == r::KIND_MEDIA_STREAM => {
+                    navigator.push(Route::Streams {});
+                }
+                k if k == r::KIND_ML_MODEL => {
+                    navigator.push(Route::Models {});
+                }
+                k if k == r::KIND_NOTIFY_CHANNEL || k == r::KIND_NOTIFY_TEMPLATE => {
+                    navigator.push(Route::Notifications {});
+                }
+                k if k == r::KIND_FOLDER => {
+                    navigator.push(Route::Sites {});
+                }
+                "case" => {
+                    navigator.push(Route::CaseWorkspace { id: hit.id.clone() });
+                }
+                _ => {
+                    navigator.push(Route::OntologyObject { id: hit.id.clone() });
+                }
+            }
+        }
         "device" => {
             crate::state::devices::OPEN_DEVICE.with_mut(|v| *v = hit.id.parse::<i64>().ok());
             navigator.push(Route::Devices {});
@@ -999,6 +1049,9 @@ fn HitIcon(entity_type: String) -> Element {
                 },
                 "media" => rsx! {
                     crate::components::icons::Image { class: "h-4 w-4" }
+                },
+                "label" => rsx! {
+                    crate::components::icons::Tag { class: "h-4 w-4" }
                 },
                 "document" => rsx! {
                     crate::components::icons::BookOpen { class: "h-4 w-4" }

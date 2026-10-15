@@ -48,6 +48,9 @@ pub struct SearchHit {
     pub title: String,
     pub subtitle: Option<String>,
     pub updated_at: String,
+    /// Kind of the object in a mixed group (labels, D218).
+    #[serde(default)]
+    pub kind: Option<String>,
 }
 
 /// Results grouped by entity type (empty groups omitted server-side).

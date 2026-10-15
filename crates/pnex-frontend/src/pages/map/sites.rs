@@ -4,15 +4,18 @@
 //! entry points share one tree and one set of actions.
 
 use super::*;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
+use crate::components::labels_editor::use_row_labels;
 use crate::components::ui::BTN_SECONDARY;
 
 #[component]
 pub fn Sites() -> Element {
     let search = use_signal(String::new);
+    // D218: own label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
     let mut site_page = use_signal(|| 0i64);
     let mut selected = use_signal(|| None::<String>);
@@ -40,11 +43,19 @@ pub fn Sites() -> Element {
         reload();
         let filters = viz::PoiFilters {
             search: Some(search()),
+            label: Some(filter_label().trim().to_string()),
             limit: Some(PAGE_SIZE),
             offset: Some(site_page() * PAGE_SIZE),
             ..Default::default()
         };
         viz::list_pois(&filters).await
+    });
+    // D218: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_MAP_PIN, move || {
+        match &*list.read() {
+            Some(Ok(p)) => p.results.iter().map(|s| s.id.clone()).collect(),
+            _ => Vec::new(),
+        }
     });
     // An API error used to show the empty list; ListStates now surfaces it.
     let (state, sites, total) = match &*list.read() {
@@ -82,6 +93,14 @@ pub fn Sites() -> Element {
                             reload += 1;
                         },
                     }
+                    LabelFilterInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            site_page.set(0);
+                            reload += 1;
+                        },
+                    }
                 }
             },
             ListStates {
@@ -94,6 +113,7 @@ pub fn Sites() -> Element {
                             key: "{site.id}",
                             poi: site.clone(),
                             positions: Vec::new(),
+                            labels: row_labels.get(&site.id).cloned().unwrap_or_default(),
                             on_select: move |id: String| selected.set(Some(id)),
                         }
                     }

@@ -17,5 +17,5 @@ Sites (Monitor › Sites) lists every site of the organization on a full page, w
 - Every detail page shows the object's **Location** — "Site › folder › folder" — and each step opens that site here. A device has one location; a media, a tour or a dashboard can be attached to several sites. "Not placed on any site yet" means the object is in no site: open Sites and attach it.
 
 ## Good to know
-- Labels set on a folder are inherited by everything stored in it (filter any list with `name` or `name:value`).
+- Labels belong to the object that carries them, a folder's labels stay on the folder (filter any list with `name` or `name:value`).
 - A device sits on one site only: attaching it elsewhere asks to move it.

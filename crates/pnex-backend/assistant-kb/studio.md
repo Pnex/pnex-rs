@@ -27,5 +27,5 @@ Studio (Media › Studio Tour) builds 3D virtual tours: 360° panoramas from the
 - A floor that still has scenes cannot be removed: delete its scenes first.
 - "Stale version": the tour was saved elsewhere; reload (discards your local edits) or overwrite.
 - A tour can be attached to a POI on the **Map** (tab **3D tour**).
-- **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it.
+- **Labels** are a plain search aid shared by the whole organization: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), on every object you can list (devices, media, dashboards, flows, 3D tours, sites and their folders, pages, cases and objects, functions, custom firmware, controls, streams, vision models, notification channels and templates, annotation layers). A label belongs to the object that carries it: it is never inherited from a folder. Filter any list with **Filter by label**, or type `#value` (or `#name:value`) in the search box of the sidebar.
 - Only Owners, Admins and Members can edit, publish and share tours.

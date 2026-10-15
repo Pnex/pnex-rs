@@ -31,9 +31,27 @@ pub async fn list(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Paginated<MediaStream>, ApiError> {
+    list_labeled(limit, offset, None).await
+}
+
+/// `GET /api/v1/media/streams[?label=]` — D14 envelope, filtered by label
+/// (`name` or `name:value`, D218).
+pub async fn list_labeled(
+    limit: Option<i64>,
+    offset: Option<i64>,
+    label: Option<String>,
+) -> Result<Paginated<MediaStream>, ApiError> {
+    let mut query = page_query(limit, offset);
+    if let Some(label) = label.as_deref().filter(|v| !v.is_empty()) {
+        let sep = if query.is_empty() { '?' } else { '&' };
+        query.push_str(&format!(
+            "{sep}label={}",
+            crate::api::tours::urlencode(label)
+        ));
+    }
     client::request(
         reqwest::Method::GET,
-        &format!("/api/v1/media/streams{}", page_query(limit, offset)),
+        &format!("/api/v1/media/streams{query}"),
         None,
     )
     .await

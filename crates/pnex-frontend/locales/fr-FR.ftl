@@ -2060,13 +2060,14 @@ err-firmware-version-conflict = Une révision plus récente a été enregistrée
 
 # Global search (D69) — sidebar typeahead
 search-title = Recherche globale
-search-placeholder = Rechercher…
+search-placeholder = Rechercher… ou #étiquette
 search-no-result = Aucun résultat
 search-error = Recherche indisponible
 search-group-device = Devices
 search-group-poi = POI
 search-group-tour = Parcours 3D
 search-group-media = Médias
+search-group-label = Étiquettes
 search-group-document = Documents
 search-group-layer = Calques d'annotations
 search-group-function = Fonctions

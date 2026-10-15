@@ -18,11 +18,13 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::components::modal::Modal;
 use crate::components::surface::spec_editor::{spec_error_text, SpecFields};
 use crate::components::surface::{control_group, kind_text, spec_summary, suggest_key};
@@ -37,18 +39,28 @@ pub fn Controls() -> Element {
     let mut editing = use_signal(|| None::<Option<UiControl>>);
     let mut delete_target = use_signal(|| None::<UiControl>);
     let can_write = org::current_can_write();
+    // D218: own label filter ("name" or "name:value"), applied server-side.
+    let filter_label = use_signal(String::new);
 
     let list = use_resource(move || {
         let _ = reload();
         let has_org = org::current().is_some();
+        let label = Some(filter_label().trim().to_string());
         async move {
             if !has_org {
                 return None;
             }
-            Some(api::controls::list().await)
+            Some(api::controls::list_labeled(label).await)
         }
     });
-    let page = use_signal(|| 0i64);
+    // D218: own labels of the loaded rows (whole list, paged client-side).
+    let row_labels = use_row_labels(pnex_core::resources::KIND_CONTROL, move || {
+        match &*list.read() {
+            Some(Some(Ok(all))) => all.iter().map(|c| c.id.to_string()).collect(),
+            _ => Vec::new(),
+        }
+    });
+    let mut page = use_signal(|| 0i64);
     let (count, rows): (i64, Vec<UiControl>) = match &*list.read() {
         Some(Some(Ok(all))) => (all.len() as i64, page_slice(all, page())),
         _ => (0, Vec::new()),
@@ -70,11 +82,13 @@ pub fn Controls() -> Element {
     let deleting = delete_target.read().clone();
 
     let columns = vec![
-        Column::new(t!("controls-col-control").to_string(), |c: &UiControl| {
+        Column::new(t!("controls-col-control").to_string(), move |c: &UiControl| {
             let label = crate::components::surface::control_label(c);
+            let labels = row_labels.get(&c.id.to_string()).cloned().unwrap_or_default();
             rsx! {
                 div { class: "text-sm font-medium text-gray-900", "{label}" }
                 code { class: "text-xs text-gray-500", "{c.key}" }
+                LabelChips { labels }
             }
         }),
         Column::new(t!("controls-col-origin").to_string(), |c: &UiControl| {
@@ -136,6 +150,12 @@ pub fn Controls() -> Element {
                             icons::Wrench { class: "h-4 w-4 mr-1" }
                             {t!("controls-edit-short")}
                         }
+                        LabelsButton {
+                            kind: pnex_core::resources::KIND_CONTROL.to_string(),
+                            id: c.id.to_string(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                        }
                         button {
                             class: DANGER_BTN,
                             onclick: move |_| delete_target.set(Some(del.clone())),
@@ -157,6 +177,18 @@ pub fn Controls() -> Element {
             can_write,
             add_label: Some(t!("controls-new").to_string()),
             on_add: move |_| editing.set(Some(None)),
+            filters: rsx! {
+                FilterBar {
+                    LabelFilterInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                }
+            },
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {

@@ -113,6 +113,8 @@ pub(crate) async fn find_doc(db: &DatabaseConnection, org_id: i64, id: Uuid) -> 
 struct ListQuery {
     limit: Option<String>,
     offset: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    label: Option<String>,
 }
 
 /// `GET /api/v1/docs` — pages of the org, most recently edited first.
@@ -122,13 +124,28 @@ async fn list(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let mut scope = sea_orm::Condition::all().add(docs::Column::OrgId.eq(org.org.id));
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_DOC,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            scope = scope.add(docs::Column::Id.is_in(pagination::parse_ids::<Uuid>(&ids)))
+        }
+        Err(resp) => return Ok(resp),
+    }
     let count = docs::Entity::find()
-        .filter(docs::Column::OrgId.eq(org.org.id))
+        .filter(scope.clone())
         .count(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
     let rows = heads()
-        .filter(docs::Column::OrgId.eq(org.org.id))
+        .filter(scope)
         .order_by_desc(docs::Column::UpdatedAt)
         .limit(page.limit as u64)
         .offset(page.offset as u64)

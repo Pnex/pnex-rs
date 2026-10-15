@@ -15,11 +15,13 @@ use pnex_core::{NotifyChannel, NotifyTemplate};
 
 use crate::api;
 use crate::components::badges::date_label;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
 
 fn current_role() -> Option<String> {
@@ -75,8 +77,10 @@ fn kind_icon(kind: &str) -> dioxus::prelude::Element {
 pub fn Notifications() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut tab = use_signal(|| Tab::Channels);
-    let channel_page = use_signal(|| 0i64);
-    let template_page = use_signal(|| 0i64);
+    let mut channel_page = use_signal(|| 0i64);
+    let mut template_page = use_signal(|| 0i64);
+    // D218: label filter ("name" or "name:value") of the active tab.
+    let filter_label = use_signal(String::new);
     // Formulaire canal : (kind_info, canal existant ou None).
     let mut edit_channel =
         use_signal(|| None::<(pnex_core::NotifyKindInfo, Option<NotifyChannel>)>);
@@ -105,13 +109,43 @@ pub fn Notifications() -> Element {
         .unwrap_or_default();
     let delete_modal = delete_target.read().clone();
 
-    let channels = use_resource(move || async move {
-        let _ = reload();
-        api::notify::list_channels().await
+    // The label filter only narrows the active tab's list: the Events tab
+    // needs every channel and template to resolve names.
+    let active_label = move |for_tab: Tab| -> Option<String> {
+        if tab() != for_tab {
+            return None;
+        }
+        let value = filter_label().trim().to_string();
+        (!value.is_empty()).then_some(value)
+    };
+    let channels = use_resource(move || {
+        let label = active_label(Tab::Channels);
+        async move {
+            let _ = reload();
+            api::notify::list_channels_labeled(label).await
+        }
     });
-    let templates = use_resource(move || async move {
-        let _ = reload();
-        api::notify::list_templates().await
+    let templates = use_resource(move || {
+        let label = active_label(Tab::Templates);
+        async move {
+            let _ = reload();
+            api::notify::list_templates_labeled(label).await
+        }
+    });
+    let label_filter = (tab() != Tab::Events).then(|| {
+        rsx! {
+            FilterBar {
+                LabelFilterInput {
+                    placeholder: t!("resources-label-filter-placeholder").to_string(),
+                    value: filter_label,
+                    on_submit: move |_| {
+                        channel_page.set(0);
+                        template_page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
+                }
+            }
+        }
     });
     let kinds = use_resource(move || async move {
         let _ = reload();
@@ -155,6 +189,7 @@ pub fn Notifications() -> Element {
                 Tab::Templates => edit_template.set(Some(None)),
                 Tab::Events => {}
             },
+            filters: label_filter,
             if org::current().is_none() {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else {
@@ -301,6 +336,21 @@ fn ChannelsTab(
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
+    // D218: own labels of the rows of the current page.
+    let row_labels =
+        use_row_labels(
+            pnex_core::resources::KIND_NOTIFY_CHANNEL,
+            move || match &*channels.value().read() {
+                Some(Ok(all)) => all
+                    .iter()
+                    .skip((channel_page() * PAGE_SIZE) as usize)
+                    .take(PAGE_SIZE as usize)
+                    .map(|ch| ch.id.to_string())
+                    .collect(),
+                _ => Vec::new(),
+            },
+        );
+
     // Test d'envoi en vol (id du canal) — l'état vit au niveau de la table
     // (l'ancienne carte portait son signal local). La logique reste INLINE
     // dans le handler : une closure cellule doit rester Fn (pas de `.set`
@@ -343,8 +393,12 @@ fn ChannelsTab(
     // enabled + dernier statut de livraison), actions (test, journal,
     // édition, suppression).
     let columns = vec![
-        Column::new(t!("notify-col-name").to_string(), |ch: &NotifyChannel| {
-            rsx! { {ch.name.clone()} }
+        Column::new(t!("notify-col-name").to_string(), move |ch: &NotifyChannel| {
+            let labels = row_labels.get(&ch.id.to_string()).cloned().unwrap_or_default();
+            rsx! {
+                {ch.name.clone()}
+                LabelChips { labels }
+            }
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("notify-col-kind").to_string(), |ch: &NotifyChannel| {
@@ -438,6 +492,12 @@ fn ChannelsTab(
                                 tab.set(Tab::Events);
                             },
                             {t!("notify-journal")}
+                        }
+                        LabelsButton {
+                            kind: pnex_core::resources::KIND_NOTIFY_CHANNEL.to_string(),
+                            id: ch.id.to_string(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
                         }
                         if can_write {
                             button {
@@ -616,11 +676,30 @@ fn TemplatesTab(
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
+    // D218: own labels of the rows of the current page.
+    let row_labels =
+        use_row_labels(
+            pnex_core::resources::KIND_NOTIFY_TEMPLATE,
+            move || match &*templates.value().read() {
+                Some(Ok(all)) => all
+                    .iter()
+                    .skip((template_page() * PAGE_SIZE) as usize)
+                    .take(PAGE_SIZE as usize)
+                    .map(|tpl| tpl.id.to_string())
+                    .collect(),
+                _ => Vec::new(),
+            },
+        );
+
     // Colonnes de la table — les closures d'action capturent les signaux
     // (Copy) de la page.
     let columns = vec![
-        Column::new(t!("notify-col-name").to_string(), |tpl: &NotifyTemplate| {
-            rsx! { {tpl.name.clone()} }
+        Column::new(t!("notify-col-name").to_string(), move |tpl: &NotifyTemplate| {
+            let labels = row_labels.get(&tpl.id.to_string()).cloned().unwrap_or_default();
+            rsx! {
+                {tpl.name.clone()}
+                LabelChips { labels }
+            }
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(
@@ -643,8 +722,14 @@ fn TemplatesTab(
                 let id_delete = tpl.id.to_string();
                 let name_delete = tpl.name.clone();
                 rsx! {
-                    if can_write {
-                        div { class: "flex gap-2",
+                    div { class: "flex gap-2",
+                        LabelsButton {
+                            kind: pnex_core::resources::KIND_NOTIFY_TEMPLATE.to_string(),
+                            id: tpl.id.to_string(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                        }
+                        if can_write {
                             button {
                                 class: "px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50",
                                 onclick: move |_| edit_template.set(Some(Some(tpl_edit.clone()))),

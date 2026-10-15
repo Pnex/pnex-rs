@@ -14,6 +14,8 @@ pub(super) async fn kinds() -> Result<Response> {
 pub(super) struct ListQuery {
     pub(super) limit: Option<String>,
     pub(super) offset: Option<String>,
+    /// Label filter `name` / `name:value` (D218).
+    pub(super) label: Option<String>,
 }
 
 /// `GET /api/v1/notify/channels` — canaux de l'org (secrets masqués).
@@ -23,8 +25,23 @@ pub(super) async fn list_channels(
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let rows = NotifyChannels::find()
-        .filter(notify_channels::Column::OrgId.eq(org.org.id))
+    let mut select = NotifyChannels::find().filter(notify_channels::Column::OrgId.eq(org.org.id));
+    match pagination::label_ids(
+        &ctx.db,
+        org.org.id,
+        q.label.as_deref(),
+        pnex_core::resources::KIND_NOTIFY_CHANNEL,
+    )
+    .await
+    {
+        Ok(None) => {}
+        Ok(Some(ids)) => {
+            select = select
+                .filter(notify_channels::Column::Id.is_in(pagination::parse_ids::<Uuid>(&ids)))
+        }
+        Err(resp) => return Ok(resp),
+    }
+    let rows = select
         .order_by_desc(notify_channels::Column::Id)
         .all(&ctx.db)
         .await

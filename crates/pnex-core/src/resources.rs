@@ -66,6 +66,32 @@ pub fn valid_kind(kind: &str) -> bool {
     KINDS.contains(&kind)
 }
 
+// ─────────────────────────── labelable kinds ───────────────────────────
+
+/// Kinds that are not ontology types but still carry labels (D218): labels
+/// are a plain search aid, they need nothing but the row to exist.
+pub const KIND_FUNCTION: &str = "function";
+pub const KIND_FIRMWARE_PROJECT: &str = "firmware_project";
+pub const KIND_CONTROL: &str = "control";
+pub const KIND_MEDIA_STREAM: &str = "media_stream";
+pub const KIND_ML_MODEL: &str = "ml_model";
+pub const KIND_NOTIFY_CHANNEL: &str = "notify_channel";
+pub const KIND_NOTIFY_TEMPLATE: &str = "notify_template";
+pub const KIND_ANNOTATION_LAYER: &str = "annotation_layer";
+
+/// Label-only kinds (the ontology types — [`KINDS`] and org types — are
+/// labelable too, through the registry).
+pub const LABEL_ONLY_KINDS: [&str; 8] = [
+    KIND_FUNCTION,
+    KIND_FIRMWARE_PROJECT,
+    KIND_CONTROL,
+    KIND_MEDIA_STREAM,
+    KIND_ML_MODEL,
+    KIND_NOTIFY_CHANNEL,
+    KIND_NOTIFY_TEMPLATE,
+    KIND_ANNOTATION_LAYER,
+];
+
 // ─────────────────────────── relations ───────────────────────────
 
 /// Pano/média posé sur un POI (absorbe viz_links, D39 → D42).

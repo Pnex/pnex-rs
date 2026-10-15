@@ -11,13 +11,14 @@ use pnex_core::firmware::{CreateFirmwareProject, FirmwareProjectSummary, CHIP_FA
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
 
 mod editor;
@@ -53,14 +54,27 @@ pub fn Firmware() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut selected = use_signal(|| None::<i64>);
     let search = use_signal(String::new);
+    // D218: own label filter ("name" or "name:value"), applied server-side.
+    let filter_label = use_signal(String::new);
     let mut create_open = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<(i64, String)>);
     let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
 
     let list = use_resource(move || {
         let _ = reload();
-        async move { api::firmware::list().await }
+        let label = Some(filter_label().trim().to_string());
+        async move { api::firmware::list_labeled(label).await }
     });
+
+    // D218: own labels of the loaded rows (whole list, paged client-side).
+    let row_labels =
+        use_row_labels(
+            pnex_core::resources::KIND_FIRMWARE_PROJECT,
+            move || match &*list.value().read() {
+                Some(Ok(all)) => all.iter().map(|p| p.id.to_string()).collect(),
+                _ => Vec::new(),
+            },
+        );
 
     let mut page = use_signal(|| 0i64);
     // A new search term restarts from the first page.
@@ -87,8 +101,12 @@ pub fn Firmware() -> Element {
     let columns = vec![
         Column::new(
             t!("firmware-col-name").to_string(),
-            |p: &FirmwareProjectSummary| {
-                rsx! { {p.name.clone()} }
+            move |p: &FirmwareProjectSummary| {
+                let labels = row_labels.get(&p.id.to_string()).cloned().unwrap_or_default();
+                rsx! {
+                    {p.name.clone()}
+                    LabelChips { labels }
+                }
             },
         )
         .with_td_class("font-medium text-gray-900"),
@@ -135,6 +153,12 @@ pub fn Firmware() -> Element {
                             onclick: move |_| selected.set(Some(pk)),
                             {t!("firmware-open")}
                         }
+                        LabelsButton {
+                            kind: pnex_core::resources::KIND_FIRMWARE_PROJECT.to_string(),
+                            id: pk.to_string(),
+                            can_write,
+                            on_changed: move |_| reload.with_mut(|r| *r += 1),
+                        }
                         if can_write {
                             button {
                                 class: DANGER_BTN,
@@ -179,6 +203,14 @@ pub fn Firmware() -> Element {
                                 placeholder: t!("firmware-search-placeholder").to_string(),
                                 value: search,
                                 on_submit: move |_| {},
+                            }
+                            LabelFilterInput {
+                                placeholder: t!("resources-label-filter-placeholder").to_string(),
+                                value: filter_label,
+                                on_submit: move |_| {
+                                    page.set(0);
+                                    reload.with_mut(|r| *r += 1);
+                                },
                             }
                         }
                         ListStates {

@@ -11,7 +11,16 @@ use crate::api::client;
 use crate::api::error::ApiError;
 
 pub async fn list() -> Result<Vec<DocSummary>, ApiError> {
-    client::request_all("/api/v1/docs").await
+    list_labeled(None).await
+}
+
+/// Same as [`list`], filtered by an effective label (`name` or `name:value`, D42).
+pub async fn list_labeled(label: Option<String>) -> Result<Vec<DocSummary>, ApiError> {
+    let path = match label.filter(|v| !v.is_empty()) {
+        Some(v) => format!("/api/v1/docs?label={}", crate::api::tours::urlencode(&v)),
+        None => "/api/v1/docs".to_string(),
+    };
+    client::request_all(&path).await
 }
 
 pub async fn create(title: String, template: Option<String>) -> Result<DocSummary, ApiError> {

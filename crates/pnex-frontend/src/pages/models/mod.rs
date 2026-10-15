@@ -14,13 +14,16 @@ use dioxus_i18n::t;
 use pnex_core::vision::{MlModel, ModelCheckStatus};
 
 use crate::api;
+use crate::api::resources::LabelSet;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::crud::filters::{FilterBar, LabelFilterInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{ACTIONS_TD_CLASS, ACTIONS_TH_CLASS};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
 
 mod form;
@@ -54,18 +57,33 @@ enum Dialog {
 
 #[component]
 pub fn Models() -> Element {
-    let page = use_signal(|| 0i64);
+    let mut page = use_signal(|| 0i64);
+    // D218: label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
     let mut dialog = use_signal(|| None::<Dialog>);
     let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
 
     let models = use_resource(move || {
         let offset = page() * PAGE_SIZE;
+        let label = {
+            let value = filter_label().trim().to_string();
+            (!value.is_empty()).then_some(value)
+        };
         async move {
             let _ = reload();
             let _ = org::ORG.read();
-            api::ml_models::list(Some(PAGE_SIZE), Some(offset)).await
+            api::ml_models::list_labeled(Some(PAGE_SIZE), Some(offset), label).await
         }
+    });
+
+    // D218: own labels of the page rows, one batch per list (re)load.
+    let row_labels = use_row_labels(pnex_core::resources::KIND_ML_MODEL, move || match &*models
+        .value()
+        .read()
+    {
+        Some(Ok(p)) => p.results.iter().map(|m| m.id.to_string()).collect(),
+        _ => Vec::new(),
     });
 
     let (list_state, is_empty, count, rows) = match &*models.value().read() {
@@ -87,6 +105,18 @@ pub fn Models() -> Element {
             can_write,
             add_label: Some(t!("models-add").to_string()),
             on_add: move |_| dialog.set(Some(Dialog::Create)),
+            filters: rsx! {
+                FilterBar {
+                    LabelFilterInput {
+                        placeholder: t!("resources-label-filter-placeholder").to_string(),
+                        value: filter_label,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
+                }
+            },
             ListStates {
                 state: list_state,
                 is_empty,
@@ -120,6 +150,7 @@ pub fn Models() -> Element {
                                 for m in rows {
                                     ModelRow {
                                         key: "{m.id}",
+                                        labels: row_labels.get(&m.id.to_string()).cloned().unwrap_or_default(),
                                         model: m.clone(),
                                         can_write,
                                         on_action: move |d: Dialog| dialog.set(Some(d)),
@@ -205,6 +236,8 @@ pub fn Models() -> Element {
 #[component]
 fn ModelRow(
     model: MlModel,
+    /// D218: own labels of the model.
+    labels: LabelSet,
     can_write: bool,
     on_action: Callback<Dialog>,
     on_checked: Callback<()>,
@@ -229,6 +262,7 @@ fn ModelRow(
         tr { class: "group hover:bg-gray-50",
             td { class: "td",
                 p { class: "font-medium text-gray-900", "{model.name}" }
+                LabelChips { labels }
                 if !model.description.is_empty() {
                     p { class: "text-xs text-gray-500", "{model.description}" }
                 }
@@ -306,6 +340,12 @@ fn ModelRow(
                                 }
                             }
                         }
+                    }
+                    LabelsButton {
+                        kind: pnex_core::resources::KIND_ML_MODEL.to_string(),
+                        id: model.id.to_string(),
+                        can_write,
+                        on_changed: move |_| on_checked.call(()),
                     }
                     if can_write {
                         button {

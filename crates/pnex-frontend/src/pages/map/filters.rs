@@ -106,6 +106,9 @@ pub(super) fn PoiRow(
     poi: viz::Poi,
     positions: Vec<viz::DevicePosition>,
     on_select: EventHandler<String>,
+    /// D218: the site's own labels, shown under its name (empty = none).
+    #[props(default)]
+    labels: crate::api::resources::LabelSet,
 ) -> Element {
     // GPS si l'un des devices placés transmet (D43 : plusieurs possibles).
     let has_gps = poi
@@ -151,6 +154,7 @@ pub(super) fn PoiRow(
                     }
                 }
             }
+            crate::components::labels_editor::LabelChips { labels }
             if let Some(device) = device_line {
                 div { class: "text-xs text-gray-500 mt-0.5 truncate", "{device}" }
             }

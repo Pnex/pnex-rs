@@ -185,7 +185,7 @@ pub(super) async fn list(
                     err.as_deref().unwrap_or("label invalide"),
                 ));
             };
-            let ids = crate::services::resources::labels::ids_with_effective_label(
+            let ids = crate::services::resources::labels::ids_with_label(
                 &ctx.db,
                 org.org.id,
                 &filter,

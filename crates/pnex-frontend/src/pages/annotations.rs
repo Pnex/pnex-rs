@@ -14,12 +14,13 @@ use crate::components::annotation_editor::state::{
     item_rows_flat, move_item_flat, place_item_flat, AnnotationEditorCx,
 };
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, SearchInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
+use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::components::modal::Modal;
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
@@ -73,6 +74,8 @@ pub fn Annotations() -> Element {
         sets_page.set(0);
     });
     let mut selected_media_filter = use_signal(String::new);
+    // D218: label filter ("name" or "name:value").
+    let filter_label = use_signal(String::new);
     let mut new_open = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<pnex_core::AnnotationLayerSummary>);
 
@@ -121,6 +124,10 @@ pub fn Annotations() -> Element {
         let _ = sets_reload();
         let s = search.cloned();
         let media = selected_media_filter.cloned();
+        let label = {
+            let value = filter_label().trim().to_string();
+            (!value.is_empty()).then_some(value)
+        };
         async move {
             api::annotation_layers::list(&api::annotation_layers::LayerFilters {
                 search: if s.trim().is_empty() {
@@ -133,6 +140,7 @@ pub fn Annotations() -> Element {
                 } else {
                     Some(media.trim().to_string())
                 },
+                label,
                 ..Default::default()
             })
             .await
@@ -145,6 +153,19 @@ pub fn Annotations() -> Element {
         .and_then(|o| o.as_ref().ok())
         .cloned()
         .unwrap_or_default();
+
+    // D218: own labels of the rows of the current page.
+    let row_labels =
+        use_row_labels(
+            pnex_core::resources::KIND_ANNOTATION_LAYER,
+            move || match &*sets_res.value().read() {
+                Some(Ok(all)) => page_slice(all, sets_page())
+                    .iter()
+                    .map(|s| s.id.clone())
+                    .collect(),
+                _ => Vec::new(),
+            },
+        );
 
     // ─── Précalculs rendu ───
     let search_placeholder = t!("annot-page-search").to_string();
@@ -227,8 +248,12 @@ pub fn Annotations() -> Element {
     let columns = vec![
         Column::new(
             t!("annot-page-col-name").to_string(),
-            |s: &pnex_core::AnnotationLayerSummary| {
-                rsx! { {s.name.clone()} }
+            move |s: &pnex_core::AnnotationLayerSummary| {
+                let labels = row_labels.get(&s.id).cloned().unwrap_or_default();
+                rsx! {
+                    {s.name.clone()}
+                    LabelChips { labels }
+                }
             },
         )
         .with_td_class("font-medium text-gray-900"),
@@ -268,6 +293,7 @@ pub fn Annotations() -> Element {
             move |s: &pnex_core::AnnotationLayerSummary| {
                 let s_delete = s.clone();
                 let id_open = s.id.clone();
+                let id_labels = s.id.clone();
                 rsx! {
                     div { class: "inline-flex items-center gap-1.5",
                         // Same as the row click, spelled out like the other lists.
@@ -278,6 +304,15 @@ pub fn Annotations() -> Element {
                                 view.set(View::Editor(id_open.clone()));
                             },
                             {t!("studio-open")}
+                        }
+                        // Keep clicks (button and its dialog) off the row's open handler.
+                        span { onclick: move |e| e.stop_propagation(),
+                            LabelsButton {
+                                kind: pnex_core::resources::KIND_ANNOTATION_LAYER.to_string(),
+                                id: id_labels.clone(),
+                                can_write,
+                                on_changed: move |_| sets_reload.with_mut(|r| *r += 1),
+                            }
                         }
                         button {
                             class: DANGER_BTN,
@@ -325,6 +360,14 @@ pub fn Annotations() -> Element {
                             for (m_id, (m_name, _)) in media_map.clone() {
                                 option { key: "{m_id}", value: "{m_id}", {m_name} }
                             }
+                        }
+                        LabelFilterInput {
+                            placeholder: t!("resources-label-filter-placeholder").to_string(),
+                            value: filter_label,
+                            on_submit: move |_| {
+                                sets_page.set(0);
+                                sets_reload.with_mut(|r| *r += 1);
+                            },
                         }
                     }
                     ListStates {

@@ -15,7 +15,7 @@ The Map (Monitor › Map) places the organization's points of interest (POIs) on
 - **＋ Add POI**, then click on the map to place it; fill **Label**, **Pictogram**, **Location (building, floor, room…)**, **Latitude** and **Longitude**. **Cancel adding** leaves the placing mode.
 - Use the side panel: **Search a POI…**, filters **Attached to a device**, **With GPS position** and **Type** (pictogram), **Show all**. **Collapse panel** gives the map more room.
 - Click a POI to open its detail: **Edit**, **Recenter**, **Delete**, and the **Attached objects** list (**Open**, **Detach**).
-- The POI detail has a **Labels** section for the POI itself; the tag icon of a folder in **Attached objects** edits that folder's labels, inherited by the objects stored in it.
+- The POI detail has a **Labels** section for the POI itself; the tag icon of a folder in **Attached objects** edits that folder's own labels.
 - **＋ Attach an object** opens a picker with tabs **Media**, **3D tour**, **Dashboard** and **Device**.
 - **Pin as default preview** chooses which attached object is previewed when the POI opens (**Unpin** to undo).
 - The preview of an attached media or tour shows its published annotations: dots, and the control and reading cards (switch **Hide** / **Dots** / **Cards**). Controls can be operated there; annotations are edited in Media › Annotations.
@@ -25,6 +25,6 @@ The Map (Monitor › Map) places the organization's points of interest (POIs) on
 - A device sits on **one POI only**. Attaching a device already placed elsewhere asks "Move the device?": confirming moves it (**Move it here**).
 - Deleting a POI deletes its links; the attached devices must then be placed again. The media, tours and dashboards themselves are not deleted.
 - The **GPS** badge marks a POI whose placed device reports a GPS position.
-- **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it.
+- **Labels** are a plain search aid shared by the whole organization: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), on every object you can list (devices, media, dashboards, flows, 3D tours, sites and their folders, pages, cases and objects, functions, custom firmware, controls, streams, vision models, notification channels and templates, annotation layers). A label belongs to the object that carries it: it is never inherited from a folder. Filter any list with **Filter by label**, or type `#value` (or `#name:value`) in the search box of the sidebar.
 - Viewers can browse the map but cannot create, edit or attach (only Owners, Admins and Members can).
 - On a phone the side panel takes most of the screen: collapse it to see the map.

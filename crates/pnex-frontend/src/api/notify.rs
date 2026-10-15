@@ -19,7 +19,18 @@ pub async fn kinds() -> Result<Vec<NotifyKindInfo>, ApiError> {
 /// `GET /api/v1/notify/channels` — every channel of the org, all pages
 /// (secrets masked).
 pub async fn list_channels() -> Result<Vec<NotifyChannel>, ApiError> {
-    client::request_all("/api/v1/notify/channels").await
+    list_channels_labeled(None).await
+}
+
+/// `GET /api/v1/notify/channels[?label=]` — every page, filtered by label
+/// (`name` or `name:value`, D218).
+pub async fn list_channels_labeled(label: Option<String>) -> Result<Vec<NotifyChannel>, ApiError> {
+    let query = label
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .map(|v| format!("?label={}", crate::api::media::urlencode(v)))
+        .unwrap_or_default();
+    client::request_all(&format!("/api/v1/notify/channels{query}")).await
 }
 
 /// `GET /api/v1/notify/channels/{id}`.
@@ -215,7 +226,20 @@ pub async fn list_deliveries(filters: &DeliveryFilters) -> Result<NotifyDelivery
 
 /// `GET /api/v1/notify/templates` — every template of the org, all pages.
 pub async fn list_templates() -> Result<Vec<NotifyTemplate>, ApiError> {
-    client::request_all("/api/v1/notify/templates").await
+    list_templates_labeled(None).await
+}
+
+/// `GET /api/v1/notify/templates[?label=]` — every page, filtered by label
+/// (`name` or `name:value`, D218).
+pub async fn list_templates_labeled(
+    label: Option<String>,
+) -> Result<Vec<NotifyTemplate>, ApiError> {
+    let query = label
+        .as_deref()
+        .filter(|v| !v.is_empty())
+        .map(|v| format!("?label={}", crate::api::media::urlencode(v)))
+        .unwrap_or_default();
+    client::request_all(&format!("/api/v1/notify/templates{query}")).await
 }
 
 /// `POST /api/v1/notify/templates`.

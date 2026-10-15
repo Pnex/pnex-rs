@@ -2,12 +2,9 @@
 //! requêtable. 1 doc JSONB par ressource (`resource_labels`, unique), GIN
 //! `jsonb_path_ops` sur PG pour le filtrage `@>`.
 //!
-//! **Labels effectifs résolus au read** : propres + hérités des ancêtres
-//! (containment) — jamais dénormalisés. Fusion = « le plus proche gagne »
-//! (les propres écrasent l'héritage, l'ancêtre proche écrase le lointain) :
-//! on fusionne racine → feuille puis les propres en dernier.
-//!
-//! `WITH RECURSIVE` + `@>` / `?` JSONB (GIN).
+//! Labels are a plain search aid (D218): an object carries its own labels,
+//! nothing is inherited through folders or links. Filtering is one `@>` /
+//! `?` JSONB query (GIN).
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -17,7 +14,6 @@ use sea_orm::{
 };
 use serde_json::Value;
 
-use crate::models::_entities::resource_containment as containment;
 use crate::models::_entities::resource_labels;
 use crate::services::resources::ResourceError;
 use pnex_core::resources::{valid_label_name, valid_label_value, LabelSet, LABELS_MAX};
@@ -146,133 +142,154 @@ async fn find_row_id(
         .await?
         .map(|r| r.id))
 }
+// ─────────────────────────── label-only kinds ───────────────────────────
 
-/// Labels effectifs = propres ⊕ hérités (ancêtres containment), le plus
-/// proche gagne. Renvoie aussi le détail de l'héritage (feuille → racine)
-/// pour l'affichage front (« hérité de Serre »).
-pub async fn effective(
+/// (table, title column) of a label-only kind (D218); `None` for any
+/// other kind. Static map: names never come from the request.
+fn label_only_table(kind: &str) -> Option<(&'static str, &'static str)> {
+    use pnex_core::resources as r;
+    Some(match kind {
+        k if k == r::KIND_FUNCTION => ("functions", "name"),
+        k if k == r::KIND_FIRMWARE_PROJECT => ("firmware_projects", "name"),
+        k if k == r::KIND_CONTROL => ("controls", "label"),
+        k if k == r::KIND_MEDIA_STREAM => ("media_streams", "name"),
+        k if k == r::KIND_ML_MODEL => ("ml_models", "name"),
+        k if k == r::KIND_NOTIFY_CHANNEL => ("notify_channels", "name"),
+        k if k == r::KIND_NOTIFY_TEMPLATE => ("notify_templates", "name"),
+        k if k == r::KIND_ANNOTATION_LAYER => ("annotation_layers", "name"),
+        _ => return None,
+    })
+}
+
+/// Whether `id` is a row of the org for a label-only kind: `None` when the
+/// kind is not label-only (the caller checks the ontology registry).
+pub async fn label_only_exists(
     db: &DatabaseConnection,
     org_id: i64,
     kind: &str,
     id: &str,
-) -> Result<(LabelSet, Vec<(String, String, LabelSet)>), DbErr> {
-    let own = get_labels(db, org_id, kind, id).await?.unwrap_or_default();
-    let chain = ancestor_chain(db, org_id, kind, id).await?;
-    // Racine → feuille, puis les propres en dernier : le plus proche gagne.
-    let mut merged = LabelSet::new();
-    let mut inherited_detail = Vec::new();
-    for (k, i) in chain.iter().rev() {
-        if let Some(labels) = get_labels(db, org_id, k, i).await? {
-            if !labels.is_empty() {
-                for (n, v) in &labels {
-                    merged.insert(n.clone(), v.clone());
-                }
-                inherited_detail.push((k.clone(), i.clone(), labels));
-            }
-        }
-    }
-    for (n, v) in &own {
-        merged.insert(n.clone(), v.clone());
-    }
-    Ok((merged, inherited_detail))
+) -> Result<Option<bool>, DbErr> {
+    let Some((table, _)) = label_only_table(kind) else {
+        return Ok(None);
+    };
+    let sql = format!("SELECT 1 AS hit FROM {table} WHERE org_id = $1 AND id::text = $2 LIMIT 1");
+    let stmt = sea_orm::Statement::from_sql_and_values(
+        db.get_database_backend(),
+        &sql,
+        vec![org_id.into(), id.to_string().into()],
+    );
+    Ok(Some(db.query_one_raw(stmt).await?.is_some()))
 }
 
-/// Chaîne des ancêtres (feuille → racine), résolue par containment.
-async fn ancestor_chain(
+/// Display name of a label-only row: `Ok(None)` when the kind is not
+/// label-only or the row is gone.
+pub async fn label_only_name(
     db: &DatabaseConnection,
     org_id: i64,
     kind: &str,
     id: &str,
-) -> Result<Vec<(String, String)>, DbErr> {
-    let mut chain = Vec::new();
-    let mut current = (kind.to_string(), id.to_string());
-    loop {
-        let row = containment::Entity::find()
-            .filter(containment::Column::OrgId.eq(org_id))
-            .filter(containment::Column::ChildKind.eq(&current.0))
-            .filter(containment::Column::ChildId.eq(&current.1))
-            .one(db)
-            .await?;
-        let Some(row) = row else { break };
-        let next = (row.parent_kind.clone(), row.parent_id.clone());
-        if chain.contains(&next) {
-            break; // défense en profondeur (cycle impossible par construction)
-        }
-        chain.push(next.clone());
-        current = next;
+) -> Result<Option<String>, DbErr> {
+    let Some((table, title)) = label_only_table(kind) else {
+        return Ok(None);
+    };
+    let sql =
+        format!("SELECT {title}::text AS title FROM {table} WHERE org_id = $1 AND id::text = $2");
+    let stmt = sea_orm::Statement::from_sql_and_values(
+        db.get_database_backend(),
+        &sql,
+        vec![org_id.into(), id.to_string().into()],
+    );
+    match db.query_one_raw(stmt).await? {
+        Some(row) => Ok(Some(row.try_get("", "title")?)),
+        None => Ok(None),
     }
-    Ok(chain)
 }
 
-// ─────────────────────────── filtrage effectif ───────────────────────────
+/// Labelled resources whose label name or value matches (global search,
+/// D218): `exact` compares whole names/values case-insensitively (a `#`
+/// query), otherwise a contained text; `name:value` matches the pair.
+pub async fn search_labeled(
+    db: &DatabaseConnection,
+    org_id: i64,
+    term: &str,
+    exact: bool,
+    limit: u64,
+) -> Result<Vec<(String, String, LabelSet)>, DbErr> {
+    let escape = |t: &str| {
+        t.replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_")
+    };
+    let (cond, params): (&str, Vec<sea_orm::Value>) = match (exact, term.split_once(':')) {
+        (true, Some((k, v))) => (
+            "lower(e.key) = lower($2) AND lower(e.value) = lower($3)",
+            vec![
+                org_id.into(),
+                k.trim().to_string().into(),
+                v.trim().to_string().into(),
+            ],
+        ),
+        (true, None) => (
+            "lower(e.key) = lower($2) OR lower(e.value) = lower($2)",
+            vec![org_id.into(), term.to_string().into()],
+        ),
+        (false, _) => (
+            "e.key ILIKE $2 OR e.value ILIKE $2",
+            vec![org_id.into(), format!("%{}%", escape(term)).into()],
+        ),
+    };
+    let sql = format!(
+        "SELECT resource_kind, resource_id, labels FROM resource_labels r \
+         WHERE org_id = $1 AND EXISTS (SELECT 1 FROM jsonb_each_text(r.labels) e WHERE {cond}) \
+         ORDER BY r.updated_at DESC LIMIT {limit}"
+    );
+    let stmt = sea_orm::Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let mut out = Vec::new();
+    for row in db.query_all_raw(stmt).await? {
+        let kind: String = row.try_get("", "resource_kind")?;
+        let id: String = row.try_get("", "resource_id")?;
+        let doc: Option<Value> = row.try_get("", "labels")?;
+        out.push((kind, id, doc.as_ref().map(doc_to_set).unwrap_or_default()));
+    }
+    Ok(out)
+}
 
-/// Toutes les ressources de l'org portant le label **effectivement**
-/// (propres OU hérité d'un ancêtre) : `(kind, id)`.
-///
-/// Sémantique « le plus proche gagne » : un descendant qui **surcharge**
-/// localement la clé ne sort PAS du filtre pour l'ancienne valeur — les
-/// candidats (propres + descendants des porteurs) sont donc re-vérifiés
-/// via la fusion [`effective`] (résolution au read, même règle partout).
-///
-/// Two recursive CTEs (tagged → descendants) + GIN for discovery.
-pub async fn ids_with_effective_label(
+// ─────────────────────────── filtering ───────────────────────────
+
+/// Every resource of the org carrying the label (exact value, or the bare
+/// name for `name` alone): `(kind, id)`, optionally for one kind.
+pub async fn ids_with_label(
     db: &DatabaseConnection,
     org_id: i64,
     filter: &(String, Option<String>),
     kind: Option<&str>,
 ) -> Result<Vec<(String, String)>, DbErr> {
     let (name, value) = filter;
-
-    let candidates: Vec<(String, String)> = {
-        // tagged = porte le label (valeur exacte ou tag nu `?`) ;
-        // down   = tagged + tous leurs descendants (containment).
-        let (predicate, params) = match value {
-            Some(v) => (
-                "labels @> jsonb_build_object($2::text, $3::text)",
-                vec![org_id.into(), name.clone().into(), v.clone().into()],
-            ),
-            None => (
-                "labels ? $2::text",
-                vec![org_id.into(), name.clone().into()],
-            ),
-        };
-        let sql = format!(
-            "WITH RECURSIVE tagged AS (\
-                 SELECT resource_kind, resource_id FROM resource_labels \
-                  WHERE org_id = $1 AND {predicate}\
-             ), down AS (\
-                 SELECT resource_kind, resource_id FROM tagged \
-                 UNION ALL \
-                 SELECT c.child_kind, c.child_id FROM resource_containments c \
-                 JOIN down d ON c.parent_kind = d.resource_kind AND c.parent_id = d.resource_id \
-                 WHERE c.org_id = $1\
-             ) \
-             SELECT resource_kind, resource_id FROM down",
-            predicate = predicate
-        );
-        let stmt = sea_orm::Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
-        let mut out = Vec::new();
-        for row in db.query_all_raw(stmt).await? {
-            let k: String = row.try_get("", "resource_kind")?;
-            let id: String = row.try_get("", "resource_id")?;
-            if kind.is_none_or(|want| want == k) {
-                out.push((k, id));
-            }
+    let mut params: Vec<sea_orm::Value> = vec![org_id.into(), name.clone().into()];
+    let predicate = match value {
+        Some(v) => {
+            params.push(v.clone().into());
+            "labels @> jsonb_build_object($2::text, $3::text)".to_string()
         }
-        out
+        None => "labels ? $2::text".to_string(),
     };
-
-    // ── Post-filtre « le plus proche gagne » : la fusion effective décide ──
-    let mut out = Vec::new();
-    for (k, id) in candidates {
-        let (merged, _) = effective(db, org_id, &k, &id).await?;
-        let hit = match value {
-            Some(want) => merged.get(name).and_then(|v| v.as_deref()) == Some(want.as_str()),
-            None => merged.contains_key(name),
-        };
-        if hit {
-            out.push((k, id));
+    let kind_clause = match kind {
+        Some(k) => {
+            params.push(k.to_string().into());
+            format!(" AND resource_kind = ${}", params.len())
         }
+        None => String::new(),
+    };
+    let sql = format!(
+        "SELECT resource_kind, resource_id FROM resource_labels \
+         WHERE org_id = $1 AND {predicate}{kind_clause}"
+    );
+    let stmt = sea_orm::Statement::from_sql_and_values(db.get_database_backend(), &sql, params);
+    let mut out = Vec::new();
+    for row in db.query_all_raw(stmt).await? {
+        let k: String = row.try_get("", "resource_kind")?;
+        let id: String = row.try_get("", "resource_id")?;
+        out.push((k, id));
     }
     Ok(out)
 }
@@ -342,9 +359,9 @@ pub enum ListLabelFilterError {
     Db(DbErr),
 }
 
-/// List filter `label=name` / `label=name:value` (D42) for one kind:
+/// List filter `label=name` / `label=name:value` (D218) for one kind:
 /// `None` without filter, else the ids (stringified PK) of the org's
-/// resources of `kind` carrying the label, inherited labels included.
+/// resources of `kind` carrying the label.
 pub async fn list_filter(
     db: &DatabaseConnection,
     org_id: i64,
@@ -360,8 +377,21 @@ pub async fn list_filter(
             err.unwrap_or_else(|| "invalid label filter".into()),
         ));
     };
-    let ids = ids_with_effective_label(db, org_id, &filter, Some(kind))
+    let ids = ids_with_label(db, org_id, &filter, Some(kind))
         .await
         .map_err(ListLabelFilterError::Db)?;
     Ok(Some(ids.into_iter().map(|(_, id)| id).collect()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::label_only_table;
+
+    #[test]
+    fn every_label_only_kind_has_its_table() {
+        for kind in pnex_core::resources::LABEL_ONLY_KINDS {
+            assert!(label_only_table(kind).is_some(), "{kind}");
+        }
+        assert!(label_only_table(pnex_core::resources::KIND_DEVICE).is_none());
+    }
 }
