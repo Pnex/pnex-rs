@@ -15,6 +15,9 @@ use pnex_core::vision::{NodeStatus, NodeStatusLevel, NODE_STATUS_FORMAT};
 /// after 60 s, so a steady state is re-sent at most every 10 s.
 const REPUBLISH: Duration = Duration::from_secs(10);
 
+/// A repeated rejection is logged again after this delay.
+const RELOG: Duration = Duration::from_secs(60);
+
 /// Passed/rejected counters and the last published state of one node.
 #[derive(Debug)]
 pub(crate) struct StatusBoard {
@@ -25,6 +28,10 @@ pub(crate) struct StatusBoard {
     passed: AtomicU64,
     rejected: AtomicU64,
     last: Mutex<Option<(NodeStatusLevel, Instant)>>,
+    /// Last rejection written to the server log, to log a repeated one once
+    /// a minute instead of once per message (a 1 s inject on an offline
+    /// device wrote 60 identical lines a minute).
+    last_logged: Mutex<Option<(String, Instant)>>,
 }
 
 impl StatusBoard {
@@ -40,7 +47,19 @@ impl StatusBoard {
             passed: AtomicU64::new(0),
             rejected: AtomicU64::new(0),
             last: Mutex::new(None),
+            last_logged: Mutex::new(None),
         }
+    }
+
+    /// Whether this rejection should reach the server log: a new detail, or
+    /// the same one after [`RELOG`]. The badge still counts every one.
+    pub(crate) fn log_due(&self, detail: &str) -> bool {
+        let mut last = self.last_logged.lock().expect("status lock");
+        if matches!(&*last, Some((prev, at)) if prev == detail && at.elapsed() < RELOG) {
+            return false;
+        }
+        *last = Some((detail.to_string(), Instant::now()));
+        true
     }
 
     pub(crate) fn passed<N: FlowNodeBehavior + ?Sized>(&self, node: &N) {

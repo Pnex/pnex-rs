@@ -175,6 +175,10 @@ pub(crate) struct DisplayBadge {
 pub(crate) fn status_label(st: &pnex_core::vision::NodeStatus) -> String {
     let state = status_text(&st.code);
     let stat = |k: &str| st.stats.get(k).copied().unwrap_or(0);
+    // "No frames · 0 frames" said it twice.
+    if st.code.ends_with("-no-frames") && stat("received") == 0 && stat("analysed") == 0 {
+        return state;
+    }
     let counter = if st.code.starts_with("vision-") {
         t!("flow-status-count-analysed", analysed: stat("analysed"), emitted: stat("emitted"))
             .to_string()

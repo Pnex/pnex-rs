@@ -69,6 +69,7 @@ pub fn to_red_flows_json_with(
                 "device_id": config.device_id,
                 "pins": config.pins,
                 "commands": config.commands,
+                "values": config.values,
                 "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,

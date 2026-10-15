@@ -90,6 +90,12 @@ pub struct DeviceWriteConfig {
     /// rule.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
+    /// Value declared per pin (O70): when set, any message reaching that pin
+    /// writes this value — the message is only the trigger. `true`/`false`
+    /// (or 0/1) on a digital output, a duty 0..=100 on a PWM output. Pins
+    /// without an entry write the value the message carries.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub values: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 impl DeviceWriteConfig {

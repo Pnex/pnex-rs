@@ -124,10 +124,23 @@ pub fn FlowEditor(
     // son message distinct — un device en attente de reconnexion (restart
     // serveur, wifi…) ne doit jamais s'afficher « supprimé ou inactif ».
     // Violations client-only (jamais persistées) → nœud + câble en rouge.
-    // Re-fetch uniquement au changement de CONFIG de lecture (pas au drag —
-    // la signature exclut les positions).
+    // Re-fetched when the read config changes (not on drag: the signature
+    // leaves positions out) and on the presence tick below.
     let mut stale_signature = use_signal(String::new);
+    // Presence changes without any edit (a device drops or comes back): the
+    // check is re-run on this tick, not only when the config changes.
+    let mut presence_tick = use_signal(|| 0u32);
+    let mut presence_polling = use_signal(|| false);
+    if !presence_polling() {
+        presence_polling.set(true);
+        spawn(async move {
+            crate::util::sleep(std::time::Duration::from_secs(15)).await;
+            presence_polling.set(false);
+            presence_tick.with_mut(|t| *t += 1);
+        });
+    }
     use_effect(move || {
+        let tick = presence_tick();
         let g = graph.cloned(); // lecture suivie : re-déclenche au changement
                                 // (node_id, device_slug, pin, is_write) — l'usage qualifie la
                                 // vérification (une pin écrite n'a pas besoin de souscription).
@@ -159,6 +172,7 @@ pub fn FlowEditor(
                 }
             }
         }
+        signature.push_str(&format!("tick:{tick}"));
         if signature == *stale_signature.cloned() {
             return; // config inchangée (drag/pan) : rien à re-scruter
         }

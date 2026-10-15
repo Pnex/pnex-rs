@@ -273,12 +273,15 @@ pub(crate) fn Canvas(
                             text {
                                 key: "wire-type-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
                                 x: "{(a.0 + b.0) / 2.0}",
-                                y: "{(a.1 + b.1) / 2.0 - 4.0}",
+                                // Centred on the wire, the halo masks it under
+                                // the text (half above, it crossed the glyphs).
+                                y: "{(a.1 + b.1) / 2.0 + 3.0}",
                                 "text-anchor": "middle",
                                 "font-size": "9",
                                 fill: kind.color(),
                                 stroke: "var(--color-surface, #ffffff)",
-                                "stroke-width": "3",
+                                "stroke-width": "6",
+                                "stroke-linejoin": "round",
                                 "paint-order": "stroke",
                                 "pointer-events": "none",
                                 {kind.label()}
@@ -749,10 +752,10 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         _ => 0.0,
     };
     let text_cx = (left_reserve + geometry::NODE_W - right_reserve) / 2.0;
-    // Subtitle truncated to the zone (~5 px/char at font 10) so it never
-    // runs under the port labels.
+    // Subtitle truncated to the zone (~6 px/char at font 10, 5 px made it
+    // touch the port labels) so it never runs under them.
     let max_chars =
-        ((geometry::NODE_W - left_reserve - right_reserve - 4.0) / 5.0).max(6.0) as usize;
+        ((geometry::NODE_W - left_reserve - right_reserve - 8.0) / 6.0).max(6.0) as usize;
     let subtitle = if subtitle.chars().count() > max_chars {
         let short: String = subtitle.chars().take(max_chars.saturating_sub(1)).collect();
         format!("{short}…")
@@ -765,7 +768,22 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let node_id_in_anchor = node_id.clone();
     // Badge live : pré-calculs pour les closures rsx (pas de `let` dans rsx,
     // et une seule closure peut prendre possession de la vue pretty).
-    let badge_label = display_badge.as_ref().map(|b| b.label.clone());
+    // The frame wraps the text (monospace 9 ≈ 5.4 px/char), centred under the
+    // node; past two node widths the text is cut, the full one in a tooltip.
+    let badge_full = display_badge.as_ref().map(|b| b.label.clone());
+    let badge_label = badge_full.clone().map(|l| {
+        let max = ((2.0 * geometry::NODE_W - 10.0) / 5.4) as usize;
+        if l.chars().count() > max {
+            format!("{}…", l.chars().take(max - 1).collect::<String>())
+        } else {
+            l
+        }
+    });
+    let badge_w = badge_label.as_ref().map_or(0.0, |l| {
+        (l.chars().count() as f64 * 5.4 + 10.0).max(geometry::NODE_W - 8.0)
+    });
+    let badge_x = (geometry::NODE_W - badge_w) / 2.0;
+    let badge_title = badge_full.unwrap_or_default();
     let badge_clickable = display_badge
         .as_ref()
         .map(|b| b.pretty.is_some())
@@ -888,9 +906,12 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                         cx: "{geometry::NODE_W}",
                         cy: "{port_y}",
                         r: "7",
-                        // Port colour = data type (O70), node colour as ring.
+                        // Port colour = data type (O70). The ring takes the node
+                        // background: a ring in the border colour merged with a
+                        // same-colour type (video on a camera node) and made
+                        // that port look bigger.
                         fill: super::wire_types::output_type(&cx.graph.read(), &port_node_id, port_index).color(),
-                        stroke: "{stroke}",
+                        stroke: "{fill}",
                         "stroke-width": "2",
                         style: "cursor: crosshair",
                         onpointerdown: move |event| {
@@ -947,10 +968,11 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                             cx.expanded_display.set(Some((node_id_badge.clone(), pretty)));
                         }
                     },
+                    title { "{badge_title}" }
                     rect {
-                        x: "4",
+                        x: "{badge_x}",
                         y: "{node_h + 4.0}",
-                        width: "{geometry::NODE_W - 8.0}",
+                        width: "{badge_w}",
                         height: "16",
                         rx: "4",
                         fill: badge_fill,

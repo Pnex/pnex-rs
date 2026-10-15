@@ -341,12 +341,12 @@ pub fn flow_draft(
                         DraftTarget::Pin(pin) => DeviceWriteConfig {
                             device_id: device_slug.to_owned(),
                             pins: vec![pin.clone()],
-                            commands: vec![],
+                            ..Default::default()
                         },
                         DraftTarget::Command(cmd) => DeviceWriteConfig {
                             device_id: device_slug.to_owned(),
-                            pins: vec![],
                             commands: vec![cmd.clone()],
+                            ..Default::default()
                         },
                     },
                 },

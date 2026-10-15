@@ -45,6 +45,9 @@ struct DeviceWriteNodeConfig {
     /// Custom-firmware commands (D146), input anchors after the pins.
     #[serde(default)]
     commands: Vec<String>,
+    /// Value declared per pin (O70): written whatever the message carries.
+    #[serde(default)]
+    values: std::collections::BTreeMap<String, serde_json::Value>,
     /// Estampillé par la projection au deploy (`FlowArtifactMeta.org_id`) —
     /// passé tel quel à la route interne (elle résout le device dans l'org).
     #[serde(default)]
@@ -151,8 +154,17 @@ impl DeviceWriteNode {
 impl DeviceWriteNode {
     /// Nothing (or not everything) was written: server log + canvas badge.
     fn reject(&self, detail: String) {
-        log::warn!("pnex-device-write [{}] : {detail}", self.name());
+        if self.status.log_due(&detail) {
+            log::warn!("pnex-device-write [{}] : {detail}", self.name());
+        }
         self.status.rejected(self, detail);
+    }
+
+    fn declared_for(
+        &self,
+        topic: Option<&str>,
+    ) -> Option<serde_json::Map<String, serde_json::Value>> {
+        declared_values(&self.config.values, self.anchors(), topic)
     }
 
     /// Input anchors: pins first, then commands.
@@ -197,6 +209,14 @@ impl DeviceWriteNode {
             let topic = m.get("topic").and_then(|v| v.as_str()).map(str::to_string);
             (m.get("payload").cloned().unwrap_or(Variant::Null), topic)
         };
+        // Declared values (O70): the message is only the trigger. A wire
+        // drawn on a pin's anchor (topic = that pin) writes that pin's
+        // declared value; any other message writes every declared value.
+        if payload_value.as_object().is_none() {
+            if let Some(fixed) = self.declared_for(topic.as_deref()) {
+                return self.write_values(msg, cancel, fixed).await;
+            }
+        }
         // Object payload → batch write (the map wins even when a topic is
         // present). Anything else falls back to the scalar path:
         // - a scalar whose `topic` matches one of the configured pins is
@@ -277,6 +297,8 @@ impl DeviceWriteNode {
             let mut out = serde_json::Map::new();
             for name in names {
                 if let Some(v) = map.get(name.as_str()) {
+                    // A declared value wins over the one in the map.
+                    let v = self.config.values.get(name).unwrap_or(v);
                     out.insert(name.clone(), v.clone());
                 }
             }
@@ -359,6 +381,23 @@ impl DeviceWriteNode {
     }
 }
 
+/// Declared values written by a message that carries no map: the pin
+/// named by `topic` when it is an anchor, else every declared pin.
+/// `None` = nothing declared for it, the message value is written.
+fn declared_values<'a>(
+    values: &std::collections::BTreeMap<String, serde_json::Value>,
+    mut anchors: impl Iterator<Item = &'a String>,
+    topic: Option<&str>,
+) -> Option<serde_json::Map<String, serde_json::Value>> {
+    let on_anchor = topic.filter(|t| anchors.any(|a| a == t));
+    let fixed: serde_json::Map<String, serde_json::Value> = values
+        .iter()
+        .filter(|(pin, _)| on_anchor.is_none_or(|t| t == pin.as_str()))
+        .map(|(pin, v)| (pin.clone(), v.clone()))
+        .collect();
+    (!fixed.is_empty()).then_some(fixed)
+}
+
 #[async_trait]
 impl FlowNodeBehavior for DeviceWriteNode {
     fn get_base(&self) -> &BaseFlowNodeState {
@@ -383,5 +422,31 @@ impl FlowNodeBehavior for DeviceWriteNode {
             )
             .await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::declared_values;
+
+    #[test]
+    fn declared_values_follow_the_anchor_or_apply_to_all() {
+        let values = serde_json::from_value(serde_json::json!({"led": false, "fan": 40})).unwrap();
+        let anchors = ["led".to_string(), "fan".to_string(), "door".to_string()];
+        let pick =
+            |topic| declared_values(&values, anchors.iter(), topic).map(serde_json::Value::Object);
+        // A wire on the "led" anchor writes the led value only.
+        assert_eq!(pick(Some("led")), Some(serde_json::json!({"led": false})));
+        // An anchor without declared value: the message value is written.
+        assert_eq!(pick(Some("door")), None);
+        // No anchor named (plain trigger, foreign topic): every declared value.
+        assert_eq!(
+            pick(None),
+            Some(serde_json::json!({"led": false, "fan": 40}))
+        );
+        assert_eq!(
+            pick(Some("tick")),
+            Some(serde_json::json!({"led": false, "fan": 40}))
+        );
     }
 }

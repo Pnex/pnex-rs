@@ -1150,7 +1150,7 @@ fn node_device_write(id: &str, device_id: &str, pins: &[&str]) -> FlowNode {
             config: DeviceWriteConfig {
                 device_id: device_id.into(),
                 pins: pins.iter().map(|p| (*p).into()).collect(),
-                commands: vec![],
+                ..Default::default()
             },
         },
     }
@@ -1168,6 +1168,31 @@ fn node_device_write_commands(
         config.commands = commands.iter().map(|c| (*c).into()).collect();
     }
     n
+}
+
+#[test]
+fn device_write_declared_values_validate() {
+    let with_values = |values: serde_json::Value| {
+        let mut n = node_device_write("w1", "cam-1", &["Flash LED", "D5"]);
+        if let FlowNodeKind::DeviceWrite { config } = &mut n.kind {
+            config.values = serde_json::from_value(values).unwrap();
+        }
+        FlowGraph { nodes: vec![n] }
+    };
+    let g = with_values(serde_json::json!({"Flash LED": false, "D5": 40}));
+    assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
+    // Out of range, text, and a pin that is not selected.
+    for bad in [
+        serde_json::json!({"D5": 101}),
+        serde_json::json!({"D5": "on"}),
+        serde_json::json!({"D9": true}),
+    ] {
+        let codes: Vec<String> = validate_graph(&with_values(bad.clone()))
+            .iter()
+            .map(|x| x.code.clone())
+            .collect();
+        assert_eq!(codes, vec!["device_bad_fixed_value".to_string()], "{bad}");
+    }
 }
 
 #[test]
@@ -2552,6 +2577,8 @@ fn projection_device_write_tagger_on_wired_input_anchor() {
     assert_eq!(wnode["type"], serde_json::json!("pnex-device-write"));
     assert_eq!(wnode["device_id"], serde_json::json!("dev-a"));
     assert_eq!(wnode["pins"], serde_json::json!(["G13", "G14"]));
+    // No declared value: the runtime gets an empty map.
+    assert_eq!(wnode["values"], serde_json::json!({}));
     // Both output ports padded (passthrough + device name), even unwired.
     assert_eq!(wnode["wires"], serde_json::json!([[], []]));
 }

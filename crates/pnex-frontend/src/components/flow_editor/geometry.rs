@@ -212,7 +212,9 @@ pub fn notify_input_labels(config: &pnex_core::NotifyNodeConfig) -> Vec<String> 
 pub fn accepts_input(node: &FlowNode) -> bool {
     !matches!(
         node.kind,
-        FlowNodeKind::ControlSource { .. }
+        FlowNodeKind::Inject { .. }
+            | FlowNodeKind::CameraSource { .. }
+            | FlowNodeKind::ControlSource { .. }
             | FlowNodeKind::ActionTrigger { .. }
             | FlowNodeKind::Weather { .. }
             | FlowNodeKind::MediaSource { .. }
