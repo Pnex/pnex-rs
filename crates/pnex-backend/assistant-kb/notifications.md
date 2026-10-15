@@ -14,7 +14,7 @@ The Notifications page (Automation menu) manages how flows notify people: channe
 
 - **Channels** tab: **New channel** opens a picker: In-app notifications (no settings), Webhook (generic HTTP POST), ntfy (push), Telegram, Slack, Discord, Email (SMTP). Each channel can be enabled or disabled, sent a **Test**, edited, deleted; **Journal** jumps to its deliveries. The table shows the last delivery status.
 - **Templates** tab: **New template** with a name, an optional subject and a body. **+ Variable** inserts a placeholder in the body and declares it; give each variable an example value to see the **Preview**, and send a test to a channel.
-- **Events** tab: the delivery journal (flows, Test buttons, OTA), filterable by channel, status (Sent, Failed, Blocked by anti-spam) and source, with the error detail of each failed send.
+- **Delivery log** tab: the delivery journal (flows, Test buttons, OTA), filterable by channel, status (Sent, Failed, Blocked by anti-spam) and source, with the error detail of each failed send.
 - In a flow, add a **Notification** node, select channels and a template; each template variable becomes an input row of the node.
 
 ## Good to know

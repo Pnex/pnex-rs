@@ -14,7 +14,7 @@ A flow with a Notification node never sends anything, or the save is refused. Th
 
 - Saving the flow is refused with an "Invalid graph" banner asking to wire the trigger input.
 - The flow is deployed but no message arrives on the channel.
-- The Events tab of the Notifications page shows no delivery, or deliveries marked "Blocked (anti-spam)" or "Failed".
+- The Delivery log tab of the Notifications page shows no delivery, or deliveries marked "Blocked (anti-spam)" or "Failed".
 
 ## Cause
 
@@ -29,4 +29,4 @@ A flow with a Notification node never sends anything, or the save is refused. Th
 2. Drag its output onto the **trigger** row of the Notification node, and wire each template variable to its row.
 3. **Save Changes**, then **Deploy**.
 4. On **Notifications** → **Channels**, check the channel is Enabled and use **Test** to confirm it delivers.
-5. Read **Events** for the error detail of failed sends; a "Blocked (anti-spam)" status means the node's rate limit was reached.
+5. Read the **Delivery log** for the error detail of failed sends; a "Blocked (anti-spam)" status means the node's rate limit was reached.

@@ -421,7 +421,9 @@ Tous trouvés par la suite e2e, chacun couvert par un test (unitaire ou e2e) :
   nginx 1.29 : `?token=` absent des deux logs.
 - **Reste (à concevoir)** : auth par en-tête / premier message, le jeton ne
   passerait plus du tout par l'URL.
-- **Statut** : ✅ résolu (fuite des logs) ; refonte d'auth = backlog.
+- **Statut** : ✅ résolu — fuite des logs (2026-10-03), puis jeton hors URL
+  par D154 (2026-10-09) : `/ws/device`, `/ws/camera` et `/ws/media`
+  n'acceptent que `Authorization: Bearer` (`device_link::device_token`).
 
 ### O20 — Firmware : handshake WebSocket limité à 1 s (ArduinoWebsockets)
 
@@ -923,7 +925,13 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
   en-US.ftl:3747).
 - Pages › Nouvelle page ne propose aucun modèle : les modèles de page ne
   sont accessibles que depuis un dossier d'enquête.
-- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
+- **Statut** : corrigé (7ae8b706) ; restes fermés le 2026-10-15 : contenu des
+  packs traduisible (`names` / `inverse_names` / `descriptions` par langue
+  dans les définitions, packs livrés traduits en français — maintenance
+  1.3.0, investigation 1.5.0 — ; un nom retapé dans l'éditeur de type
+  remplace ses traductions) ; Pages › Nouvelle page propose les modèles
+  des packs installés ; l'onglet « Events » des notifications devient
+  « Journal des envois » (« Delivery log »).
 ### O44 — Fiches de l'assistant (assistant-kb) en retard sur la navigation
 
 - `media.md:11` et `documents.md:11` : « Data › Library » → aujourd'hui

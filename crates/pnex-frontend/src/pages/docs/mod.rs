@@ -43,6 +43,9 @@ fn DocList() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut creating = use_signal(|| false);
     let mut title = use_signal(String::new);
+    let mut template = use_signal(String::new);
+    // Page templates of the installed packs (O43), same list as in a case.
+    let templates = use_resource(|| async { api::cases::templates().await.unwrap_or_default() });
     let mut busy = use_signal(|| false);
     let mut form_error = use_signal(|| Option::<ApiError>::None);
     let mut error = use_signal(|| Option::<ApiError>::None);
@@ -76,9 +79,10 @@ fn DocList() -> Element {
     };
     let submit = move |_| {
         let name = title().trim().to_string();
+        let tpl = Some(template()).filter(|k| !k.is_empty());
         busy.set(true);
         spawn(async move {
-            let result = api::docs::create(name).await;
+            let result = api::docs::create(name, tpl).await;
             busy.set(false);
             match result {
                 Ok(doc) => {
@@ -142,6 +146,7 @@ fn DocList() -> Element {
             add_label: Some(t!("docs-new").to_string()),
             on_add: move |_| {
                 title.set(String::new());
+                template.set(String::new());
                 form_error.set(None);
                 creating.set(true);
             },
@@ -163,6 +168,29 @@ fn DocList() -> Element {
                                 class: "{INPUT} w-full",
                                 value: "{title}",
                                 oninput: move |e| title.set(e.value()),
+                            }
+                        }
+                        if let Some(list) = templates.read().as_ref().filter(|l| !l.is_empty()) {
+                            div {
+                                label {
+                                    r#for: "docs-field-template",
+                                    class: FIELD_LABEL,
+                                    {t!("case-page-template")}
+                                }
+                                select {
+                                    id: "docs-field-template",
+                                    class: "{INPUT} w-full",
+                                    value: "{template}",
+                                    onchange: move |e| template.set(e.value()),
+                                    option { value: "", {t!("case-page-blank")} }
+                                    for tpl in list.iter() {
+                                        option {
+                                            key: "{tpl.key}",
+                                            value: "{tpl.key}",
+                                            {crate::components::ontology::tr(&tpl.name, &tpl.names)}
+                                        }
+                                    }
+                                }
                             }
                         }
                         if let Some(err) = form_error() {

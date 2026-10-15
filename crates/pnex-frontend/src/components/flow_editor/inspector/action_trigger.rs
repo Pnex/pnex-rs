@@ -27,7 +27,10 @@ pub(super) fn ActionTriggerForm(
             t.def.actions.iter().map(move |a| {
                 (
                     format!("{}/{}", t.def.key, a.key),
-                    format!("{kind} · {}", a.name),
+                    format!(
+                        "{kind} · {}",
+                        crate::components::ontology::tr(&a.name, &a.names)
+                    ),
                 )
             })
         })

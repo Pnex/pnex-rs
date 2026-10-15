@@ -282,9 +282,13 @@ pub struct ChangeView {
 pub struct Pack {
     pub key: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
     pub version: String,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub descriptions: super::Names,
     #[serde(default)]
     pub types: Vec<ObjectTypeDef>,
     #[serde(default)]
@@ -300,8 +304,12 @@ pub struct Pack {
 pub struct PageTemplate {
     pub key: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub descriptions: super::Names,
     pub body: String,
 }
 
@@ -329,8 +337,12 @@ pub struct CasePageInput {
 pub struct PackView {
     pub key: String,
     pub name: String,
+    #[serde(default)]
+    pub names: super::Names,
     pub version: String,
     pub description: String,
+    #[serde(default)]
+    pub descriptions: super::Names,
     #[serde(default)]
     pub installed_version: Option<String>,
 }

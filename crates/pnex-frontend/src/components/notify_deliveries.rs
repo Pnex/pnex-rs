@@ -1,4 +1,4 @@
-//! "Events" tab of `/notifications` (D86): every delivery attempt of the
+//! "Delivery log" tab of `/notifications` (D86): every delivery attempt of the
 //! org, read from the OpenObserve journal — channel, status, source,
 //! period and full-text filters, D14 pagination, expandable detail
 //! (upstream return, error, node, reached sessions).

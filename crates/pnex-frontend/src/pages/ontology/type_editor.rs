@@ -38,6 +38,7 @@ const KINDS: &[&str] = &[
 
 fn blank(key: &str) -> ObjectTypeDef {
     ObjectTypeDef {
+        names: Default::default(),
         key: key.to_string(),
         name: String::new(),
         icon: "cube".into(),
@@ -245,8 +246,14 @@ fn Editor(
                                 input {
                                     class: INPUT,
                                     "data-testid": "onto-type-name",
-                                    value: "{def.read().name}",
-                                    oninput: move |e| def.with_mut(|d| d.name = e.value()),
+                                    value: "{crate::components::ontology::tr(&def.read().name, &def.read().names)}",
+                                    // A typed name replaces the pack translations.
+                                    oninput: move |e| {
+                                        def.with_mut(|d| {
+                                            d.name = e.value();
+                                            d.names.clear();
+                                        })
+                                    },
                                 }
                             }
                             div {
@@ -321,6 +328,7 @@ fn Editor(
                                 def.with_mut(|d| {
                                     d.properties
                                         .push(PropertyDef {
+                                            names: Default::default(),
                                             key: String::new(),
                                             name: String::new(),
                                             kind: PropertyKind::Text {
@@ -483,10 +491,15 @@ fn PropertyRow(
                 input {
                     class: INPUT,
                     placeholder: t!("onto-prop-name"),
-                    value: "{p.name}",
+                    value: "{crate::components::ontology::tr(&p.name, &p.names)}",
                     oninput: move |e| {
                         let v = e.value();
-                        edit(Box::new(move |p| p.name = v));
+                        edit(
+                            Box::new(move |p| {
+                                p.name = v;
+                                p.names.clear();
+                            }),
+                        );
                     },
                 }
                 select {

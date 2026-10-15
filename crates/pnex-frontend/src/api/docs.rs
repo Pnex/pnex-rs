@@ -14,11 +14,11 @@ pub async fn list() -> Result<Vec<DocSummary>, ApiError> {
     client::request_all("/api/v1/docs").await
 }
 
-pub async fn create(title: String) -> Result<DocSummary, ApiError> {
+pub async fn create(title: String, template: Option<String>) -> Result<DocSummary, ApiError> {
     client::request(
         reqwest::Method::POST,
         "/api/v1/docs",
-        Some(serde_json::to_value(CreateDoc { title }).unwrap_or_default()),
+        Some(serde_json::to_value(CreateDoc { title, template }).unwrap_or_default()),
     )
     .await
 }

@@ -6,174 +6,219 @@
 # contradict, identifiers. Events and the `involves` attachment are core
 # types since 1.3.0 (cases-workspace.md K20, K21): the pack uses them. Since
 # 1.4.0 a place may carry a zone (geo_area, K29) for the zone detector.
+# Since 1.5.0 names carry their French translation (`names`, O43).
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 key: investigation
 name: Investigation
-version: "1.4.0"
+names: {fr: "Enquête"}
+version: "1.5.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
+descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
   - key: person
     name: Person
+    names: {fr: "Personne"}
     icon: user
     may_be_contained_in: [folder]
     properties:
-      - { key: aliases, name: Aliases, kind: text, max_len: 1000 }
-      - { key: role_label, name: Role, kind: text, max_len: 255 }
-      - { key: notes, name: Notes, kind: text, max_len: 2000 }
+      - { key: aliases, name: Aliases, names: {fr: "Alias"}, kind: text, max_len: 1000 }
+      - { key: role_label, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: organization
     name: Organization
+    names: {fr: "Organisation"}
     icon: building
     may_be_contained_in: [folder]
     properties:
       - key: kind
         name: Kind
+        names: {fr: "Nature"}
         kind: enum
         values: [company, public_body, association, party, media, group, other]
-      - { key: notes, name: Notes, kind: text, max_len: 2000 }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: place
     name: Place
+    names: {fr: "Lieu"}
     icon: map-pin
     may_be_contained_in: [folder]
     properties:
-      - { key: address, name: Address, kind: text, max_len: 500 }
-      - { key: location, name: Location, kind: geo_point }
-      - { key: zone, name: Zone, kind: geo_area }
-      - { key: notes, name: Notes, kind: text, max_len: 2000 }
+      - { key: address, name: Address, names: {fr: "Adresse"}, kind: text, max_len: 500 }
+      - { key: location, name: Location, names: {fr: "Position"}, kind: geo_point }
+      - { key: zone, name: Zone, names: {fr: "Zone"}, kind: geo_area }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: piece
     name: Piece
+    names: {fr: "Pièce"}
     icon: book
     may_be_contained_in: [folder]
     properties:
-      - { key: source_url, name: Source URL, kind: url }
-      - { key: captured_at, name: Captured at, kind: date_time }
-      - { key: sha256, name: SHA-256, kind: text, max_len: 64 }
-      - { key: notes, name: Notes, kind: text, max_len: 2000 }
+      - { key: source_url, name: Source URL, names: {fr: "URL de la source"}, kind: url }
+      - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
+      - { key: sha256, name: SHA-256, names: {fr: "SHA-256"}, kind: text, max_len: 64 }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: claim
     name: Claim
+    names: {fr: "Affirmation"}
     icon: tag
     may_be_contained_in: [folder]
     properties:
-      - { key: statement, name: Statement, kind: text, max_len: 2000, required: true }
+      - { key: statement, name: Statement, names: {fr: "Énoncé"}, kind: text, max_len: 2000, required: true }
       - key: status
         name: Status
+        names: {fr: "Statut"}
         kind: enum
         values: [unverified, corroborated, contested, refuted]
         required: true
         indexed: true
       - key: source_reliability
         name: Source reliability
+        names: {fr: "Fiabilité de la source"}
         kind: enum
         values: [A, B, C, D, E, F]
       - key: information_credibility
         name: Information credibility
+        names: {fr: "Crédibilité de l'information"}
         kind: enum
         values: ["1", "2", "3", "4", "5", "6"]
-      - { key: corroboration_note, name: Corroboration justification, kind: text, max_len: 1000 }
+      - { key: corroboration_note, name: Corroboration justification, names: {fr: "Justification de la corroboration"}, kind: text, max_len: 1000 }
   - key: hypothesis
     name: Hypothesis
+    names: {fr: "Hypothèse"}
     icon: globe
     may_be_contained_in: [folder]
     properties:
-      - { key: statement, name: Statement, kind: text, max_len: 2000, required: true }
+      - { key: statement, name: Statement, names: {fr: "Énoncé"}, kind: text, max_len: 2000, required: true }
       - key: status
         name: Status
+        names: {fr: "Statut"}
         kind: enum
         values: [open, supported, refuted, retained]
         required: true
         indexed: true
   - key: identifier
     name: Identifier
+    names: {fr: "Identifiant"}
     icon: tag
     may_be_contained_in: [folder]
     properties:
       - key: kind
         name: Kind
+        names: {fr: "Nature"}
         kind: enum
         values: [phone, email, plate, account, imei, iban, other]
         required: true
-      - { key: value, name: Value, kind: text, max_len: 255, required: true, indexed: true }
+      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true }
 link_types:
   - key: occurred_at
     name: occurred at
+    names: {fr: "s'est produit à"}
     inverse_name: is the place of
+    inverse_names: {fr: "est le lieu de"}
     from_types: [event]
     to_types: [map_pin]
     one_target: true
   - key: located_at
     name: is located at
+    names: {fr: "se trouve à"}
     inverse_name: is the location of
+    inverse_names: {fr: "est l'emplacement de"}
     from_types: "*"
     to_types: [map_pin, place]
     attributes:
       - key: kind
         name: Kind
+        names: {fr: "Nature"}
         kind: enum
         values: [seen, lives, works, registered, stored, other]
   - key: before
     name: happened before
+    names: {fr: "a eu lieu avant"}
     inverse_name: happened after
+    inverse_names: {fr: "a eu lieu après"}
     from_types: [event]
     to_types: [event]
   - key: member_of
     name: is a member of
+    names: {fr: "est membre de"}
     inverse_name: has as member
+    inverse_names: {fr: "a pour membre"}
     from_types: [person, organization]
     to_types: [organization]
   - key: employs
     name: employs
+    names: {fr: "emploie"}
     inverse_name: works for
+    inverse_names: {fr: "travaille pour"}
     from_types: [organization]
     to_types: [person]
     attributes:
-      - { key: position, name: Position, kind: text, max_len: 255 }
+      - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
   - key: owns
     name: owns
+    names: {fr: "possède"}
     inverse_name: is owned by
+    inverse_names: {fr: "appartient à"}
     from_types: [person, organization]
     to_types: "*"
   - key: knows
     name: knows
+    names: {fr: "connaît"}
     inverse_name: is known by
+    inverse_names: {fr: "est connu de"}
     from_types: [person]
     to_types: [person]
   - key: uses_identifier
     name: uses
+    names: {fr: "utilise"}
     inverse_name: is used by
+    inverse_names: {fr: "est utilisé par"}
     from_types: [person, organization]
     to_types: [identifier]
   - key: wraps
     name: wraps
+    names: {fr: "contient"}
     inverse_name: is wrapped by
+    inverse_names: {fr: "est contenu dans"}
     from_types: [piece]
     to_types: "*"
     one_target: true
   - key: about
     name: is about
+    names: {fr: "porte sur"}
     inverse_name: is the subject of
+    inverse_names: {fr: "est le sujet de"}
     from_types: [claim]
     to_types: "*"
   - key: sourced_by
     name: is sourced by
+    names: {fr: "a pour source"}
     inverse_name: sources
+    inverse_names: {fr: "est la source de"}
     from_types: [claim]
     to_types: [piece]
     attributes:
-      - { key: locator, name: Locator, kind: text, max_len: 255 }
+      - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
   - key: supports
     name: supports
+    names: {fr: "étaye"}
     inverse_name: is supported by
+    inverse_names: {fr: "est étayé par"}
     from_types: [claim]
     to_types: [hypothesis, claim]
   - key: contradicts
     name: contradicts
+    names: {fr: "contredit"}
     inverse_name: is contradicted by
+    inverse_names: {fr: "est contredit par"}
     from_types: [claim]
     to_types: [hypothesis, claim]
 page_templates:
   - key: five_whys
     name: 5 whys
+    names: {fr: "5 pourquoi"}
     description: Walk back from the symptom to a root cause, one "why" at a time.
+    descriptions: {fr: "Remonter du symptôme à la cause racine, un « pourquoi » à la fois."}
     body: |
       ## Problem
       What failed, where and when (link the alert or the event).
@@ -193,7 +238,9 @@ page_templates:
       - Prevention:
   - key: ishikawa
     name: Ishikawa (6M)
+    names: {fr: "Ishikawa (6M)"}
     description: Sort the possible causes by family before testing them.
+    descriptions: {fr: "Classer les causes possibles par famille avant de les tester."}
     body: |
       ## Effect
       The observed effect, in one sentence.
@@ -220,7 +267,9 @@ page_templates:
       Each retained cause becomes a hypothesis of the case.
   - key: incident_report
     name: Incident report
+    names: {fr: "Rapport d'incident"}
     description: What happened, the impact, the response and what changes.
+    descriptions: {fr: "Ce qui s'est passé, l'impact, la réponse et ce qui change."}
     body: |
       ## Summary
 
@@ -237,7 +286,9 @@ page_templates:
       - 
   - key: investigation_note
     name: Investigation note
+    names: {fr: "Note d'enquête"}
     description: The question, what is established, what is not, and the sources.
+    descriptions: {fr: "La question, ce qui est établi, ce qui ne l'est pas, et les sources."}
     body: |
       ## Question
 
@@ -251,7 +302,9 @@ page_templates:
       ## Sources
   - key: script
     name: Presentation outline
+    names: {fr: "Plan de présentation"}
     description: Sequences of a presentation or a video, each with its sources.
+    descriptions: {fr: "Les séquences d'une présentation ou d'une vidéo, chacune avec ses sources."}
     body: |
       ## Angle
 

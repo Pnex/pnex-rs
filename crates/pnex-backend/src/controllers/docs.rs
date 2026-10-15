@@ -160,10 +160,24 @@ async fn create(
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
     };
+    // Same templates as the pages of a case (installed packs, O43).
+    let body = match input.template.as_deref().filter(|k| !k.is_empty()) {
+        None => None,
+        Some(key) => {
+            let templates = crate::services::ontology::packs::page_templates(&ctx.db, org.org.id)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            match templates.into_iter().find(|t| t.key == key) {
+                Some(t) => Some(t.body),
+                None => return Ok(field_status("template", err_codes::FIELD_INVALID)),
+            }
+        }
+    };
     let row = docs::ActiveModel {
         id: Set(Uuid::new_v4()),
         org_id: Set(org.org.id),
         title: Set(title),
+        snapshot: Set(body.map(|b| crate::services::pages::seed::from_markdown(&b))),
         snapshot_seq: Set(0),
         created_by: Set(Some(org.auth.user.id)),
         ..Default::default()

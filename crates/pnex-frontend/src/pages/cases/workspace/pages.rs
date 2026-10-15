@@ -30,7 +30,7 @@ pub fn PagesPanel(
     let help = templates
         .iter()
         .find(|t| t.key == template())
-        .map(|t| t.description.clone())
+        .map(|t| crate::components::ontology::tr(&t.description, &t.descriptions))
         .unwrap_or_default();
     let conclusion = prop_str(&case, CASE_CONCLUSION_PAGE);
 
@@ -109,7 +109,9 @@ pub fn PagesPanel(
                             onchange: move |e| template.set(e.value()),
                             option { value: "", {t!("case-page-blank")} }
                             for tpl in templates.iter() {
-                                option { key: "{tpl.key}", value: "{tpl.key}", "{tpl.name}" }
+                                option { key: "{tpl.key}", value: "{tpl.key}",
+                                    {crate::components::ontology::tr(&tpl.name, &tpl.names)}
+                                }
                             }
                         }
                         button {

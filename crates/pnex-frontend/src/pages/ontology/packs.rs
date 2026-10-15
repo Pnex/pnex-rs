@@ -8,6 +8,7 @@ use pnex_core::ontology::api::PackView;
 use crate::api;
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::ontology::tr;
 use crate::state::{org, toasts};
 
 #[component]
@@ -27,7 +28,7 @@ pub fn PacksTab(tabs: Element) -> Element {
             rsx! {
                 div { "data-pack": "{pack.key}",
                     div { class: "flex flex-wrap items-center gap-2",
-                        span { class: "font-medium text-gray-900", "{pack.name}" }
+                        span { class: "font-medium text-gray-900", {tr(&pack.name, &pack.names)} }
                         span { class: "text-xs text-gray-500", "v{pack.version}" }
                         if let Some(v) = installed {
                             span { class: "rounded bg-green-50 px-2 py-0.5 text-xs text-green-700",
@@ -35,7 +36,7 @@ pub fn PacksTab(tabs: Element) -> Element {
                             }
                         }
                     }
-                    p { class: "text-xs text-gray-600", "{pack.description}" }
+                    p { class: "text-xs text-gray-600", {tr(&pack.description, &pack.descriptions)} }
                 }
             }
         }),

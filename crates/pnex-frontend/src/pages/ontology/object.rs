@@ -115,7 +115,7 @@ pub fn OntologyObject(id: String) -> Element {
                             class: BTN,
                             "data-action": "{a.key}",
                             onclick: move |_| invoking.set(Some(a.key.clone())),
-                            "{a.name}"
+                            {crate::components::ontology::tr(&a.name, &a.names)}
                         }
                     }
                 }

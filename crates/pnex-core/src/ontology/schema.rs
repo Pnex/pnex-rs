@@ -120,6 +120,8 @@ pub struct PropertyDef {
     pub key: String,
     #[serde(default)]
     pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
     #[serde(flatten)]
     pub kind: PropertyKind,
     #[serde(default)]
@@ -138,6 +140,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             key: String,
             #[serde(default)]
             name: String,
+            #[serde(default)]
+            names: super::Names,
             kind: String,
             #[serde(default)]
             required: bool,
@@ -212,6 +216,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
         Ok(Self {
             key: h.key,
             name: h.name,
+            names: h.names,
             kind,
             required: h.required,
             indexed: h.indexed,
@@ -449,6 +454,7 @@ mod tests {
 
     fn def(key: &str, kind: PropertyKind) -> PropertyDef {
         PropertyDef {
+            names: Default::default(),
             key: key.into(),
             name: String::new(),
             kind,
