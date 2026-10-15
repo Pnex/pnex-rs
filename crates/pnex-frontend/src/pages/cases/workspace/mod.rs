@@ -14,6 +14,7 @@ mod pages;
 mod palette;
 mod purge;
 mod snapshots;
+mod story;
 mod timeline;
 
 use std::future::Future;
@@ -97,6 +98,8 @@ pub(super) fn proposal_title(p: &CaseProposal) -> String {
 pub(super) enum View {
     Graph,
     Map,
+    /// Actors as threads through time (storyline).
+    Story,
 }
 
 /// Shared state of the workspace (all `Copy` handles).
@@ -630,10 +633,16 @@ pub fn CaseWorkspace(id: String) -> Element {
                     },
                     // The main view, the inspector drawn over it on demand.
                     div { class: "relative min-h-0 flex-1 overflow-hidden",
-                        if (ws.view)() == View::Graph {
-                            graph::Graph { workspace: w.clone() }
-                        } else {
-                            map::CaseMap {}
+                        match (ws.view)() {
+                            View::Graph => rsx! {
+                                graph::Graph { workspace: w.clone() }
+                            },
+                            View::Map => rsx! {
+                                map::CaseMap {}
+                            },
+                            View::Story => rsx! {
+                                story::Story { workspace: w.clone() }
+                            },
                         }
                         if w.events.is_empty() && w.undated.is_empty() {
                             EmptyCase {}
@@ -784,6 +793,19 @@ fn Actions(workspace: Workspace) -> Element {
                     "data-testid": "case-view-map",
                     onclick: move |_| view.set(View::Map),
                     {t!("cw-map")}
+                }
+                button {
+                    r#type: "button",
+                    class: tab(view() == View::Story),
+                    "aria-pressed": view() == View::Story,
+                    "data-testid": "case-view-story",
+                    onclick: move |_| {
+                        view.set(View::Story);
+                        // The story is a timeline itself: fold the dock.
+                        let mut dock = ws.dock_open;
+                        dock.set(false);
+                    },
+                    {t!("cw-story")}
                 }
             }
             button {

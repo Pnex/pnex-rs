@@ -237,6 +237,7 @@ les règles plus anciennes qui les contredisent.
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | État sauvegardé d'un objet | Version | Version | — |
+| Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :
