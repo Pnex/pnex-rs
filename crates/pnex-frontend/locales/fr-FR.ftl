@@ -4183,6 +4183,7 @@ onto-new-type = Nouveau type
 onto-from-pack = pack { $pack }
 onto-org-type = organisation
 onto-link-types = Types de liens
+onto-link-types-subtitle = Comment les objets se relient : les liens système et ceux de votre organisation.
 onto-new-link-type = Nouveau type de lien
 onto-delete-link-type = Supprimer le type de lien
 onto-delete-link-type-confirm = Supprimer le type de lien « { $key } » ? Refusé s'il a déjà servi (l'historique est conservé).

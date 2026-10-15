@@ -1,5 +1,5 @@
-//! Schema tab: object types (system and org, with their object counts) and
-//! link types. Editing the schema is for org owners and admins (D188); the
+//! Schema tab (object types, system and org, with their object counts) and
+//! link types tab. Editing the schema is for org owners and admins (D188); the
 //! server enforces it, the UI only hides the buttons.
 
 use dioxus::prelude::*;
@@ -17,19 +17,21 @@ use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::{
-    field_errors, icon_of, key_label, link_label, type_label, TypeIcon,
+    field_errors, icon_of, link_label, type_label, type_label_of, TypeIcon,
 };
 use crate::state::{org, toasts};
 
 const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = crate::components::ui::FIELD_LABEL;
 
-fn set_label(set: &TypeSet) -> String {
+/// Names of a set of types: org types by their (translated) name, system
+/// types by their key's translation.
+fn set_label(set: &TypeSet, types: &[ObjectTypeView]) -> String {
     match set {
         TypeSet::Any => t!("onto-any-type").to_string(),
         TypeSet::Only(keys) => keys
             .iter()
-            .map(|k| key_label(k))
+            .map(|k| type_label_of(types, k))
             .collect::<Vec<_>>()
             .join(", "),
     }
@@ -44,21 +46,11 @@ pub fn SchemaTab(tabs: Element) -> Element {
         let _ = reload();
         api::ontology::types().await
     });
-    let links = use_resource(move || async move {
-        let _ = reload();
-        api::ontology::link_types().await
-    });
     let (state, rows) = match &*types.read() {
         None => (None, Vec::new()),
         Some(Ok(r)) => (Some(Ok(())), r.clone()),
         Some(Err(e)) => (Some(Err(e.clone())), Vec::new()),
     };
-    let link_rows: Vec<LinkTypeView> = links
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_default();
     let columns = vec![
         Column::new(t!("onto-col-type").to_string(), |v: &ObjectTypeView| {
             let icon = icon_of(&v.def);
@@ -98,37 +90,6 @@ pub fn SchemaTab(tabs: Element) -> Element {
         .secondary(),
     ];
     let type_page = use_signal(|| 0i64);
-    let mut delete_link = use_signal(|| None::<String>);
-    let link_columns = vec![
-        Column::new(t!("onto-col-type").to_string(), |l: &LinkTypeView| {
-            rsx! {
-                span { class: "font-medium text-gray-900", {link_label(Some(&l.def), &l.def.key, false)} }
-                code { class: "ml-2 text-xs text-gray-500", "{l.def.key}" }
-            }
-        }),
-        Column::new(t!("onto-col-ends").to_string(), |l: &LinkTypeView| {
-            rsx! {
-                span { class: "text-xs text-gray-600",
-                    {format!("{} → {}", set_label(&l.def.from_types), set_label(&l.def.to_types))}
-                }
-            }
-        })
-        .secondary(),
-        Column::new(t!("common-actions").to_string(), move |l: &LinkTypeView| {
-            let key = l.def.key.clone();
-            let system = l.def.system;
-            rsx! {
-                if system {
-                    span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600", {t!("onto-system")} }
-                } else if admin {
-                    DeleteButton { value: key, on_delete: move |k| delete_link.set(Some(k)) }
-                }
-            }
-        })
-        .actions(),
-    ];
-    let mut new_link = use_signal(|| false);
-    let type_rows = rows.clone();
     let type_count = rows.len() as i64;
     let rows = page_slice(&rows, type_page());
     rsx! {
@@ -163,27 +124,90 @@ pub fn SchemaTab(tabs: Element) -> Element {
                 ListPager { count: type_count, page: type_page }
             }
         }
-        div { class: "mt-6 space-y-3",
-            div { class: "flex items-center",
-                h2 { class: "text-lg font-semibold text-gray-900", {t!("onto-link-types")} }
-                if admin {
-                    button {
-                        class: "ml-auto px-3 py-1 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50",
-                        "data-testid": "onto-new-link-type",
-                        onclick: move |_| new_link.set(true),
-                        {t!("onto-new-link-type")}
-                    }
+    }
+}
+
+/// Link types tab: its own list (one list per view, D224), the add button
+/// in the header like every list.
+#[component]
+pub fn LinkTypesTab(tabs: Element) -> Element {
+    let mut reload = use_signal(|| 0u32);
+    let admin = org::current_can_administer();
+    let links = use_resource(move || async move {
+        let _ = reload();
+        api::ontology::link_types().await
+    });
+    // The new link form picks its ends among the types.
+    let types = use_resource(move || async move {
+        let _ = reload();
+        api::ontology::types().await.unwrap_or_default()
+    });
+    let (state, all) = match &*links.read() {
+        None => (None, Vec::new()),
+        Some(Ok(r)) => (Some(Ok(())), r.clone()),
+        Some(Err(e)) => (Some(Err(e.clone())), Vec::new()),
+    };
+    let page = use_signal(|| 0i64);
+    let count = all.len() as i64;
+    let rows = page_slice(&all, page());
+    let mut delete_link = use_signal(|| None::<String>);
+    let mut new_link = use_signal(|| false);
+    let known: Vec<ObjectTypeView> = types.read().clone().unwrap_or_default();
+    let columns = vec![
+        Column::new(t!("onto-col-type").to_string(), |l: &LinkTypeView| {
+            rsx! {
+                span { class: "font-medium text-gray-900", {link_label(Some(&l.def), &l.def.key, false)} }
+                code { class: "ml-2 text-xs text-gray-500", "{l.def.key}" }
+            }
+        }),
+        Column::new(t!("onto-col-ends").to_string(), move |l: &LinkTypeView| {
+            let ends = format!(
+                "{} → {}",
+                set_label(&l.def.from_types, &known),
+                set_label(&l.def.to_types, &known),
+            );
+            rsx! {
+                span { class: "text-xs text-gray-600", "{ends}" }
+            }
+        })
+        .secondary(),
+        Column::new(t!("common-actions").to_string(), move |l: &LinkTypeView| {
+            let key = l.def.key.clone();
+            let system = l.def.system;
+            rsx! {
+                if system {
+                    span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600", {t!("onto-system")} }
+                } else if admin {
+                    DeleteButton { value: key, on_delete: move |k| delete_link.set(Some(k)) }
                 }
             }
-            DataTable {
-                columns: link_columns,
-                rows: link_rows,
-                row_key: RowKey::new(|l: &LinkTypeView| l.def.key.clone()),
+        })
+        .actions(),
+    ];
+    rsx! {
+        ListLayout {
+            title: t!("onto-link-types").to_string(),
+            tabs,
+            subtitle: Some(t!("onto-link-types-subtitle").to_string()),
+            can_write: admin,
+            add_label: Some(t!("onto-new-link-type").to_string()),
+            on_add: move |_| new_link.set(true),
+            on_refresh: move |_| reload.with_mut(|r| *r += 1),
+            ListStates {
+                state,
+                is_empty: count == 0,
+                empty_message: String::new(),
+                DataTable {
+                    columns,
+                    rows,
+                    row_key: RowKey::new(|l: &LinkTypeView| l.def.key.clone()),
+                }
+                ListPager { count, page }
             }
         }
         if new_link() {
             LinkTypeForm {
-                types: type_rows.clone(),
+                types: types.read().clone().unwrap_or_default(),
                 on_close: move |_| new_link.set(false),
                 on_saved: move |_| {
                     new_link.set(false);
