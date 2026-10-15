@@ -111,7 +111,7 @@ fn ShellContent() -> Element {
                     }
                 } else {
                     div { class: "relative flex h-16 items-center justify-center px-3",
-                        div { class: "absolute left-3 top-1/2 -translate-y-1/2", ActivityMark {} }
+                        HeaderGerbe {}
                         SidebarBrand {}
                         button {
                             class: "absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
@@ -599,6 +599,24 @@ fn ActivityMark() -> Element {
     }
 }
 
+/// The login gerbe behind the sidebar logo while API requests are in
+/// flight (D224); drawn by assets/tron-gerbe.js, which watches the
+/// `data-pnex-gerbe` attribute (fade-in past 250 ms: style/tailwind.css).
+#[component]
+fn HeaderGerbe() -> Element {
+    let busy = *ui::IN_FLIGHT.read() > 0;
+    rsx! {
+        div {
+            class: "pointer-events-none absolute inset-0 overflow-hidden",
+            "data-pnex-gerbe": if busy { "on" } else { "off" },
+            aria_hidden: "true",
+        }
+        if busy {
+            span { class: "sr-only", role: "status", {t!("common-loading")} }
+        }
+    }
+}
+
 #[component]
 fn SidebarBrand() -> Element {
     // Navy letters on the light rail; the white variant on the night theme.
@@ -606,12 +624,12 @@ fn SidebarBrand() -> Element {
         img {
             src: asset!("/assets/logo.png"),
             alt: "PNeX",
-            class: "h-9 w-auto dark:hidden",
+            class: "relative h-9 w-auto dark:hidden",
         }
         img {
             src: asset!("/assets/logo-light.png"),
             alt: "PNeX",
-            class: "hidden h-9 w-auto dark:block",
+            class: "relative hidden h-9 w-auto dark:block",
         }
     }
 }

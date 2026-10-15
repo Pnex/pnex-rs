@@ -266,4 +266,136 @@
   }
 
   window.pnexTronGerbe = { mount: mount, unmount: unmount };
+
+  // ── Loading gerbe behind the sidebar logo (D224) ──────────────────────
+  // The login shader on a transparent ground: fewer, thinner, faster beams.
+  // Any element `[data-pnex-gerbe]` hosts one; it runs while the attribute
+  // is "on" (the shell sets it while API requests are in flight). Its
+  // colour strength comes from the CSS variable `--gerbe-glow` (lighter
+  // on the light theme, stronger on the dark one). No Rust bridge: the
+  // script watches the attribute itself.
+  var HEADER = {
+    spread: 1.6, topw: 0.05, curve: 2.0, count: 3, lw: 0.09, top: 0.95,
+    len: 1.9, speed: 0.75, seg: 2.2, sway: 0.025, seed: 12.7,
+  };
+  var HEADER_MAIN = 'void main(){\n' +
+    '  vec2 uv = gl_FragCoord.xy / u_res.xy;\n' +
+    '  vec2 p  = uv*2.0 - 1.0;\n' +
+    '  p.x *= (u_res.x / u_res.y) / 2.2;\n' +
+    '  float v    = (u_top - p.y) / u_len;\n' +
+    '  float band = step(0.0, v) * step(v, 1.0);\n' +
+    '  float vp   = clamp(v, 0.0, 1.0);\n' +
+    '  float x = p.x - sin(u_time*0.6 + vp*3.2) * u_sway * vp;\n' +
+    '  float width = u_topw + u_spread * pow(vp, u_curve);\n' +
+    '  float icont = (x / max(width, 1e-4)) * u_count;\n' +
+    '  float lineId = floor(icont + 0.5);\n' +
+    '  float local  = icont - lineId;\n' +
+    '  float aa = min(fwidth(icont)*1.1 + 0.003, 0.45);\n' +
+    '  float line = smoothstep(u_lw+aa, u_lw-aa, abs(local));\n' +
+    '  float present = step(abs(lineId), u_count + 0.5) * band\n' +
+    '    * smoothstep(0.0, 0.06, v) * smoothstep(1.0, 0.86, v);\n' +
+    '  float scroll = v*u_seg + u_time*u_speed;\n' +
+    '  float segId = floor(scroll);\n' +
+    '  float segF  = fract(scroll);\n' +
+    '  float on = step(0.24, hash(segId*2.13 + lineId*7.31 + u_seed*1.7));\n' +
+    '  float segEdge = smoothstep(0.0,0.06,segF) * smoothstep(1.0,0.94,segF);\n' +
+    '  float k = present * on * segEdge;\n' +
+    '  float halo = smoothstep(u_lw*3.0+aa, u_lw-aa, abs(local)) * k;\n' +
+    '  vec3 col = min(stripeColor(lineId) * (0.72 + 0.5*hash(segId*3.7 + lineId)), 1.0);\n' +
+    '  float a = clamp((line*k + halo*0.22) * u_glow, 0.0, 1.0);\n' +
+    '  fragColor = vec4(col * a, a);\n' +
+    '}\n';
+
+  var headers = new WeakMap(); // host → { canvas, gl, U } or null (no WebGL2)
+  var headerRaf = null;
+  var headerTime = 0;
+  var headerLast = 0;
+
+  function headerSetup(host) {
+    var canvas = document.createElement('canvas');
+    canvas.setAttribute('aria-hidden', 'true');
+    host.appendChild(canvas);
+    var gl = canvas.getContext('webgl2', { premultipliedAlpha: true, alpha: true });
+    var prog = gl && gl.createProgram();
+    var vs = gl && compile(gl, gl.VERTEX_SHADER, VERT);
+    var fs = gl && compile(gl, gl.FRAGMENT_SHADER, FRAG + HEADER_MAIN);
+    if (!vs || !fs) {
+      canvas.remove();
+      return null;
+    }
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      canvas.remove();
+      return null;
+    }
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(prog, 'a_pos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    var U = {};
+    ['res', 'time', 'spread', 'topw', 'curve', 'count', 'lw', 'top', 'len',
+      'speed', 'seg', 'sway', 'glow', 'seed'].forEach(function (n) {
+        U[n] = gl.getUniformLocation(prog, 'u_' + n);
+      });
+    return { canvas: canvas, gl: gl, U: U };
+  }
+
+  function headerDraw(host) {
+    if (!headers.has(host)) headers.set(host, headerSetup(host));
+    var h = headers.get(host);
+    if (!h) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.floor(host.clientWidth * dpr);
+    var hh = Math.floor(host.clientHeight * dpr);
+    if (w === 0 || hh === 0) return; // hidden (rail, closed drawer)
+    if (h.canvas.width !== w || h.canvas.height !== hh) {
+      h.canvas.width = w;
+      h.canvas.height = hh;
+      h.gl.viewport(0, 0, w, hh);
+    }
+    var gl = h.gl;
+    var glow = parseFloat(getComputedStyle(host).getPropertyValue('--gerbe-glow')) || 0.38;
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform2f(h.U.res, w, hh);
+    gl.uniform1f(h.U.time, headerTime);
+    gl.uniform1f(h.U.glow, glow);
+    Object.keys(HEADER).forEach(function (k) {
+      gl.uniform1f(h.U[k], HEADER[k]);
+    });
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  function headerFrame(now) {
+    var active = document.querySelectorAll('[data-pnex-gerbe="on"]');
+    if (active.length === 0) {
+      headerRaf = null;
+      headerLast = 0;
+      return;
+    }
+    headerTime += headerLast ? Math.min((now - headerLast) / 1000, 0.1) : 0;
+    headerLast = now;
+    active.forEach(headerDraw);
+    headerRaf = requestAnimationFrame(headerFrame);
+  }
+
+  function headerWake() {
+    if (headerRaf === null && document.querySelector('[data-pnex-gerbe="on"]')) {
+      headerRaf = requestAnimationFrame(headerFrame);
+    }
+  }
+
+  // Reduced motion: the logo stays still, no gerbe at all.
+  var headerReduced = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!headerReduced && window.MutationObserver) {
+    new MutationObserver(headerWake).observe(document.documentElement, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ['data-pnex-gerbe'],
+    });
+    headerWake();
+  }
 })();
