@@ -15,7 +15,7 @@ use pnex_core::{NotifyChannel, NotifyTemplate};
 
 use crate::api;
 use crate::components::badges::date_label;
-use crate::components::crud::filters::{FilterBar, LabelFilterInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -81,6 +81,7 @@ pub fn Notifications() -> Element {
     let mut template_page = use_signal(|| 0i64);
     // D218: label filter ("name" or "name:value") of the active tab.
     let filter_label = use_signal(String::new);
+    let filter_search = use_signal(String::new);
     // Formulaire canal : (kind_info, canal existant ou None).
     let mut edit_channel =
         use_signal(|| None::<(pnex_core::NotifyKindInfo, Option<NotifyChannel>)>);
@@ -109,32 +110,40 @@ pub fn Notifications() -> Element {
         .unwrap_or_default();
     let delete_modal = delete_target.read().clone();
 
-    // The label filter only narrows the active tab's list: the Events tab
-    // needs every channel and template to resolve names.
-    let active_label = move |for_tab: Tab| -> Option<String> {
+    // The filters only narrow the active tab's list: the Events tab needs
+    // every channel and template to resolve names.
+    let active_filters = move |for_tab: Tab| -> (String, String) {
         if tab() != for_tab {
-            return None;
+            return (String::new(), String::new());
         }
-        let value = filter_label().trim().to_string();
-        (!value.is_empty()).then_some(value)
+        (filter_search(), filter_label())
     };
     let channels = use_resource(move || {
-        let label = active_label(Tab::Channels);
+        let (search, label) = active_filters(Tab::Channels);
         async move {
             let _ = reload();
-            api::notify::list_channels_labeled(label).await
+            api::notify::list_channels_filtered(Some(&search), Some(&label)).await
         }
     });
     let templates = use_resource(move || {
-        let label = active_label(Tab::Templates);
+        let (search, label) = active_filters(Tab::Templates);
         async move {
             let _ = reload();
-            api::notify::list_templates_labeled(label).await
+            api::notify::list_templates_filtered(Some(&search), Some(&label)).await
         }
     });
     let label_filter = (tab() != Tab::Events).then(|| {
         rsx! {
             FilterBar {
+                SearchInput {
+                    placeholder: t!("common-search-name").to_string(),
+                    value: filter_search,
+                    on_submit: move |_| {
+                        channel_page.set(0);
+                        template_page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
+                }
                 LabelFilterInput {
                     placeholder: t!("resources-label-filter-placeholder").to_string(),
                     value: filter_label,

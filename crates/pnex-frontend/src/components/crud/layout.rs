@@ -63,8 +63,8 @@ pub fn ListLayout(
     /// Droit d'écriture owner/admin — calculé par la page (le serveur
     /// force, l'UI masque).
     can_write: bool,
-    /// Slot filtres rendu sous le header avec la classe canonique
-    /// (`FilterBar` pour le même rendu dans le corps de page).
+    /// Filters slot under the header: pass a `FilterBar` (same rendering
+    /// as a `FilterBar` placed in the page body).
     #[props(default)]
     filters: Option<Element>,
     /// Tab bar of a page split in tabs, right under the header.
@@ -121,8 +121,10 @@ pub fn ListLayout(
             if let Some(tabs) = tabs {
                 div { class: "mb-4 md:mb-6", {tabs} }
             }
+            // The slot takes a `FilterBar`, which carries the layout: no
+            // second wrapper (doubled margin, unstretched inputs).
             if let Some(filters) = filters {
-                div { class: super::filters::FILTER_BAR_CLASS, {filters} }
+                {filters}
             }
             {children}
         }

@@ -113,3 +113,40 @@ fn violation_rules() {
     assert!(dark_violation("dark:hidden").is_none());
     assert_eq!(literal_tokens(r#"class: "a b", x = "c""#), ["a", "b", "c"]);
 }
+
+/// CRUD lists alike (design-system.md rule 8, D218): a list filtered by
+/// label also has the name search, and the `filters` slot of `ListLayout`
+/// holds a `FilterBar` (the slot adds no wrapper of its own).
+#[test]
+fn list_filter_bars_are_complete() {
+    let mut files = Vec::new();
+    rust_files(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/pages"),
+        &mut files,
+    );
+    // The ontology explorer searches inside its own type picker.
+    const NO_SEARCH_OK: &[&str] = &[];
+    let mut failures = Vec::new();
+    for path in files {
+        let text = std::fs::read_to_string(&path).expect("source");
+        let name = path.display().to_string();
+        if text.contains("LabelFilterInput {")
+            && !text.contains("SearchInput {")
+            && !NO_SEARCH_OK.iter().any(|f| name.ends_with(f))
+        {
+            failures.push(format!("{name}: label filter without the name search"));
+        }
+        for (i, line) in text.lines().enumerate() {
+            if line.trim_start().starts_with("filters: rsx! {") {
+                let next = text.lines().nth(i + 1).unwrap_or_default().trim_start();
+                if !next.starts_with("FilterBar {") {
+                    failures.push(format!(
+                        "{name}:{}: `filters` slot without a FilterBar",
+                        i + 1
+                    ));
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}

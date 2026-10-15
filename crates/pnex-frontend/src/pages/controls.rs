@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, LabelFilterInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{page_slice, ListPager};
 use crate::components::crud::states::ListStates;
@@ -41,16 +41,17 @@ pub fn Controls() -> Element {
     let can_write = org::current_can_write();
     // D218: own label filter ("name" or "name:value"), applied server-side.
     let filter_label = use_signal(String::new);
+    let filter_search = use_signal(String::new);
 
     let list = use_resource(move || {
         let _ = reload();
         let has_org = org::current().is_some();
-        let label = Some(filter_label().trim().to_string());
+        let (search, label) = (filter_search(), filter_label());
         async move {
             if !has_org {
                 return None;
             }
-            Some(api::controls::list_labeled(label).await)
+            Some(api::controls::list_filtered(Some(&search), Some(&label)).await)
         }
     });
     // D218: own labels of the loaded rows (whole list, paged client-side).
@@ -179,6 +180,14 @@ pub fn Controls() -> Element {
             on_add: move |_| editing.set(Some(None)),
             filters: rsx! {
                 FilterBar {
+                    SearchInput {
+                        placeholder: t!("common-search-name").to_string(),
+                        value: filter_search,
+                        on_submit: move |_| {
+                            page.set(0);
+                            reload.with_mut(|r| *r += 1);
+                        },
+                    }
                     LabelFilterInput {
                         placeholder: t!("resources-label-filter-placeholder").to_string(),
                         value: filter_label,

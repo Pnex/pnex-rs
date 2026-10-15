@@ -11,44 +11,29 @@ use pnex_core::Paginated;
 use crate::api::client;
 use crate::api::error::ApiError;
 
-fn page_query(limit: Option<i64>, offset: Option<i64>) -> String {
-    let mut pairs = Vec::new();
-    if let Some(limit) = limit {
-        pairs.push(format!("limit={limit}"));
-    }
-    if let Some(offset) = offset {
-        pairs.push(format!("offset={offset}"));
-    }
-    if pairs.is_empty() {
-        String::new()
-    } else {
-        format!("?{}", pairs.join("&"))
-    }
-}
-
 /// `GET /api/v1/media/streams` — D14 envelope.
 pub async fn list(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Paginated<MediaStream>, ApiError> {
-    list_labeled(limit, offset, None).await
+    list_filtered(limit, offset, None, None).await
 }
 
-/// `GET /api/v1/media/streams[?label=]` — D14 envelope, filtered by label
-/// (`name` or `name:value`, D218).
-pub async fn list_labeled(
+/// `GET /api/v1/media/streams[?search=&label=]` — D14 envelope, narrowed by
+/// a name search and a label (D218).
+pub async fn list_filtered(
     limit: Option<i64>,
     offset: Option<i64>,
-    label: Option<String>,
+    search: Option<&str>,
+    label: Option<&str>,
 ) -> Result<Paginated<MediaStream>, ApiError> {
-    let mut query = page_query(limit, offset);
-    if let Some(label) = label.as_deref().filter(|v| !v.is_empty()) {
-        let sep = if query.is_empty() { '?' } else { '&' };
-        query.push_str(&format!(
-            "{sep}label={}",
-            crate::api::tours::urlencode(label)
-        ));
-    }
+    let (limit, offset) = (limit.map(|v| v.to_string()), offset.map(|v| v.to_string()));
+    let query = client::filter_query(&[
+        ("search", search),
+        ("label", label),
+        ("limit", limit.as_deref()),
+        ("offset", offset.as_deref()),
+    ]);
     client::request(
         reqwest::Method::GET,
         &format!("/api/v1/media/streams{query}"),

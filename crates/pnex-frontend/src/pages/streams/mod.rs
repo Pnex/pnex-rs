@@ -10,7 +10,7 @@ use pnex_core::media_ingest::{CaptureState, MediaStream, MediaStreamInput};
 use crate::api;
 use crate::api::resources::LabelSet;
 use crate::components::confirm::ConfirmDialog;
-use crate::components::crud::filters::{FilterBar, LabelFilterInput};
+use crate::components::crud::filters::{FilterBar, LabelFilterInput, SearchInput};
 use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
@@ -76,6 +76,7 @@ pub fn Streams() -> Element {
     let mut page = use_signal(|| 0i64);
     // D218: label filter of the Streams tab ("name" or "name:value").
     let filter_label = use_signal(String::new);
+    let filter_search = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
     let mut dialog = use_signal(|| None::<Dialog>);
     let mut tab = use_signal(|| Tab::Streams);
@@ -86,14 +87,17 @@ pub fn Streams() -> Element {
 
     let streams = use_resource(move || {
         let offset = page() * PAGE_SIZE;
-        let label = {
-            let value = filter_label().trim().to_string();
-            (!value.is_empty()).then_some(value)
-        };
+        let (search, label) = (filter_search(), filter_label());
         async move {
             let _ = reload();
             let _ = org::ORG.read();
-            api::media_streams::list_labeled(Some(PAGE_SIZE), Some(offset), label).await
+            api::media_streams::list_filtered(
+                Some(PAGE_SIZE),
+                Some(offset),
+                Some(&search),
+                Some(&label),
+            )
+            .await
         }
     });
 
@@ -110,6 +114,14 @@ pub fn Streams() -> Element {
     let label_filter = (tab() == Tab::Streams).then(|| {
         rsx! {
             FilterBar {
+                SearchInput {
+                    placeholder: t!("common-search-name").to_string(),
+                    value: filter_search,
+                    on_submit: move |_| {
+                        page.set(0);
+                        reload.with_mut(|r| *r += 1);
+                    },
+                }
                 LabelFilterInput {
                     placeholder: t!("resources-label-filter-placeholder").to_string(),
                     value: filter_label,

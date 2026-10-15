@@ -19,17 +19,16 @@ pub async fn kinds() -> Result<Vec<NotifyKindInfo>, ApiError> {
 /// `GET /api/v1/notify/channels` — every channel of the org, all pages
 /// (secrets masked).
 pub async fn list_channels() -> Result<Vec<NotifyChannel>, ApiError> {
-    list_channels_labeled(None).await
+    list_channels_filtered(None, None).await
 }
 
-/// `GET /api/v1/notify/channels[?label=]` — every page, filtered by label
-/// (`name` or `name:value`, D218).
-pub async fn list_channels_labeled(label: Option<String>) -> Result<Vec<NotifyChannel>, ApiError> {
-    let query = label
-        .as_deref()
-        .filter(|v| !v.is_empty())
-        .map(|v| format!("?label={}", crate::api::media::urlencode(v)))
-        .unwrap_or_default();
+/// `GET /api/v1/notify/channels[?search=&label=]` — every page, narrowed by
+/// a name search and a label (D218).
+pub async fn list_channels_filtered(
+    search: Option<&str>,
+    label: Option<&str>,
+) -> Result<Vec<NotifyChannel>, ApiError> {
+    let query = client::filter_query(&[("search", search), ("label", label)]);
     client::request_all(&format!("/api/v1/notify/channels{query}")).await
 }
 
@@ -226,19 +225,16 @@ pub async fn list_deliveries(filters: &DeliveryFilters) -> Result<NotifyDelivery
 
 /// `GET /api/v1/notify/templates` — every template of the org, all pages.
 pub async fn list_templates() -> Result<Vec<NotifyTemplate>, ApiError> {
-    list_templates_labeled(None).await
+    list_templates_filtered(None, None).await
 }
 
-/// `GET /api/v1/notify/templates[?label=]` — every page, filtered by label
-/// (`name` or `name:value`, D218).
-pub async fn list_templates_labeled(
-    label: Option<String>,
+/// `GET /api/v1/notify/templates[?search=&label=]` — every page, narrowed
+/// by a name search and a label (D218).
+pub async fn list_templates_filtered(
+    search: Option<&str>,
+    label: Option<&str>,
 ) -> Result<Vec<NotifyTemplate>, ApiError> {
-    let query = label
-        .as_deref()
-        .filter(|v| !v.is_empty())
-        .map(|v| format!("?label={}", crate::api::media::urlencode(v)))
-        .unwrap_or_default();
+    let query = client::filter_query(&[("search", search), ("label", label)]);
     client::request_all(&format!("/api/v1/notify/templates{query}")).await
 }
 

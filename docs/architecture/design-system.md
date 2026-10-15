@@ -182,6 +182,12 @@ Les entrées « bientôt » sans route sont retirées du menu.
      n'est pas paginée) est paginée côté client avec
      `crud::pager::page_slice` ; jamais un `limit` au-delà de 100 (le
      serveur tronque sans le dire, O64).
+   - **Barre de filtres** : un `FilterBar` (dans le slot `filters` ou en
+     tête du corps), dans cet ordre : sélecteurs propres à la page, puis
+     `SearchInput` (« Rechercher par nom… »), puis `LabelFilterInput` ;
+     les actions (importer, exporter) vont dans le slot `actions` de
+     l'en-tête, jamais dans la barre. Garde : `design_guard`
+     (`list_filter_bars_are_complete`).
    - **Onglets dans le slot `tabs`** de `ListLayout` (jamais dans
      `filters` ni dans le corps).
    - **Création par le bouton Ajouter + `FormDialog`**, jamais par un

@@ -22,8 +22,8 @@ pub fn FilterBar(children: Element) -> Element {
     }
 }
 
-/// Container classes of [`FilterBar`] (also the `filters` slot of
-/// [`super::layout::ListLayout`]).
+/// Container classes of [`FilterBar`] (what the `filters` slot of
+/// [`super::layout::ListLayout`] expects).
 pub const FILTER_BAR_CLASS: &str = "mb-4 md:mb-6 flex flex-wrap items-center gap-2 [&>select]:min-w-0 [&>select]:grow [&>select]:basis-32 sm:[&>select]:grow-0 sm:[&>select]:basis-auto sm:[&>select]:w-auto";
 
 /// Champ de recherche serveur — saisie **live sans refetch** (le signal
