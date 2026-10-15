@@ -12,7 +12,7 @@ use crate::api;
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::ui::BTN_SECONDARY_SM;
-use crate::components::ui::{LabelTag, BTN_PRIMARY, INPUT};
+use crate::components::ui::{LabelTag, INPUT};
 use crate::state::toasts;
 use dioxus_i18n::t;
 
@@ -29,7 +29,6 @@ pub fn LabelsEditor(
 ) -> Element {
     let mut labels: Signal<BTreeMap<String, Option<String>>> = use_signal(BTreeMap::new);
     let mut error = use_signal(String::new);
-    let mut dirty = use_signal(|| false);
 
     // Charge les labels à l'ouverture (et quand (kind, id) change).
     let kind_for_load = kind.clone();
@@ -49,40 +48,25 @@ pub fn LabelsEditor(
     rsx! {
         div { class: "space-y-2",
             h3 { class: "text-sm font-semibold text-gray-700", {t!("resources-labels-title")} }
+            // Every add (Enter) or removal (×) is saved at once: no save button.
             LabelChipsInput {
                 labels,
                 can_write,
                 on_edit: move |_| {
-                    dirty.set(true);
-                    error.set(String::new());
-                },
-            }
-            if can_write {
-                div { class: "flex justify-end",
-                    button {
-                        class: BTN_PRIMARY,
-                        disabled: !dirty(),
-                        onclick: move |_| {
-                            let snapshot = labels.read().clone();
-                            let kind = kind.clone();
-                            let id = id.clone();
-                            spawn(async move {
-                                match api::resources::put_labels(&kind, &id, &snapshot).await {
-                                    Ok(_) => {
-                                        dirty.set(false);
-                                        error.set(String::new());
-                                        toasts::success(t!("resources-label-saved"));
-                                        if let Some(cb) = on_changed {
-                                            cb.call(());
-                                        }
-                                    }
-                                    Err(err) => toasts::error(format!("{err}")),
+                    let snapshot = labels.read().clone();
+                    let (kind, id) = (kind.clone(), id.clone());
+                    spawn(async move {
+                        match api::resources::put_labels(&kind, &id, &snapshot).await {
+                            Ok(_) => {
+                                error.set(String::new());
+                                if let Some(cb) = on_changed {
+                                    cb.call(());
                                 }
-                            });
-                        },
-                        {t!("resources-label-save")}
-                    }
-                }
+                            }
+                            Err(err) => error.set(err.message),
+                        }
+                    });
+                },
             }
             if !error.read().is_empty() {
                 p { class: "text-xs text-red-600", "{error}" }

@@ -12,6 +12,7 @@ use pnex_core::{AnnotationGeometry, ResolvedAnnotationItem, TourDoc};
 use crate::api;
 use crate::components::annotation_editor::popover::{annot_dot_color, AnnotationPopover};
 use crate::components::download_progress::MediaDownloadProgress;
+use crate::components::gerbe::Gerbe;
 use crate::components::surface::annotation::{
     effective_mode, is_surface_item, AnnotMode, AnnotModeToggle, AnnotationCardsOverlay,
 };
@@ -206,7 +207,7 @@ fn FlatAnnotatedImage(asset_id: String, compact: bool) -> Element {
                     }
                 },
                 None => rsx! {
-                    span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-white" }
+                    Gerbe { size: 36, inherit: true }
                 },
             }
             if let Some(item) = selected.cloned() {

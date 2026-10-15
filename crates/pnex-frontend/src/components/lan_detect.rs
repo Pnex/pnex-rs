@@ -11,6 +11,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::state::toasts;
 
@@ -60,7 +61,7 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
                     disabled: scanning(),
                     onclick: run,
                     if scanning() {
-                        span { class: "animate-spin inline-block rounded-full h-3 w-3 border-b-2 border-signal-600 mr-1" }
+                        Gerbe { size: 14, class: "mr-1" }
                         {t!("edgerefs-detecting")}
                     } else {
                         icons::Search { class: "h-3.5 w-3.5 inline mr-1" }

@@ -24,6 +24,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::edge_refs_picker::{PnexHostPicker, WifiCredentialPicker};
 use crate::components::flash_modal::FlashModal;
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::modal::Modal;
@@ -1568,7 +1569,7 @@ fn DeviceDetail(
         },
         None => rsx! {
             div { class: "text-center py-12",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                Gerbe { size: 36 }
             }
         },
     }

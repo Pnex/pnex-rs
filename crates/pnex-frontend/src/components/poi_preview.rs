@@ -17,6 +17,7 @@ use crate::api::media::MediaKind;
 use crate::components::annotated_media::AnnotatedMediaView;
 use crate::components::dashboard_live::DashboardLive;
 use crate::components::download_progress::MediaDownloadProgress;
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::poi_tree::KindIcon;
 use crate::components::tour_viewer::{TourViewer, ViewerSource};
@@ -114,7 +115,7 @@ fn MediaPreviewBody(asset_id: String, asset_name: String) -> Element {
     match loaded {
         None => rsx! {
             div { class: "flex-1 flex items-center justify-center",
-                span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                Gerbe { size: 28 }
             }
         },
         // Annotatable kinds go through the shared annotated viewer: the
@@ -263,7 +264,7 @@ fn TourPreviewBody(tour_id: String) -> Element {
                     },
                     None => rsx! {
                         div { class: "flex-1 flex items-center justify-center",
-                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                            Gerbe { size: 28 }
                         }
                     },
                 }

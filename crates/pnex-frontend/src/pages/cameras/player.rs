@@ -21,6 +21,7 @@ use pnex_core::avi::{read_avi, AviIndex};
 use pnex_core::camera::{annotation_at, FrameAnnotation, VideoSegment};
 
 use crate::api;
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::transport::{speed_options, Clock, PlayButton, ScrubBar, SpeedPicker, BAR};
 use crate::components::ui::BTN_SECONDARY_SM;
@@ -424,7 +425,7 @@ pub(crate) fn RecordingPlayer(
                     }
                 }
                 if buffering {
-                    span { class: "absolute animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                    Gerbe { size: 36, inherit: true }
                 }
                 if unreadable {
                     p { class: "absolute inset-x-0 bottom-2 text-center text-xs text-red-300",

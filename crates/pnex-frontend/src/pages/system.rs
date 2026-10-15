@@ -13,6 +13,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::ui::BTN_DANGER_SOLID;
 use crate::components::ui::{FIELD_LABEL, INPUT};
@@ -162,7 +163,7 @@ pub fn System() -> Element {
 fn LoadingCard() -> Element {
     rsx! {
         div { class: "bg-white rounded-lg shadow p-6 text-center",
-            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
+            Gerbe { size: 28 }
         }
     }
 }

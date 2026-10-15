@@ -10,6 +10,7 @@ use dioxus_i18n::t;
 use std::collections::HashMap;
 
 use crate::api;
+use crate::components::gerbe::Gerbe;
 use pnex_core::{TelemetryPoint, ThermoChartOptions, ThermoPressureUnit, Widget};
 
 /// Projection linéaire d'une valeur sur la plage [min, max] → [0, 1].
@@ -156,7 +157,7 @@ pub fn ThermoChart(
     let Some(dia) = diagram_sig().clone() else {
         return rsx! {
             div { class: "flex h-full w-full items-center justify-center",
-                span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-gray-400" }
+                Gerbe { size: 28 }
             }
         };
     };

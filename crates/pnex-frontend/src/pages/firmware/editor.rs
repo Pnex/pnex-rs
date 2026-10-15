@@ -9,6 +9,7 @@ use super::panels::{ApiMenu, LibChips, LibMenu, RevisionsDrawer};
 use crate::api;
 use crate::components::code_editing::CodeLang;
 use crate::components::code_highlight::{AreaHandle, FunctionCodeEditor, LineMark, MarkSeverity};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 use crate::state::toasts;
@@ -340,13 +341,13 @@ fn CheckReport(
     match (checking, check) {
         (true, None) => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
+                Gerbe { size: 18 }
                 {t!("firmware-check-running")}
             }
         },
         (_, Some(status)) if matches!(status.status.as_str(), "queued" | "running") => rsx! {
             div { class: "{box_class} border-gray-200 bg-gray-50 text-gray-700 flex items-center gap-2",
-                span { class: "animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
+                Gerbe { size: 18 }
                 {t!("firmware-check-running")}
             }
         },

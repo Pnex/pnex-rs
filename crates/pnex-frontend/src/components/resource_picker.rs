@@ -10,6 +10,7 @@ use dioxus_i18n::t;
 
 use crate::api;
 use crate::api::error::ApiError;
+use crate::components::gerbe::Gerbe;
 use crate::components::modal::Modal;
 use crate::components::pager::Pager;
 use crate::components::ui::INPUT;
@@ -268,7 +269,7 @@ pub fn ResourcePicker(
                     },
                     None => rsx! {
                         div { class: "flex justify-center py-6",
-                            span { class: "animate-spin rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                            Gerbe { size: 28 }
                         }
                     },
                 }

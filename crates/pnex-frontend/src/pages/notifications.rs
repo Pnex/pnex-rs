@@ -20,6 +20,7 @@ use crate::components::crud::layout::{ListLayout, DANGER_BTN};
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
@@ -643,7 +644,7 @@ fn KindPickerModal(
                     },
                     None => rsx! {
                         div { class: "flex justify-center p-8",
-                            span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                            Gerbe { size: 36 }
                         }
                     },
                 }

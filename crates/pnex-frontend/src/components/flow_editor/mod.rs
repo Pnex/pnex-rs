@@ -31,6 +31,7 @@ use crate::state::toasts;
 use pnex_core::err_codes;
 pub(crate) mod cx;
 
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM};
 use cx::{EditorCx, Interaction, RuntimeAction};
 
@@ -983,7 +984,7 @@ pub fn FlowEditor(
                         title: if dirty { t!("flows-deploy-need-save") } else { t!("flows-deploy") },
                         onclick: deploy,
                         if deploying() {
-                            span { class: "animate-spin inline-block rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent mr-1.5 align-[-2px]" }
+                            Gerbe { size: 16, class: "mr-1.5", inherit: true }
                             {t!("flows-deploying")}
                         } else {
                             icons::Zap { class: "h-4 w-4 inline mr-1" }

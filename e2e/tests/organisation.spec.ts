@@ -25,8 +25,8 @@ test.describe('organisation', { tag: '@sites' }, () => {
 
       const input = app.page.getByPlaceholder(app.t('resources-label-input-placeholder'));
       await input.fill('site:serre');
+      // Enter saves at once (no save button).
       await input.press('Enter');
-      await app.page.getByRole('button', { name: app.t('resources-label-save'), exact: true }).click();
       await expect.poll(async () => (await api.get(`/resources/device/${pk}/labels`)).labels).toEqual({ site: 'serre' });
       await capture('device-labels', { caption: 'Labels of a device' });
 

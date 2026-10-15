@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;
 
 // ───────────────────── address search (geo-layers.md §8) ─────────────────────
@@ -74,7 +75,7 @@ pub(super) fn AddressSearch(
                 },
             }
             if busy() {
-                span { class: "absolute right-3 top-3 animate-spin rounded-full h-4 w-4 border-b-2 border-signal-600" }
+                Gerbe { size: 18 }
             }
             if searched() {
                 div { class: "absolute mt-1 w-full bg-white rounded-lg shadow border border-gray-200 text-sm max-h-72 overflow-y-auto",

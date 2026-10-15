@@ -14,6 +14,7 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
+use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::ui::INPUT;
 use crate::components::ui::{BTN_DANGER, BTN_PRIMARY};
@@ -446,7 +447,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
         },
         None => rsx! {
             div { class: "text-center py-12",
-                span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                Gerbe { size: 36 }
             }
         },
     }

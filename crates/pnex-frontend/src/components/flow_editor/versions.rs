@@ -7,6 +7,7 @@ use dioxus_i18n::t;
 use crate::api;
 use crate::components::badges::date_label;
 use crate::components::confirm::ConfirmDialog;
+use crate::components::gerbe::Gerbe;
 use crate::state::toasts;
 
 /// Drawer latéral d'historique. `on_loaded` transmet la version à charger
@@ -106,7 +107,7 @@ pub(crate) fn VersionsDrawer(
                         },
                         None => rsx! {
                             div { class: "flex-1 flex items-center justify-center",
-                                span { class: "animate-spin rounded-full h-8 w-8 border-b-2 border-signal-600" }
+                                Gerbe { size: 36 }
                             }
                         },
                     }

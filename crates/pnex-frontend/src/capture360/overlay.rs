@@ -25,6 +25,7 @@
 use super::pipeline::CapturedFrame;
 use super::state::{self, Phase};
 use super::{fov, frames, guidance, sensors, wakelock};
+use crate::components::gerbe::Gerbe;
 use crate::components::ui::BTN_PRIMARY;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -579,7 +580,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
             // Phases de traitement.
             if in_processing {
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white",
-                    span { class: "animate-spin rounded-full h-10 w-10 border-b-2 border-signal-400" }
+                    Gerbe { size: 44 }
                     div { class: "text-lg",
                         if ui().phase == Phase::Stitching {
                             {t!("media-take360-stitching")}

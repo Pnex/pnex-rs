@@ -1,4 +1,5 @@
 use super::*;
+use crate::components::gerbe::Gerbe;
 use crate::components::transport::MediaPlayer;
 
 /// Preview per kind — photo `<img>` via blob URL; panorama/splat via
@@ -169,7 +170,7 @@ pub(super) fn MediaPreview(
                         }
                     },
                     None => rsx! {
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                        Gerbe { size: 36, inherit: true }
                     },
                 }
             } else if is_audio {
@@ -180,7 +181,7 @@ pub(super) fn MediaPreview(
                         }
                     },
                     None => rsx! {
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                        Gerbe { size: 36, inherit: true }
                     },
                 }
             } else if is_video {
@@ -191,7 +192,7 @@ pub(super) fn MediaPreview(
                         }
                     },
                     None => rsx! {
-                        span { class: "animate-spin inline-block rounded-full h-8 w-8 border-b-2 border-white" }
+                        Gerbe { size: 36, inherit: true }
                     },
                 }
             } else if is_panorama || is_splat_viewable {
@@ -216,7 +217,7 @@ pub(super) fn MediaPreview(
                     // switches to HD by itself when the job succeeds.
                     div { class: "absolute inset-x-0 bottom-0 z-10 pointer-events-none flex flex-col items-center gap-1 p-3",
                         div { class: "flex items-center gap-2 bg-black/70 rounded-full px-4 py-2",
-                            span { class: "animate-spin inline-block rounded-full h-3.5 w-3.5 border-b-2 border-white flex-shrink-0" }
+                            Gerbe { size: 16, inherit: true }
                             span { class: "text-xs font-semibold text-white",
                                 {t!("media-stitch-hd-title")}
                             }

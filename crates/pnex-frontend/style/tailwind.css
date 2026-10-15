@@ -365,6 +365,69 @@
     pnex-appear 150ms ease-out 250ms both;
 }
 
+/* The loading mark (components/gerbe.rs): a miniature of the login
+ * « gerbe » — beams converging on a focus, segments flowing into it. Linear
+ * and fast (0.9 s): data arriving, never a decoration. */
+.pnex-gerbe path {
+  stroke: currentColor;
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+  /* Same line weight at every size (a 16 px mark in a button stays legible). */
+  vector-effect: non-scaling-stroke;
+}
+.pnex-gerbe-track {
+  opacity: 0.22;
+}
+.pnex-gerbe-flow {
+  stroke-dasharray: 2.6 9.4;
+  animation:
+    pnex-gerbe-flow 0.9s linear infinite,
+    pnex-gerbe-still 4.2s linear infinite;
+}
+/* The login gerbe's palette (assets/tron-gerbe.js stripeColor), cycling. */
+.pnex-gerbe-color .pnex-gerbe-flow {
+  animation-name: pnex-gerbe-flow, pnex-gerbe-hue;
+}
+@keyframes pnex-gerbe-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@keyframes pnex-gerbe-still {
+}
+@keyframes pnex-gerbe-hue {
+  0%,
+  100% {
+    stroke: #1abdb3;
+  }
+  17% {
+    stroke: #d42b47;
+  }
+  33% {
+    stroke: #ed7326;
+  }
+  50% {
+    stroke: #853d94;
+  }
+  67% {
+    stroke: #4557a8;
+  }
+  83% {
+    stroke: #cc2670;
+  }
+}
+.pnex-gerbe-delayed {
+  animation: pnex-appear 150ms ease-out 250ms both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pnex-gerbe-flow,
+  .pnex-gerbe-color .pnex-gerbe-flow {
+    animation: none;
+    stroke-dasharray: none;
+    opacity: 0.55;
+  }
+}
+
 /* Calm "in progress" beat: opacity only, the text never moves. Used by the
  * assistant's thinking dots and the running-build dot. */
 @keyframes pnex-beat {

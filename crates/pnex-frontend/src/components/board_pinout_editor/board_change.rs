@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 
 use crate::api;
+use crate::components::gerbe::Gerbe;
 use crate::components::modal::{Modal, MODAL_FOOTER};
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 use crate::state::toasts;
@@ -57,7 +58,7 @@ pub(super) fn BoardChangeModal(
                 match list {
                     None => rsx! {
                         div { class: "text-center py-4",
-                            span { class: "animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-signal-600" }
+                            Gerbe { size: 28 }
                         }
                     },
                     Some(list) => rsx! {
