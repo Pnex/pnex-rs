@@ -160,6 +160,10 @@ pub fn EditorShell(
     /// Pill d'outils flottante à côté du `+` (outils de mode, undo/redo…).
     #[props(default)]
     tools: Option<Element>,
+    /// A list column (`MapPanel`) is open at the canvas's left edge: the
+    /// `+` and the tools float right of it (desktop; on phones it overlays).
+    #[props(default)]
+    palette_inset: bool,
     /// Inspecteur (`InspectorPanel`) — None ⇒ absent de l'écran (principe 4).
     #[props(default)]
     inspector: Option<Element>,
@@ -333,14 +337,14 @@ pub fn EditorShell(
                 // button) never counts as a click outside.
                 if let Some(p) = palette {
                     div {
-                        class: "absolute left-4 top-4 z-20",
+                        class: if palette_inset { "absolute left-4 top-4 z-20 lg:left-[21rem]" } else { "absolute left-4 top-4 z-20" },
                         "data-floating": "true",
                         {p}
                     }
                 }
                 if let Some(t) = tools {
                     div {
-                        class: "absolute left-[4.5rem] top-4 z-20",
+                        class: if palette_inset { "absolute left-[4.5rem] top-4 z-20 lg:left-[24.5rem]" } else { "absolute left-[4.5rem] top-4 z-20" },
                         "data-floating": "true",
                         {t}
                     }

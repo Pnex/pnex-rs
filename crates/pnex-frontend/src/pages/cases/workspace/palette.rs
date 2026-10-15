@@ -266,7 +266,7 @@ pub(super) fn AddMenu() -> Element {
     };
     rsx! {
         button {
-            class: "inline-flex h-11 w-11 items-center justify-center rounded-full bg-signal text-white shadow-lg hover:opacity-90",
+            class: crate::components::ui::BTN_FAB,
             r#type: "button",
             "aria-label": t!("cw-add"),
             "aria-expanded": open(),

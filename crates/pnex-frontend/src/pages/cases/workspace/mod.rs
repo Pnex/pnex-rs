@@ -136,6 +136,8 @@ pub(super) struct Ws {
     pub show_signals: Signal<bool>,
     /// The "+" panel: members, search, undated pieces.
     pub add_open: Signal<bool>,
+    /// The map's list of located items is open.
+    pub map_list: Signal<bool>,
     pub can_write: bool,
 }
 
@@ -364,6 +366,7 @@ pub fn CaseWorkspace(id: String) -> Element {
         at_cursor: use_signal(|| false),
         show_signals: use_signal(|| false),
         add_open: use_signal(|| false),
+        map_list: use_signal(|| true),
         can_write: org::current_can_write(),
     };
     use_context_provider(|| ws);
@@ -603,6 +606,7 @@ pub fn CaseWorkspace(id: String) -> Element {
             palette: rsx! {
                 palette::AddMenu {}
             },
+            palette_inset: (ws.view)() == View::Map && (ws.map_list)(),
             canvas: rsx! {
                 div {
                     class: "flex h-full flex-col outline-none",
