@@ -16,6 +16,12 @@
 - **Exceptions verbatim documentées** : diagnostics runtime (`last_error`, feed debug, erreurs nodes/starlark/device), corps des notifications ws/OTA (anglais canonique), texte libre en base (notes média), `pages/showcase.rs`, détail pont JS flash, filelog take360.
 - **Gardes bloquants** : `i18n_guard` (scan anti-chaînes FR en dur côté front), `error_detail_codes_are_registered` (codes serveur), parité + sweep `t!` existants. Une chaîne FR en dur dans l'UI = test rouge.
 
+## Lexique de l'UI (D218–D224, règle permanente, 2026-10-15)
+
+- **Une notion = un mot**, dans chaque langue : table du lexique dans `docs/architecture/design-system.md` §7 (Étiquettes / Labels, Calque d'annotations, Détections, Étiquetage, Classes, Dimensions, Locuteurs, Flux / Streams, Caméra…). Jamais « label » en français, « couche » ou « ensemble » pour un calque d'annotations, « Flux audio ».
+- **Garde bloquante** : `crates/pnex-frontend/src/lexicon_guard.rs` (les deux `.ftl` + les fiches `assistant-kb`). Nouveau concept visible = ligne au lexique **et** règle dans la garde ; une exemption porte sa raison.
+- Les décisions D218–D224 (étiquettes sur tout objet listable, annotations ancrées sur un média visuel, un seul lecteur temporel, un historique de versions commun, une coquille d'éditeur, une forme d'ouverture par usage, primitives sans copie) s'appliquent à toute nouvelle page.
+
 ## Sécurité (D130, règle permanente)
 
 - **Toute modification de code passe la revue de sécurité** de `docs/architecture/security.md` §6 avant commit (grille en 9 points), et `/security-review` avant merge d'une branche. Les règles invariantes R1–R20 (§3) sont opposables : un écart = refus, ou justification consignée au registre §7.

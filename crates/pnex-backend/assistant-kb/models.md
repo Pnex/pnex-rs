@@ -19,7 +19,7 @@ Models (Automation › Models) is the registry of the ONNX object-detection mode
 
 ## Good to know
 - The file decides the input size: when the ONNX declares fixed dimensions (416 for YOLOX-nano/tiny, 640 for s/m/l), they are applied on save.
-- The number of labels must match the file's classes.
+- The number of class names must match the file's classes.
 - A model is loaded and run once on save; one that does not work is refused with the actual error.
 - A model slower than the camera skips frames: lower the fps or use a lighter model. Live test warns about stale frames and images too dark.
 - Prefer Apache-2.0 models such as YOLOX; AGPL models (YOLOv8, YOLO11) impose their license on your deployment.

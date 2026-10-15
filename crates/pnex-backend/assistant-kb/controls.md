@@ -11,7 +11,7 @@ tags: controls, contrôles, switch, interrupteur, slider, curseur, button, bouto
 Controls (Automation › Controls) lists the organization's controls: the switches, sliders, buttons and inputs operated from dashboards and annotations. A control drives nothing by itself: it stores the last value a person sent, and a deployed flow with a **Control source** node decides the effect on the devices.
 
 ## What you can do
-- See every control with **Control**, **Declared by** (the dashboard or annotation set that placed it, or **Standalone controls**), **Kind**, **Last value** and **Listened by** (the deployed flows using it).
+- See every control with **Control**, **Declared by** (the dashboard or annotation layer that placed it, or **Standalone controls**), **Kind**, **Last value** and **Listened by** (the deployed flows using it).
 - **New control** creates a standalone control: **Label**, **Key** (becomes `msg.topic` in flows: letters, digits, ".", "_", "-", up to 64 characters) and a kind: **Switch** (on/off values), **Slider** or **Number** (min, max, step, unit), **Button** (sent value), **List of choices**, **Stepper (− / +)**, **Commands**, **Colour**.
 - Tick **Ask for a confirmation before sending (sensitive actuator)** for gates, locks and similar.
 - **Edit** or **Delete control**.

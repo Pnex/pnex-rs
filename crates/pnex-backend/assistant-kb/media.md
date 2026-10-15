@@ -19,7 +19,7 @@ The Media library (Media › Library) stores the organization's versioned files:
 ## Good to know
 - Versions are kept: adding a version never overwrites the previous one. The last remaining version cannot be deleted alone; delete the whole asset instead.
 - Files above the server's size limit are refused ("File is too large").
-- Deleting a media used by a tour, an annotation set or a POI leaves a "(deleted)" or "(missing target)" reference there.
+- Deleting a media used by a tour, an annotation layer or a POI leaves a "(deleted)" or "(missing target)" reference there.
 - Previews of some formats are only available in the web interface.
 - **Labels** are the single organization-wide labelling mechanism: chips `name` or `name:value` (lowercase letters, digits, `_`, `-`), the same on devices, media, dashboards, flows, 3D tours, map POIs and their folders. Labels set on a folder are inherited by everything stored in it. Edit them in the **Labels** card of a media.
 - Only Owners, Admins and Members can upload, version and delete.

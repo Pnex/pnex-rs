@@ -14,10 +14,10 @@ Cameras (Media › Cameras) lists every device that announced a camera (for exam
 - **Live** opens the stream in the browser; no flow is needed and nothing is stored.
 - **Settings**: **Resolution**, **JPEG quality**, **Frames per second**, **Vertical flip**, **Horizontal mirror** and **Capture mode**: **On demand** (streams only while someone watches, sleeps 30 s after) or **Continuous** (streams as long as it is connected).
 - **Flash**: switch the camera's flash LED when the board has one.
-- **Recordings**: one day at a time (**Previous day** / **Next day**), a timeline of recorded periods, a player that chains segments, **Download** the hour under the playhead as one AVI file, **Delete this day**. **Detection layers** draws the boxes recorded by detection nodes over the video.
+- **Recordings**: one day at a time (**Previous day** / **Next day**), a timeline of recorded periods, a player that chains segments, **Download** the hour under the playhead as one AVI file, **Delete this day**. **Recorded detections** draws the boxes recorded by detection nodes over the video.
 
 ## Recording and detection (in a flow)
-In **Automation › Flows**: the **Camera source** node reads a camera device (source **Camera (device)**) or the video track of an IP camera declared in **Media › Audio streams** (source **Media stream**, kind `rtsp` or another stream with tracks Video). **Camera source** → **Video recording** stores video; **Camera source** → **Object detection** (a model from **Automation › Models**) detects objects, optionally kept as a camera layer (**Record the detections as a camera layer**). Chain detection to **Notification** or **Event log**. Deploy the flow.
+In **Automation › Flows**: the **Camera source** node reads a camera device (source **Camera (device)**) or the video track of an IP camera declared in **Media › Streams** (source **Media stream**, kind `rtsp` or another stream with tracks Video). **Camera source** → **Video recording** stores video; **Camera source** → **Object detection** (a model from **Automation › Models**) detects objects, optionally recorded with the video (**Record the detections with the video**). Chain detection to **Notification** or **Event log**. Deploy the flow.
 
 ## Tracking and zones (in a flow)
 - **Object detection** → **Object tracking** gives each object a stable id while it stays in view. Output 1 lists the current tracks, output 2 emits **appear** / **disappear** events (with the duration and average confidence) — wire it to **Event log** to search them on the Events page.
@@ -34,7 +34,7 @@ In **Automation › Flows**: the **Camera source** node reads a camera device (s
 - The descriptions are AI-generated and indicative: show or store them, never let them drive a device.
 - **Text decision** answers typed questions about a text (a **Media fusion (video + audio)** summary, a transcript) with a probability per answer — e.g. "incident" or "routine", or an urgency level — without writing any text. The model runs on the PNeX server, nothing leaves it. Route on the best answer and its probability with a **Function** that sends the message on a named output only when the condition holds (or a true/false to the **trigger** input of a **Notification**), or put it before **Media fusion (video + audio)** so the AI model only describes the windows that matter. Out of the box the probabilities are a ranking, not a calibrated truth: check them on real examples before alerting on a threshold. "AI model call failed" with decide-unavailable: the decision model is not installed on this server (ask the platform administrator).
 
-In **Object detection**, **Doubtful frames to the Vision Lab** sends the frames where the model hesitated to a Vision Lab project, to annotate them and train a better model (see the Vision Lab card).
+In **Object detection**, **Doubtful frames to the Vision Lab** sends the frames where the model hesitated to a Vision Lab project, to label them and train a better model (see the Vision Lab card).
 
 ## Good to know
 - No **Video recording** node = nothing is stored. Recordings show "No recording" until such a flow is deployed.
@@ -43,5 +43,5 @@ In **Object detection**, **Doubtful frames to the Vision Lab** sends the frames 
 - "Connected, waiting for frames" or "No frame received yet": check the camera's power and Wi-Fi.
 - An ESP32-CAM in VGA at 5 fps records roughly 360 MB per hour.
 - Only Owners, Admins and Members change settings or delete recordings.
-- IP cameras (RTSP) are not listed here: they are streams of **Media › Audio streams** with a video track. Their recordings are under **Recordings** on the stream's row; detection layers are kept for camera devices only.
+- IP cameras (RTSP) are not listed here: they are streams of **Media › Streams** with a video track. Their recordings are under **Recordings** on the stream's row; recorded detections are kept for camera devices only.
 - In **Video recording**, **Label** names the recording (default: the camera or stream name).

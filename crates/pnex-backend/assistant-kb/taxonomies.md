@@ -8,7 +8,7 @@ err_codes: taxonomy-not-found, taxonomy-name-taken, taxonomy-version-conflict, t
 tools: list_taxonomies, get_taxonomy, create_taxonomy_version
 tags: taxonomy, taxonomie, topics, sujets, thèmes, themes, classification, classify, classifier, keywords, mots-clés, version, transcription, radio
 ---
-A topic taxonomy (Audio streams › Taxonomies) is a versioned list of topics that flows tag transcribed text with: each topic has a stable id, a label, a definition and keywords. Every saved change creates a new version; old versions are never rewritten.
+A topic taxonomy (Streams › Taxonomies) is a versioned list of topics that flows tag transcribed text with: each topic has a stable id, a label, a definition and keywords. Every saved change creates a new version; old versions are never rewritten.
 
 ## What you can do
 - **New taxonomy**: give it a name (and a description). It starts empty, at version 0.
