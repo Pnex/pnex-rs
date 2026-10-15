@@ -10,7 +10,7 @@
 | Rôle | Réglage | Remarques |
 |---|---|---|
 | **Pods API** | `PNEX_FLOW_RUN_WORKER=false` | Servent HTTP/WS (UI, devices, ingestion). Pas de runtime de flows : un pic de flows ne dégrade pas l'API. |
-| **Pods flow-worker** | `PNEX_FLOW_RUN_WORKER=true` (défaut) | Exécutent les flows des orgs placées chez eux (D106). Peuvent aussi servir HTTP, mais isoler les rôles simplifie le dimensionnement. |
+| **Pods flow-worker** | `PNEX_FLOW_RUN_WORKER=true` (défaut), `PNEX_SERVES_API=false` posé par le chart | Exécutent les flows des orgs placées chez eux (D106). Peuvent aussi servir HTTP, mais isoler les rôles simplifie le dimensionnement. |
 | **Workers de queue** (builds firmware, stitch 360, checks firmware) | `pnex-server start --worker-only` (ou `--server-and-worker`) | Doivent tourner là où vit PlatformIO (image `pnex-builder`). |
 
 Chart `pnex-deploy` : `flowWorker.replicas > 0` crée les pods flow-worker (même image, sans Service ni ingress) et passe les pods API en `PNEX_FLOW_RUN_WORKER=false` ; `0` (défaut) = les pods API exécutent aussi les flows.

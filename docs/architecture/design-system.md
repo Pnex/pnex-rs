@@ -178,7 +178,15 @@ Les entrées « bientôt » sans route sont retirées du menu.
      liste + tuiles entre pages. Une vignette (média, caméra) se met dans une
      colonne du tableau.
    - **Pagination toujours présente**, même quand la liste est courte
-     aujourd'hui.
+     aujourd'hui. Une liste chargée en entier (`api::client::request_all`,
+     parce qu'un sélecteur ou un éditeur en a besoin, ou parce que l'API
+     n'est pas paginée) est paginée côté client avec
+     `crud::pager::page_slice` ; jamais un `limit` au-delà de 100 (le
+     serveur tronque sans le dire, O64).
+   - **Onglets dans le slot `tabs`** de `ListLayout` (jamais dans
+     `filters` ni dans le corps).
+   - **Création par le bouton Ajouter + `FormDialog`**, jamais par un
+     formulaire en ligne au-dessus du tableau.
    - **Le bouton « Ajouter » est toujours visible** pour qui peut écrire :
      jamais caché derrière un filtre ou une sélection préalable. Si plusieurs
      choses peuvent être créées (types d'objet de l'ontologie), le bouton

@@ -149,6 +149,16 @@ Règles :
    une env PIO = plateforme × profil × config device. Pas de plugins
    runtime ; le manifeste est compilé dans le .bin.
 
+**Résilience de la boucle (O71, 2026-10-15)** : une ESP32-CAM est restée
+muette 1 h 34 après un `helm upgrade` (boucle bloquée, aucun watchdog sur la
+tâche Arduino). La lib `pnex` pose désormais, sur ESP32, un watchdog de 60 s
+sur la tâche de la boucle (nourri dans toutes les attentes longues :
+backoff, Wi-Fi, téléchargement OTA ; l'ESP8266 garde son WDT matériel de
+4 s) ; sur les deux cœurs, un redémarrage après **10 min sans session** ;
+sur ESP32, la poignée de main TLS est bornée à 20 s (120 s par défaut,
+au-delà du watchdog). Côté serveur, le refus 4003 (bail tenu par une
+session vivante) est journalisé : il était silencieux.
+
 ## 4. Les profils — le contrat firmware
 
 | Profil | Boucle | Buffer | Config persistée | Obligations | État |
