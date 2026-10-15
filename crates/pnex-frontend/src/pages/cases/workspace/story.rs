@@ -84,6 +84,8 @@ pub(super) fn Story(workspace: CaseWorkspace) -> Element {
     let ws = use_context::<Ws>();
     let mut show_all = use_signal(|| false);
     let mut hovered = use_signal(|| None::<usize>);
+    // A gathering under the pointer: every actor of that event stands out.
+    let mut gathering = use_signal(|| None::<usize>);
     let local = (ws.local_time)();
     let all = actors(&workspace);
     if all.is_empty() {
@@ -150,7 +152,11 @@ pub(super) fn Story(workspace: CaseWorkspace) -> Element {
         Sel::Object(id) => index.get(id.as_str()).copied(),
         _ => None,
     };
-    let focus = hovered().or(selected);
+    let focus: Option<Vec<usize>> = match (gathering(), hovered().or(selected)) {
+        (Some(c), _) => columns.get(c).map(|(_, on)| on.clone()),
+        (None, Some(i)) => Some(vec![i]),
+        (None, None) => None,
+    };
     let x = |c: usize| LEFT + c as f64 * COL_W;
     rsx! {
         div {
@@ -224,7 +230,7 @@ pub(super) fn Story(workspace: CaseWorkspace) -> Element {
                     g {
                         key: "t{o.id}",
                         class: "cursor-pointer",
-                        opacity: if focus.is_some_and(|f| f != i) { "0.2" } else { "1" },
+                        opacity: if focus.as_ref().is_some_and(|f| !f.contains(&i)) { "0.2" } else { "1" },
                         onmouseenter: move |_| hovered.set(Some(i)),
                         onmouseleave: move |_| hovered.set(None),
                         onclick: {
@@ -264,6 +270,38 @@ pub(super) fn Story(workspace: CaseWorkspace) -> Element {
                                 class: "fill-surface",
                                 stroke: actor_color(i),
                                 stroke_width: "3",
+                            }
+                        }
+                    }
+                }
+                // Gatherings, over the threads so they catch the pointer:
+                // hover lights up the event's actors, a click opens it.
+                for (c, (e, on)) in columns.iter().enumerate().filter(|(_, (_, on))| on.len() > 1) {
+                    g { key: "z{e.event.id}",
+                        rect {
+                            x: "{x(c + 1) - 14.0}",
+                            y: "{TOP + on.iter().map(|i| cols[c + 1][*i]).fold(f64::MAX, f64::min) - 14.0}",
+                            width: "28",
+                            height: "{on.iter().map(|i| cols[c + 1][*i]).fold(f64::MIN, f64::max) - on.iter().map(|i| cols[c + 1][*i]).fold(f64::MAX, f64::min) + 28.0}",
+                            rx: "14",
+                            class: if gathering() == Some(c) { "cursor-pointer fill-signal/15 stroke-signal" } else { "cursor-pointer fill-transparent" },
+                            stroke_width: "2",
+                            onmouseenter: move |_| gathering.set(Some(c)),
+                            onmouseleave: move |_| gathering.set(None),
+                            onclick: {
+                                let id = e.event.id.clone();
+                                move |_| ws.select_event(id.clone())
+                            },
+                        }
+                        if gathering() == Some(c) {
+                            text {
+                                x: "{x(c + 1)}",
+                                y: "{TOP + on.iter().map(|i| cols[c + 1][*i]).fold(f64::MAX, f64::min) - 22.0}",
+                                text_anchor: "middle",
+                                class: "pointer-events-none fill-signal text-xs font-semibold",
+                                // A halo in the ground colour keeps it readable over threads.
+                                style: "paint-order: stroke; stroke: var(--color-ground); stroke-width: 4px; stroke-linejoin: round",
+                                {model::short(&e.event.title, 48)}
                             }
                         }
                     }
