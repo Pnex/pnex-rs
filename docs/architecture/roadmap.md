@@ -448,7 +448,7 @@ catalogue de P2.11.
 | Devices | device-read, device-write, display |
 | Régulation | reg-tt-heat, reg-tt-cool, reg-pid |
 | Données & calcul | value, calc, json-split, json-merge, coolprop |
-| Code | function, red |
+| Code | function (red retiré le 2026-10-14) |
 | Stockage & séries | metric, memory-write, memory-read, video-record, event-log |
 | IA & prédictif | vision-detect, anomaly, forecast |
 | Intégrations | notify, http-fetch |
@@ -826,6 +826,20 @@ d'occurrence = D183, compteur = série O2) ; seule la récurrence
 `modele-cible.md`. Reste : compteurs, OT = procédure, équipes et vue de
 charge, Gantt d'arrêt, flux `.ics`. Décision #26.
 
+### P2.21 — Éditeur de flows lisible : groupes de nœuds et valeurs au canevas (ajout 2026-10-15) — **à cadrer**
+
+Suite d'O70 : rendre les flows lisibles par un non-développeur, même avec
+beaucoup de nœuds. Déjà livré : `inject` typé, type des ports et des fils,
+rejets visibles (O66, O69), sélecteur d'appareils complet (O68), valeur
+déclarée par sortie cochée du `Device (écriture)`. Reste, gros chantier :
+
+- **Groupes de nœuds** : cadre nommé et repliable autour d'un ensemble de
+  nœuds (lisibilité « façon classes »), avec le zoom et le « tout afficher »
+  existants (O51).
+- **Valeurs déclarées affichées sur le canevas** : l'ancre de pin les porte
+  mal (même ligne que le titre) ; il faut une place dédiée sur le nœud.
+- Toute évolution passe par la `NodeDoc` et l'assistant (D142–D145).
+
 ### Outils externes évalués (ajout 2026-10-11) — **inscrits, rien d'implémenté**
 
 Contraintes de tri : workspace Cargo unique, cible Raspberry Pi (pas de
@@ -1199,3 +1213,12 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   flows doit devenir intuitive pour un non-développeur, même avec beaucoup
   de nœuds (groupes, zoom, valeurs déclarées sur le nœud de sortie) —
   chantier à cadrer après les urgences en cours.
+- **2026-10-15 (flows)** — Groupes de nœuds et valeurs déclarées au canevas
+  sortis d'O70 vers P2.21 (gros chantier, plus tard).
+- **2026-10-15 (observations)** — Non commité : valeur déclarée par sortie
+  du `Device (écriture)` (O70), résilience firmware ESP32 (watchdog de
+  boucle, redémarrage après 10 min sans session, TLS borné, O71), logs du
+  runtime assainis (O72), défauts visuels de l'éditeur (O73), recherche
+  globale dans le contenu des documents (O54), `word_timestamps` appliqué
+  (O56), suite des listes CRUD (O64). Docs d'architecture alignées
+  (`flow-engine.md` §10, `edge-model.md` §3, `design-system.md` règle 8).

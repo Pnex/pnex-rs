@@ -355,7 +355,9 @@ ETA forecast 791 s prédit pour 800 s réels) ; les défauts sont autour.
 - **Redeploy sans changement** : « Deploy » sur une version déjà déployée ne
   recrée pas l'état des nœuds (anti-spam, set en attente) — attendu ou non,
   à documenter.
-- **Statut** : backlog.
+- **Statut** : documenté (2026-10-15) — attendu : « Restart » fait stop +
+  start (nœuds reconstruits, état vidé), un redeploy de la même version le
+  garde ; écrit dans la fiche assistant `flows.md`.
 
 ## 2026-10-02/03 — harnais E2E Playwright (`e2e/`) + banc matériel C3 / ESP32-CAM
 
@@ -889,8 +891,7 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
 - **Correction proposée** : nom neutre stocké (`{display}`, ou « {display}'s
   org » en anglais canonique), ou drapeau `personal` rendu par une clé fluent
   au rendu ; renommage possible par l'utilisateur inchangé.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O42 — Stack de démo vidée : données « Demo – … » et appareils perdus
 
 - **Constat** : org 1 sans aucune ressource « Demo – … » (recherche « demo » :
@@ -922,8 +923,7 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
   en-US.ftl:3747).
 - Pages › Nouvelle page ne propose aucun modèle : les modèles de page ne
   sont accessibles que depuis un dossier d'enquête.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O44 — Fiches de l'assistant (assistant-kb) en retard sur la navigation
 
 - `media.md:11` et `documents.md:11` : « Data › Library » → aujourd'hui
@@ -934,9 +934,7 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
 - `cases.md` : cadrage éditorial (« story », modèle « Script / rundown »,
   « broadcasts ») et identifiant interne (« K38 ») dans une fiche lue par
   l'assistant (cf. ton sobre du repo public).
-- **Statut** : ouvert (les gardes KB vérifient routes/nœuds/codes cités,
-  pas les chemins de menu en texte libre).
-
+- **Statut** : corrigé (afd7a8e9) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O45 — roadmap.md : incohérences internes (relevées en refaisant la roadmap du site)
 
 1. Le journal du 2026-10-13 cite une section « Branches en attente » ; la
@@ -958,8 +956,7 @@ Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
    2026-10-11 après celui du 2026-10-12.
 8. « Aucune fonctionnalité promise pour la 0.2.0 » vs ligne P2.14
    « 0.2.0 = L0–L5 + pack Maintenance augmentée ».
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O46 — assistant-kb : chemins de menu périmés (complément d'O44)
 
 | Chemin périmé | Fiches | Attendu |
@@ -990,8 +987,7 @@ Autres écarts fiche ↔ app :
   builtin Node-RED brut, node_docs.rs:514-520).
 - node_docs.rs:283 : media_source « (Media page) » → Media › Audio streams ;
   node_docs.rs:364 : text_decide « worst first » ≠ UI « lowest first » (en-US.ftl:2523).
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (afd7a8e9) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O47 — Libellés UI : suite
 
 - `flows-category-devices = Devices` en français (fr-FR.ftl), comme `nav-group-devices`.
@@ -1008,8 +1004,7 @@ Autres écarts fiche ↔ app :
   les transcriptions audio.
 - fr-FR.ftl:228 : « Enregistrer » = à la fois *register* et *save* sur la
   page appareils.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O48 — Écarts code ↔ doc d'architecture
 
 - **Itinéraire géo** : `geo-layers.md:367` promet le tracé sur la carte ;
@@ -1064,8 +1059,7 @@ Manque :
 - Aucun nœud délai/minuterie dans la palette (`palette.rs:228-270`) :
   « arroser N secondes » n'est pas constructible (tuto arrosage réécrit en
   seuil hystérésis lecture → calc → écriture).
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O50 — Stack conteneurisée : firmwares compilés sur le port 443 au lieu de 4443
 
 - **Symptôme** : carte flashée depuis le serveur en conteneur (`task app:up`
@@ -1085,8 +1079,7 @@ Manque :
   established`. Reste : `PNEX_DEVICE_PORT` est mort côté serveur (à retirer
   ou documenter) ; une garde e2e « firmware conteneur → 4443 » éviterait la
   récidive.
-- **Statut** : corrigé (non commité).
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O51 — Éditeur de flows : pas de « tout afficher », nœud hors cadre à l'ouverture
 
 - **Constat** : à l'ouverture d'un flow déployé (« Demo – button to LED »),
@@ -1095,8 +1088,7 @@ Manque :
   glisser du fond recadre.
 - **Correction proposée** : cadrer sur l'emprise des nœuds à l'ouverture +
   bouton « Tout afficher » dans la barre du canevas.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O52 — Dashboard mobile : deux boutons « modifier » à 390 px
 
 - **Constat** : vue live d'un dashboard mobile (« Demo – Home ») à largeur
@@ -1104,8 +1096,7 @@ Manque :
   « Edit » juste dessous — deux entrées pour la même action.
 - **Correction proposée** : un seul bouton (icône seule sous `sm`, libellé
   au-dessus).
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O53 — Calendrier : grille claire et numéros de jour illisibles en mode sombre
 
 - **Constat** : `/calendar` en thème sombre : la grille du mois reste sur fond
@@ -1115,18 +1106,16 @@ Manque :
 - **Correction proposée** : jetons `surface`/`line`/`slate` (ou classes
   `gray-*` miroitées) au lieu de couleurs claires fixes ; ajouter la page à
   `design_guard`/revue sombre.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O54 — Recherche documentaire : Markdown brut dans les extraits
 
 - **Constat** : Media › Library › « Search in documents » : l'extrait d'un
   `.md` affiche `**4.5 mm/s**` (astérisques) au lieu du texte.
 - **Correction proposée** : retirer la syntaxe Markdown à l'extraction
   (texte indexé) ou au rendu de l'extrait.
-- **Statut** : ouvert. Note : la recherche globale de la barre latérale ne
-  cherche pas dans le contenu des documents (« No results » pour « bearing
-  vibration ») — à documenter ou à relier.
-
+- **Statut** : corrigé — extraits sans Markdown (7ae8b706) ; la recherche globale
+  a un groupe « Documents » (contenu indexé, un résultat par document,
+  ouvre le média ; 2026-10-15, non commité, testé dans `doc_search.rs`).
 ### O55 — Carte : POI choisi dans la liste non centré, adresses en double
 
 - **Constats** : (1) cliquer un POI dans la liste ouvre son tiroir mais la
@@ -1135,8 +1124,7 @@ Manque :
   (deux segments OSM de la même voie) sans déduplication.
 - **Correction proposée** : `flyTo` à la sélection depuis la liste ;
   dédupliquer les résultats de géocodage par libellé + distance < ~200 m.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O56 — Transcription : runtime whisper.cpp absent des images, boucles de répétition
 
 - **Constats (premier essai réel des flux audio, 2026-10-13)** :
@@ -1154,7 +1142,12 @@ Manque :
   n'est pas compilé, ou le dire dans l'UI du registre ; (2) filtre de
   répétition (n-grammes répétés > N → segment marqué douteux) et/ou VAD
   musique ; (3) harmoniser PUT/PATCH sur les ressources.
-- **Statut** : ouvert.
+- **Statut** : runtime et boucles corrigés (7ae8b706). 2026-10-15 (non commité) :
+  `word_timestamps` du profil appliqué au stockage (faux → `words` vide
+  enregistré) ; `words` vide avec Whisper = limite de l'export sherpa-onnx
+  (pas d'horodatage par jeton), documentée dans la fiche `streams.md` ;
+  slug figé au renommage = voulu (il nomme les transcriptions stockées,
+  déjà dans la fiche). Reste : rien côté code.
 - **Compléments O56** : après renommage d'un flux (« FIP » → « franceinfo »),
   les transcriptions restent étiquetées `fip_radio` (slug figé à la
   création) ; `words` reste `[]` alors que le profil a `word_timestamps: true`.
@@ -1166,8 +1159,7 @@ Manque :
   sans lien de retour ni mise en forme (`pages/not_found.rs`).
 - **Correction proposée** : rendre la page 404 dans la coquille (titre,
   phrase, bouton « Accueil »), selon les pages vides du design system.
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O58 — Flows : second fil d'une sortie de fonction refusé sans retour
 
 - **Constat** : dans l'éditeur, tirer un deuxième fil depuis une sortie
@@ -1179,9 +1171,7 @@ Manque :
   fonction ne prend qu'un fil : ajoutez une sortie dans le code ») et/ou
   curseur `not-allowed` au survol ; documenter la règle dans la NodeDoc
   `pnex_function` (pièges).
-- **Statut** : ouvert. Le scénario de captures (étape 19) expose désormais
-  une sortie par consommateur.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O59 — Accueil : quotas de tier affichés en auto-hébergé, séries de flows supprimés
 
 - **Constats** : (1) en `self_hosted` (aucun quota appliqué depuis O37),
@@ -1190,8 +1180,7 @@ Manque :
   encore les séries de flows supprimés (`flow_58`, `flow_61`).
 - **Corrections proposées** : masquer le bloc tier hors `saas` ; filtrer les
   séries `flow_<id>` dont le flow n'existe plus (ou les marquer « supprimé »).
-- **Statut** : ouvert.
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ## 2026-10-13 (soir) — suivi des constats O41–O59
 
 Corrigé (non commité ; `task check` natif + wasm vert, `cargo test --workspace
@@ -1269,8 +1258,7 @@ Restent ouverts :
   `deployed` (`controllers/flows/lifecycle.rs`, assertion dans
   `tests/flows.rs`). Le refus de Start passait déjà par le deploy
   (`pin-already-assigned` + flow concurrent, traduit en toast).
-- **Statut** : corrigé (non commité).
-
+- **Statut** : corrigé (700cb617) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O61 — POI : aperçu épinglé sur une ressource supprimée
 
 - **Constat** : à l'ouverture d'un POI, le visualiseur affichait
@@ -1291,8 +1279,7 @@ Restent ouverts :
   déconnexion POSTait l'end-session sans indice, session Rauthy déjà morte.
 - **Correction** : `id_token` conservé si le refresh n'en renvoie pas ; sans
   indice, pas d'appel Rauthy (retour à l'écran de login). Résiduel : SEC-41.
-- **Statut** : corrigé (non déployé).
-
+- **Statut** : corrigé (déploiement à faire avec la prochaine image).
 ## 2026-10-14 — harmonisation des listes CRUD
 
 Règle posée : `docs/architecture/design-system.md` §6 point 8 (tableau +
@@ -1311,8 +1298,7 @@ pagination, jamais de tuiles, bouton « Ajouter » toujours visible).
   `DataTable` + `ListPager`. Empreintes — tableau paginé (côté client),
   « Nouvelle empreinte » = choix de la personne puis onglet Voix, messages
   « aucun modèle » / « aucune empreinte prête » à la place du testeur.
-- **Statut** : corrigé (non commité, non déployé).
-
+- **Statut** : corrigé (7ae8b706) ; restes éventuels dans le suivi « 2026-10-13 (soir) ».
 ### O64 — Listes CRUD : lignes manquantes et écarts au socle
 
 Revue de toutes les pages de liste (2026-10-14). Le serveur borne les listes
@@ -1354,9 +1340,23 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   de dashboards : 200 demandés, 100 reçus). Sites et liste latérale de la
   carte : pager serveur (10 sur N auparavant). Requêtes ontologie à 500 :
   plafond serveur 500, pas de troncature.
-- **Statut** : ouvert pour la suite (pagers sur API existante — contrôles,
-  documents, références Edge, annotations —, harmonisation de forme,
-  pagination backend).
+- **Pagers sur API existante : corrigé (2026-10-15, non commité)** —
+  contrôles, documents, Wi-Fi, hôtes et ensembles d'annotations paginés côté
+  client (`crud::pager::page_slice` sur la liste complète de `request_all`,
+  testé) ; les annotations chargent tous les ensembles pour que la barre
+  « autres ensembles » de l'éditeur reste complète.
+- **Suite (2026-10-15, non commité)** : pagers aussi sur firmware, labo,
+  caméras, types d'objets, taxonomies, modèles et profils ASR (découpage
+  client, `page_slice`) ; taxonomies, packs (plus de tuiles) et types de
+  liens en `DataTable` ; sites sous `ListStates` (une erreur d'API
+  affichait la liste vide) ; organisations créées par le bouton Ajouter
+  (modale, e2e `settings.spec.ts` adapté) ; onglets des références Edge,
+  notifications et flux dans le slot `tabs`.
+- **Statut** : reste cosmétique, volontairement laissé : tableaux faits
+  main avec pager déjà en place (modèles ML, onglets de flux, journal
+  d'événements, statut plateforme) ; catalogue en pages de 12 (grille).
+  Pagination backend non nécessaire tant que ces listes restent courtes
+  (raccourci noté dans `page_slice`).
 
 ### O65 — TFT : progression OTA figée à 0 %
 
@@ -1370,8 +1370,10 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   `tickOtaPage` / `drawOtaNumber` redessinent sur changement à la lecture.
 - **Piste** : tracer en série les appels de `tickOtaPage` (pct lu, page
   courante) pendant le téléchargement ; vérifier aussi l'OLED (même chemin).
-- **Statut** : ouvert.
-
+- **Statut** : ouvert, bloqué sur le banc. Relu le 2026-10-15 : la chaîne
+  `set_ota` → `pnex_status` → `tickOtaPage`/`drawOtaNumber` est correcte
+  (même tampon, hook `screen_wait_tick` posé, redessin sur changement) ;
+  il faut la trace série sur la carte.
 ### O66 — Calc : message rejeté en silence (payload non numérique)
 
 - **Constat** (banc P0.1, 2026-10-14, chaîne caméra) : `vision_detect → calc
@@ -1387,7 +1389,9 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   code machine + clé fluent) ; ajouter le contrat d'entrée dans la `NodeDoc`
   du calc (`notes` vide aujourd'hui) pour que l'assistant ne génère pas ce
   câblage ; éventuellement accepter les clés numériques et ignorer les autres.
-- **Statut** : ouvert.
+- **Statut** : corrigé (78378c26) — le calc ignore les clés non numériques
+  (`vision_detect → calc "count > 0"` fonctionne) et un message rejeté
+  affiche un badge ambre sur le nœud ; `NodeDoc` du calc complétée.
 
 ## 2026-10-14 — P0.3 : cluster sur dev.pnex.io (3 pods, ESP32-CAM réelle)
 
@@ -1418,7 +1422,8 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
 - **Correction proposée** : lister tous les appareils de l'org, les hors
   ligne grisés avec la mention « hors ligne » (on doit pouvoir préparer un
   flow carte débranchée) ; rafraîchir la liste à l'ouverture du sélecteur.
-- **Statut** : ouvert (chantier flows non-dev, voir O70).
+- **Statut** : corrigé (4f452096) — sélecteurs read/write : tous les
+  appareils de l'org, hors ligne marqués, liste rechargée à l'ouverture.
 
 ### O69 — Device (écriture) : valeur rejetée invisible dans l'éditeur
 
@@ -1428,7 +1433,9 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   « Déployé » au vert et rien ne bouge. Même famille qu'O66.
 - **Correction proposée** : statut de nœud `warn` avec code machine + clé
   fluent, visible sur le canevas et dans le panneau Debug.
-- **Statut** : ouvert (chantier flows non-dev, voir O70).
+- **Statut** : corrigé (78378c26) — badge ambre « Nothing written » avec
+  le compte et la raison (cliquable), visible sur le canevas et dans le
+  panneau Debug ; log serveur dédupliqué (2026-10-15, voir O72).
 
 ### O70 — Flows : le modèle « payload » n'est pas intuitif pour un non-dev
 
@@ -1444,4 +1451,86 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   l'`inject` (aucun / nombre / booléen / texte / JSON), rejets visibles
   (O66, O69), sélecteur complet (O68). Toute évolution passe par la
   `NodeDoc` et l'assistant (D142–D145).
-- **Statut** : à cadrer après les urgences en cours.
+- **Statut** : en partie livré — payload typé de l'`inject` et type des
+  ports/fils (4f452096), rejets visibles (O66, O69), sélecteur complet
+  (O68), **valeur déclarée par sortie cochée** du `Device (écriture)`
+  (2026-10-15, non commité : `values` {pin: valeur}, « Toujours allumé /
+  éteint », « Fixe » 0–100 en PWM ; le message ne fait que déclencher ;
+  `NodeDoc` + fiche assistant `flows.md`). Le reste (groupes de nœuds,
+  valeur déclarée affichée sur le canevas) passe en roadmap P2.21.
+
+## 2026-10-15 — nuit : logs de dev.pnex.io après `helm upgrade` (révision 3)
+
+### O71 — ESP32-CAM : écritures non acquittées puis session muette
+
+- **Constat** : `mellow-crane` (ESP32-CAM, branchée en continu) passe hors
+  ligne de temps en temps. Flow de test : `inject` 1 s (valeur `0`) →
+  `Device (écriture)` sur la LED flash (GPIO 4), plus `Camera source` →
+  `Video recording` (0 trame reçue). Chronologie (00:31 → 00:41) : connexion
+  00:32:14, la plupart des écritures acquittées pendant ~2 min, puis plus
+  aucune (le firmware acquitte pourtant toute écriture, même refusée) alors
+  que la session reste vivante ; reconnexion 00:35:14 sur un autre pod, même
+  dérive, silence total dès 00:37:20, fermeture anti-zombie 00:38:06 ; pas de
+  retour avant au moins 00:41. Le flow prend alors 60 `409 offline` par
+  minute.
+- **Piste** : boucle unique du firmware saturée (une écriture par seconde =
+  écriture + `StateReport` + `Ack`, plus le flux caméra sur le même `loop()`,
+  plus le Wi-Fi brouillé par le capteur, cf. XCLK). Pas une chute de
+  tension : la valeur écrite est `0`, la LED reste éteinte.
+- **À faire** : rejouer avec l'`inject` à 30 s (ou le flow arrêté) ; si les
+  décrochages cessent, ne pas pousser une écriture identique à l'état connu
+  de la pin, ou limiter le débit par pin côté serveur. Sinon, trace série
+  (ouvrir le port réinitialise la carte MB : l'ouvrir une fois, le garder).
+- **Suite (06:50)** : les pods api datent de 00:31, donc les décrochages de
+  00:32–00:38 tombent pendant le `helm upgrade` (deux coupures en 3 min).
+  Après le dernier, la carte reste muette jusqu'à 02:12 (1 h 34, alors que
+  le backoff du firmware plafonne à 60 s). Depuis, c'est stable :
+  enregistrement continu (~3 i/s, un segment par minute), reconnexion
+  éclair à 06:30, environ 2 % d'écritures non acquittées (renvoyées une
+  fois). Le trou de 1 h 34 reste inexpliqué sans trace série : carte
+  bloquée après les coupures de session, ou blocage dans `pnex_ws_connect`.
+  Côté serveur, aucune tentative de connexion n'arrive pendant le trou, et
+  avant lui la carte se tait (plus de PING) sans fermer : sa boucle est
+  bloquée. Or l'ESP32 n'a pas de watchdog sur la boucle Arduino.
+- **Correctif (2026-10-15)** : firmware ESP32 : watchdog de 60 s sur la
+  tâche de la boucle (nourri dans les attentes longues : backoff, Wi-Fi,
+  OTA) ; redémarrage après 10 min sans session (ESP32 et ESP8266) ;
+  handshake TLS borné à 20 s (120 s par défaut). Serveur : le refus 4003
+  (bail tenu par une session vivante) est loggé, il était silencieux.
+  Compilé (CAM, C6, 8266), non flashé.
+- **Statut** : correctif à valider sur la carte (flash OTA, puis un
+  `helm upgrade`).
+
+### O72 — Logs du runtime de flows : bruit et avertissement trompeur
+
+- **Constat** : en 15 min, un pod flow-worker écrit 264 fois la même ligne
+  `pnex-device-write … 409 Conflict {"code":"offline"}` (une par message),
+  76 `Failed to parse ID 'pnexflow1…' as hex` et 14 `No output wires`
+  (à chaque chargement d'un flow valide) ; les pods flow-worker dédiés
+  annoncent « this pod serves the API AND runs a flow runtime » alors
+  qu'aucun Service ne les expose.
+- **Correction (2026-10-15, non commité)** : refus du calc et du
+  `Device (écriture)` logués une fois par minute pour un même détail (le
+  badge garde le compte exact) ; les deux avertissements de chargement
+  d'edgelink ne sont plus relayés ; le chart pose `PNEX_SERVES_API=false`
+  sur les pods flow-worker (`pnex-deploy`, non commité) et le serveur tait
+  alors l'avertissement.
+- **Statut** : corrigé (non commité, non déployé).
+
+### O73 — Éditeur de flows : défauts visuels
+
+- **Constat** (capture utilisateur) : point d'entrée sur `Inject` et
+  `Camera source` (sources, rien n'y entre) ; port de sortie vidéo plus gros
+  (anneau de la couleur du bord, même rose que le type) ; sous-titre
+  « mellow-crane… » collé au libellé de port « name » ; badge « Nothing
+  written · 48 ok / 451 rejected » qui déborde de son cadre ; libellés de fil
+  (« number », « video ») à moitié sur le trait ; « No frames · 0 frames ».
+- **Correction (2026-10-15, non commité)** : `accepts_input` exclut `Inject`
+  et `Camera source` ; anneau des ports à la couleur de fond du nœud ;
+  troncature du sous-titre à ~6 px par caractère ; badge dimensionné sur son
+  texte, centré sous le nœud (coupé au-delà de deux largeurs, texte complet
+  en infobulle) ; libellé de fil centré sur le trait avec halo ; « No
+  frames » seul quand rien n'a été reçu. Vérifié dans le navigateur (build
+  debug, stack locale).
+- **Statut** : corrigé (non commité).
+

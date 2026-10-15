@@ -192,7 +192,8 @@ poser `PNEX_TRUSTED_PROXIES=none` (sinon un hôte du LAN peut forger
    CA est aussi appliquée sur la WS ESP8266 (avant : insecure forcé). Sur
    ESP8266, BearSSL vérifie les dates : `pnex_tls` lance SNTP et passe
    `setX509Time` (heure NTP, sinon date de build du firmware). Pas de NTP requis sur
-   ESP32 (mbedTLS sans `HAVE_TIME_DATE` : dates non vérifiées).
+   ESP32 (mbedTLS sans `HAVE_TIME_DATE` : dates non vérifiées). Poignée de
+   main bornée à 20 s sur ESP32 (`setHandshakeTimeout`, O71).
    Bascule ws → wss par OTA : le téléchargement suit l'ancien transport
    (http :5150, toujours publié) — un device dont le firmware wss n'a pas
    la CA reste hors ligne → re-flash USB. Reste : E2E réel ESP8266 (heap

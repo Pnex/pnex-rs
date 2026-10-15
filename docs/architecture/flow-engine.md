@@ -488,7 +488,7 @@ isolé (`skipped_tabs`), deploy du flow lui-même en 400 `graph_unreadable`.
 
 ### 7.4 Configuration (`settings.flow.cluster`)
 
-Nœud unique : **rien à régler**. Plusieurs pods : `PNEX_FLOW_ADVERTISE_URL=http://$(POD_IP):5150`, même `PNEX_FLOW_CLUSTER_TOKEN` partout, Valkey configurée (D107), `PNEX_FLOW_RUN_WORKER=false` pour un pod API seul. `worker_id` par défaut = `HOSTNAME` (nom du pod). Délais par défaut : heartbeat 2 s, TTL 10 s, auto-fencing 6 s, tick contrôleur 2 s, bail 10 s.
+Nœud unique : **rien à régler**. Plusieurs pods : `PNEX_FLOW_ADVERTISE_URL=http://$(POD_IP):5150`, même `PNEX_FLOW_CLUSTER_TOKEN` partout, Valkey configurée (D107), `PNEX_FLOW_RUN_WORKER=false` pour un pod API seul, `PNEX_SERVES_API=false` pour un pod flow-worker dédié (le chart le pose : sans Service devant, l'avertissement « API et runtime dans le même cgroup » n'a pas lieu d'être et le serveur le tait). `worker_id` par défaut = `HOSTNAME` (nom du pod). Délais par défaut : heartbeat 2 s, TTL 10 s, auto-fencing 6 s, tick contrôleur 2 s, bail 10 s.
 
 ### 7.5 Vérification
 
@@ -542,3 +542,41 @@ ou un curseur (0..100) se branche tel quel sur `device-write` ; la règle
 toujours sa sortie ; son inspecteur liste les sources groupées par surface
 (les interrupteurs, curseurs et boutons posés sur les dashboards et les
 annotations y apparaissent dès l'enregistrement de leur surface, D131).
+
+## 10. Flows lisibles et rejets visibles (O66–O73) — 2026-10-14/15
+
+Retours d'usage (`observations.md` O66–O73) : un flow « vert » qui ne fait
+rien, un modèle `payload` opaque pour un non-développeur.
+
+- **Nœud `red` retiré** (2026-10-14, rupture) : le runtime n'enregistre plus
+  que les builtins émis par la projection et les nœuds `pnex-*` (surface
+  SEC-1/SEC-2 supprimée). Un flow qui en contient un ne se charge plus :
+  le remplacer par un nœud typé (function, json split/merge, calc).
+- **Rejets visibles** : `calc` et `Device (écriture)` publient un statut de
+  nœud ; un message rejeté ou une écriture vide affiche un badge ambre
+  « Nothing written · N ok / M rejected » avec la raison (clic), sur le
+  canevas et dans le panneau Debug. Le log serveur d'un même refus est
+  limité à une ligne par minute (le badge garde le compte exact).
+- **`calc` tolérant** : les clés non numériques du payload sont ignorées
+  (`vision_detect → calc "count > 0"` fonctionne).
+- **Types sur le canevas** : chaque port de sortie est coloré par le type
+  émis (nombre, vrai/faux, texte, objet, vidéo, audio, détections), chaque
+  fil porte ce type en libellé centré ; un nœud de passage prend le type de
+  son entrée. L'`inject` choisit sa valeur par type (heure courante,
+  nombre, vrai/faux, texte, JSON). `Inject` et `Camera source` n'ont pas
+  d'ancre d'entrée.
+- **Sélecteurs d'appareils** (read/write) : tous les appareils de l'org,
+  hors ligne marqués, liste rechargée à l'ouverture.
+- **Valeur déclarée par sortie** (`Device (écriture)`, config `values`
+  `{pin: valeur}`) : « Toujours allumé / éteint » sur une sortie digitale,
+  « Fixe » 0–100 en PWM ; le message n'est alors qu'un déclencheur. Un fil
+  posé sur l'ancre d'un pin écrit la valeur de ce pin ; un autre message
+  (sans ancre nommée) écrit toutes les valeurs déclarées ; dans un payload
+  map, la valeur déclarée l'emporte ; un pin sans valeur déclarée écrit la
+  valeur du message. Validation au deploy : `device_bad_fixed_value`
+  (pin non sélectionné, ou valeur hors booléen / 0–100).
+- **Bruit du runtime** : les avertissements d'edgelink à chaque chargement
+  d'un flow valide (« Failed to parse ID … as hex », « No output wires »)
+  ne sont plus relayés.
+- **Reste** (roadmap P2.21) : groupes de nœuds, valeur déclarée affichée
+  sur le canevas.

@@ -364,7 +364,11 @@ base.
 `asr_profiles` (`org_id bigint`) : `vad_model_id` (optionnel),
 `asr_model_id` (obligatoire), `diarization_model_id` (optionnel),
 `language` (`fr` par défaut, `auto` autorisé), `beam`, `word_timestamps`
-(vrai par défaut). Un flux référence un profil ; changer de profil
+(vrai par défaut : la liste de mots horodatés est enregistrée avec la
+transcription ; faux = liste vide stockée, l'événement live garde les mots
+pour attribuer les locuteurs). Les horodatages par mot dépendent du
+modèle : un transducteur (Parakeet) les donne, l'export sherpa-onnx de
+Whisper non (texte seul, O56). Un flux référence un profil ; changer de profil
 n'affecte que les **nouveaux** segments (le rejeu de l'historique est
 impossible sans audio, D161 — c'est assumé et affiché).
 
