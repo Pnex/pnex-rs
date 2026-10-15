@@ -283,7 +283,9 @@ D60 restent ouvertes) :
   seuil 4 px distinguant clic-simple/drag, rect re-mesuré en continu).
   E2E validé : plat (0.4,0.6)→(0.75,0.25) persisté après save+reload ;
   pano 0°/0°→8°/-5°.
-- **Pas de valeur « métrique »** : impossible d'attacher une valeur
+- ~~**Pas de valeur « métrique »**~~ **Levé par D147** (§13) : une
+  annotation porte un widget (valeur, sparkline, jauge, indicateur) sur une
+  série, ou un contrôle d'org. Constat d'origine : impossible d'attacher une valeur
   type ETL ou une mesure device à une annotation. Les cibles actuelles
   (`device`/`pin`/`status`) n'affichent que l'état de connexion et la
   dernière valeur de pin (poll 15 s) — pas de liaison à une métrique
