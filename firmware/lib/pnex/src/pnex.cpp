@@ -24,6 +24,7 @@
 // Rollback guard in begin() runs whatever PNEX_OTA_ENABLE says (a USB
 // flash also boots PENDING_VERIFY).
 #include <esp_ota_ops.h>
+#include <esp_task_wdt.h>
 #endif
 
 #if PNEX_OTA_ENABLE == 1
@@ -99,8 +100,44 @@ void pnex_on_ws_message(const String& plain) {
 // reçoit un pointeur nu, l'écran lit pnex_status — aucun des deux ne
 // connaît l'autre.
 
+// ESP32: the loop task is not watched by default, so a blocked loop kept a
+// board silent for 1 h 34 after a server upgrade (O71). A loop stuck this
+// long now reboots it. The ESP8266 keeps its own 4 s hardware WDT.
+#if defined(ESP32)
+static constexpr uint32_t LOOP_WDT_S = 60;
+
+static void loop_wdt_begin() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+    esp_task_wdt_config_t cfg = {};
+    cfg.timeout_ms = LOOP_WDT_S * 1000;
+    cfg.idle_core_mask = 1;  // keep watching core 0's idle task
+    cfg.trigger_panic = true;
+    if (esp_task_wdt_reconfigure(&cfg) != ESP_OK) {
+        esp_task_wdt_init(&cfg);
+    }
+#else
+    esp_task_wdt_init(LOOP_WDT_S, true);  // reconfigures when already started
+#endif
+    esp_task_wdt_add(nullptr);  // the calling task is the Arduino loop task
+}
+#endif
+
+static void loop_wdt_feed() {
+#if defined(ESP8266)
+    ESP.wdtFeed();
+#else
+    esp_task_wdt_reset();
+#endif
+}
+
+// No session for this long: restart, whatever WiFi/TLS state is stuck (a
+// server upgrade or outage costs at most this, never hours).
+static constexpr unsigned long LINK_LOST_RESTART_MS = 10UL * 60UL * 1000UL;
+static unsigned long last_link_ms = 0;
+
 static void screen_wait_tick() {
     pnex_screen::tick();
+    loop_wdt_feed();  // long waits (WiFi join, OTA download) tick here
 }
 
 // delay par tranches qui garde l'écran vivant (backoff de reconnexion) —
@@ -111,9 +148,7 @@ static void delay_with_screen(unsigned long ms) {
         delay(slice);
         ms -= slice;
         pnex_screen::tick();
-#if defined(ESP8266)
-        ESP.wdtFeed();
-#endif
+        loop_wdt_feed();
     }
 }
 
@@ -385,6 +420,8 @@ void PnexDevice::begin() {
 #if defined(ESP8266)
     ESP.wdtDisable();
     ESP.wdtEnable(WDTO_4S);
+#else
+    loop_wdt_begin();
 #endif
 
     // L'attente bloquante tick l'écran (blink WiFi) via le callback nu du
@@ -417,9 +454,14 @@ void PnexDevice::begin() {
 }
 
 void PnexDevice::loop() {
-#if defined(ESP8266)
-    ESP.wdtFeed();
-#endif
+    loop_wdt_feed();
+    if (pnex_ws_available()) {
+        last_link_ms = millis();
+    } else if (millis() - last_link_ms > LINK_LOST_RESTART_MS) {
+        Serial.println("[WS] no session for 10 min — restarting");
+        delay(100);
+        ESP.restart();
+    }
 
     if (WiFi.status() != WL_CONNECTED) {
         pnex_status::set_wifi(false, 0);

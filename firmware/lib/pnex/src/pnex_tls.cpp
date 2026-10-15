@@ -147,6 +147,8 @@ void pnex_tls_apply(WiFiClientSecure& client) {
     apply_client_identity(client);
 #if defined(ESP32)
     client.setCACert(s_ca_pem);
+    // Default is 120 s, past the 60 s loop watchdog.
+    client.setHandshakeTimeout(20);
 #else
     // BearSSL: parse the PEM once (trust anchors cost a few KB of heap —
     // logged) and shrink the TLS buffers via MFLN to fit ~40 KB devices.
