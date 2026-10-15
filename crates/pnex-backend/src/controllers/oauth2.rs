@@ -215,6 +215,9 @@ pub struct SsoParams {
     /// Corrélation du callback natif (pont backend, cf. `native_callback`) —
     /// relayé à Rauthy qui le renvoie tels quels au redirect_uri.
     pub state: Option<String>,
+    /// `login` only: forces the sign-in form even with a live IdP session
+    /// (after a logout that could not end it, SEC-41). Other values ignored.
+    pub prompt: Option<String>,
 }
 
 /// Encode une paire clé/valeur en query string (application/x-www-form-urlencoded).
@@ -291,6 +294,9 @@ async fn sso(
     ];
     if let Some(state) = params.state {
         pairs.push(("state", state));
+    }
+    if params.prompt.as_deref() == Some("login") {
+        pairs.push(("prompt", "login".into()));
     }
     // Pages UI Rauthy (pas des endpoints OIDC) : `action=register` →
     // formulaire d'inscription (activation par mail), `action=reset` →

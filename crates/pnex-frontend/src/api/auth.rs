@@ -6,7 +6,8 @@ use crate::api::client;
 use crate::api::error::ApiError;
 use crate::auth::pkce;
 use crate::storage::{
-    self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_ID_TOKEN, KEY_PKCE_VERIFIER, KEY_REFRESH_TOKEN,
+    self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_FORCE_LOGIN, KEY_ID_TOKEN, KEY_PKCE_VERIFIER,
+    KEY_REFRESH_TOKEN,
 };
 
 /// `POST /api/v1/oauth2/token` (grant `authorization_code` + PKCE).
@@ -48,6 +49,14 @@ pub fn store_tokens(tokens: &TokenResponse) {
     if let Some(id_token) = &tokens.id_token {
         local.set(KEY_ID_TOKEN, id_token);
     }
+    local.remove(KEY_FORCE_LOGIN);
+}
+
+/// The IdP session could not be ended (no id_token hint): the next login
+/// forces the sign-in form, so a shared computer does not log the previous
+/// user back in silently (SEC-41).
+pub fn force_next_login() {
+    storage::local().set(KEY_FORCE_LOGIN, "1");
 }
 
 /// Purge les tokens (déconnexion / expiration).
@@ -150,6 +159,8 @@ fn sso_url(challenge: &str, action: Option<&str>) -> String {
     );
     if let Some(action) = action {
         url.push_str(&format!("&action={}", pkce::urlencode(action)));
+    } else if storage::local().get(KEY_FORCE_LOGIN).is_some() {
+        url.push_str("&prompt=login");
     }
     url
 }

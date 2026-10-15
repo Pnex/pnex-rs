@@ -557,6 +557,39 @@ async fn flow_event(
 
 /// Runtime-facing outcome of a model call: 200 + body, or a status with
 /// `{code, error}` (verbatim diagnostic shown in the node status).
+/// SEC-34: the org named by an AI call must have a deployed flow holding a
+/// node of the calling kind — a compromised runtime can no longer spend
+/// the model and quota of an org that never asked for it.
+async fn ai_node_deployed(
+    ctx: &AppContext,
+    org_id: i64,
+    is_caller: fn(&pnex_core::flow::FlowNodeKind) -> bool,
+) -> Option<Response> {
+    let flows = match crate::controllers::flows::deployed_flows_with_versions(&ctx.db, org_id).await
+    {
+        Ok(f) => f,
+        Err(_) => return Some(StatusCode::INTERNAL_SERVER_ERROR.into_response()),
+    };
+    let found = flows.into_iter().any(|(_, version)| {
+        serde_json::from_value::<pnex_core::flow::FlowGraph>(version.graph)
+            .is_ok_and(|g| g.nodes.iter().any(|n| is_caller(&n.kind)))
+    });
+    if found {
+        return None;
+    }
+    tracing::warn!(
+        org_id,
+        "flow model call refused: no deployed node of that kind"
+    );
+    Some(
+        (
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({ "code": "flow-ai-node-absent" })),
+        )
+            .into_response(),
+    )
+}
+
 fn flow_ai_reply<T: serde::Serialize>(
     org_id: i64,
     res: Result<T, crate::services::flow_ai::FlowAiError>,
@@ -682,6 +715,13 @@ async fn flow_ai_caption(
     if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
         return Ok(r);
     }
+    if let Some(r) = ai_node_deployed(&ctx, req.org_id, |k| {
+        matches!(k, pnex_core::flow::FlowNodeKind::VisionCaption { .. })
+    })
+    .await
+    {
+        return Ok(r);
+    }
     let res = crate::services::flow_ai::caption(&ctx, &req).await;
     Ok(flow_ai_reply(req.org_id, res))
 }
@@ -695,6 +735,13 @@ async fn flow_ai_text(
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     }
     if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    if let Some(r) = ai_node_deployed(&ctx, req.org_id, |k| {
+        matches!(k, pnex_core::flow::FlowNodeKind::LlmText { .. })
+    })
+    .await
+    {
         return Ok(r);
     }
     let res = crate::services::flow_ai::text(&ctx, &req).await;
@@ -712,6 +759,13 @@ async fn flow_ai_fuse(
     if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
         return Ok(r);
     }
+    if let Some(r) = ai_node_deployed(&ctx, req.org_id, |k| {
+        matches!(k, pnex_core::flow::FlowNodeKind::MediaFuse { .. })
+    })
+    .await
+    {
+        return Ok(r);
+    }
     let res = crate::services::flow_ai::fuse(&ctx, &req).await;
     Ok(flow_ai_reply(req.org_id, res))
 }
@@ -725,6 +779,13 @@ async fn flow_ai_decide(
         return Ok(StatusCode::UNAUTHORIZED.into_response());
     }
     if let Some(r) = fenced(&ctx, &headers, req.org_id).await {
+        return Ok(r);
+    }
+    if let Some(r) = ai_node_deployed(&ctx, req.org_id, |k| {
+        matches!(k, pnex_core::flow::FlowNodeKind::TextDecide { .. })
+    })
+    .await
+    {
         return Ok(r);
     }
     let res = crate::services::decide::decide(&ctx, &req).await;
