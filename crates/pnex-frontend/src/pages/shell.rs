@@ -880,6 +880,7 @@ fn search_group_key(entity_type: &str) -> &'static str {
         "poi" => "search-group-poi",
         "tour" => "search-group-tour",
         "media" => "search-group-media",
+        "document" => "search-group-document",
         "layer" => "search-group-layer",
         "function" => "search-group-function",
         "flow" => "search-group-flow",
@@ -914,7 +915,7 @@ fn open_hit(
             crate::state::tours::OPEN_TOUR.with_mut(|v| *v = Some(id));
             navigator.push(Route::Studio {});
         }
-        "media" => {
+        "media" | "document" => {
             let id = hit.id.clone();
             crate::state::media::OPEN_MEDIA.with_mut(|v| *v = Some(id));
             navigator.push(Route::Media {});
@@ -998,6 +999,9 @@ fn HitIcon(entity_type: String) -> Element {
                 },
                 "media" => rsx! {
                     crate::components::icons::Image { class: "h-4 w-4" }
+                },
+                "document" => rsx! {
+                    crate::components::icons::BookOpen { class: "h-4 w-4" }
                 },
                 "layer" => rsx! {
                     crate::components::icons::Layers { class: "h-4 w-4" }

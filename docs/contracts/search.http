@@ -6,8 +6,9 @@
 ### ADDITIVE endpoint: pnex_api_contract::CONTRACT is NOT bumped.
 ### Deliberate D14 deviation: NO {count, next, previous, results} envelope —
 ### typeahead shape {count, q, groups:[{entity_type, results:[...]}]}, empty
-### groups omitted, canonical group order (device, poi, tour, media, layer,
-### function, flow, dashboard, edge_ref).
+### groups omitted, canonical group order (device, poi, tour, media, document,
+### layer, function, flow, dashboard, edge_ref, object). `document` = full-text
+### hits in indexed document contents, one per asset, id = media asset id.
 ### Matching: case-insensitive containment, `lower(col) LIKE pattern
 ### ESCAPE '\'`. Wildcards `%`, `_`, `\` in the term are escaped (literal).
 ### Tokenization: the term is split on whitespace; each token is stripped

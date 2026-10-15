@@ -465,6 +465,32 @@ async fn fetch_objects(
         .collect())
 }
 
+/// Document contents (O54): full-text hits of the org's indexed documents,
+/// one row per asset (best chunk first). Subtitle = the excerpt, match
+/// markers stripped; the hit opens the media asset.
+async fn fetch_documents(
+    db: &DatabaseConnection,
+    org_id: i64,
+    term: &str,
+    candidate_limit: u64,
+) -> Fetched {
+    let hits = crate::services::doc_search::search(db, org_id, term, None, candidate_limit).await?;
+    let mut seen = std::collections::HashSet::new();
+    Ok(hits
+        .into_iter()
+        .filter(|h| seen.insert(h.asset_id))
+        .map(|h| Candidate {
+            prefix: false,
+            hit: SearchHit {
+                id: h.asset_id.to_string(),
+                title: h.asset_name,
+                subtitle: Some(h.snippet.replace(['⟦', '⟧'], "")),
+                updated_at: String::new(),
+            },
+        })
+        .collect())
+}
+
 /// Stable ranking: prefix matches first, recency order preserved within
 /// each class; then truncate to the per-group cap.
 fn rank_and_cap(mut candidates: Vec<Candidate>, take: i64) -> Vec<SearchHit> {
@@ -474,7 +500,7 @@ fn rank_and_cap(mut candidates: Vec<Candidate>, take: i64) -> Vec<SearchHit> {
 }
 
 /// Handler: empty `q` → empty 200 (silent default, never 400); otherwise
-/// the 10 groups run concurrently and reassemble in canonical order.
+/// the 11 groups run concurrently and reassemble in canonical order.
 async fn search(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -500,11 +526,12 @@ async fn search(
     let candidate_limit = (take as u64 * OVERSHOOT).clamp(6, 30);
     let org_id = org.org.id;
 
-    let (dev, poi, tour, media, layer, func, flow, dash, refs, objs) = tokio::join!(
+    let (dev, poi, tour, media, docs, layer, func, flow, dash, refs, objs) = tokio::join!(
         fetch_devices(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_pois(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_tours(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_media(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
+        fetch_documents(&ctx.db, org_id, term, candidate_limit),
         fetch_layers(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_functions(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
         fetch_flows(&ctx.db, org_id, &patterns, prefix_token, candidate_limit),
@@ -519,6 +546,7 @@ async fn search(
         ("poi", poi),
         ("tour", tour),
         ("media", media),
+        ("document", docs),
         ("layer", layer),
         ("function", func),
         ("flow", flow),

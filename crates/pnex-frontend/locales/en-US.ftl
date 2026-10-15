@@ -2066,6 +2066,7 @@ search-group-device = Devices
 search-group-poi = POIs
 search-group-tour = 3D tours
 search-group-media = Media
+search-group-document = Documents
 search-group-layer = Annotation layers
 search-group-function = Functions
 search-group-flow = Flows
