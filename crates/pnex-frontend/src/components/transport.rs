@@ -112,7 +112,7 @@ pub fn ScrubBar(
     rsx! {
         div { class: "min-w-24 flex-1",
             div {
-                class: "relative h-8 cursor-pointer touch-none select-none",
+                class: "relative h-8 cursor-pointer touch-none select-none pointer-coarse:h-11",
                 role: "slider",
                 tabindex: "0",
                 "aria-label": t!("transport-position"),
@@ -163,8 +163,15 @@ pub fn ScrubBar(
                 }
                 if let Some(c) = at {
                     span {
-                        class: "absolute top-0 h-8 w-0.5 -translate-x-1/2 bg-signal",
+                        class: "absolute inset-y-0 w-0.5 -translate-x-1/2 bg-signal",
                         style: "left: {c}%",
+                    }
+                    // The handle: a knob to grab (bigger under a finger).
+                    span {
+                        class: "absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-full border-2 border-surface bg-signal shadow transition-transform hover:scale-125 pointer-coarse:h-6 pointer-coarse:w-6",
+                        class: if dragging() { "scale-125 cursor-grabbing" },
+                        style: "left: {c}%",
+                        "data-testid": "transport-handle",
                     }
                 }
             }
