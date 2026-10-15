@@ -399,6 +399,13 @@ avec la passe P0.1 (même banc).
 
 ### P1.4 — Annotations : couche ETL/device
 
+> **✅ Couvert par D147** (2026-10-07, `annotations.md` §13), constaté le
+> 2026-10-15 : les annotations sont des mini-tableaux de bord ancrés sur
+> le média (valeur, sparkline, jauge, indicateur sur une série, contrôles
+> d'org). L'écriture directe d'un device depuis une annotation reste
+> exclue (D123 : une surface lit ou écrit un contrôle, un flow agit).
+> Section conservée pour l'historique.
+
 Le backend v4 (ensembles-tour, studio) est livré ; reste la partie
 ETL/device (`device_pk null` aujourd'hui).
 
