@@ -185,7 +185,11 @@ async fn ws_device(
         match device_liveness::claim(snap.device_registry_id, &session, settings_owned.silence_ttl_secs).await
         {
             Ok(true) => {}
-            Ok(false) => return close_socket(&mut socket, 4003, "Device already connected").await,
+            Ok(false) => {
+                // Logged: a device kept out by a lease looks offline for no visible reason.
+                tracing::warn!(device = %snap.device_id, "connection refused: a live session holds the lease");
+                return close_socket(&mut socket, 4003, "Device already connected").await;
+            }
             Err(_) => return close_socket(&mut socket, 1013, "Try again later").await,
         }
         // Local registry: the downlink is registered before the loop (a
