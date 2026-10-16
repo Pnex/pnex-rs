@@ -150,7 +150,8 @@ fn annotatable(asset: &api::media::MediaAsset) -> bool {
         | MediaKind::Document
         | MediaKind::Table
         | MediaKind::Audio
-        | MediaKind::Video => false,
+        | MediaKind::Video
+        | MediaKind::Mesh => false,
     }
 }
 

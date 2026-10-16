@@ -33,6 +33,7 @@ pub(super) fn MediaPreview(
     let is_image = is_photo || is_floorplan;
     let is_audio = asset.media_kind() == MediaKind::Audio;
     let is_video = asset.media_kind() == MediaKind::Video;
+    let is_mesh = asset.media_kind() == MediaKind::Mesh;
 
     // Mime cloned BEFORE the effects: a `move` capturing
     // `asset.content_type` = partial move of `asset`, clashing with the
@@ -139,6 +140,9 @@ pub(super) fn MediaPreview(
                         MediaKind::Video => rsx! {
                             icons::Video { class: "h-3 w-3" }
                         },
+                        MediaKind::Mesh => rsx! {
+                            icons::Cube { class: "h-3 w-3" }
+                        },
                     }
                     {kind_label(&asset)}
                 }
@@ -189,6 +193,17 @@ pub(super) fn MediaPreview(
                     Some(url) => rsx! {
                         div { class: "w-full p-3",
                             MediaPlayer { id: "media-preview-player", src: url, video: true }
+                        }
+                    },
+                    None => rsx! {
+                        Gerbe { size: 36, inherit: true }
+                    },
+                }
+            } else if is_mesh {
+                match blob_url() {
+                    Some(url) => rsx! {
+                        div { class: "w-full",
+                            crate::components::mesh_viewer::MeshViewer { host_id: host_id.clone(), url }
                         }
                     },
                     None => rsx! {

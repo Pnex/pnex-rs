@@ -27,6 +27,8 @@ pub enum MediaKind {
     Audio,
     /// MP4 / MOV clip (Vision Lab: frames of a video).
     Video,
+    /// GLB 3D model of an object's gallery (assisted-creation.md D231).
+    Mesh,
 }
 
 impl MediaKind {
@@ -41,6 +43,7 @@ impl MediaKind {
             MediaKind::Table => "table",
             MediaKind::Audio => "audio",
             MediaKind::Video => "video",
+            MediaKind::Mesh => "mesh",
         }
     }
 }
@@ -92,6 +95,7 @@ impl MediaAsset {
             "table" => MediaKind::Table,
             "audio" => MediaKind::Audio,
             "video" => MediaKind::Video,
+            "mesh" => MediaKind::Mesh,
             _ => MediaKind::Photo,
         }
     }

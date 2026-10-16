@@ -16,7 +16,8 @@ pub(super) struct UploadQuery {
 /// `document` / `table` = indexed for search (doc-search.md P1).
 /// `audio` = voice clips (voice-id.md: enrolment of a voice profile).
 /// `video` = MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
-const KINDS: [&str; 9] = [
+/// `mesh` = GLB 3D model of an object's gallery (assisted-creation.md D231).
+const KINDS: [&str; 10] = [
     "photo",
     "panorama",
     "splat",
@@ -26,6 +27,7 @@ const KINDS: [&str; 9] = [
     "table",
     "audio",
     "video",
+    "mesh",
 ];
 
 /// `POST /api/v1/media` — upload octet-stream, crée asset + version 1.

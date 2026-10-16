@@ -38,6 +38,8 @@ if (!gsplatLib || typeof gsplatLib.WebGLRenderer !== 'function') {
     : null;
 }
 
+var mesh = require('./mesh.js');
+
 function hostOf(hostId) {
   return document.getElementById(hostId);
 }
@@ -764,6 +766,8 @@ function followCards(hostId, overlayId, on) {
 function unmountHost(hostId) {
   var host = hostOf(hostId);
   if (!host) return;
+  // 3D model: stop the render loop, free the GPU resources.
+  mesh.stop(host);
   // Camera live view: close the socket, stop reconnecting, revoke the URL.
   stopCamera(host);
   // Splat: abort the load, drop listeners, dispose renderer/controls.
@@ -816,6 +820,7 @@ function unmountHost(hostId) {
 
 window.pnexViewers = {
   panorama: { mount: mountPanorama, unmount: unmountHost },
+  mesh: Object.assign({ unmount: unmountHost }, mesh.api),
   splat: {
     mount: mountSplat,
     unmount: unmountHost,

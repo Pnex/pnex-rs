@@ -4,6 +4,7 @@
 
 pub mod action_dialog;
 pub mod add_to_case;
+pub mod gallery;
 pub mod graph_view;
 pub mod object_link;
 pub mod open_case;
@@ -11,6 +12,7 @@ pub mod property_input;
 
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::i18n;
+use dioxus_i18n::t;
 use pnex_core::ontology::api::ObjectTypeView;
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
 
@@ -76,6 +78,26 @@ pub fn precision_label(p: &str) -> String {
 
 /// A `fuzzy_time` value read at its precision: `2019-03` for a month,
 /// `≈ a → b` for an approximation (UTC).
+/// « 1 250,50 EUR (estimé) », in the UI language.
+pub fn money_label(v: &serde_json::Value) -> String {
+    let Some(m) = pnex_core::ontology::schema::Money::parse(v) else {
+        return v.to_string();
+    };
+    let amount = pnex_core::ontology::money::full_amount(
+        m.amount,
+        crate::i18n::current_tag().starts_with("fr"),
+    );
+    if m.estimated {
+        format!(
+            "{amount} {} {}",
+            m.currency,
+            t!("onto-money-estimated-mark")
+        )
+    } else {
+        format!("{amount} {}", m.currency)
+    }
+}
+
 pub fn fuzzy_label(v: &serde_json::Value) -> String {
     let get = |k: &str| {
         v.get(k)

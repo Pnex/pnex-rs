@@ -54,6 +54,9 @@ struct PickerPage {
 #[component]
 pub fn ResourcePicker(
     initial_tab: Option<PickerTab>,
+    /// Media tab only (an object's gallery, D231).
+    #[props(default)]
+    media_only: bool,
     on_picked: Callback<ResourcePick>,
     on_close: Callback<()>,
 ) -> Element {
@@ -172,7 +175,7 @@ pub fn ResourcePicker(
             div { class: "space-y-3",
                 // Onglets (pill actif bleu) — tableau const (dioxus : pas de
                 // déstructuration de tuple dans le `for` du rsx).
-                div { class: "flex flex-wrap gap-1",
+                div { class: "flex flex-wrap gap-1", hidden: media_only,
                     for tab_def in [
                         (PickerTab::Media, "poi-picker-tab-media"),
                         (PickerTab::Tour, "poi-picker-tab-tour"),
