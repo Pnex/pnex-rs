@@ -407,4 +407,55 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await expect(page.getByTestId('case-graph-simplified')).toBeVisible();
     await expect(page.getByTestId('case-graph-node').filter({ hasText: `yard ${run}` })).toBeVisible();
   });
+
+  test('amounts entered on payments draw the money view, with what an intermediary kept', async ({
+    app,
+    page,
+    api,
+    prefix,
+    capture,
+  }) => {
+    const run = Date.now().toString(36);
+    const c = await api.post('/ontology/objects', {
+      type_key: 'case', title: `${prefix} money ${run}`, properties: { status: 'open', legal_basis: 'legitimate interest' },
+    });
+    const [ann, acme, bob] = await Promise.all(
+      [['person', 'Ann'], ['organization', 'Acme'], ['person', 'Bob']].map(([type_key, name]) =>
+        api.post('/ontology/objects', { type_key, title: `${prefix} ${name} ${run}`, properties: {} }),
+      ),
+    );
+    // Ann pays Acme 1000, Acme passes 400 on to Bob: 1000 paid from the source,
+    // 600 stay untraced at Acme.
+    const pay = (title: string, at: string, from: string, to: string) =>
+      api.post(`/cases/${c.id}/events`, {
+        title,
+        occurred: instant(at),
+        attach: [
+          { object_id: from, role: 'payer' },
+          { object_id: to, role: 'payee' },
+        ],
+      });
+    await pay('Wire one', '2025-03-01T09:00:00Z', ann.id, acme.id);
+    await pay('Wire two', '2025-03-08T09:00:00Z', acme.id, bob.id);
+
+    await app.goto(`/cases/${c.id}`);
+    await page.getByTestId('case-view-money').click();
+    await expect(page.getByText(app.t('money-empty-title'))).toBeVisible();
+
+    for (const [title, amount] of [['Wire one', '1000'], ['Wire two', '400']]) {
+      await page.getByTestId('case-event').filter({ hasText: title }).click();
+      const field = page.getByTestId('case-inspector').getByTestId('cw-amount');
+      await field.fill(amount);
+      await field.press('Enter');
+      await field.blur();
+    }
+
+    const money = page.getByTestId('case-money');
+    await expect(money.getByTestId('money-total')).toContainText(/1[,\u202f]000/); // en: 1,000 · fr: 1 000
+    await expect(money.getByTestId('money-untraced')).toContainText('600');
+    await capture('money', { caption: 'Payments as a Sankey, untraced money at the intermediary' });
+    // An SVG stroke: Playwright's visibility check is unreliable on it.
+    await money.getByTestId('money-band').first().click({ force: true });
+    await expect(money.getByTestId('money-band-detail')).toBeVisible();
+  });
 });

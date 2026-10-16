@@ -53,6 +53,8 @@ test.describe('vision lab loop', { tag: ['@lab'] }, () => {
 
     await app.goto(`/lab/${project.id}`);
     await page.getByRole('button', { name: new RegExp(`${clip} 00:04`) }).click();
+    // Automatic labeling sits in a folded panel under the timeline.
+    await page.getByText(app.t('lab-auto-title'), { exact: true }).click();
     await page.getByRole('button', { name: app.t('lab-interpolate') }).click();
     await expect(page.getByText(`cart · ${app.t('lab-interpolated')}`)).toBeVisible();
     await capture('lab-interpolate', { caption: 'Vision Lab: a box interpolated between two annotated frames' });
