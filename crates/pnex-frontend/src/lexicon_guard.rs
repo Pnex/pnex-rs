@@ -167,6 +167,51 @@ const RULES: &[Rule] = &[
         term: "annotated",
         use_instead: "labeled (Vision Lab)",
         allowed_keys: &["annot-"],
+    }, // cases-money.md: money moved by an event is a « versement » shown in
+    // the « Argent » view; « flux » is the stream (Flux / Streams).
+    Rule {
+        scope: Scope::Fr,
+        term: "flux financiers",
+        use_instead: "versements (vue Argent)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "flux d'argent",
+        use_instead: "versements (vue Argent)",
+        allowed_keys: &[],
+    },
+    // D231: the media of an object are its « galerie »; a skeleton's
+    // parts are « articulations ».
+    Rule {
+        scope: Scope::Fr,
+        term: "assets",
+        use_instead: "galerie (médias d'un objet)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "bone",
+        use_instead: "articulation",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "paiement",
+        use_instead: "versement",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "transaction",
+        use_instead: "versement",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "money flows",
+        use_instead: "payments (Money view)",
+        allowed_keys: &[],
     },
 ];
 

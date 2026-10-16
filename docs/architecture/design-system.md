@@ -238,6 +238,21 @@ les règles plus anciennes qui les contredisent.
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | État sauvegardé d'un objet | Version | Version | — |
 | Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |
+| Événement d'un dossier qui déplace de l'argent (montant + payeur + bénéficiaire) | Versement | Payment | ni « paiement », ni « transaction » |
+| Vue d'un dossier : diagramme de Sankey des versements | Argent | Money | pas « Flux » (= streams) |
+| Reçu par un intermédiaire sans versement sortant documenté | Non tracé | Untraced | pas « manquant » |
+| Part d'un lien « possède » ; chaînes de parts | Part détenue / Détention | Share held / Ownership | — |
+| Personne au-dessus du seuil de détention calculé | Bénéficiaire effectif (calculé) | Beneficial owner (computed) | jamais présenté comme un fait |
+| Espace de travail de création : vidéo, récit (D225) | Production | Production | pas « projet » (= firmware, Vision Lab) |
+| Regroupement ordonné d'une production : chapitre, accroche… (D229) | Partie | Part | — |
+| Événement d'une production, à sa place dans le récit (D226) | Séquence | Sequence | pas « scène » (= scène 360° du Studio) |
+| Être de fiction d'une production (D230) | Personnage | Character | jamais une personne réelle |
+| Unité visuelle d'une séquence : cadrage, prompt, rendu (D232) | Cadrage | Shot | pas « plan » (= plan d'étage) |
+| Médias attachés à un objet : images, 3D, voix (D231) | Galerie | Gallery | pas « assets » |
+| Fichier GLB d'un objet, vu dans la visionneuse 3D (D231) | Modèle 3D | 3D model | pas « modèle » seul (= modèle de vision) |
+| Angles des articulations d'un modèle 3D, enregistrés sous un nom | Pose | Pose | — |
+| Os d'un modèle 3D qu'on fait tourner | Articulation | Joint | pas « os », pas « bone » |
+| Média produit par un fournisseur de génération (D235) | Généré | Generated | — |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :

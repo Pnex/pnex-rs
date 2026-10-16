@@ -82,6 +82,9 @@ pub enum PropertyKind {
     /// A day-granular period (`super::recurrence::Recurrence`): its
     /// occurrences are materialized as time ranges of the object.
     Recurrence,
+    /// An amount of money (cases-money.md K54):
+    /// `{"amount": f64, "currency": ISO 4217, "estimated"?: bool}`.
+    Money,
 }
 
 /// Precisions of a `fuzzy_time` value (cases.md K5).
@@ -110,6 +113,7 @@ impl PropertyKind {
             Self::Events { .. } => "events",
             Self::FuzzyTime => "fuzzy_time",
             Self::Recurrence => "recurrence",
+            Self::Money => "money",
         }
     }
 }
@@ -192,6 +196,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             },
             "fuzzy_time" => PropertyKind::FuzzyTime,
             "recurrence" => PropertyKind::Recurrence,
+            "money" => PropertyKind::Money,
             other => {
                 return Err(D::Error::unknown_variant(
                     other,
@@ -209,6 +214,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
                         "events",
                         "fuzzy_time",
                         "recurrence",
+                        "money",
                     ],
                 ))
             }
@@ -354,10 +360,53 @@ fn check_value(d: &PropertyDef, v: &Value) -> Result<Value, String> {
             Ok(v.clone())
         }
         (PropertyKind::FuzzyTime, Value::Object(o)) => check_fuzzy(o).ok_or_else(invalid),
+        (PropertyKind::Money, Value::Object(_)) => {
+            Money::parse(v).map(|m| m.to_value()).ok_or_else(invalid)
+        }
         (PropertyKind::Recurrence, Value::Object(_)) => super::recurrence::Recurrence::parse(v)
             .map(|r| r.to_value())
             .ok_or_else(invalid),
         _ => Err(invalid()),
+    }
+}
+
+/// A `money` value. No implicit currency conversion anywhere: amounts add
+/// up per currency only.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Money {
+    pub amount: f64,
+    /// ISO 4217 code, upper case.
+    pub currency: String,
+    /// Known only as an estimate (a range, an order of magnitude).
+    pub estimated: bool,
+}
+
+impl Money {
+    pub fn parse(v: &Value) -> Option<Self> {
+        let o = v.as_object()?;
+        let amount = o.get("amount")?.as_f64().filter(|a| a.is_finite())?;
+        let currency = o.get("currency")?.as_str()?;
+        let estimated = match o.get("estimated") {
+            None => false,
+            Some(e) => e.as_bool()?,
+        };
+        let known = 2 + usize::from(o.contains_key("estimated"));
+        (o.len() == known
+            && currency.len() == 3
+            && currency.bytes().all(|b| b.is_ascii_uppercase()))
+        .then(|| Self {
+            amount,
+            currency: currency.to_string(),
+            estimated,
+        })
+    }
+
+    pub fn to_value(&self) -> Value {
+        let mut v = serde_json::json!({"amount": self.amount, "currency": self.currency});
+        if self.estimated {
+            v["estimated"] = Value::Bool(true);
+        }
+        v
     }
 }
 
@@ -553,6 +602,33 @@ mod tests {
             json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-02T00:00:00Z", "precision": "week"}),
             json!({"from": "2019-03-01T00:00:00Z", "to": "2019-03-02T00:00:00Z", "precision": "day", "x": 1}),
             json!("2019-03-01"),
+        ];
+        for b in bad {
+            assert_eq!(c(b.clone()).unwrap_err().1, FIELD_INVALID, "{b}");
+        }
+        let v = serde_json::to_value(&d[0]).unwrap();
+        assert_eq!(serde_json::from_value::<PropertyDef>(v).unwrap(), d[0]);
+    }
+
+    #[test]
+    fn money_values() {
+        let d = vec![def("amount", PropertyKind::Money)];
+        let c = |v: Value| check_values(&d, json!({ "amount": v }).as_object().unwrap());
+        let ok = json!({"amount": 1250.5, "currency": "EUR"});
+        assert_eq!(c(ok.clone()).unwrap()["amount"], ok);
+        let est = json!({"amount": 3e6, "currency": "USD", "estimated": true});
+        assert_eq!(c(est.clone()).unwrap()["amount"], est);
+        // `estimated: false` is the default and is dropped.
+        let f = c(json!({"amount": 1, "currency": "EUR", "estimated": false})).unwrap();
+        assert_eq!(f["amount"], json!({"amount": 1.0, "currency": "EUR"}));
+        let bad = [
+            json!({"amount": 1, "currency": "eur"}),
+            json!({"amount": 1, "currency": "EURO"}),
+            json!({"amount": "1", "currency": "EUR"}),
+            json!({"currency": "EUR"}),
+            json!({"amount": 1, "currency": "EUR", "x": 1}),
+            json!({"amount": 1, "currency": "EUR", "estimated": "yes"}),
+            json!(12),
         ];
         for b in bad {
             assert_eq!(c(b.clone()).unwrap_err().1, FIELD_INVALID, "{b}");

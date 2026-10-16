@@ -86,7 +86,11 @@ function drawLabel(ctx, data, settings) {
   const size = settings.labelSize;
   ctx.font = `${data.highlighted ? 600 : 400} ${size}px ${settings.labelFont}`;
   const [x, y] = [data.x + data.size + 4, data.y + size / 3];
-  const box = [x - 2, y - size, x + ctx.measureText(data.label).width + 2, y + 4];
+  const textW = ctx.measureText(data.label).width;
+  // Folded pieces and claims (cases-money.md K49): a count pill after the label.
+  const badge = data.evidence > 0 ? String(data.evidence) : '';
+  const badgeW = badge ? ctx.measureText(badge).width + 10 : 0;
+  const box = [x - 2, y - size, x + textW + (badge ? badgeW + 6 : 0) + 2, y + 4];
   const hit = (b) => box[0] < b[2] && b[0] < box[2] && box[1] < b[3] && b[1] < box[3];
   if (!data.highlighted && labelBoxes.some(hit)) return;
   labelBoxes.push(box);
@@ -96,6 +100,15 @@ function drawLabel(ctx, data, settings) {
   ctx.strokeText(data.label, x, y);
   ctx.fillStyle = data.ink;
   ctx.fillText(data.label, x, y);
+  if (badge) {
+    const bx = x + textW + 6;
+    ctx.beginPath();
+    ctx.roundRect(bx, y - size + 1, badgeW, size + 2, (size + 2) / 2);
+    ctx.fillStyle = data.mark || data.line;
+    ctx.fill();
+    ctx.fillStyle = data.surface;
+    ctx.fillText(badge, bx + 5, y);
+  }
 }
 
 // Hover: the full title in a box (canvas too).
@@ -271,7 +284,7 @@ function focusOf(h) {
 
 function nodeReducer(h, node, d) {
   const c = h.colors;
-  const out = { ...d, halo: c.ground, ink: c.ink, surface: c.surface, line: c['line-strong'] };
+  const out = { ...d, halo: c.ground, ink: c.ink, surface: c.surface, line: c['line-strong'], mark: c.mark };
   if (h.state.hidden.has(d.family)) return { ...out, hidden: true };
   const focus = h.focus;
   const selected = h.state.selected === node;
@@ -381,7 +394,7 @@ function setData(hostId, raw) {
     if (work.hasNode(n.id)) continue;
     work.addNode(n.id, {
       label: short(n.title), full: n.title, family: n.family, event: !!n.event,
-      extra: !!n.extra, at: n.at,
+      extra: !!n.extra, at: n.at, evidence: n.evidence || 0,
     });
   }
   data.edges.forEach((e, k) => {

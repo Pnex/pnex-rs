@@ -334,6 +334,11 @@ Packs de référence pour valider le noyau :
   Personnalité, Organisation, Sujet ; liens temporels « possède »,
   « présente », « intervient dans », « rattaché à » ; provenance jusqu'au
   segment de transcription.
+- **Création assistée** (`assisted-creation.md`, v0.3 2026-10-16) :
+  Production, Partie, Personnage, Cadrage ; la séquence (scène) est un
+  événement du noyau ; profils Enquête, Vidéo, Fiction. Les briques transverses
+  (espace de travail générique, liens ordonnés, rôles de pack, assets sur
+  tout objet, visionneuse 3D, exports) sont au noyau.
 
 Règle : une fonctionnalité qui n'a de sens que pour un pack va **dans le
 pack**, jamais dans le noyau.

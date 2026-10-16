@@ -10,6 +10,7 @@ mod inspector;
 mod map;
 mod markdown;
 mod model;
+mod money;
 mod pages;
 mod palette;
 mod purge;
@@ -100,6 +101,8 @@ pub(super) enum View {
     Map,
     /// Actors as threads through time (storyline).
     Story,
+    /// Payments as a Sankey diagram (cases-money.md K57).
+    Money,
 }
 
 /// Shared state of the workspace (all `Copy` handles).
@@ -117,6 +120,8 @@ pub(super) struct Ws {
     pub sel: Signal<Sel>,
     /// Only this member's chronology is shown.
     pub follow: Signal<Option<String>>,
+    /// A chain of links between two objects (K51): the graph dims the rest.
+    pub path: Signal<Vec<ObjectRef>>,
     pub drag: Signal<Option<Drag>>,
     pub target: Signal<Option<Target>>,
     pub playing: Signal<bool>,
@@ -356,6 +361,7 @@ pub fn CaseWorkspace(id: String) -> Element {
         cursor: use_signal(|| 0),
         sel: use_signal(|| Sel::None),
         follow: use_signal(|| None),
+        path: use_signal(Vec::new),
         drag: use_signal(|| None),
         target: use_signal(|| None),
         playing: use_signal(|| false),
@@ -643,6 +649,9 @@ pub fn CaseWorkspace(id: String) -> Element {
                             View::Story => rsx! {
                                 story::Story { workspace: w.clone() }
                             },
+                            View::Money => rsx! {
+                                money::Money { workspace: w.clone() }
+                            },
                         }
                         if w.events.is_empty() && w.undated.is_empty() {
                             EmptyCase {}
@@ -806,6 +815,14 @@ fn Actions(workspace: Workspace) -> Element {
                         dock.set(false);
                     },
                     {t!("cw-story")}
+                }
+                button {
+                    r#type: "button",
+                    class: tab(view() == View::Money),
+                    "aria-pressed": view() == View::Money,
+                    "data-testid": "case-view-money",
+                    onclick: move |_| view.set(View::Money),
+                    {t!("money-view")}
                 }
             }
             button {

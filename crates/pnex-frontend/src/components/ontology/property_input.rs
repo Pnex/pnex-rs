@@ -194,6 +194,9 @@ fn PropertyField(
         PropertyKind::Recurrence => rsx! {
             RecurrenceField { name: key.clone(), doc, current }
         },
+        PropertyKind::Money => rsx! {
+            MoneyField { name: key.clone(), doc, current }
+        },
         kind => {
             let input_type = match kind {
                 PropertyKind::Date => "date",
@@ -331,6 +334,69 @@ fn GeoAreaField(name: String, doc: Signal<Map<String, Value>>, current: Option<V
                 if invalid {
                     p { class: "text-xs text-alarm", {t!("onto-area-invalid")} }
                 }
+            }
+        }
+    }
+}
+
+/// `money` entry: amount, ISO 4217 currency (EUR by default), estimated.
+#[component]
+fn MoneyField(name: String, doc: Signal<Map<String, Value>>, current: Option<Value>) -> Element {
+    let m = current
+        .as_ref()
+        .and_then(pnex_core::ontology::schema::Money::parse);
+    let mut amount = use_signal(|| m.as_ref().map(|m| m.amount.to_string()).unwrap_or_default());
+    let mut currency = use_signal(|| m.as_ref().map_or("EUR".to_string(), |m| m.currency.clone()));
+    let mut estimated = use_signal(|| m.as_ref().is_some_and(|m| m.estimated));
+    let apply = move |a: String, c: String, e: bool| {
+        let v = match a.trim().replace(',', ".").parse::<f64>() {
+            Ok(x) if x.is_finite() => pnex_core::ontology::schema::Money {
+                amount: x,
+                currency: c.trim().to_uppercase(),
+                estimated: e,
+            }
+            .to_value(),
+            _ => Value::Null,
+        };
+        set(doc, &name, v);
+    };
+    let (a1, a2, a3) = (apply.clone(), apply.clone(), apply);
+    rsx! {
+        div { class: "flex flex-wrap items-center gap-2",
+            input {
+                r#type: "text",
+                inputmode: "decimal",
+                class: "{INPUT} sm:w-40",
+                "data-testid": "money-amount",
+                "aria-label": t!("onto-money-amount"),
+                value: "{amount}",
+                oninput: move |e| {
+                    amount.set(e.value());
+                    a1(e.value(), currency(), estimated());
+                },
+            }
+            input {
+                r#type: "text",
+                maxlength: 3,
+                class: "{INPUT} w-20 font-mono",
+                "data-testid": "money-currency",
+                "aria-label": t!("onto-money-currency"),
+                value: "{currency}",
+                oninput: move |e| {
+                    currency.set(e.value().to_uppercase());
+                    a2(amount(), e.value(), estimated());
+                },
+            }
+            label { class: "flex items-center gap-1 text-xs text-gray-600",
+                input {
+                    r#type: "checkbox",
+                    checked: estimated(),
+                    onchange: move |e| {
+                        estimated.set(e.checked());
+                        a3(amount(), currency(), e.checked());
+                    },
+                }
+                {t!("onto-money-estimated")}
             }
         }
     }
@@ -487,6 +553,12 @@ pub fn PropertyValue(
             let unit = unit.clone().unwrap_or_default();
             rsx! {
                 span { class: "font-mono", "{n} {unit}" }
+            }
+        }
+        (PropertyKind::Money, Value::Object(_)) => {
+            let text = super::money_label(&v);
+            rsx! {
+                span { class: "font-mono", "{text}" }
             }
         }
         (PropertyKind::Recurrence, Value::Object(_)) => {

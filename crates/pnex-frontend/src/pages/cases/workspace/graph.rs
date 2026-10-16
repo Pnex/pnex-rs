@@ -46,6 +46,8 @@ pub(super) struct GNode {
     pub extra: bool,
     /// `event`, or the colour family of the object's type (`family`).
     pub family: &'static str,
+    /// Pieces and claims folded into this node (cases-money.md K49).
+    pub evidence: usize,
 }
 
 /// Colour family of an object type in the graph (cases-graph-sigma.md GS6).
@@ -106,6 +108,7 @@ pub(super) fn build(
                 event_from: at,
                 extra,
                 family: if event { "event" } else { family(&o.type_key) },
+                evidence: 0,
             });
             Some(nodes.len() - 1)
         };
@@ -169,6 +172,74 @@ pub(super) fn build(
     (nodes, edges, hidden)
 }
 
+/// Families the graph can hide; `piece` and `claim` go together as the
+/// evidence layer, hidden by default (K49).
+pub(super) const FAMILIES: [&str; 6] = [
+    "person",
+    "organization",
+    "place",
+    "identifier",
+    "other",
+    EVIDENCE,
+];
+pub(super) const EVIDENCE: &str = "evidence";
+
+/// Colour token of a family chip: the same as its nodes in graph.js.
+fn family_token(family: &str) -> &'static str {
+    match family {
+        "person" => "signal",
+        "organization" => "ok",
+        "place" | "identifier" => "warn",
+        EVIDENCE => "mark",
+        _ => "idle",
+    }
+}
+
+fn is_evidence(family: &str) -> bool {
+    matches!(family, "piece" | "claim")
+}
+
+/// The graph without the hidden families. A hidden piece or claim is not
+/// lost: every node it touched counts it in `evidence` (a badge).
+pub(super) fn without(
+    (nodes, edges, capped): (Vec<GNode>, Vec<GEdge>, usize),
+    hidden: &HashSet<String>,
+) -> (Vec<GNode>, Vec<GEdge>, usize) {
+    let gone = |n: &GNode| {
+        hidden.contains(n.family) || (is_evidence(n.family) && hidden.contains(EVIDENCE))
+    };
+    let mut evidence = vec![0usize; nodes.len()];
+    for e in &edges {
+        for (x, y) in [(e.a, e.b), (e.b, e.a)] {
+            if is_evidence(nodes[x].family) && gone(&nodes[x]) && !gone(&nodes[y]) {
+                evidence[y] += 1;
+            }
+        }
+    }
+    let mut map = vec![None; nodes.len()];
+    let mut kept = Vec::new();
+    for (i, n) in nodes.into_iter().enumerate() {
+        if !gone(&n) {
+            map[i] = Some(kept.len());
+            kept.push(GNode {
+                evidence: evidence[i],
+                ..n
+            });
+        }
+    }
+    let edges = edges
+        .into_iter()
+        .filter_map(|e| {
+            Some(GEdge {
+                a: map[e.a]?,
+                b: map[e.b]?,
+                kind: e.kind,
+            })
+        })
+        .collect();
+    (kept, edges, capped)
+}
+
 /// How a relation draws at the cursor: valid then; not yet (faded: it is
 /// often recorded after the facts); closed before (hidden).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -225,6 +296,7 @@ pub(super) fn sigma_data(
             let mut v = json!({
                 "id": n.id, "title": n.title, "family": n.family,
                 "event": n.family == "event", "at": n.event_from, "extra": n.extra,
+                "evidence": n.evidence,
             });
             if let Some((x, y)) = pos.get(&n.id) {
                 v["x"] = json!(x);
@@ -356,6 +428,8 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
     let ws = use_context::<Ws>();
     let mut positions = use_signal(HashMap::<String, (f64, f64)>::new);
     let mut extra = use_signal(Vec::<ExpandResult>::new);
+    // Hidden families; the evidence layer starts folded into badges (K49).
+    let mut families = use_signal(|| HashSet::from([EVIDENCE.to_string()]));
     let mut relayout = use_signal(|| 0u32);
     let mut drag = use_signal(|| None::<(String, bool)>);
     // View: zoom around the pointer (wheel), pan by dragging the background.
@@ -424,7 +498,10 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             return;
         };
         let rel = relations.read().clone().unwrap_or_default();
-        let (nodes, edges, _) = build(&w, (ws.follow)().as_deref(), &rel, &extra());
+        let (nodes, edges, _) = without(
+            build(&w, (ws.follow)().as_deref(), &rel, &extra()),
+            &families.read(),
+        );
         let mut prev = positions.peek().clone();
         if !*seeded.peek() {
             prev.extend(saved.positions);
@@ -500,14 +577,27 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         }
         let Some(w) = (ws.data)() else { return };
         let rel = relations.read().clone().unwrap_or_default();
-        let (nodes, edges, _) = build(&w, (ws.follow)().as_deref(), &rel, &extra());
+        let (nodes, edges, _) = without(
+            build(&w, (ws.follow)().as_deref(), &rel, &extra()),
+            &families.read(),
+        );
         let aspect = crate::util::element_rect(GRAPH_HOST).map_or(1.6, |r| r.2 / r.3.max(1.0));
         let data = sigma_data(&nodes, &edges, &positions.peek(), aspect);
         let selected = match (ws.sel)() {
             Sel::Event(id) | Sel::Object(id) => Some(id),
             Sel::None => None,
         };
-        let state = sigma_state(&nodes, &edges, (ws.cursor)(), selected.as_deref());
+        let mut state = sigma_state(&nodes, &edges, (ws.cursor)(), selected.as_deref());
+        let path = (ws.path)();
+        if !path.is_empty() {
+            // Off the path: faded like what lies after the cursor.
+            let on: HashSet<&str> = path.iter().map(|o| o.id.as_str()).collect();
+            state["faded"] = json!(nodes
+                .iter()
+                .filter(|n| !on.contains(n.id.as_str()))
+                .map(|n| n.id.as_str())
+                .collect::<Vec<_>>());
+        }
         spawn(async move {
             // The aspect alone does not make new data.
             let key = data["nodes"].to_string() + &data["edges"].to_string();
@@ -544,7 +634,10 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                 ("dblclick", Some(id)) if !is_event(&id) => {
                     let rel = relations.peek().clone().unwrap_or_default();
                     let follow = ws.follow.peek().clone();
-                    let (nodes, _, _) = build(&w, follow.as_deref(), &rel, &extra.peek());
+                    let (nodes, _, _) = without(
+                        build(&w, follow.as_deref(), &rel, &extra.peek()),
+                        &families.peek(),
+                    );
                     let title = nodes
                         .iter()
                         .find(|n| n.id == id)
@@ -567,9 +660,28 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
 
     let follow = (ws.follow)();
     let rel = relations.read().clone().unwrap_or_default();
-    let (nodes, edges, hidden) = build(&workspace, follow.as_deref(), &rel, &extra());
+    let (nodes, edges, hidden) = without(
+        build(&workspace, follow.as_deref(), &rel, &extra()),
+        &families.read(),
+    );
+    // Nodes per family before filtering, for the legend.
+    let mut per_family: HashMap<&'static str, usize> = HashMap::new();
+    for n in build(&workspace, follow.as_deref(), &rel, &extra()).0 {
+        let f = if is_evidence(n.family) {
+            EVIDENCE
+        } else {
+            n.family
+        };
+        *per_family.entry(f).or_default() += 1;
+    }
     let cursor = (ws.cursor)();
-    let fade = faded(&nodes, &edges, cursor);
+    let mut fade = faded(&nodes, &edges, cursor);
+    let path = (ws.path)();
+    if !path.is_empty() {
+        for (f, n) in fade.iter_mut().zip(&nodes) {
+            *f = !path.iter().any(|o| o.id == n.id);
+        }
+    }
     let pos = positions();
     let raw = |i: usize| pos.get(&nodes[i].id).copied().unwrap_or((500.0, 300.0));
     let points: Vec<(f64, f64)> = (0..nodes.len()).map(raw).collect();
@@ -743,6 +855,30 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                 title: t!("cw-graph-help"),
                 if hidden > 0 {
                     span { class: "text-xs text-slate", {t!("cw-graph-hidden", count : hidden)} }
+                }
+                // Filterable legend: a family per chip, with its count (K50).
+                for f in FAMILIES.iter().copied().filter(|f| per_family.contains_key(f)) {
+                    button {
+                        key: "{f}",
+                        r#type: "button",
+                        class: "rounded-full border px-2 py-0.5 text-xs",
+                        class: if families.read().contains(f) { "border-line text-slate line-through" } else { "border-line-strong text-ink" },
+                        "aria-pressed": !families.read().contains(f),
+                        "data-testid": "cw-family-{f}",
+                        onclick: move |_| {
+                            families
+                                .with_mut(|h| {
+                                    if !h.remove(f) {
+                                        h.insert(f.to_string());
+                                    }
+                                });
+                        },
+                        span {
+                            class: "mr-1 inline-block h-2 w-2 rounded-full align-middle",
+                            style: "background: var(--color-{family_token(f)})",
+                        }
+                        {t!("cw-graph-family", family : f, count : per_family[f])}
+                    }
                 }
                 if follow.is_some() {
                     button {
@@ -1078,6 +1214,47 @@ mod tests {
             zones: Vec::new(),
             places: Vec::new(),
         }
+    }
+
+    #[test]
+    fn hidden_evidence_folds_into_badges() {
+        let mut w = workspace(
+            vec![event("e1", "2025-01-01T10:00:00Z", &["ann", "c1", "c2"])],
+            &[],
+        );
+        for a in w.events[0]
+            .attachments
+            .iter_mut()
+            .filter(|a| a.object.id != "ann")
+        {
+            a.object.type_key = "claim".into();
+        }
+        let rel = LinkView {
+            id: 9,
+            link_type: "about".into(),
+            source: ObjectRef {
+                type_key: "claim".into(),
+                ..obj("c1")
+            },
+            target: obj("ann"),
+            attributes: Default::default(),
+            valid_from: "2025-01-01T09:00:00Z".into(),
+            valid_to: None,
+            source_ref: None,
+        };
+        let full = build(&w, None, &[rel], &[]);
+        assert_eq!(full.0.len(), 4);
+        let hide = HashSet::from([EVIDENCE.to_string()]);
+        let (nodes, edges, _) = without(full.clone(), &hide);
+        let count = |id: &str| nodes.iter().find(|n| n.id == id).unwrap().evidence;
+        assert_eq!(nodes.len(), 2);
+        // Two claims on the event; one of them is about Ann.
+        assert_eq!((count("e1"), count("ann")), (2, 1));
+        assert_eq!(edges.len(), 1);
+        assert!(edges.iter().all(|e| e.a < nodes.len() && e.b < nodes.len()));
+        // Nothing hidden: nothing folded.
+        let (all, _, _) = without(full, &HashSet::new());
+        assert!(all.iter().all(|n| n.evidence == 0) && all.len() == 4);
     }
 
     #[test]

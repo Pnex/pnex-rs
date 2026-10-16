@@ -34,6 +34,7 @@ const KINDS: &[&str] = &[
     "events",
     "fuzzy_time",
     "recurrence",
+    "money",
 ];
 
 fn blank(key: &str) -> ObjectTypeDef {
@@ -77,6 +78,7 @@ fn kind_default(kind: &str) -> PropertyKind {
         },
         "fuzzy_time" => PropertyKind::FuzzyTime,
         "recurrence" => PropertyKind::Recurrence,
+        "money" => PropertyKind::Money,
         _ => PropertyKind::Text { max_len: None },
     }
 }
