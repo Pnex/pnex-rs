@@ -465,6 +465,16 @@ icon!(
     "M4 15v5h5",
     "M20 15v5h-5"
 );
+// Hand mode of a zoomed picture: four arrows, original drawing.
+icon!(
+    Pan,
+    "M12 3v18",
+    "M3 12h18",
+    "m9 6 3-3 3 3",
+    "m9 18 3 3 3-3",
+    "m6 9-3 3 3 3",
+    "m18 9 3 3-3 3"
+);
 // D42 labels (lucide "tag").
 icon!(
     Tag,

@@ -111,6 +111,8 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut training = use_signal(|| false);
     // Zoom of the picture (1 = whole picture), kept from picture to picture.
     let mut zoom = use_signal(|| 1.0f32);
+    // Hand mode: a drag moves the zoomed picture instead of drawing.
+    let mut hand = use_signal(|| false);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
     let mut suggestions = use_signal(|| (String::new(), Vec::<LabSuggestion>::new()));
@@ -245,6 +247,18 @@ pub fn LabProjectPage(id: String) -> Element {
         }
     };
 
+    // The class of the next box; a selected box takes it too.
+    let mut pick_class = move |c: u32| {
+        class.set(c);
+        if let Some(b) = *selected_box.peek() {
+            edit(Box::new(move |img: &mut LabImage| {
+                if let Some(bx) = img.boxes.get_mut(b) {
+                    bx.class = c;
+                }
+            }));
+        }
+    };
+
     // Previous / next picture of the same source.
     let mut go = move |delta: i64| {
         let next = tl::step(&tl::sources(&images.peek()), *selected.peek(), delta);
@@ -275,7 +289,9 @@ pub fn LabProjectPage(id: String) -> Element {
     let on_key = move |e: KeyboardEvent| {
         let key = e.key().to_string();
         if let Some(d) = key.chars().next().and_then(|c| c.to_digit(10)) {
-            if key.len() == 1 && (1..=9).contains(&d) {
+            if key == "0" {
+                zoom.set(1.0);
+            } else if key.len() == 1 && (1..=9).contains(&d) {
                 let c = d - 1;
                 class.set(c);
                 if let Some(b) = *selected_box.peek() {
@@ -299,6 +315,7 @@ pub fn LabProjectPage(id: String) -> Element {
                 let z = (*zoom.peek() / ZOOM_STEP).max(ZOOM_MIN);
                 zoom.set(z);
             }
+            "h" | "H" => hand.toggle(),
             "Delete" | "Backspace" => {
                 let sel = *selected_box.peek();
                 if let Some(b) = sel {
@@ -577,18 +594,7 @@ pub fn LabProjectPage(id: String) -> Element {
                         classes: classes.clone(),
                         counts: stats.boxes_per_class.clone(),
                         current: class(),
-                        on_pick: move |c: u32| {
-                            class.set(c);
-                            if let Some(b) = *selected_box.peek() {
-                                edit(
-                                    Box::new(move |img: &mut LabImage| {
-                                        if let Some(bx) = img.boxes.get_mut(b) {
-                                            bx.class = c;
-                                        }
-                                    }),
-                                );
-                            }
-                        },
+                        on_pick: move |c: u32| pick_class(c),
                     }
                     div { class: "min-w-0 space-y-3",
                         if current.is_some() {
@@ -603,6 +609,9 @@ pub fn LabProjectPage(id: String) -> Element {
                                 can_add: can_write,
                                 zoom: zoom(),
                                 on_zoom: move |z: f32| zoom.set(z),
+                                hand: hand(),
+                                on_hand: move |h: bool| hand.set(h),
+                                on_pick_class: move |c: u32| pick_class(c),
                                 on_add_class: {
                                     let pid = pid.clone();
                                     let project = project_now.clone();
@@ -928,6 +937,10 @@ fn Annotator(
     can_add: bool,
     zoom: f32,
     on_zoom: EventHandler<f32>,
+    /// Hand mode (only while zoomed): a drag scrolls the picture.
+    hand: bool,
+    on_hand: EventHandler<bool>,
+    on_pick_class: EventHandler<u32>,
     on_add_class: EventHandler<String>,
     selected_box: Option<usize>,
     suggestions: Vec<LabSuggestion>,
@@ -954,11 +967,41 @@ fn Annotator(
     );
     // The whole labeling screen fits the window: no page scroll between
     // pictures.
-    // The frame spans the column (its edges line up with the bars under
-    // it); a tall picture is letterboxed inside.
-    let frame = format!("{aspect} max-height: max(16rem, 100vh - 22rem);");
+    // The frame takes the picture's shape (no empty band beside a tall
+    // picture): as wide as the column allows at the height cap.
+    let frame = format!(
+        "{aspect} width: min(100%, calc(max(16rem, 100vh - 22rem) * {} / {}));",
+        image.width.max(1),
+        image.height.max(1)
+    );
     let content = format!("{aspect} height: {}%;", zoom * 100.0);
     let zoom_to = move |z: f32| on_zoom.call(z.clamp(ZOOM_MIN, ZOOM_MAX));
+    let panning = hand && zoom > ZOOM_MIN;
+    let mut scroller = use_signal(|| None::<Rc<MountedData>>);
+    // Pointer and scroll offset when the hand grabbed the picture.
+    let mut grab = use_signal(|| None::<(f64, f64, f64, f64)>);
+    let on_grab = move |e: PointerEvent| async move {
+        // Never reaches the layer below: no box is started.
+        e.stop_propagation();
+        let Some(el) = scroller.cloned() else {
+            return;
+        };
+        let Ok(o) = el.get_scroll_offset().await else {
+            return;
+        };
+        let c = e.client_coordinates();
+        grab.set(Some((c.x, c.y, o.x, o.y)));
+    };
+    let on_drag = move |e: PointerEvent| {
+        let (Some((x0, y0, sx, sy)), Some(el)) = (*grab.peek(), scroller.cloned()) else {
+            return;
+        };
+        let c = e.client_coordinates();
+        let to = dioxus::html::geometry::PixelsVector2D::new(sx - (c.x - x0), sy - (c.y - y0));
+        spawn(async move {
+            let _ = el.scroll(to, ScrollBehavior::Instant).await;
+        });
+    };
     let norm = move |x: f64, y: f64| -> Option<(f32, f32)> {
         let (l, t, w, h) = (*rect.peek())?;
         if w <= 0.0 || h <= 0.0 {
@@ -1021,8 +1064,10 @@ fn Annotator(
     };
 
     rsx! {
-        div { class: "relative w-full", style: "{frame}",
-            div { class: "absolute inset-0 overflow-auto rounded-lg border border-line bg-rail select-none touch-none",
+        div { class: "relative mx-auto", style: "{frame}",
+            div {
+                class: "absolute inset-0 overflow-auto rounded-lg border border-line bg-rail select-none touch-none",
+                onmounted: move |e| scroller.set(Some(e.data())),
                 div { class: "relative mx-auto", style: "{content}",
                     if let Some(src) = src {
                         img {
@@ -1067,12 +1112,27 @@ fn Annotator(
                                 style: "{style}",
                             }
                         }
+                        if panning {
+                            div {
+                                class: "absolute inset-0 z-10 cursor-grab active:cursor-grabbing",
+                                "data-testid": "lab-pan",
+                                onpointerdown: on_grab,
+                                onpointermove: on_drag,
+                                onpointerup: move |_| grab.set(None),
+                                onpointerleave: move |_| grab.set(None),
+                            }
+                        }
                     }
                 }
             }
             if can_add {
                 div { class: "absolute left-2 top-2 z-10",
-                    ClassAdd { on_add: on_add_class }
+                    ClassAdd {
+                        classes: classes.clone(),
+                        current: class,
+                        on_pick: on_pick_class,
+                        on_add: on_add_class,
+                    }
                 }
             }
             div { class: "absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-ink/40 p-1 text-white opacity-70 backdrop-blur-sm transition-opacity duration-150 hover:opacity-100",
@@ -1103,6 +1163,27 @@ fn Annotator(
                     onclick: move |_| zoom_to(zoom * ZOOM_STEP),
                     icons::ZoomIn { class: "h-4 w-4" }
                 }
+                if zoom > ZOOM_MIN {
+                    button {
+                        class: if hand { "flex h-7 w-7 items-center justify-center rounded-full bg-white/30" } else { ZOOM_BTN },
+                        r#type: "button",
+                        title: t!("lab-zoom-hand"),
+                        "aria-label": t!("lab-zoom-hand"),
+                        "aria-pressed": hand,
+                        "data-testid": "lab-zoom-hand",
+                        onclick: move |_| on_hand.call(!hand),
+                        icons::Pan { class: "h-4 w-4" }
+                    }
+                    button {
+                        class: ZOOM_BTN,
+                        r#type: "button",
+                        title: t!("lab-zoom-fit"),
+                        "aria-label": t!("lab-zoom-fit"),
+                        "data-testid": "lab-zoom-whole",
+                        onclick: move |_| zoom_to(1.0),
+                        icons::Maximize { class: "h-4 w-4" }
+                    }
+                }
             }
         }
     }
@@ -1115,48 +1196,80 @@ const ZOOM_STEP: f32 = 1.5;
 const ZOOM_BTN: &str =
     "flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40";
 
-/// The round "+" of the picture: a new class, typed in a small bubble
-/// (Enter adds, Escape cancels). The bubble's keys never reach the
-/// labeling shortcuts, and pressing it never starts a box.
+/// The round "+" of the picture: a bubble with the classes (a click picks
+/// the class of the next box) and a field for a new one (Enter adds, Escape
+/// closes). The bubble's keys never reach the labeling shortcuts, and
+/// pressing it never starts a box.
 #[component]
-fn ClassAdd(on_add: EventHandler<String>) -> Element {
-    let mut typing = use_signal(|| None::<String>);
+fn ClassAdd(
+    classes: Vec<String>,
+    current: u32,
+    on_pick: EventHandler<u32>,
+    on_add: EventHandler<String>,
+) -> Element {
+    let mut open = use_signal(|| false);
+    let mut typing = use_signal(String::new);
     let mut submit = move || {
-        let name = typing().unwrap_or_default().trim().to_string();
-        typing.set(None);
+        let name = typing().trim().to_string();
+        typing.set(String::new());
         if !name.is_empty() {
+            open.set(false);
             on_add.call(name);
         }
     };
-    let open = typing().is_some();
+    let shown = open();
     rsx! {
         div {
             class: "flex items-start gap-2",
             onpointerdown: move |e: PointerEvent| e.stop_propagation(),
             onkeydown: move |e: KeyboardEvent| e.stop_propagation(),
             button {
-                class: if open { "flex h-9 w-9 items-center justify-center rounded-full bg-signal text-white shadow-lg" } else { "flex h-9 w-9 items-center justify-center rounded-full bg-signal/60 text-white shadow-lg backdrop-blur-sm transition-colors duration-150 hover:bg-signal active:scale-[0.97]" },
+                class: if shown { "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-signal text-white shadow-lg" } else { "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-signal/60 text-white shadow-lg backdrop-blur-sm transition-colors duration-150 hover:bg-signal active:scale-[0.97]" },
                 r#type: "button",
                 title: t!("lab-class-add"),
                 "aria-label": t!("lab-class-add"),
-                "aria-expanded": open,
+                "aria-expanded": shown,
                 "data-testid": "lab-class-add",
-                onclick: move |_| typing.set(if open { None } else { Some(String::new()) }),
-                icons::Plus { class: if open { "h-5 w-5 rotate-45 transition-transform duration-150 ease-out-ui" } else { "h-5 w-5 transition-transform duration-150 ease-out-ui" } }
+                onclick: move |_| open.set(!shown),
+                icons::Plus { class: if shown { "h-5 w-5 rotate-45 transition-transform duration-150 ease-out-ui" } else { "h-5 w-5 transition-transform duration-150 ease-out-ui" } }
             }
-            if let Some(name) = typing() {
-                input {
-                    class: "{INPUT} w-56 shadow-lg",
-                    "aria-label": t!("lab-class-new"),
-                    placeholder: t!("lab-class-new"),
-                    autofocus: true,
-                    value: "{name}",
-                    oninput: move |e| typing.set(Some(e.value())),
-                    onkeydown: move |e: KeyboardEvent| match e.key() {
-                        Key::Enter => submit(),
-                        Key::Escape => typing.set(None),
-                        _ => {}
-                    },
+            if shown {
+                div {
+                    class: "w-56 space-y-1 rounded-lg border border-line bg-surface p-1.5 shadow-lg",
+                    "data-testid": "lab-class-menu",
+                    for (i, name) in classes.iter().enumerate() {
+                        button {
+                            key: "{i}",
+                            class: if i as u32 == current { "flex w-full items-center gap-2 rounded-md bg-signal/10 px-2 py-1.5 text-left text-sm font-medium text-ink" } else { "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-ink hover:bg-rail" },
+                            r#type: "button",
+                            "aria-pressed": i as u32 == current,
+                            onclick: move |_| {
+                                open.set(false);
+                                on_pick.call(i as u32);
+                            },
+                            span {
+                                class: "h-3 w-3 shrink-0 rounded-full",
+                                style: "background: {class_color(i as u32)}",
+                            }
+                            span { class: "flex-1 truncate", "{name}" }
+                            if i < 9 {
+                                span { class: "font-mono text-xs text-slate", "{i + 1}" }
+                            }
+                        }
+                    }
+                    input {
+                        class: "{INPUT} w-full",
+                        "aria-label": t!("lab-class-new"),
+                        placeholder: t!("lab-class-new"),
+                        autofocus: true,
+                        value: "{typing}",
+                        oninput: move |e| typing.set(e.value()),
+                        onkeydown: move |e: KeyboardEvent| match e.key() {
+                            Key::Enter => submit(),
+                            Key::Escape => open.set(false),
+                            _ => {}
+                        },
+                    }
                 }
             }
         }
