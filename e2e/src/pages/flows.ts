@@ -103,7 +103,7 @@ export class FlowEditor {
       await this.page.getByRole('button', { name: this.app.t('eshell-add-node') }).click();
     }
     await search.fill(label);
-    await this.page.getByRole('button', { name: new RegExp(`^${label}\\b`) }).first().click();
+    await this.page.getByRole('button', { name: new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!\\w)`) }).first().click();
     await expect(this.inspector).toContainText(label);
   }
 

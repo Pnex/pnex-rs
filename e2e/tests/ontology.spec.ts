@@ -82,8 +82,8 @@ test.describe('ontology', { tag: ['@ontology', '@i18n'] }, () => {
   });
 
   test('edits a type and lists the packs', async ({ app, page, api, prefix }) => {
-    await app.goto('/ontology?tab=schema');
-    await page.getByRole('row', { name: /machine/ }).first().click();
+    // The schema list is paginated: open the type by its URL.
+    await app.goto('/ontology/types/machine');
     await expect(page).toHaveURL(/\/ontology\/types\/machine/);
     const before = await api.get('/ontology/types/machine');
 

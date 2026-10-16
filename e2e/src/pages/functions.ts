@@ -32,7 +32,7 @@ export class FunctionsPage {
     await dlg.getByRole('textbox', { name: this.t('functions-field-name') }).fill(name);
     await dlg.getByRole('radio', { name: new RegExp(`^${this.t(`functions-lang-${language}`)}`) }).check();
     await dlg.getByRole('radio', { name: new RegExp(`^${this.t(`functions-tpl-${template}`)}`) }).check();
-    await dlg.getByRole('button', { name: this.t('functions-new'), exact: true }).click();
+    await dlg.getByRole('button', { name: this.t('common-create'), exact: true }).click();
     await expect(dlg).toBeHidden();
     const editor = new FunctionEditor(this.app);
     await editor.waitReady(name);

@@ -68,7 +68,9 @@ export class DocEditor {
 
   /** Types at the end of the page. */
   async typeAtEnd(text: string): Promise<void> {
-    await this.content.click();
+    // Click the last block, not the editor: in a freshly opened tab the
+    // shortcut alone sometimes fired before focus and typed at the start.
+    await this.content.locator(':scope > *').last().click();
     await this.page.keyboard.press('ControlOrMeta+End');
     await this.page.keyboard.type(text);
   }
