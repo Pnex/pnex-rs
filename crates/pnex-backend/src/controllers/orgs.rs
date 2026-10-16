@@ -236,7 +236,12 @@ async fn create(
 
     Ok((
         StatusCode::CREATED,
-        format::json(serde_json::json!({ "id": org.id, "name": org.name })),
+        // Shaped like `OrgSummary`: the UI decodes it and activates the new org.
+        format::json(serde_json::json!({
+            "id": org.id,
+            "name": org.name,
+            "role": role_str(OrgMemberRole::Owner),
+        })),
     )
         .into_response())
 }
