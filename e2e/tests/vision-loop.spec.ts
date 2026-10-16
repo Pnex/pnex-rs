@@ -30,9 +30,10 @@ test.describe('vision lab loop', { tag: ['@lab'] }, () => {
     const project = await api.post('/lab/projects', { name: `${prefix} carts`, classes: ['cart'] });
 
     await app.goto(`/lab/${project.id}`);
-    await page.getByRole('button', { name: app.t('lab-from-video') }).click();
+    await page.getByRole('button', { name: app.t('lab-add-images') }).click();
+    await page.getByRole('dialog').getByRole('button', { name: new RegExp(app.t('lab-add-videos')) }).click();
     const dialog = page.getByRole('dialog');
-    await dialog.getByRole('combobox').first().selectOption({ label: clip });
+    await dialog.getByLabel(clip, { exact: true }).check();
     await dialog.getByRole('spinbutton').nth(1).fill('10');
     await dialog.getByRole('spinbutton').nth(2).fill('2');
     await capture('lab-video-import', { caption: 'Vision Lab: pictures taken from an uploaded video' });
