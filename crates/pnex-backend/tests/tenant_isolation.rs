@@ -349,6 +349,9 @@ async fn roles_viewer_owner_et_garde_fous() {
             .await
             .json();
         let org_id = created["id"].as_i64().expect("id Atelier Co");
+        // The UI decodes the creation as an OrgSummary (role required).
+        serde_json::from_value::<pnex_core::api::OrgSummary>(created.clone())
+            .expect("creation response is an OrgSummary");
 
         let added: serde_json::Value = server
             .post(&format!("/api/v1/orgs/{org_id}/members"))
