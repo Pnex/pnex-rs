@@ -69,18 +69,19 @@ impl std::fmt::Debug for ResolvedAiConfig {
 /// connecteur d'org).
 pub const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 
-/// Effective configuration of an org: its default provider; `None` = not
-/// configured (or kill-switch off). The key
-/// is decrypted in memory for the call.
+/// Effective configuration of an org for `usage`: the provider routed to
+/// it, else its default (D212); `None` = not configured (or kill-switch
+/// off). The key is decrypted in memory for the call.
 pub async fn resolve(
     db: &DatabaseConnection,
     config: &Config,
     org_id: i64,
+    usage: pnex_core::LlmUsage,
 ) -> Option<ResolvedAiConfig> {
     if !AiSettings::from_config(config).enabled {
         return None;
     }
-    let row = match super::providers::effective(db, org_id).await {
+    let row = match super::providers::effective(db, org_id, usage).await {
         Ok(found) => found?,
         Err(e) => {
             tracing::error!(error = %e, "LLM provider lookup failed");

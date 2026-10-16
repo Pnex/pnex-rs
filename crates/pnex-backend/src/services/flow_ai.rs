@@ -1,7 +1,7 @@
 //! Model calls of the video understanding flow nodes (media-vision-studio.md
 //! D194–D196): `vision_caption` (image → caption) and `media_fuse` (window
-//! of texts → sourced description), both on the organization's default
-//! LLM provider (D119: no platform model).
+//! of texts → sourced description), on the organization's LLM provider of
+//! the matching usage (D212; D119: no platform model).
 //!
 //! - The runtime is untrusted: the frame is read here from the camera bus
 //!   (org-prefixed key), texts are clipped, the org comes from the fenced
@@ -73,7 +73,7 @@ fn daily_cap(ctx: &AppContext) -> u64 {
 }
 
 /// Counts one call against the org's daily cap.
-async fn take_quota(ctx: &AppContext, org_id: i64) -> Result<(), FlowAiError> {
+pub(crate) async fn take_quota(ctx: &AppContext, org_id: i64) -> Result<(), FlowAiError> {
     count_daily(ctx, "flow-ai", org_id, daily_cap(ctx)).await
 }
 
@@ -109,8 +109,9 @@ pub(crate) async fn count_daily(
 async fn org_model(
     ctx: &AppContext,
     org_id: i64,
+    usage: pnex_core::LlmUsage,
 ) -> Result<crate::services::ai::ResolvedAiConfig, FlowAiError> {
-    crate::services::ai::config::resolve(&ctx.db, &ctx.config, org_id)
+    crate::services::ai::config::resolve(&ctx.db, &ctx.config, org_id, usage)
         .await
         .ok_or(FlowAiError::NotConfigured)
 }
@@ -131,7 +132,7 @@ pub async fn caption(
     if !pnex_core::camera::frame_key_in_org(req.org_id, &req.frame_key) {
         return Err(FlowAiError::NoFrame);
     }
-    let cfg = org_model(ctx, req.org_id).await?;
+    let cfg = org_model(ctx, req.org_id, pnex_core::LlmUsage::Vision).await?;
     let mut conn = crate::services::shared_valkey::conn(&ctx.config)
         .await
         .ok_or(FlowAiError::NoFrame)?;
@@ -213,7 +214,7 @@ pub async fn text(ctx: &AppContext, req: &LlmTextRequest) -> Result<LlmTextRespo
     };
     let data_truncated = data.chars().count() > LLM_DATA_MAX;
     let data = clip(&data, LLM_DATA_MAX);
-    let cfg = org_model(ctx, req.org_id).await?;
+    let cfg = org_model(ctx, req.org_id, pnex_core::LlmUsage::Extraction).await?;
     take_quota(ctx, req.org_id).await?;
     let started = std::time::Instant::now();
     let msgs = [Msg::User {
@@ -299,7 +300,7 @@ pub async fn fuse(ctx: &AppContext, req: &FuseRequest) -> Result<FuseResponse, F
         it.id = clip(&it.id, 128);
         it.source = clip(&it.source, 128);
     }
-    let cfg = org_model(ctx, req.org_id).await?;
+    let cfg = org_model(ctx, req.org_id, pnex_core::LlmUsage::Extraction).await?;
     take_quota(ctx, req.org_id).await?;
     let data = serde_json::to_string(&items).map_err(|e| FlowAiError::Invalid(e.to_string()))?;
     let user = format!(

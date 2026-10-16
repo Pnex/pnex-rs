@@ -208,6 +208,7 @@ async fn org_provider(ctx: &loco_rs::app::AppContext, org: i64, url: &str) {
                 value: "test-key".into(),
             }),
             is_default: true,
+            usages: Vec::new(),
         },
     )
     .await
@@ -1891,6 +1892,343 @@ async fn assistant_reads_a_case_workspace() {
         assert!(
             out.contains("Valve left closed?") && out.contains("hypothesis"),
             "attachment and role reach the model"
+        );
+    })
+    .await;
+}
+
+// ──────────────── LLM usages (D212) and file analyses (D213) ────────────────
+
+async fn resolved_name(
+    ctx: &loco_rs::app::AppContext,
+    org: i64,
+    usage: pnex_core::LlmUsage,
+) -> String {
+    pnex_backend::services::ai::config::resolve(&ctx.db, &ctx.config, org, usage)
+        .await
+        .expect("resolved provider")
+        .name
+}
+
+/// A usage routed to a second provider leaves the others on the default;
+/// re-routing moves it; deleting the provider falls back to the default.
+#[tokio::test]
+#[serial]
+async fn llm_usage_routes_apart_from_the_default() {
+    use pnex_core::LlmUsage;
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let mut body = provider_body("flows", "openai_compat", Some(&mock_url()), Some("k2"));
+        body["usages"] = serde_json::json!(["extraction", "vision"]);
+        let res = server
+            .post("/api/v1/ai/providers")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&body)
+            .await;
+        assert_eq!(res.status_code(), 201, "{}", res.text());
+        let flows_id = res.json::<serde_json::Value>()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(resolved_name(&ctx, org, LlmUsage::Assistant).await, "mock");
+        assert_eq!(
+            resolved_name(&ctx, org, LlmUsage::Extraction).await,
+            "flows"
+        );
+        assert_eq!(resolved_name(&ctx, org, LlmUsage::Vision).await, "flows");
+
+        let list: serde_json::Value = server
+            .get("/api/v1/ai/providers")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        let flows = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == "flows")
+            .unwrap();
+        assert_eq!(
+            flows["usages"],
+            serde_json::json!(["extraction", "vision"]),
+            "{list}"
+        );
+
+        // Re-route vision only to "flows": extraction goes back to the default.
+        let mut body = provider_body("flows", "openai_compat", Some(&mock_url()), None);
+        body["usages"] = serde_json::json!(["vision"]);
+        let res = server
+            .put(&format!("/api/v1/ai/providers/{flows_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&body)
+            .await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        assert_eq!(resolved_name(&ctx, org, LlmUsage::Extraction).await, "mock");
+        assert_eq!(resolved_name(&ctx, org, LlmUsage::Vision).await, "flows");
+
+        let res = server
+            .delete(&format!("/api/v1/ai/providers/{flows_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 204, "{}", res.text());
+        assert_eq!(resolved_name(&ctx, org, LlmUsage::Vision).await, "mock");
+
+        // An unknown usage is refused by the body schema.
+        let mut body = provider_body("bad", "openai_compat", Some(&mock_url()), Some("k"));
+        body["usages"] = serde_json::json!(["everything"]);
+        let res = server
+            .post("/api/v1/ai/providers")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&body)
+            .await;
+        assert!(res.status_code().is_client_error(), "{}", res.text());
+    })
+    .await;
+}
+
+async fn upload_md(server: &axum_test::TestServer, token: &str, org: i64, text: &str) -> String {
+    let res = server
+        .post("/api/v1/media?filename=notes.md")
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org.to_string())
+        .add_header("Content-Type", "application/octet-stream")
+        .bytes(text.as_bytes().to_vec().into())
+        .await;
+    assert_eq!(res.status_code(), 201, "{}", res.text());
+    res.json::<serde_json::Value>()["id"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn analyses_of(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    id: &str,
+) -> axum_test::TestResponse {
+    server
+        .get(&format!("/api/v1/media/{id}/analyses"))
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org.to_string())
+        .await
+}
+
+async fn start_steps(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    id: &str,
+    steps: serde_json::Value,
+) -> axum_test::TestResponse {
+    server
+        .post(&format!("/api/v1/media/{id}/analyses"))
+        .add_header("Authorization", bearer(token))
+        .add_header("X-Org-Id", org.to_string())
+        .json(&serde_json::json!({ "steps": steps, "locale": "fr-FR" }))
+        .await
+}
+
+/// Upload → summary on the `extraction` provider → page; relaunch adds a
+/// version to the same page. The file text reaches the model as data.
+#[tokio::test]
+#[serial]
+async fn summarize_a_document_into_a_page_and_relaunch() {
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+    with_app_ai(true, true, |server, env, ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let id = upload_md(
+            &server,
+            &env.alice,
+            org,
+            "# Pompe P2\n\nLe défaut E-0457 signale une vibration.",
+        )
+        .await;
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        assert_eq!(state["offers"][1]["step"], "summarize", "{state}");
+        assert!(state["offers"][1]["blocked"].is_null(), "{state}");
+
+        reset_mock();
+        push_reply(MockReply::Ok(reply_text(
+            "Résumé : vibration E-0457.\n\n## Points clés\n- E-0457",
+        )));
+        let res = start_steps(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            serde_json::json!(["summarize"]),
+        )
+        .await;
+        assert_eq!(res.status_code(), 202, "{}", res.text());
+        // Workers run inline in tests: the step is finished here.
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        let a = &state["analyses"][0];
+        assert_eq!(a["state"], "done", "{state}");
+        let page = a["page_id"].as_str().expect("page id").to_string();
+        let reqs = mock_requests();
+        assert_eq!(reqs.len(), 1, "one block, one call");
+        let sent = reqs[0].to_string();
+        assert!(sent.contains("<data>") && sent.contains("E-0457"), "{sent}");
+        let versions = || async {
+            pnex_backend::models::_entities::doc_versions::Entity::find()
+                .filter(
+                    pnex_backend::models::_entities::doc_versions::Column::DocId
+                        .eq(uuid::Uuid::parse_str(&page).unwrap()),
+                )
+                .count(&ctx.db)
+                .await
+                .unwrap()
+        };
+        assert_eq!(versions().await, 1);
+
+        push_reply(MockReply::Ok(reply_text("Deuxième résumé.")));
+        let res = start_steps(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            serde_json::json!(["summarize"]),
+        )
+        .await;
+        assert_eq!(res.status_code(), 202, "{}", res.text());
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        assert_eq!(state["analyses"][0]["page_id"], page.as_str(), "same page");
+        assert_eq!(
+            versions().await,
+            2,
+            "relaunch = new version of the same page"
+        );
+
+        // A step not offered for the kind is refused.
+        let res = start_steps(&server, &env.alice, org, &id, serde_json::json!(["bogus"])).await;
+        assert!(res.status_code().is_client_error());
+    })
+    .await;
+}
+
+/// Without a provider the summary is offered blocked and refused (409);
+/// the index alone still runs.
+#[tokio::test]
+#[serial]
+async fn summarize_without_llm_is_blocked() {
+    with_app_ai(true, false, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let id = upload_md(&server, &env.alice, org, "texte").await;
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        assert_eq!(
+            state["offers"][1]["blocked"], "media-analysis-no-llm",
+            "{state}"
+        );
+        let res = start_steps(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            serde_json::json!(["summarize"]),
+        )
+        .await;
+        assert_eq!(res.status_code(), 409, "{}", res.text());
+        assert!(res.text().contains("media-analysis-no-llm"));
+        let res = start_steps(&server, &env.alice, org, &id, serde_json::json!(["index"])).await;
+        assert_eq!(res.status_code(), 202, "{}", res.text());
+    })
+    .await;
+}
+
+/// Another org gets 404; a viewer reads but cannot launch (R1, R2).
+#[tokio::test]
+#[serial]
+async fn analyses_isolation_and_roles() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let alice_org = personal_org(&server, &env.alice).await;
+        let bob_org = personal_org(&server, &env.bob).await;
+        let id = upload_md(&server, &env.alice, alice_org, "texte").await;
+        let res = analyses_of(&server, &env.bob, bob_org, &id).await;
+        assert_eq!(res.status_code(), 404);
+        let res = start_steps(
+            &server,
+            &env.bob,
+            bob_org,
+            &id,
+            serde_json::json!(["index"]),
+        )
+        .await;
+        assert_eq!(res.status_code(), 404);
+
+        let shared: serde_json::Value = server
+            .post("/api/v1/orgs")
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "name": "Atelier" }))
+            .await
+            .json();
+        let shared = shared["id"].as_i64().unwrap();
+        let id = upload_md(&server, &env.alice, shared, "texte").await;
+        server
+            .post(&format!("/api/v1/orgs/{shared}/members"))
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
+            .await;
+        let res = analyses_of(&server, &env.bob, shared, &id).await;
+        assert_eq!(res.status_code(), 200, "{}", res.text());
+        let res = start_steps(&server, &env.bob, shared, &id, serde_json::json!(["index"])).await;
+        assert_eq!(res.status_code(), 403);
+    })
+    .await;
+}
+
+/// A large file is estimated; without confirmation the summary stops
+/// before any LLM call; confirmed, it maps then reduces in passes.
+#[tokio::test]
+#[serial]
+async fn large_file_summary_needs_confirmation() {
+    with_app_ai(true, true, |server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let para = "La pompe P2 vibre au démarrage, code E-0457, voir la procédure. ";
+        let text: String = (0..4_000).map(|i| format!("{para}{i}\n\n")).collect();
+        let id = upload_md(&server, &env.alice, org, &text).await;
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        let calls = state["offers"][1]["calls"].as_u64().expect("estimate");
+        assert!(
+            calls > pnex_core::media_analysis::LARGE_CALLS as u64,
+            "{state}"
+        );
+
+        reset_mock();
+        start_steps(
+            &server,
+            &env.alice,
+            org,
+            &id,
+            serde_json::json!(["summarize"]),
+        )
+        .await;
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        assert_eq!(state["analyses"][0]["state"], "failed", "{state}");
+        assert_eq!(state["analyses"][0]["error_code"], "media-analysis-large");
+        assert!(
+            mock_requests().is_empty(),
+            "no LLM call before confirmation"
+        );
+
+        let res = server
+            .post(&format!("/api/v1/media/{id}/analyses"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "steps": ["summarize"], "confirm_large": true }))
+            .await;
+        assert_eq!(res.status_code(), 202, "{}", res.text());
+        let state: serde_json::Value = analyses_of(&server, &env.alice, org, &id).await.json();
+        assert_eq!(state["analyses"][0]["state"], "done", "{state}");
+        let made = mock_requests().len() as u64;
+        assert!(
+            made > 20 && made <= calls + 2,
+            "made {made} calls, estimated {calls}"
         );
     })
     .await;

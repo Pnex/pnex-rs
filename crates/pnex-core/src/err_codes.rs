@@ -101,6 +101,22 @@ pub const MEDIA_INDEX_MALFORMED: &str = "media-index-malformed";
 pub const MEDIA_INDEX_UNREADABLE: &str = "media-index-unreadable";
 /// Reindex asked on an asset that is not a document or a table.
 pub const MEDIA_INDEX_NOT_A_DOCUMENT: &str = "media-index-not-a-document";
+/// File analysis step needing an LLM while none resolves for the org (D213).
+pub const MEDIA_ANALYSIS_NO_LLM: &str = "media-analysis-no-llm";
+/// File analysis step already queued or running.
+pub const MEDIA_ANALYSIS_BUSY: &str = "media-analysis-busy";
+/// File analysis step not offered for this kind of file.
+pub const MEDIA_ANALYSIS_STEP_INVALID: &str = "media-analysis-step-invalid";
+/// Summary impossible: the file yielded no text.
+pub const MEDIA_ANALYSIS_NO_TEXT: &str = "media-analysis-no-text";
+/// The LLM call of a file analysis failed.
+pub const MEDIA_ANALYSIS_LLM_FAILED: &str = "media-analysis-llm-failed";
+/// The org's daily AI call cap was reached during a file analysis.
+pub const MEDIA_ANALYSIS_QUOTA: &str = "media-analysis-quota";
+/// A file analysis stopped with the server (restart while running).
+pub const MEDIA_ANALYSIS_INTERRUPTED: &str = "media-analysis-interrupted";
+/// A large file analysis was launched without its confirmation.
+pub const MEDIA_ANALYSIS_LARGE: &str = "media-analysis-large";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 pub const ANNOT_WRITE_FORBIDDEN: &str = "annot-write-forbidden";
@@ -673,6 +689,14 @@ pub const ALL: &[&str] = &[
     MEDIA_INDEX_MALFORMED,
     MEDIA_INDEX_UNREADABLE,
     MEDIA_INDEX_NOT_A_DOCUMENT,
+    MEDIA_ANALYSIS_NO_LLM,
+    MEDIA_ANALYSIS_BUSY,
+    MEDIA_ANALYSIS_STEP_INVALID,
+    MEDIA_ANALYSIS_NO_TEXT,
+    MEDIA_ANALYSIS_LLM_FAILED,
+    MEDIA_ANALYSIS_QUOTA,
+    MEDIA_ANALYSIS_INTERRUPTED,
+    MEDIA_ANALYSIS_LARGE,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     ANNOT_WRITE_FORBIDDEN,

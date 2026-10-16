@@ -291,6 +291,12 @@ impl Hooks for App {
                 ctx,
             ))
             .await?;
+        // File analyses (media-import-pipeline.md D213).
+        queue
+            .register(crate::workers::media_analysis::MediaAnalysisWorker::build(
+                ctx,
+            ))
+            .await?;
         // Capture of `capture_on = worker` streams on a mesh worker (D160),
         // opt-in by PNEX_MEDIA_CAPTURE_WORKER.
         crate::services::media_ingest::capture::spawn_worker_supervisor(ctx);

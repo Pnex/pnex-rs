@@ -215,7 +215,35 @@ pub struct LlmProvider {
     #[serde(default)]
     pub api_key_set: bool,
     pub is_default: bool,
+    /// Usages this provider serves instead of the default (D212).
+    #[serde(default)]
+    pub usages: Vec<LlmUsage>,
     pub updated_at: String,
+}
+
+/// What an LLM call is for (D212): each usage may run on its own provider,
+/// so the assistant and the flows never have to share one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmUsage {
+    /// The in-app assistant.
+    Assistant,
+    /// Text work of flows and file analyses: summaries, `llm_text`, fusion.
+    Extraction,
+    /// Image work: captions of camera frames and media.
+    Vision,
+}
+
+impl LlmUsage {
+    pub const ALL: [Self; 3] = [Self::Assistant, Self::Extraction, Self::Vision];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Assistant => "assistant",
+            Self::Extraction => "extraction",
+            Self::Vision => "vision",
+        }
+    }
 }
 
 /// Create / update body of a provider. `api_key: None` keeps the current
@@ -231,6 +259,9 @@ pub struct LlmProviderInput {
     pub api_key: Option<crate::SecretFieldInput>,
     #[serde(default)]
     pub is_default: bool,
+    /// Usages to route to this provider; taken away from any other one.
+    #[serde(default)]
+    pub usages: Vec<LlmUsage>,
 }
 
 /// `POST …/providers/{id}/test` — one-shot ping of a provider.

@@ -62,7 +62,7 @@ test.describe('documents', { tag: ['@media', '@i18n'] }, () => {
     await hit('manuel.docx').click();
     await expect(page.getByText(app.t('media-index-status-indexed'))).toBeVisible();
     await capture('documents-index-state', { caption: 'Indexing state of a Word document' });
-    await page.getByRole('button', { name: app.t('media-index-reindex') }).click();
-    await app.expectToast(app.t('media-index-reindex-queued'));
+    await page.getByRole('button', { name: app.t('media-analysis-rerun'), exact: true }).click();
+    await app.expectToast(app.t('media-analysis-started'));
   });
 });

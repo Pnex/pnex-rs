@@ -306,11 +306,11 @@ pub(super) fn MediaDetail(
                                     }
                                 }
                             }
-                            // Search index state (documents and tables only,
-                            // doc-search.md P1) — keyed by the current version.
-                            if matches!(asset.media_kind(), MediaKind::Document | MediaKind::Table) {
-                                IndexStateCard {
-                                    key: "idx-{asset.current_version_number.unwrap_or(0)}",
+                            // File analyses (index, summary...: D213), keyed
+                            // by the current version.
+                            if !pnex_core::media_analysis::steps_for_kind(&asset.kind).is_empty() {
+                                super::analyses::AnalysesCard {
+                                    key: "an-{asset.current_version_number.unwrap_or(0)}",
                                     asset_id: asset_id.clone(),
                                     can_write,
                                 }
@@ -684,96 +684,6 @@ fn VersionRow(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/// Status line and optional detail line of an index state. Render scope
-/// only (`t!`).
-fn index_texts(state: &api::media::IndexState) -> (String, Option<String>) {
-    match state.status.as_str() {
-        "pending" => (t!("media-index-status-pending").to_string(), None),
-        "extracting" => (t!("media-index-status-extracting").to_string(), None),
-        "needs_ocr" => (t!("media-index-status-needs-ocr").to_string(), None),
-        "indexed" => {
-            let chunks = t!("media-index-chunks", n : state.chunk_count).to_string();
-            let detail = match state.page_count {
-                Some(pages) => format!("{} · {chunks}", t!("media-index-pages", n : pages)),
-                None => chunks,
-            };
-            (t!("media-index-status-indexed").to_string(), Some(detail))
-        }
-        "error" => {
-            let detail = state
-                .error_code
-                .as_deref()
-                .map(|code| crate::api::error_i18n::localize_code(code, None, code));
-            (t!("media-index-status-error").to_string(), detail)
-        }
-        other => (other.to_string(), None),
-    }
-}
-
-/// Search index card of the current version (doc-search.md P1): status,
-/// counts or error, and a reindex action for writers (server re-checks).
-#[component]
-fn IndexStateCard(asset_id: String, can_write: bool) -> Element {
-    let mut refresh = use_signal(|| 0u32);
-    let mut reindexing = use_signal(|| false);
-    let id_for_state = asset_id.clone();
-    // `refresh` is the tracked dependency: reindex bumps it to refetch.
-    let state = use_resource(move || {
-        let id = id_for_state.clone();
-        let _ = refresh();
-        async move { api::media::index_state(&id).await }
-    });
-    let (status_text, detail_text, load_error) = match &*state.value().read() {
-        None => ("…".to_string(), None, None),
-        Some(Ok(None)) => (t!("media-index-status-none").to_string(), None, None),
-        Some(Ok(Some(s))) => {
-            let (status, detail) = index_texts(s);
-            (status, detail, None)
-        }
-        Some(Err(err)) => (
-            String::new(),
-            None,
-            Some(crate::api::error_i18n::localize(err)),
-        ),
-    };
-    let on_reindex = move |_| {
-        let id = asset_id.clone();
-        spawn(async move {
-            reindexing.set(true);
-            match api::media::reindex(&id).await {
-                Ok(_) => toasts::success(t!("media-index-reindex-queued")),
-                Err(err) => toasts::error(err),
-            }
-            reindexing.set(false);
-            refresh.with_mut(|r| *r += 1);
-        });
-    };
-
-    rsx! {
-        div { class: "rounded-xl border border-gray-200 bg-white p-4",
-            div { class: "flex items-center justify-between gap-2",
-                h3 { class: "text-sm font-semibold text-gray-700", {t!("media-index-title")} }
-                if can_write {
-                    button {
-                        class: "text-xs text-signal-600 hover:underline disabled:opacity-50",
-                        r#type: "button",
-                        disabled: reindexing(),
-                        onclick: on_reindex,
-                        {t!("media-index-reindex")}
-                    }
-                }
-            }
-            if let Some(err) = load_error {
-                div { class: "mt-2 text-sm text-red-600", "{err}" }
-            }
-            p { class: "mt-2 text-sm text-gray-900", "{status_text}" }
-            if let Some(detail) = detail_text {
-                p { class: "mt-1 text-xs text-gray-500", "{detail}" }
             }
         }
     }
