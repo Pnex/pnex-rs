@@ -21,7 +21,8 @@ services:
   pnex-server:
     pull_policy: never
     environment:
-      RAUTHY_ISSUER_URL: http://localhost:8080/auth/v1/
+      # Origin only: the server appends /auth/v1/ itself (RauthySettings::issuer).
+      RAUTHY_ISSUER_URL: http://localhost:8080
       # Tests read the flow editor debug feed.
       PNEX_FLOW_DEBUG_TOOLS: "true"
 
