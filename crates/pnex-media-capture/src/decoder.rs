@@ -328,4 +328,40 @@ mod tests {
         assert_eq!(a.last().unwrap(), "pipe:1");
         assert!(!MP3.has_video() && MPEGTS.has_video() && !H264.has_audio());
     }
+
+    /// The image ships a minimal ffmpeg (deploy/docker/build-ffmpeg.sh): a
+    /// filter used here but not enabled there fails only in containers.
+    #[test]
+    fn every_filter_used_is_built_into_the_image_ffmpeg() {
+        let script = include_str!("../../../deploy/docker/build-ffmpeg.sh");
+        let built: Vec<&str> = script
+            .split("--enable-filter=")
+            .nth(1)
+            .and_then(|rest| rest.split_whitespace().next())
+            .expect("--enable-filter list")
+            .split(',')
+            .collect();
+        let ffmpeg = Path::new("/usr/bin/ffmpeg");
+        for argv in [
+            video_argv(ffmpeg, MPEGTS, 2, 1280),
+            file_video_argv(ffmpeg, MP4, 1.5, 3.0, 1280),
+        ] {
+            let vf = &argv[argv.iter().position(|x| x == "-vf").unwrap() + 1];
+            // Filters are comma separated, except inside quoted options.
+            let mut quoted = false;
+            let filters = vf.split(|c: char| {
+                if c == '\'' {
+                    quoted = !quoted;
+                }
+                c == ',' && !quoted
+            });
+            for filter in filters {
+                let name = filter.split('=').next().unwrap().trim();
+                assert!(
+                    built.contains(&name),
+                    "filter `{name}` missing from build-ffmpeg.sh"
+                );
+            }
+        }
+    }
 }

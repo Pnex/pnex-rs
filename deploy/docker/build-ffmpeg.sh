@@ -6,7 +6,9 @@
 #
 # Video track (D175): the native H.264, HEVC and MJPEG decoders, the
 # MJPEG encoder, the image2pipe muxer, swscale and the fps/scale/format
-# filters: JPEG frames out on pipe:1. All of them are LGPL in FFmpeg (the
+# filters (plus trim/setpts for frames of a library file, D203): JPEG
+# frames out on pipe:1. capture/decoder.rs tests that every filter it uses
+# is enabled here. All of them are LGPL in FFmpeg (the
 # GPL encoders such as libx264 are external libraries, never enabled
 # here). Without assembly, H.264/HEVC decoding runs in C: bounded by the
 # sampling rate of the stream, not by the camera frame rate.
@@ -49,7 +51,7 @@ fi
   --enable-decoder=mp3float,mp3,mp2float,mp2,aac,aac_fixed,vorbis,opus,flac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8,h264,hevc,mjpeg \
   --enable-encoder=pcm_s16le,mjpeg \
   --enable-muxer=pcm_s16le,image2pipe \
-  --enable-filter=aresample,aformat,anull,fps,scale,format,null
+  --enable-filter=aresample,aformat,anull,fps,scale,format,null,trim,setpts
 
 grep -q '#define FFMPEG_LICENSE "LGPL version 2.1 or later"' config.h \
   || { echo "ffmpeg is not LGPL-2.1-or-later" >&2; exit 1; }
