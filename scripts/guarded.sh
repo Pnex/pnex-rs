@@ -12,6 +12,10 @@
 #   kernel OOM-kills inside the build scope only, never the terminal (no
 #   MemoryHigh: throttling stalls a build forever instead of failing it; no
 #   swap, so it fails fast instead of thrashing the desktop);
+# - 2026-10-16: at the ceiling the scope thrashes on page cache instead of
+#   OOMing, the pressure spills onto user@.service (oomd limit 50%) and oomd
+#   killed GNOME Shell. The scope is now watched by oomd itself at 20%, so
+#   it crosses its own limit first and is the one killed;
 # - lowest CPU / IO priority and a high OOM score (the build is the
 #   kernel's first victim, before anything interactive);
 # - refuses to start under PNEX_GUARD_MIN_DISK_GB free on the target disk
@@ -57,6 +61,7 @@ run() {
     exec systemd-run --user --scope --quiet --collect \
       --unit="pnex-build-$$" \
       -p MemoryMax="$mem_max" -p MemorySwapMax=0 \
+      -p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=20% \
       -- "${prio[@]}" "$@"
   fi
   exec "${prio[@]}" "$@"
