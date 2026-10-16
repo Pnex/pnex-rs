@@ -857,6 +857,12 @@ déclarée par sortie cochée du `Device (écriture)`. Reste, gros chantier :
   mal (même ligne que le titre) ; il faut une place dédiée sur le nœud.
 - Toute évolution passe par la `NodeDoc` et l'assistant (D142–D145).
 
+### P2.22 — Création assistée : noyau et pack (ajout 2026-10-16) — **PRD v0.3, D225–D237 validées**
+
+Spec : `assisted-creation.md`. Règle tirée des dossiers (K55) : aucun type nouveau quand un type existant plus un rôle suffit. Une production est un **espace de travail** comme le dossier (frise, Histoire, graphe, carte servent tels quels), une scène est un **événement**, l'ordre de présentation est un **lien ordonné** (vue Plan). Noyau : espace de travail générique, rôles d'attachement déclarés par un pack, temps relatif, liens ordonnés, assets sur tout objet (`depicts`) + visionneuse 3D, masquage par défaut des données personnelles à l'export, « contenu généré » (signature C2PA reportée), exports OTIO/FCPXML et vidéo des vues. Pack `creation` : production, partie, personnage, cadrage ; profils Enquête, Vidéo, Fiction.
+
+Premiers lots : C1 (assets + visionneuse 3D) et C2 (espace de travail générique + vue Plan), utiles hors création. Lexique arbitré : Production, Partie, Séquence, Personnage, Cadrage (Projet, Scène et Plan étaient déjà pris).
+
 ### Outils externes évalués (ajout 2026-10-11) — **inscrits, rien d'implémenté**
 
 Contraintes de tri : workspace Cargo unique, cible Raspberry Pi (pas de
