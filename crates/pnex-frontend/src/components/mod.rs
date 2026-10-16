@@ -79,8 +79,12 @@ pub mod resource_picker;
 pub mod secret_field;
 /// Root CA download card with fingerprint + QR code (D70).
 pub mod server_ca_card;
+pub mod stepper;
 pub mod surface;
 pub mod symbols;
+/// Generic timeline (ruler, lanes of marks and spans, cursor): cases,
+/// Vision Lab, media analyses.
+pub mod timeline;
 pub mod toasts;
 pub mod tour_editor;
 pub mod tour_viewer;

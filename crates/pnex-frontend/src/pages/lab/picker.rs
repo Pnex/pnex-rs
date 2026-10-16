@@ -49,17 +49,17 @@ pub(super) fn PhotoPicker(
                     value: "{search}",
                     oninput: move |e| search.set(e.value()),
                 }
-                p { class: "text-xs text-gray-500", {t!("lab-picker-help")} }
-                div { class: "max-h-80 overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-lg",
+                p { class: "text-xs text-slate", {t!("lab-picker-help")} }
+                div { class: "max-h-80 overflow-y-auto divide-y divide-gray-100 border border-line rounded-lg",
                     match rows {
                         None => rsx! {
-                            p { class: "p-3 text-sm text-gray-500", {t!("common-loading")} }
+                            p { class: "p-3 text-sm text-slate", {t!("common-loading")} }
                         },
                         Some(Err(e)) => rsx! {
                             p { class: "p-3 text-sm text-red-600", "{e}" }
                         },
                         Some(Ok(list)) if list.is_empty() => rsx! {
-                            p { class: "p-3 text-sm text-gray-500", {t!("lab-picker-empty")} }
+                            p { class: "p-3 text-sm text-slate", {t!("lab-picker-empty")} }
                         },
                         Some(Ok(list)) => rsx! {
                             for asset in list {

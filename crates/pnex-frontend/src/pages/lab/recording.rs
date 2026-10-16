@@ -99,7 +99,7 @@ pub(super) fn RecordingImport(
             max_width: "max-w-lg".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                p { class: "text-xs text-gray-500", {t!("lab-rec-help")} }
+                p { class: "text-xs text-slate", {t!("lab-rec-help")} }
                 label { class: "block",
                     span { class: FIELD_LABEL, {t!("lab-rec-camera")} }
                     select {
@@ -152,7 +152,7 @@ pub(super) fn RecordingImport(
                         oninput: move |e| every.set(e.value()),
                     }
                 }
-                p { class: if count.is_some() { "text-xs text-gray-600" } else { "text-xs text-amber-700" },
+                p { class: if count.is_some() { "text-xs text-slate" } else { "text-xs text-amber-700" },
                     "{hint}"
                 }
                 div { class: "flex justify-end gap-2 pt-2",

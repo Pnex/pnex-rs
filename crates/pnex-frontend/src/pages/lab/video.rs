@@ -1,6 +1,7 @@
-//! Frames of a video of the media library added to the project (MP4 /
-//! MOV): video, start and end in seconds, one picture every N seconds.
-//! Every import of the same video shares one source.
+//! Frames of videos of the media library added to the project (MP4 /
+//! MOV): one or several videos, start and end in seconds, one picture
+//! every N seconds, applied to each. Every import of the same video shares
+//! one source.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -53,7 +54,7 @@ pub(super) fn VideoImport(
             .map(|p| p.results)
             .unwrap_or_default()
     });
-    let mut asset = use_signal(String::new);
+    let mut picked = use_signal(Vec::<String>::new);
     let mut from = use_signal(|| "0".to_string());
     let mut to = use_signal(|| "60".to_string());
     let mut every = use_signal(|| "2".to_string());
@@ -61,28 +62,47 @@ pub(super) fn VideoImport(
 
     let list = videos.read().clone().unwrap_or_default();
     let loaded = videos.read().is_some();
-    let ready = request(&asset(), &from(), &to(), &every());
+    // The same bounds for every picked video; one request each.
+    let ready: Option<(Vec<LabVideoImport>, usize)> = {
+        let reqs: Option<Vec<(LabVideoImport, usize)>> = picked()
+            .iter()
+            .map(|a| request(a, &from(), &to(), &every()))
+            .collect();
+        reqs.filter(|r| !r.is_empty()).map(|r| {
+            (
+                r.iter().map(|x| x.0.clone()).collect(),
+                r.iter().map(|x| x.1).sum(),
+            )
+        })
+    };
     let count = ready.as_ref().map(|r| r.1);
     let hint = match count {
-        Some(n) => t!("lab-rec-estimate", count : n).to_string(),
+        Some(n) => t!("lab-video-estimate", count : n, videos : picked().len()).to_string(),
         None => t!("lab-video-invalid", max : LAB_RECORDING_MAX_FRAMES, minutes : LAB_RECORDING_MAX_SECS / 60).to_string(),
     };
     let valid = ready.is_some();
     let ok = valid && !busy();
 
     let submit = move |_| {
-        let Some((req, _)) = ready.clone() else {
+        let Some((reqs, _)) = ready.clone() else {
             return;
         };
         let pid = project.clone();
         busy.set(true);
         spawn(async move {
-            match api::lab::import_video(&pid, &req).await {
-                Ok(list) => {
-                    toasts::success(t!("lab-rec-done", count : list.len()).to_string());
-                    on_done.call(());
+            let mut added = 0;
+            for req in reqs {
+                match api::lab::import_video(&pid, &req).await {
+                    Ok(list) => added += list.len(),
+                    Err(e) => {
+                        toasts::error(e);
+                        break;
+                    }
                 }
-                Err(e) => toasts::error(e),
+            }
+            if added > 0 {
+                toasts::success(t!("lab-rec-done", count : added).to_string());
+                on_done.call(());
             }
             busy.set(false);
         });
@@ -94,22 +114,41 @@ pub(super) fn VideoImport(
             max_width: "max-w-lg".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-3",
-                p { class: "text-xs text-gray-500", {t!("lab-video-help")} }
-                label { class: "block",
-                    span { class: FIELD_LABEL, {t!("lab-video-asset")} }
+                p { class: "text-xs text-slate", {t!("lab-video-help")} }
+                fieldset {
+                    legend { class: FIELD_LABEL, {t!("lab-video-asset")} }
                     if loaded && list.is_empty() {
                         p { class: "text-xs text-amber-700", {t!("lab-video-none")} }
                     }
-                    select {
-                        class: "{INPUT} w-full",
-                        onchange: move |e| asset.set(e.value()),
-                        option { value: "", selected: asset().is_empty(), {t!("lab-video-pick")} }
+                    div { class: "max-h-48 overflow-y-auto rounded-lg border border-line divide-y divide-line",
                         for v in list {
-                            option { key: "{v.id}", value: "{v.id}", "{v.name}" }
+                            label {
+                                key: "{v.id}",
+                                class: "flex items-center gap-2 px-3 py-2 text-sm text-ink hover:bg-gray-50",
+                                input {
+                                    class: "h-4 w-4 accent-signal-600",
+                                    r#type: "checkbox",
+                                    checked: picked().contains(&v.id),
+                                    onchange: {
+                                        let id = v.id.clone();
+                                        move |e: FormEvent| {
+                                            let on = e.checked();
+                                            picked
+                                                .with_mut(|p| {
+                                                    p.retain(|x| *x != id);
+                                                    if on {
+                                                        p.push(id.clone());
+                                                    }
+                                                });
+                                        }
+                                    },
+                                }
+                                span { class: "truncate", "{v.name}" }
+                            }
                         }
                     }
                 }
-                div { class: "grid grid-cols-3 gap-2",
+                div { class: "grid grid-cols-3 items-end gap-2",
                     label { class: "block",
                         span { class: FIELD_LABEL, {t!("lab-video-from")} }
                         input {
@@ -145,7 +184,7 @@ pub(super) fn VideoImport(
                         }
                     }
                 }
-                p { class: if valid { "text-xs text-gray-600" } else { "text-xs text-amber-700" },
+                p { class: if valid { "text-xs text-slate" } else { "text-xs text-amber-700" },
                     "{hint}"
                 }
                 div { class: "flex justify-end gap-2 pt-2",

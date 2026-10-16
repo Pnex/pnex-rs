@@ -1,6 +1,8 @@
 //! Page `/lab/:id` — annotation workspace of a Vision Lab project (D198):
-//! image strip, the picture with its boxes (drag to draw, click to
-//! select), class picker, live statistics and frozen dataset versions.
+//! the picture with its boxes (drag to draw, click to select), class
+//! picker, the timeline of its source (`timeline.rs`), live statistics and
+//! frozen dataset versions. Every edit is saved at once: work resumes
+//! where it stopped ("Resume" jumps to the next picture to label).
 //!
 //! Edits are applied locally at once and saved in the background, one
 //! request at a time per image (each answer carries the version the next
@@ -19,11 +21,19 @@ use pnex_core::lab::{
 
 use crate::api;
 use crate::app::Route;
-use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
+use crate::components::crud::layout::ListLayout;
+use crate::components::icons;
+use crate::components::modal::Modal;
+use crate::components::stepper::{Station, Stepper};
+use crate::components::ui::{
+    BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_LABEL, INPUT, PANEL,
+};
 use crate::state::{org, toasts};
+use crate::util::sleep;
 
 use super::picker::PhotoPicker;
 use super::recording::RecordingImport;
+use super::timeline::{self as tl, LabTimeline};
 use super::training::TrainingPanel;
 use super::video::VideoImport;
 use super::ProjectForm;
@@ -33,6 +43,9 @@ use crate::components::gerbe::Gerbe;
 const CLASS_COLORS: [&str; 8] = [
     "#e11d48", "#2563eb", "#16a34a", "#d97706", "#9333ea", "#0891b2", "#db2777", "#65a30d",
 ];
+
+/// The training button: green, the goal of the whole page.
+pub(super) const BTN_TRAIN: &str = "inline-flex items-center justify-center gap-1.5 min-h-10 px-4 py-2 rounded-md bg-ok text-white text-sm font-semibold shadow-sm hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ok active:scale-[0.97] motion-reduce:active:scale-100 transition-[opacity,scale] duration-150 ease-out-ui";
 
 /// Smallest box kept (normalized side): a click is not a box.
 const MIN_BOX: f32 = 0.005;
@@ -59,6 +72,13 @@ fn box_style(b: &[f32; 4], color: &str) -> String {
     )
 }
 
+/// Screens of a project; training opens as a dialog on top of either.
+#[derive(Clone, Copy, PartialEq)]
+enum Step {
+    Images,
+    Label,
+}
+
 /// Save state of the image being edited.
 #[derive(Clone, Copy, Default, PartialEq)]
 struct SaveState {
@@ -81,8 +101,16 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut recording_open = use_signal(|| false);
     let mut video_open = use_signal(|| false);
     let mut versions_tick = use_signal(|| 0u32);
-    let mut review_only = use_signal(|| false);
+    let mut playing = use_signal(|| false);
+    let mut speed = use_signal(|| 2u32);
+    // "Where do the pictures come from?" chooser of the add button.
+    let mut adding = use_signal(|| false);
+    // Step shown; `None` = the natural one (pictures first, then labeling).
+    let mut step = use_signal(|| None::<Step>);
     let mut editing = use_signal(|| false);
+    let mut training = use_signal(|| false);
+    // Zoom of the picture (1 = whole picture), kept from picture to picture.
+    let mut zoom = use_signal(|| 1.0f32);
     let mut save_state = use_signal(SaveState::default);
     // Proposals of a registry model, for one image: (image id, boxes).
     let mut suggestions = use_signal(|| (String::new(), Vec::<LabSuggestion>::new()));
@@ -110,7 +138,19 @@ pub fn LabProjectPage(id: String) -> Element {
             let pid = pid.clone();
             spawn(async move {
                 match api::lab::images(&pid).await {
-                    Ok(list) => images.set(list),
+                    Ok(list) => {
+                        // First load: open where labeling stopped.
+                        if !*loaded.peek() {
+                            let todo = tl::sources(&list)
+                                .iter()
+                                .flat_map(|s| s.frames.iter().map(|f| f.0))
+                                .find(|i| !list[*i].annotated());
+                            if let Some(i) = todo {
+                                selected.set(i);
+                            }
+                        }
+                        images.set(list);
+                    }
                     Err(e) => toasts::error(e),
                 }
                 loaded.set(true);
@@ -205,15 +245,32 @@ pub fn LabProjectPage(id: String) -> Element {
         }
     };
 
+    // Previous / next picture of the same source.
     let mut go = move |delta: i64| {
-        let n = images.peek().len() as i64;
-        if n == 0 {
-            return;
+        let next = tl::step(&tl::sources(&images.peek()), *selected.peek(), delta);
+        if let Some(n) = next {
+            selected.set(n);
+            selected_box.set(None);
         }
-        let next = (*selected.peek() as i64 + delta).clamp(0, n - 1) as usize;
-        selected.set(next);
-        selected_box.set(None);
     };
+    // Playback: the next picture of the source at the chosen pace.
+    use_future(move || async move {
+        loop {
+            let pace = 1000 / u64::from((*speed.peek()).max(1));
+            sleep(std::time::Duration::from_millis(pace)).await;
+            if !*playing.peek() {
+                continue;
+            }
+            let next = tl::step(&tl::sources(&images.peek()), *selected.peek(), 1);
+            match next {
+                Some(n) => {
+                    selected.set(n);
+                    selected_box.set(None);
+                }
+                None => playing.set(false),
+            }
+        }
+    });
 
     let on_key = move |e: KeyboardEvent| {
         let key = e.key().to_string();
@@ -234,6 +291,14 @@ pub fn LabProjectPage(id: String) -> Element {
         match key.as_str() {
             "ArrowRight" => go(1),
             "ArrowLeft" => go(-1),
+            "+" | "=" => {
+                let z = (*zoom.peek() * ZOOM_STEP).min(ZOOM_MAX);
+                zoom.set(z);
+            }
+            "-" => {
+                let z = (*zoom.peek() / ZOOM_STEP).max(ZOOM_MIN);
+                zoom.set(z);
+            }
             "Delete" | "Backspace" => {
                 let sel = *selected_box.peek();
                 if let Some(b) = sel {
@@ -369,65 +434,148 @@ pub fn LabProjectPage(id: String) -> Element {
         });
     };
 
+    let srcs = tl::sources(&list);
+    let done: usize = srcs.iter().map(|s| s.labeled).sum();
+    let state = if saving {
+        t!("lab-saving")
+    } else {
+        t!("lab-all-saved")
+    };
+    let progress = format!(
+        "{} · {state}",
+        t!("lab-progress", done : done, total : count)
+    );
+    // First picture still to label, source by source: where work resumes.
+    let todo = srcs
+        .iter()
+        .flat_map(|s| s.frames.iter().map(|f| f.0))
+        .find(|i| list.get(*i).is_some_and(|img| !img.annotated()));
+    let navigator = use_navigator();
+    // One screen at a time: pictures, then labeling.
+    let now = step().unwrap_or(if count == 0 {
+        Step::Images
+    } else {
+        Step::Label
+    });
+    // The metro line: pictures → labeling → training (the dialog).
+    let stations = vec![
+        Station {
+            label: t!("lab-step-images").to_string(),
+            done: count > 0,
+            testid: Some("lab-step"),
+        },
+        Station {
+            label: t!("lab-step-label").to_string(),
+            done: count > 0 && done == count,
+            testid: Some("lab-step"),
+        },
+        Station {
+            label: t!("lab-step-train").to_string(),
+            done: false,
+            testid: Some("lab-step"),
+        },
+    ];
+    let station = match now {
+        Step::Images => 0,
+        Step::Label => 1,
+    };
+    let open_source = {
+        let srcs = srcs.clone();
+        let list = list.clone();
+        move |k: usize| {
+            // Opens a source where its labeling stopped.
+            let Some(s) = srcs.get(k) else {
+                return;
+            };
+            let at = s
+                .frames
+                .iter()
+                .map(|f| f.0)
+                .find(|i| list.get(*i).is_some_and(|img| !img.annotated()))
+                .or(s.frames.first().map(|f| f.0));
+            if let Some(i) = at {
+                playing.set(false);
+                selected.set(i);
+                selected_box.set(None);
+                step.set(Some(Step::Label));
+            }
+        }
+    };
+
     rsx! {
-        div { class: "flex flex-col gap-4 p-4 lg:p-6 min-h-0",
-            div { class: "flex flex-wrap items-center gap-3",
-                Link {
-                    class: "text-sm text-gray-500 hover:text-gray-800",
-                    to: Route::Lab {},
-                    "← "
-                    {t!("nav-lab")}
+        ListLayout {
+            title,
+            subtitle: Some(progress),
+            on_back: move |_| {
+                navigator.push(Route::Lab {});
+            },
+            can_write,
+            // An empty project shows its own big button instead.
+            add_label: (now == Step::Images && count > 0).then(|| t!("lab-add-images").to_string()),
+            on_add: move |_| adding.set(true),
+            title_aside: rsx! {
+                Stepper {
+                    label: t!("lab-steps").to_string(),
+                    stations,
+                    current: station,
+                    on_pick: move |k: usize| {
+                        match k {
+                            0 => step.set(Some(Step::Images)),
+                            1 => {
+                                // Labeling opens where the work stopped.
+                                if now != Step::Label {
+                                    if let Some(i) = todo {
+                                        selected.set(i);
+                                        selected_box.set(None);
+                                    }
+                                }
+                                step.set(Some(Step::Label));
+                            }
+                            _ => training.set(true),
+                        }
+                    },
                 }
-                h1 { class: "text-xl font-semibold text-gray-900 flex-1 min-w-0 truncate",
-                    "{title}"
-                }
-                if saving {
-                    span { class: "text-xs text-gray-500", {t!("lab-saving")} }
-                }
+            },
+            actions: rsx! {
                 if can_write {
                     button {
-                        class: BTN_SECONDARY_SM,
+                        class: BTN_SECONDARY,
+                        r#type: "button",
                         onclick: move |_| editing.set(true),
                         {t!("lab-edit-short")}
                     }
-                    button {
-                        class: BTN_PRIMARY_SM,
-                        onclick: move |_| picker_open.set(true),
-                        {t!("lab-add-images")}
-                    }
-                    button {
-                        class: BTN_SECONDARY_SM,
-                        onclick: move |_| recording_open.set(true),
-                        {t!("lab-from-recording")}
-                    }
-                    button {
-                        class: BTN_SECONDARY_SM,
-                        onclick: move |_| video_open.set(true),
-                        {t!("lab-from-video")}
-                    }
                 }
-            }
+                button {
+                    class: BTN_TRAIN,
+                    r#type: "button",
+                    "data-testid": "lab-train-open",
+                    onclick: move |_| training.set(true),
+                    icons::Dumbbell { class: "h-4 w-4" }
+                    {t!("lab-train-button")}
+                }
+            },
             if classes.is_empty() && project_now.is_some() {
-                p { class: "text-sm text-amber-700", {t!("lab-no-class")} }
-            }
-            div { class: "grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)_17rem]",
-                ImageStrip {
-                    images: list.clone(),
-                    selected: index,
-                    loaded: loaded(),
-                    review_only: review_only(),
-                    on_review_only: move |on: bool| review_only.set(on),
-                    on_select: move |i: usize| {
-                        selected.set(i);
-                        selected_box.set(None);
-                    },
+                p { class: "mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800",
+                    {t!("lab-no-class")}
                 }
+            }
+            if now == Step::Images {
+                SourceList {
+                    sources: srcs.clone(),
+                    loaded: loaded(),
+                    can_write,
+                    on_open: open_source.clone(),
+                    on_add: move |_| adding.set(true),
+                }
+            }
+            if now == Step::Label {
                 div {
-                    class: "space-y-3 outline-none min-w-0",
+                    class: "grid gap-4 outline-none lg:grid-cols-[13rem_minmax(0,1fr)]",
                     tabindex: "0",
                     onkeydown: on_key,
-                    ClassBar {
+                    ClassPalette {
                         classes: classes.clone(),
+                        counts: stats.boxes_per_class.clone(),
                         current: class(),
                         on_pick: move |c: u32| {
                             class.set(c);
@@ -442,124 +590,208 @@ pub fn LabProjectPage(id: String) -> Element {
                             }
                         },
                     }
-                    if let Some(img) = current.clone() {
-                        Annotator {
-                            key: "{img.id}",
-                            image: img.clone(),
-                            classes: classes.clone(),
-                            class: class(),
-                            can_write: can_write && !classes.is_empty(),
-                            selected_box: selected_box(),
-                            suggestions: shown.clone(),
-                            on_accept: move |i: usize| accept(vec![i]),
-                            on_select_box: move |b: Option<usize>| selected_box.set(b),
-                            on_add_box: move |bbox: [f32; 4]| {
-                                let c = *class.peek();
-                                edit(
-                                    Box::new(move |img: &mut LabImage| {
-                                        img.negative = false;
-                                        img.boxes.push(LabBox { class: c, bbox });
-                                    }),
-                                );
-                            },
+                    div { class: "min-w-0 space-y-3",
+                        if current.is_some() {
+                            p { class: "text-sm text-slate", {t!("lab-label-help")} }
                         }
-                        ImageTools {
-                            image: img,
-                            index,
-                            count,
-                            can_write,
-                            selected_box: selected_box(),
-                            on_prev: move |_| go(-1),
-                            on_next: move |_| go(1),
-                            on_remove_box: move |_| {
-                                let sel = *selected_box.peek();
-                                if let Some(b) = sel {
-                                    selected_box.set(None);
+                        if let Some(img) = current.clone() {
+                            Annotator {
+                                image: img.clone(),
+                                classes: classes.clone(),
+                                class: class(),
+                                can_write: can_write && !classes.is_empty(),
+                                can_add: can_write,
+                                zoom: zoom(),
+                                on_zoom: move |z: f32| zoom.set(z),
+                                on_add_class: {
+                                    let pid = pid.clone();
+                                    let project = project_now.clone();
+                                    move |name: String| {
+                                        let Some(p) = project.clone() else {
+                                            return;
+                                        };
+                                        let (pid, at) = (pid.clone(), p.classes.len() as u32);
+                                        let mut classes = p.classes.clone();
+                                        classes.push(name);
+                                        let input = pnex_core::lab::LabProjectInput {
+                                            name: p.name.clone(),
+                                            description: p.description.clone(),
+                                            classes,
+                                        };
+                                        spawn(async move {
+                                            match api::lab::update(&pid, &input).await {
+                                                Ok(_) => {
+                                                    class.set(at);
+                                                    reload.with_mut(|r| *r += 1);
+                                                }
+                                                Err(e) => toasts::error(e),
+                                            }
+                                        });
+                                    }
+                                },
+                                selected_box: selected_box(),
+                                suggestions: shown.clone(),
+                                on_accept: move |i: usize| accept(vec![i]),
+                                on_select_box: move |b: Option<usize>| selected_box.set(b),
+                                on_add_box: move |bbox: [f32; 4]| {
+                                    let c = *class.peek();
                                     edit(
                                         Box::new(move |img: &mut LabImage| {
-                                            if b < img.boxes.len() {
-                                                img.boxes.remove(b);
+                                            img.negative = false;
+                                            img.boxes.push(LabBox { class: c, bbox });
+                                        }),
+                                    );
+                                },
+                            }
+                            ImageTools {
+                                image: img,
+                                can_write,
+                                selected_box: selected_box(),
+                                has_prev: tl::step(&srcs, index, -1).is_some(),
+                                has_next: tl::step(&srcs, index, 1).is_some(),
+                                on_prev: move |_| go(-1),
+                                on_next: move |_| go(1),
+                                on_remove_box: move |_| {
+                                    let sel = *selected_box.peek();
+                                    if let Some(b) = sel {
+                                        selected_box.set(None);
+                                        edit(
+                                            Box::new(move |img: &mut LabImage| {
+                                                if b < img.boxes.len() {
+                                                    img.boxes.remove(b);
+                                                }
+                                            }),
+                                        );
+                                    }
+                                },
+                                on_negative: move |on: bool| {
+                                    edit(
+                                        Box::new(move |img: &mut LabImage| {
+                                            img.negative = on;
+                                            if on {
+                                                img.boxes.clear();
                                             }
                                         }),
                                     );
-                                }
-                            },
-                            on_negative: move |on: bool| {
-                                edit(
-                                    Box::new(move |img: &mut LabImage| {
-                                        img.negative = on;
-                                        if on {
-                                            img.boxes.clear();
-                                        }
-                                    }),
-                                );
-                            },
-                            on_split: move |s: LabSplit| edit(Box::new(move |img: &mut LabImage| img.split = s)),
-                            on_remove_image: move |_| {
-                                let Some(id) = images.peek().get(*selected.peek()).map(|i| i.id.clone()) else {
-                                    return;
-                                };
-                                let done = t!("lab-image-removed").to_string();
-                                spawn(async move {
-                                    match api::lab::remove_image(&id).await {
-                                        Ok(_) => {
-                                            toasts::success(done);
-                                            selected_box.set(None);
-                                            reload.with_mut(|r| *r += 1);
-                                        }
-                                        Err(e) => toasts::error(e),
-                                    }
-                                });
-                            },
-                        }
-                        if can_write && !classes.is_empty() {
-                            SuggestBar {
-                                models: model_options.clone(),
-                                model: model(),
-                                busy: suggesting(),
-                                count: shown.iter().filter(|s| s.class.is_some()).count(),
-                                total: shown.len(),
-                                can_interpolate: current.as_ref().is_some_and(|c| c.frame_ms.is_some()),
-                                on_model: move |m: String| model.set(m),
-                                on_suggest,
-                                on_interpolate,
-                                on_propagate,
-                                // Only the proposals whose label is a class: the
-                                // others are kept one by one, on purpose.
-                                on_keep_all: move |_| {
-                                    let mapped: Vec<usize> = suggestions
-                                        .peek()
-                                        .1
-                                        .iter()
-                                        .enumerate()
-                                        .filter(|(_, s)| s.class.is_some())
-                                        .map(|(i, _)| i)
-                                        .collect();
-                                    accept(mapped);
                                 },
-                                on_dismiss: move |_| suggestions.set((String::new(), Vec::new())),
+                                on_split: move |s: LabSplit| edit(Box::new(move |img: &mut LabImage| img.split = s)),
+                                on_remove_image: move |_| {
+                                    let Some(id) = images.peek().get(*selected.peek()).map(|i| i.id.clone()) else {
+                                        return;
+                                    };
+                                    let done = t!("lab-image-removed").to_string();
+                                    spawn(async move {
+                                        match api::lab::remove_image(&id).await {
+                                            Ok(_) => {
+                                                toasts::success(done);
+                                                selected_box.set(None);
+                                                reload.with_mut(|r| *r += 1);
+                                            }
+                                            Err(e) => toasts::error(e),
+                                        }
+                                    });
+                                },
                             }
-                        }
-                    } else if loaded() {
-                        div { class: "rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center",
-                            p { class: "text-sm text-gray-700", {t!("lab-no-image")} }
-                            p { class: "text-xs text-gray-500 mt-1", {t!("lab-no-image-help")} }
+                            LabTimeline {
+                                list: list.clone(),
+                                classes: classes.clone(),
+                                sources: srcs.clone(),
+                                selected: index,
+                                playing: playing(),
+                                speed: speed(),
+                                on_select: move |i: usize| {
+                                    selected.set(i);
+                                    selected_box.set(None);
+                                },
+                                on_source: open_source.clone(),
+                                on_play: move |on: bool| playing.set(on),
+                                on_speed: move |v: u32| speed.set(v),
+                            }
+                            if can_write && !classes.is_empty() {
+                                details { class: "rounded-lg border border-line bg-surface px-4 py-3",
+                                    summary { class: "cursor-pointer text-sm font-medium text-ink",
+                                        {t!("lab-auto-title")}
+                                    }
+                                    p { class: "mt-1 text-sm text-slate", {t!("lab-auto-help")} }
+                                    div { class: "mt-3",
+                                        SuggestBar {
+                                            models: model_options.clone(),
+                                            model: model(),
+                                            busy: suggesting(),
+                                            count: shown.iter().filter(|s| s.class.is_some()).count(),
+                                            total: shown.len(),
+                                            can_interpolate: current.as_ref().is_some_and(|c| c.frame_ms.is_some()),
+                                            on_model: move |m: String| model.set(m),
+                                            on_suggest,
+                                            on_interpolate,
+                                            on_propagate,
+                                            // Only the proposals whose label is a class: the
+                                            // others are kept one by one, on purpose.
+                                            on_keep_all: move |_| {
+                                                let mapped: Vec<usize> = suggestions
+                                                    .peek()
+                                                    .1
+                                                    .iter()
+                                                    .enumerate()
+                                                    .filter(|(_, s)| s.class.is_some())
+                                                    .map(|(i, _)| i)
+                                                    .collect();
+                                                accept(mapped);
+                                            },
+                                            on_dismiss: move |_| suggestions.set((String::new(), Vec::new())),
+                                        }
+                                    }
+                                }
+                            }
+                        } else if loaded() {
+                            EmptyState {
+                                can_write,
+                                on_add: move |_| adding.set(true),
+                            }
                         }
                     }
                 }
-                div { class: "space-y-4",
-                    StatsPanel { classes: classes.clone(), stats }
-                    VersionsPanel {
-                        project: pid.clone(),
-                        can_write,
-                        on_frozen: move |_| versions_tick.with_mut(|t| *t += 1),
+            }
+            if training() {
+                Modal {
+                    title: t!("lab-train-title").to_string(),
+                    max_width: "max-w-2xl".to_string(),
+                    on_close: move |_| training.set(false),
+                    div { class: "space-y-4",
+                        StatsPanel { classes: classes.clone(), stats: stats.clone() }
+                        TrainingPanel {
+                            project: pid.clone(),
+                            can_write,
+                            models: models.read().clone().unwrap_or_default(),
+                            versions_tick: versions_tick(),
+                            labeled: done,
+                        }
+                        details { class: "text-sm",
+                            summary { class: "cursor-pointer px-1 text-slate hover:text-ink",
+                                {t!("lab-versions-more")}
+                            }
+                            div { class: "mt-3",
+                                VersionsPanel {
+                                    project: pid.clone(),
+                                    can_write,
+                                    on_frozen: move |_| versions_tick.with_mut(|t| *t += 1),
+                                }
+                            }
+                        }
                     }
-                    TrainingPanel {
-                        project: pid.clone(),
-                        can_write,
-                        models: models.read().clone().unwrap_or_default(),
-                        versions_tick: versions_tick(),
-                    }
+                }
+            }
+            if adding() {
+                AddChooser {
+                    on_close: move |_| adding.set(false),
+                    on_pick: move |k: AddFrom| {
+                        adding.set(false);
+                        match k {
+                            AddFrom::Photos => picker_open.set(true),
+                            AddFrom::Videos => video_open.set(true),
+                            AddFrom::Recording => recording_open.set(true),
+                        }
+                    },
                 }
             }
             if picker_open() {
@@ -619,42 +851,28 @@ pub fn LabProjectPage(id: String) -> Element {
     }
 }
 
-/// Left column: the images, with their annotation state.
+/// The classes as big buttons: the one picked is the class of the next box
+/// (keys 1–9), each with its number of boxes.
 #[component]
-fn ImageStrip(
-    images: Vec<LabImage>,
-    selected: usize,
-    loaded: bool,
-    /// Only the pictures of the review queue (M4).
-    review_only: bool,
-    on_review_only: EventHandler<bool>,
-    on_select: EventHandler<usize>,
+fn ClassPalette(
+    classes: Vec<String>,
+    counts: Vec<usize>,
+    current: u32,
+    on_pick: EventHandler<u32>,
 ) -> Element {
-    let pending = images.iter().filter(|i| i.review).count();
-    let toggle = if review_only {
-        t!("lab-review-all").to_string()
-    } else {
-        t!("lab-review-only", count : pending).to_string()
-    };
     rsx! {
-        div { class: "rounded-lg border border-gray-200 bg-white max-h-[70vh] overflow-y-auto",
-            if pending > 0 || review_only {
-                button {
-                    class: "w-full px-3 py-2 text-left text-xs font-medium text-violet-700 bg-violet-50 hover:bg-violet-100",
-                    r#type: "button",
-                    onclick: move |_| on_review_only.call(!review_only),
-                    "{toggle}"
-                }
-            }
-            if images.is_empty() && loaded {
-                p { class: "p-3 text-xs text-gray-500", {t!("lab-strip-empty")} }
-            }
-            for (i, img) in images.iter().enumerate().filter(|(_, img)| !review_only || img.review) {
-                ImageRow {
-                    key: "{img.id}",
-                    image: img.clone(),
-                    active: i == selected,
-                    on_click: move |_| on_select.call(i),
+        div { class: "space-y-2",
+            p { class: "text-sm font-medium text-ink", {t!("lab-class-label")} }
+            div { class: "flex flex-wrap gap-2 lg:flex-col",
+                for (i, name) in classes.iter().enumerate() {
+                    ClassButton {
+                        key: "{i}",
+                        index: i as u32,
+                        name: name.clone(),
+                        count: counts.get(i).copied().unwrap_or(0),
+                        on: i as u32 == current,
+                        on_pick,
+                    }
                 }
             }
         }
@@ -662,113 +880,85 @@ fn ImageStrip(
 }
 
 #[component]
-fn ImageRow(image: LabImage, active: bool, on_click: EventHandler<()>) -> Element {
-    let (dot, state) = if image.review {
-        ("bg-violet-500", t!("lab-state-review").to_string())
-    } else if image.negative {
-        ("bg-gray-400", t!("lab-state-negative").to_string())
-    } else if image.boxes.is_empty() {
-        ("bg-amber-400", t!("lab-state-todo").to_string())
-    } else {
-        (
-            "bg-emerald-500",
-            t!("lab-state-boxes", count : image.boxes.len()).to_string(),
-        )
-    };
-    let row = if active {
-        "w-full text-left px-3 py-2 flex items-center gap-2 bg-signal-50 border-l-2 border-signal-600"
-    } else {
-        "w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-50 border-l-2 border-transparent"
-    };
-    rsx! {
-        button {
-            class: row,
-            r#type: "button",
-            onclick: move |_| on_click.call(()),
-            span { class: "h-2 w-2 rounded-full shrink-0 {dot}" }
-            span { class: "flex-1 min-w-0",
-                span { class: "block text-sm text-gray-900 truncate", "{image.name}" }
-                span { class: "block text-xs text-gray-500", "{state}" }
-            }
-        }
-    }
-}
-
-/// Class chips: the class of the next box (keys 1–9).
-#[component]
-fn ClassBar(classes: Vec<String>, current: u32, on_pick: EventHandler<u32>) -> Element {
-    rsx! {
-        div { class: "flex flex-wrap items-center gap-2",
-            span { class: "text-xs text-gray-500", {t!("lab-class-label")} }
-            for (i, name) in classes.iter().enumerate() {
-                ClassChip {
-                    key: "{i}",
-                    index: i as u32,
-                    name: name.clone(),
-                    on: i as u32 == current,
-                    on_pick,
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn ClassChip(index: u32, name: String, on: bool, on_pick: EventHandler<u32>) -> Element {
+fn ClassButton(
+    index: u32,
+    name: String,
+    count: usize,
+    on: bool,
+    on_pick: EventHandler<u32>,
+) -> Element {
     let color = class_color(index);
     let style = if on {
         format!("background: {color}; border-color: {color}; color: white;")
     } else {
-        format!("border-color: {color};")
+        format!("border-color: color-mix(in srgb, {color} 45%, transparent);")
     };
-    let shortcut = if index < 9 {
-        format!("{} ", index + 1)
-    } else {
-        String::new()
-    };
+    let key = (index < 9).then(|| t!("lab-class-key", key : index + 1).to_string());
     rsx! {
         button {
-            class: "px-2 py-0.5 rounded-full border-2 text-xs font-medium text-gray-800",
+            class: "flex items-center gap-2 rounded-lg border-2 bg-surface px-3 py-2 text-left text-sm font-medium text-ink transition-transform duration-100 ease-out active:scale-[0.97]",
             style: "{style}",
             r#type: "button",
+            "aria-pressed": on,
+            title: key,
             onclick: move |_| on_pick.call(index),
-            span { class: "opacity-70", "{shortcut}" }
-            "{name}"
+            span {
+                class: "h-3 w-3 shrink-0 rounded-full border border-white/60",
+                style: "background: {color}",
+            }
+            span { class: "flex-1 truncate", "{name}" }
+            span { class: if on { "font-mono text-xs text-white/80" } else { "font-mono text-xs text-slate" },
+                "{count}"
+            }
         }
     }
 }
 
 /// The picture with its boxes: drag on the picture draws a box of the
-/// current class, a click on a box selects it.
+/// current class, a click on a box selects it. Over the picture, kept
+/// discreet so they never hide what is outlined: "+" (a new class) top
+/// left, the zoom top right; a zoomed picture scrolls inside its frame.
 #[component]
 fn Annotator(
     image: LabImage,
     classes: Vec<String>,
     class: u32,
     can_write: bool,
+    /// May create classes.
+    can_add: bool,
+    zoom: f32,
+    on_zoom: EventHandler<f32>,
+    on_add_class: EventHandler<String>,
     selected_box: Option<usize>,
     suggestions: Vec<LabSuggestion>,
     on_accept: EventHandler<usize>,
     on_select_box: EventHandler<Option<usize>>,
     on_add_box: EventHandler<[f32; 4]>,
 ) -> Element {
+    // Not keyed by picture: the same nodes follow the picture, so moving
+    // to the next one never rebuilds the block (which scrolled the page up).
     let asset = image.asset_id.clone();
-    let url = use_resource(move || {
-        let asset = asset.clone();
-        async move { crate::util::media_blob_url(&api::media::content_path(&asset), None).await }
-    });
+    let url = use_resource(use_reactive((&asset,), |(asset,)| async move {
+        crate::util::media_blob_url(&api::media::content_path(&asset), None).await
+    }));
     let mut layer = use_signal(|| None::<Rc<MountedData>>);
     // Layer rect in client pixels (left, top, width, height), read on press.
     let mut rect = use_signal(|| None::<(f64, f64, f64, f64)>);
     let mut start = use_signal(|| None::<(f32, f32)>);
     let mut now = use_signal(|| None::<(f32, f32)>);
 
-    let ratio = image.width.max(1) as f64 / image.height.max(1) as f64;
-    let frame = format!(
-        "aspect-ratio: {} / {}; width: min(100%, calc(70vh * {ratio}));",
+    let aspect = format!(
+        "aspect-ratio: {} / {};",
         image.width.max(1),
         image.height.max(1)
     );
+    // The whole labeling screen fits the window: no page scroll between
+    // pictures.
+    // The frame spans the column (its edges line up with the bars under
+    // it); a tall picture is letterboxed inside.
+    let frame = format!("{aspect} max-height: max(16rem, 100vh - 22rem);");
+    let content = format!("{aspect} height: {}%;", zoom * 100.0);
+    let zoom_to = move |z: f32| on_zoom.call(z.clamp(ZOOM_MIN, ZOOM_MAX));
     let norm = move |x: f64, y: f64| -> Option<(f32, f32)> {
         let (l, t, w, h) = (*rect.peek())?;
         if w <= 0.0 || h <= 0.0 {
@@ -831,51 +1021,142 @@ fn Annotator(
     };
 
     rsx! {
-        div {
-            class: "relative mx-auto bg-gray-50 border border-gray-200 rounded-lg overflow-hidden select-none touch-none",
-            style: "{frame}",
-            if let Some(src) = src {
-                img {
-                    class: "absolute inset-0 w-full h-full pointer-events-none",
-                    src: "{src}",
-                    alt: "{image.name}",
-                    draggable: "false",
-                }
-            } else {
-                Gerbe { size: 36 }
-            }
-            div {
-                class: "absolute inset-0 {cursor}",
-                onmounted: move |e| layer.set(Some(e.data())),
-                onpointerdown: on_down,
-                onpointermove: on_move,
-                onpointerup: move |_| finish(),
-                onpointerleave: move |_| finish(),
-                for (i, b) in image.boxes.iter().enumerate() {
-                    BoxView {
-                        key: "{i}",
-                        index: i,
-                        bbox: b.bbox,
-                        color: class_color(b.class).to_string(),
-                        label: classes.get(b.class as usize).cloned().unwrap_or_default(),
-                        selected: selected_box == Some(i),
-                        on_select: move |i: usize| on_select_box.call(Some(i)),
+        div { class: "relative w-full", style: "{frame}",
+            div { class: "absolute inset-0 overflow-auto rounded-lg border border-line bg-rail select-none touch-none",
+                div { class: "relative mx-auto", style: "{content}",
+                    if let Some(src) = src {
+                        img {
+                            class: "absolute inset-0 w-full h-full pointer-events-none",
+                            src: "{src}",
+                            alt: "{image.name}",
+                            draggable: "false",
+                        }
+                    } else {
+                        Gerbe { size: 36 }
                     }
-                }
-                for (i, sug) in suggestions.iter().enumerate() {
-                    SuggestionView {
-                        key: "s{i}",
-                        index: i,
-                        suggestion: sug.clone(),
-                        class_name: sug.class.and_then(|c| classes.get(c as usize).cloned()),
-                        on_accept,
-                    }
-                }
-                if let Some(style) = draft_style {
                     div {
-                        class: "absolute border-2 border-dashed pointer-events-none",
-                        style: "{style}",
+                        class: "absolute inset-0 {cursor}",
+                        onmounted: move |e| layer.set(Some(e.data())),
+                        onpointerdown: on_down,
+                        onpointermove: on_move,
+                        onpointerup: move |_| finish(),
+                        onpointerleave: move |_| finish(),
+                        for (i, b) in image.boxes.iter().enumerate() {
+                            BoxView {
+                                key: "{i}",
+                                index: i,
+                                bbox: b.bbox,
+                                color: class_color(b.class).to_string(),
+                                label: classes.get(b.class as usize).cloned().unwrap_or_default(),
+                                selected: selected_box == Some(i),
+                                on_select: move |i: usize| on_select_box.call(Some(i)),
+                            }
+                        }
+                        for (i, sug) in suggestions.iter().enumerate() {
+                            SuggestionView {
+                                key: "s{i}",
+                                index: i,
+                                suggestion: sug.clone(),
+                                class_name: sug.class.and_then(|c| classes.get(c as usize).cloned()),
+                                on_accept,
+                            }
+                        }
+                        if let Some(style) = draft_style {
+                            div {
+                                class: "absolute border-2 border-dashed pointer-events-none",
+                                style: "{style}",
+                            }
+                        }
                     }
+                }
+            }
+            if can_add {
+                div { class: "absolute left-2 top-2 z-10",
+                    ClassAdd { on_add: on_add_class }
+                }
+            }
+            div { class: "absolute right-2 top-2 z-10 flex items-center gap-1 rounded-full bg-ink/40 p-1 text-white opacity-70 backdrop-blur-sm transition-opacity duration-150 hover:opacity-100",
+                button {
+                    class: ZOOM_BTN,
+                    r#type: "button",
+                    title: t!("lab-zoom-out"),
+                    "aria-label": t!("lab-zoom-out"),
+                    disabled: zoom <= ZOOM_MIN,
+                    onclick: move |_| zoom_to(zoom / ZOOM_STEP),
+                    icons::ZoomOut { class: "h-4 w-4" }
+                }
+                button {
+                    class: "min-w-12 rounded-full px-1 text-xs font-medium tabular-nums hover:bg-white/20",
+                    r#type: "button",
+                    title: t!("lab-zoom-fit"),
+                    "data-testid": "lab-zoom-fit",
+                    onclick: move |_| zoom_to(1.0),
+                    "{(zoom * 100.0).round()} %"
+                }
+                button {
+                    class: ZOOM_BTN,
+                    r#type: "button",
+                    title: t!("lab-zoom-in"),
+                    "aria-label": t!("lab-zoom-in"),
+                    "data-testid": "lab-zoom-in",
+                    disabled: zoom >= ZOOM_MAX,
+                    onclick: move |_| zoom_to(zoom * ZOOM_STEP),
+                    icons::ZoomIn { class: "h-4 w-4" }
+                }
+            }
+        }
+    }
+}
+
+/// Zoom of the picture: bounds and step of one click.
+const ZOOM_MIN: f32 = 1.0;
+const ZOOM_MAX: f32 = 6.0;
+const ZOOM_STEP: f32 = 1.5;
+const ZOOM_BTN: &str =
+    "flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40";
+
+/// The round "+" of the picture: a new class, typed in a small bubble
+/// (Enter adds, Escape cancels). The bubble's keys never reach the
+/// labeling shortcuts, and pressing it never starts a box.
+#[component]
+fn ClassAdd(on_add: EventHandler<String>) -> Element {
+    let mut typing = use_signal(|| None::<String>);
+    let mut submit = move || {
+        let name = typing().unwrap_or_default().trim().to_string();
+        typing.set(None);
+        if !name.is_empty() {
+            on_add.call(name);
+        }
+    };
+    let open = typing().is_some();
+    rsx! {
+        div {
+            class: "flex items-start gap-2",
+            onpointerdown: move |e: PointerEvent| e.stop_propagation(),
+            onkeydown: move |e: KeyboardEvent| e.stop_propagation(),
+            button {
+                class: if open { "flex h-9 w-9 items-center justify-center rounded-full bg-signal text-white shadow-lg" } else { "flex h-9 w-9 items-center justify-center rounded-full bg-signal/60 text-white shadow-lg backdrop-blur-sm transition-colors duration-150 hover:bg-signal active:scale-[0.97]" },
+                r#type: "button",
+                title: t!("lab-class-add"),
+                "aria-label": t!("lab-class-add"),
+                "aria-expanded": open,
+                "data-testid": "lab-class-add",
+                onclick: move |_| typing.set(if open { None } else { Some(String::new()) }),
+                icons::Plus { class: if open { "h-5 w-5 rotate-45 transition-transform duration-150 ease-out-ui" } else { "h-5 w-5 transition-transform duration-150 ease-out-ui" } }
+            }
+            if let Some(name) = typing() {
+                input {
+                    class: "{INPUT} w-56 shadow-lg",
+                    "aria-label": t!("lab-class-new"),
+                    placeholder: t!("lab-class-new"),
+                    autofocus: true,
+                    value: "{name}",
+                    oninput: move |e| typing.set(Some(e.value())),
+                    onkeydown: move |e: KeyboardEvent| match e.key() {
+                        Key::Enter => submit(),
+                        Key::Escape => typing.set(None),
+                        _ => {}
+                    },
                 }
             }
         }
@@ -934,7 +1215,7 @@ fn SuggestionView(
     let title = t!("lab-suggest-keep-one").to_string();
     rsx! {
         div {
-            class: "absolute border-2 border-dashed cursor-pointer hover:bg-white/20",
+            class: "absolute border-2 border-dashed cursor-pointer hover:bg-surface/20",
             style: "{style}",
             title: "{title}",
             onpointerdown: move |e: PointerEvent| {
@@ -970,10 +1251,10 @@ fn SuggestBar(
     // `count` = proposals whose label matches a class.
     let keep_all = t!("lab-suggest-keep-all", count : count).to_string();
     rsx! {
-        div { class: "flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-2",
-            span { class: "text-xs text-gray-600", {t!("lab-suggest-label")} }
+        div { class: "flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-2",
+            span { class: "text-xs text-slate", {t!("lab-suggest-label")} }
             select {
-                class: "px-2 py-1 border border-gray-300 rounded-lg text-sm max-w-56",
+                class: "px-2 py-1 border border-line-strong rounded-lg text-sm max-w-56",
                 aria_label: t!("lab-suggest-model").to_string(),
                 onchange: move |e| on_model.call(e.value()),
                 option { value: "", selected: model.is_empty(), {t!("lab-suggest-model")} }
@@ -1017,7 +1298,7 @@ fn SuggestBar(
             }
             if total > 0 {
                 button {
-                    class: "text-xs text-gray-600 hover:underline",
+                    class: "text-xs text-slate hover:underline",
                     r#type: "button",
                     onclick: move |_| on_dismiss.call(()),
                     {t!("lab-suggest-dismiss")}
@@ -1026,15 +1307,16 @@ fn SuggestBar(
         }
     }
 }
-
-/// Under the picture: navigation, box removal, negative example, split.
+/// Under the picture: previous / next, "nothing here", removal of the
+/// selected box; the rarer settings (training / validation side, removal
+/// from the project) under "More".
 #[component]
 fn ImageTools(
     image: LabImage,
-    index: usize,
-    count: usize,
     can_write: bool,
     selected_box: Option<usize>,
+    has_prev: bool,
+    has_next: bool,
     on_prev: EventHandler<()>,
     on_next: EventHandler<()>,
     on_remove_box: EventHandler<()>,
@@ -1042,7 +1324,6 @@ fn ImageTools(
     on_split: EventHandler<LabSplit>,
     on_remove_image: EventHandler<()>,
 ) -> Element {
-    let position = format!("{} / {count}", index + 1);
     let effective = match image.effective_split() {
         LabSplit::Val => t!("lab-split-val").to_string(),
         _ => t!("lab-split-train").to_string(),
@@ -1052,63 +1333,81 @@ fn ImageTools(
         LabSplit::Train => "train",
         LabSplit::Val => "val",
     };
+    let negative = image.negative;
     rsx! {
-        div { class: "flex flex-wrap items-center gap-3",
+        div { class: "{PANEL} flex flex-wrap items-center gap-2 px-3 py-2",
             button {
                 class: BTN_SECONDARY_SM,
                 r#type: "button",
-                disabled: index == 0,
+                disabled: !has_prev,
                 onclick: move |_| on_prev.call(()),
-                "←"
+                icons::ChevronLeft { class: "h-4 w-4" }
+                {t!("lab-prev-image")}
             }
-            span { class: "text-sm text-gray-600 tabular-nums", "{position}" }
             button {
-                class: BTN_SECONDARY_SM,
+                class: BTN_PRIMARY_SM,
                 r#type: "button",
-                disabled: index + 1 >= count,
+                disabled: !has_next,
+                "data-testid": "lab-next",
                 onclick: move |_| on_next.call(()),
-                "→"
+                {t!("lab-next-image")}
+                icons::ChevronRight { class: "h-4 w-4" }
             }
             if can_write {
+                span { class: "mx-1 h-6 w-px bg-line", "aria-hidden": "true" }
                 button {
-                    class: BTN_SECONDARY_SM,
+                    class: if negative { "inline-flex items-center gap-1.5 rounded-md border border-ink bg-ink px-3 py-1.5 text-sm font-medium text-white" } else { BTN_SECONDARY_SM },
                     r#type: "button",
-                    disabled: selected_box.is_none(),
-                    onclick: move |_| on_remove_box.call(()),
-                    {t!("lab-remove-box")}
-                }
-                label { class: "flex items-center gap-2 text-sm text-gray-700",
-                    input {
-                        class: "h-4 w-4 accent-signal-600",
-                        r#type: "checkbox",
-                        checked: image.negative,
-                        onchange: move |e| on_negative.call(e.checked()),
-                    }
+                    "aria-pressed": negative,
+                    title: t!("lab-negative-help"),
+                    onclick: move |_| on_negative.call(!negative),
                     {t!("lab-negative")}
                 }
-                button {
-                    class: "text-xs text-red-600 hover:underline",
-                    r#type: "button",
-                    onclick: move |_| on_remove_image.call(()),
-                    {t!("lab-remove-image")}
+                if selected_box.is_some() {
+                    button {
+                        class: "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-alarm hover:bg-red-50",
+                        r#type: "button",
+                        onclick: move |_| on_remove_box.call(()),
+                        {t!("lab-remove-box")}
+                    }
                 }
-                label { class: "flex items-center gap-2 text-sm text-gray-700",
-                    span { {t!("lab-split")} }
-                    select {
-                        class: "px-2 py-1 border border-gray-300 rounded-lg text-sm",
-                        onchange: move |e| on_split.call(split_of(&e.value())),
-                        option { value: "auto", selected: split_value == "auto",
-                            {t!("lab-split-auto", side : effective.clone())}
+                details { class: "relative ml-auto",
+                    summary { class: "{BTN_SECONDARY_SM} cursor-pointer list-none", {t!("lab-more")} }
+                    div { class: "absolute right-0 z-10 mt-1 w-72 space-y-3 rounded-lg border border-line bg-surface p-3 shadow-lg",
+                        label { class: "block",
+                            span { class: FIELD_LABEL, {t!("lab-split")} }
+                            select {
+                                class: "{INPUT} w-full",
+                                onchange: move |e| on_split.call(split_of(&e.value())),
+                                option {
+                                    value: "auto",
+                                    selected: split_value == "auto",
+                                    {t!("lab-split-auto", side : effective.clone())}
+                                }
+                                option {
+                                    value: "train",
+                                    selected: split_value == "train",
+                                    {t!("lab-split-train")}
+                                }
+                                option {
+                                    value: "val",
+                                    selected: split_value == "val",
+                                    {t!("lab-split-val")}
+                                }
+                            }
+                            span { class: "mt-1 block text-xs text-slate", {t!("lab-split-help")} }
                         }
-                        option { value: "train", selected: split_value == "train",
-                            {t!("lab-split-train")}
+                        p { class: "text-xs text-slate", {t!("lab-keys-help")} }
+                        button {
+                            class: "text-sm text-red-600 hover:underline",
+                            r#type: "button",
+                            onclick: move |_| on_remove_image.call(()),
+                            {t!("lab-remove-image")}
                         }
-                        option { value: "val", selected: split_value == "val", {t!("lab-split-val")} }
                     }
                 }
             }
         }
-        p { class: "text-xs text-gray-500", {t!("lab-keys-help")} }
     }
 }
 
@@ -1120,16 +1419,12 @@ fn split_of(v: &str) -> LabSplit {
     }
 }
 
-/// Live counts and the indicative warnings (§4.6.2).
+/// "Ready to train?": one line per class with a tick once it has enough
+/// pictures, then the first advice in sight and the others on demand
+/// (§4.6.2, indicative floors: never blocking).
 #[component]
 fn StatsPanel(classes: Vec<String>, stats: lab::LabStats) -> Element {
-    let summary = t!(
-        "lab-stats-summary", annotated : stats.annotated, total : stats.images, negatives : stats
-        .negatives
-    )
-    .to_string();
-    let split = t!("lab-stats-split", train : stats.train, val : stats.val).to_string();
-    let rows: Vec<(u32, String, usize, usize)> = classes
+    let rows: Vec<(u32, String, usize)> = classes
         .iter()
         .enumerate()
         .map(|(i, c)| {
@@ -1137,32 +1432,134 @@ fn StatsPanel(classes: Vec<String>, stats: lab::LabStats) -> Element {
                 i as u32,
                 c.clone(),
                 stats.images_per_class.get(i).copied().unwrap_or(0),
-                stats.boxes_per_class.get(i).copied().unwrap_or(0),
             )
         })
         .collect();
     let warnings: Vec<String> = stats.warnings.iter().map(warning_text).collect();
+    let min = lab::LAB_MIN_PER_CLASS;
     rsx! {
-        section { class: "rounded-lg border border-gray-200 bg-white p-3 space-y-2",
-            h2 { class: "text-sm font-semibold text-gray-900", {t!("lab-stats-title")} }
-            p { class: "text-xs text-gray-600", "{summary}" }
-            p { class: "text-xs text-gray-600", "{split}" }
-            ul { class: "space-y-1",
-                for (i, name, imgs, boxes) in rows {
-                    li { key: "{i}", class: "flex items-center gap-2 text-xs",
+        section { class: "rounded-lg border border-line bg-surface p-4 space-y-3",
+            h2 { class: "text-base font-semibold text-ink", {t!("lab-ready-title")} }
+            p { class: "text-sm text-slate", {t!("lab-ready-help", min : min)} }
+            ul { class: "space-y-1.5",
+                for (i, name, imgs) in rows {
+                    li { key: "{i}", class: "flex items-center gap-2 text-sm",
                         span {
-                            class: "h-2.5 w-2.5 rounded-sm shrink-0",
+                            class: if imgs >= min { "w-5 text-center font-bold text-emerald-600" } else { "w-5 text-center font-bold text-amber-600" },
+                            "aria-hidden": "true",
+                            if imgs >= min {
+                                "✓"
+                            } else {
+                                "•"
+                            }
+                        }
+                        span {
+                            class: "h-2.5 w-2.5 shrink-0 rounded-full",
                             style: "background: {class_color(i)};",
                         }
-                        span { class: "flex-1 truncate text-gray-800", "{name}" }
-                        span { class: "tabular-nums text-gray-600",
-                            {t!("lab-stats-class", images : imgs, boxes : boxes)}
+                        span { class: "flex-1 truncate text-ink", "{name}" }
+                        span { class: "font-mono text-xs text-slate", "{imgs} / {min}" }
+                    }
+                }
+            }
+            if !warnings.is_empty() {
+                details { class: "text-sm",
+                    summary { class: "cursor-pointer text-slate hover:text-ink",
+                        {t!("lab-more-advice", count : warnings.len())}
+                    }
+                    ul { class: "mt-2 list-disc space-y-1 pl-5 text-amber-800",
+                        for (i, w) in warnings.iter().enumerate() {
+                            li { key: "{i}", "{w}" }
                         }
                     }
                 }
             }
-            for (i, w) in warnings.into_iter().enumerate() {
-                p { key: "{i}", class: "text-xs text-amber-700", "{w}" }
+        }
+    }
+}
+
+/// Step "Pictures": the sources of the project (each video, recording or
+/// batch of photos), how far each is labeled, and the way to add more.
+#[component]
+fn SourceList(
+    sources: Vec<tl::Source>,
+    loaded: bool,
+    can_write: bool,
+    on_open: EventHandler<usize>,
+    on_add: EventHandler<()>,
+) -> Element {
+    if sources.is_empty() {
+        return rsx! {
+            if loaded {
+                EmptyState { can_write, on_add }
+            }
+        };
+    }
+    rsx! {
+        div { class: "rounded-lg border border-line bg-surface",
+            table { class: "w-full text-sm",
+                thead {
+                    tr { class: "border-b border-line text-left text-xs text-slate",
+                        th { class: "px-4 py-2 font-medium", {t!("lab-source")} }
+                        th { class: "px-4 py-2 font-medium", {t!("lab-tl-images")} }
+                        th { class: "px-4 py-2 font-medium", {t!("lab-source-done")} }
+                        th { class: "px-4 py-2" }
+                    }
+                }
+                tbody {
+                    for (k, s) in sources.iter().enumerate() {
+                        tr {
+                            key: "{s.key}",
+                            class: "border-b border-line last:border-0",
+                            td { class: "px-4 py-3",
+                                span { class: "block font-medium text-ink", "{s.name}" }
+                                span { class: "block text-xs text-slate", {tl::kind_label(s.kind)} }
+                            }
+                            td { class: "px-4 py-3 font-mono text-slate", "{s.frames.len()}" }
+                            td { class: "px-4 py-3",
+                                div { class: "flex items-center gap-2",
+                                    div { class: "h-2 w-32 overflow-hidden rounded-full bg-gray-100",
+                                        div {
+                                            class: "h-full bg-emerald-500",
+                                            style: "width: {s.labeled * 100 / s.frames.len().max(1)}%",
+                                        }
+                                    }
+                                    span { class: "font-mono text-xs text-slate",
+                                        "{s.labeled} / {s.frames.len()}"
+                                    }
+                                }
+                            }
+                            td { class: "px-4 py-3 text-right",
+                                button {
+                                    class: BTN_SECONDARY_SM,
+                                    r#type: "button",
+                                    "data-testid": "lab-source-open",
+                                    onclick: move |_| on_open.call(k),
+                                    {t!("lab-source-label")}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// No picture yet: what to do, and the button to do it.
+#[component]
+fn EmptyState(can_write: bool, on_add: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "rounded-lg border border-dashed border-line-strong bg-surface p-10 text-center space-y-3",
+            p { class: "text-base font-medium text-ink", {t!("lab-no-image")} }
+            p { class: "text-sm text-slate", {t!("lab-no-image-help")} }
+            if can_write {
+                button {
+                    class: BTN_PRIMARY,
+                    r#type: "button",
+                    onclick: move |_| on_add.call(()),
+                    {t!("lab-add-images")}
+                }
             }
         }
     }
@@ -1223,9 +1620,9 @@ fn VersionsPanel(project: String, can_write: bool, on_frozen: EventHandler<()>) 
         });
     };
     rsx! {
-        section { class: "rounded-lg border border-gray-200 bg-white p-3 space-y-2",
-            h2 { class: "text-sm font-semibold text-gray-900", {t!("lab-versions-title")} }
-            p { class: "text-xs text-gray-500", {t!("lab-versions-help")} }
+        section { class: "rounded-lg border border-line bg-surface p-4 space-y-2",
+            h2 { class: "text-sm font-semibold text-ink", {t!("lab-versions-title")} }
+            p { class: "text-xs text-slate", {t!("lab-versions-help")} }
             if can_write {
                 label { class: "block",
                     span { class: FIELD_LABEL, {t!("lab-version-note")} }
@@ -1278,10 +1675,10 @@ fn VersionRow(version: lab::LabDatasetVersion) -> Element {
     rsx! {
         li { class: "py-2 flex items-center gap-2",
             div { class: "flex-1 min-w-0",
-                div { class: "text-sm font-medium text-gray-900", "{title}" }
-                div { class: "text-xs text-gray-500", "{date} · {detail}" }
+                div { class: "text-sm font-medium text-ink", "{title}" }
+                div { class: "text-xs text-slate", "{date} · {detail}" }
                 if !version.note.is_empty() {
-                    div { class: "text-xs text-gray-600 truncate", "{version.note}" }
+                    div { class: "text-xs text-slate truncate", "{version.note}" }
                 }
             }
             button {
@@ -1306,5 +1703,53 @@ mod tests {
         assert!((r[2] - 0.4).abs() < 1e-6 && (r[3] - 0.4).abs() < 1e-6);
         assert_eq!(split_of("val"), LabSplit::Val);
         assert_eq!(class_color(9), class_color(1));
+    }
+}
+
+/// Where added pictures come from.
+#[derive(Clone, Copy, PartialEq)]
+enum AddFrom {
+    Photos,
+    Videos,
+    Recording,
+}
+
+/// First step of "Add pictures": where they come from.
+#[component]
+fn AddChooser(on_close: EventHandler<()>, on_pick: EventHandler<AddFrom>) -> Element {
+    let choices = [
+        (
+            AddFrom::Photos,
+            t!("lab-add-photos"),
+            t!("lab-add-photos-help"),
+        ),
+        (
+            AddFrom::Videos,
+            t!("lab-add-videos"),
+            t!("lab-add-videos-help"),
+        ),
+        (
+            AddFrom::Recording,
+            t!("lab-add-recording"),
+            t!("lab-add-recording-help"),
+        ),
+    ];
+    rsx! {
+        Modal {
+            title: t!("lab-add-title").to_string(),
+            max_width: "max-w-md".to_string(),
+            on_close: move |_| on_close.call(()),
+            div { class: "grid gap-2",
+                for (k, title, help) in choices {
+                    button {
+                        r#type: "button",
+                        class: "rounded-lg border border-line px-3 py-2.5 text-left hover:border-signal hover:bg-signal-soft",
+                        onclick: move |_| on_pick.call(k),
+                        span { class: "block text-sm font-medium text-ink", "{title}" }
+                        span { class: "block text-xs text-slate", "{help}" }
+                    }
+                }
+            }
+        }
     }
 }

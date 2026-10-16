@@ -208,6 +208,13 @@ Les entrées « bientôt » sans route sont retirées du menu.
    barre `BAR`. Les fichiers audio/vidéo passent par `MediaPlayer`, jamais
    par les contrôles natifs du navigateur (`controls: true`). Références :
    `pages/cameras/player.rs`, `pages/cases/workspace/timeline.rs`.
+   **Frise à couloirs** (2026-10-16) : tout ce qui a plusieurs pistes dans le
+   temps (événements, détections, acteurs, images d'une vidéo, classes vues)
+   passe par `components/timeline` (`Timeline` + `Lane` + `Item`, axe
+   `TimeBase` : heure murale, temps du média ou rang) — une règle, des
+   couloirs, un curseur commun ; jamais une liste « 00 s / 03 s » ni une frise
+   faite main. Références : `pages/cases/workspace/timeline.rs`,
+   `pages/lab/timeline.rs`.
 
 ## 7. Concepts et vocabulaire (D218–D224, 2026-10-15)
 

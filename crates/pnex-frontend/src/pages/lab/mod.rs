@@ -22,6 +22,7 @@ use crate::state::{org, toasts};
 
 mod picker;
 mod recording;
+mod timeline;
 mod training;
 mod video;
 mod workspace;

@@ -24,6 +24,7 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
 
     // Both photos in one import.
     await page.getByRole('button', { name: app.t('lab-add-images') }).click();
+    await page.getByRole('dialog').getByRole('button', { name: new RegExp(app.t('lab-add-photos')) }).click();
     await page.getByLabel(`${prefix} a`, { exact: true }).first().check();
     await page.getByLabel(`${prefix} b`, { exact: true }).first().check();
     await page.getByRole('dialog').getByRole('button', { name: /2/ }).click();
@@ -41,15 +42,18 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
     await capture('lab-annotate', { caption: 'Vision Lab: a box drawn around the object' });
 
     // The second picture marked as a negative example.
-    await page.getByRole('button', { name: '→' }).click();
-    await page.getByLabel(app.t('lab-negative')).check();
+    await page.getByTestId('lab-next').click();
+    await page.getByRole('button', { name: app.t('lab-negative') }).click();
 
     const projects: { id: string; name: string }[] = await api.get('/lab/projects');
     const id = projects.find((p) => p.name === name)!.id;
     await expect.poll(async () => (await api.get(`/lab/projects/${id}`)).annotated_count).toBe(2);
 
+    // Training step: the versions sit under their own disclosure.
+    await page.getByTestId('lab-train-open').click();
+    await page.getByText(app.t('lab-versions-more'), { exact: true }).click();
     await page.getByRole('button', { name: app.t('lab-freeze') }).click();
-    await expect(page.getByText(app.tr('lab-version-label')).first()).toBeVisible();
+    await expect(page.locator('details[open]').getByText(app.tr('lab-version-label')).first()).toBeVisible();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: app.t('lab-export') }).first().click();
     expect((await download).suggestedFilename()).toMatch(/\.zip$/);

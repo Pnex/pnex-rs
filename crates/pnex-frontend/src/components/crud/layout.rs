@@ -70,6 +70,9 @@ pub fn ListLayout(
     /// Tab bar of a page split in tabs, right under the header.
     #[props(default)]
     tabs: Option<Element>,
+    /// Beside the title (a step line, a status): stays on the title row.
+    #[props(default)]
+    title_aside: Option<Element>,
     children: Element,
 ) -> Element {
     rsx! {
@@ -80,7 +83,7 @@ pub fn ListLayout(
                 div { class: "mb-4 md:mb-8 flex items-center justify-between flex-wrap gap-3",
                     // The title block takes the free width and wraps a long
                     // subtitle, so the buttons stay on the right.
-                    div { class: "flex min-w-0 flex-1 basis-72 items-center gap-3",
+                    div { class: "flex min-w-0 flex-1 basis-72 flex-wrap items-center gap-3",
                         if let Some(back) = on_back {
                             button {
                                 class: BTN_SECONDARY,
@@ -90,6 +93,9 @@ pub fn ListLayout(
                             }
                         }
                         TitleBlock { title, subtitle }
+                        if let Some(aside) = title_aside {
+                            div { class: "md:ml-4", {aside} }
+                        }
                     }
                     // One right-aligned group: extra actions sit next to
                     // the add button, never floating mid-header.

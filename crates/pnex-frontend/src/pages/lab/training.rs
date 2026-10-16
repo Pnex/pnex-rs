@@ -1,6 +1,7 @@
-//! Training of a project (media-vision-studio.md D204): pick a frozen
-//! version, a registered YOLOX model to start from and a number of epochs;
-//! runs listed with their progress, refreshed while one is active.
+//! Training of a project (media-vision-studio.md D204): one button trains
+//! on the current pictures (frozen into a new version on the way); the
+//! version, the starting model and the epochs are advanced options. Runs
+//! are listed with their progress, refreshed while one is active.
 
 use std::time::Duration;
 
@@ -11,8 +12,10 @@ use pnex_core::lab::{
 };
 use pnex_core::vision::{MlModel, VisionFamily, VisionTask};
 
+use super::workspace::BTN_TRAIN;
 use crate::api;
-use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
+use crate::components::icons;
+use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
 use crate::state::toasts;
 use crate::Route;
 
@@ -52,12 +55,16 @@ pub(super) fn TrainingPanel(
     models: Vec<MlModel>,
     /// Bumped when a version is frozen.
     versions_tick: u32,
+    /// Labeled pictures of the project (nothing to learn from at 0).
+    labeled: usize,
 ) -> Element {
     let mut reload = use_signal(|| 0u32);
+    let mut frozen = use_signal(|| 0u32);
     let pid = project.clone();
     let versions = use_resource(use_reactive!(|versions_tick| {
         let pid = pid.clone();
         let _ = versions_tick;
+        let _ = frozen();
         async move { api::lab::versions(&pid).await.unwrap_or_default() }
     }));
     let pid = project.clone();
@@ -79,6 +86,7 @@ pub(super) fn TrainingPanel(
             }
         }
     });
+    // Empty = freeze the current pictures into a new version first.
     let mut version = use_signal(String::new);
     let mut base = use_signal(String::new);
     let mut epochs = use_signal(|| LAB_TRAIN_DEFAULT_EPOCHS.to_string());
@@ -87,15 +95,6 @@ pub(super) fn TrainingPanel(
     let version_list = versions.read().clone().unwrap_or_default();
     let base_list = bases(&models);
     let run_list = runs.read().clone().unwrap_or_default();
-    // Latest version and first base model unless picked.
-    let picked_version = if version().is_empty() {
-        version_list
-            .first()
-            .map(|v| v.id.clone())
-            .unwrap_or_default()
-    } else {
-        version()
-    };
     let picked_base = if base().is_empty() {
         base_list.first().map(|b| b.0.clone()).unwrap_or_default()
     } else {
@@ -107,17 +106,31 @@ pub(super) fn TrainingPanel(
         epochs: e,
     });
     let valid = request.as_ref().is_some_and(|r| r.check().is_none())
-        && !picked_version.is_empty()
-        && !picked_base.is_empty();
-    let train_version = picked_version.clone();
+        && !picked_base.is_empty()
+        && (labeled > 0 || !version().is_empty());
     let on_train = move |_| {
         let Some(req) = request.clone() else {
             return;
         };
-        let vid = train_version.clone();
+        let (pid, picked) = (project.clone(), version());
         let done = t!("lab-train-queued").to_string();
         busy.set(true);
         spawn(async move {
+            let vid = if picked.is_empty() {
+                match api::lab::freeze(&pid, "").await {
+                    Ok(v) => {
+                        frozen.with_mut(|f| *f += 1);
+                        v.id
+                    }
+                    Err(e) => {
+                        toasts::error(e);
+                        busy.set(false);
+                        return;
+                    }
+                }
+            } else {
+                picked
+            };
             match api::lab::train(&vid, &req).await {
                 Ok(_) => {
                     toasts::success(done);
@@ -131,79 +144,89 @@ pub(super) fn TrainingPanel(
     let max_epochs = LAB_TRAIN_MAX_EPOCHS.to_string();
 
     rsx! {
-        section { class: "rounded-lg border border-gray-200 bg-white p-3 space-y-2",
-            h2 { class: "text-sm font-semibold text-gray-900", {t!("lab-train-title")} }
-            p { class: "text-xs text-gray-500", {t!("lab-train-help")} }
+        section { class: "space-y-3",
+            p { class: "text-sm text-slate", {t!("lab-train-help-short")} }
             if can_write {
                 if base_list.is_empty() {
-                    p { class: "text-xs text-amber-700", {t!("lab-train-no-base")} }
-                }
-                if version_list.is_empty() {
-                    p { class: "text-xs text-amber-700", {t!("lab-train-no-version")} }
-                }
-                label { class: "block",
-                    span { class: FIELD_LABEL, {t!("lab-train-version")} }
-                    select {
-                        class: "{INPUT} w-full",
-                        onchange: move |e| version.set(e.value()),
-                        for v in version_list.iter() {
-                            option {
-                                key: "{v.id}",
-                                value: "{v.id}",
-                                selected: v.id == picked_version,
-                                {t!("lab-version-label", n : v.version)}
-                            }
-                        }
-                    }
-                }
-                label { class: "block",
-                    span { class: FIELD_LABEL, {t!("lab-train-base")} }
-                    select {
-                        class: "{INPUT} w-full",
-                        onchange: move |e| base.set(e.value()),
-                        for (id, name) in base_list.iter() {
-                            option {
-                                key: "{id}",
-                                value: "{id}",
-                                selected: *id == picked_base,
-                                "{name}"
-                            }
-                        }
-                    }
-                }
-                label { class: "block",
-                    span { class: FIELD_LABEL, {t!("lab-train-epochs")} }
-                    input {
-                        class: "{INPUT} w-full",
-                        r#type: "number",
-                        min: "1",
-                        max: "{max_epochs}",
-                        value: "{epochs}",
-                        oninput: move |e| epochs.set(e.value()),
-                    }
+                    p { class: "text-sm text-amber-800", {t!("lab-train-no-base")} }
                 }
                 button {
-                    class: BTN_PRIMARY_SM,
+                    class: BTN_TRAIN,
                     r#type: "button",
+                    "data-testid": "lab-train",
                     disabled: !valid || busy(),
                     onclick: on_train,
+                    icons::Dumbbell { class: "h-4 w-4" }
                     {t!("lab-train-start")}
                 }
+                details { class: "text-sm",
+                    summary { class: "cursor-pointer text-slate hover:text-ink",
+                        {t!("lab-train-advanced")}
+                    }
+                    div { class: "mt-3 grid gap-3 sm:grid-cols-3",
+                        label { class: "block",
+                            span { class: FIELD_LABEL, {t!("lab-train-version")} }
+                            select {
+                                class: "{INPUT} w-full",
+                                onchange: move |e| version.set(e.value()),
+                                option { value: "", selected: version().is_empty(),
+                                    {t!("lab-train-version-new")}
+                                }
+                                for v in version_list.iter() {
+                                    option {
+                                        key: "{v.id}",
+                                        value: "{v.id}",
+                                        selected: v.id == version(),
+                                        {t!("lab-version-label", n : v.version)}
+                                    }
+                                }
+                            }
+                        }
+                        label { class: "block",
+                            span { class: FIELD_LABEL, {t!("lab-train-base")} }
+                            select {
+                                class: "{INPUT} w-full",
+                                onchange: move |e| base.set(e.value()),
+                                for (id, name) in base_list.iter() {
+                                    option {
+                                        key: "{id}",
+                                        value: "{id}",
+                                        selected: *id == picked_base,
+                                        "{name}"
+                                    }
+                                }
+                            }
+                        }
+                        label { class: "block",
+                            span { class: FIELD_LABEL, {t!("lab-train-epochs")} }
+                            input {
+                                class: "{INPUT} w-full",
+                                r#type: "number",
+                                min: "1",
+                                max: "{max_epochs}",
+                                value: "{epochs}",
+                                oninput: move |e| epochs.set(e.value()),
+                            }
+                        }
+                    }
+                }
             }
-            ul { class: "divide-y divide-gray-100",
-                for run in run_list {
-                    RunRow {
-                        key: "{run.id}",
-                        run,
-                        can_write,
-                        on_change: move |_| reload.with_mut(|r| *r += 1),
+            if !run_list.is_empty() {
+                h3 { class: "pt-2 text-sm font-semibold text-ink", {t!("lab-train-runs")} }
+                ul { class: "divide-y divide-line",
+                    for run in run_list {
+                        RunRow {
+                            key: "{run.id}",
+                            run,
+                            can_write,
+                            on_change: move |_| reload.with_mut(|r| *r += 1),
+                        }
                     }
                 }
             }
         }
     }
 }
-
 #[component]
 fn RunRow(run: LabTrainingRun, can_write: bool, on_change: EventHandler<()>) -> Element {
     let title = format!(
@@ -252,10 +275,10 @@ fn RunRow(run: LabTrainingRun, can_write: bool, on_change: EventHandler<()>) -> 
     rsx! {
         li { class: "py-2 space-y-1",
             div { class: "flex items-center gap-2",
-                div { class: "flex-1 min-w-0 text-sm font-medium text-gray-900 truncate",
+                div { class: "flex-1 min-w-0 text-sm font-medium text-ink truncate",
                     "{title}"
                 }
-                span { class: "text-xs text-gray-600", "{status}" }
+                span { class: "text-xs text-slate", "{status}" }
             }
             if active {
                 div { class: "h-1.5 rounded bg-gray-100 overflow-hidden",
@@ -266,15 +289,15 @@ fn RunRow(run: LabTrainingRun, can_write: bool, on_change: EventHandler<()>) -> 
                 }
             }
             if let Some(step) = step {
-                div { class: "text-xs text-gray-500", "{step}" }
+                div { class: "text-xs text-slate", "{step}" }
             }
             if let Some(map) = map {
-                div { class: "text-xs text-gray-700", "{map}" }
+                div { class: "text-xs text-ink", "{map}" }
             }
             if let Some(error) = error {
                 div { class: "text-xs text-red-700", "{error}" }
                 if let Some(detail) = run.error_detail.clone() {
-                    div { class: "text-xs text-gray-500 break-words", "{detail}" }
+                    div { class: "text-xs text-slate break-words", "{detail}" }
                 }
             }
             div { class: "flex gap-2",
