@@ -28,6 +28,22 @@ pub fn camera_set_url(host_id: &str, url: &str) {
     camera_set_url_impl(host_id, url);
 }
 
+/// Calls `window.pnexViewers.mesh.<method>(host_id, arg)` (3D viewer,
+/// `js/mesh.js`) and returns its JSON result; `None` when the viewer is
+/// missing or throws. `document::eval` runs on web and in the webview alike.
+pub async fn mesh_call(
+    host_id: &str,
+    method: &'static str,
+    arg: serde_json::Value,
+) -> Option<serde_json::Value> {
+    let host = serde_json::to_string(host_id).ok()?;
+    let js = format!("return window.pnexViewers?.mesh?.{method}({host}, {arg}) ?? null");
+    dioxus::document::eval(&js)
+        .await
+        .ok()
+        .filter(|v| !v.is_null())
+}
+
 /// Démonte le viewer du hôte — fire-and-forget.
 pub fn unmount(host_id: &str) {
     unmount_impl(host_id);

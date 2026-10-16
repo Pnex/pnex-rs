@@ -8,7 +8,9 @@ use std::collections::HashMap;
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 use pnex_core::ontology::api::{LinkInput, LinkView, ObjectRef};
 use pnex_core::ontology::schema::check_values;
-use pnex_core::ontology::{PropertyKind, MEASURES_METRIC, MEASURES_PROPERTY, REL_MEASURES};
+use pnex_core::ontology::{
+    PropertyKind, DEPICTS_POSE, MEASURES_METRIC, MEASURES_PROPERTY, REL_DEPICTS, REL_MEASURES,
+};
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
@@ -182,6 +184,17 @@ pub async fn create<C: ConnectionTrait>(
     }
     let attrs = check_values(&lt.attributes, &input.attributes)
         .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+    if lt.key == REL_DEPICTS
+        && attrs
+            .get(DEPICTS_POSE)
+            .and_then(Value::as_str)
+            .is_some_and(|p| !pnex_core::ontology::pose_valid(p))
+    {
+        return Err(super::invalid(
+            format!("attributes.{DEPICTS_POSE}"),
+            FIELD_INVALID,
+        ));
+    }
     if lt.key == REL_MEASURES {
         // The bound property must be a `series` of the target type, fed by
         // one device at a time.

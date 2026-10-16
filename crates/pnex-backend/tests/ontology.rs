@@ -1018,6 +1018,103 @@ async fn case_opened_from_an_alert() {
 /// dates are validated; a person joins a case only once its processing
 /// basis is declared; a claim becomes corroborated only with two pieces of
 /// distinct origins.
+/// cases-money.md K54–K56: an event with an amount and payer/payee
+/// attachments is a payment; money and shares are validated server-side.
+#[tokio::test]
+#[serial]
+async fn case_payments_and_ownership_shares() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let case = object(&server, &env.alice, org, "case", "Grants", json!({"status": "open", "legal_basis": "public interest"})).await;
+        let cid = case["id"].as_str().unwrap();
+        let day = json!({"from": "2025-03-01T00:00:00Z", "to": "2025-03-01T23:59:59Z", "precision": "day"});
+        let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/events"), &env.alice, org, Some(json!({"title": "Grant paid", "occurred": day}))).await;
+        assert_eq!(st, 201, "{w}");
+        let ev = w["events"][0]["event"].clone();
+        let eid = ev["id"].as_str().unwrap();
+        let put = |amount: serde_json::Value, v: &serde_json::Value| json!({
+            "title": "Grant paid", "properties": {"occurred": day, "amount": amount}, "expected_version": v
+        });
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{eid}"), &env.alice, org, Some(put(json!({"amount": 1000, "currency": "euro"}), &ev["version"]))).await;
+        assert_eq!((st, e["amount"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{eid}"), &env.alice, org, Some(put(json!({"amount": 1000, "currency": "EUR"}), &ev["version"]))).await;
+        assert_eq!(st, 200, "{e}");
+        let state = object(&server, &env.alice, org, "organization", "Ministry", json!({"kind": "public_body"})).await;
+        let assoc = object(&server, &env.alice, org, "organization", "Association", json!({"kind": "association"})).await;
+        for (o, role) in [(&state, "payer"), (&assoc, "payee")] {
+            let (st, w) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.alice, org, Some(json!({"event_id": eid, "object_id": o["id"], "role": role}))).await;
+            assert_eq!(st, 200, "{w}");
+        }
+        let (st, w) = call(&server, "GET", &format!("/api/v1/cases/{cid}/workspace"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{w}");
+        let e = &w["events"][0];
+        assert_eq!(e["event"]["properties"]["amount"]["currency"], "EUR", "{w}");
+        let mut roles: Vec<&str> = e["attachments"].as_array().unwrap().iter().filter_map(|a| a["role"].as_str()).collect();
+        roles.sort();
+        assert_eq!(roles, ["payee", "payer"]);
+
+        // K56: `owns` carries a share in percent, 0..=100.
+        let person = object(&server, &env.alice, org, "person", "Owner", json!({})).await;
+        let link = |share: f64| json!({"link_type": "owns", "source_id": person["id"], "target_id": assoc["id"], "attributes": {"share": share}});
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link(150.0))).await;
+        assert_eq!(st, 400, "{e}");
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link(60.0))).await;
+        assert!(st < 300, "{l}");
+        // Viewer cannot write (R2).
+        let (st, _) = call(&server, "POST", &format!("/api/v1/cases/{cid}/attach"), &env.bob, org, Some(json!({"event_id": eid, "object_id": person["id"], "role": "payer"}))).await;
+        assert!(st == 403 || st == 404, "{st}");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn gallery_depicts_a_model_and_its_poses() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        // D231: a GLB is a 3D model; its content is checked, not its name.
+        let upload = |name: &'static str, body: &'static [u8]| {
+            server
+                .post(&format!("/api/v1/media?filename={name}"))
+                .add_header("Authorization", format!("Bearer {}", env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/octet-stream")
+                .bytes(body.into())
+        };
+        let res = upload("robot.glb", b"glTF\x01\0\0\0\x0c\0\0\0").await;
+        assert_eq!(res.status_code().as_u16(), 400);
+        let res = upload("robot.glb", b"glTF\x02\0\0\0\x0c\0\0\0").await;
+        assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+        let media: Value = res.json();
+        assert_eq!(media["kind"], "mesh");
+        let (st, m) = call(&server, "GET", &format!("/api/v1/ontology/resolve/media_asset/{}", media["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{m}");
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let hero = object(&server, &env.alice, org, "person", "Hero", json!({})).await;
+        let link = |attrs: Value| json!({"link_type": "depicts", "source_id": m["id"], "target_id": hero["id"], "attributes": attrs});
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link(json!({"role": "model"})))).await;
+        assert!(st < 300, "{l}");
+        // A pose is quaternions by bone; anything else is refused.
+        let bad = json!({"role": "pose", "name": "sitting", "pose": "{\"hip\": [0, 0, 1]}", "model": m["id"]});
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link(bad))).await;
+        assert_eq!(st, 400, "{e}");
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(link(json!({"role": "cover"})))).await;
+        assert_eq!(st, 400, "{e}");
+        // Viewer cannot write (R2).
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/links", &env.bob, org, Some(link(json!({"role": "model"})))).await;
+        assert!(st == 403 || st == 404, "{st}");
+        let (st, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", hero["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{links}");
+        let depicts: Vec<&Value> = links.as_array().unwrap().iter().filter(|l| l["link_type"] == "depicts").collect();
+        assert_eq!(depicts.len(), 1, "{links}");
+        assert_eq!(depicts[0]["attributes"]["role"], "model");
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn investigation_pack_legal_basis_and_claims() {

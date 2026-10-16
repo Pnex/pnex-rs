@@ -6,16 +6,23 @@ pages: /ontology, /ontology/object/:id, /ontology/types/:type_key
 nodes: action_trigger
 err_codes: ontology-not-found, ontology-already-exists, ontology-version-conflict, ontology-type-in-use, ontology-write-forbidden, ontology-admin-required, ontology-system-read-only, ontology-link-not-allowed, ontology-link-cardinality, ontology-action-no-flow, ontology-action-unavailable, ontology-action-unknown
 tools: describe_ontology, query_ontology, get_object, create_object, update_object, open_link, close_link, propose_action, save_object_type
-tags: recurrence, récurrence, maintenance plan, plan de maintenance, ontology, ontologie, object, objet, type, link, lien, relation, pump, pompe, machine, site, line, ligne, equipment, équipement, asset, actif, sensor replacement, remplacement capteur, history, historique, as of, graph, graphe, pack, maintenance, yaml, provenance, action, start maintenance, mettre en maintenance, trigger, déclencheur
+tags: recurrence, récurrence, maintenance plan, plan de maintenance, ontology, ontologie, object, objet, type, link, lien, relation, pump, pompe, machine, site, line, ligne, equipment, équipement, asset, actif, sensor replacement, remplacement capteur, history, historique, as of, graph, graphe, gallery, galerie, 3D model, modèle 3D, glb, pose, skeleton, squelette, reference picture, image de référence, pack, maintenance, yaml, provenance, action, start maintenance, mettre en maintenance, trigger, déclencheur
 ---
 The Ontology page (Knowledge › Ontology) models the real things of the organization — sites, lines, machines, pumps, or any type you define — as objects with typed properties, linked to each other over time. Devices, media, dashboards, tours, POIs, flows and folders are objects too (system types): they keep their own pages, and each of those pages has an **Object page** button.
 
 ## What you can do
 - **Objects** tab: filter by type, search by title. **New object** asks what to create (the types you can create, e.g. *Person* once the *Investigation* pack is installed; with no type yet it points to Packs), then the title and the type's properties. Click a row to open its object page.
-- **Object page**: *Properties*; *Links* (valid now, **as of** a past date, or the full history; open a link, close a link); *Graph* (the object and its neighbours, plus the cascading impact downstream); *Time* (each time-series property drawn over a window, with the sensors that fed it); *Provenance* (who changed what, when, and from where).
+- **Object page**: *Properties*; *Links* (valid now, **as of** a past date, or the full history; open a link, close a link); *Graph* (the object and its neighbours, plus the cascading impact downstream); *Gallery* (the media that show the object, see below); *Time* (each time-series property drawn over a window, with the sensors that fed it); *Provenance* (who changed what, when, and from where).
 - **Schema** tab: object types (system, from a pack, or yours) with their object counts. The **Link types** tab lists the link types (**New link type** in its header). Owners and admins create a type (key, name, icon, minimal role to write its objects, what it may contain and be contained in, properties) and save new versions of it; every version is kept.
 - **Packs** tab: install a ready-made pack (for example *Augmented maintenance*: sites, lines, machines, pumps), upgrade it, export your schema as YAML or import one.
 - A **type dashboard** (Dashboards › edit › select a gauge, chart, value or indicator › *Type dashboard*) is drawn for any object of a type: each widget reads a series property of the object chosen at the top of the dashboard.
+
+## Gallery
+Every object except a media has a **Gallery** tab: the pictures, 3D model and voice that show it. **Add from the library** picks an existing media, **Upload a file** adds a new one (pictures, sound, or a 3D model in GLB). A picture is kept as a *Reference picture*, a GLB as the *3D model*, a sound as the *Voice*.
+- The 3D model turns with the mouse. If the file has animations, **Animation** plays one. If it has a skeleton: **Show the skeleton**, pick a **Joint** and turn it with the X, Y and Z sliders; **Rest pose** puts every joint back.
+- **Save the pose** (give it a name) keeps the joint angles **and** a thumbnail of the view: the thumbnail appears in the gallery as a *Pose*, and its name appears as a button under the sliders to put the model back in that pose.
+- "This model has no skeleton": the GLB carries no joints, it can be looked at but not posed. A model whose joints move nothing was exported without skin weights: fix it in the modelling tool and upload it again.
+- Removing an item (bin icon) only takes it out of the gallery: the media stays in Media.
 
 ## Property kinds
 Text, number (unit, min, max), yes/no, date, date and time, list of values, position, web link, reference to another object, **recurrence** (every N days/weeks/months/years: its occurrences show in the Calendar), **time series** and **events**. A time series holds no value in the object: it is fed by a sensor bound to it.

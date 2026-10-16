@@ -82,6 +82,10 @@ pub fn OntologyObject(id: String) -> Element {
     if o.type_key == pnex_core::voice_id::PERSON_TYPE {
         tabs.push(("voice", t!("onto-tab-voice")));
     }
+    // D231: any object has a gallery, except a media itself.
+    if o.type_key != pnex_core::resources::KIND_MEDIA_ASSET {
+        tabs.insert(2, ("gallery", t!("onto-tab-gallery")));
+    }
     let icon = icon_of(&tv.def);
     let kind = type_label(&tv.def);
     let type_key = o.type_key.clone();
@@ -175,6 +179,8 @@ pub fn OntologyObject(id: String) -> Element {
                     }
                 } else if tab() == "provenance" {
                     ProvenancePanel { id: o.id.clone() }
+                } else if tab() == "gallery" {
+                    crate::components::ontology::gallery::Gallery { object: o.clone(), can_write: can_write && !archived }
                 } else if tab() == "voice" {
                     crate::components::voice_id::VoiceProfilePanel { object_id: o.id.clone() }
                 } else {

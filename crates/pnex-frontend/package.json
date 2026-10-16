@@ -5,7 +5,7 @@
     "css:build": "tailwindcss -i style/tailwind.css -o assets/tailwind.css",
     "css:watch": "tailwindcss -i style/tailwind.css -o assets/tailwind.css --watch",
     "js:build": "esbuild js/flasher.js --bundle --format=iife --outfile=assets/flasher.js",
-    "js:viewers": "esbuild js/viewers.js --bundle --format=iife --outfile=assets/viewers.js",
+    "js:viewers": "esbuild js/viewers.js --bundle --minify --format=iife --outfile=assets/viewers.js",
     "js:map": "esbuild node_modules/maplibre-gl/dist/maplibre-gl-worker.mjs --bundle --format=iife --outfile=assets/.map-worker.js && cp assets/.map-worker.js assets/.map-worker.txt && esbuild js/map.js --bundle --format=iife --loader:.txt=text --outfile=assets/map.js",
     "js:doc": "esbuild js/doc.js --bundle --minify --format=iife --outfile=assets/doc.js",
     "js:graph": "esbuild js/graph.js --bundle --minify --format=iife --outfile=assets/graph.js"
@@ -33,6 +33,7 @@
     "prosemirror-state": "1.4.4",
     "prosemirror-view": "1.42.6",
     "sigma": "3.0.2",
+    "three": "0.186.1",
     "y-prosemirror": "1.3.7",
     "y-protocols": "1.0.7",
     "yjs": "13.6.33"

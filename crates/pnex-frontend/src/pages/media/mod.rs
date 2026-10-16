@@ -110,6 +110,7 @@ pub fn Media() -> Element {
                 "table" => vec![MediaKind::Table],
                 "audio" => vec![MediaKind::Audio],
                 "video" => vec![MediaKind::Video],
+                "mesh" => vec![MediaKind::Mesh],
                 _ => vec![MediaKind::Splat],
             },
             search: {
@@ -344,6 +345,7 @@ pub fn Media() -> Element {
                         option { value: "table", {t!("media-kind-table")} }
                         option { value: "audio", {t!("media-kind-audio")} }
                         option { value: "video", {t!("media-kind-video")} }
+                        option { value: "mesh", {t!("media-kind-mesh")} }
                     }
                     SearchInput {
                         page,

@@ -60,6 +60,8 @@ pub enum Format {
     M4a,
     /// MP4 / QuickTime video (Vision Lab: frames of a video).
     Mp4,
+    /// Binary glTF 2.0: 3D model of an object's gallery (D231).
+    Glb,
 }
 
 impl Format {
@@ -87,6 +89,7 @@ impl Format {
             Self::Flac => &["flac"],
             Self::M4a => &["m4a"],
             Self::Mp4 => &["mp4", "m4v", "mov"],
+            Self::Glb => &["glb"],
             // `format_of` already matched the extension.
             Self::Doc(_) => &[],
         }
@@ -106,6 +109,7 @@ impl Format {
             Self::Doc(_) => &["document"],
             Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
             Self::Mp4 => &["video"],
+            Self::Glb => &["mesh"],
         }
     }
 
@@ -125,6 +129,7 @@ impl Format {
             Self::M4a => "audio/mp4",
             Self::Mp4 if extension(filename) == "mov" => "video/quicktime",
             Self::Mp4 => "video/mp4",
+            Self::Glb => "model/gltf-binary",
             _ => return None,
         })
     }
@@ -137,6 +142,7 @@ impl Format {
             Self::Spz => "spz",
             Self::Onnx => "onnx",
             Self::Ggml => "ggml",
+            Self::Glb => "glb",
             _ => "",
         }
     }
@@ -168,6 +174,8 @@ fn by_magic(b: &[u8]) -> Option<Format> {
         _ if matches!(ftyp_brand, Some(b"heic" | b"heix" | b"mif1" | b"msf1")) => Format::Heic,
         // Any other ISO base media brand (isom, mp41, mp42, avc1, qt…).
         _ if ftyp_brand.is_some() => Format::Mp4,
+        // glTF binary container, version 2 only.
+        _ if b.starts_with(b"glTF") && b.get(4..8) == Some(&[2, 0, 0, 0]) => Format::Glb,
         _ if b.starts_with(b"ply\n") || b.starts_with(b"ply\r\n") => Format::Ply,
         _ if b.starts_with(b"lmgg") || b.starts_with(b"GGUF") => Format::Ggml,
         _ if b.get(257..262) == Some(b"ustar") => Format::Tar,
@@ -290,6 +298,16 @@ mod tests {
             detect("clip.mov", mov).unwrap().mime,
             Some("video/quicktime")
         );
+    }
+
+    #[test]
+    fn glb_models_by_magic_and_extension() {
+        let glb = b"glTF\x02\0\0\0\x10\0\0\0";
+        let s = detect("robot.glb", glb).unwrap();
+        assert_eq!((s.kind, s.mime), ("mesh", Some("model/gltf-binary")));
+        assert!(detect("robot.glb", b"glTF\x01\0\0\0").is_none());
+        assert!(detect("robot.png", glb).is_none());
+        assert!(!accepts("photo", "robot.glb", glb));
     }
 
     #[test]
