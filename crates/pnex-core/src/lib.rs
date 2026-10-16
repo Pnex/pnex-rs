@@ -126,6 +126,7 @@ pub mod vision_ai;
 
 /// Media ingest (media-ingest.md P2.13): streams, segments, ASR profiles,
 /// transcript records, server-built names.
+pub mod media_analysis;
 pub mod media_ingest;
 
 /// Voice identification by consented enrolment (voice-id.md, cases.md

@@ -2,11 +2,11 @@
 //! (`/api/v1/ai/providers`) and resolution of the provider an org runs on
 //! — its own default. The platform provides no LLM: each org brings its own.
 
-use pnex_core::{err_codes, LlmProvider, LlmProviderInput, LlmProviderTest};
+use pnex_core::{err_codes, LlmProvider, LlmProviderInput, LlmProviderTest, LlmUsage};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, DbErr,
-    EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+    EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait,
 };
 use uuid::Uuid;
 
@@ -184,6 +184,56 @@ async fn clear_default<C: ConnectionTrait>(db: &C, org_id: i64, except: Uuid) ->
     Ok(())
 }
 
+fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
+    Statement::from_sql_and_values(sea_orm::DbBackend::Postgres, sql, values)
+}
+
+/// Routes exactly `usages` to provider `id` (D212): its other usages are
+/// released, and a usage held by another provider moves here.
+async fn set_usages<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    id: Uuid,
+    usages: &[LlmUsage],
+) -> Result<(), DbErr> {
+    db.execute_raw(stmt(
+        "DELETE FROM llm_usages WHERE org_id = $1 AND provider_id = $2",
+        vec![org_id.into(), id.into()],
+    ))
+    .await?;
+    for usage in usages {
+        db.execute_raw(stmt(
+            "INSERT INTO llm_usages (org_id, usage, provider_id) VALUES ($1, $2, $3)
+             ON CONFLICT (org_id, usage) DO UPDATE SET provider_id = EXCLUDED.provider_id",
+            vec![org_id.into(), usage.as_str().into(), id.into()],
+        ))
+        .await?;
+    }
+    Ok(())
+}
+
+/// `(usage, provider)` pairs of `org_id`.
+async fn usages_of<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+) -> Result<Vec<(LlmUsage, Uuid)>, DbErr> {
+    let rows = db
+        .query_all_raw(stmt(
+            "SELECT usage, provider_id FROM llm_usages WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let usage: String = row.try_get("", "usage")?;
+        let Some(usage) = LlmUsage::ALL.into_iter().find(|u| u.as_str() == usage) else {
+            continue;
+        };
+        out.push((usage, row.try_get("", "provider_id")?));
+    }
+    Ok(out)
+}
+
 fn writer(org_id: i64, by: Author) -> Writer {
     Writer {
         org_id: Some(org_id),
@@ -242,6 +292,7 @@ pub async fn create(
     }
     .insert(&txn)
     .await?;
+    set_usages(&txn, org_id, id, &input.usages).await?;
     txn.commit().await?;
     Ok(row)
 }
@@ -285,6 +336,7 @@ pub async fn update(
     am.is_default = Set(input.is_default);
     am.updated_by = Set(by.user_id);
     let row = am.update(&txn).await?;
+    set_usages(&txn, org_id, id, &input.usages).await?;
     txn.commit().await?;
     Ok(row)
 }
@@ -307,6 +359,7 @@ pub async fn views<C: ConnectionTrait>(
 ) -> Result<Vec<LlmProvider>, StoreError> {
     let ids: Vec<Uuid> = rows.iter().filter_map(|r| r.secret_id).collect();
     let names = store::names_of(db, Some(org_id), &ids).await?;
+    let usages = usages_of(db, org_id).await.map_err(StoreError::Db)?;
     Ok(rows
         .iter()
         .map(|r| {
@@ -316,12 +369,21 @@ pub async fn views<C: ConnectionTrait>(
                     name: names.get(&id)?.clone(),
                 })
             });
-            view(r, api_key)
+            let mine = usages
+                .iter()
+                .filter(|(_, p)| *p == r.id)
+                .map(|(u, _)| *u)
+                .collect();
+            view(r, api_key, mine)
         })
         .collect())
 }
 
-fn view(r: &llm_providers::Model, api_key: Option<pnex_core::SecretFieldView>) -> LlmProvider {
+fn view(
+    r: &llm_providers::Model,
+    api_key: Option<pnex_core::SecretFieldView>,
+    usages: Vec<LlmUsage>,
+) -> LlmProvider {
     LlmProvider {
         id: r.id,
         name: r.name.clone(),
@@ -331,15 +393,31 @@ fn view(r: &llm_providers::Model, api_key: Option<pnex_core::SecretFieldView>) -
         api_key,
         api_key_set: r.secret_id.is_some(),
         is_default: r.is_default,
+        usages,
         updated_at: r.updated_at.to_rfc3339(),
     }
 }
 
-/// The provider `org_id` runs on: its default (no platform fallback).
+/// The provider `org_id` runs `usage` on: the one routed to it, else its
+/// default (no platform fallback).
 pub async fn effective<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
+    usage: LlmUsage,
 ) -> Result<Option<llm_providers::Model>, DbErr> {
+    let routed = usages_of(db, org_id)
+        .await?
+        .into_iter()
+        .find(|(u, _)| *u == usage);
+    if let Some((_, id)) = routed {
+        if let Some(row) = llm_providers::Entity::find_by_id(id)
+            .filter(org_filter(org_id))
+            .one(db)
+            .await?
+        {
+            return Ok(Some(row));
+        }
+    }
     default_of(db, org_id).await
 }
 
@@ -438,6 +516,7 @@ mod tests {
             model: model.into(),
             api_key: None,
             is_default: false,
+            usages: Vec::new(),
         }
     }
 

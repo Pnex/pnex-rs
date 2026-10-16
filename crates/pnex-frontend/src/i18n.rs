@@ -210,6 +210,50 @@ mod tests {
         );
     }
 
+    /// `$variables` used by each message (continuation lines included).
+    fn variables(source: &str) -> std::collections::BTreeMap<String, BTreeSet<String>> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut current: Option<String> = None;
+        for line in source.lines() {
+            let starts_entry = line.split_once(" =").filter(|(k, _)| {
+                !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+            });
+            if let Some((key, _)) = starts_entry {
+                current = Some(key.to_string());
+            } else if !line.starts_with(|c: char| " \t}[*".contains(c)) {
+                current = None;
+            }
+            let Some(key) = &current else { continue };
+            let vars: &mut BTreeSet<String> = out.entry(key.clone()).or_default();
+            for part in line.split('$').skip(1) {
+                let name: String = part
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                    .collect();
+                if !name.is_empty() {
+                    vars.insert(name);
+                }
+            }
+        }
+        out
+    }
+
+    /// A variable renamed in one locale only makes `t!` fail at render time
+    /// (wasm panic, whole page down): both locales use the same variables.
+    #[test]
+    fn variables_match_across_locales() {
+        let en = variables(include_str!("../locales/en-US.ftl"));
+        let fr = variables(include_str!("../locales/fr-FR.ftl"));
+        let diff: Vec<String> = en
+            .iter()
+            .filter_map(|(k, v)| {
+                let other = fr.get(k)?;
+                (other != v).then(|| format!("{k}: en {v:?} / fr {other:?}"))
+            })
+            .collect();
+        assert!(diff.is_empty(), "variables differ: {diff:#?}");
+    }
+
     /// Cross-check (i18n chantier): every machine code registered in
     /// `pnex_core::err_codes::ALL` must have its `err-<kebab>` key in BOTH
     /// locales — the backend guard `error_codes.rs` enforces the converse

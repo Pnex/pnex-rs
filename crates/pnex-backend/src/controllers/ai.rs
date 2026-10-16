@@ -64,7 +64,13 @@ async fn status(org: OrgContext, State(ctx): State<AppContext>) -> Result<Respon
     if !AiSettings::from_config(&ctx.config).enabled {
         return format::json(pnex_core::AiStatus::default());
     }
-    let resolved = config::resolve(&ctx.db, &ctx.config, org.org.id).await;
+    let resolved = config::resolve(
+        &ctx.db,
+        &ctx.config,
+        org.org.id,
+        pnex_core::LlmUsage::Assistant,
+    )
+    .await;
     format::json(match resolved {
         Some(r) => pnex_core::AiStatus {
             enabled: true,
@@ -427,7 +433,14 @@ async fn conversation_send(
             .into_response());
     }
     let conv = owned_or_404(&ctx, &org, id).await?;
-    let Some(cfg) = config::resolve(&ctx.db, &ctx.config, org.org.id).await else {
+    let Some(cfg) = config::resolve(
+        &ctx.db,
+        &ctx.config,
+        org.org.id,
+        pnex_core::LlmUsage::Assistant,
+    )
+    .await
+    else {
         return Err(crate::services::ai::AiError::NotConfigured.into());
     };
     if !conversations::acquire(&ctx.db, conv.id)

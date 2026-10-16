@@ -5,7 +5,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{LlmProvider, LlmProviderInput};
+use pnex_core::{LlmProvider, LlmProviderInput, LlmUsage};
 use uuid::Uuid;
 
 use crate::api;
@@ -157,6 +157,11 @@ fn ProviderRow(
                         {t!("llm-default")}
                     }
                 }
+                for u in provider.usages.clone() {
+                    span { class: "ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 text-xs",
+                        {usage_label(u)}
+                    }
+                }
             }
             td { class: "py-2 pr-4 text-gray-600", {provider.kind.clone()} }
             td { class: "py-2 pr-4 hidden text-gray-600 font-mono text-xs md:table-cell",
@@ -258,6 +263,7 @@ fn ProviderForm(
     });
     let mut model = use_signal(|| init.as_ref().map(|p| p.model.clone()).unwrap_or_default());
     let mut is_default = use_signal(|| init.as_ref().is_some_and(|p| p.is_default));
+    let mut usages = use_signal(|| init.as_ref().map(|p| p.usages.clone()).unwrap_or_default());
     let key = use_signal(|| SecretDraft::from_view(init.as_ref().and_then(|p| p.api_key.clone())));
     let mut busy = use_signal(|| false);
     let id = existing.as_ref().map(|p| p.id);
@@ -270,6 +276,7 @@ fn ProviderForm(
             model: model(),
             api_key: key.read().to_input(),
             is_default: is_default(),
+            usages: usages(),
         };
         busy.set(true);
         spawn(async move {
@@ -371,6 +378,28 @@ fn ProviderForm(
                 }
                 {t!("llm-is-default")}
             }
+            fieldset { class: "space-y-1",
+                legend { class: "block text-xs text-gray-600", {t!("llm-used-for")} }
+                p { class: "text-xs text-gray-500", {t!("llm-used-for-help")} }
+                div { class: "flex flex-wrap gap-x-4 gap-y-1",
+                    for u in LlmUsage::ALL {
+                        label { class: "inline-flex items-center gap-2 text-sm text-gray-700",
+                            input {
+                                r#type: "checkbox",
+                                checked: usages.read().contains(&u),
+                                onchange: move |e| {
+                                    let on = e.checked();
+                                    usages.with_mut(|v| v.retain(|x| *x != u));
+                                    if on {
+                                        usages.write().push(u);
+                                    }
+                                },
+                            }
+                            {usage_label(u)}
+                        }
+                    }
+                }
+            }
             div { class: "flex gap-2",
                 button {
                     r#type: "button",
@@ -388,4 +417,13 @@ fn ProviderForm(
             }
         }
     }
+}
+
+fn usage_label(u: LlmUsage) -> String {
+    match u {
+        LlmUsage::Assistant => t!("llm-usage-assistant"),
+        LlmUsage::Extraction => t!("llm-usage-extraction"),
+        LlmUsage::Vision => t!("llm-usage-vision"),
+    }
+    .to_string()
 }

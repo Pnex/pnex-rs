@@ -253,28 +253,35 @@ pub struct IndexState {
     pub chunk_count: i64,
 }
 
-/// `GET /api/v1/media/{id}/index` — `None` when never indexed.
-pub async fn index_state(id: &str) -> Result<Option<IndexState>, ApiError> {
-    #[derive(serde::Deserialize)]
-    struct Envelope {
-        index: Option<IndexState>,
-    }
-
-    let env: Envelope = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/media/{}/index", urlencode(id)),
-        None,
-    )
-    .await?;
-    Ok(env.index)
+/// Offers, step states and index state of an asset's current version
+/// (media-import-pipeline.md D213).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct AnalysesState {
+    pub offers: Vec<pnex_core::media_analysis::StepOffer>,
+    pub analyses: Vec<pnex_core::media_analysis::MediaAnalysis>,
+    pub index: Option<IndexState>,
 }
 
-/// `POST /api/v1/media/{id}/index` — queue a reindex (202, empty body).
-pub async fn reindex(id: &str) -> Result<Option<()>, ApiError> {
-    client::request_opt(
-        reqwest::Method::POST,
-        &format!("/api/v1/media/{}/index", urlencode(id)),
+/// `GET /api/v1/media/{id}/analyses`.
+pub async fn analyses(id: &str) -> Result<AnalysesState, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/{}/analyses", urlencode(id)),
         None,
+    )
+    .await
+}
+
+/// `POST /api/v1/media/{id}/analyses` — (re)launch steps (202 + state).
+pub async fn start_analyses(
+    id: &str,
+    input: &pnex_core::media_analysis::StartAnalyses,
+) -> Result<AnalysesState, ApiError> {
+    let body = serde_json::to_value(input).map_err(|e| ApiError::new(e.to_string()))?;
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/media/{}/analyses", urlencode(id)),
+        Some(body),
     )
     .await
 }

@@ -29,6 +29,8 @@ mod m20261013_000019_doc_version_review;
 mod m20261013_000020_doc_version_exports;
 mod m20261014_000021_drop_firmware_artifacts;
 mod m20261015_000022_label_purge;
+mod m20261016_000023_llm_usages;
+mod m20261016_000024_media_analyses;
 
 pub struct Migrator;
 
@@ -54,6 +56,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_000020_doc_version_exports::Migration),
             Box::new(m20261014_000021_drop_firmware_artifacts::Migration),
             Box::new(m20261015_000022_label_purge::Migration),
+            Box::new(m20261016_000023_llm_usages::Migration),
+            Box::new(m20261016_000024_media_analyses::Migration),
         ]
     }
 }

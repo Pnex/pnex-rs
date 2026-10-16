@@ -279,6 +279,70 @@ pub async fn search(
     .await
 }
 
+/// Index status of one version of the org (`None` = never indexed).
+pub async fn version_status(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+) -> Result<Option<String>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT status FROM media_text_index WHERE media_version_id = $1 AND org_id = $2",
+            vec![version_id.into(), org_id.into()],
+        ))
+        .await?;
+    row.map(|r| r.try_get("", "status")).transpose()
+}
+
+/// `(asset id, asset name)` of a version of the org.
+pub async fn asset_of_version(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+) -> Result<Option<(Uuid, String)>, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT a.id, a.name FROM media_versions v JOIN media_assets a ON a.id = v.asset_id
+             WHERE v.id = $1 AND v.org_id = $2 AND a.org_id = $2",
+            vec![version_id.into(), org_id.into()],
+        ))
+        .await?;
+    row.map(|r| Ok((r.try_get("", "id")?, r.try_get("", "name")?)))
+        .transpose()
+}
+
+/// Characters of indexed text of a version of the org.
+pub async fn version_chars(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+) -> Result<i64, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT COALESCE(SUM(char_length(content)), 0)::bigint AS n
+             FROM text_chunks WHERE media_version_id = $1 AND org_id = $2",
+            vec![version_id.into(), org_id.into()],
+        ))
+        .await?;
+    Ok(row.map(|r| r.try_get("", "n")).transpose()?.unwrap_or(0))
+}
+
+/// Every chunk text of a version of the org, in document order.
+pub async fn version_texts(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+) -> Result<Vec<String>, DbErr> {
+    db.query_all_raw(stmt(
+        "SELECT content FROM text_chunks WHERE media_version_id = $1 AND org_id = $2 ORDER BY ord",
+        vec![version_id.into(), org_id.into()],
+    ))
+    .await?
+    .into_iter()
+    .map(|r| r.try_get("", "content"))
+    .collect()
+}
+
 #[derive(Debug, Serialize, FromQueryResult)]
 pub struct ChunkText {
     pub chunk_id: Uuid,

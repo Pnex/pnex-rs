@@ -44,6 +44,7 @@ use crate::services::media_sniff;
 use pnex_firmware_builder::sanitize_segment;
 
 // Submodules (pure code moves from the former single-file controller).
+mod analyses;
 mod content;
 mod crud;
 mod dto;
@@ -55,6 +56,7 @@ mod versions;
 // Private globs: bring every submodule's visible items into this module's
 // namespace so `routes()` resolves its handlers and sibling submodules share
 // helpers through `use super::*;`.
+use analyses::*;
 use content::*;
 use crud::*;
 use dto::*;
@@ -93,6 +95,7 @@ pub fn routes() -> Routes {
         .add("/search", get(search))
         .add("/chunks/{chunk_id}", get(chunk))
         .add("/{id}/index", get(index_state).post(reindex))
+        .add("/{id}/analyses", get(analyses).post(start_analyses))
         .add("/{id}", get(detail).patch(update).delete(delete))
         .add("/{id}/content", get(content))
         .add(

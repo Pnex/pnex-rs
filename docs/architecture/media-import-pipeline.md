@@ -1,6 +1,7 @@
 # Pipeline d'import des fichiers — PRD
 
-> **Statut : proposé, à relire** (2026-10-14). Aucune ligne de code.
+> **Statut : en cours** (2026-10-16, branche `feat/media-import-pipeline`).
+> I1 (D212) et I2 (D213 + D214 sur `document` / `table`) codés ; I3–I6 à faire.
 > Décisions proposées **D212–D217** ; D211 (`media-vision-studio.md`
 > §4.1bis) en devient la branche audio.
 
@@ -146,6 +147,35 @@ grisée + lien vers la page de configuration (même règle que P2).
 - Option `vision` (LLM) : légendes par fenêtre + `media_fuse` →
   description horodatée, mêmes routes que D195/D196.
 
+### D215bis — Description dynamique d'un fichier (fenêtres chaînées)
+
+Besoin (Shan, 2026-10-16) : décrire **ce qui se passe** (gestes,
+mouvements, objets qui apparaissent ou changent d'état), pas seulement des
+boîtes image par image. Une fenêtre isolée de 20–30 s ne suffit pas : il
+faut savoir ce qui s'est passé avant pour comprendre maintenant, et sur un
+fichier on dispose aussi de la suite.
+
+- **Passe 0, survol** : ~20 images réparties sur toute la vidéo →
+  contexte global court (lieu, acteurs, activité).
+- **Fenêtres chevauchantes** : 30 s, pas de 15 s, ~10 images par fenêtre
+  dans l'ordre, horodatées. Chaque appel reçoit : le **survol**, **l'histoire
+  jusqu'ici** (résumé cumulé des fenêtres précédentes, borné), les
+  **détections** de la fenêtre (faits, D215) et la **transcription** de la
+  fenêtre (faits, D211) ; les images et textes sont des données, jamais
+  des instructions (D208).
+- **Sortie par fenêtre** : événements horodatés `{t0, t1, kind (geste |
+  mouvement | objet | état), texte, images citées}` ; un événement sans
+  image citée est écarté (même règle que D196). Le chevauchement fusionne
+  les doublons (même type, intervalles recouvrants).
+- **Synthèse** : récit horodaté → page (D214) ; événements → piste
+  `caption` de la timeline (D216).
+- **Live** : même moteur, passé seulement (pas de survol ni de suite),
+  donc moins précis et en retard d'une fenêtre ; c'est `media_fuse` +
+  mémoire cumulée, lot ultérieur.
+- Coût : 1 appel de survol + ~(durée / 15 s) appels + 1 synthèse,
+  estimé et confirmé au-delà du seuil comme le résumé (usage LLM
+  `vision`, D212).
+
 ### D216 — Contrat temporel commun + composant Timeline
 
 - `pnex_core::timeline::TimelineItem { t0_ms, t1_ms: Option, lane,
@@ -230,9 +260,10 @@ identification vocale, entraînement de modèles (Lab), analyse en direct
 
 | # | Décision | Date |
 |---|---|---|
-| D212 | Usages LLM par org (`assistant`, `extraction`, `vision`), repli sur le défaut | 2026-10-14 (proposé) |
-| D213 | `media_analyses` : orchestrateur + état par (version, étape), délègue aux briques existantes | 2026-10-14 (proposé) |
-| D214 | Résumé → page versionnée IA liée au fichier, map-reduce borné | 2026-10-14 (proposé) |
+| D212 | Usages LLM par org (`assistant`, `extraction`, `vision`), repli sur le défaut. Codé : cases « Utilisé pour » dans le formulaire du fournisseur (pas de sélecteurs séparés), table `llm_usages` | 2026-10-16 (codé) |
+| D213 | `media_analyses` : orchestrateur + état par (version, étape), délègue aux briques existantes. Codé : `index` (état dans `media_text_index`) + `summarize` ; pas de route retry/cancel (relancer = même POST), une ligne `running` de plus de 15 min est reprise | 2026-10-16 (codé, I2) |
+| D214 | Résumé → page versionnée IA liée au fichier, map-reduce borné. Codé : relance = section ajoutée + nouvelle version de la même page (pas de remplacement du contenu) | 2026-10-16 (codé, I2) |
 | D215 | Détection d'objets sur fichier, D105 généralisé (`media:<asset>`) | 2026-10-14 (proposé) |
+| D215bis | Description dynamique d'un fichier : survol + fenêtres de 30 s chevauchantes avec histoire cumulée, événements horodatés cités | 2026-10-16 (proposé) |
 | D216 | `TimelineItem` + `GET /timeline` + composant `Timeline` commun | 2026-10-14 (proposé) |
 | D217 | Lecteur « relire avec les analyses » + création d'événements ontologie | 2026-10-14 (proposé) |
