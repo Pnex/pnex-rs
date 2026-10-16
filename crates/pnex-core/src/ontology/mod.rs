@@ -10,6 +10,8 @@ pub mod action;
 pub mod api;
 pub mod graph;
 pub mod layout;
+pub mod money;
+pub mod ownership;
 pub mod recurrence;
 pub mod schema;
 
@@ -362,6 +364,7 @@ fn event_properties() -> Vec<PropertyDef> {
             },
         ),
         prop(EVENT_LOCATION, PropertyKind::GeoPoint),
+        prop(EVENT_AMOUNT, PropertyKind::Money),
     ]
 }
 
@@ -452,17 +455,56 @@ pub const EVENT_ORIGIN: &str = "origin";
 pub const EVENT_ORIGINS: [&str; 4] = ["manual", "detection", "signal", "import"];
 /// Place set by hand when no attached object locates the event.
 pub const EVENT_LOCATION: &str = "location";
+/// Money moved by the event: with `payer` and `payee` attachments, the
+/// event is a payment (cases-money.md K55).
+pub const EVENT_AMOUNT: &str = "amount";
 /// Analysis note (K34): system type without a native table.
 pub const KIND_NOTE: &str = "note";
 pub const NOTE_BODY: &str = "body";
 /// Attachment of an object to an event (K21), role chosen at attach time.
 pub const REL_INVOLVES: &str = "involves";
 pub const INVOLVES_ROLE: &str = "role";
-pub const INVOLVES_ROLES: [&str; 5] = ["evidence", "actor", "context", "hypothesis", "source"];
+pub const INVOLVES_ROLES: [&str; 7] = [
+    "evidence",
+    "actor",
+    "context",
+    "hypothesis",
+    "source",
+    "payer",
+    "payee",
+];
+/// Roles of the two ends of a payment (K55).
+pub const ROLE_PAYER: &str = "payer";
+pub const ROLE_PAYEE: &str = "payee";
 /// Free qualifier of the attachment ("witness", "operator on duty").
 pub const INVOLVES_DETAIL: &str = "detail";
 /// A tracker gives the position of an object while the link is open (K25).
 pub const REL_TRACKS: &str = "tracks";
+/// A media shows an object: its gallery (assisted-creation.md D231).
+pub const REL_DEPICTS: &str = "depicts";
+pub const DEPICTS_ROLE: &str = "role";
+pub const DEPICTS_ROLES: [&str; 5] = [ROLE_REFERENCE, ROLE_MODEL, "voice", ROLE_POSE, "render"];
+/// Reference picture (face, outfit…), sent later to generation providers.
+pub const ROLE_REFERENCE: &str = "reference";
+/// 3D model (GLB), shown in the 3D viewer.
+pub const ROLE_MODEL: &str = "model";
+/// Thumbnail of a named pose of a 3D model.
+pub const ROLE_POSE: &str = "pose";
+/// `depicts` attribute: name of a pose.
+pub const DEPICTS_NAME: &str = "name";
+/// `depicts` attribute: bone rotations of a pose, JSON
+/// `{"bone": [x, y, z, w]}` (only bones moved from the rest pose).
+pub const DEPICTS_POSE: &str = "pose";
+/// `depicts` attribute: the 3D model (media object id) a pose belongs to.
+pub const DEPICTS_MODEL: &str = "model";
+/// Longest pose JSON accepted.
+pub const POSE_MAX_LEN: usize = 16_000;
+
+/// A pose is a JSON object of finite quaternions keyed by bone name.
+pub fn pose_valid(raw: &str) -> bool {
+    serde_json::from_str::<std::collections::BTreeMap<String, [f64; 4]>>(raw)
+        .is_ok_and(|m| m.values().flatten().all(|v| v.is_finite()))
+}
 
 /// The system link types.
 pub fn system_link_types() -> Vec<LinkTypeDef> {
@@ -530,6 +572,39 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         // Tracker → tracked object (K25): the object's track is recomposed
         // from successive links, like `measures` for series (D181).
         link(REL_TRACKS, TypeSet::only(&[KIND_DEVICE]), TypeSet::Any),
+        // Media shown in an object's gallery (D231): removing it closes the
+        // link, the media stays in the library.
+        LinkTypeDef {
+            attributes: vec![
+                PropertyDef {
+                    required: true,
+                    ..prop(
+                        DEPICTS_ROLE,
+                        PropertyKind::Enum {
+                            values: DEPICTS_ROLES.iter().map(|v| v.to_string()).collect(),
+                        },
+                    )
+                },
+                prop(DEPICTS_NAME, PropertyKind::Text { max_len: Some(255) }),
+                prop(
+                    DEPICTS_POSE,
+                    PropertyKind::Text {
+                        max_len: Some(POSE_MAX_LEN),
+                    },
+                ),
+                prop(
+                    DEPICTS_MODEL,
+                    PropertyKind::Ref {
+                        to_type: KIND_MEDIA_ASSET.into(),
+                    },
+                ),
+            ],
+            ..link(
+                REL_DEPICTS,
+                TypeSet::only(&[KIND_MEDIA_ASSET]),
+                TypeSet::Any,
+            )
+        },
     ]
 }
 
@@ -590,6 +665,15 @@ mod tests {
                 assert!(keys.iter().all(known), "{keys:?}");
             }
         }
+    }
+
+    #[test]
+    fn poses_are_quaternions_by_bone() {
+        assert!(pose_valid(r#"{"arm.L": [0, 0, 0.7071, 0.7071]}"#));
+        assert!(pose_valid("{}"));
+        assert!(!pose_valid(r#"{"arm.L": [0, 0, 1]}"#));
+        assert!(!pose_valid(r#"["arm.L"]"#));
+        assert!(!pose_valid("<script>"));
     }
 
     #[test]

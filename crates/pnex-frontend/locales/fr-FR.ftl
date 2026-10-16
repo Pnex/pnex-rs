@@ -1218,7 +1218,7 @@ studio-col-updated = Mise à jour
 studio-open = Ouvrir
 studio-delete = Supprimer
 studio-confirm-delete-title = Supprimer le parcours ?
-studio-confirm-delete-message = les versions du parcours seront définitivement supprimées (les assets média restent dans la bibliothèque).
+studio-confirm-delete-message = les versions du parcours seront définitivement supprimées (les médias restent dans la bibliothèque).
 studio-dirty-unsaved = Modifications non enregistrées
 studio-versions = Historique
 studio-preview = Aperçu
@@ -2365,6 +2365,32 @@ media-kind-document = Document
 media-kind-table = Tableau
 media-kind-audio = Audio
 media-kind-video = Vidéo
+media-kind-mesh = Modèle 3D
+onto-tab-gallery = Galerie
+gallery-add-library = Ajouter depuis la bibliothèque
+gallery-upload = Téléverser un fichier
+gallery-empty = Aucun média. Ajoutez des images de référence, un modèle 3D (GLB) ou une voix.
+gallery-added = Média ajouté à la galerie
+gallery-removed = Média retiré de la galerie (il reste dans la bibliothèque)
+gallery-remove = Retirer de la galerie
+gallery-read-failed = Lecture du fichier impossible
+gallery-role-reference = Image de référence
+gallery-role-model = Modèle 3D
+gallery-role-pose = Pose
+gallery-role-voice = Voix
+gallery-role-render = Rendu
+mesh-animation = Animation
+mesh-animation-none = Aucune (immobile)
+mesh-skeleton = Afficher le squelette
+mesh-reset = Pose de repos
+mesh-no-skeleton = Ce modèle n'a pas de squelette : il se regarde, il ne se pose pas.
+mesh-bone = Articulation
+mesh-rotation = Rotation { $axis }
+mesh-poses = Poses enregistrées :
+mesh-pose-name = Nom de la pose
+mesh-pose-placeholder = assis, main levée…
+mesh-pose-save = Enregistrer la pose
+mesh-pose-saved = Pose enregistrée avec sa vignette
 media-doc-search-placeholder = Rechercher dans les documents
 media-doc-search-empty = Aucun passage ne correspond à cette recherche
 media-doc-search-page = page { $n }
@@ -4503,6 +4529,11 @@ case-added = Ajouté au dossier
 case-pick = Dossier
 onto-kind-fuzzy-time = Date approximative
 onto-kind-recurrence = Récurrence
+onto-kind-money = Montant
+onto-money-amount = Montant
+onto-money-currency = Devise
+onto-money-estimated = Estimé
+onto-money-estimated-mark = (estimé)
 onto-rec-every = Tous les
 onto-rec-unit = { $unit ->
     [day] jour(s)
@@ -4827,6 +4858,8 @@ cw-board-unsourced = Affirmations sans source
 cw-board-contradicted = Affirmations contredites
 case-add-help = L'objet rejoint les pièces non datées de l'enquête ; vous choisirez son rôle en l'attachant à un événement.
 case-role-source = Source
+case-role-payer = Payeur
+case-role-payee = Bénéficiaire
 
 ## Vision Lab (D198–D200)
 err-lab-write-forbidden = Rôle lecteur : les projets du Vision Lab sont en lecture seule.
@@ -5004,3 +5037,43 @@ err-lab-run-not-found = Entraînement introuvable.
 err-lab-review-full = La file « à revoir » de ce projet est pleine (500 images) : étiquetez ou retirez des images.
 err-lab-propagate-no-previous = Étiquetez une image avant celle-ci dans la même vidéo ou le même enregistrement.
 err-asr-runtime-unavailable = Ce serveur ne peut pas exécuter les modèles de la famille { $family } : leur moteur de transcription n'est pas installé. Importez plutôt un modèle sherpa-onnx, ou demandez à l'administrateur une version avec ce moteur.
+
+## Vue Argent d'un dossier (cases-money.md K57)
+money-view = Argent
+money-empty-title = Aucun versement dans ce dossier
+money-empty-help = Un versement est un événement avec un montant : ouvrez un événement, saisissez son montant, puis attachez un payeur et un bénéficiaire.
+money-none-yet = Aucun versement jusqu'au curseur.
+money-traced = Versé
+money-untraced = Non tracé
+money-untraced-help = Ce que l'intermédiaire a reçu sans qu'aucun versement sortant ne soit documenté.
+money-unknown-payer = Payeur inconnu
+money-unknown-payee = Bénéficiaire inconnu
+money-loops = { $count ->
+    [one] 1 versement revient en arrière
+   *[other] { $count } versements reviennent en arrière
+}
+money-until-cursor = Jusqu'au curseur
+money-later = { $count ->
+    [one] 1 versement après le curseur
+   *[other] { $count } versements après le curseur
+}
+cw-graph-family = { $family ->
+    [person] Personnes
+    [organization] Organisations
+    [place] Lieux
+    [identifier] Identifiants
+    [evidence] Preuves
+   *[other] Autres
+} ({ $count })
+cw-path-to = Comment est-il relié à…
+cw-path-none = Aucun chemin en { $hops } liens au plus.
+cw-path-clear = Effacer le chemin
+cw-own-held-by = Détenu par
+cw-own-holds = Détient
+cw-own-indirect = indirect
+cw-own-beneficial = Bénéficiaire effectif (calculé)
+money-legend-sourced = Versement avec pièce
+money-legend-unsourced = Sans pièce
+money-legend-back = Retour en arrière
+money-legend-width = Épaisseur = montant
+money-unsourced = sans pièce

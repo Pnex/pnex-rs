@@ -142,6 +142,16 @@ pub async fn graph(id: &str, depth: u32) -> Result<Neighborhood, ApiError> {
     .await
 }
 
+/// Shortest chain of links between two objects (both directions, bounded).
+pub async fn path(from: &str, to: &str) -> Result<Vec<ObjectRef>, ApiError> {
+    client::request(
+        Method::GET,
+        &format!("{BASE}/path?from={from}&to={to}"),
+        None,
+    )
+    .await
+}
+
 pub async fn impact(id: &str, upstream: bool) -> Result<Vec<ObjectRef>, ApiError> {
     client::request(
         Method::GET,

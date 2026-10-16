@@ -2366,6 +2366,32 @@ media-kind-document = Document
 media-kind-table = Table
 media-kind-audio = Audio
 media-kind-video = Video
+media-kind-mesh = 3D model
+onto-tab-gallery = Gallery
+gallery-add-library = Add from the library
+gallery-upload = Upload a file
+gallery-empty = No media yet. Add reference pictures, a 3D model (GLB) or a voice.
+gallery-added = Media added to the gallery
+gallery-removed = Media removed from the gallery (it stays in the library)
+gallery-remove = Remove from the gallery
+gallery-read-failed = Could not read the file
+gallery-role-reference = Reference picture
+gallery-role-model = 3D model
+gallery-role-pose = Pose
+gallery-role-voice = Voice
+gallery-role-render = Render
+mesh-animation = Animation
+mesh-animation-none = None (still)
+mesh-skeleton = Show the skeleton
+mesh-reset = Rest pose
+mesh-no-skeleton = This model has no skeleton: you can look at it, not pose it.
+mesh-bone = Joint
+mesh-rotation = Rotation { $axis }
+mesh-poses = Saved poses:
+mesh-pose-name = Pose name
+mesh-pose-placeholder = sitting, hand raised…
+mesh-pose-save = Save the pose
+mesh-pose-saved = Pose saved with its thumbnail
 media-doc-search-placeholder = Search in documents
 media-doc-search-empty = No passage matches this search
 media-doc-search-page = page { $n }
@@ -4504,6 +4530,11 @@ case-added = Added to the case
 case-pick = Case
 onto-kind-fuzzy-time = Approximate date
 onto-kind-recurrence = Recurrence
+onto-kind-money = Amount
+onto-money-amount = Amount
+onto-money-currency = Currency
+onto-money-estimated = Estimated
+onto-money-estimated-mark = (estimated)
 onto-rec-every = Every
 onto-rec-unit = { $unit ->
     [day] day(s)
@@ -4831,6 +4862,8 @@ cw-board-unsourced = Unsourced claims
 cw-board-contradicted = Contradicted claims
 case-add-help = The object joins the undated pieces of the investigation; you choose its role when you attach it to an event.
 case-role-source = Source
+case-role-payer = Payer
+case-role-payee = Payee
 
 ## Vision Lab (D198–D200)
 err-lab-write-forbidden = Viewer role: Vision Lab projects are read-only.
@@ -5005,3 +5038,43 @@ err-lab-run-not-found = Training not found.
 err-lab-review-full = The review queue of this project is full (500 pictures): label or remove some.
 err-lab-propagate-no-previous = Label a picture before this one in the same video or recording.
 err-asr-runtime-unavailable = This server cannot run models of family { $family }: its transcription runtime is not installed. Import a sherpa-onnx model instead, or ask the administrator for a build with this runtime.
+
+## Money view of a case (cases-money.md K57)
+money-view = Money
+money-empty-title = No payment in this case
+money-empty-help = A payment is an event with an amount: open an event, enter its amount, then attach a payer and a payee.
+money-none-yet = No payment up to the cursor.
+money-traced = Paid
+money-untraced = Untraced
+money-untraced-help = What the intermediary received with no documented outgoing payment.
+money-unknown-payer = Unknown payer
+money-unknown-payee = Unknown payee
+money-loops = { $count ->
+    [one] 1 payment goes back up the chain
+   *[other] { $count } payments go back up the chain
+}
+money-until-cursor = Up to the cursor
+money-later = { $count ->
+    [one] 1 payment after the cursor
+   *[other] { $count } payments after the cursor
+}
+cw-graph-family = { $family ->
+    [person] People
+    [organization] Organizations
+    [place] Places
+    [identifier] Identifiers
+    [evidence] Evidence
+   *[other] Other
+} ({ $count })
+cw-path-to = How is it linked to…
+cw-path-none = No chain of { $hops } links or fewer.
+cw-path-clear = Clear the path
+cw-own-held-by = Held by
+cw-own-holds = Holds
+cw-own-indirect = indirect
+cw-own-beneficial = Beneficial owner (computed)
+money-legend-sourced = Payment with a piece
+money-legend-unsourced = No piece
+money-legend-back = Back up the chain
+money-legend-width = Width = amount
+money-unsourced = no piece

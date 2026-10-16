@@ -7,7 +7,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{CaseAttachInput, CaseDetachInput, CaseEvent, CaseWorkspace};
-use pnex_core::ontology::{EVENT_NOTE, EVENT_OCCURRED, INVOLVES_ROLES};
+use pnex_core::ontology::{EVENT_AMOUNT, EVENT_NOTE, EVENT_OCCURRED, INVOLVES_ROLES};
 use serde_json::Value;
 
 use super::{model, Sel, Target, Ws};
@@ -329,8 +329,14 @@ fn EventPanel(event: CaseEvent, workspace: CaseWorkspace) -> Element {
         let ev = ev.clone();
         move |key: Option<&'static str>, value: Value, new_title: Option<String>| {
             let mut props = ev.properties.clone();
-            if let Some(k) = key {
-                props.insert(k.into(), value);
+            match key {
+                Some(k) if value.is_null() => {
+                    props.remove(k);
+                }
+                Some(k) => {
+                    props.insert(k.into(), value);
+                }
+                None => {}
             }
             ws.save_object(
                 ev.id.clone(),
@@ -340,8 +346,15 @@ fn EventPanel(event: CaseEvent, workspace: CaseWorkspace) -> Element {
             );
         }
     };
-    let (save_title, save_from, save_to, save_note, save_kind) =
-        (save.clone(), save.clone(), save.clone(), save.clone(), save);
+    let (save_title, save_from, save_to, save_note, save_kind, save_amount) = (
+        save.clone(),
+        save.clone(),
+        save.clone(),
+        save.clone(),
+        save.clone(),
+        save,
+    );
+    let amount = ev.properties.get(EVENT_AMOUNT).cloned();
     let event_id = ev.id.clone();
     let (from0, to0) = span.unwrap_or((0, 0));
     let on_from = move |e: FormEvent| {
@@ -516,6 +529,11 @@ fn EventPanel(event: CaseEvent, workspace: CaseWorkspace) -> Element {
                 }
             }
         }
+        AmountField {
+            current: amount,
+            disabled: !ws.can_write,
+            on_save: move |v| save_amount(Some(EVENT_AMOUNT), v, None),
+        }
         div {
             label { class: FIELD_LABEL, r#for: "cw-ev-note", {t!("cw-note")} }
             textarea {
@@ -635,6 +653,8 @@ fn ObjectPanel(id: String, workspace: CaseWorkspace) -> Element {
             }
         }
         if in_case {
+            Ownership { id: id.clone() }
+            PathFinder { id: id.clone(), workspace: workspace.clone() }
             super::imports::TrackImports { object_id: id.clone() }
         }
         Link {
@@ -660,6 +680,299 @@ fn ObjectPanel(id: String, workspace: CaseWorkspace) -> Element {
                     }
                 },
                 {t!("cw-remove-object")}
+            }
+        }
+    }
+}
+
+/// Amount of an event (cases-money.md K55): with a payer and a payee
+/// attached, the event is a payment of the Money view. Saved on change;
+/// an empty amount removes it.
+#[component]
+fn AmountField(current: Option<Value>, disabled: bool, on_save: EventHandler<Value>) -> Element {
+    use pnex_core::ontology::schema::Money;
+    let m = current.as_ref().and_then(Money::parse);
+    let mut amount = use_signal(|| m.as_ref().map(|m| m.amount.to_string()).unwrap_or_default());
+    let mut currency = use_signal(|| m.as_ref().map_or("EUR".to_string(), |m| m.currency.clone()));
+    let mut estimated = use_signal(|| m.as_ref().is_some_and(|m| m.estimated));
+    let commit = move || {
+        let raw = amount
+            .peek()
+            .trim()
+            .replace([' ', '\u{202f}'], "")
+            .replace(',', ".");
+        let v = if raw.is_empty() {
+            Value::Null
+        } else {
+            match raw.parse::<f64>() {
+                Ok(x) if x.is_finite() => Money {
+                    amount: x,
+                    currency: currency.peek().trim().to_uppercase(),
+                    estimated: *estimated.peek(),
+                }
+                .to_value(),
+                _ => return,
+            }
+        };
+        on_save.call(v);
+    };
+    rsx! {
+        div {
+            label { class: FIELD_LABEL, r#for: "cw-ev-amount", {t!("onto-money-amount")} }
+            div { class: "flex flex-wrap items-center gap-2",
+                input {
+                    id: "cw-ev-amount",
+                    r#type: "text",
+                    inputmode: "decimal",
+                    class: "{INPUT} w-36",
+                    "data-testid": "cw-amount",
+                    disabled,
+                    value: "{amount}",
+                    oninput: move |e| amount.set(e.value()),
+                    onchange: move |_| commit(),
+                }
+                input {
+                    r#type: "text",
+                    maxlength: 3,
+                    class: "{INPUT} w-16 font-mono",
+                    "aria-label": t!("onto-money-currency"),
+                    "data-testid": "cw-currency",
+                    disabled,
+                    value: "{currency}",
+                    oninput: move |e| currency.set(e.value().to_uppercase()),
+                    onchange: move |_| commit(),
+                }
+                label { class: "flex items-center gap-1 text-xs text-slate",
+                    input {
+                        r#type: "checkbox",
+                        disabled,
+                        checked: estimated(),
+                        onchange: move |e| {
+                            estimated.set(e.checked());
+                            commit();
+                        },
+                    }
+                    {t!("onto-money-estimated")}
+                }
+            }
+        }
+    }
+}
+
+/// "How is it linked to …?" (cases-money.md K51): the shortest chain of
+/// links to another member of the case, listed and lit in the graph.
+// shortcut: one shortest path from the existing endpoint, upgrade to the
+// k shortest with their link types when one path proves too little.
+#[component]
+fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
+    let ws = use_context::<Ws>();
+    let mut none = use_signal(|| false);
+    let mut members: Vec<(String, String)> = workspace
+        .events
+        .iter()
+        .flat_map(|e| e.attachments.iter().map(|a| &a.object))
+        .chain(workspace.undated.iter())
+        .filter(|o| o.id != id)
+        .map(|o| (o.id.clone(), o.title.clone()))
+        .collect();
+    members.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+    members.dedup();
+    let path = (ws.path)();
+    let shown = !path.is_empty();
+    rsx! {
+        div { class: "space-y-1",
+            select {
+                class: INPUT,
+                "aria-label": t!("cw-path-to"),
+                "data-testid": "cw-path-to",
+                onchange: {
+                    let from = id.clone();
+                    move |e: FormEvent| {
+                        let (from, to) = (from.clone(), e.value());
+                        let mut p = ws.path;
+                        none.set(false);
+                        if to.is_empty() {
+                            p.set(Vec::new());
+                            return;
+                        }
+                        ws.spawn(async move {
+                            match crate::api::ontology::path(&from, &to).await {
+                                Ok(steps) => p.set(steps),
+                                Err(e) if e.status == Some(404) => {
+                                    p.set(Vec::new());
+                                    none.set(true);
+                                }
+                                Err(e) => crate::state::toasts::error(e),
+                            }
+                        });
+                    }
+                },
+                option { value: "", {t!("cw-path-to")} }
+                for (oid, title) in members {
+                    option { key: "{oid}", value: "{oid}", "{title}" }
+                }
+            }
+            if none() {
+                p { class: "text-xs text-slate",
+                    {t!("cw-path-none", hops : pnex_core::ontology::api::MAX_HOPS)}
+                }
+            }
+            if shown {
+                ol { class: "space-y-0.5 text-sm", "data-testid": "cw-path",
+                    for (i, o) in path.iter().enumerate() {
+                        li { key: "{o.id}", class: "flex items-baseline gap-2",
+                            span { class: "font-mono text-xs text-slate",
+                                if i > 0 {
+                                    "↳"
+                                } else {
+                                    "·"
+                                }
+                            }
+                            button {
+                                r#type: "button",
+                                class: "truncate text-left text-ink hover:text-signal",
+                                onclick: {
+                                    let oid = o.id.clone();
+                                    move |_| {
+                                        let mut sel = ws.sel;
+                                        sel.set(Sel::Object(oid.clone()));
+                                    }
+                                },
+                                "{o.title}"
+                            }
+                        }
+                    }
+                }
+                button {
+                    class: BTN_GHOST,
+                    r#type: "button",
+                    onclick: move |_| {
+                        let mut p = ws.path;
+                        p.set(Vec::new());
+                    },
+                    {t!("cw-path-clear")}
+                }
+            }
+        }
+    }
+}
+
+/// Who holds this object and what it holds, through chains of `owns`
+/// links among the case members (cases-money.md K56). People at or above
+/// the threshold are computed beneficial owners: a deduction, labelled so.
+#[component]
+fn Ownership(id: String) -> Element {
+    use pnex_core::ontology::ownership::{held_by, owners_of, Holding, BENEFICIAL_OWNER_PERCENT};
+    let ws = use_context::<Ws>();
+    let rel = use_resource(move || {
+        let case = (ws.case_id)();
+        let _ = (ws.data)();
+        async move {
+            crate::api::cases::relations(&case)
+                .await
+                .unwrap_or_default()
+        }
+    });
+    let links: Vec<_> = rel
+        .read()
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|l| l.link_type == "owns" && l.valid_to.is_none())
+        .collect();
+    if links.is_empty() {
+        return rsx! {};
+    }
+    let holdings: Vec<Holding> = links
+        .iter()
+        .map(|l| Holding {
+            owner: l.source.id.clone(),
+            owned: l.target.id.clone(),
+            share: l.attributes.get("share").and_then(Value::as_f64),
+        })
+        .collect();
+    let refs: std::collections::HashMap<String, (String, String)> = links
+        .iter()
+        .flat_map(|l| [&l.source, &l.target])
+        .map(|o| (o.id.clone(), (o.title.clone(), o.type_key.clone())))
+        .collect();
+    let fr = crate::i18n::current_tag().starts_with("fr");
+    let pct = move |p: f64| {
+        let s = format!("{p:.1}").trim_end_matches(".0").to_string();
+        if fr {
+            format!("{} %", s.replace('.', ","))
+        } else {
+            format!("{s}%")
+        }
+    };
+    let owners = owners_of(&holdings, &id);
+    let held = held_by(&holdings, &id);
+    let row = move |st: pnex_core::ontology::ownership::Stake, flag: bool| {
+        let (title, _) = refs
+            .get(&st.id)
+            .cloned()
+            .unwrap_or_else(|| (st.id.clone(), String::new()));
+        let share = if st.partial && st.percent == 0.0 {
+            "?".to_string()
+        } else if st.partial {
+            format!("≥ {}", pct(st.percent))
+        } else {
+            pct(st.percent)
+        };
+        let via = if st.depth > 1 {
+            t!("cw-own-indirect").to_string()
+        } else {
+            String::new()
+        };
+        let oid = st.id.clone();
+        rsx! {
+            li { key: "{st.id}", class: "flex items-baseline gap-2",
+                button {
+                    r#type: "button",
+                    class: "min-w-0 flex-1 truncate text-left text-ink hover:text-signal",
+                    onclick: move |_| {
+                        let mut sel = ws.sel;
+                        sel.set(Sel::Object(oid.clone()));
+                    },
+                    "{title}"
+                }
+                if flag {
+                    span { class: "rounded border border-signal px-1 text-xs text-signal",
+                        {t!("cw-own-beneficial")}
+                    }
+                }
+                span { class: "text-xs text-slate", "{via}" }
+                span { class: "font-mono text-xs text-ink", "{share}" }
+            }
+        }
+    };
+    let row2 = row.clone();
+    let types: std::collections::HashMap<String, String> = links
+        .iter()
+        .flat_map(|l| [&l.source, &l.target])
+        .map(|o| (o.id.clone(), o.type_key.clone()))
+        .collect();
+    rsx! {
+        div { class: "space-y-2", "data-testid": "cw-ownership",
+            if !owners.is_empty() {
+                h3 { class: "text-xs font-medium text-slate", {t!("cw-own-held-by")} }
+                ul { class: "space-y-0.5 text-sm",
+                    for st in owners {
+                        {
+                            let flag = types.get(&st.id).is_some_and(|t| t == "person")
+                                && st.percent >= BENEFICIAL_OWNER_PERCENT;
+                            row(st, flag)
+                        }
+                    }
+                }
+            }
+            if !held.is_empty() {
+                h3 { class: "text-xs font-medium text-slate", {t!("cw-own-holds")} }
+                ul { class: "space-y-0.5 text-sm",
+                    for st in held {
+                        {row2(st, false)}
+                    }
+                }
             }
         }
     }

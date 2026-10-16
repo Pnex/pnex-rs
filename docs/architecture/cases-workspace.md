@@ -8,6 +8,7 @@
 | Référence UX | Prototype navigable « PNEX Dossier d'enquête » (artifact du 12/10/2026, données d'exemple) — spec d'**usage**, pas d'identité visuelle (§11) |
 | Benchmark | `docs/bench/dossier-enquete.md` (synthèse) + `docs/bench/dossier-enquete/*.md` (fiches) |
 | Relation à `cases.md` | `cases.md` (K1–K19) reste la référence du **modèle d'enquête** (pack, affirmations, apparitions, voix). Ce PRD remplace son **écran** (K6 rendu, K14) et amende K1, K2, K6 (§9). Décisions numérotées **K20…K47** à la suite |
+| Suite | `cases-money.md` (K48–K64) : navigation (filtres, chemins, regroupement, preuves en couche) et flux financiers (montant, versement, détention, vue Argent) |
 
 ## 1. Problème
 

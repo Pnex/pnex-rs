@@ -7,12 +7,14 @@
 # types since 1.3.0 (cases-workspace.md K20, K21): the pack uses them. Since
 # 1.4.0 a place may carry a zone (geo_area, K29) for the zone detector.
 # Since 1.5.0 names carry their French translation (`names`, O43).
+# Since 1.6.0 `owns` carries the share held (cases-money.md K56): chains
+# of shares give the computed beneficial owners.
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.5.0"
+version: "1.6.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -161,6 +163,8 @@ link_types:
     inverse_names: {fr: "appartient à"}
     from_types: [person, organization]
     to_types: "*"
+    attributes:
+      - { key: share, name: Share held, names: {fr: "Part détenue"}, kind: number, unit: "%", min: 0, max: 100 }
   - key: knows
     name: knows
     names: {fr: "connaît"}
