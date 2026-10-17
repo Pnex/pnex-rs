@@ -76,6 +76,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
     for part in [
         controllers::health::openapi(),
         controllers::meta::openapi(),
+        controllers::mcp::openapi(),
         controllers::devices::openapi(),
         controllers::media::openapi(),
         controllers::media_ingest::openapi(),

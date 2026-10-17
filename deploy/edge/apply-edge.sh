@@ -165,9 +165,13 @@ import json, os, sys
 client = json.loads(sys.argv[1])
 origin = f"https://{os.environ['DOMAIN']}"
 wanted = {
-    "redirect_uris": [f"{origin}/auth/callback", f"{origin}/api/v1/oauth2/native"],
+    # The last one: MCP clients' loopback callback (`--callback-port 33418`).
+    "redirect_uris": [f"{origin}/auth/callback", f"{origin}/api/v1/oauth2/native",
+                      "http://localhost:33418/callback"],
     "post_logout_redirect_uris": [f"{origin}/"],
     "allowed_origins": [origin],  # Rauthy rejects a trailing slash here
+    # RFC 8707 `resource` sent by MCP clients (docs/architecture/mcp.md).
+    "allowed_resources": [f"{origin}/api/v1/mcp"],
 }
 added = 0
 for field, values in wanted.items():
