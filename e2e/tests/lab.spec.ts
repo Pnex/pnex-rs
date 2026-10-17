@@ -73,5 +73,13 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
     await page.getByRole('button', { name: app.t('lab-export') }).first().click();
     expect((await download).suggestedFilename()).toMatch(/\.zip$/);
     await capture('lab-version', { caption: 'Vision Lab: a frozen dataset version, downloaded in COCO format' });
+
+    // A source added by mistake leaves the project, its files stay in Media.
+    await page.getByRole('dialog').getByRole('button', { name: app.t('common-close') }).click();
+    await page.getByTestId('lab-step').filter({ hasText: app.t('lab-step-images') }).click();
+    await page.getByTestId('lab-source-remove').click();
+    await page.getByRole('button', { name: app.t('lab-source-remove'), exact: true }).last().click();
+    await expect.poll(async () => (await api.get(`/lab/projects/${id}/images`)).length).toBe(0);
+    await expect(page.getByText(app.t('lab-no-image'))).toBeVisible();
   });
 });

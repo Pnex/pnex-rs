@@ -21,12 +21,14 @@ use pnex_core::lab::{
 
 use crate::api;
 use crate::app::Route;
+use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::ListLayout;
 use crate::components::icons;
 use crate::components::modal::Modal;
 use crate::components::stepper::{Station, Stepper};
 use crate::components::ui::{
-    BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_LABEL, INPUT, PANEL,
+    BTN_DANGER, BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_LABEL, INPUT,
+    PANEL,
 };
 use crate::state::{org, toasts};
 use crate::util::sleep;
@@ -98,6 +100,8 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut class = use_signal(|| 0u32);
     // Held by the page: adding a class reloads it, the "+" bubble stays open.
     let class_menu = use_signal(|| false);
+    // Source of the "Pictures" step waiting for its removal to be confirmed.
+    let mut removing_source = use_signal(|| None::<usize>);
     let mut selected_box = use_signal(|| None::<usize>);
     let mut picker_open = use_signal(|| false);
     let mut recording_open = use_signal(|| false);
@@ -584,7 +588,37 @@ pub fn LabProjectPage(id: String) -> Element {
                     loaded: loaded(),
                     can_write,
                     on_open: open_source.clone(),
+                    on_remove: move |k: usize| removing_source.set(Some(k)),
                     on_add: move |_| adding.set(true),
+                }
+            }
+            if let Some(s) = removing_source().and_then(|k| srcs.get(k).cloned()) {
+                ConfirmDialog {
+                    title: t!("lab-source-remove").to_string(),
+                    message: t!("lab-source-remove-confirm", name : s.name.clone(), count : s.frames.len())
+                        .to_string(),
+                    confirm_label: t!("lab-source-remove").to_string(),
+                    on_confirm: {
+                        let ids: Vec<String> = s
+                            .frames
+                            .iter()
+                            .filter_map(|f| list.get(f.0))
+                            .map(|i| i.id.clone())
+                            .collect();
+                        move |_| {
+                            let ids = ids.clone();
+                            let done = t!("lab-source-removed").to_string();
+                            spawn(async move {
+                                match remove_images(&ids).await {
+                                    Ok(()) => toasts::success(done),
+                                    Err(e) => toasts::error(e),
+                                }
+                                removing_source.set(None);
+                                reload.with_mut(|r| *r += 1);
+                            });
+                        }
+                    },
+                    on_cancel: move |_| removing_source.set(None),
                 }
             }
             if now == Step::Label {
@@ -1537,6 +1571,15 @@ fn StatsPanel(classes: Vec<String>, stats: lab::LabStats) -> Element {
     }
 }
 
+/// Takes pictures out of the project; stops at the first refusal.
+async fn remove_images(ids: &[String]) -> Result<(), api::error::ApiError> {
+    // shortcut: one request per picture, fine for a few hundred; a bulk endpoint if sources grow larger.
+    for id in ids {
+        api::lab::remove_image(id).await?;
+    }
+    Ok(())
+}
+
 /// Step "Pictures": the sources of the project (each video, recording or
 /// batch of photos), how far each is labeled, and the way to add more.
 #[component]
@@ -1545,6 +1588,8 @@ fn SourceList(
     loaded: bool,
     can_write: bool,
     on_open: EventHandler<usize>,
+    /// Asks to take source `k` out of the project.
+    on_remove: EventHandler<usize>,
     on_add: EventHandler<()>,
 ) -> Element {
     if sources.is_empty() {
@@ -1588,13 +1633,24 @@ fn SourceList(
                                     }
                                 }
                             }
-                            td { class: "px-4 py-3 text-right",
-                                button {
-                                    class: BTN_SECONDARY_SM,
-                                    r#type: "button",
-                                    "data-testid": "lab-source-open",
-                                    onclick: move |_| on_open.call(k),
-                                    {t!("lab-source-label")}
+                            td { class: "px-4 py-3",
+                                div { class: "flex justify-end gap-2",
+                                    if can_write {
+                                        button {
+                                            class: BTN_DANGER,
+                                            r#type: "button",
+                                            "data-testid": "lab-source-remove",
+                                            onclick: move |_| on_remove.call(k),
+                                            {t!("lab-source-remove")}
+                                        }
+                                    }
+                                    button {
+                                        class: BTN_SECONDARY_SM,
+                                        r#type: "button",
+                                        "data-testid": "lab-source-open",
+                                        onclick: move |_| on_open.call(k),
+                                        {t!("lab-source-label")}
+                                    }
                                 }
                             }
                         }

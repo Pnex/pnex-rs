@@ -4971,6 +4971,9 @@ lab-more-advice = { $count ->
    *[other] { $count } tips for a better model
 }
 lab-source = Source
+lab-source-remove = Remove
+lab-source-remove-confirm = Remove { $name } from the project, with its { $count } pictures and their labeling? The files stay in the media library.
+lab-source-removed = Source removed from the project
 lab-source-video = Video
 lab-source-recording = Recording
 lab-source-review = To review
