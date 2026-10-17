@@ -100,7 +100,7 @@ pub fn FluidMixtures() -> Element {
         .sum();
     let sum_ok = (sum - 1.0).abs() <= pnex_core::FRACTION_SUM_TOL;
     let sum_class = if sum_ok {
-        "text-green-600"
+        "text-green-700"
     } else {
         "text-red-600"
     };
