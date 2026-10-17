@@ -1,0 +1,16 @@
+# Accepted lint exceptions (docs/contracts/redocly.yaml). Each entry is a
+# route that genuinely has no such response — never add a route here to
+# silence a missing annotation.
+openapi.json:
+  operation-4xx-response:
+    # Public, parameterless: install scripts, contract probe, static
+    # catalogue and liveness/readiness probes never answer 4xx.
+    - '#/paths/~1api~1v1~1agent~1install.ps1/get/responses'
+    - '#/paths/~1api~1v1~1agent~1install.sh/get/responses'
+    - '#/paths/~1api~1v1~1meta~1version/get/responses'
+    - '#/paths/~1api~1v1~1notify~1kinds/get/responses'
+    - '#/paths/~1health~1live/get/responses'
+    - '#/paths/~1health~1ready/get/responses'
+  operation-2xx-response:
+    # Browser SSO entry: always a 302 to the identity provider.
+    - '#/paths/~1api~1v1~1oauth2~1sso/get/responses'

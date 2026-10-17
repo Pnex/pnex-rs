@@ -129,7 +129,8 @@ pub fn spec() -> utoipa::openapi::OpenApi {
     }
     ref_paginated_items(&mut doc);
     binary_bodies(&mut doc);
-    for item in doc.paths.paths.values_mut() {
+    for (path, item) in doc.paths.paths.iter_mut() {
+        let rate_limit = crate::services::rate_limit::rule_for(path);
         for op in [
             &mut item.get,
             &mut item.post,
@@ -140,10 +141,57 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         .into_iter()
         .flatten()
         {
+            auth_errors(op, rate_limit);
             org_header(op);
         }
     }
     doc
+}
+
+/// Every authenticated route can answer 401 (missing/expired token),
+/// every org-scoped route 403 (caller not a member of `X-Org-Id`) and every
+/// rate-limited route 429: add them where the handler annotation does not
+/// list them.
+fn auth_errors(op: &mut Operation, rate_limit: Option<&crate::services::rate_limit::Rule>) {
+    use utoipa::openapi::{RefOr, ResponseBuilder};
+    let reqs = op
+        .security
+        .as_ref()
+        .and_then(|r| serde_json::to_value(r).ok())
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    let bearer = reqs.iter().any(|r| r.get(BEARER).is_some());
+    let org = reqs.iter().any(|r| r.get(ORG).is_some());
+    let error = |description: &str| {
+        RefOr::T(
+            ResponseBuilder::new()
+                .description(description)
+                .content(
+                    "application/json",
+                    utoipa::openapi::ContentBuilder::new()
+                        .schema(Some(utoipa::openapi::Ref::from_schema_name("ErrorDetail")))
+                        .build(),
+                )
+                .build(),
+        )
+    };
+    let responses = &mut op.responses.responses;
+    if bearer && !responses.contains_key("401") {
+        responses.insert(
+            "401".into(),
+            error("Missing, invalid or expired bearer token"),
+        );
+    }
+    if org && !responses.contains_key("403") {
+        responses.insert(
+            "403".into(),
+            error("`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"),
+        );
+    }
+    if let Some(rule) = rate_limit.filter(|_| !responses.contains_key("429")) {
+        let description = format!("`{}`: rate limit reached (`Retry-After` header)", rule.code);
+        responses.insert("429".into(), error(&description));
+    }
 }
 
 /// `Option<Dto>` renders as `oneOf: [{type: null}, {$ref}]`, which

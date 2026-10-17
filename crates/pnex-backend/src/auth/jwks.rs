@@ -30,19 +30,19 @@ use super::settings::RauthySettings;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VerifyError {
-    #[error("token absent ou malformé")]
+    #[error("token missing or malformed")]
     Malformed,
-    #[error("signature invalide ou algorithme non autorisé")]
+    #[error("invalid signature or disallowed algorithm")]
     BadSignature,
-    #[error("clé de signature inconnue (kid) après rafraîchissement JWKS")]
+    #[error("unknown signing key (kid) after a JWKS refresh")]
     UnknownKid,
-    #[error("token expiré")]
+    #[error("token expired")]
     Expired,
-    #[error("émetteur (iss) invalide")]
+    #[error("invalid issuer (iss)")]
     BadIssuer,
-    #[error("audience (aud) invalide")]
+    #[error("invalid audience (aud)")]
     BadAudience,
-    #[error("Rauthy injoignable pour les JWKS : {0}")]
+    #[error("Rauthy unreachable for the JWKS: {0}")]
     JwksUnreachable(String),
 }
 

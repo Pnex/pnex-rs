@@ -30,6 +30,15 @@
 - **Dépendances : `task security:deps`** (`cargo deny`, job CI `deny` bloquant) ; toute exception dans `deny.toml` porte sa justification.
 - Finding découvert en route = ligne au registre §7 (SEC-n), même s'il n'est pas corrigé dans la même PR.
 
+## Contrat d'API (D238–D245, règle permanente, 2026-10-17)
+
+Toute route HTTP ajoutée ou modifiée suit `docs/architecture/api-contract.md` **dans le même commit** ; le spec `docs/contracts/openapi.json` est le contrat public (SDK, futur MCP D245).
+
+- **Annoter** chaque handler (`#[utoipa::path]`, description anglaise qui dit l'effet et le rôle requis) et l'ajouter à l'`openapi()` du contrôleur ; type vu seulement via `IntoParams` → `components(schemas(..))`. Puis `task openapi` (fichier commité).
+- **Formes** : erreurs = `ErrorDetail` seulement (`controllers::{field_error, fields_error, violations_error, coded_error}`, jamais de `json!` d'erreur nu) ; listes = `Paginated<T>` ; liste indisponible = 503 codée ; `*_at` en `date-time`, ids `int64`/`uuid` (`format = "uuid"` en chaîne) ; ensembles fermés = enum minuscules ; lecture = `GET` (`…/query` si corps complexe), `PATCH` partiel / `PUT` complet.
+- **Gardes bloquantes** : `crates/pnex-backend/tests/openapi.rs` (spec à jour, toute route documentée, pas de tableau nu, erreurs `ErrorDetail`, types, anglais, `$ref` résolues) + `task openapi:lint` (2xx et 4xx documentées ; exceptions motivées dans `docs/contracts/.redocly.lint-ignore.yaml`). Ne jamais ajouter une exception pour faire taire une garde.
+- Rupture de forme = `feat(api)!` + bump `pnex_api_contract::CONTRACT`, consommateurs (front, `e2e/`, firmware/agent) adaptés dans le même commit. `task sdk` doit rester vert.
+
 ## Assistant IA : toute fonctionnalité lui est livrée (D142–D145, règle permanente)
 
 Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assistant à jour dans le même commit = travail non fini**, au même titre qu'une clé fluent manquante. Référence : `docs/architecture/ai-assistant.md` §9.

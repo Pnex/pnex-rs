@@ -62,7 +62,7 @@ impl FromRequestParts<AppContext> for AuthUser {
         let settings = settings::RauthySettings::from_config(&state.config)?;
         let verifier = jwks::verifier_for(&settings).await;
         let claims = verifier.verify(&token).await.map_err(|err| {
-            tracing::warn!(%err, "rejet JWT");
+            tracing::warn!(%err, "JWT rejected");
             loco_rs::Error::Unauthorized(WWW_AUTHENTICATE.to_string())
         })?;
 
@@ -78,7 +78,7 @@ impl FromRequestParts<AppContext> for AuthUser {
         let user = provisioning::get_or_create_user(&state.db, &claims)
             .await
             .map_err(|err| {
-                tracing::error!(%err, "JIT provisioning échoué");
+                tracing::error!(%err, "JIT provisioning failed");
                 match err {
                     provisioning::ProvisionError::MissingEmail
                     | provisioning::ProvisionError::UnverifiedEmailRelink => {
@@ -150,8 +150,11 @@ impl FromRequestParts<AppContext> for OrgContext {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok())
             .ok_or_else(|| {
-                loco_rs::Error::BadRequest(
-                    "en-tête X-Org-Id requis (id de l'organisation sélectionnée)".into(),
+                crate::controllers::coded_error(
+                    axum::http::StatusCode::BAD_REQUEST,
+                    pnex_core::err_codes::ORG_HEADER_REQUIRED,
+                    "the X-Org-Id header (id of the selected organisation) is required",
+                    None,
                 )
             })?;
 
@@ -172,12 +175,11 @@ impl FromRequestParts<AppContext> for OrgContext {
             // 403 et non 404 : l'utilisateur a fourni un id, on lui dit
             // qu'il n'en est pas membre (isolation par cloisonnement
             // fonctionnel, pas par obscurcissement).
-            return Err(loco_rs::Error::CustomError(
+            return Err(crate::controllers::coded_error(
                 axum::http::StatusCode::FORBIDDEN,
-                loco_rs::controller::ErrorDetail::new(
-                    "forbidden",
-                    "vous n'êtes pas membre de cette organisation".to_string(),
-                ),
+                pnex_core::err_codes::ORG_NOT_MEMBER,
+                "you are not a member of this organisation",
+                None,
             ));
         };
 

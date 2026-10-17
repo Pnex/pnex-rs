@@ -399,7 +399,7 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     });
     await page.addInitScript(() => {
       const get = HTMLCanvasElement.prototype.getContext;
-      HTMLCanvasElement.prototype.getContext = function (kind: string, ...rest: unknown[]) {
+      HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string, ...rest: unknown[]) {
         return /webgl/.test(kind) ? null : get.call(this, kind, ...rest);
       } as typeof get;
     });
