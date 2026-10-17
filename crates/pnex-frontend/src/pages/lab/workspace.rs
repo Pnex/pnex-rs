@@ -96,6 +96,8 @@ pub fn LabProjectPage(id: String) -> Element {
     let mut loaded = use_signal(|| false);
     let mut selected = use_signal(|| 0usize);
     let mut class = use_signal(|| 0u32);
+    // Held by the page: adding a class reloads it, the "+" bubble stays open.
+    let class_menu = use_signal(|| false);
     let mut selected_box = use_signal(|| None::<usize>);
     let mut picker_open = use_signal(|| false);
     let mut recording_open = use_signal(|| false);
@@ -629,6 +631,7 @@ pub fn LabProjectPage(id: String) -> Element {
                                         });
                                     }
                                 },
+                                class_menu,
                                 selected_box: selected_box(),
                                 suggestions: shown.clone(),
                                 on_accept: move |i: usize| accept(vec![i]),
@@ -870,6 +873,8 @@ fn Annotator(
     on_hand: EventHandler<bool>,
     on_pick_class: EventHandler<u32>,
     on_add_class: EventHandler<String>,
+    /// The "+" bubble is open.
+    class_menu: Signal<bool>,
     selected_box: Option<usize>,
     suggestions: Vec<LabSuggestion>,
     on_accept: EventHandler<usize>,
@@ -1060,6 +1065,7 @@ fn Annotator(
                         current: class,
                         on_pick: on_pick_class,
                         on_add: on_add_class,
+                        open: class_menu,
                     }
                 }
             }
@@ -1134,8 +1140,8 @@ fn ClassAdd(
     current: u32,
     on_pick: EventHandler<u32>,
     on_add: EventHandler<String>,
+    mut open: Signal<bool>,
 ) -> Element {
-    let mut open = use_signal(|| false);
     let mut typing = use_signal(String::new);
     let mut submit = move || {
         let name = typing().trim().to_string();
@@ -1184,18 +1190,31 @@ fn ClassAdd(
                             }
                         }
                     }
-                    input {
-                        class: "{INPUT} w-full",
-                        "aria-label": t!("lab-class-new"),
-                        placeholder: t!("lab-class-new"),
-                        autofocus: true,
-                        value: "{typing}",
-                        oninput: move |e| typing.set(e.value()),
-                        onkeydown: move |e: KeyboardEvent| match e.key() {
-                            Key::Enter => submit(),
-                            Key::Escape => open.set(false),
-                            _ => {}
-                        },
+                    div { class: "flex items-center gap-1",
+                        input {
+                            class: "{INPUT} min-w-0 flex-1",
+                            "aria-label": t!("lab-class-new"),
+                            placeholder: t!("lab-class-new"),
+                            autofocus: true,
+                            value: "{typing}",
+                            oninput: move |e| typing.set(e.value()),
+                            onkeydown: move |e: KeyboardEvent| match e.key() {
+                                Key::Enter => submit(),
+                                Key::Escape => open.set(false),
+                                _ => {}
+                            },
+                        }
+                        // Touch screens have no Enter key at hand.
+                        button {
+                            class: "flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-signal text-white disabled:opacity-40",
+                            r#type: "button",
+                            title: t!("lab-class-add"),
+                            "aria-label": t!("lab-class-add"),
+                            "data-testid": "lab-class-submit",
+                            disabled: typing().trim().is_empty(),
+                            onclick: move |_| submit(),
+                            icons::Plus { class: "h-4 w-4" }
+                        }
                     }
                 }
             }
