@@ -7,35 +7,27 @@
   </a>
 </p>
 
-<h3 align="center">Your boards. Your server. Your data.</h3>
+<h3 align="center">Your sources. Your server. Your data.</h3>
 
 <p align="center">
-  Open-source data platform on an industrial IoT &amp; SCADA foundation, written in Rust end to end.<br>
-  Flash a board from your browser, automate with drag &amp; drop or code, monitor and get alerted —
-  from home to the factory floor, self-hosted down to a Raspberry Pi.
+  Self-hosted data platform on an industrial IoT foundation, written in Rust end to end.<br>
+  Boards, cameras, audio and video streams, files and APIs land in one organization,
+  linked by an ontology, processed by flows, read in dashboards — <a href="https://pnex.io">pnex.io</a>
 </p>
 
 <p align="center">
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/ci.yml?query=branch%3Amain"><img alt="CI" src="https://github.com/Pnex/pnex-rs/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Pnex/pnex-rs/actions/workflows/e2e.yml"><img alt="e2e" src="https://github.com/Pnex/pnex-rs/actions/workflows/e2e.yml/badge.svg"></a>
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/firmware.yml?query=branch%3Amain"><img alt="Firmware" src="https://github.com/Pnex/pnex-rs/actions/workflows/firmware.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/images.yml"><img alt="Docker images" src="https://github.com/Pnex/pnex-rs/actions/workflows/images.yml/badge.svg"></a>
   <a href="https://github.com/Pnex/pnex-rs/actions/workflows/apps.yml"><img alt="Apps (desktop + Android)" src="https://github.com/Pnex/pnex-rs/actions/workflows/apps.yml/badge.svg"></a>
-  <a href="https://hub.docker.com/r/shanisma/pnex-server-rs"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/shanisma/pnex-server-rs?logo=docker&label=pulls"></a>
 </p>
 <p align="center">
   <a href="https://www.rust-lang.org"><img alt="Rust 1.88+" src="https://img.shields.io/badge/rust-1.88%2B-orange?logo=rust"></a>
   <a href="https://dioxuslabs.com"><img alt="Dioxus 0.7" src="https://img.shields.io/badge/dioxus-0.7-blue"></a>
-  <a href="https://platformio.org"><img alt="PlatformIO 6.2" src="https://img.shields.io/badge/PlatformIO-6.2-f5822a?logo=platformio&logoColor=white"></a>
-  <a href="firmware"><img alt="ESP8266 · ESP32 · C3 · S3" src="https://img.shields.io/badge/boards-ESP8266%20%C2%B7%20ESP32%20%C2%B7%20C3%20%C2%B7%20S3-e7352c?logo=espressif&logoColor=white"></a>
-  <a href="https://pnex.io/roadmap"><img alt="Status: beta 0.1.0" src="https://img.shields.io/badge/status-beta%200.1.0-yellow"></a>
+  <a href="https://pnex.io/roadmap"><img alt="Status: beta 0.2.0" src="https://img.shields.io/badge/status-beta%200.2.0-yellow"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/Pnex/pnex-rs/releases/tag/nightly"><img alt="Download Linux x86_64 · ARM64" src="https://img.shields.io/badge/Linux-x86__64%20%C2%B7%20ARM64-FCC624?logo=linux&logoColor=black"></a>
-  <a href="https://github.com/Pnex/pnex-rs/releases/download/nightly/pnex-desktop-windows-x86_64.zip"><img alt="Download Windows x86_64" src="https://img.shields.io/badge/Windows-x86__64-0078D6?logo=windows&logoColor=white"></a>
-  <a href="https://github.com/Pnex/pnex-rs/releases/download/nightly/pnex-android-arm64.apk"><img alt="Download Android APK" src="https://img.shields.io/badge/Android-APK%20arm64-3DDC84?logo=android&logoColor=white"></a>
-  <br><sub>Nightly builds of the native apps, from the latest green <code>main</code>.</sub>
+  <a href="https://hub.docker.com/r/shanisma/pnex-server-rs"><img alt="Docker pulls" src="https://img.shields.io/docker/pulls/shanisma/pnex-server-rs?logo=docker&label=pulls"></a>
 </p>
 
 <p align="center">
@@ -43,141 +35,199 @@
   <a href="https://pnex.io/docs/quickstart"><b>Quickstart</b></a> ·
   <a href="https://pnex.io/docs"><b>Documentation</b></a> ·
   <a href="https://pnex.io/roadmap"><b>Roadmap</b></a> ·
-  <a href="https://pnex.io/manifesto"><b>Manifesto</b></a>
+  <a href="https://github.com/Pnex/pnex-rs/releases/tag/nightly"><b>Nightly apps</b></a>
 </p>
 
 ---
 
 > [!WARNING]
-> **Early beta (0.1.0).** Most features are maintainer-tested on a real bench, none are
-> community-validated yet. Great for testing and contributing — don't run a critical process
-> on it yet. The [roadmap](https://pnex.io/roadmap) shows the real state of each feature.
+> **Beta (0.2.0).** Features are maintainer-tested on a real bench and by an end-to-end
+> suite, not yet community-validated. Don't run a critical process on it yet. The
+> [roadmap](https://pnex.io/roadmap) gives the real state of each feature.
 
-## What is PNeX?
+## What PNeX is
 
-PNeX (**Platform Nexus**) is the crossroads of tools industrial teams already know — the
-device management of ThingsBoard, the firmware experience of ESPHome, the visual flow
-programming of Node-RED — rebuilt as a single, coherent, memory-frugal product with an
-integrated AI assistant.
+PNeX (**Platform Nexus**) started as an industrial IoT platform — devices, firmware, flows,
+SCADA dashboards — and grew into a data platform built on that foundation. Everything an
+organization collects lives in one place and one model:
 
-PNeX is becoming a **data platform**: devices, time series, media and transcripts, documents,
-maps and investigations live in one organization, linked by a shared ontology of objects,
-relations and time. The IoT foundation stays whole: control and command, machine-to-machine,
-firmware and OTA keep the same ambitions and the same roadmap.
+- **Sources**: ESP boards and edge agents, IP and ESP32 cameras, live audio and video
+  streams, files of the media library (video, audio, photos, documents), external HTTP APIs.
+- **One model**: an ontology of typed objects, relations, actions and time ranges links
+  devices, media, transcripts, documents, places and investigation cases.
+- **Processing**: a flow runtime (Node-RED style, in Rust) for the light ETL; queue workers
+  for the heavy work (firmware builds, speech-to-text, vision inference and training).
+- **Reading**: SCADA and home dashboards, map, timelines, investigation workspaces, pages
+  rendered to PDF, full-text and semantic search, and an AI assistant on the org's own LLM.
 
-- **One platform, one language.** Server, web app, flow runtime, firmware tooling and the
-  thermophysics engine are all Rust, in a single workspace.
-- **Self-hosted.** PostgreSQL, with S3-compatible object storage when a plant needs it.
-- **Connected today, autonomous next.** Flows drive devices through the server today;
-  devices that keep regulating through outages and a device-to-device mesh are on the
-  [roadmap](https://pnex.io/roadmap).
-- **AI built in, not bolted on.** An assistant reads your telemetry, drafts flows and helps
-  write functions — with the LLM you bring.
+The whole stack — server, web/desktop/Android app, flow runtime, nodes, vision, ASR glue,
+thermodynamics — is one Rust workspace. No Python at runtime.
 
-<p align="center">
-  <a href="https://pnex.io/docs/flows"><img src="https://pnex.io/screenshots/en/flow-editor.webp" alt="Flow editor" width="49%"></a>
-  <a href="https://pnex.io/docs/dashboards"><img src="https://pnex.io/screenshots/en/dashboard-live.webp" alt="Live SCADA dashboard" width="49%"></a>
-</p>
+## Architecture
 
-## Features
+```mermaid
+flowchart LR
+    subgraph sources["Sources"]
+        direction TB
+        dev["ESP8266 / ESP32 boards<br/>PNeX firmware"]
+        agent["Edge agent<br/>local ingestion API"]
+        cam["Cameras<br/>ESP32-CAM · RTSP"]
+        stream["Audio / video streams<br/>Icecast · HLS · DASH · RTMP · RTSP · DVB"]
+        files["Media library uploads<br/>video · audio · photos · documents"]
+        apis["External APIs<br/>weather · geo · HTTP"]
+    end
 
-| | |
+    subgraph server["pnex-server (Loco · axum)"]
+        direction TB
+        api["API + WebSocket<br/>orgs · ontology · media · devices"]
+        flows["Flow runtime<br/>sharded per org"]
+        work["Queue workers<br/>firmware · ASR · vision · training"]
+    end
+
+    subgraph store["Storage"]
+        direction TB
+        pg[("PostgreSQL<br/>model · pgvector · pg_trgm")]
+        o2[("OpenObserve<br/>metrics · logs · transcripts")]
+        vk[("Valkey<br/>live state · bus")]
+        s3[("RustFS / disk<br/>media · firmware · models")]
+    end
+
+    app["PNeX app<br/>web · desktop · Android"]
+    idp["Rauthy<br/>OIDC"]
+    llm["Org's LLM"]
+
+    dev -- "WSS · X.509 · ChaCha20" --> api
+    agent -- "WSS" --> api
+    cam --> api
+    stream -- "filtered fetcher → confined ffmpeg" --> work
+    files --> api
+    apis -- "egress allowlist" --> flows
+    app -- "HTTPS · WS" --> api
+    api <--> flows
+    api --> work
+    server --> store
+    api -.-> idp
+    api -.-> llm
+```
+
+### Boundaries
+
+- **The organization is the security boundary.** Every row carries an `org_id` taken from the
+  authenticated principal, never from the request. Every write handler checks the role first.
+  The rules (R1–R20) and the findings register are in
+  [`docs/architecture/security.md`](docs/architecture/security.md).
+- **User code is untrusted.** Flows, JavaScript and Starlark functions run in a sandbox with an
+  allowlisted node registry and no environment access. Outbound HTTP goes through one egress
+  guard (allowlist, no loopback or private ranges unless configured).
+- **Heavy work never runs in a flow.** A flow carries references and events, not bytes:
+  transcription, detection and builds are queue jobs, and their results come back as events.
+
+### Ingestion paths
+
+| Source | Path |
 |---|---|
-| **[Visual flows](https://pnex.io/docs/flows)** | Drag & drop editor, a full-Rust Node-RED-style runtime, live debugging, JS / Starlark functions, anomaly detection and forecasting as nodes. |
-| **[Devices & pinout](https://pnex.io/docs/devices)** | Catalog, board profiles, interactive SVG pinout editor, per-device ChaCha20 keys. |
-| **[Firmware & OTA](https://pnex.io/docs/firmware)** | Server-side builds for ESP8266 / ESP32 / C3 / S3, flashing from the browser, over-the-air updates. |
-| **[Telemetry](https://pnex.io/docs/telemetry)** | Encrypted ingestion, per-organization OpenObserve, Valkey live cache, instant charts. |
-| **[SCADA dashboards](https://pnex.io/docs/dashboards)** | Free canvas, threshold gauges, sparklines, LEDs, SVG connectors, instant publishing. |
-| **[Map & POIs](https://pnex.io/docs/map)** | POI-first map on MapLibre, backend clustering, live GPS layer, attachments. |
-| **[Cameras & vision](https://pnex.io/docs/cameras)** | Live ESP32-CAM streams, recordings, on-server object detection (ONNX). |
-| **[Notifications](https://pnex.io/docs/notifications)** | In-app, email (SMTP), webhook, Slack, Discord, Telegram and ntfy channels, templated, sent from flows. |
-| **[AI assistant](https://pnex.io/docs/ai-assistant)** | Multi-tool chat inside the app, on your own LLM provider (Anthropic or OpenAI-compatible). |
-| **[Thermodynamics](https://pnex.io/docs/thermo)** | CoolProp in-process, custom mixtures, p-h / T-s / psychrometric diagrams. |
-| **[Security](https://pnex.io/docs/security)** | TLS everywhere with an automatic local CA, encrypted secrets vault, least privilege, sandboxed user code. |
+| Boards | WebSocket per device, X.509 identity + per-device ChaCha20 frames; telemetry to OpenObserve, live values to Valkey, commands and OTA back on the same socket. |
+| Edge agent | Local HTTP API on the plant network, durable disk queue, encrypted uplink; optional media capture box. |
+| Cameras | Binary WebSocket (ESP32-CAM) or an IP stream joining the camera bus; recordings, detection, tracking and zones as flow nodes. |
+| Streams | A `media_streams` entity: one supervisor per stream, a Rust fetcher (redirects and HLS sub-URLs re-checked) piping into an ffmpeg without network; 30 s PCM segments, speech-to-text, diarization, speaker profiles; text to OpenObserve, events to flows. |
+| Files | Media library with versions and an upload allowlist; video frames to the Vision Lab, documents chunked and indexed (`tsvector` + `pgvector`) for search and the assistant. |
+| APIs | Flow nodes (`http-fetch`, `weather`) and geo providers, all through the egress guard. |
+
+### Ontology
+
+The data model of an organization is itself data
+([`ontology.md`](docs/architecture/ontology.md), D176–D189):
+
+- **Object types are versioned data**, installed from YAML packs (maintenance, investigation…):
+  typed properties, temporal properties included. User objects live in one generic table;
+  system objects (devices, media, POIs…) stay in their own tables and are exposed as types.
+- **Links are typed, temporal and carry attributes**; containment (site → building → room) is
+  a separate tree. Time belongs to objects: named time ranges apply to any object.
+- **Actions are declared on types and executed by flows**, traced like any write. Every fact
+  records its provenance (user, flow, import, model).
+- One query API serves the generic explorer, dashboards, reports, investigation cases and the
+  AI assistant, which reasons on the same graph.
+
+### Vision Lab: from footage to a deployed model
+
+The Lab turns pictures into a detection model without leaving PNeX
+([`media-vision-studio.md`](docs/architecture/media-vision-studio.md)):
+
+1. **Pictures** from photos of the media library, frames sampled from videos (one picture
+   every N seconds) or from camera recordings. Each import is one *source*, kept whole on the
+   training or the validation side so near-duplicate frames never inflate the scores.
+2. **Labeling** on a shared timeline: boxes per class, negative examples, interpolation
+   between keyframes, and a review queue where the current model proposes boxes to accept.
+3. **Dataset versions** frozen and exportable (COCO).
+4. **Training**: the head of a registered YOLOX model is fine-tuned on a frozen version, in
+   pure Rust (`pnex_vision::train`, no Python), with progress, cancellation and heartbeat.
+   The result is an ONNX in the media library and the model registry, checked like an upload.
+5. **Deployment**: the model runs in the `pnex-vision-detect` flow node on live cameras and
+   streams (tracking, zones), and its detections feed dashboards, alerts and the ontology.
+
+### Processing and scaling
+
+- **Flow runtime**: a vendored fork of EdgeLinkd plus PNeX nodes (`crates/pnex-node-*`),
+  supervised by the server. Orgs are sharded across flow-worker pods; Valkey carries the device
+  bus and live state, so API pods need no session affinity.
+- **Workers**: Loco queue in PostgreSQL. Firmware builds run in the `pnex-builder` image
+  (PlatformIO); ASR runs in a confined `pnex-asr` process (Whisper / sherpa-onnx); vision uses
+  ONNX on `tract`, pure Rust.
+- **Deployment**: one machine (Raspberry Pi 4/5 included) with `docker compose`, or N pods
+  behind a load balancer with the Helm chart of [pnex-deploy](https://github.com/Pnex/pnex-deploy).
+
+### App
+
+`pnex-frontend` is a client-side Dioxus 0.7 app: compiled to wasm and served by the server
+for the web, and built natively for Linux, Windows and Android. It talks to the server over
+plain HTTP/WebSocket, the same contract as any client (`pnex-api-contract`). Every string goes
+through Fluent (`fr-FR` / `en-US`), and server errors are machine codes translated by the app.
+
+Design records (in French): [`docs/architecture/`](docs/architecture) — start with
+[`roadmap.md`](docs/architecture/roadmap.md), [`ontology.md`](docs/architecture/ontology.md),
+[`flow-engine.md`](docs/architecture/flow-engine.md),
+[`media-ingest.md`](docs/architecture/media-ingest.md) and
+[`horizontal-scaling.md`](docs/architecture/horizontal-scaling.md).
+
+## Repository layout
+
+| Path | Content |
+|---|---|
+| `crates/pnex-backend` | Server: Loco + axum, SeaORM, WebSocket ingestion, queue workers, migrations, assistant knowledge base |
+| `crates/pnex-frontend` | Dioxus 0.7 app — web (wasm), desktop, Android |
+| `crates/pnex-core`, `pnex-api-contract` | Shared domain types and API contract (native + wasm) |
+| `crates/pnex-flow-runtime`, `pnex-node-*` | Flow engine on the vendored EdgeLinkd fork, and its nodes (device, camera, vision, predict, memory, notify, weather, Starlark…) |
+| `crates/pnex-media-capture`, `pnex-asr` | Stream capture chain (fetcher, RTSP, confined ffmpeg, segmenter) and speech-to-text |
+| `crates/pnex-vision`, `pnex-decide` | ONNX detectors and typed decisions on `tract` |
+| `crates/pnex-edge-agent` | Edge agent: local ingestion API, disk queue, encrypted uplink |
+| `crates/pnex-firmware-builder` | PlatformIO / esptool build pipeline |
+| `crates/pnex-notify`, `pnex-pdf`, `pnex-stitcher`, `pnex-coolprop*` | Notification channels, page PDF rendering, 360° stitching, CoolProp bindings |
+| `firmware/` | PlatformIO firmware: generic ESP8266 / ESP32 / C3 / C6 / S3 / CAM, the `pnex` library, hardware-in-the-loop bench |
+| `e2e/` | Playwright suite (web), plus Linux desktop and Android harnesses |
+| `deploy/` | Dockerfiles, TLS edge, edge agent distribution |
+| `vendor/` | EdgeLinkd fork, CoolProp, patched crates |
+| `docs/architecture/` | Design and decision records |
 
 ## Install
 
-One command installs a complete, TLS-everywhere PNeX server on a Raspberry Pi 4/5 (64-bit) or
-any Debian / Ubuntu machine (amd64 or arm64):
+One command installs a TLS-everywhere server on a Raspberry Pi 4/5 (64-bit) or any Debian /
+Ubuntu machine (amd64 or arm64):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Pnex/pnex-deploy/main/install.sh \
   | sudo bash -s -- --admin-user admin@acme.io --admin-password 'choose-a-strong-one'
 ```
 
-Then open `https://<hostname>.local/`. All options (domain, Let's Encrypt, S3 storage, SMTP,
-image pinning) are documented in [Pnex/pnex-deploy](https://github.com/Pnex/pnex-deploy) and
-in the [self-hosting guide](https://pnex.io/docs/self-hosting).
-
-Images are published on every green `main`: `shanisma/pnex-server-rs` and
-`shanisma/pnex-builder-rs` (`linux/amd64`, `linux/arm64`), tagged `main-<sha>`, `main` and
-`latest`.
-
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph field["Devices &amp; edge"]
-        direction LR
-        dev["ESP8266 / ESP32<br/>PNeX firmware"]
-        agent["Edge agent<br/>Linux · Windows"]
-    end
-
-    subgraph clients["Apps"]
-        direction LR
-        ui["PNeX app<br/>web · desktop · Android"]
-    end
-
-    subgraph pnex["PNeX server"]
-        direction LR
-        flows["Flow runtime"]
-        server["pnex-server<br/>Loco · axum"]
-        builder["Builder<br/>PlatformIO · vision"]
-        flows <--> server <--> builder
-    end
-
-    subgraph storage["Storage"]
-        direction LR
-        db[("PostgreSQL")]
-        valkey[("Valkey<br/>live state")]
-        o2[("OpenObserve<br/>telemetry")]
-        s3[("RustFS / disk<br/>firmware · media")]
-    end
-
-    subgraph external["External services"]
-        direction LR
-        idp["Rauthy<br/>sign-in (OIDC)"]
-        llm["Your LLM<br/>AI assistant"]
-    end
-
-    field -- "TLS + ChaCha20" --> pnex
-    clients -- "HTTPS · WebSocket" --> pnex
-    pnex --> storage
-    pnex -.-> external
-```
-
-Read more in the [architecture docs](https://pnex.io/docs/architecture) and in
-[`docs/architecture/`](docs/architecture) (design records, in French).
-
-## Repository layout
-
-| Path | Content |
-|---|---|
-| `crates/pnex-backend` | HTTP / WebSocket server (Loco + axum, SeaORM), workers, migrations |
-| `crates/pnex-frontend` | Dioxus 0.7 app — web (wasm), desktop and Android |
-| `crates/pnex-core`, `pnex-api-contract` | Shared domain types and API DTOs (native + wasm) |
-| `crates/pnex-flow-runtime`, `pnex-node-*` | Flow engine (on the vendored EdgeLinkd fork) and its nodes |
-| `crates/pnex-firmware-builder` | PlatformIO / esptool build pipeline |
-| `crates/pnex-edge-agent` | Edge agent: local HTTP ingestion API, durable disk queue, encrypted uplink |
-| `crates/pnex-notify`, `pnex-vision`, `pnex-stitcher`, `pnex-coolprop*` | Notifications, ONNX vision, 360° stitching, CoolProp bindings |
-| `firmware/` | Device firmware (PlatformIO): generic ESP8266 / ESP32 / C3 / S3 / CAM, the `pnex` library |
-| `deploy/` | Dockerfile, TLS edge, edge agent distribution |
-| `docs/architecture/` | Architecture and decision records |
+Options (domain, Let's Encrypt, S3, SMTP, image pinning) are in
+[Pnex/pnex-deploy](https://github.com/Pnex/pnex-deploy) and the
+[self-hosting guide](https://pnex.io/docs/self-hosting). Images are published on every green
+`main`: `shanisma/pnex-server-rs` and `shanisma/pnex-builder-rs` (`linux/amd64`,
+`linux/arm64`), tagged `main-<sha>`, `main` and `latest`.
 
 ## Development
 
-Requirements: Rust (stable, MSRV 1.88) with the `wasm32-unknown-unknown` target,
-[dioxus-cli](https://dioxuslabs.com) 0.7, [bun](https://bun.sh), Docker, and
+Requirements: Rust stable (MSRV 1.88) with `wasm32-unknown-unknown`,
+[dioxus-cli](https://dioxuslabs.com) 0.7, [bun](https://bun.sh), Docker and
 [Task](https://taskfile.dev). Firmware work also needs PlatformIO
 (`uv tool install platformio esptool`).
 
@@ -185,28 +235,41 @@ Requirements: Rust (stable, MSRV 1.88) with the `wasm32-unknown-unknown` target,
 git clone https://github.com/Pnex/pnex-rs.git && cd pnex-rs
 git submodule update --init   # vendor/edgelinkd (not recursive)
 task db:up        # PostgreSQL, Rauthy, OpenObserve, Valkey, RustFS, mailcrab
-task db:migrate   # schema
-task db:seed      # catalog fixtures
-task dev          # front build + server on http://localhost:5150
+task db:migrate
+task db:seed
+task dev          # app build + server on http://localhost:5150
 ```
 
 | Task | What it does |
 |---|---|
-| `task check` | `cargo check` native + wasm32 |
+| `task check` | `cargo check`, native + wasm32 |
 | `task test` | Workspace tests (PostgreSQL required) |
-| `task lint` | clippy, warnings as errors |
-| `task db:reset` | Drop, migrate and seed the dev database |
+| `task lint` | Clippy, warnings as errors |
+| `task fmt` / `fmt:check` | `cargo fmt` + guarded `rsx!` formatting (CI gate) |
+| `task security:deps` | `cargo deny`: RustSec advisories and crate sources (CI gate) |
+| `task app:up` | Run server + builder in containers on top of the infra (`EDGE=1` adds the TLS edge) |
+| `task e2e` | Playwright suite against the running stack (`e2e/README.md`) |
 | `task docker:build` | Build the `server` and `builder` images locally |
 
-Schema changes follow [`docs/architecture/migrations.md`](docs/architecture/migrations.md):
-additive first, PostgreSQL only.
+Heavy builds go through `scripts/guarded.sh` (the `task` targets already do): a capped systemd
+scope, one heavy build at a time, a free-disk check. Schema changes follow
+[`docs/architecture/migrations.md`](docs/architecture/migrations.md): additive first,
+PostgreSQL only.
+
+**CI**: `ci.yml` (fmt, deny, check native + wasm + ARM, tests, web build) → `images.yml`
+(multi-arch images on green `main`) → `e2e.yml` (whole stack from the published images,
+nightly, strict accessibility) · `firmware.yml` · `apps.yml` (desktop + Android, releases).
 
 ## Contributing
 
-Issues and pull requests are welcome. Code and code comments are in English; every
-user-facing string goes through the `fr-FR` / `en-US` Fluent locales
-(`crates/pnex-frontend/locales`), kept in parity by the test suite. Please run
-`cargo fmt --all`, `task check`, `task test` and `task lint` before opening a pull request.
+Issues and pull requests are welcome.
+
+- Code and code comments in English; every user-facing string in both Fluent locales
+  (`crates/pnex-frontend/locales`), kept in parity by the tests.
+- Commits follow [Conventional Commits](https://www.conventionalcommits.org)
+  (`type(scope): description`); release notes are generated from them.
+- Before a pull request: `task fmt`, `task check`, `task test`, `task lint`,
+  `task security:deps`. Only permissively licensed dependencies (MIT, BSD, Apache-2.0…).
 
 ## License
 
