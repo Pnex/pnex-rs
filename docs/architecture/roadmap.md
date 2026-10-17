@@ -863,6 +863,76 @@ Spec : `assisted-creation.md`. Règle tirée des dossiers (K55) : aucun type nou
 
 Premiers lots : C1 (assets + visionneuse 3D) et C2 (espace de travail générique + vue Plan), utiles hors création. Lexique arbitré : Production, Partie, Séquence, Personnage, Cadrage (Projet, Scène et Plan étaient déjà pris).
 
+### P2.23 — Observabilité IT : ingestion des protocoles classiques (ajout 2026-10-17) — **pas démarré, à cadrer**
+
+Directive : PneX porte **toute donnée**, pas seulement le monde physique.
+Logs, traces et métriques applicatifs entrent dans la même org que la
+télémétrie des appareils et se relient aux mêmes objets (un serveur, un
+service, une application = un objet de l'ontologie). Rien n'est en place
+aujourd'hui ; aucune annonce « disponible » avant le code.
+
+- **Protocoles visés** (les classiques, aucun format maison) :
+  - **OpenTelemetry OTLP** (gRPC et HTTP) : logs, traces, métriques ;
+  - **Prometheus** : scrape de cibles `/metrics`, réception `remote_write`,
+    et exposition `/metrics` de PneX lui-même ;
+  - **syslog** (RFC 5424 / 3164, UDP, TCP, TLS) ;
+  - **Loki push API**, **InfluxDB line protocol**, **StatsD** ;
+  - collecteurs du marché (OpenTelemetry Collector, Fluent Bit, Vector)
+    branchés sur l'un des points ci-dessus, sans agent propre.
+- **Piste d'architecture** (à trancher au PRD) : O2 parle déjà nativement
+  plusieurs de ces protocoles, mais il n'est **jamais exposé** ; PneX reçoit,
+  authentifie par jeton d'ingestion à portée org (org depuis le principal,
+  R1 ; aucun identifiant O2 visible, R4/R16), puis écrit dans le stream O2
+  de l'org. L'agent edge peut relayer (tampon disque) pour les sites isolés.
+- **Usage dans le produit** : traces et logs consultables depuis l'objet,
+  sources de flows (alerte sur taux d'erreur, seuil de métrique), corrélation
+  dans la chronologie des dossiers (incident applicatif × événement terrain).
+- **Garde-fous** : quotas et rétention par org (D72), limites de débit,
+  `cargo deny` sur toute dépendance de décodage (OTLP protobuf, snappy pour
+  `remote_write`) ; fiche assistant (D142) et clés fluent dès la première UI.
+
+### P2.24 — Sécurité logicielle et qualité du code : un seul endroit (ajout 2026-10-17) — **pas démarré, à cadrer**
+
+Constat : SBOM, scans de vulnérabilités, analyse statique, secrets, licences,
+couverture et qualité vivent dans des outils séparés, chacun avec sa base et
+sa vue. PneX les rassemble dans l'org, reliés aux objets qu'ils décrivent
+(application, version, image, firmware, appareil qui l'exécute), avec le
+temps, les flows, les dossiers et les pages déjà en place.
+
+- **Principe : ingérer, ne pas réécrire les scanners.** PneX reçoit les
+  sorties des outils existants dans leurs formats standard :
+  - **SBOM** CycloneDX et SPDX ; **VEX** (CycloneDX VEX, OpenVEX), avis CSAF ;
+  - **SARIF** : analyse statique, linters, secrets, IaC, scans de conteneurs
+    (Semgrep, gitleaks, Trivy, Grype, clippy, ESLint…) ;
+  - résultats `cargo audit` / `cargo deny`, osv-scanner, scans dynamiques ;
+  - qualité : couverture (lcov, Cobertura), rapports de tests (JUnit XML),
+    évolution de la couverture et tests instables d'un run à l'autre ;
+  - **pipelines CI/CD** : état des runs et des jobs, builds, durées, artefacts
+    et déploiements, reçus par webhook ou API (GitHub Actions, GitLab CI,
+    Forgejo/Gitea Actions, Jenkins) ; indicateurs de livraison (fréquence de
+    déploiement, délai, taux d'échec, temps de rétablissement).
+  - Piste : une API d'envoi de SBOM compatible avec celle de Dependency-Track,
+    pour brancher les intégrations CI existantes sans changement.
+- **Ontologie (pack `software`)** : Application, Version, Composant (purl),
+  Dépôt, Image, Vulnérabilité (CVE, GHSA), Constat, Licence ; liens datés
+  « version contient composant », « composant affecté par », « image déployée
+  sur ». **Pont avec le socle IoT** : chaque build firmware enregistré produit
+  son SBOM, chaque appareil sait ce qu'il exécute → exposition d'une flotte à
+  une CVE en une requête (exigence CRA).
+- **Sources de vulnérabilités** : OSV, NVD, GHSA, EPSS, catalogue KEV, via le
+  filtre de sortie (R8) ; **miroir hors ligne** importable pour les
+  installations isolées.
+- **Usage** : vue portefeuille, politiques (licences autorisées, seuils
+  CVSS/EPSS, KEV bloquant), tri des constats avec statut et justification VEX,
+  évolution dans le temps, alertes par flow, dossier d'incident, rapport
+  d'audit ou de conformité en page PDF, l'assistant lit et résume (lecture
+  seule).
+- **Garde-fous** : envoi par jeton à portée org (même mécanisme que P2.23,
+  R1) ; fichiers non fiables → tailles bornées, parseurs sans exécution ;
+  constats et vulnérabilités = données sensibles → dépend du contrôle
+  d'accès par objet (D188) ou d'une org dédiée ; dépendances permissives et
+  `cargo deny`.
+
 ### Outils externes évalués (ajout 2026-10-11) — **inscrits, rien d'implémenté**
 
 Contraintes de tri : workspace Cargo unique, cible Raspberry Pi (pas de
@@ -1245,3 +1315,12 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   globale dans le contenu des documents (O54), `word_timestamps` appliqué
   (O56), suite des listes CRUD (O64). Docs d'architecture alignées
   (`flow-engine.md` §10, `edge-model.md` §3, `design-system.md` règle 8).
+- **2026-10-17 (positionnement)** — Ajout de P2.23 : observabilité IT
+  (OTLP logs/traces/métriques, Prometheus scrape + `remote_write`, syslog,
+  Loki, InfluxDB, StatsD). PneX = toute donnée, pas seulement le physique ;
+  rien d'implémenté. Site : slogan « plateforme de données ouverte et
+  souveraine », carte « Secteur public & enquêtes ».
+- **2026-10-17 (sécurité logicielle)** — Ajout de P2.24 : SBOM
+  (CycloneDX, SPDX), VEX, SARIF, scans et qualité du code ingérés et reliés
+  à l'ontologie, SBOM par build firmware, état des pipelines CI/CD, builds,
+  couverture et rapports de tests ; rien d'implémenté.
