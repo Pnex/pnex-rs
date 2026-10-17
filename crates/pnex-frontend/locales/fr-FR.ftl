@@ -4934,11 +4934,10 @@ lab-zoom-in = Zoomer sur l’image
 lab-zoom-out = Dézoomer
 lab-zoom-fit = Image entière
 lab-zoom-hand = Main libre : glisser déplace l’image (H)
-lab-label-help = Choisissez une classe à gauche, puis tracez un rectangle autour de chaque objet de cette classe.
+lab-label-help = Choisissez une classe avec +, puis tracez un rectangle autour de chaque objet de cette classe.
 lab-auto-title = Aide automatique
 lab-auto-help = Un modèle peut proposer des boîtes : vous gardez celles qui sont justes.
 lab-negative-help = Cette image ne montre aucune des classes : elle apprend au modèle ce qui n'en est pas.
-lab-class-key = Touche { $key }
 lab-class-add = Ajouter une classe
 lab-class-new = Nom de la nouvelle classe
 lab-ready-title = Prêt à entraîner ?
@@ -4994,7 +4993,6 @@ lab-state-boxes = { $count ->
     [one] { $count } boîte
    *[other] { $count } boîtes
 }
-lab-class-label = Classes
 lab-remove-box = Retirer la boîte
 lab-negative = Rien à étiqueter ici
 lab-split = Ensemble :

@@ -4938,11 +4938,10 @@ lab-zoom-in = Zoom into the picture
 lab-zoom-out = Zoom out
 lab-zoom-fit = Whole picture
 lab-zoom-hand = Hand: drag to move the picture (H)
-lab-label-help = Pick a class on the left, then draw a rectangle around each object of that class.
+lab-label-help = Pick a class with +, then draw a rectangle around each object of that class.
 lab-auto-title = Automatic help
 lab-auto-help = A model can propose boxes: keep the ones that are right.
 lab-negative-help = This picture shows none of the classes: it teaches the model what they are not.
-lab-class-key = Key { $key }
 lab-class-add = Add a class
 lab-class-new = Name of the new class
 lab-ready-title = Ready to train?
@@ -4998,7 +4997,6 @@ lab-state-boxes = { $count ->
     [one] { $count } box
    *[other] { $count } boxes
 }
-lab-class-label = Classes
 lab-remove-box = Remove the box
 lab-negative = Nothing to label here
 lab-split = Set:
