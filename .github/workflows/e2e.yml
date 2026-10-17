@@ -67,7 +67,10 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install the suite
-        run: task e2e:install
+        run: |
+          # Tests build their sample videos with ffmpeg (vision-loop).
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          task e2e:install
       - name: Run the suite
         env:
           PNEX_E2E_BASE_URL: http://localhost:5150
