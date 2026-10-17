@@ -215,6 +215,22 @@ Les entrées « bientôt » sans route sont retirées du menu.
    couloirs, un curseur commun ; jamais une liste « 00 s / 03 s » ni une frise
    faite main. Références : `pages/cases/workspace/timeline.rs`,
    `pages/lab/timeline.rs`.
+10. **Tout se fait aussi au doigt (règle permanente, 2026-10-17).** L'app
+    tourne sur tablette et téléphone : chaque geste a un équivalent tactile
+    visible à l'écran.
+    - **Jamais une action réservée au clavier.** Entrée, Échap, les
+      raccourcis (1–9, flèches, Suppr) accélèrent, ils ne sont jamais le
+      seul chemin : un champ qui valide par Entrée a son bouton à côté
+      (référence : le champ « nouvelle classe » du Lab,
+      `pages/lab/workspace.rs`, `ClassAdd`), une bulle qui se ferme par
+      Échap a sa croix.
+    - **Rien qui ne s'atteint qu'au survol** (`hover:`) : une action
+      révélée au survol est visible en permanence sous `lg`, ou
+      accessible par un appui.
+    - **Cibles d'au moins 36 px** (`h-9`) pour ce qui se touche en
+      travaillant (palette, outils d'un éditeur, navigation d'images).
+    - Glisser (dessiner une boîte, déplacer un nœud) passe par les
+      événements `pointer*`, jamais `mouse*` seuls.
 
 ## 7. Concepts et vocabulaire (D218–D224, 2026-10-15)
 
