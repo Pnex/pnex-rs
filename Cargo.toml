@@ -57,7 +57,7 @@ members = [
 exclude = ["vendor/edgelinkd"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 # 1.88 : edgelink-core (vendored, edition 2024) utilise les let-chains

@@ -8373,7 +8373,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-api-contract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -8381,7 +8381,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-asr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "hound",
@@ -8394,7 +8394,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-backend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -8460,7 +8460,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-coolprop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pnex-coolprop-sys",
  "serde",
@@ -8468,14 +8468,14 @@ dependencies = [
 
 [[package]]
 name = "pnex-coolprop-sys"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cmake",
 ]
 
 [[package]]
 name = "pnex-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "calamine",
@@ -8499,7 +8499,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-decide"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "pnex-core",
  "serde",
@@ -8511,7 +8511,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-edge-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -8546,7 +8546,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-firmware-builder"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -8562,7 +8562,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-flow-runtime"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -8598,7 +8598,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-frontend"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "android_logger",
  "base64 0.22.1",
@@ -8635,7 +8635,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-media-capture"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytes",
  "chrono",
@@ -8651,7 +8651,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-migration"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "loco-rs",
  "sea-orm",
@@ -8661,7 +8661,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-camera"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8682,7 +8682,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-control"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8699,7 +8699,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-coolprop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8718,7 +8718,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-device"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -8743,7 +8743,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-display"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8759,7 +8759,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-events"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8777,7 +8777,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-http-fetch"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8796,7 +8796,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8816,7 +8816,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-notify"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8836,7 +8836,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-predict"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "augurs",
@@ -8856,7 +8856,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-starlark"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8876,7 +8876,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-ui-control"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8897,7 +8897,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-value"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "config",
@@ -8914,7 +8914,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-vision"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8936,7 +8936,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-node-weather"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -8955,7 +8955,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-notify"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "axum",
@@ -8973,7 +8973,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-pdf"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "harfrust",
  "krilla",
@@ -8981,7 +8981,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-stitcher"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "nalgebra 0.35.0",
@@ -8993,7 +8993,7 @@ dependencies = [
 
 [[package]]
 name = "pnex-vision"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "pnex-core",
