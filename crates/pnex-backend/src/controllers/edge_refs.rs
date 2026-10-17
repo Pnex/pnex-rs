@@ -50,11 +50,7 @@ const SCAN_CONCURRENCY: usize = 96;
 
 /// 400 champ-par-champ (école notify).
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 /// Writes: owner/admin/member (`OrgContext::can_write`). Carries the machine code +
@@ -81,15 +77,11 @@ fn host_locked() -> Option<Error> {
     })
 }
 
-/// 409 — la clé référentiel visée est déjà prise par une AUTRE entrée
-/// (l'édition in-place renomme : le (org, ssid) / (org, host) visé existe
-/// déjà sur une autre ligne).
-fn conflict(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::CONFLICT,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+/// 409 when the targeted referential key is already used by ANOTHER entry
+/// of the org (an in-place edit renames onto an existing (org, ssid) /
+/// (org, host), or a concurrent upsert won).
+fn conflict(code: &str, msg: &str) -> Response {
+    super::coded_error(StatusCode::CONFLICT, code, msg, None).into_response()
 }
 
 pub fn routes() -> Routes {
@@ -175,6 +167,19 @@ fn vault_error(e: crate::services::secrets::store::StoreError) -> Result<Respons
 }
 
 /// `GET /api/v1/edge/wifi-credentials` — référentiel de l'org (ssid ASC).
+#[utoipa::path(
+    get,
+    path = "/api/v1/edge/wifi-credentials",
+    tag = "edge",
+    operation_id = "edge_wifi_list",
+    summary = "List the saved WiFi credentials",
+    description = "WiFi credentials of the org (provisioning wizard), ordered by SSID, paginated (`limit`/`offset`). Passwords are returned as vault references (id + name), never values. Any org member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::WifiCredential>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list_wifi(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -210,6 +215,24 @@ async fn list_wifi(
 
 /// `POST /api/v1/edge/wifi-credentials` — **upsert** sur (org, ssid)
 /// case-sensitive : existe → 200 (mdp mis à jour), absent → 201.
+#[utoipa::path(
+    post,
+    path = "/api/v1/edge/wifi-credentials",
+    tag = "edge",
+    operation_id = "edge_wifi_upsert",
+    summary = "Save a WiFi credential (upsert on SSID)",
+    description = "Upsert on (org, SSID), case-sensitive: an existing SSID is updated (200), a new one created (201, password required). A typed password is stored in the vault secret `wifi/<ssid>/password` (owner/admin only); a member may pick an existing secret. Owner, admin or member.",
+    request_body = pnex_core::WifiCredentialInput,
+    responses(
+        (status = 200, description = "Existing SSID updated", body = pnex_core::WifiCredential),
+        (status = 201, description = "Created", body = pnex_core::WifiCredential),
+        (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Picked secret not found (`secret-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Concurrent creation of the same SSID (`edge-ssid-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_wifi(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -217,7 +240,7 @@ async fn create_wifi(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -258,7 +281,7 @@ async fn create_wifi(
                 // Concurrent upsert of the same SSID: the other one won.
                 Err(e) if is_unique_violation(&e) => {
                     return Ok(conflict(
-                        "ssid",
+                        err_codes::EDGE_SSID_TAKEN,
                         "Another entry of this organization already uses this SSID.",
                     ))
                 }
@@ -297,6 +320,24 @@ async fn create_wifi(
 /// `PUT /api/v1/edge/wifi-credentials/{id}` — édition in-place (renommage
 /// possible, 409 si le ssid visé existe ailleurs) ; password absent =
 /// unchanged.
+#[utoipa::path(
+    put,
+    path = "/api/v1/edge/wifi-credentials/{id}",
+    tag = "edge",
+    operation_id = "edge_wifi_update",
+    summary = "Update a WiFi credential",
+    description = "In-place edit (rename allowed). Password absent or empty = unchanged. Owner, admin or member; typing a password value needs owner/admin.",
+    params(("id" = i64, Path, description = "WiFi credential id")),
+    request_body = pnex_core::WifiCredentialInput,
+    responses(
+        (status = 200, body = pnex_core::WifiCredential),
+        (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown credential (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "SSID used by another entry (`edge-ssid-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_wifi(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -305,7 +346,7 @@ async fn update_wifi(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -333,7 +374,7 @@ async fn update_wifi(
         .map_err(|_| Error::InternalServerError)?;
     if dup.is_some() {
         return Ok(conflict(
-            "ssid",
+            err_codes::EDGE_SSID_TAKEN,
             "Another entry of this organization already uses this SSID.",
         ));
     }
@@ -383,6 +424,21 @@ async fn update_wifi(
 /// `DELETE /api/v1/edge/wifi-credentials/{id}` — 204 ; cross-org = 404
 /// masqué (le find est déjà filtré par org). Its dedicated secret goes
 /// with it.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/edge/wifi-credentials/{id}",
+    tag = "edge",
+    operation_id = "edge_wifi_delete",
+    summary = "Delete a WiFi credential",
+    description = "Deletes the credential and releases its dedicated vault secret. Owner, admin or member.",
+    params(("id" = i64, Path, description = "WiFi credential id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown credential (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_wifi(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -390,7 +446,7 @@ async fn delete_wifi(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -445,21 +501,28 @@ fn validate_host(input: &PnexHostInput) -> Option<Response> {
             &format!("{}:255", err_codes::FIELD_MAX_LENGTH),
         ));
     }
-    // Le contrat `CreateBuild.pnex_host` est un hôte nu : pas d'espace
-    // (école builds.rs) ni de schéma (always wss).
-    if host.contains(char::is_whitespace) {
-        return Some(field_status("host", "Aucun espace autorisé."));
-    }
-    if host.contains("://") {
-        return Some(field_status(
-            "host",
-            "Do not include the scheme — devices always connect over wss://.",
-        ));
+    // `CreateBuild.pnex_host` is a bare host: no whitespace, no scheme
+    // (devices always connect over wss).
+    if host.contains(char::is_whitespace) || host.contains("://") {
+        return Some(field_status("host", err_codes::FIELD_INVALID));
     }
     None
 }
 
 /// `GET /api/v1/edge/hosts` — référentiel de l'org (host ASC).
+#[utoipa::path(
+    get,
+    path = "/api/v1/edge/hosts",
+    tag = "edge",
+    operation_id = "edge_hosts_list",
+    summary = "List the saved PNeX server hosts",
+    description = "Server hosts of the org that devices connect to (over wss), ordered by host, paginated (`limit`/`offset`). Any org member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::PnexHost>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list_hosts(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -487,6 +550,18 @@ async fn list_hosts(
 
 /// `GET /api/v1/edge/hosts/locked` — server host imposed by the deployment,
 /// if any. The UI then replaces the host picker with a read-only display.
+#[utoipa::path(
+    get,
+    path = "/api/v1/edge/hosts/locked",
+    tag = "edge",
+    operation_id = "edge_hosts_locked",
+    summary = "Server host imposed by the deployment",
+    description = "Host imposed by `PNEX_PROD_HOST`, if any; when set, the host referential is read-only and builds always target it. Any org member.",
+    responses(
+        (status = 200, body = pnex_core::LockedHost)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn locked_host(_org: OrgContext) -> Result<Response> {
     format::json(LockedHost {
         host: crate::app::prod_host(),
@@ -495,6 +570,23 @@ async fn locked_host(_org: OrgContext) -> Result<Response> {
 
 /// `POST /api/v1/edge/hosts` — **upsert** on (org, host): exists → 200
 /// (unchanged), absent → 201.
+#[utoipa::path(
+    post,
+    path = "/api/v1/edge/hosts",
+    tag = "edge",
+    operation_id = "edge_hosts_upsert",
+    summary = "Save a PNeX server host (upsert)",
+    description = "Upsert on (org, host): existing host returned unchanged (200), new one created (201). Bare host, no scheme, no whitespace, max 255 chars. Owner, admin or member.",
+    request_body = pnex_core::PnexHostInput,
+    responses(
+        (status = 200, description = "Already saved", body = pnex_core::PnexHost),
+        (status = 201, description = "Created", body = pnex_core::PnexHost),
+        (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Host imposed by the deployment (`edge-host-locked`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_host(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -502,7 +594,7 @@ async fn create_host(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -547,6 +639,24 @@ async fn create_host(
 /// `PUT /api/v1/edge/hosts/{id}` — mise à jour in-place (id conservé) :
 /// renommage d'hôte. Conflit (org, host) avec une AUTRE
 /// entrée → 409.
+#[utoipa::path(
+    put,
+    path = "/api/v1/edge/hosts/{id}",
+    tag = "edge",
+    operation_id = "edge_hosts_update",
+    summary = "Rename a PNeX server host",
+    description = "In-place edit, id kept. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Host id")),
+    request_body = pnex_core::PnexHostInput,
+    responses(
+        (status = 200, body = pnex_core::PnexHost),
+        (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown host (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Host imposed by the deployment (`edge-host-locked`) or used by another entry (`edge-host-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_host(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -555,7 +665,7 @@ async fn update_host(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -584,7 +694,7 @@ async fn update_host(
         .map_err(|_| Error::InternalServerError)?;
     if dup.is_some() {
         return Ok(conflict(
-            "host",
+            err_codes::EDGE_HOST_TAKEN,
             "Another entry of this organization already uses this host.",
         ));
     }
@@ -599,6 +709,21 @@ async fn update_host(
 }
 
 /// `DELETE /api/v1/edge/hosts/{id}` — 204 ; cross-org = 404 masqué.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/edge/hosts/{id}",
+    tag = "edge",
+    operation_id = "edge_hosts_delete",
+    summary = "Delete a PNeX server host",
+    description = "Owner, admin or member.",
+    params(("id" = i64, Path, description = "Host id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown host (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_host(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -606,7 +731,7 @@ async fn delete_host(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "edge-write-forbidden",
+            err_codes::EDGE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage edge references.",
         ));
     }
@@ -628,9 +753,12 @@ async fn delete_host(
 
 // ─────────────────────────────── Shared ──────────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -642,10 +770,10 @@ fn is_unique_violation(e: &sea_orm::DbErr) -> bool {
 
 // ───────────────────────── Scan LAN (server-side) ─────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct LanScanQuery {
-    /// Préfixe « a.b.c. » explicite — sinon auto-détection des interfaces
-    /// privées du serveur.
+    /// Explicit private `a.b.c.` prefix (trailing dot); otherwise automatic detection.
     prefix: Option<String>,
 }
 
@@ -660,12 +788,39 @@ struct LanScanQuery {
 /// edge), plus `PNEX_LAN_PREFIX` (comma-separated `a.b.c.`), plus the
 /// server's own private interfaces — except in a container, whose
 /// interfaces are Docker bridges (172.x) devices can never reach.
+#[utoipa::path(
+    get,
+    path = "/api/v1/edge/lan-scan",
+    tag = "edge",
+    operation_id = "edge_lan_scan",
+    summary = "Scan the LAN for PNeX servers",
+    description = "Server-side probe of private /24 ranges (the explicit `prefix`, else the /24 of the host the user reached, `PNEX_LAN_PREFIX` and the server private interfaces) on port 5150 and 443; only servers identifying as `pnex-server` through the meta endpoint are returned. An explicit `prefix` must be an RFC 1918 `a.b.c.` prefix. Public ranges are never scanned. Can take several seconds. Owner, admin or member.",
+    params(LanScanQuery),
+    responses(
+        (status = 200, body = pnex_core::LanScanResult),
+        (status = 400, description = "`prefix` is not an RFC 1918 `a.b.c.` prefix (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn lan_scan(
-    _org: OrgContext,
+    org: OrgContext,
     headers: HeaderMap,
     Query(q): Query<LanScanQuery>,
 ) -> Result<Response> {
-    let prefixes: Vec<String> = match q.prefix {
+    // SEC-43: probing the server network is user-driven reconnaissance,
+    // kept to the roles that manage the edge referentials (R2).
+    if !org.can_write() {
+        return Err(forbidden(
+            err_codes::EDGE_WRITE_FORBIDDEN,
+            "Owner, admin or member role required to manage edge references.",
+        ));
+    }
+    let explicit = q.prefix.map(|p| p.trim().to_string());
+    if explicit.as_deref().is_some_and(|p| !valid_prefix(p)) {
+        return Ok(field_status("prefix", err_codes::FIELD_INVALID));
+    }
+    let prefixes: Vec<String> = match explicit {
         Some(p) => vec![p],
         None => default_prefixes(
             request_host(&headers).as_deref(),
@@ -833,9 +988,10 @@ fn private_prefixes() -> Vec<String> {
     prefixes
 }
 
-/// Garde stricte « a.b.c. » + IPv4 privée : le préfixe doit finir par un
-/// point et composer une adresse valide (`192.168.1` sans point final
-/// composerait 192.168.10 — plage différente).
+/// Strict `a.b.c.` + RFC 1918 guard (`Ipv4Addr::is_private`: 10/8,
+/// 172.16/12, 192.168/16): the prefix must end with a dot and compose a
+/// valid address (`192.168.1` without the dot would compose 192.168.10 — a
+/// different range).
 fn valid_prefix(prefix: &str) -> bool {
     prefix.ends_with('.')
         && format!("{prefix}0")
@@ -886,6 +1042,26 @@ mod tests {
     }
 
     #[test]
+    fn explicit_prefix_must_be_rfc1918() {
+        for ok in ["10.0.0.", "172.16.5.", "172.31.255.", "192.168.1."] {
+            assert!(valid_prefix(ok), "{ok}");
+        }
+        for bad in [
+            "8.8.8.",
+            "172.32.0.",
+            "100.64.0.",
+            "127.0.0.",
+            "169.254.1.",
+            "192.168.1",
+            "192.168.",
+            "a.b.c.",
+            "",
+        ] {
+            assert!(!valid_prefix(bad), "{bad}");
+        }
+    }
+
+    #[test]
     fn request_host_strips_port_and_prefers_forwarded() {
         let mut h = HeaderMap::new();
         h.insert(axum::http::header::HOST, "10.1.2.3:5150".parse().unwrap());
@@ -893,4 +1069,23 @@ mod tests {
         h.insert("x-forwarded-host", "192.168.1.185".parse().unwrap());
         assert_eq!(request_host(&h).as_deref(), Some("192.168.1.185"));
     }
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list_wifi,
+        create_wifi,
+        update_wifi,
+        delete_wifi,
+        list_hosts,
+        locked_host,
+        create_host,
+        update_host,
+        delete_host,
+        lan_scan
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

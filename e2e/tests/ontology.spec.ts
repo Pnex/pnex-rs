@@ -77,7 +77,7 @@ test.describe('ontology', { tag: ['@ontology', '@i18n'] }, () => {
     await expect(page.locator('[data-link="feeds"]')).toContainText('→');
 
     // Both ends see the closed link in their history (API side).
-    const hist = await api.get(`/ontology/objects/${line.id}/links?history=true`);
+    const hist = await api.list(`/ontology/objects/${line.id}/links?history=true`);
     expect(hist.some((l: any) => l.link_type === 'feeds' && l.valid_to)).toBe(true);
   });
 

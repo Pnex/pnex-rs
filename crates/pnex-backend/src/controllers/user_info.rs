@@ -3,9 +3,8 @@
 //! aggregates over the orgs the user is a member of (devices are org-scoped
 //! since Phase 2).
 //!
-//! `PATCH /api/v1/profile` — préférences du profil (langue, timezone, format
-//! de date, thème) : consommé par la page Profil et le switcher de langue du
-//! front.
+//! `PATCH /api/v1/profile`: profile preferences (language, timezone, date
+//! format, theme), used by the Profile page and the language switcher.
 
 use axum::extract::State;
 use loco_rs::prelude::*;
@@ -13,24 +12,45 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 use serde::Deserialize;
 
 use crate::auth::AuthUser;
+use crate::controllers::field_error;
 use crate::models::_entities::{
     device_registries, device_types, organization_members, organizations, predefined_devices,
     sea_orm_active_enums::UiTheme, subscription_tiers, user_profiles,
 };
+use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 
-/// Bloc `profile` tel qu'exposé par `GET /user-info` et `PATCH /profile`
-/// (forme unique).
+/// `profile` block as exposed by `GET /user-info` and `PATCH /profile`
+/// (single shape).
+/// Wire form of the stored theme (lowercase `pnex_core::UiTheme`).
+fn api_theme(theme: UiTheme) -> pnex_core::UiTheme {
+    match theme {
+        UiTheme::Light => pnex_core::UiTheme::Light,
+        UiTheme::Dark => pnex_core::UiTheme::Dark,
+        UiTheme::Auto => pnex_core::UiTheme::Auto,
+    }
+}
+
 fn profile_json(profile: &user_profiles::Model) -> serde_json::Value {
     serde_json::json!({
         "language": profile.language,
         "timezone": profile.timezone,
         "date_format": profile.date_format,
-        "theme": profile.theme,
+        "theme": api_theme(profile.theme),
         "preferences": profile.preferences,
         "grafana_url": profile.grafana_url,
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/user-info",
+    tag = "user-info",
+    operation_id = "user_info_get",
+    summary = "Current user, profile and org memberships",
+    description = "Identity of the caller, profile preferences (null until provisioned), every org the user belongs to (ordered by org id, with role and subscription tier), platform-admin flag, deployment mode (`self_hosted` | `saas`) and a device count aggregated over the user's orgs. Not org-scoped.",
+    responses((status = 200, body = pnex_core::UserInfo)),
+    security(("bearer" = []))
+)]
 pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<Response> {
     let db = &ctx.db;
     let user = auth.user;
@@ -81,7 +101,7 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
         orgs.push(serde_json::json!({
             "id": org.id,
             "name": org.name,
-            "role": crate::controllers::orgs::role_str(membership.role),
+            "role": crate::controllers::orgs::api_role(membership.role),
             "subscription_tier": tier,
         }));
     }
@@ -136,7 +156,9 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
         "profile": profile.as_ref().map(profile_json),
         "orgs": orgs,
         "platform_admin": user.platform_admin,
-        "deployment_mode": crate::services::retention::DeploymentMode::from_env().as_str(),
+        "deployment_mode": pnex_core::DeploymentMode::from(
+            crate::services::retention::DeploymentMode::from_env(),
+        ),
         "device_count": {
             "total": total,
             "active": active,
@@ -146,7 +168,7 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
     format::json(body)
 }
 
-/// Corps accepté par `PATCH /api/v1/profile` (DTO partagé `pnex-core`).
+/// Body of `PATCH /api/v1/profile` (shared DTO in `pnex-core`).
 #[derive(Deserialize, Default)]
 pub struct ProfilePatch {
     pub language: Option<String>,
@@ -155,7 +177,7 @@ pub struct ProfilePatch {
     pub theme: Option<String>,
 }
 
-/// Langue acceptée (formes courtes UI normalisées en stockage) : en, fr.
+/// Accepted language (UI short forms, normalized for storage): en, fr.
 fn normalize_language(input: &str) -> Option<String> {
     match input.to_ascii_lowercase().as_str() {
         "en" | "en-us" => Some("en".into()),
@@ -164,7 +186,7 @@ fn normalize_language(input: &str) -> Option<String> {
     }
 }
 
-/// Thème accepté (minuscules, parité string_value SeaORM).
+/// Accepted theme (lowercase, same as the SeaORM string_value).
 fn parse_theme(input: &str) -> Option<UiTheme> {
     match input {
         "light" => Some(UiTheme::Light),
@@ -174,9 +196,23 @@ fn parse_theme(input: &str) -> Option<UiTheme> {
     }
 }
 
-/// `PATCH /api/v1/profile` — met à jour les préférences du profil de
-/// l'utilisateur authentifié. Champs fournis uniquement, valeurs invalides →
-/// 400 (message français), renvoie le bloc `profile` à jour.
+/// `PATCH /api/v1/profile`: updates the preferences of the caller. Only the
+/// provided fields change; an invalid value answers a `field-invalid` 400.
+/// Returns the updated `profile` block.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/profile",
+    tag = "profile",
+    operation_id = "profile_update",
+    summary = "Update the caller's profile preferences",
+    description = "Partial update of the authenticated user's preferences: `language` (en | fr, en-US/fr-FR accepted), `timezone` (max 50 chars), `date_format` (max 20 chars), `theme` (light | dark | auto). At least one field is required. Creates the profile with defaults if missing. Returns the updated profile block.",
+    request_body = pnex_core::ProfilePatch,
+    responses(
+        (status = 200, body = pnex_core::UserProfile),
+        (status = 400, description = "`profile-patch-empty` (no field), or `field-invalid` with `errors.fields` (`required`, `invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn update_profile(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -187,8 +223,11 @@ async fn update_profile(
         && patch.date_format.is_none()
         && patch.theme.is_none()
     {
-        return Err(Error::BadRequest(
-            "au moins un champ est requis (language, timezone, date_format, theme)".into(),
+        return Err(crate::controllers::coded_error(
+            axum::http::StatusCode::BAD_REQUEST,
+            pnex_core::err_codes::PROFILE_PATCH_EMPTY,
+            "at least one field is required (language, timezone, date_format, theme)",
+            None,
         ));
     }
 
@@ -197,12 +236,12 @@ async fn update_profile(
         Some(raw) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() {
-                return Err(Error::BadRequest("language ne peut pas être vide".into()));
+                return Ok(field_error("language", FIELD_REQUIRED));
             }
-            Some(
-                normalize_language(trimmed)
-                    .ok_or_else(|| Error::BadRequest("language non supportée (en, fr)".into()))?,
-            )
+            let Some(language) = normalize_language(trimmed) else {
+                return Ok(field_error("language", FIELD_INVALID));
+            };
+            Some(language)
         }
     };
     let timezone = match patch.timezone.as_deref() {
@@ -211,7 +250,7 @@ async fn update_profile(
             let trimmed = raw.trim();
             // Bornes = colonnes (timezone 50, date_format 20).
             if trimmed.is_empty() || trimmed.len() > 50 {
-                return Err(Error::BadRequest("timezone invalide".into()));
+                return Ok(field_error("timezone", FIELD_INVALID));
             }
             Some(trimmed.to_string())
         }
@@ -221,24 +260,24 @@ async fn update_profile(
         Some(raw) => {
             let trimmed = raw.trim();
             if trimmed.is_empty() || trimmed.len() > 20 {
-                return Err(Error::BadRequest("date_format invalide".into()));
+                return Ok(field_error("date_format", FIELD_INVALID));
             }
             Some(trimmed.to_string())
         }
     };
-    let theme =
-        match patch.theme.as_deref() {
-            None => None,
-            Some(raw) => {
-                let trimmed = raw.trim();
-                if trimmed.is_empty() {
-                    return Err(Error::BadRequest("theme ne peut pas être vide".into()));
-                }
-                Some(parse_theme(trimmed).ok_or_else(|| {
-                    Error::BadRequest("theme invalide (light, dark, auto)".into())
-                })?)
+    let theme = match patch.theme.as_deref() {
+        None => None,
+        Some(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Ok(field_error("theme", FIELD_REQUIRED));
             }
-        };
+            let Some(theme) = parse_theme(trimmed) else {
+                return Ok(field_error("theme", FIELD_INVALID));
+            };
+            Some(theme)
+        }
+    };
 
     // Le profil est créé par le JIT provisioning ; par robustesse on le crée
     // avec les défauts s'il manque (ordre d'appels en test, reprise de données).
@@ -283,4 +322,12 @@ pub fn routes() -> Routes {
         .prefix("/api/v1")
         .add("/user-info", get(user_info))
         .add("/profile", patch(update_profile))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(user_info, update_profile))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

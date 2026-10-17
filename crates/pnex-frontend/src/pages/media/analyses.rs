@@ -53,7 +53,7 @@ fn analysis_texts(a: Option<&MediaAnalysis>) -> (String, Option<String>) {
     let Some(a) = a else {
         return (t!("media-analysis-state-none").to_string(), None);
     };
-    match a.state.as_str() {
+    match a.state.wire() {
         "queued" => (t!("media-analysis-state-queued").to_string(), None),
         "running" => (
             t!("media-analysis-state-running", pct : a.progress).to_string(),
@@ -80,7 +80,7 @@ fn in_flight(state: &api::media::AnalysesState) -> bool {
         || state
             .analyses
             .iter()
-            .any(|a| matches!(a.state.as_str(), "queued" | "running"))
+            .any(|a| matches!(a.state.wire(), "queued" | "running"))
 }
 
 #[component]
@@ -237,7 +237,7 @@ fn StepLine(
             .is_some_and(|i| matches!(i.status.as_str(), "pending" | "extracting")),
         _ => analysis
             .as_ref()
-            .is_some_and(|a| matches!(a.state.as_str(), "queued" | "running")),
+            .is_some_and(|a| matches!(a.state.wire(), "queued" | "running")),
     };
     let ran = match step {
         AnalysisStep::Index => index.is_some(),

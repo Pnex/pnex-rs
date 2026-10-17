@@ -138,7 +138,7 @@ async fn kinds_exposent_les_canaux_livres() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json::<serde_json::Value>();
-        let list = kinds.as_array().expect("liste de kinds");
+        let list = kinds["results"].as_array().expect("kinds page");
         let names: Vec<&str> = list.iter().map(|k| k["kind"].as_str().unwrap()).collect();
         assert!(names.contains(&"websocket"), "{names:?}");
         assert!(names.contains(&"webhook"), "{names:?}");
@@ -266,6 +266,10 @@ async fn cycle_crud_masquage_et_409() {
             .json(&serde_json::json!({ "kind": "gotify", "name": "n", "config": {} }))
             .await;
         assert_eq!(bad_kind.status_code(), 400);
+        assert_eq!(
+            bad_kind.json::<serde_json::Value>()["errors"]["fields"]["kind"],
+            "invalid"
+        );
         let bad_url = server
             .post("/api/v1/notify/channels")
             .add_header("Content-Type", "application/json")
@@ -274,6 +278,12 @@ async fn cycle_crud_masquage_et_409() {
             .json(&serde_json::json!({ "kind": "webhook", "name": "n", "config": {} }))
             .await;
         assert_eq!(bad_url.status_code(), 400);
+        let bad_url = bad_url.json::<serde_json::Value>();
+        assert!(
+            bad_url["error"] == "notify-channel-config-invalid"
+                || bad_url["error"] == "notify-channel-field-required",
+            "{bad_url}"
+        );
 
         // ── Delete 204.
         let deleted = server
@@ -474,9 +484,8 @@ async fn test_draft_et_test_canal_webhook() {
                 "name": "brouillon",
                 "config": { "url": url, "secret_header": "x-sig", "secret_value": { "value": "tok" } }
             }))
-            .await
-            .json::<serde_json::Value>();
-        assert_eq!(draft["status"], "sent", "{draft}");
+            .await;
+        assert_eq!(draft.status_code(), 204, "{}", draft.text());
         let (headers, body) = seen.lock().await.take().expect("webhook reçu");
         assert_eq!(
             headers.get("x-sig").and_then(|v| v.to_str().ok()),
@@ -502,19 +511,21 @@ async fn test_draft_et_test_canal_webhook() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(tested.status_code(), 200, "{:?}", tested.text());
+        assert_eq!(tested.status_code(), 204, "{:?}", tested.text());
 
         let deliveries = server
             .get(&format!("/api/v1/notify/deliveries?channel_id={id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
-            .await
-            .json::<serde_json::Value>();
+            .await;
         // The journal lives in OpenObserve (D86), absent from the test
-        // config: the read is `available: false`, never an error (the O2
-        // round trip is `tests/notify_journal.rs`, `--ignored`).
-        assert_eq!(deliveries["available"], false, "{deliveries}");
-        assert_eq!(deliveries["count"], 0, "{deliveries}");
+        // config: the read is a coded 503 (the O2 round trip is
+        // `tests/notify_journal.rs`, `--ignored`).
+        assert_eq!(deliveries.status_code(), 503, "{}", deliveries.text());
+        assert_eq!(
+            deliveries.json::<serde_json::Value>()["error"],
+            "notify-journal-unavailable"
+        );
 
         // ── No journal, no badge (never an error).
         let detail = server
@@ -575,9 +586,8 @@ async fn test_canal_avec_template_rendu() {
                 "template_id": tpl_id,
                 "vars": { "seuil": "95", "device": "chaudiere", "value": "97.5" }
             }))
-            .await
-            .json::<serde_json::Value>();
-        assert_eq!(tested["status"], "sent", "{tested}");
+            .await;
+        assert_eq!(tested.status_code(), 204, "{}", tested.text());
         let (headers, body) = seen.lock().await.take().expect("webhook reçu");
         let _ = headers;
         assert_eq!(body["subject"], "[chaudiere] seuil dépassé");
@@ -644,9 +654,8 @@ async fn test_draft_ntfy_contre_recepteur_local() {
                     "tags": "warning"
                 }
             }))
-            .await
-            .json::<serde_json::Value>();
-        assert_eq!(draft["status"], "sent", "{draft}");
+            .await;
+        assert_eq!(draft.status_code(), 204, "{}", draft.text());
         let (headers, body) = seen.lock().await.take().expect("publication ntfy reçue");
         assert_eq!(
             headers.get("authorization").and_then(|v| v.to_str().ok()),
@@ -681,13 +690,14 @@ async fn interne_sans_token_refuse() {
             }))
             .await;
         assert_eq!(resp.status_code(), 401);
+        // Nothing journaled: without OpenObserve the org has no journal at
+        // all (coded 503).
         let deliveries = server
             .get(&format!("/api/v1/notify/deliveries?channel_id={id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
-            .await
-            .json::<serde_json::Value>();
-        assert_eq!(deliveries["count"], 0);
+            .await;
+        assert_eq!(deliveries.status_code(), 503, "{}", deliveries.text());
     })
     .await;
 }
@@ -787,6 +797,10 @@ async fn interne_delivre_frame_ws_et_journalise() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         assert_eq!(filtered.status_code(), 400);
+        assert_eq!(
+            filtered.json::<serde_json::Value>()["errors"]["fields"]["status"],
+            "invalid"
+        );
         unsafe { std::env::remove_var("PNEX_NOTIFY_INTERNAL_TOKEN") };
     })
     .await;
@@ -824,8 +838,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
                 "config": {}
             }))
             .await;
-        assert_eq!(draft.status_code(), 200, "{:?}", draft.text());
-        assert_eq!(draft.json::<serde_json::Value>()["status"], "sent");
+        assert_eq!(draft.status_code(), 204, "{:?}", draft.text());
 
         // La frame du brouillon est reçue par l'abonné (Pings du heartbeat
         // filtrés — premier tick immédiat).

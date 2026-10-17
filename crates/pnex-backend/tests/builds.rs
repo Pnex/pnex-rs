@@ -79,7 +79,13 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-async fn create_device(server: &axum_test::TestServer, token: &str, org_id: i64, device_id: &str) {
+/// Registers a generic device, returns its registry id.
+async fn create_device(
+    server: &axum_test::TestServer,
+    token: &str,
+    org_id: i64,
+    device_id: &str,
+) -> i64 {
     let res = server
         .post("/api/v1/devices")
         .add_header("Authorization", bearer(token))
@@ -91,6 +97,9 @@ async fn create_device(server: &axum_test::TestServer, token: &str, org_id: i64,
         }))
         .await;
     res.assert_status(axum_test::http::StatusCode::CREATED);
+    res.json::<serde_json::Value>()["id"]
+        .as_i64()
+        .expect("device pk")
 }
 
 async fn post_build(
@@ -150,7 +159,7 @@ async fn records(
 async fn build_reussi_chemin_complet() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        create_device(&server, &env.alice, org, "capteur-jardin").await;
+        let pk = create_device(&server, &env.alice, org, "capteur-jardin").await;
 
         let res = post_build(&server, &env.alice, org, "capteur-jardin", "coloc").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
@@ -184,7 +193,7 @@ async fn build_reussi_chemin_complet() {
         // Download : proxy + attachment + contenu de la fixture (les env du
         // sous-process y sont matérialisées ; HOST arrive en base64).
         let dl = server
-            .get("/api/v1/download/firmware/capteur-jardin")
+            .get(&format!("/api/v1/download/firmware/{pk}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
@@ -344,7 +353,7 @@ async fn validation_400() {
                     "device_id": "dev-val",
                 }),
                 "wifi_credential_id",
-                "WiFi entry not found in this organization.",
+                "not-found",
             ),
         ];
         for (body, field, msg) in cases {
@@ -357,7 +366,8 @@ async fn validation_400() {
                 .await;
             res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
             let out: serde_json::Value = res.json();
-            assert_eq!(out[field], msg, "{out}");
+            assert_eq!(out["error"], "field-invalid", "{out}");
+            assert_eq!(out["errors"]["fields"][field], msg, "{out}");
         }
 
         // Legacy typed WiFi / scheme fields: refused, not ignored.
@@ -385,7 +395,7 @@ async fn validation_400() {
 async fn build_echec_outil() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        create_device(&server, &env.alice, org, "dev-fail").await;
+        let pk = create_device(&server, &env.alice, org, "dev-fail").await;
 
         let res = post_build(&server, &env.alice, org, "dev-fail", "fail").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
@@ -400,7 +410,7 @@ async fn build_echec_outil() {
         assert!(detail.contains("-DTOKEN=***"), "token not masked: {detail}");
 
         let dl = server
-            .get("/api/v1/download/firmware/dev-fail")
+            .get(&format!("/api/v1/download/firmware/{pk}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
@@ -734,7 +744,7 @@ async fn isolation_org_et_auth() {
     with_app(|server, env, _ctx| async move {
         let alice_org = personal_org(&server, &env.alice).await;
         let bob_org = personal_org(&server, &env.bob).await;
-        create_device(&server, &env.alice, alice_org, "dev-iso").await;
+        let pk = create_device(&server, &env.alice, alice_org, "dev-iso").await;
         post_build(&server, &env.alice, alice_org, "dev-iso", "coloc").await;
 
         // Bob : liste vide, download 404, build sur le device
@@ -743,7 +753,7 @@ async fn isolation_org_et_auth() {
         assert_eq!(bob_list["count"], 0);
 
         server
-            .get("/api/v1/download/firmware/dev-iso")
+            .get(&format!("/api/v1/download/firmware/{pk}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", bob_org.to_string())
             .await
@@ -753,10 +763,11 @@ async fn isolation_org_et_auth() {
         cross.assert_status(axum_test::http::StatusCode::NOT_FOUND);
 
         // Sans token → 401 sur tous les endpoints builds.
+        let download = format!("/api/v1/download/firmware/{pk}");
         for (method, path) in [
             ("POST", "/api/v1/build-firmware"),
             ("GET", "/api/v1/build-records"),
-            ("GET", "/api/v1/download/firmware/dev-iso"),
+            ("GET", download.as_str()),
         ] {
             let res = match method {
                 "POST" => server.post(path).json(&serde_json::json!({})).await,
@@ -776,7 +787,7 @@ async fn isolation_org_et_auth() {
 async fn build_with_a_wifi_entry_uses_the_vault_password() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        create_device(&server, &env.alice, org, "capteur-vault").await;
+        let pk = create_device(&server, &env.alice, org, "capteur-vault").await;
 
         let entry: serde_json::Value = server
             .post("/api/v1/edge/wifi-credentials")
@@ -800,7 +811,7 @@ async fn build_with_a_wifi_entry_uses_the_vault_password() {
             .await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
         let dl = server
-            .get("/api/v1/download/firmware/capteur-vault")
+            .get(&format!("/api/v1/download/firmware/{pk}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;

@@ -54,22 +54,9 @@ impl Board {
     }
 }
 
-/// `GET /api/v1/boards` — `?soc=` filtre par famille (picker du wizard).
+/// `GET /api/v1/boards`, every page — `?soc=` filters by family (wizard
+/// picker).
 pub async fn list(soc: Option<&str>) -> Result<Vec<Board>, ApiError> {
     let q = soc.map(|s| format!("?soc={s}")).unwrap_or_default();
-    let body = client::request::<serde_json::Value>(
-        reqwest::Method::GET,
-        &format!("/api/v1/boards{q}"),
-        None,
-    )
-    .await?;
-    let mut boards = Vec::new();
-    if let Some(list) = body["boards"].as_array() {
-        for b in list {
-            if let Ok(parsed) = serde_json::from_value::<Board>(b.clone()) {
-                boards.push(parsed);
-            }
-        }
-    }
-    Ok(boards)
+    client::request_all(&format!("/api/v1/boards{q}")).await
 }

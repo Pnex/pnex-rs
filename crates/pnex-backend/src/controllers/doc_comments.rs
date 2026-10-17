@@ -4,7 +4,7 @@
 //! its author only, deleted by its author or an org admin. Every change
 //! tells the open editors to reload the comments (websocket, all pods).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use loco_rs::prelude::*;
@@ -12,8 +12,9 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Se
 use uuid::Uuid;
 
 use crate::auth::OrgContext;
-use crate::controllers::docs::find_doc;
-use crate::models::_entities::{doc_comments, doc_versions, users};
+use crate::controllers::docs::{find_doc, user_names, PageQuery};
+use crate::controllers::pagination;
+use crate::models::_entities::{doc_comments, doc_versions};
 use crate::services::pages;
 use pnex_core::err_codes;
 use pnex_core::pages::{
@@ -28,12 +29,22 @@ pub fn routes() -> Routes {
         .add("/{id}/comments/{cid}", patch(update).delete(remove))
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, create, update, remove))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+/// Id of the created comment.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct DocCommentCreated {
+    id: i64,
+}
+
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 fn coded(status: StatusCode, code: &str, msg: &str) -> Error {
@@ -88,32 +99,39 @@ fn changed(ctx: &AppContext, doc_id: Uuid) {
     pages::room::comments_changed(pages::valkey_url(&ctx.config), doc_id);
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}/comments",
+    tag = "docs",
+    operation_id = "docs_comments_list",
+    summary = "List the comments of a page",
+    description = "Comments of the page (thread roots with their anchor, and replies), oldest first, paginated (`limit`/`offset`); `mine` tells whether the caller wrote it. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::pages::DocComment>),
+        (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `GET /api/v1/docs/{id}/comments` — all comments, oldest first.
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let d = find_doc(&ctx.db, org.org.id, id).await?;
-    let rows = doc_comments::Entity::find()
-        .filter(doc_comments::Column::DocId.eq(d.id))
-        .order_by_asc(doc_comments::Column::Id)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    let authors: Vec<i64> = rows.iter().filter_map(|c| c.author_id).collect();
-    let names: std::collections::HashMap<i64, String> = if authors.is_empty() {
-        Default::default()
-    } else {
-        users::Entity::find()
-            .filter(users::Column::Id.is_in(authors))
-            .all(&ctx.db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .into_iter()
-            .map(|u| (u.id, u.full_name.unwrap_or(u.email)))
-            .collect()
-    };
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (count, rows) = pagination::sql_page(
+        &ctx.db,
+        doc_comments::Entity::find()
+            .filter(doc_comments::Column::DocId.eq(d.id))
+            .order_by_asc(doc_comments::Column::Id),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let names = user_names(&ctx.db, rows.iter().map(|c| c.author_id)).await?;
     let me = org.auth.user.id;
     let results: Vec<DocComment> = rows
         .into_iter()
@@ -130,12 +148,33 @@ async fn list(
             created_at: c.created_at.to_rfc3339(),
         })
         .collect();
-    Ok(
-        format::json(serde_json::json!({ "count": results.len(), "results": results }))
-            .into_response(),
-    )
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/docs/{}/comments", d.id),
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/docs/{id}/comments",
+    tag = "docs",
+    operation_id = "docs_comments_create",
+    summary = "Comment a page",
+    description = "Starts a thread anchored on a text range (`anchor`, `quote`) or replies to a thread root (`parent_id`). Open editors are told to reload the comments. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    request_body = pnex_core::pages::CreateDocComment,
+    responses(
+        (status = 201, body = DocCommentCreated),
+        (status = 400, description = "`field-invalid`: `body` (`required`, `max_length:<n>`), `parent_id` (`invalid`), `anchor` (`max_length:<n>`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `POST /api/v1/docs/{id}/comments` — new thread (with an anchor) or
 /// reply (`parent_id` = a thread root of the same page).
 async fn create(
@@ -201,11 +240,28 @@ async fn create(
     changed(&ctx, d.id);
     Ok((
         StatusCode::CREATED,
-        format::json(serde_json::json!({ "id": row.id })),
+        format::json(DocCommentCreated { id: row.id }),
     )
         .into_response())
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/docs/{id}/comments/{cid}",
+    tag = "docs",
+    operation_id = "docs_comments_update",
+    summary = "Edit or resolve a comment",
+    description = "Changes the body (author only) and/or resolves or reopens a thread root (any writer). Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), ("cid" = i64, Path, description = "Comment id")),
+    request_body = pnex_core::pages::PatchDocComment,
+    responses(
+        (status = 204, description = "Updated"),
+        (status = 400, description = "`field-invalid`: `body`, or `resolved` on a reply (`invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`docs-write-forbidden` (viewer) or `doc-comment-not-author`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `PATCH /api/v1/docs/{id}/comments/{cid}` — edit (author), resolve /
 /// reopen a thread (any writer).
 async fn update(
@@ -245,6 +301,21 @@ async fn update(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/docs/{id}/comments/{cid}",
+    tag = "docs",
+    operation_id = "docs_comments_delete",
+    summary = "Delete a comment",
+    description = "Deletes a comment (author, or an org owner/admin); deleting a thread root deletes its replies. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), ("cid" = i64, Path, description = "Comment id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`docs-write-forbidden` (viewer) or `doc-comment-not-author`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `DELETE /api/v1/docs/{id}/comments/{cid}` — author or org admin;
 /// deleting a thread root deletes its replies.
 async fn remove(

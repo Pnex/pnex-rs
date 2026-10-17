@@ -24,15 +24,6 @@ use pnex_core::{
     FunctionVersionSummary, SaveFunctionVersion,
 };
 
-/// 400 champ-par-champ (école edge_refs).
-fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
-}
-
 /// Writes: owner/admin/member (`OrgContext::can_write`).
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is
@@ -44,12 +35,26 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// 503 `flow_runtime` — panne d'infra du test en live (binaire absent,
-/// délai dépassé, sortie illisible).
-fn flow_runtime_503(code: &str, msg: &str) -> Error {
+/// 503 `functions-runtime-disabled`: the flow runtime is not enabled.
+fn runtime_disabled() -> Error {
     Error::CustomError(
         StatusCode::SERVICE_UNAVAILABLE,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
+        loco_rs::controller::ErrorDetail::new(
+            "functions-runtime-disabled",
+            "The flow runtime is not enabled (settings.flow.enabled)",
+        ),
+    )
+}
+
+/// 503 `flow-runtime`: infrastructure failure of a live test/check
+/// (binary missing, timeout, unreadable output); the diagnostic travels
+/// verbatim in `args.detail` (runtime diagnostics exception).
+fn flow_runtime_503(detail: &str) -> Error {
+    super::coded_error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        pnex_core::err_codes::FLOW_RUNTIME,
+        "The flow runtime is unavailable.",
+        Some(serde_json::json!({ "detail": detail })),
     )
 }
 
@@ -61,6 +66,14 @@ pub fn routes() -> Routes {
         .add("/{id}/versions", get(versions))
         .add("/{id}/test", post(test))
         .add("/validate", post(validate))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, create, detail, save_version, versions, test, validate, delete))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }
 
 // ───────────────────────────── DTO mappers ─────────────────────────────
@@ -99,16 +112,43 @@ fn summary_dto(f: &functions::Model, current: i64) -> FunctionSummary {
 
 // ─────────────────────────────── Handlers ───────────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
 }
 
+/// `limit`/`offset` of a paginated sub-collection.
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
 /// `GET /api/v1/functions` — registre de l'org (name ASC). Le numéro de
 /// version courante est calculé batch (une requête versions pour le lot).
+#[utoipa::path(
+    get,
+    path = "/api/v1/functions",
+    tag = "functions",
+    operation_id = "functions_list",
+    summary = "List the functions of the organisation",
+    description = "Paginated registry of reusable JS/Starlark functions, sorted by name, without code. Each item carries its current version number.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<FunctionSummary>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -161,9 +201,15 @@ async fn list(
         .skip(page.slice(count as usize).0)
         .take(page.slice(count as usize).1)
         .collect();
+    let label_filter: Vec<(String, String)> = q
+        .label
+        .iter()
+        .filter(|l| !l.is_empty())
+        .map(|l| ("label".to_string(), l.clone()))
+        .collect();
     Ok(format::json(pagination::envelope(
         "/api/v1/functions",
-        &[],
+        &label_filter,
         page,
         count,
         page_slice,
@@ -173,6 +219,21 @@ async fn list(
 
 /// `POST /api/v1/functions` — fonction + version 1. 201 = FunctionDetail
 /// (l'éditeur enchaîne sans second GET) ; 400 champ-par-champ.
+#[utoipa::path(
+    post,
+    path = "/api/v1/functions",
+    tag = "functions",
+    operation_id = "functions_create",
+    summary = "Create a function",
+    description = "Creates a function and its version 1 from the code; the `@input`/`@output` directives of the code define its interface. Requires owner, admin or member role.",
+    request_body = CreateFunction,
+    responses(
+        (status = 201, body = FunctionDetail),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -191,13 +252,18 @@ async fn create(
     Ok((StatusCode::CREATED, format::json(detail_dto(&f, &version))).into_response())
 }
 
-/// 400 par champ / directive (école edge_refs : Field → clé du corps JSON).
+/// Write errors: `field-invalid` 400 (field tokens), 400
+/// `function-directive-invalid` (`args.line`, `args.detail`), 409, 500.
 fn write_error_response(e: FunctionWriteError) -> Response {
     match e {
-        FunctionWriteError::Field(field, msg) => field_status(&field, &msg),
-        FunctionWriteError::Directive(e) => {
-            field_status("code", &format!("ligne {} : {}", e.line, e.message))
-        }
+        FunctionWriteError::Field(field, token) => super::field_error(&field, &token),
+        FunctionWriteError::Directive(e) => super::coded_error(
+            StatusCode::BAD_REQUEST,
+            pnex_core::err_codes::FUNCTION_DIRECTIVE_INVALID,
+            "An @input/@output directive of the code is invalid.",
+            Some(serde_json::json!({ "line": e.line.to_string(), "detail": e.message })),
+        )
+        .into_response(),
         FunctionWriteError::Db(_) => Error::InternalServerError.into_response(),
         FunctionWriteError::Conflict { .. } => crate::controllers::coded_error(
             StatusCode::CONFLICT,
@@ -225,6 +291,20 @@ async fn find_function(
 
 /// `GET /api/v1/functions/{id}` — fonction + version courante (code +
 /// interface extraite).
+#[utoipa::path(
+    get,
+    path = "/api/v1/functions/{id}",
+    tag = "functions",
+    operation_id = "functions_get",
+    summary = "Get a function",
+    description = "The function with the code and interface of its current version. 404 when it does not exist or belongs to another organisation.",
+    params(("id" = i64, Path, description = "Function id")),
+    responses(
+        (status = 200, body = FunctionDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -244,6 +324,24 @@ async fn detail(
 
 /// `PATCH /api/v1/functions/{id}` — nouvelle version (append-only) et/ou
 /// métadonnées. 409 si `expected_version_number` ≠ version courante.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/functions/{id}",
+    tag = "functions",
+    operation_id = "functions_save_version",
+    summary = "Save a new version of a function",
+    description = "With `code`, appends a new version (history is append-only); `name`/`description` update metadata. Optimistic concurrency: `expected_version_number` must equal the current version, else 409 `function-version-conflict`. Deployed flows keep the version they pinned. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Function id")),
+    request_body = SaveFunctionVersion,
+    responses(
+        (status = 200, body = FunctionDetail),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`function-version-conflict`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn save_version(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -289,18 +387,34 @@ async fn save_version(
 }
 
 /// `GET /api/v1/functions/{id}/versions` — historique (version DESC).
+#[utoipa::path(
+    get,
+    path = "/api/v1/functions/{id}/versions",
+    tag = "functions",
+    operation_id = "functions_versions",
+    summary = "List the versions of a function",
+    description = "Version history, newest first, each with its code and interface. Paginated (`limit`/`offset`).",
+    params(("id" = i64, Path, description = "Function id"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<FunctionVersionSummary>),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<i64>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let Some(f) = find_function(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    let rows = function_versions::Entity::find()
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let select = function_versions::Entity::find()
         .filter(function_versions::Column::FunctionId.eq(f.id))
-        .order_by_desc(function_versions::Column::VersionNumber)
-        .all(&ctx.db)
+        .order_by_desc(function_versions::Column::VersionNumber);
+    let (count, rows) = pagination::sql_page(&ctx.db, select, page)
         .await
         .map_err(|_| Error::InternalServerError)?;
     let results: Vec<FunctionVersionSummary> = rows
@@ -315,15 +429,34 @@ async fn versions(
             code: v.code.clone(),
         })
         .collect();
-    Ok(
-        format::json(serde_json::json!({ "count": results.len(), "results": results }))
-            .into_response(),
-    )
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/functions/{id}/versions"),
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
 }
 
-/// `DELETE /api/v1/functions/{id}` — 409 `function_in_use` si un flow
-/// déployé référence la fonction (le graphe déployé doit rester exécutable)
-/// ; sinon 204 (cascade versions via FK).
+/// `DELETE /api/v1/functions/{id}`: 409 `function-in-use` while a deployed
+/// flow references the function, else 204 (versions cascade).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/functions/{id}",
+    tag = "functions",
+    operation_id = "functions_delete",
+    summary = "Delete a function",
+    description = "Deletes the function and all its versions. Refused with 409 `function-in-use` while a deployed flow references it (`args.flows` names them). Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Function id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`function-in-use`: used by deployed flows (`args.flows`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -342,24 +475,16 @@ async fn delete(
         .await
         .map_err(|_| Error::InternalServerError)?;
     if !referencing.is_empty() {
-        let flows_json: Vec<serde_json::Value> = referencing
+        let flows: Vec<String> = referencing
             .iter()
-            .map(|(flow, version_number)| {
-                serde_json::json!({
-                    "flow_id": flow.id,
-                    "flow_name": flow.name,
-                    "version_number": version_number,
-                })
-            })
+            .map(|(flow, version_number)| format!("#{} {} v{version_number}", flow.id, flow.name))
             .collect();
-        return Ok((
+        return Err(super::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({
-                "error": "function_in_use",
-                "referencing_flows": flows_json,
-            })),
-        )
-            .into_response());
+            pnex_core::err_codes::FUNCTION_IN_USE,
+            "Deployed flows use this function: stop them or remove it from their nodes first.",
+            Some(serde_json::json!({ "flows": flows.join(", ") })),
+        ));
     }
     f.delete(&ctx.db)
         .await
@@ -370,6 +495,22 @@ async fn delete(
 /// `POST /api/v1/functions/{id}/test` — viewer autorisé (outil de mise au
 /// point en lecture). 503 `flow_runtime` si le runtime n'est pas activé ou
 /// injoignable ; le résultat script voyage en 200 (`ok:false` + `error`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/functions/{id}/test",
+    tag = "functions",
+    operation_id = "functions_test",
+    summary = "Run a function once with test inputs",
+    description = "Executes the pinned version (default: current) or the ad-hoc unsaved code in a sandboxed runtime process with the given inputs and simulated incoming `msg`. No persistent side effect. Any role (viewer included). A script error is a 200 with `ok: false` and `error`.",
+    params(("id" = i64, Path, description = "Function id")),
+    request_body = FunctionTestRequest,
+    responses(
+        (status = 200, body = pnex_core::FunctionTestResponse),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`functions-runtime-disabled`, `flow-runtime` (`args.detail`: runtime unreachable, timeout, unreadable output; verbatim diagnostic) or server busy", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn test(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -381,10 +522,7 @@ async fn test(
     };
     let settings = FlowSettings::from_config(&ctx.config);
     if !settings.enabled {
-        return Err(flow_runtime_503(
-            "functions-runtime-disabled",
-            "The flow runtime is not enabled (settings.flow.enabled)",
-        ));
+        return Err(runtime_disabled());
     }
     // Per-pod cap on short-lived runtime children (shared with the deploy
     // pre-flight check): 503 server-busy past the wait budget.
@@ -395,7 +533,7 @@ async fn test(
         Ok(resp) => Ok(format::json(resp).into_response()),
         // Runtime/engine diagnostic: the raw message embeds arbitrary data —
         // verbatim display is the documented exception (err_codes doctrine).
-        Err(msg) => Err(flow_runtime_503("flow_runtime", &msg)),
+        Err(msg) => Err(flow_runtime_503(&msg)),
     }
 }
 
@@ -403,6 +541,20 @@ async fn test(
 /// (barre d'erreurs de l'éditeur, aucune exécution). Viewer autorisé,
 /// aucun accès DB : le corps porte langage + code. Même garde 503 que le
 /// test (le binaire runtime est requis pour compiler).
+#[utoipa::path(
+    post,
+    path = "/api/v1/functions/validate",
+    tag = "functions",
+    operation_id = "functions_validate",
+    summary = "Compile-check function code",
+    description = "Compiles the given JS/Starlark code without running it and returns diagnostics (line/column best-effort). No database access, no side effect. Any role. Never queued: 503 at once when the check pool is full.",
+    request_body = FunctionValidateRequest,
+    responses(
+        (status = 200, body = pnex_core::FunctionValidateResponse),
+        (status = 503, description = "`functions-runtime-disabled`, `flow-runtime` (`args.detail`: runtime unreachable, timeout, unreadable output; verbatim diagnostic) or server busy", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn validate(
     State(ctx): State<AppContext>,
     _org: OrgContext,
@@ -410,10 +562,7 @@ async fn validate(
 ) -> Result<Response> {
     let settings = FlowSettings::from_config(&ctx.config);
     if !settings.enabled {
-        return Err(flow_runtime_503(
-            "functions-runtime-disabled",
-            "The flow runtime is not enabled (settings.flow.enabled)",
-        ));
+        return Err(runtime_disabled());
     }
     // Editor validation is debounced and retried on the next keystroke:
     // never queue it, reject at once when the runtime-check pool is full.
@@ -422,6 +571,6 @@ async fn validate(
         Ok(resp) => Ok(format::json(resp).into_response()),
         // Runtime/engine diagnostic: verbatim display is the documented
         // exception (err_codes doctrine).
-        Err(msg) => Err(flow_runtime_503("flow_runtime", &msg)),
+        Err(msg) => Err(flow_runtime_503(&msg)),
     }
 }

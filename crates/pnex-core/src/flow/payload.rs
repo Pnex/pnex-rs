@@ -53,7 +53,7 @@ pub fn metric_value_from_payload(
             FlowViolation::new(
                 None,
                 "metric_input_contract",
-                "valeur numérique hors plage f64",
+                "numeric value out of f64 range",
             )
         }),
         Some(serde_json::Value::Bool(b)) => Ok(if *b { 1.0 } else { 0.0 }),

@@ -157,11 +157,12 @@ async fn taxonomy_crud_and_versions() {
         ], "expected_version": 2 });
         let (s, e) = call(&server, "POST", &versions, &env.alice, org, Some(dup)).await;
         assert_eq!(s, 400);
-        assert_eq!(e["topics.1.id"], "invalid", "{e}");
+        assert_eq!(e["error"], "field-invalid", "{e}");
+        assert_eq!(e["errors"]["fields"]["topics.1.id"], "invalid", "{e}");
         let empty = json!({ "topics": [], "expected_version": 2 });
         let (s, e) = call(&server, "POST", &versions, &env.alice, org, Some(empty)).await;
         assert_eq!(s, 400);
-        assert_eq!(e["topics"], "required", "{e}");
+        assert_eq!(e["errors"]["fields"]["topics"], "required", "{e}");
 
         let (s, got) = call(&server, "GET", &path, &env.alice, org, None).await;
         assert_eq!(s, 200);
@@ -169,9 +170,9 @@ async fn taxonomy_crud_and_versions() {
         assert_eq!(got["current"]["note"], "second");
         assert_eq!(got["current"]["topics"][1]["keywords"][0], "hôpital");
         let (_, list) = call(&server, "GET", "/api/v1/taxonomies", &env.alice, org, None).await;
-        assert_eq!(list[0]["current"]["topics"].as_array().map(Vec::len), Some(2), "{list}");
+        assert_eq!(list["results"][0]["current"]["topics"].as_array().map(Vec::len), Some(2), "{list}");
         let (_, hist) = call(&server, "GET", &versions, &env.alice, org, None).await;
-        let numbers: Vec<i64> = hist.as_array().unwrap().iter().map(|v| v["version"].as_i64().unwrap()).collect();
+        let numbers: Vec<i64> = hist["results"].as_array().unwrap().iter().map(|v| v["version"].as_i64().unwrap()).collect();
         assert_eq!(numbers, vec![2, 1], "newest first");
 
         let (s, renamed) = call(&server, "PATCH", &path, &env.alice, org, Some(json!({ "name": "Radio news" }))).await;
@@ -210,7 +211,7 @@ async fn taxonomy_org_isolation_and_viewer_read_only() {
 
         // Bob, in his own org, neither sees nor touches alice's taxonomy.
         let (_, list) = call(&server, "GET", "/api/v1/taxonomies", &env.bob, org_b, None).await;
-        assert_eq!(list, json!([]));
+        assert_eq!(list["count"], 0, "{list}");
         for (m, p, body) in [
             ("GET", path.clone(), None),
             ("GET", versions.clone(), None),
@@ -334,7 +335,7 @@ async fn topic_classify_deploy_needs_a_version_of_the_org() {
         for (taxonomy, version) in [(&ids[1], 1), (&ids[0], 2)] {
             let (s, body) = deploy(flow(taxonomy, version)).await;
             assert_eq!(s, 400, "{body}");
-            let violations = body["violations"].as_array().expect("violations");
+            let violations = body["errors"]["violations"].as_array().expect("violations");
             assert_eq!(violations.len(), 1, "{body}");
             assert_eq!(violations[0]["code"], "taxonomy-unknown");
             assert_eq!(violations[0]["node_id"], "tc");

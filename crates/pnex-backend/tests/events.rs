@@ -40,8 +40,8 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("personal org")
 }
 
-/// Without O2 the page reads `available: false` (never an error), bad
-/// filters are field errors, and the internal write is token-gated.
+/// Without O2 the list and the streams answer 503 `events-unavailable`
+/// (D240), bad filters are `field-invalid` errors, and the internal write is token-gated.
 #[tokio::test]
 #[serial]
 async fn events_api_without_openobserve() {
@@ -52,10 +52,15 @@ async fn events_api_without_openobserve() {
             .add_header("Authorization", format!("Bearer {alice}"))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        res.assert_status_ok();
+        res.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
         let body: serde_json::Value = res.json();
-        assert_eq!(body["available"], false);
-        assert_eq!(body["count"], 0);
+        assert_eq!(body["error"], "events-unavailable", "{body}");
+        let streams = server
+            .get("/api/v1/events/streams")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        streams.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
 
         let bad = server
             .get("/api/v1/events?level=loud")
@@ -63,7 +68,9 @@ async fn events_api_without_openobserve() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
-        assert_eq!(bad.json::<serde_json::Value>()["level"], "invalid");
+        let bad: serde_json::Value = bad.json();
+        assert_eq!(bad["error"], "field-invalid", "{bad}");
+        assert_eq!(bad["errors"]["fields"]["level"], "invalid", "{bad}");
 
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         let denied = server

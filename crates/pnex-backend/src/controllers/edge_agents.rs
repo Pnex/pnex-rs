@@ -144,6 +144,21 @@ async fn info_of(db: &DatabaseConnection, device: &device_registries::Model) -> 
 
 // ───────────────────────────── Org-scoped ─────────────────────────────
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/agent",
+    tag = "devices",
+    operation_id = "devices_agent_get",
+    summary = "Edge agent overview",
+    description = "Distinct-keys quota, agent version and the machine facts (hostname, OS, arch) reported at the last enrollment. Any org member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent")),
+    responses(
+        (status = 200, body = pnex_core::agent::AgentInfo),
+        (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn info(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -153,6 +168,23 @@ async fn info(
     format::json(info_of(&ctx.db, &device).await?)
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/devices/{id}/agent",
+    tag = "devices",
+    operation_id = "devices_agent_update",
+    summary = "Update edge agent settings",
+    description = "Sets the distinct-keys quota (1..=100000) of the agent. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent")),
+    request_body = pnex_core::agent::AgentSettingsPatch,
+    responses(
+        (status = 200, body = pnex_core::agent::AgentInfo),
+        (status = 400, description = "Quota out of range (`agent-quota-invalid`) or not an agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_settings(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -179,19 +211,55 @@ async fn update_settings(
     format::json(info_of(&ctx.db, &device).await?)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/agent-keys",
+    tag = "devices",
+    operation_id = "devices_agent_keys_list",
+    summary = "Keys discovered from an edge agent",
+    description = "Every series key the agent has sent (free-form ingestion), ordered by key, with unit, kind and OpenObserve recording flag, paginated (`limit`/`offset`). Any org member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent"), KeysQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::agent::AgentKey>),
+        (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list_keys(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<i64>,
+    axum::extract::Query(q): axum::extract::Query<KeysQuery>,
 ) -> Result<Response> {
     let device = find_agent(&ctx.db, &org, id).await?;
-    let rows = agent_keys::Entity::find()
-        .filter(agent_keys::Column::DeviceRegistryId.eq(device.id))
-        .order_by_asc(agent_keys::Column::Key)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
-    format::json(rows.into_iter().map(key_dto).collect::<Vec<_>>())
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (count, rows) = super::pagination::sql_page(
+        &ctx.db,
+        agent_keys::Entity::find()
+            .filter(agent_keys::Column::DeviceRegistryId.eq(device.id))
+            .order_by_asc(agent_keys::Column::Key),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    format::json(super::pagination::envelope(
+        &format!("/api/v1/devices/{id}/agent-keys"),
+        &[],
+        page,
+        count,
+        rows.into_iter().map(key_dto).collect::<Vec<_>>(),
+    ))
+}
+
+/// `limit`/`offset` of the agent keys list.
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct KeysQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
 }
 
 async fn find_key(
@@ -207,6 +275,23 @@ async fn find_key(
         .ok_or(Error::NotFound)
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/devices/{id}/agent-keys/{key_id}",
+    tag = "devices",
+    operation_id = "devices_agent_keys_update",
+    summary = "Toggle OpenObserve recording of an agent key",
+    description = "Turns the OpenObserve history of one key on or off (the live cache stays on). Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent"), ("key_id" = i64, Path, description = "Agent key id")),
+    request_body = pnex_core::agent::AgentKeyPatch,
+    responses(
+        (status = 200, body = pnex_core::agent::AgentKey),
+        (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or key", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn patch_key(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -228,6 +313,22 @@ async fn patch_key(
     format::json(key_dto(row))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/devices/{id}/agent-keys/{key_id}",
+    tag = "devices",
+    operation_id = "devices_agent_keys_delete",
+    summary = "Forget an agent key",
+    description = "Deletes a stray key (frees quota) and removes it from the metric pickers; it reappears if the agent sends it again. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent"), ("key_id" = i64, Path, description = "Agent key id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or key", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_key(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -271,6 +372,22 @@ fn display_code(raw: &str) -> String {
         .join("-")
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/agent-enrollment",
+    tag = "devices",
+    operation_id = "devices_agent_enrollment_create",
+    summary = "Create an edge agent enrollment code",
+    description = "Issues a fresh single-use, short-lived code (`XXXX-XXXX-XXXX`) to install the agent with; previous unused codes of this agent are revoked. Also returns the SHA-256 of the local CA to pin, if any. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id of the edge agent")),
+    responses(
+        (status = 201, body = pnex_core::agent::AgentEnrollmentCreated),
+        (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_enrollment(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -315,6 +432,21 @@ fn clip(v: Option<String>, max: usize) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/agent/enroll",
+    tag = "agent",
+    operation_id = "agent_enroll",
+    summary = "Enroll an edge agent with a code (public)",
+    description = "Called by `pnex-agent install`, no user session: consumes a valid enrollment code (atomic, single use) and returns the agent credentials once (device token, Noise key, TLS client certificate and key, CA, device endpoint). Rotates the token and key and revokes previous certificates: any former installation is disconnected. Rate-limited per client address.",
+    request_body = pnex_core::agent::AgentEnrollRequest,
+    responses(
+        (status = 200, body = pnex_core::agent::AgentEnrollResponse),
+        (status = 400, description = "Invalid, used or expired code (`agent-enroll-code-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "Too many attempts", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn enroll(
     State(ctx): State<AppContext>,
     headers: axum::http::HeaderMap,
@@ -468,6 +600,20 @@ fn attachment(bytes: Vec<u8>, content_type: &str, filename: &str) -> Response {
         .into_response()
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/agent/download/{target}",
+    tag = "agent",
+    operation_id = "agent_download",
+    summary = "Download an edge agent binary (public)",
+    description = "Streams the agent binary shipped with this server for a whitelisted target id, or `SHA256SUMS` (text checksums). No authentication.",
+    params(("target" = String, Path, description = "Target id (as computed by the install scripts) or `SHA256SUMS`")),
+    responses(
+        (status = 200, description = "Binary (`application/octet-stream`) or checksums (`text/plain`)", content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 404, description = "Unknown target or binary not shipped (`agent-binary-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn download(Path(target): Path<String>) -> Result<Response> {
     let not_found = || {
         agent_error(
@@ -528,6 +674,18 @@ fn file_chunks(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/agent/install.sh",
+    tag = "agent",
+    operation_id = "agent_install_sh",
+    summary = "Agent install script for Linux/macOS (public)",
+    description = "Shell script that downloads and installs the edge agent. No authentication.",
+    responses(
+        (status = 200, content_type = "text/x-shellscript", body = String)
+    ),
+    security(())
+)]
 async fn install_sh() -> Result<Response> {
     Ok(attachment(
         INSTALL_SH.as_bytes().to_vec(),
@@ -536,6 +694,18 @@ async fn install_sh() -> Result<Response> {
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/agent/install.ps1",
+    tag = "agent",
+    operation_id = "agent_install_ps1",
+    summary = "Agent install script for Windows (public)",
+    description = "PowerShell script that downloads and installs the edge agent. No authentication.",
+    responses(
+        (status = 200, content_type = "text/plain", body = String)
+    ),
+    security(())
+)]
 async fn install_ps1() -> Result<Response> {
     Ok(attachment(
         INSTALL_PS1.as_bytes().to_vec(),
@@ -573,4 +743,23 @@ mod tests {
         assert_eq!(shown.len(), CODE_LEN + 2);
         assert_eq!(normalize_enroll_code(&shown), c);
     }
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        info,
+        update_settings,
+        list_keys,
+        patch_key,
+        delete_key,
+        create_enrollment,
+        enroll,
+        download,
+        install_sh,
+        install_ps1
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

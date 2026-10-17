@@ -129,29 +129,15 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/device-capabilities` — table de référence bornée : on
-/// demande la page max (100) et on ne remonte que les résultats.
+/// `GET /api/v1/device-capabilities`, every page (pickers).
 pub async fn capabilities() -> Result<Vec<DeviceCapability>, ApiError> {
-    let paged: Paginated<DeviceCapability> = client::request(
-        reqwest::Method::GET,
-        "/api/v1/device-capabilities?limit=100",
-        None,
-    )
-    .await?;
-    Ok(paged.results)
+    client::request_all("/api/v1/device-capabilities").await
 }
 
-/// `GET /api/v1/predefined-devices` — catalogue global (page max pour les
-/// `<select>` du formulaire d'enregistrement ; les pages dédiées font leur
-/// propre pagination).
+/// `GET /api/v1/predefined-devices`, every page (registration form
+/// selects; the catalogue page paginates on its own).
 pub async fn predefined_devices() -> Result<Vec<PredefinedDevice>, ApiError> {
-    let paged: Paginated<PredefinedDevice> = client::request(
-        reqwest::Method::GET,
-        "/api/v1/predefined-devices?limit=100",
-        None,
-    )
-    .await?;
-    Ok(paged.results)
+    client::request_all("/api/v1/predefined-devices").await
 }
 
 /// Filtres de la page Catalogue — recherche + type + board, poussés au

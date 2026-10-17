@@ -21,9 +21,9 @@ pub async fn create(input: WifiCredentialInput) -> Result<WifiCredential, ApiErr
     .await
 }
 
-/// `PUT /api/v1/edge/wifi-credentials/{id}` — édition in-place (id
-/// conservé) : renommage ssid et/ou mot de passe. 409 si le ssid visé est
-/// déjà pris par une autre entrée de l'org.
+/// `PUT /api/v1/edge/wifi-credentials/{id}` — in-place edit (id kept):
+/// SSID rename and/or password. 409 `edge-ssid-taken` when the target SSID
+/// is used by another entry of the org.
 pub async fn update(id: i64, input: WifiCredentialInput) -> Result<WifiCredential, ApiError> {
     client::request(
         reqwest::Method::PUT,

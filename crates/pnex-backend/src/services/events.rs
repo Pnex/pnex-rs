@@ -191,13 +191,17 @@ pub async fn search(
     }
 }
 
-/// Event streams (`ev_…`) of the org.
-pub async fn streams(ctx: &AppContext, org_id: i64) -> std::result::Result<Vec<String>, String> {
+/// Event streams (`ev_…`) of the org; `None` = O2 not configured or org
+/// never provisioned.
+pub async fn streams(
+    ctx: &AppContext,
+    org_id: i64,
+) -> std::result::Result<Option<Vec<String>>, String> {
     let Some(client) = client(ctx) else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
     let mut names: Vec<String> = client
         .log_streams(&creds.o2_org, &creds.email_passcode)
@@ -206,7 +210,7 @@ pub async fn streams(ctx: &AppContext, org_id: i64) -> std::result::Result<Vec<S
         .filter(|n| n.starts_with(pnex_core::events::EVENT_STREAM_PREFIX))
         .collect();
     names.sort();
-    Ok(names)
+    Ok(Some(names))
 }
 
 #[cfg(test)]

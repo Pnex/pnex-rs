@@ -232,6 +232,9 @@ async fn cycle_job_complet() {
                 "job invalide → 400 : {}",
                 res.text()
             );
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["error"], "field-invalid", "{body}");
+            assert_eq!(body["errors"]["fields"]["frames_total"], "range:2..64");
         }
 
         // Asset cross-org : bob, dans SON org, vise l'asset d'alice → 404
@@ -251,6 +254,10 @@ async fn cycle_job_complet() {
         // Frame hors bornes (k = 4) → 400, compteur intact.
         let res = upload_frame(&server, &env.alice, org, &job_id, 4, frame_jpeg()).await;
         assert_eq!(res.status_code(), 400, "k >= frames_total → 400");
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["k"],
+            "invalid"
+        );
         assert_eq!(
             get_job(&server, &env.alice, org, &job_id).await["frames_received"],
             0

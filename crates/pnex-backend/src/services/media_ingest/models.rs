@@ -30,6 +30,9 @@ pub enum ModelError {
     NotFound,
     #[error("model name taken")]
     NameTaken,
+    /// ASR profiles still use the model (their names, sorted).
+    #[error("model used by profiles")]
+    InUse { profiles: Vec<String> },
     #[error("not a supported audio model")]
     Unsupported,
     /// The model's runtime is not compiled into this host's `pnex-asr`.
@@ -66,13 +69,14 @@ pub fn view(m: &ml_models::Model) -> AsrModel {
         id: m.id.to_string(),
         name: m.name.clone(),
         description: m.description.clone().unwrap_or_default(),
-        task: m.task.clone(),
+        // Only audio tasks reach this view (`AUDIO_TASKS` filter of `list`).
+        task: pnex_core::media_ingest::AsrTask::from_wire(&m.task).unwrap_or_default(),
         family: m.family.clone(),
         asset_id: m.asset_id.to_string(),
         asset_version: m.asset_version,
         license: meta_str(m, "license").unwrap_or_default(),
         check: AsrModelCheck {
-            status: m.check_status.clone(),
+            status: pnex_core::vision::ModelCheckStatus::from_wire(&m.check_status),
             error: m.check_error.clone(),
             load_ms: meta_f64(m, "load_ms").map(|v| v as u64),
             rtf: meta_f64(m, "rtf"),
@@ -107,7 +111,7 @@ pub async fn views<C: ConnectionTrait>(
                 .map(|c| pnex_core::media_ingest::AsrCarrierCheck {
                     carrier: c.carrier.clone(),
                     check: AsrModelCheck {
-                        status: c.check_status.clone(),
+                        status: pnex_core::vision::ModelCheckStatus::from_wire(&c.check_status),
                         error: c.check_error.clone(),
                         load_ms: c.load_ms.map(|v| v as u64),
                         rtf: c.rtf,
@@ -424,8 +428,39 @@ pub async fn update(
 
 /// Deletes a model. Profiles using it go with it (cascade); their streams
 /// stop transcribing until another profile is set.
-pub async fn delete(ctx: &AppContext, org_id: i64, id: Uuid) -> Result<(), ModelError> {
+/// Deletes a model. Profiles that use it (as their speech-to-text, VAD or
+/// diarization model) refuse the delete with `InUse` unless `force`: then
+/// the database cascade deletes the profiles whose speech-to-text model it
+/// is and clears it from the others.
+pub async fn delete(
+    ctx: &AppContext,
+    org_id: i64,
+    id: Uuid,
+    force: bool,
+) -> Result<(), ModelError> {
+    use crate::models::_entities::asr_profiles;
+    use sea_orm::Condition;
     let row = find(&ctx.db, org_id, id).await?;
+    if !force {
+        let mut profiles: Vec<String> = asr_profiles::Entity::find()
+            .filter(asr_profiles::Column::OrgId.eq(org_id))
+            .filter(
+                Condition::any()
+                    .add(asr_profiles::Column::AsrModelId.eq(id))
+                    .add(asr_profiles::Column::VadModelId.eq(id))
+                    .add(asr_profiles::Column::DiarizationModelId.eq(id))
+                    .add(asr_profiles::Column::DiarizationEmbeddingModelId.eq(id)),
+            )
+            .all(&ctx.db)
+            .await?
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        if !profiles.is_empty() {
+            profiles.sort();
+            return Err(ModelError::InUse { profiles });
+        }
+    }
     ml_models::Entity::delete_by_id(row.id)
         .exec(&ctx.db)
         .await?;

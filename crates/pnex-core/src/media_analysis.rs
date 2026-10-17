@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// One analysis step of a media version.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AnalysisStep {
     /// Text extraction and search index (doc-search.md); its state lives in
@@ -50,6 +51,7 @@ pub const STATE_FAILED: &str = "failed";
 /// A step that can be launched now, or why not (`blocked` = error code,
 /// e.g. `media-analysis-no-llm`: shown greyed with a link to fix it).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StepOffer {
     pub step: AnalysisStep,
     #[serde(default)]
@@ -65,23 +67,60 @@ pub const LARGE_CALLS: u32 = 20;
 
 /// Visible state of one step of the current version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaAnalysis {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: uuid::Uuid,
     pub step: AnalysisStep,
-    /// `queued | running | done | failed`.
-    pub state: String,
+    pub state: AnalysisState,
     /// 0–100.
     pub progress: i16,
     #[serde(default)]
     pub error_code: Option<String>,
     /// Page written by a summary (D214).
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub page_id: Option<uuid::Uuid>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
+}
+
+/// State of an analysis step (wire form of [`STATE_QUEUED`]…).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisState {
+    #[default]
+    Queued,
+    Running,
+    Done,
+    Failed,
+}
+
+impl AnalysisState {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Queued => STATE_QUEUED,
+            Self::Running => STATE_RUNNING,
+            Self::Done => STATE_DONE,
+            Self::Failed => STATE_FAILED,
+        }
+    }
+
+    /// State of a stored row; an unknown value reads as `failed`.
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            STATE_QUEUED => Self::Queued,
+            STATE_RUNNING => Self::Running,
+            STATE_DONE => Self::Done,
+            _ => Self::Failed,
+        }
+    }
 }
 
 /// `POST /api/v1/media/{id}/analyses`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StartAnalyses {
     pub steps: Vec<AnalysisStep>,
     /// UI locale (`fr-FR`, `en-US`): language of the page title.

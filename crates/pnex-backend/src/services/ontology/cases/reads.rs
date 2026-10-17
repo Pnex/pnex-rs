@@ -114,15 +114,16 @@ pub fn spawn_writer(ctx: &AppContext) {
     });
 }
 
-/// The reads of a case over the last year, newest first. `None` = O2 absent
-/// or never provisioned (the UI says the log is unavailable).
+/// One page of the reads of a case over the last year, newest first, with
+/// the total count. `None` = O2 absent or never provisioned (the controller
+/// answers 503 `case-reads-unavailable`).
 pub async fn reads(
     db: &DatabaseConnection,
     client: Option<&Client>,
     org_id: i64,
     case_id: Uuid,
-    limit: i64,
-) -> Result<Option<Vec<CaseRead>>> {
+    window: crate::controllers::pagination::PageParams,
+) -> Result<Option<(i64, Vec<CaseRead>)>> {
     case_of(db, org_id, case_id).await?;
     let Some(client) = client else {
         return Ok(None);
@@ -141,14 +142,14 @@ pub async fn reads(
             &sql,
             end - WINDOW_US,
             end,
-            0,
-            limit,
+            window.offset,
+            window.limit,
             &creds.email_passcode,
         )
         .await
     else {
         // No stream yet: nothing was read.
-        return Ok(Some(Vec::new()));
+        return Ok(Some((0, Vec::new())));
     };
     let ids_of = |h: &Value| -> Vec<Uuid> {
         h.get("objects")
@@ -183,7 +184,9 @@ pub async fn reads(
             .map(|t| t.to_rfc3339())
             .unwrap_or_default()
     };
-    Ok(Some(
+    let total = page.total.max(window.offset + page.hits.len() as i64);
+    Ok(Some((
+        total,
         page.hits
             .iter()
             .map(|h| {
@@ -215,7 +218,7 @@ pub async fn reads(
                 }
             })
             .collect(),
-    ))
+    )))
 }
 
 #[cfg(test)]

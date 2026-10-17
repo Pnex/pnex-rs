@@ -61,13 +61,13 @@ async fn lists_keys_and_resolves_numeric_fields() {
             r("missing", ""),
         ],
     )
-    .await;
-    assert!(res.available);
+    .await
+    .expect("store reachable");
     let got: Vec<Option<f64>> = res.results.iter().map(|v| v.value).collect();
     assert_eq!(got, [Some(412.5), None, Some(3.5), None]);
     assert_eq!(res.results[0].ts_ms, Some(1_789_000_000_000));
     assert!(!res.results[1].available);
 
-    let off = values_with(None, org, &[r("cycle.p1", "")]).await;
-    assert!(!off.available && !off.results[0].available);
+    // Unreachable store: None (the controller answers 503 memory-unavailable).
+    assert!(values_with(None, org, &[r("cycle.p1", "")]).await.is_none());
 }

@@ -82,6 +82,20 @@ fn referenced_assets(doc: &pnex_core::TourDoc) -> Vec<Uuid> {
 
 /// `GET /api/v1/public/tours/{token}` — la version publiée + la carte des
 /// assets référencés (version **courante** de chacun au moment de l'appel).
+#[utoipa::path(
+    get,
+    path = "/api/v1/public/tours/{token}",
+    tag = "public",
+    operation_id = "public_tours_get",
+    summary = "Read a shared tour",
+    description = "Public, no authentication: the share token is the only key. Returns the published version of the tour and the current version of every media it references. `Cache-Control: no-store`. Uniform 404 for an unknown token, an unpublished tour or a corrupt document.",
+    params(("token" = String, Path, description = "Public share token (32 hex)")),
+    responses(
+        (status = 200, body = pnex_core::PublicTour),
+        (status = 404, description = "Unknown token or tour not published", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn detail(State(ctx): State<AppContext>, Path(token): Path<String>) -> Result<Response> {
     let Some((tour, version)) = find_published_by_token(&ctx.db, &token).await? else {
         return Err(not_found());
@@ -142,14 +156,30 @@ async fn detail(State(ctx): State<AppContext>, Path(token): Path<String>) -> Res
     Ok(([("cache-control", "no-store")], format::json(body)).into_response())
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct AssetQuery {
+    /// Media version number (default: the asset's current version).
     v: Option<i64>,
 }
 
 /// `GET /api/v1/public/tours/{token}/assets/{asset_id}?v=n` — octets d'un
-/// asset référencé par le doc publié. `v` absent = version courante. L'URL
-/// versionnée est immuable → cache long.
+/// asset référencé par le doc publié. `v` absent = version courante.
+/// Only the versioned URL is cached as immutable (O74).
+#[utoipa::path(
+    get,
+    path = "/api/v1/public/tours/{token}/assets/{asset_id}",
+    tag = "public",
+    operation_id = "public_tours_asset",
+    summary = "Download a media of a shared tour",
+    description = "Public, no authentication: streams the bytes of a media referenced by the published document of the shared tour (`?v=n` for a given media version, default current). Served with the media content type, `nosniff`, a sandbox CSP; one-year immutable cache with `?v=n`, `no-cache` without. Uniform 404 for anything not referenced or unknown.",
+    params(("token" = String, Path, description = "Public share token (32 hex)"), ("asset_id" = String, Path, format = "uuid", description = "Media asset id (UUID)"), AssetQuery),
+    responses(
+        (status = 200, description = "Media bytes (actual type in `Content-Type`)", content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 404, description = "Unknown token, asset not referenced or unknown version", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn asset(
     State(ctx): State<AppContext>,
     Path((token, asset_id)): Path<(String, Uuid)>,
@@ -220,14 +250,21 @@ async fn asset(
     Ok((
         StatusCode::OK,
         headers,
-        // Version immuable (append-only) + URL versionnée → cache long.
-        [(
-            "cache-control",
-            "public, max-age=31536000, immutable".to_string(),
-        )],
+        [("cache-control", asset_cache_control(q.v).to_string())],
         bytes,
     )
         .into_response())
+}
+
+/// Cache policy of a shared asset (O74): only a versioned URL (`?v=n`,
+/// append-only bytes) is immutable; the unversioned one follows the current
+/// version, so the browser revalidates it.
+fn asset_cache_control(version: Option<i64>) -> &'static str {
+    if version.is_some() {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    }
 }
 
 // ─────────────────────────── Routes ───────────────────────────
@@ -237,4 +274,12 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/public/tours")
         .add("/{token}", get(detail))
         .add("/{token}/assets/{asset_id}", get(asset))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(detail, asset))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

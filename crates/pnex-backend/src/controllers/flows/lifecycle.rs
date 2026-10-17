@@ -546,6 +546,24 @@ pub(crate) async fn pin_write_owners_by_device(
 /// `POST /flows/{id}/deploy` — publie une version (`version_number` absent =
 /// dernière) : reprojection de l'ensemble des flows déployés → SIGUSR1 →
 /// `deployed_version_id` mis à jour.
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows/{id}/deploy",
+    tag = "flows",
+    operation_id = "flows_deploy",
+    summary = "Deploy a flow version",
+    description = "Publishes a version (`version_number` absent = latest saved) to the flow runtime: the deploy gates run, the org artifact is reprojected with this version and the runtime reloads; the database is marked `deployed` only after the runtime acknowledged. Also re-syncs and pushes regulation configurations to devices. Body optional. Answers the flow plus non-blocking warnings (`stale_notify_nodes`, `skipped_tabs`). Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    request_body = Option<pnex_core::DeployFlow>,
+    responses(
+        (status = 200, body = FlowDeployResult),
+        (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-deploy-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn deploy(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -560,6 +578,24 @@ pub(super) async fn deploy(
 
 /// `POST /flows/{id}/rollback` — alias explicite du deploy d'une version
 /// antérieure (même mécanique, intention produit distincte).
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows/{id}/rollback",
+    tag = "flows",
+    operation_id = "flows_rollback",
+    summary = "Roll back to a flow version",
+    description = "Same mechanics as deploy, meant for an earlier `version_number`: reprojects the org artifact with it, reloads the runtime and marks it deployed after acknowledgement. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    request_body = Option<pnex_core::DeployFlow>,
+    responses(
+        (status = 200, body = FlowDeployResult),
+        (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-deploy-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn rollback(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -632,11 +668,10 @@ async fn deploy_version(
         conflicts
             .extend(unknown_range_scopes_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         if !conflicts.is_empty() {
-            return Ok((
-                StatusCode::BAD_REQUEST,
-                format::json(serde_json::json!({ "violations": conflicts })),
-            )
-                .into_response());
+            return Ok(crate::controllers::violations_error(
+                pnex_core::err_codes::FLOW_INVALID,
+                conflicts,
+            ));
         }
     }
 
@@ -655,11 +690,10 @@ async fn deploy_version(
     // Refs de fonctions non résolues dans le candidat : bloquant au deploy
     // (même forme de 400 que engine_load, l'éditeur localise le nœud).
     if !fn_violations.is_empty() {
-        return Ok((
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "violations": fn_violations })),
-        )
-            .into_response());
+        return Ok(crate::controllers::violations_error(
+            pnex_core::err_codes::FLOW_INVALID,
+            fn_violations,
+        ));
     }
     let apply = crate::services::flow_cluster::ApplyOrg {
         org_id: flow.org_id,
@@ -704,24 +738,16 @@ async fn deploy_version(
     let graph: FlowGraph =
         serde_json::from_value(version.graph).map_err(|_| Error::InternalServerError)?;
     tracing::info!(flow_id = flow.id, version = version_number, "flow déployé");
-    // Champ additif : références notify périmées (toast éditeur, non
-    // bloquant) — les consommateurs existants l'ignorent (CONTRACT inchangé).
-    let mut dto = serde_json::to_value(flow_dto(flow, graph, latest_number, Some(version_number)))
-        .map_err(|_| Error::InternalServerError)?;
-    if let Some(obj) = dto.as_object_mut() {
-        obj.insert(
-            "stale_notify_nodes".into(),
-            serde_json::json!(stale_notify
-                .iter()
-                .filter(|s| s.flow_id == id)
-                .cloned()
-                .collect::<Vec<_>>()),
-        );
-        // Champ additif : onglets d'AUTRES flows isolés à la projection
-        // (graphe illisible — kind supprimé, schéma daté). Le deploy de CE
-        // flow passe ; le toast de l'éditeur signale les tabs morts.
-        obj.insert("skipped_tabs".into(), serde_json::json!(skipped_tabs));
-    }
+    // Additive fields: stale notify references (non-blocking editor toast)
+    // and tabs of OTHER flows isolated from the projection.
+    let dto = FlowDeployResult {
+        flow: flow_dto(flow, graph, latest_number, Some(version_number)),
+        stale_notify_nodes: stale_notify
+            .into_iter()
+            .filter(|s| s.flow_id == id)
+            .collect(),
+        skipped_tabs,
+    };
     Ok(format::json(dto).into_response())
 }
 
@@ -731,8 +757,25 @@ async fn deploy_version(
 /// (reprojection sans lui) et attend l'ack `flow_stopped` avant de marquer
 /// la DB `stopped`. `deployed_version_id` est **conservé** (reprise sans
 /// rebuild via Start/Deploy). Garde-fous : 403 `can_write`, 404 hors-org,
-/// 409 si pas `deployed` ; 503 `flow_runtime` si le moteur n'acquitte pas
+/// 409 si pas `deployed` ; 503 `flow-runtime` si le moteur n'acquitte pas
 /// (DB intacte — le flow tourne encore).
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows/{id}/stop",
+    tag = "flows",
+    operation_id = "flows_stop",
+    summary = "Stop a deployed flow",
+    description = "Removes the flow from the runtime and marks it `stopped` once the runtime acknowledged; the deployed version is kept so it can be started again. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = FlowStopResult),
+        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Not deployed (`flow-stop-not-deployed`) or no deployed version (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn stop(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -764,10 +807,10 @@ pub(super) async fn stop(
     .await;
     lock.release().await;
     res?;
-    Ok(
-        format::json(serde_json::json!({ "status": pnex_core::FLOW_STATUS_STOPPED }))
-            .into_response(),
-    )
+    Ok(format::json(FlowStopResult {
+        status: pnex_core::FlowStatus::Stopped,
+    })
+    .into_response())
 }
 
 /// Chemin d'arrêt partagé (stop + restart) : reprojection **excluant** le
@@ -830,6 +873,24 @@ async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
 /// re-déployant **sa version déployée** (pas la dernière sauvegardée :
 /// Deploy, lui, monte la version fraîche). Garde-fous : 403 `can_write`,
 /// 404 hors-org, 409 si pas `stopped` ou jamais déployé.
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows/{id}/start",
+    tag = "flows",
+    operation_id = "flows_start",
+    summary = "Start a stopped flow",
+    description = "Redeploys the flow's deployed version (not the latest saved one) through the deploy path, gates included. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = FlowDeployResult),
+        (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Not stopped (`flow-start-not-stopped`) or never deployed (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn start(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -895,6 +956,24 @@ async fn start_stopped(ctx: AppContext, org: OrgContext, flow: flows::Model) -> 
 /// rechargement : le reload est un diff par hash, un tab identique ne
 /// swappe pas). Depuis `stopped`, Restart ≡ Start. Garde-fous : 403
 /// `can_write`, 404 hors-org, 409 si jamais déployé.
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows/{id}/restart",
+    tag = "flows",
+    operation_id = "flows_restart",
+    summary = "Restart a flow",
+    description = "Stops the flow if deployed, then starts its deployed version again (two runtime reloads). From `stopped` it equals start. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = FlowDeployResult),
+        (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Never deployed (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn restart(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -938,6 +1017,20 @@ pub(super) async fn restart(
 /// croisée avec **la version déployée de CE flow, lue en DB**
 /// (`flows.deployed_version_id`, posée uniquement quand le moteur a
 /// acquitté un deploy). 404 si le flow n'est pas de l'org.
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/runtime",
+    tag = "flows",
+    operation_id = "flows_runtime",
+    summary = "Get the runtime status of a flow",
+    description = "Runtime process health (running, pid, restarts) seen through this flow: engine status and last error of this flow, its deployed and latest saved version numbers, its database status, and whether debug tools are enabled. Polled by the editor.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = pnex_core::FlowRuntimeStatus),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn runtime(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -966,20 +1059,30 @@ pub(super) async fn runtime(
     status.latest_version_number = latest_version(&ctx.db, flow.id)
         .await?
         .map(|v| v.version_number);
-    status.flow_status = Some(flow.status.clone());
+    status.flow_status = Some(pnex_core::FlowStatus::from_db(&flow.status));
     Ok(format::json(status).into_response())
 }
 
 // ─────────────────────────── Debug (panneau) ───────────────────────────
 
-/// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).
-/// Lecture seule (même niveau que `runtime`), 200 avec feed vide si le
-/// moteur est arrêté (un 503 rendrait le drawer inutilisable). Garde-fou :
-/// 403 hors mode dev/debug (`settings.flow.debug_tools`).
 /// Latest camera/vision node statuses of a flow (D103) plus the last
 /// message of each debug/display node — run mode too: statuses are health,
 /// and a flow designer must always see what a debug node receives (the
 /// full history of the side panel stays behind `debug_tools`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/node-status",
+    tag = "flows",
+    operation_id = "flows_node_status",
+    summary = "Get the latest node statuses of a flow",
+    description = "Latest camera/vision node statuses plus the last message of each debug/display node. Available in run mode too. Empty when the runtime is not running.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = pnex_core::FlowDebugFeed),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn node_status(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -998,6 +1101,25 @@ pub(super) async fn node_status(
     .into_response())
 }
 
+/// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).
+/// Lecture seule (même niveau que `runtime`), 200 avec feed vide si le
+/// moteur est arrêté (un 503 rendrait le drawer inutilisable). Garde-fou :
+/// 403 hors mode dev/debug (`settings.flow.debug_tools`).
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/debug",
+    tag = "flows",
+    operation_id = "flows_debug",
+    summary = "Get the debug feed of a flow",
+    description = "Last 100 debug entries of the flow, oldest first; empty feed when the runtime is not running. Only in dev/debug mode (`settings.flow.debug_tools`).",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = pnex_core::FlowDebugFeed),
+        (status = 403, description = "Debug tools disabled (`flow-debug-disabled`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn debug(
     State(ctx): State<AppContext>,
     org: OrgContext,

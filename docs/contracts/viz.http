@@ -84,16 +84,18 @@ Content-Type: application/json
   "location_detail": "Rack 3 — Allée B"
 }
 
-### Device inconnu → 400 {"device_id": "Device inconnu pour cette organisation."}
+### Device inconnu → 400 {"error": "field-invalid", "errors": {"fields": {"device_id": "not-found"}}}
 ### Device déjà placé → 409 (le front propose le déplacement, jamais
 ### silencieux) :
 # {
-#   "error": "conflict",
-#   "description": "Ce device est déjà placé sur un POI — l'attacher ici le déplace (confirmation requise).",
-#   "device_id": "soil-01",
-#   "current_placement_id": 7,
-#   "current_pin_id": "…uuid du POI courant…",
-#   "current_pin_label": "Serre Nord"
+#   "error": "poi-device-already-placed",
+#   "description": "This device is already placed on a POI; attaching it here moves it (confirmation required).",
+#   "errors": {"args": {
+#     "device_id": "soil-01",
+#     "current_placement_id": "7",
+#     "current_pin_id": "…uuid du POI courant…",
+#     "current_pin_label": "Serre Nord"
+#   }}
 # }
 
 ### Éditer la localisation du placement et/ou déplacer (pin_id cible) — 200.
@@ -175,8 +177,8 @@ X-Org-Id: {{org_id}}
 
 ### ------------------------------------------------- positions GPS (D38) ---
 
-### Couche live carte : dernière position par device — 200
-GET {{base}}/api/v1/device-positions
+### Couche live carte : dernière position par device — 200 (enveloppe D14)
+GET {{base}}/api/v1/device-positions?limit=100
 Authorization: Bearer {{token}}
 X-Org-Id: {{org_id}}
 
@@ -308,7 +310,7 @@ X-Org-Id: {{org_id}}
 ### réponse que /telemetry/series, dégradée PAR ITEM (available:false, jamais
 ### 500) — anti-injection PromQL inchangée (charset + fenêtres preset par
 ### spec : 5m/15m/30m/1h/6h/24h). Cap 24 specs => 400 au-delà.
-POST {{base}}/api/v1/telemetry/series-batch
+POST {{base}}/api/v1/telemetry/series/query
 Authorization: Bearer {{token}}
 X-Org-Id: {{org_id}}
 Content-Type: application/json

@@ -4,7 +4,7 @@
 //!
 //! Contrat : `docs/contracts/viz.http` ; PRD : `docs/architecture/viz-bases.md`.
 //! - listes = enveloppe D14 `{count, next, previous, results}` ;
-//! - 400 per-field `{"<field>": msg}` (flows school);
+//! - errors are `ErrorDetail` (`field-invalid` with machine tokens);
 //! - 404 masqué cross-org (POI/lien introuvable ou d'une autre org) ;
 //! - cluster = items individuels (≤ `CLUSTER_INDIVIDUAL_MAX` points dans la
 //!   bbox) sinon clusters numérotés (centroïde + échantillon) ;
@@ -64,4 +64,23 @@ pub fn routes() -> Routes {
         .add("/pois/{id}", get(detail).patch(update).delete(delete))
         .add("/pois/{id}/devices", post(attach_device))
         .add("/device-positions", get(list_positions))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        cluster,
+        update_placement,
+        delete_placement,
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        attach_device,
+        list_positions
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

@@ -55,7 +55,7 @@ pub async fn detail(id: i64) -> Result<FunctionDetail, ApiError> {
 
 /// `PATCH /api/v1/functions/{id}` — enregistre une **nouvelle version**
 /// (append-only) et/ou les métadonnées ; 409 si `expected_version_number`
-/// est périmé, 400 champ-par-champ (`{"code": "ligne n : …"}`).
+/// est périmé, 400 `field-invalid` or `function-directive-invalid`.
 pub async fn save_version(
     id: i64,
     params: SaveFunctionVersion,
@@ -82,8 +82,14 @@ pub async fn versions(
     .await
 }
 
-/// `DELETE /api/v1/functions/{id}` — 204, ou 409 `function_in_use` avec la
-/// liste des flows déployés qui la référencent.
+/// Every version of a function (all pages): the version picker of the
+/// flow inspector must offer any pinned version.
+pub async fn versions_all(id: i64) -> Result<Vec<FunctionVersionSummary>, ApiError> {
+    client::request_all(&format!("/api/v1/functions/{id}/versions")).await
+}
+
+/// `DELETE /api/v1/functions/{id}`: 204, or 409 `function-in-use` naming the
+/// deployed flows that use it (`args.flows`).
 pub async fn delete(id: i64) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -116,24 +122,4 @@ pub async fn validate(
         Some(serde_json::to_value(params).unwrap_or_default()),
     )
     .await
-}
-
-/// Liste des flows déployés qui référencent une fonction (corps du 409
-/// `function_in_use`) — pour le toast de suppression.
-pub fn referencing_flows(err: &ApiError) -> Option<Vec<(i64, String, i64)>> {
-    let flows = err
-        .body
-        .as_ref()?
-        .get("referencing_flows")?
-        .as_array()?
-        .iter()
-        .filter_map(|f| {
-            Some((
-                f.get("flow_id")?.as_i64()?,
-                f.get("flow_name")?.as_str()?.to_string(),
-                f.get("version_number")?.as_i64()?,
-            ))
-        })
-        .collect::<Vec<_>>();
-    (!flows.is_empty()).then_some(flows)
 }

@@ -105,9 +105,9 @@ test.describe('organisation', { tag: '@sites' }, () => {
 
 test.describe('platform admin', { tag: '@settings' }, () => {
   test('subscription of an org changed from Platform status', async ({ app, api }) => {
-    const rows: any[] = await api.get('/system/orgs');
+    const rows: any[] = await api.list('/system/orgs');
     const org = rows.find((r) => r.org_id === api.orgId);
-    const tiers: any[] = await api.get('/system/tiers');
+    const tiers: any[] = await api.list('/system/tiers');
     test.skip(!org || tiers.length === 0, 'needs a platform admin and at least one tier');
     const target = tiers.find((t) => t.id !== org.tier_id) ?? tiers[0];
     try {
@@ -116,7 +116,7 @@ test.describe('platform admin', { tag: '@settings' }, () => {
       const row = app.page.locator('main tr').filter({ has: app.page.getByText(org.name, { exact: true }) });
       await row.getByRole('combobox', { name: app.tr('admin-orgs-tier-label') }).selectOption(String(target.id));
       await expect
-        .poll(async () => ((await api.get('/system/orgs')) as any[]).find((r) => r.org_id === api.orgId)?.tier_id)
+        .poll(async () => (await api.list('/system/orgs')).find((r) => r.org_id === api.orgId)?.tier_id)
         .toBe(target.id);
     } finally {
       await api.put(`/system/orgs/${api.orgId}/tier`, { tier_id: org?.tier_id ?? null });

@@ -197,7 +197,7 @@ fn strip_nul(s: &str) -> String {
 
 // ─────────────────────────── Reads ───────────────────────────
 
-#[derive(Debug, Serialize, FromQueryResult)]
+#[derive(Debug, Serialize, FromQueryResult, utoipa::ToSchema)]
 pub struct IndexState {
     pub status: String,
     pub error_code: Option<String>,
@@ -222,9 +222,11 @@ pub async fn state_of(
     .await
 }
 
-#[derive(Debug, Serialize, FromQueryResult)]
+#[derive(Debug, Serialize, FromQueryResult, utoipa::ToSchema)]
 pub struct Hit {
+    #[schema(value_type = String, format = "uuid")]
     pub chunk_id: Uuid,
+    #[schema(value_type = String, format = "uuid")]
     pub asset_id: Uuid,
     pub asset_name: String,
     pub kind: String,
@@ -343,9 +345,11 @@ pub async fn version_texts(
     .collect()
 }
 
-#[derive(Debug, Serialize, FromQueryResult)]
+#[derive(Debug, Serialize, FromQueryResult, utoipa::ToSchema)]
 pub struct ChunkText {
+    #[schema(value_type = String, format = "uuid")]
     pub chunk_id: Uuid,
+    #[schema(value_type = String, format = "uuid")]
     pub asset_id: Uuid,
     pub asset_name: String,
     pub ord: i32,

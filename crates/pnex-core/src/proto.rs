@@ -22,6 +22,11 @@ use serde_json::Value;
 /// sérialise `AdcIn` → `"adc_in"` (serde snake_case) — la chaîne
 /// `analog_in` est la convention **base** (colonnes `mode`), jamais le fil.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Pin mode on the wire: digital_in, digital_out, adc_in, pwm_out.")
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     DigitalIn,
@@ -37,6 +42,11 @@ pub enum Mode {
 /// l'admission (safe-states, brick0.md §8). Défaut `Low` — même convention
 /// que le défaut serveur de `ModeOpts::safe_state`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Rest state of an output (link loss, boot, admission); default low.")
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SafeState {
     #[default]
@@ -46,11 +56,16 @@ pub enum SafeState {
 
 /// Options de configuration d'un pin, poussées dans `SetMode`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Pin configuration options pushed with SetMode.")
+)]
 pub struct ModeOpts {
-    /// Pull-up interne (refusée sur GPIO16 — pulldown only, `caps::validate`).
+    /// Internal pull-up (refused on GPIO16, pulldown only, `caps::validate`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pullup: Option<bool>,
-    /// État de repos ; défaut serveur = `Low` si absent.
+    /// Rest state; server default `low` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub safe_state: Option<SafeState>,
 }

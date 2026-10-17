@@ -7,6 +7,7 @@
 use chrono::TimeZone as _;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::err_codes;
 use pnex_core::events::{EventLevel, EventRecord, DEFAULT_EVENT_STREAM};
 
 use crate::api;
@@ -146,11 +147,16 @@ pub fn Events() -> Element {
         None => (None, true, false, 0, Vec::new()),
         Some(Ok(p)) => (
             Some(Ok(())),
-            p.available,
+            true,
             p.results.is_empty(),
             p.count,
             p.results.clone(),
         ),
+        // OpenObserve absent (503 `events-unavailable`, D240): the notice,
+        // not an error banner.
+        Some(Err(err)) if err.code.as_deref() == Some(err_codes::EVENTS_UNAVAILABLE) => {
+            (None, false, false, 0, Vec::new())
+        }
         Some(Err(err)) => (Some(Err(err.clone())), true, false, 0, Vec::new()),
     };
 

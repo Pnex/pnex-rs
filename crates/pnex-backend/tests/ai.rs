@@ -201,7 +201,7 @@ async fn org_provider(ctx: &loco_rs::app::AppContext, org: i64, url: &str) {
         },
         &pnex_core::LlmProviderInput {
             name: "mock".into(),
-            kind: "openai_compat".into(),
+            kind: pnex_core::LlmProviderKind::OpenaiCompat,
             base_url: Some(url.to_string()),
             model: "test-model".into(),
             api_key: Some(pnex_core::SecretFieldInput::Value {
@@ -412,7 +412,7 @@ async fn providers_crud_keep_the_key_in_the_vault() {
         let list = send_json(&server, "GET", "/api/v1/ai/providers", &env.alice, org, None)
             .await
             .json::<serde_json::Value>();
-        let defaults: Vec<&str> = list
+        let defaults: Vec<&str> = list["results"]
             .as_array()
             .expect("array")
             .iter()
@@ -422,8 +422,11 @@ async fn providers_crud_keep_the_key_in_the_vault() {
         assert_eq!(defaults, vec!["local"], "{list}");
 
         // Validation and name conflict.
+        // An unknown kind is not a protocol (enum): refused by the decoder.
+        let bad = provider_body("x", "mistral", None, Some("k"));
+        let resp = send_json(&server, "POST", "/api/v1/ai/providers", &env.alice, org, Some(bad)).await;
+        assert_eq!(resp.status_code(), 422, "{}", resp.text());
         for bad in [
-            provider_body("x", "mistral", None, Some("k")),
             provider_body("x", "openai_compat", None, Some("k")),
             provider_body("x", "openai_compat", Some("http://h/v1/"), Some("k")),
             provider_body("x", "anthropic", None, None),
@@ -529,7 +532,7 @@ async fn the_org_default_provider_drives_the_assistant() {
         )
         .await
         .json::<serde_json::Value>();
-        let rows = list.as_array().expect("array");
+        let rows = list["results"].as_array().expect("array");
         assert_eq!(rows.len(), 1, "only the org's own providers: {list}");
         assert_eq!(rows[0]["is_default"], true, "{list}");
         assert!(!rows[0]["api_key"].is_null(), "{list}");
@@ -957,6 +960,11 @@ async fn conversations_are_private_to_user_and_org() {
         for (token, as_org) in [(&env.bob, org), (&env.alice, bob_org)] {
             let get = send_json(&server, "GET", &path, token, as_org, None).await;
             assert_eq!(get.status_code(), 404, "{}", get.text());
+            assert!(
+                get.text().contains("ai-conversation-not-found"),
+                "{}",
+                get.text()
+            );
             let rename = send_json(
                 &server,
                 "PATCH",
@@ -1944,7 +1952,7 @@ async fn llm_usage_routes_apart_from_the_default() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        let flows = list
+        let flows = list["results"]
             .as_array()
             .unwrap()
             .iter()

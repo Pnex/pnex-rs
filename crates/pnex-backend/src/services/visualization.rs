@@ -503,19 +503,27 @@ pub async fn series_points(
         device_id: device_id.to_string(),
         points: vec![],
     };
+    // `field-invalid` with the machine token (D239).
+    let invalid = |field: &str| {
+        Error::CustomError(
+            axum::http::StatusCode::BAD_REQUEST,
+            loco_rs::controller::ErrorDetail {
+                error: Some(pnex_core::err_codes::FIELD_INVALID_BODY.to_string()),
+                description: Some(format!("invalid {field}")),
+                errors: Some(serde_json::json!({
+                    "fields": { field: pnex_core::err_codes::FIELD_INVALID }
+                })),
+            },
+        )
+    };
     if !valid_metric_name(metric) {
-        return Err(Error::BadRequest("metric invalide".into()));
+        return Err(invalid("metric"));
     }
     if !valid_device_label(device_id) {
-        return Err(Error::BadRequest("device_id invalide".into()));
+        return Err(invalid("device_id"));
     }
     let Some(&(_, window_secs)) = WINDOWS.iter().find(|(key, _)| key == &window) else {
-        let presets = WINDOWS
-            .iter()
-            .map(|(key, _)| *key)
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(Error::BadRequest(format!("window invalide ({presets})")));
+        return Err(invalid("window"));
     };
     let Some(client) = client else {
         return Ok(degraded(metric, device_id));
@@ -564,7 +572,7 @@ pub async fn series_points(
     })
 }
 
-/// `POST /api/v1/telemetry/series-batch` (D31, studio SCADA) — un appel
+/// `POST /api/v1/telemetry/series/query` (D31, studio SCADA) — un appel
 /// pour toutes les sources d'un dashboard. Validation anti-injection
 /// **par spec** AVANT toute construction de requête (et y compris sans
 /// O2 configuré) : une spec invalide est **dégradée au niveau item**

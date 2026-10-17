@@ -4,6 +4,21 @@ use super::*;
 
 /// `POST /api/v1/flows` — crée le flow **et sa version 1** (une transaction).
 /// Aucun effet runtime : le flow reste `draft` jusqu'au deploy.
+#[utoipa::path(
+    post,
+    path = "/api/v1/flows",
+    tag = "flows",
+    operation_id = "flows_create",
+    summary = "Create a flow",
+    description = "Creates the flow and its version 1 in one transaction. No runtime effect: the flow stays `draft` until deployed. Requires owner, admin or member role. Graph secret references are checked against the vault: 403/404 vault error codes as on `/secrets`.",
+    request_body = pnex_core::CreateFlow,
+    responses(
+        (status = 201, body = pnex_core::Flow),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `device_id`) or `flow-invalid` (`errors.violations`: graph violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -11,7 +26,7 @@ pub(super) async fn create(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "flow-write-forbidden",
+            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage flows.",
         ));
     }
@@ -62,18 +77,37 @@ fn flow_write_error_result(e: crate::services::flow::FlowWriteError) -> Result<R
 
 // ─────────────────────────── GET /flows ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct ListFlowsQuery {
+    /// Case-insensitive substring of the flow name.
     search: Option<String>,
+    /// `draft`, `deployed` or `stopped`.
     status: Option<String>,
     /// D42: effective label (`name` or `name:value`, inherited included).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/flows` — flows de l'org, paginés (D14), filtres
 /// `search` (nom) et `status`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows",
+    tag = "flows",
+    operation_id = "flows_list",
+    summary = "List the flows of the organisation",
+    description = "Paginated summaries (no graph), newest first. Filters: `search` (name contains), `status` (`draft`/`deployed`/`stopped`), `label` (effective label).",
+    params(ListFlowsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::FlowSummary>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -94,7 +128,7 @@ pub(super) async fn list(
         ));
     }
     // D42: effective label filter.
-    match crate::services::resources::labels::list_filter(
+    match pagination::label_ids(
         &ctx.db,
         org.org.id,
         q.label.as_deref(),
@@ -104,15 +138,9 @@ pub(super) async fn list(
     {
         Ok(None) => {}
         Ok(Some(ids)) => {
-            let ids: Vec<i64> = ids.iter().filter_map(|id| id.parse().ok()).collect();
-            query = query.filter(flows::Column::Id.is_in(ids));
+            query = query.filter(flows::Column::Id.is_in(pagination::parse_ids::<i64>(&ids)));
         }
-        Err(crate::services::resources::labels::ListLabelFilterError::Invalid(reason)) => {
-            return Ok(field_status("label", &reason));
-        }
-        Err(crate::services::resources::labels::ListLabelFilterError::Db(_)) => {
-            return Err(Error::InternalServerError);
-        }
+        Err(resp) => return Ok(resp),
     }
     let (count, page_rows) = pagination::sql_page(&ctx.db, query, page)
         .await
@@ -182,6 +210,20 @@ pub(super) async fn list(
 // ─────────────────────────── GET /flows/{id} ───────────────────────────
 
 /// `GET /api/v1/flows/{id}` — détail + graphe de la dernière version.
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}",
+    tag = "flows",
+    operation_id = "flows_get",
+    summary = "Get a flow",
+    description = "Flow with the graph of its latest saved version (which may differ from the deployed one, see `deployed_version_number`).",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 200, body = pnex_core::Flow),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -205,6 +247,24 @@ pub(super) async fn detail(
 /// `PATCH /api/v1/flows/{id}` — enregistre une **nouvelle version**
 /// (append-only). 409 si `expected_version_number` ≠ version courante.
 /// Aucun rechargement runtime — l'exécution ne change qu'au deploy.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/flows/{id}",
+    tag = "flows",
+    operation_id = "flows_update",
+    summary = "Save a new flow version",
+    description = "Appends a new version (append-only history), optionally renaming the flow. Optimistic concurrency: `expected_version_number` must equal the current latest version, else 409 `flow-stale-version` with `args.expected`/`args.current`. Never touches the runtime: execution changes only on deploy. Requires owner, admin or member role. Graph secret references are checked against the vault: 403/404 vault error codes as on `/secrets`.",
+    params(("id" = i64, Path, description = "Flow id")),
+    request_body = pnex_core::UpdateFlow,
+    responses(
+        (status = 200, description = "Saved; `deployed_version_number` is always null in this answer", body = pnex_core::Flow),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `device_id`) or `flow-invalid` (`errors.violations`: graph violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Stale version (`flow-stale-version`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -213,7 +273,7 @@ pub(super) async fn update(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "flow-write-forbidden",
+            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage flows.",
         ));
     }
@@ -246,6 +306,21 @@ pub(super) async fn update(
 /// — **best-effort** : la ligne est déjà supprimée, un échec de rechargement
 /// ne peut plus défaire le delete, l'API répond 204 et le problème est
 /// loggué (jamais de 503 « le flow est parti mais la réponse dit l'inverse »).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/flows/{id}",
+    tag = "flows",
+    operation_id = "flows_delete",
+    summary = "Delete a flow",
+    description = "Deletes the flow, its versions, organisation-layer links and dedicated secrets. If it was deployed, the runtime is reloaded without it (best effort: a reload failure is logged, the answer stays 204) and regulated devices get their configuration cleared. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Flow id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -253,7 +328,7 @@ pub(super) async fn delete(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "flow-write-forbidden",
+            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage flows.",
         ));
     }
@@ -330,6 +405,20 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
 
 /// `GET /api/v1/flows/{id}/versions` — historique append-only, paginé (D14),
 /// du plus récent au plus ancien.
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/versions",
+    tag = "flows",
+    operation_id = "flows_versions_list",
+    summary = "List the versions of a flow",
+    description = "Paginated version history, newest first, without graphs. `deployed` marks the deployed version.",
+    params(("id" = i64, Path, description = "Flow id"), VersionsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::FlowVersionSummary>),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -389,9 +478,12 @@ pub(super) async fn versions(
     .into_response())
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct VersionsQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -399,6 +491,20 @@ pub(super) struct VersionsQuery {
 
 /// `GET /api/v1/flows/{id}/versions/{n}` — graphe d'une version précise
 /// (rollback ou audit).
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/versions/{version_number}",
+    tag = "flows",
+    operation_id = "flows_versions_get",
+    summary = "Get one flow version",
+    description = "One version with its graph (audit or rollback preview).",
+    params(("id" = i64, Path, description = "Flow id"), ("version_number" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::FlowVersionDetail),
+        (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn version_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,

@@ -5,22 +5,22 @@
 //! `.offset().limit()`) on the SQL side when the filters push down there;
 //! otherwise filter in Rust then slice.
 //!
-//! Paramètres : `limit` (défaut : var d'env `PAGINATION_DEFAULT_LIMIT`,
-//! à 10 si absente — **une seule var pour toutes les listes** ; max 100),
-//! `offset` (≥ 0) et `search` (OU insensible à la casse sur les champs
-//! texte pertinents de chaque liste). Valeurs invalides ou hors bornes →
-//! défauts silencieux, jamais d'erreur 400.
+//! Parameters: `limit` (default: env var `PAGINATION_DEFAULT_LIMIT`, 10 when
+//! unset — **one variable for every list**; max 100), `offset` (>= 0) and
+//! `search` (case-insensitive OR over the relevant text fields of each
+//! list). Invalid or out-of-range values fall back to the defaults
+//! silently, never a 400.
 
 use serde::Serialize;
 use std::collections::HashMap;
 
 pub const MAX_LIMIT: i64 = 100;
-/// Var d'env unique pilotant la limite par défaut de toutes les listes.
+/// Single env var driving the default limit of every list.
 pub const DEFAULT_LIMIT_ENV: &str = "PAGINATION_DEFAULT_LIMIT";
 pub const DEFAULT_LIMIT_FALLBACK: i64 = 10;
 
-/// Limite par défaut partagée par toutes les listes — lue à chaque appel
-/// (testable, réactive au changement d'env du process).
+/// Default limit shared by every list, read on each call (testable,
+/// follows env changes of the process).
 pub fn default_limit() -> i64 {
     std::env::var(DEFAULT_LIMIT_ENV)
         .ok()
@@ -30,7 +30,7 @@ pub fn default_limit() -> i64 {
         .min(MAX_LIMIT)
 }
 
-/// Page demandée, après clamp.
+/// Requested page, after clamping.
 #[derive(Debug, Clone, Copy)]
 pub struct PageParams {
     pub limit: i64,
@@ -38,9 +38,9 @@ pub struct PageParams {
 }
 
 impl PageParams {
-    /// Depuis des paramètres bruts (`Option<String>` des extracteurs) :
-    /// non numérique / `< 1` → défaut ; `> MAX_LIMIT` → clamp ;
-    /// offset négatif → 0.
+    /// From raw parameters (`Option<String>` of the extractors): non-numeric
+    /// or `< 1` gives the default, `> MAX_LIMIT` is clamped, a negative
+    /// offset becomes 0.
     pub fn from(limit: Option<&str>, offset: Option<&str>) -> Self {
         let limit = limit
             .and_then(|v| v.parse::<i64>().ok())
@@ -54,23 +54,23 @@ impl PageParams {
         Self { limit, offset }
     }
 
-    /// Depuis une raw query map multi-valeurs (cf. `raw_query_map`).
+    /// From a multi-valued raw query map (see `raw_query_map`).
     pub fn from_map(map: &HashMap<String, Vec<String>>) -> Self {
         let first = |k: &str| map.get(k).and_then(|v| v.first().map(String::as_str));
         Self::from(first("limit"), first("offset"))
     }
 
-    /// Offset de la page suivante — `None` sur la dernière page.
+    /// Offset of the next page, `None` on the last page.
     pub fn next_offset(&self, count: i64) -> Option<i64> {
         (self.offset + self.limit < count).then_some(self.offset + self.limit)
     }
 
-    /// Offset de la page précédente — `None` sur la première page.
+    /// Offset of the previous page, `None` on the first page.
     pub fn previous_offset(&self) -> Option<i64> {
         (self.offset > 0).then_some((self.offset - self.limit).max(0))
     }
 
-    /// Bornes `skip`/`take` pour un découpage Rust d'un Vec déjà filtré.
+    /// `skip`/`take` bounds to slice an already filtered Vec in Rust.
     pub fn slice(&self, len: usize) -> (usize, usize) {
         let skip = (self.offset as usize).min(len);
         let take = (self.limit as usize).min(len - skip);
@@ -78,8 +78,8 @@ impl PageParams {
     }
 }
 
-/// Recherche multi-champs côté Rust : le terme (minuscules) doit apparaître
-/// dans l'une des valeurs fournies (OU insensible à la casse).
+/// Rust-side multi-field search: the term must appear in one of the given
+/// values (case-insensitive OR).
 pub fn rust_search_match(search: &Option<String>, haystacks: &[&str]) -> bool {
     match search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(term) => {
@@ -138,11 +138,7 @@ pub async fn label_ids(
     use axum::response::IntoResponse;
     match list_filter(db, org_id, raw, kind).await {
         Ok(ids) => Ok(ids.map(|set| set.into_iter().collect())),
-        Err(ListLabelFilterError::Invalid(reason)) => Err((
-            axum::http::StatusCode::BAD_REQUEST,
-            axum::Json(serde_json::json!({ "label": reason })),
-        )
-            .into_response()),
+        Err(ListLabelFilterError::Invalid(reason)) => Err(super::field_error("label", &reason)),
         Err(ListLabelFilterError::Db(_)) => {
             Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
@@ -178,8 +174,8 @@ where
     Ok((count, rows))
 }
 
-/// Enveloppe paginée avec liens `next`/`previous` relatifs (chemin + filtres
-/// conservés). `filters` : paires clé/valeur actives, hors limit/offset.
+/// Paginated envelope with relative `next`/`previous` links (path and
+/// filters kept). `filters`: active key/value pairs, limit/offset excluded.
 pub fn envelope<T: Serialize>(
     path: &str,
     filters: &[(String, String)],
@@ -204,7 +200,7 @@ pub fn envelope<T: Serialize>(
     })
 }
 
-/// Percent-encoding minimal pour les valeurs de filtres dans les liens.
+/// Minimal percent-encoding of filter values in the links.
 fn urlencode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {

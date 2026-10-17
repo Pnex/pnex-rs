@@ -39,11 +39,7 @@ fn forbidden(code: &str, msg: &str) -> Error {
 
 /// 400 per-field error shape.
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 /// Couche de l'org courante, sinon None (404 masqué cross-org).
@@ -139,40 +135,32 @@ fn layer_write_error_response(
             "name",
             &format!("{}:200", err_codes::FIELD_MAX_LENGTH),
         ),
-        E::Doc(v) => (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "violations": v })),
-        )
-            .into_response(),
-        E::UnknownAsset { id } => {
-            field_status("doc", &format!("asset {id} inconnu pour cette organisation."))
-        }
-        E::BadAssetKind { id, expected } => field_status(
-            "doc",
-            &format!("asset {id} : kind {} requis.", expected.join(" ou ")),
+        E::Doc(v) => super::violations_error(pnex_core::err_codes::ANNOTATION_LAYER_INVALID, v),
+        // Database-checked references of the document travel as violations
+        // (the offending id is the `subject`), like the structural ones.
+        E::UnknownAsset { id } => doc_violation(&id, "unknown_asset", format!("asset {id} is unknown in this organization")),
+        E::BadAssetKind { id, expected } => doc_violation(
+            &id,
+            "asset_kind_mismatch",
+            format!("asset {id}: kind {} required", expected.join(" or ")),
         ),
-        E::UnknownDevice { device_id } => field_status(
-            "doc",
-            &format!("device \"{device_id}\" inconnu pour cette organisation."),
+        E::UnknownDevice { device_id } => doc_violation(
+            &device_id,
+            "unknown_device",
+            format!("device \"{device_id}\" is unknown in this organization"),
         ),
-        E::UnknownControl { id } => field_status(
-            "doc",
-            &format!("control {id} is unknown in this organization."),
+        E::UnknownControl { id } => doc_violation(
+            &id.to_string(),
+            "unknown_control",
+            format!("control {id} is unknown in this organization"),
         ),
-        E::AnchorMismatch { id } => field_status(
-            "doc",
-            &format!(
-                "item ancré sur l'asset {id} : un ensemble est lié à son média déclaré (ou aux scènes de son tour)"
-            ),
+        E::AnchorMismatch { id } => doc_violation(
+            &id,
+            "anchor_mismatch",
+            format!("item anchored on asset {id}: a layer only anchors on its declared media (or the scenes of its tour)"),
         ),
-        E::MediaAndTour => field_status(
-            "tour_id",
-            "un ensemble est rattaché à un média OU à un tour, pas les deux.",
-        ),
-        E::UnknownTour { id } => field_status(
-            "tour_id",
-            &format!("tour {id} inconnu pour cette organisation."),
-        ),
+        E::MediaAndTour => field_status("tour_id", err_codes::FIELD_INVALID),
+        E::UnknownTour { .. } => field_status("tour_id", err_codes::FIELD_NOT_FOUND),
         // Optimistic concurrency: the expected/current numbers travel in
         // `errors.args` (never pre-rendered into the description).
         E::Conflict { expected, current } => Error::CustomError(
@@ -195,6 +183,18 @@ fn layer_write_error_response(
     }
 }
 
+/// One-violation `annotation-layer-invalid` answer.
+fn doc_violation(subject: &str, code: &str, message: String) -> Response {
+    super::violations_error(
+        err_codes::ANNOTATION_LAYER_INVALID,
+        vec![pnex_core::AnnotationViolation {
+            subject: Some(subject.to_string()),
+            code: code.to_string(),
+            message,
+        }],
+    )
+}
+
 /// Extracteur du slug device d'une cible (None pour note).
 fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
     match target {
@@ -211,6 +211,21 @@ fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
 
 /// `POST /api/v1/annotation-layers` — crée la couche et sa version 1
 /// (une transaction, document vide). Non publiée.
+#[utoipa::path(
+    post,
+    path = "/api/v1/annotation-layers",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_create",
+    summary = "Create an annotation layer",
+    description = "Creates the layer and its version 1 with an empty document, attached to a media OR a tour (not both). Not published. Requires owner, admin or member role.",
+    request_body = pnex_core::CreateAnnotationLayer,
+    responses(
+        (status = 201, body = pnex_core::AnnotationLayerDetail),
+        (status = 400, description = "`field-invalid` (`name`, `media_asset_id`, `tour_id`) or `annotation-layer-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -281,15 +296,18 @@ async fn create(
 
 // ─────────────────────────── GET /annotation-layers ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListLayersQuery {
+    /// Case-insensitive substring of the name.
     search: Option<String>,
-    /// Filtre exact par média associé (pivot UX : « les ensembles de ce
-    /// média » — éviter les doublons).
+    /// Exact filter on the attached media (UUID).
     media: Option<String>,
     /// Exact filter on the attached tour ("the sets of this tour").
     tour: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
@@ -297,6 +315,20 @@ struct ListLayersQuery {
 
 /// `GET /api/v1/annotation-layers` — couches de l'org, paginées (D14),
 /// filtre search (nom) ; hydratation latest + publié en vrac (pas de N+1).
+#[utoipa::path(
+    get,
+    path = "/api/v1/annotation-layers",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_list",
+    summary = "List the annotation layers",
+    description = "Paginated (`limit`/`offset`), newest first, with latest and published version numbers. Filters: `search`, `media`, `tour`, `label`.",
+    params(ListLayersQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::AnnotationLayerSummary>),
+        (status = 400, description = "Invalid `media`/`tour` UUID or `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -416,12 +448,28 @@ async fn list(
 
 // ─────────────────────────── GET /annotation-layers/{id} ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct DetailQuery {
+    /// Version number of the returned document (default: latest).
     version: Option<i64>,
 }
 
 /// `GET /api/v1/annotation-layers/{id}[?version=n]` — détail + document.
+#[utoipa::path(
+    get,
+    path = "/api/v1/annotation-layers/{id}",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_get",
+    summary = "Get an annotation layer",
+    description = "The layer with the document of its latest version, or of `?version=n`.",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)"), DetailQuery),
+    responses(
+        (status = 200, body = pnex_core::AnnotationLayerDetail),
+        (status = 404, description = "Unknown layer/version or layer of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -473,6 +521,24 @@ async fn detail(
 
 /// `PATCH /{id}` — nouvelle version append-only. 409 si
 /// `expected_version_number` ≠ version courante.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/annotation-layers/{id}",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_update",
+    summary = "Save a new version of an annotation layer",
+    description = "Appends a new version with the given document (append-only history), only if `expected_version_number` is the current latest version (optimistic concurrency). Controls declared by items are provisioned. Does not change what is published. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
+    request_body = pnex_core::UpdateAnnotationLayer,
+    responses(
+        (status = 200, body = pnex_core::AnnotationLayerDetail),
+        (status = 400, description = "`field-invalid` (`name`, `media_asset_id`, `tour_id`) or `annotation-layer-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`annot-version-conflict` (`errors.args.expected` / `errors.args.current`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -511,6 +577,21 @@ async fn update(
 
 /// `DELETE /{id}` — 204 ; versions en cascade. Aucun octet à purger (D21).
 /// Pas de purge D42 : KIND_ANNOTATION_LAYER = porte ouverte D60(5).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/annotation-layers/{id}",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_delete",
+    summary = "Delete an annotation layer",
+    description = "Deletes the layer and all its versions; controls its items declared are released (deleted unless still used elsewhere). Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -549,14 +630,31 @@ async fn delete(
 
 // ─────────────────────────── GET /{id}/versions ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct VersionsQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /{id}/versions` — historique append-only, paginé (D14), du plus
 /// récent au plus ancien.
+#[utoipa::path(
+    get,
+    path = "/api/v1/annotation-layers/{id}/versions",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_versions_list",
+    summary = "List the versions of an annotation layer",
+    description = "Append-only history, newest first, paginated (`limit`/`offset`).",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)"), VersionsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::AnnotationLayerVersionSummary>),
+        (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -605,6 +703,20 @@ async fn versions(
 
 /// `GET /{id}/versions/{n}` — document d'une version précise (audit /
 /// rechargement éditeur — « restaurer » = la charger puis save).
+#[utoipa::path(
+    get,
+    path = "/api/v1/annotation-layers/{id}/versions/{version_number}",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_versions_get",
+    summary = "Get one version of an annotation layer",
+    description = "The document of a given version (audit, or load it in the editor then save to restore it).",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)"), ("version_number" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::AnnotationLayerVersionDetail),
+        (status = 404, description = "Unknown layer or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn version_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -640,6 +752,22 @@ async fn version_detail(
 
 /// `POST /{id}/publish` — publie une version (version_number absent =
 /// dernière) : simple pointeur (le doc publié sert le read model).
+#[utoipa::path(
+    post,
+    path = "/api/v1/annotation-layers/{id}/publish",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_publish",
+    summary = "Publish a version of an annotation layer",
+    description = "Points the published version of the layer to `version_number` (default: latest). Its items become visible to every viewer of the anchored media. Body optional. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
+    request_body = Option<pnex_core::PublishAnnotationLayer>,
+    responses(
+        (status = 200, body = pnex_core::AnnotationLayerDetail),
+        (status = 403, description = "`annot-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown layer or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn publish(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -702,6 +830,21 @@ async fn publish(
 
 /// `POST /{id}/unpublish` — pointeur → NULL ; les items disparaissent de
 /// tous les viewers, aucun octet déplacé.
+#[utoipa::path(
+    post,
+    path = "/api/v1/annotation-layers/{id}/unpublish",
+    tag = "annotation-layers",
+    operation_id = "annotation_layers_unpublish",
+    summary = "Unpublish an annotation layer",
+    description = "Clears the published version: the layer items disappear from all viewers. Versions are kept. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::AnnotationLayerDetail),
+        (status = 403, description = "`annot-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn unpublish(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -746,11 +889,28 @@ async fn unpublish(
 /// Context of a read: a standalone media shows only the sets attached to
 /// that media; a tour (`?tour=`) shows only that tour's sets — the two never
 /// mix (D147).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ReadScope {
+    /// Tour id (UUID): read the sets of this tour instead of the media's own sets.
+    #[param(value_type = Option<String>)]
     tour: Option<Uuid>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/annotations",
+    tag = "media",
+    operation_id = "media_annotations",
+    summary = "Annotations shown on a media",
+    description = "Merged items of the published annotation layers anchored on this media, with batch-resolved device targets (`resolved.dead` = device gone). Without `tour`: the media own sets plus free sets; with `tour`: only that tour sets. Read-only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset id (UUID)"), ReadScope),
+    responses(
+        (status = 200, body = pnex_core::MediaAnnotations),
+        (status = 404, description = "Unknown media or media of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn media_annotations(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -906,4 +1066,23 @@ pub fn media_routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/media")
         .add("/{id}/annotations", get(media_annotations))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        versions,
+        version_detail,
+        publish,
+        unpublish,
+        media_annotations
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

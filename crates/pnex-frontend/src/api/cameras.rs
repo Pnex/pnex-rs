@@ -4,7 +4,8 @@
 //! `/ws/camera/live` URL builder for the live viewer.
 
 use pnex_core::camera::{
-    AnnotationLayer, CameraSettings, CameraView, FrameAnnotation, RecordingTimeline,
+    AnnotationLayer, CameraSettings, CameraView, FrameAnnotation, FrameAnnotations,
+    RecordingTimeline,
 };
 use serde::Serialize;
 
@@ -12,9 +13,10 @@ use crate::api::client;
 use crate::api::error::ApiError;
 use crate::api::media::urlencode;
 
-/// `GET /api/v1/cameras` — cameras of the current org (settings + live state).
+/// `GET /api/v1/cameras`: every camera of the current org (settings + live
+/// state), all pages.
 pub async fn list() -> Result<Vec<CameraView>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/cameras", None).await
+    client::request_all("/api/v1/cameras").await
 }
 
 /// Partial settings update — `None` fields are left untouched server-side.
@@ -62,12 +64,7 @@ pub async fn patch_settings(device: i64, patch: &SettingsPatch) -> Result<Camera
 
 /// Field errors of a 400 settings response: `(field, token)` pairs.
 pub fn field_errors(err: &ApiError) -> Vec<(String, String)> {
-    if err.status != Some(400) {
-        return Vec::new();
-    }
-    err.body
-        .as_ref()
-        .and_then(|b| b.as_object())
+    err.fields()
         .map(|obj| {
             obj.iter()
                 .filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string())))
@@ -154,20 +151,16 @@ pub async fn delete_recordings(
 }
 
 /// `GET /api/v1/cameras/{device}/recordings/layers` — annotation layers
-/// (detection nodes) with boxes in the window.
+/// (detection nodes) with boxes in the window, all pages.
 pub async fn annotation_layers(
     device: i64,
     from: &str,
     to: &str,
 ) -> Result<Vec<AnnotationLayer>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!(
-            "/api/v1/cameras/{device}/recordings/layers{}",
-            range_query(from, to)
-        ),
-        None,
-    )
+    client::request_all(&format!(
+        "/api/v1/cameras/{device}/recordings/layers{}",
+        range_query(from, to)
+    ))
     .await
 }
 
@@ -179,7 +172,7 @@ pub async fn annotations(
     to: &str,
     layers: &[String],
 ) -> Result<Vec<FrameAnnotation>, ApiError> {
-    client::request(
+    let found: FrameAnnotations = client::request(
         reqwest::Method::GET,
         &format!(
             "/api/v1/cameras/{device}/recordings/annotations{}&layers={}",
@@ -188,7 +181,8 @@ pub async fn annotations(
         ),
         None,
     )
-    .await
+    .await?;
+    Ok(found.annotations)
 }
 
 /// `/ws/camera/live` URL of one camera (D75): API base with the scheme

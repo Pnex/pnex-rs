@@ -48,9 +48,10 @@ pub async fn list_all() -> Result<Vec<MediaStream>, ApiError> {
     client::request_all("/api/v1/media/streams").await
 }
 
-/// `GET /api/v1/media/capture-devices` — the org's capture boxes (lot 6b).
+/// `GET /api/v1/media/capture-devices`: the org's capture boxes (lot 6b),
+/// all pages.
 pub async fn capture_devices() -> Result<Vec<MediaCaptureDevice>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/media/capture-devices", None).await
+    client::request_all("/api/v1/media/capture-devices").await
 }
 
 /// `POST /api/v1/media/streams` — 400 body = field tokens.
@@ -83,9 +84,9 @@ pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
     .await
 }
 
-/// `GET /api/v1/asr/profiles`.
+/// `GET /api/v1/asr/profiles`, all pages.
 pub async fn profiles() -> Result<Vec<AsrProfile>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/asr/profiles", None).await
+    client::request_all("/api/v1/asr/profiles").await
 }
 
 /// `POST /api/v1/asr/profiles`.
@@ -108,9 +109,9 @@ pub async fn delete_profile(id: &str) -> Result<Option<()>, ApiError> {
     .await
 }
 
-/// `GET /api/v1/asr/models`.
+/// `GET /api/v1/asr/models`, all pages.
 pub async fn models() -> Result<Vec<AsrModel>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/asr/models", None).await
+    client::request_all("/api/v1/asr/models").await
 }
 
 /// `POST /api/v1/asr/models` — reads the files and checks the model
@@ -154,11 +155,12 @@ pub async fn test_model(
     .await
 }
 
-/// `DELETE /api/v1/asr/models/{id}`.
-pub async fn delete_model(id: &str) -> Result<Option<()>, ApiError> {
+/// `DELETE /api/v1/asr/models/{id}` — 409 `asr-model-in-use` while profiles
+/// use it, unless `force` (the profiles go with it).
+pub async fn delete_model(id: &str, force: bool) -> Result<Option<()>, ApiError> {
     client::request_opt(
         reqwest::Method::DELETE,
-        &format!("/api/v1/asr/models/{id}"),
+        &format!("/api/v1/asr/models/{id}?force={force}"),
         None,
     )
     .await

@@ -21,7 +21,7 @@ const PROVIDERS: &str = "/api/v1/ai/providers";
 
 /// `GET …/providers`.
 pub async fn providers() -> Result<Vec<LlmProvider>, ApiError> {
-    client::request(reqwest::Method::GET, PROVIDERS, None).await
+    client::request_all(PROVIDERS).await
 }
 
 /// `POST …/providers` — the key is required.

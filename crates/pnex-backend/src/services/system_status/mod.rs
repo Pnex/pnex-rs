@@ -10,7 +10,7 @@ mod topology;
 use std::time::{Duration, Instant};
 
 use loco_rs::app::AppContext;
-use pnex_core::{ComponentStatus, StatusMetric, SystemStatus};
+use pnex_core::{ComponentState, ComponentStatus, MetricUnit, StatusMetric, SystemStatus};
 use sea_orm::{
     ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, PaginatorTrait, QueryFilter,
     Statement,
@@ -30,25 +30,25 @@ use crate::services::retention::DeploymentMode;
 /// Upper bound of every network probe.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
-const OK: &str = "ok";
-const DEGRADED: &str = "degraded";
-const DOWN: &str = "down";
-const NOT_CONFIGURED: &str = "not_configured";
+const OK: ComponentState = ComponentState::Ok;
+const DEGRADED: ComponentState = ComponentState::Degraded;
+const DOWN: ComponentState = ComponentState::Down;
+const NOT_CONFIGURED: ComponentState = ComponentState::NotConfigured;
 
-fn component(key: &str, status: &str) -> ComponentStatus {
+fn component(key: &str, status: ComponentState) -> ComponentStatus {
     ComponentStatus {
         key: key.to_string(),
-        status: status.to_string(),
+        status,
         latency_ms: None,
         detail: None,
         metrics: Vec::new(),
     }
 }
 
-fn metric(key: &str, unit: &str, value: Option<f64>) -> StatusMetric {
+fn metric(key: &str, unit: MetricUnit, value: Option<f64>) -> StatusMetric {
     StatusMetric {
         key: key.to_string(),
-        unit: unit.to_string(),
+        unit,
         value,
         text: None,
         total: None,
@@ -59,7 +59,7 @@ fn metric(key: &str, unit: &str, value: Option<f64>) -> StatusMetric {
 fn text_metric(key: &str, text: impl Into<String>) -> StatusMetric {
     StatusMetric {
         text: Some(text.into()),
-        ..metric(key, "text", None)
+        ..metric(key, MetricUnit::Text, None)
     }
 }
 
@@ -82,7 +82,7 @@ pub async fn collect(ctx: &AppContext) -> SystemStatus {
     );
     SystemStatus {
         server_version: crate::app::app_version(),
-        deployment_mode: DeploymentMode::from_env().as_str().to_string(),
+        deployment_mode: DeploymentMode::from_env().into(),
         generated_at: chrono::Utc::now().to_rfc3339(),
         components: vec![
             database,
@@ -117,12 +117,12 @@ async fn probe_database(ctx: &AppContext) -> ComponentStatus {
     match ping {
         Ok(Ok(_)) => {}
         Ok(Err(err)) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(err.to_string());
             return out;
         }
         Err(_) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some("timeout".into());
             return out;
         }
@@ -139,7 +139,7 @@ async fn probe_database(ctx: &AppContext) -> ComponentStatus {
         _ => None,
     };
     out.metrics
-        .push(metric("db_size", "bytes", size.map(|s| s as f64)));
+        .push(metric("db_size", MetricUnit::Bytes, size.map(|s| s as f64)));
     if backend == DatabaseBackend::Postgres {
         let sql = "SELECT relname::text AS name, pg_total_relation_size(relid)::bigint AS size \
                    FROM pg_catalog.pg_statio_user_tables ORDER BY size DESC LIMIT 5";
@@ -157,7 +157,7 @@ async fn probe_database(ctx: &AppContext) -> ComponentStatus {
                 };
                 out.metrics.push(StatusMetric {
                     label: Some(name),
-                    ..metric("db_table", "bytes", Some(size as f64))
+                    ..metric("db_table", MetricUnit::Bytes, Some(size as f64))
                 });
             }
         }
@@ -177,7 +177,7 @@ fn probe_http() -> reqwest::Client {
 async fn probe_rauthy(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("rauthy", OK);
     let Ok(settings) = RauthySettings::from_config(&ctx.config) else {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         return out;
     };
     let base = settings.base_url.trim_end_matches('/').to_string();
@@ -198,17 +198,17 @@ async fn probe_rauthy(ctx: &AppContext) -> ComponentStatus {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true);
             if !(db_ok && cache_ok) {
-                out.status = DEGRADED.into();
+                out.status = DEGRADED;
                 out.detail = Some(format!("db_healthy={db_ok} cache_healthy={cache_ok}"));
             }
         }
         Ok(resp) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(format!("HTTP {}", resp.status()));
             return out;
         }
         Err(err) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(err.to_string());
             return out;
         }
@@ -226,7 +226,7 @@ async fn probe_rauthy(ctx: &AppContext) -> ComponentStatus {
 async fn probe_openobserve(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("openobserve", OK);
     let Some(settings) = OpenobserveSettings::from_config(&ctx.config) else {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         return out;
     };
     let client = O2Client::new(&settings);
@@ -236,7 +236,7 @@ async fn probe_openobserve(ctx: &AppContext) -> ComponentStatus {
         .unwrap_or(false);
     out.latency_ms = elapsed_ms(started);
     if !healthy {
-        out.status = DOWN.into();
+        out.status = DOWN;
         out.detail = Some(format!("{}/healthz unreachable", settings.base_url));
         return out;
     }
@@ -276,22 +276,25 @@ async fn probe_openobserve(ctx: &AppContext) -> ComponentStatus {
         per_org.push((name, org_bytes));
     }
     if failures > 0 {
-        out.status = DEGRADED.into();
+        out.status = DEGRADED;
         out.detail = Some(format!("{failures} org(s) could not be listed"));
     }
     out.metrics
-        .push(metric("o2_storage", "bytes", Some(storage)));
+        .push(metric("o2_storage", MetricUnit::Bytes, Some(storage)));
     out.metrics
-        .push(metric("o2_compressed", "bytes", Some(compressed)));
+        .push(metric("o2_compressed", MetricUnit::Bytes, Some(compressed)));
     out.metrics
-        .push(metric("o2_docs", "count", Some(docs as f64)));
-    out.metrics
-        .push(metric("o2_streams", "count", Some(streams as f64)));
+        .push(metric("o2_docs", MetricUnit::Count, Some(docs as f64)));
+    out.metrics.push(metric(
+        "o2_streams",
+        MetricUnit::Count,
+        Some(streams as f64),
+    ));
     per_org.sort_by(|a, b| b.1.total_cmp(&a.1));
     for (name, bytes) in per_org.into_iter().take(5) {
         out.metrics.push(StatusMetric {
             label: Some(name),
-            ..metric("o2_org", "bytes", Some(bytes))
+            ..metric("o2_org", MetricUnit::Bytes, Some(bytes))
         });
     }
     out
@@ -300,7 +303,7 @@ async fn probe_openobserve(ctx: &AppContext) -> ComponentStatus {
 async fn probe_valkey(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("valkey", OK);
     let Some(url) = ValkeySettings::from_config(&ctx.config).and_then(|s| s.url) else {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         return out;
     };
     let started = Instant::now();
@@ -335,7 +338,8 @@ async fn probe_valkey(ctx: &AppContext) -> ComponentStatus {
                     .map(|v| v.trim().to_string())
             };
             let used = field(&memory, "used_memory:").and_then(|v| v.parse::<f64>().ok());
-            out.metrics.push(metric("valkey_memory", "bytes", used));
+            out.metrics
+                .push(metric("valkey_memory", MetricUnit::Bytes, used));
             if let Some(v) =
                 field(&server, "valkey_version:").or_else(|| field(&server, "redis_version:"))
             {
@@ -343,11 +347,11 @@ async fn probe_valkey(ctx: &AppContext) -> ComponentStatus {
             }
         }
         Ok(Err(err)) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(err);
         }
         Err(_) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some("timeout".into());
         }
     }
@@ -372,7 +376,7 @@ async fn probe_object_storage(ctx: &AppContext) -> ComponentStatus {
     let media_bytes = sum_bytes(ctx, "media_versions").await;
     out.metrics.push(metric(
         "media_bytes",
-        "bytes",
+        MetricUnit::Bytes,
         Some(media_bytes.unwrap_or(0) as f64),
     ));
     out.metrics.push(StatusMetric {
@@ -388,7 +392,7 @@ async fn probe_object_storage(ctx: &AppContext) -> ComponentStatus {
     };
     out.latency_ms = elapsed_ms(started);
     if let Err(err) = result {
-        out.status = DOWN.into();
+        out.status = DOWN;
         out.detail = Some(format!("{}: {err}", target.bucket));
     }
     out
@@ -397,7 +401,7 @@ async fn probe_object_storage(ctx: &AppContext) -> ComponentStatus {
 async fn probe_host(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("host", OK);
     if !cfg!(target_os = "linux") {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         out.detail = Some("host metrics are only collected on Linux".into());
         return out;
     }
@@ -431,7 +435,7 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
     })
     .await;
     let Ok((kind, disks, memory, load, uptime)) = facts else {
-        out.status = DEGRADED.into();
+        out.status = DEGRADED;
         return out;
     };
     out.metrics.push(StatusMetric {
@@ -441,8 +445,11 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
     out.metrics
         .push(text_metric("arch", std::env::consts::ARCH));
     let cpus = std::thread::available_parallelism().map(|n| n.get()).ok();
-    out.metrics
-        .push(metric("cpu_count", "count", cpus.map(|n| n as f64)));
+    out.metrics.push(metric(
+        "cpu_count",
+        MetricUnit::Count,
+        cpus.map(|n| n as f64),
+    ));
     let mut low_disk = false;
     for disk in disks {
         let used = disk.total_bytes.saturating_sub(disk.available_bytes);
@@ -452,7 +459,7 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
         out.metrics.push(StatusMetric {
             total: Some(disk.total_bytes as f64),
             label: Some(disk.path),
-            ..metric("disk", "bytes", Some(used as f64))
+            ..metric("disk", MetricUnit::Bytes, Some(used as f64))
         });
     }
     if let Some(mem) = memory {
@@ -460,15 +467,16 @@ async fn probe_host(ctx: &AppContext) -> ComponentStatus {
             total: Some(mem.total_bytes as f64),
             ..metric(
                 "memory",
-                "bytes",
+                MetricUnit::Bytes,
                 Some(mem.total_bytes.saturating_sub(mem.available_bytes) as f64),
             )
         });
     }
-    out.metrics.push(metric("load1", "count", load));
-    out.metrics.push(metric("uptime", "seconds", uptime));
+    out.metrics.push(metric("load1", MetricUnit::Count, load));
+    out.metrics
+        .push(metric("uptime", MetricUnit::Seconds, uptime));
     if low_disk {
-        out.status = DEGRADED.into();
+        out.status = DEGRADED;
         out.detail = Some("less than 10% disk space available".into());
     }
     out
@@ -481,7 +489,7 @@ async fn probe_secrets(ctx: &AppContext) -> ComponentStatus {
     let ring = match crate::services::secrets::Keyring::from_config(&ctx.config) {
         Ok(ring) => ring,
         Err(err) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(err.to_string());
             return out;
         }
@@ -490,17 +498,23 @@ async fn probe_secrets(ctx: &AppContext) -> ComponentStatus {
         .push(text_metric("secrets_write_key", ring.primary_id()));
     out.metrics.push(metric(
         "secrets_keys",
-        "count",
+        MetricUnit::Count,
         Some(ring.key_ids().count() as f64),
     ));
     match crate::services::secrets::rekey::stats(&ctx.db, &ring).await {
         Ok(stats) => {
-            out.metrics
-                .push(metric("secrets_total", "count", Some(stats.total as f64)));
-            out.metrics
-                .push(metric("secrets_stale", "count", Some(stats.stale as f64)));
+            out.metrics.push(metric(
+                "secrets_total",
+                MetricUnit::Count,
+                Some(stats.total as f64),
+            ));
+            out.metrics.push(metric(
+                "secrets_stale",
+                MetricUnit::Count,
+                Some(stats.stale as f64),
+            ));
             if stats.unknown_key > 0 {
-                out.status = DEGRADED.into();
+                out.status = DEGRADED;
                 out.detail = Some(format!(
                     "{} secret(s) encrypted with a key missing from PNEX_SECRETS_KEYS",
                     stats.unknown_key
@@ -508,7 +522,7 @@ async fn probe_secrets(ctx: &AppContext) -> ComponentStatus {
             }
         }
         Err(err) => {
-            out.status = DOWN.into();
+            out.status = DOWN;
             out.detail = Some(err.to_string());
         }
     }
@@ -518,7 +532,7 @@ async fn probe_secrets(ctx: &AppContext) -> ComponentStatus {
 async fn probe_ai(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("ai", OK);
     if !AiSettings::from_config(&ctx.config).enabled {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         out.detail = Some("AI disabled (settings.ai.enabled = false)".into());
         return out;
     }
@@ -529,13 +543,13 @@ async fn probe_ai(ctx: &AppContext) -> ComponentStatus {
         .unwrap_or(0);
     out.metrics.push(metric(
         "ai_org_providers",
-        "count",
+        MetricUnit::Count,
         Some(org_providers as f64),
     ));
     // Users bring their own LLM (D119): only the org providers count, and
     // none means the assistant cannot answer anyone yet.
     if org_providers == 0 {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
     }
     out
 }

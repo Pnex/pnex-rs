@@ -1,5 +1,22 @@
 use super::*;
 
+/// Answer of a test send: 204 when the message left, else 502
+/// `notify-test-failed` with the transport error in `args.detail`.
+fn test_answer(outcome: std::result::Result<(), pnex_notify::NotifyError>) -> Result<Response> {
+    match outcome {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) => {
+            let detail = e.to_string();
+            Err(crate::controllers::coded_error(
+                StatusCode::BAD_GATEWAY,
+                err_codes::NOTIFY_TEST_FAILED,
+                format!("Test send failed: {detail}"),
+                Some(serde_json::json!({ "detail": detail })),
+            ))
+        }
+    }
+}
+
 /// Message de test built-in (boutons Test — canal existant ou brouillon).
 fn test_message(name: &str) -> pnex_notify::Message {
     pnex_notify::Message {
@@ -24,7 +41,7 @@ async fn send_test(
     msg: pnex_notify::Message,
 ) -> Result<Response> {
     let Some(ch) = pnex_notify::channel(kind) else {
-        return Ok(field_status("kind", "Type de canal inconnu."));
+        return Ok(field_status("kind", err_codes::FIELD_INVALID));
     };
     // Canal websocket : coordonnées injectées (loopback interne), jamais
     // stockées — le test exerce le chemin complet endpoint → broker → WS.
@@ -61,17 +78,10 @@ async fn send_test(
             ..Default::default()
         });
     }
-    match outcome {
-        Ok(()) => Ok(format::json(serde_json::json!({ "status": "sent" })).into_response()),
-        Err(e) => Ok((
-            StatusCode::BAD_GATEWAY,
-            format::json(serde_json::json!({ "status": "failed", "error": e.to_string() })),
-        )
-            .into_response()),
-    }
+    test_answer(outcome)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct TestDraftInput {
     kind: String,
     name: Option<String>,
@@ -80,6 +90,7 @@ pub(super) struct TestDraftInput {
     /// Channel being edited: its stored secrets fill the fields left
     /// `null` (unchanged) in the draft.
     #[serde(default)]
+    #[schema(value_type = Option<String>)]
     channel_id: Option<Uuid>,
 }
 
@@ -87,6 +98,22 @@ pub(super) struct TestDraftInput {
 /// **avant sauvegarde** (pas de ligne DB, journal sur channel_id nil
 /// impossible → journalisation sans FK : on journalise quand même la
 /// tentative avec un channel_id zéro).
+#[utoipa::path(
+    post,
+    path = "/api/v1/notify/channels/test-draft",
+    tag = "notify",
+    operation_id = "notify_channels_test_draft",
+    summary = "Send a test message through an unsaved channel draft",
+    description = "Sends a built-in test message using the draft configuration, before saving. Side effect: a real message leaves the server. With `channel_id`, secret fields left `null` take the stored channel's values. Nothing is stored and the attempt is not journaled. Requires owner, admin or member role. A failed send answers 502 `notify-test-failed` with the upstream error in `args.detail`.",
+    request_body = TestDraftInput,
+    responses(
+        (status = 204, description = "Sent"),
+        (status = 400, description = "`field-invalid`, `notify-channel-config-invalid`, `notify-channel-field-required` or a vault error", body = crate::openapi::ErrorDetail),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 502, description = "`notify-test-failed`: the send failed (`args.detail`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn test_draft(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -141,7 +168,7 @@ pub(super) async fn test_draft(
     // considère le test-draft comme hors journal (résultat éphémère au
     // toast), les canaux persistés ont le leur.
     let Some(ch) = pnex_notify::channel(&params.kind) else {
-        return Ok(field_status("kind", "Type de canal inconnu."));
+        return Ok(field_status("kind", err_codes::FIELD_INVALID));
     };
     let settings = NotifySettings::from_config(&ctx.config);
     let effective_config = if params.kind == "websocket" {
@@ -150,21 +177,15 @@ pub(super) async fn test_draft(
         plan.sendable
     };
     let msg = test_message(&name);
-    match ch.send(&effective_config, &msg).await {
-        Ok(()) => Ok(format::json(serde_json::json!({ "status": "sent" })).into_response()),
-        Err(e) => Ok((
-            StatusCode::BAD_GATEWAY,
-            format::json(serde_json::json!({ "status": "failed", "error": e.to_string() })),
-        )
-            .into_response()),
-    }
+    test_answer(ch.send(&effective_config, &msg).await)
 }
 
-/// Body optionnel de `POST /channels/{id}/test` : avec `template_id` le
-/// message built-in est remplacé par le template rendu (les vars manquantes
-/// prennent leur `example` déclaré, école preview).
-#[derive(Debug, Default, Deserialize)]
+/// Optional body of `POST /channels/{id}/test`: with `template_id` the
+/// built-in message is replaced by the rendered template (missing vars take
+/// their declared `example`, like the preview).
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
 pub(super) struct TestChannelBody {
+    #[schema(value_type = Option<String>)]
     template_id: Option<Uuid>,
     #[serde(default)]
     vars: std::collections::BTreeMap<String, String>,
@@ -178,6 +199,24 @@ pub(super) struct TestChannelBody {
 /// qu'un `Content-Type: application/json` est présent (défaut injecté par
 /// les harnais de test), et les headers `Content-Type` dupliqués font
 /// échouer le sniffing du Json extractor.
+#[utoipa::path(
+    post,
+    path = "/api/v1/notify/channels/{id}/test",
+    tag = "notify",
+    operation_id = "notify_channels_test",
+    summary = "Send a test message through a saved channel",
+    description = "Sends a built-in test message (or, with `template_id`, that template rendered with `vars` falling back to the declared examples) through the channel, even when it is disabled. Side effect: a real message leaves the server and the attempt is journaled with source `test`. The body is optional. Requires owner, admin or member role. A failed send answers 502 `notify-test-failed` (`args.detail`).",
+    params(("id" = String, Path, format = "uuid", description = "Channel id")),
+    request_body(content = TestChannelBody, description = "Optional; an empty body sends the built-in message"),
+    responses(
+        (status = 204, description = "Sent"),
+        (status = 400, description = "`notify-test-body-invalid`, `notify-template-render` or a vault error", body = crate::openapi::ErrorDetail),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Channel or template not found", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "`notify-test-failed`: the send failed (`args.detail`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn test_channel(
     State(ctx): State<AppContext>,
     org: OrgContext,

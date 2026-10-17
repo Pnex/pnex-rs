@@ -37,13 +37,10 @@ use crate::state::{org, session, toasts};
 const POLL_SECS: u64 = 15;
 
 /// Rôle dans l'org courante (helper privé par page, convention projet).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 fn session_absent() -> bool {
@@ -85,8 +82,8 @@ pub fn Dashboards(id: String, mode: String) -> Element {
         crate::state::viz::open_dashboard(deep_id, mode == "edit");
         let open_id = OPEN_DASHBOARD.cloned();
         if let Some(open_id) = open_id {
-            let can_edit = VIZ_EDIT.cloned()
-                && current_role().is_some_and(|r| crate::state::org::role_can_write(&r));
+            let can_edit =
+                VIZ_EDIT.cloned() && current_role().is_some_and(crate::state::org::role_can_write);
             selected.set(Some(open_id));
             editing.set(can_edit);
             // GlobalSignal : pas de `&mut` static — mutation via with_mut
@@ -96,7 +93,7 @@ pub fn Dashboards(id: String, mode: String) -> Element {
         }
     });
 
-    let can_write = current_role().is_some_and(|r| crate::state::org::role_can_write(&r));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     match selected() {
         Some(dashboard_id) => {

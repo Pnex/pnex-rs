@@ -134,7 +134,8 @@ async fn cycle_creation_save_restore_et_isolation_org() {
             .add_header("X-Org-Id", org_a.to_string())
             .await
             .json::<serde_json::Value>();
-        let versions = versions.as_array().unwrap();
+        assert_eq!(versions["count"], 2, "{versions}");
+        let versions = versions["results"].as_array().unwrap();
         assert_eq!(versions.len(), 2);
         assert_eq!(versions[0]["version_number"], 2);
         assert_eq!(versions[0]["current"], true);
@@ -155,7 +156,7 @@ async fn cycle_creation_save_restore_et_isolation_org() {
             .add_header("X-Org-Id", org_a.to_string())
             .await
             .json::<serde_json::Value>();
-        assert_eq!(versions.as_array().unwrap().len(), 2);
+        assert_eq!(versions["count"], 2, "{versions}");
 
         // ── 409 : le save vise la version courante (le pointeur, pas le
         // dernier numéro) — attendu 1, courant 1, mais un save qui vise 2
@@ -219,7 +220,9 @@ async fn violations_layout_et_roles_viewer() {
             .await;
         assert_eq!(rejected.status_code(), 400);
         let body = rejected.json::<serde_json::Value>();
-        let violations = body["violations"].as_array().expect("violations list");
+        let violations = body["errors"]["violations"]
+            .as_array()
+            .expect("violations list");
         assert!(violations.iter().any(|v| v["code"] == "widget_overflow"));
         assert!(violations.iter().any(|v| v["code"] == "bad_window"));
         let versions = server
@@ -228,7 +231,7 @@ async fn violations_layout_et_roles_viewer() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json::<serde_json::Value>();
-        assert_eq!(versions.as_array().unwrap().len(), 1, "aucune version");
+        assert_eq!(versions["count"], 1, "no new version: {versions}");
 
         // ── Trait pendent (widget inconnu) rejeté aussi.
         let mut dangling = layout_json("soil-01");
@@ -249,7 +252,7 @@ async fn violations_layout_et_roles_viewer() {
             .await;
         assert_eq!(rejected.status_code(), 400);
         let body = rejected.json::<serde_json::Value>();
-        assert!(body["violations"]
+        assert!(body["errors"]["violations"]
             .as_array()
             .unwrap()
             .iter()
@@ -301,7 +304,10 @@ async fn save_sans_nom_valide_et_404_inconnu() {
             .json(&serde_json::json!({ "name": "   " }))
             .await;
         assert_eq!(bad.status_code(), 400);
-        assert_eq!(bad.json::<serde_json::Value>()["name"], "required");
+        assert_eq!(
+            bad.json::<serde_json::Value>()["errors"]["fields"]["name"],
+            "required"
+        );
 
         // ── 404 sur un UUID inconnu (même org).
         let missing = server
@@ -404,7 +410,10 @@ async fn mobile_format_is_listed_and_immutable() {
             .await;
         assert_eq!(switched.status_code(), 400);
         let body = switched.json::<serde_json::Value>();
-        assert_eq!(body["violations"][0]["code"], "format_immutable", "{body}");
+        assert_eq!(
+            body["errors"]["violations"][0]["code"], "format_immutable",
+            "{body}"
+        );
     })
     .await;
 }

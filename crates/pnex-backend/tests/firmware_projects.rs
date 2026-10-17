@@ -101,9 +101,11 @@ async fn project_crud_and_revisions() {
         let alice = Client { org: personal_org(&server, &env.alice).await, token: env.alice.clone(), server: &server };
 
         // Catalog is served.
-        let cat = alice.get("/api/v1/firmware-projects/lib-catalog").await;
+        let cat = alice.get("/api/v1/firmware-projects/lib-catalog?limit=100").await;
         cat.assert_status_ok();
-        assert!(cat.json::<serde_json::Value>()["results"].as_array().unwrap().iter().any(|e| e["id"] == "bme280"));
+        let cat: serde_json::Value = cat.json();
+        assert_eq!(cat["count"], pnex_core::firmware::LIB_CATALOG.len());
+        assert!(cat["results"].as_array().unwrap().iter().any(|e| e["id"] == "bme280"));
 
         // Create: starter sketch, revision 1.
         let res = alice.send("POST", "/api/v1/firmware-projects", json!({"name": "Greenhouse", "chip_family": "esp32"})).await;
@@ -150,25 +152,33 @@ async fn project_crud_and_revisions() {
         res.assert_status_bad_request();
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "firmware-source-refused");
-        assert_eq!(body["violations"][0], json!({"line": 2, "code": "firmware-include-absolute"}));
+        assert_eq!(body["errors"]["violations"][0], json!({"line": 2, "code": "firmware-include-absolute"}));
 
         // Catalog: unknown / chip-incompatible library.
         let res = alice
             .send("PATCH", &format!("/api/v1/firmware-projects/{id}"), json!({"expected_revision_number": 2, "lib_deps": ["nope"]}))
             .await;
-        assert_eq!(res.json::<serde_json::Value>()["error"], "firmware-lib-unknown");
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "firmware-lib-unknown");
+        assert_eq!(body["errors"]["args"]["value"], "nope");
         let res = alice
             .send("POST", "/api/v1/firmware-projects", json!({"name": "Servo", "chip_family": "esp8266", "lib_deps": ["esp32servo"]}))
             .await;
         assert_eq!(res.json::<serde_json::Value>()["error"], "firmware-lib-incompatible");
         let res = alice.send("POST", "/api/v1/firmware-projects", json!({"name": " ", "chip_family": "esp32"})).await;
-        assert_eq!(res.json::<serde_json::Value>(), json!({"name": "required"}));
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"], json!({"name": "required"}));
         let res = alice.send("POST", "/api/v1/firmware-projects", json!({"name": "x", "chip_family": "avr"})).await;
-        assert_eq!(res.json::<serde_json::Value>(), json!({"chip_family": "invalid"}));
+        assert_eq!(res.json::<serde_json::Value>()["errors"]["fields"], json!({"chip_family": "invalid"}));
 
-        // History: 2 revisions, newest first, full content.
+        // History: 2 revisions, newest first, full content; paginated (D240).
         let hist: serde_json::Value = alice.get(&format!("/api/v1/firmware-projects/{id}/revisions")).await.json();
         assert_eq!(hist["count"], 2);
+        let page: serde_json::Value = alice.get(&format!("/api/v1/firmware-projects/{id}/revisions?limit=1")).await.json();
+        assert_eq!(page["count"], 2);
+        assert_eq!(page["results"].as_array().unwrap().len(), 1);
+        assert!(page["next"].is_string(), "{page}");
         assert_eq!(hist["results"][0]["revision_number"], 2);
         assert_eq!(hist["results"][0]["note"], "bme");
         assert!(hist["results"][1]["main_cpp"].as_str().unwrap().contains("pnex.loop()"));
@@ -247,7 +257,10 @@ async fn provisioning_picks_a_custom_firmware() {
                 json!({"device_id": "fw-b", "predefined_device_name": "generic_esp8266", "firmware_project_id": esp8266_id}),
             )
             .await;
-        assert_eq!(res.json::<serde_json::Value>(), json!({"firmware_project_id": "invalid"}));
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["firmware_project_id"],
+            "not-found"
+        );
 
         // Compatible project: the device carries it; the project is in use.
         let res = alice

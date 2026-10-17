@@ -37,7 +37,7 @@ pub fn restore(memberships: &[pnex_core::OrgMembership]) {
     let chosen = stored.or_else(|| {
         memberships
             .iter()
-            .find(|m| m.role != "viewer")
+            .find(|m| m.role != pnex_core::OrgRole::Viewer)
             .map(|m| m.id)
             .or_else(|| memberships.first().map(|m| m.id))
     });
@@ -49,8 +49,8 @@ pub fn restore(memberships: &[pnex_core::OrgMembership]) {
 
 /// Content writes (flows, devices, dashboards, channels...): owner, admin
 /// or member (secrets.md D117). Mirrors `OrgContext::can_write`.
-pub fn role_can_write(role: &str) -> bool {
-    matches!(role, "owner" | "admin" | "member")
+pub fn role_can_write(role: pnex_core::OrgRole) -> bool {
+    role.can_write()
 }
 
 /// The signed-in user may write content in the current org (member+).
@@ -61,13 +61,13 @@ pub fn current_can_write() -> bool {
     user.orgs
         .iter()
         .find(|m| m.id == org_id)
-        .is_some_and(|m| role_can_write(&m.role))
+        .is_some_and(|m| role_can_write(m.role))
 }
 
 /// Org governance (members, LLM providers, telemetry deletion, vault
 /// writes): owner or admin. Mirrors `OrgContext::can_administer`.
-pub fn role_can_administer(role: &str) -> bool {
-    matches!(role, "owner" | "admin")
+pub fn role_can_administer(role: pnex_core::OrgRole) -> bool {
+    role.can_administer()
 }
 
 /// The signed-in user administers the current org (owner or admin).
@@ -78,7 +78,7 @@ pub fn current_can_administer() -> bool {
     user.orgs
         .iter()
         .find(|m| m.id == org_id)
-        .is_some_and(|m| role_can_administer(&m.role))
+        .is_some_and(|m| role_can_administer(m.role))
 }
 
 /// Désélectionne l'org courante.

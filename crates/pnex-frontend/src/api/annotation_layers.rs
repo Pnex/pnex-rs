@@ -223,10 +223,8 @@ pub fn classify_save_error(err: &ApiError) -> SaveError {
         };
     }
     if err.status == Some(400) {
-        if let Some(body) = &err.body {
-            if let Ok(violations) =
-                serde_json::from_value::<Vec<AnnotationViolation>>(body["violations"].clone())
-            {
+        if let Some(v) = err.violations() {
+            if let Ok(violations) = serde_json::from_value::<Vec<AnnotationViolation>>(v.clone()) {
                 return SaveError::Invalid(violations);
             }
         }
@@ -251,7 +249,7 @@ mod tests {
 
         let invalid = ApiError::http(
             400,
-            r#"{"violations":[{"subject":null,"code":"unknown_link_target","message":"lien orphelin"}]}"#,
+            r#"{"error":"x-invalid","errors":{"violations":[{"subject":null,"code":"unknown_link_target","message":"lien orphelin"}]}}"#,
         );
         match classify_save_error(&invalid) {
             SaveError::Invalid(violations) => {

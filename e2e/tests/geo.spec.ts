@@ -32,7 +32,7 @@ test.describe('geo providers', { tag: '@geo' }, () => {
     capture,
   }) => {
     // The suite owns the E2E org: start from no basemap at all.
-    for (const p of await api.get<Provider[]>('/geo/providers')) {
+    for (const p of await api.list<Provider>('/geo/providers')) {
       if (p.kind === 'basemap') await api.delete(`/geo/providers/${p.id}`);
     }
     const map = new MapPage(app);
@@ -56,7 +56,7 @@ test.describe('geo providers', { tag: '@geo' }, () => {
     await row.getByRole('button', { name: app.t('geo-test'), exact: true }).click();
     await app.expectToast(app.tr('geo-test-ok'));
 
-    const maps = await api.get<Basemap[]>('/geo/basemaps');
+    const maps = await api.list<Basemap>('/geo/basemaps');
     const created = maps.find((m) => m.name === light);
     expect(created?.is_default, 'first basemap becomes the default').toBe(true);
     expect(created?.style_url).toBe(BASEMAP_URL);
@@ -97,7 +97,7 @@ test.describe('geo providers', { tag: '@geo' }, () => {
       await app.page.route('**/api/v1/user-info', async (route) => {
         const res = await route.fetch();
         const body = await res.json();
-        await route.fulfill({ response: res, json: { ...body, profile: { ...body.profile, theme: 'Dark' } } });
+        await route.fulfill({ response: res, json: { ...body, profile: { ...body.profile, theme: 'dark' } } });
       });
       const map = new MapPage(app);
       const darkStyle = app.page.waitForRequest((r) => r.url().startsWith(BASEMAP_DARK_URL));
@@ -137,19 +137,18 @@ test.describe('geo providers', { tag: '@geo' }, () => {
       rate_limit_per_s: 10,
     });
 
-    const hits = await api.get<{ label: string; lat: number; lon: number }[]>(
+    const { results: hits } = await api.get<{ results: { label: string; lat: number; lon: number }[] }>(
       '/geo/geocode?q=place%20bellecour%20lyon&limit=2',
     );
     expect(hits[0].label).toContain('Bellecour');
     expect(hits[0].lat).toBeCloseTo(45.757, 2);
     expect(hits[0].lon).toBeCloseTo(4.832, 2);
 
-    const near = await api.get<{ label: string }[]>('/geo/reverse?lat=45.7578&lon=4.8320');
+    const { results: near } = await api.get<{ results: { label: string }[] }>('/geo/reverse?lat=45.7578&lon=4.8320');
     expect(near[0].label).toContain('Lyon');
 
-    const route = await api.post<{ distance_m: number; duration_s: number; steps: unknown[]; geometry: any }>(
-      '/geo/route',
-      { points: [[45.7578, 4.832], [45.7606, 4.8597]] },
+    const route = await api.get<{ distance_m: number; duration_s: number; steps: unknown[]; geometry: any }>(
+      '/geo/route?points=45.7578,4.832;45.7606,4.8597',
     );
     expect(route.distance_m).toBeGreaterThan(2_000);
     expect(route.distance_m).toBeLessThan(6_000);

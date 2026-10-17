@@ -1,7 +1,7 @@
 //! Body of the `range_bars` dashboard widget (D182): one row per time range
 //! of a stream or per time-of-day slice — label, start–end, a bar
 //! proportional to the value, the value. Reads
-//! `POST /api/v1/telemetry/aggregate` on the dashboard cadence (15 s), on
+//! `POST /api/v1/telemetry/aggregate/query` on the dashboard cadence (15 s), on
 //! its own timer: the aggregation is not part of the `series-batch`.
 
 use std::time::Duration;

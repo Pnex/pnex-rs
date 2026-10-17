@@ -8,7 +8,7 @@ publish = false
 default-run = "pnex-server"
 
 [dependencies]
-pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto", "egress", "doc-extract"] }
+pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto", "egress", "doc-extract", "openapi"] }
 pnex-notify = { workspace = true }
 # CoolProp in-process : validation des mélanges à la sauvegarde + (phase 3)
 # moteur de diagrammes. Autorisé hors mode B : la règle « backend ne lie
@@ -16,7 +16,8 @@ pnex-notify = { workspace = true }
 # calcul.
 pnex-coolprop = { workspace = true }
 # Contrat app ↔ serveur (version de contrat + ServerInfo) — source partagée.
-pnex-api-contract = { workspace = true }
+pnex-api-contract = { workspace = true, features = ["openapi"] }
+utoipa = { workspace = true }
 pnex-firmware-builder = { workspace = true }
 # Stitching serveur des prises 360° (Take 360 V2) — pipeline Quality dans
 # le worker `stitch_panorama` (pure Rust, séquentiel ; aucune dep native).

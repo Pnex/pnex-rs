@@ -9,9 +9,9 @@ use super::client;
 use super::media::urlencode;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/voice-id/profiles`.
+/// `GET /api/v1/voice-id/profiles`, all pages.
 pub async fn list() -> Result<Vec<VoiceProfileView>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/voice-id/profiles", None).await
+    client::request_all("/api/v1/voice-id/profiles").await
 }
 
 /// `GET /api/v1/voice-id/by-object/{id}` — `None` when the person has none.

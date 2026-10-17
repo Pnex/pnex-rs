@@ -2,15 +2,34 @@ use super::*;
 
 // ─────────────────────── POST /media/{id}/versions ───────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct VersionQuery {
     filename: Option<String>,
     content_type: Option<String>,
     note: Option<String>,
 }
 
-/// `POST /api/v1/media/{id}/versions` — nouvelle version (append-only),
-/// devient la version courante.
+/// `POST /api/v1/media/{id}/versions`: new version (append-only), becomes
+/// the current one.
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/{id}/versions",
+    tag = "media",
+    operation_id = "media_versions_create",
+    summary = "Upload a new version of a media asset",
+    description = "Appends version n+1 from the raw request body (`application/octet-stream`) and makes it current; older versions are kept. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), VersionQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "File bytes"),
+    responses(
+        (status = 201, body = MediaAssetDto),
+        (status = 400, description = "Format not allowed (`media-format-unsupported`) or empty body (`field-invalid`, `filename`: `required`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "Body over the upload limit (`media-file-too-large`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn add_version(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -29,7 +48,10 @@ pub(super) async fn add_version(
     };
     let settings = MediaSettings::from_config(&ctx.config);
     if body.is_empty() {
-        return Ok(field_status("filename", "corps de la requête vide"));
+        return Ok(field_status(
+            "filename",
+            pnex_core::err_codes::FIELD_REQUIRED,
+        ));
     }
     if body.len() > settings.max_bytes {
         return Ok(too_large(&settings));
@@ -72,27 +94,62 @@ pub(super) struct VersionPath {
     pub(super) n: i64,
 }
 
-/// `GET /api/v1/media/{id}/versions` — liste des versions.
+/// Page parameters of the versions list.
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(super) struct VersionsPage {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/media/{id}/versions`: paginated versions, oldest first.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/versions",
+    tag = "media",
+    operation_id = "media_versions_list",
+    summary = "List the versions of a media asset",
+    description = "Paginated versions (`limit` default 10, max 100; `offset`), oldest first; `current` marks the current one.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), VersionsPage),
+    responses(
+        (status = 200, body = pnex_core::Paginated<MediaVersionDto>),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    Query(q): Query<VersionsPage>,
 ) -> Result<Response> {
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    let rows = versions_of(&ctx.db, asset.id).await?;
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let select = media_versions::Entity::find()
+        .filter(media_versions::Column::AssetId.eq(asset.id))
+        .order_by_asc(media_versions::Column::VersionNumber);
+    let (count, rows) = pagination::sql_page(&ctx.db, select, page)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let results: Vec<MediaVersionDto> = rows
         .iter()
         .map(|v| version_dto(v, asset.current_version_id))
         .collect();
-    Ok(
-        format::json(serde_json::json!({ "count": results.len(), "results": results }))
-            .into_response(),
-    )
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/media/{id}/versions"),
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
 }
 
-/// Version `n` de l'asset, sinon None.
+/// Version `n` of the asset, else None.
 pub(super) async fn find_version(
     db: &DatabaseConnection,
     asset_id: Uuid,
@@ -106,9 +163,25 @@ pub(super) async fn find_version(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// `DELETE /api/v1/media/{id}/versions/{n}` — purge la version et son blob ;
-/// 409 `last_version` si c'est la seule restante (un asset a toujours au
-/// moins une version).
+/// `DELETE /api/v1/media/{id}/versions/{n}`: purges the version and its
+/// blob; 409 `media-last-version` when it is the only one left (an asset
+/// always keeps at least one version).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/media/{id}/versions/{n}",
+    tag = "media",
+    operation_id = "media_versions_delete",
+    summary = "Delete one version of a media asset",
+    description = "Deletes the version and its stored file. If it was current, the highest remaining version becomes current. The last remaining version cannot be deleted (delete the asset instead). Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Last remaining version (`media-last-version`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete_version(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -160,8 +233,23 @@ pub(super) async fn delete_version(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// `POST /api/v1/media/{id}/versions/{n}/restore` — re-positionne la version
-/// courante (école flows /rollback).
+/// `POST /api/v1/media/{id}/versions/{n}/restore`: moves the current
+/// version (flows /rollback school).
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/{id}/versions/{n}/restore",
+    tag = "media",
+    operation_id = "media_versions_restore",
+    summary = "Make an older version current",
+    description = "Points the asset's current version at version n; no version is created or deleted. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
+    responses(
+        (status = 200, body = MediaAssetDto),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn restore(
     State(ctx): State<AppContext>,
     org: OrgContext,

@@ -181,7 +181,7 @@ pub(crate) async fn reproject_candidate(
     // Onglets déjà déployés au graphe illisible (kind de nœud supprimé,
     // schéma daté…) : isolés hors de l'artefact, deploy **non bloqué** —
     // jamais un 500 qui refuse tout deploy tant que le tab pourrit en DB.
-    Vec<serde_json::Value>,
+    Vec<SkippedTab>,
 )> {
     // One org only (D106): the unit a worker runs — never the instance.
     let deployed_flows = deployed_flows_with_versions(db, org_id).await?;
@@ -207,7 +207,7 @@ pub(crate) async fn reproject_candidate(
 
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut meta: Option<FlowArtifactMeta> = None;
-    let mut skipped_tabs: Vec<serde_json::Value> = Vec::new();
+    let mut skipped_tabs: Vec<SkippedTab> = Vec::new();
     // ── Résolution batch des fonctions (nœuds PnexFunction) ─────────────
     let (fn_resolver, mut fn_violations) =
         crate::services::functions::resolve_for_projection(db, &pairs).await?;
@@ -239,11 +239,11 @@ pub(crate) async fn reproject_candidate(
                 } else {
                     // Tab d'un AUTRE flow : isolé, le deploy poursuit.
                     tracing::error!("reprojection : {message}");
-                    skipped_tabs.push(serde_json::json!({
-                        "flow_id": f.id,
-                        "code": "graph_unreadable",
-                        "message": message,
-                    }));
+                    skipped_tabs.push(SkippedTab {
+                        flow_id: f.id,
+                        code: "graph_unreadable".to_string(),
+                        message,
+                    });
                 }
                 continue;
             }
@@ -534,34 +534,29 @@ async fn resolve_notify_snapshots(
     Ok(stale)
 }
 
-/// Mapping `DeployError` → HTTP : `Check` = 400 `{"violations":[...]}` avec
-/// l'erreur moteur **réelle** (forme `FlowViolation`, déjà rendue telle
-/// quelle par l'éditeur), `Runtime` = 503 `flow_runtime`.
+/// `DeployError` to HTTP: `Check` = 400 `flow-invalid` carrying the real
+/// engine error as `FlowViolation`s, `Runtime` = 503 `flow-runtime`.
 pub(super) fn deploy_error_response(e: flow_supervisor::DeployError) -> Response {
     match e {
         flow_supervisor::DeployError::Check(checks) => {
-            let violations: Vec<serde_json::Value> = checks
+            let violations: Vec<pnex_core::FlowViolation> = checks
                 .iter()
                 .map(|c| {
-                    serde_json::json!({
-                        "node_id": null,
-                        "code": "engine_load",
-                        "message": format!("Flow #{} : {}", c.flow_id, c.message),
-                    })
+                    pnex_core::FlowViolation::new(
+                        None,
+                        "engine_load",
+                        format!("Flow #{} : {}", c.flow_id, c.message),
+                    )
                 })
                 .collect();
-            (
-                StatusCode::BAD_REQUEST,
-                format::json(serde_json::json!({ "violations": violations })),
-            )
-                .into_response()
+            crate::controllers::violations_error(pnex_core::err_codes::FLOW_INVALID, violations)
         }
         other => flow_runtime_503(other).into_response(),
     }
 }
 
-/// 503 `flow_runtime` (pannes d'infra : superviseur coupé, acquittement
-/// absent…) — description = erreur réelle.
+/// 503 `flow-runtime` (infrastructure failure: supervisor down, missing
+/// acknowledgement...); `args.detail` = the real error, verbatim.
 pub(super) fn flow_runtime_503(e: flow_supervisor::DeployError) -> loco_rs::Error {
     let description = match e {
         flow_supervisor::DeployError::Check(checks) => checks
@@ -571,9 +566,11 @@ pub(super) fn flow_runtime_503(e: flow_supervisor::DeployError) -> loco_rs::Erro
             .join(" ; "),
         flow_supervisor::DeployError::Runtime(s) => s,
     };
-    Error::CustomError(
+    crate::controllers::coded_error(
         StatusCode::SERVICE_UNAVAILABLE,
-        loco_rs::controller::ErrorDetail::new("flow_runtime", description),
+        pnex_core::err_codes::FLOW_RUNTIME,
+        "The flow runtime is unavailable.",
+        Some(serde_json::json!({ "detail": description })),
     )
 }
 

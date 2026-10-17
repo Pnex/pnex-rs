@@ -86,9 +86,10 @@ async fn registry_validation_and_broken_model() {
             .await;
         bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
         let body: serde_json::Value = bad.json();
-        assert_eq!(body["name"], "required");
-        assert_eq!(body["asset_id"], "invalid");
-        assert!(body["input_width"].is_string());
+        let fields = &body["errors"]["fields"];
+        assert_eq!(fields["name"], "required");
+        assert_eq!(fields["asset_id"], "invalid");
+        assert!(fields["input_width"].is_string());
 
         // D100: a model that does not load is refused at registration, with
         // the loader diagnostic as the `detail` arg (never a 500, never a

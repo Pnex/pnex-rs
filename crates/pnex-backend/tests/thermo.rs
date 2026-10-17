@@ -59,7 +59,7 @@ async fn post_diagram(
     body: serde_json::Value,
 ) -> axum_test::TestResponse {
     server
-        .post("/api/v1/thermo/diagram")
+        .post("/api/v1/thermo/diagram/query")
         .add_header("Content-Type", "application/json")
         .add_header("Authorization", bearer(token))
         .add_header("X-Org-Id", org.to_string())
@@ -107,7 +107,7 @@ async fn diagram_water_ph_et_cycle_points() {
 
         // cycle-points : état (P=1 bar, T=400 K) → coords (Hmass, P).
         let resp = server
-            .post("/api/v1/thermo/cycle-points")
+            .post("/api/v1/thermo/cycle-points/query")
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
@@ -123,7 +123,7 @@ async fn diagram_water_ph_et_cycle_points() {
             }))
             .await;
         assert_eq!(resp.status_code(), 200, "{}", resp.text());
-        let pts = resp.json::<serde_json::Value>();
+        let pts = resp.json::<serde_json::Value>()["points"].clone();
         let hmass = pts[0]["props"]["Hmass"].as_f64().unwrap();
         assert!((pts[0]["coords"][0].as_f64().unwrap() - hmass).abs() < 1.0);
     })
@@ -185,6 +185,9 @@ async fn diagram_resout_melange_org_et_rejette_inconnu() {
         )
         .await;
         assert_eq!(resp.status_code(), 400);
+        let err = resp.json::<serde_json::Value>();
+        assert_eq!(err["error"], "coolprop-error", "{err}");
+        assert!(err["errors"]["args"]["detail"].is_string(), "{err}");
     })
     .await;
 }

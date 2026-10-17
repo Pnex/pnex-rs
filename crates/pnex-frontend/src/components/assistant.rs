@@ -39,7 +39,7 @@ fn bubbles_of(messages: Vec<AiMessage>) -> Vec<ChatBubble> {
     messages
         .into_iter()
         .map(|m| {
-            if m.role == "user" {
+            if m.role == pnex_core::AiRole::User {
                 ChatBubble::User(m.content)
             } else {
                 ChatBubble::Assistant {

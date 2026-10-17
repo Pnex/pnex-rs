@@ -197,3 +197,45 @@ async fn board_change_follows_the_chip_and_moves_the_soldered_screen() {
     })
     .await;
 }
+
+/// D239/D240: an unknown board at registration is a coded error, and the
+/// board catalogue is a paginated envelope.
+#[tokio::test]
+#[serial]
+async fn registration_board_errors_are_coded_and_boards_are_paginated() {
+    with_app(|server, ctx, alice, _bob| async move {
+        let org = personal_org(&server, &alice).await;
+        insert_board(&ctx.db, pnex_core::catalog::boards::NODEMCU_V3_OLED).await;
+        let res = server
+            .post("/api/v1/devices")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "device_id": "unknown-board",
+                "predefined_device_name": "generic_esp8266",
+                "board_id": 999_999,
+            }))
+            .await;
+        res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            "device-board-unknown"
+        );
+
+        let page = |q: &'static str| {
+            server
+                .get(&format!("/api/v1/boards{q}"))
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .add_header("X-Org-Id", org.to_string())
+        };
+        let all: serde_json::Value = page("?limit=100").await.json();
+        let count = all["count"].as_i64().expect("paginated count");
+        assert!(count >= 2, "{all}");
+        assert_eq!(all["results"].as_array().unwrap().len() as i64, count);
+        let first: serde_json::Value = page("?limit=1").await.json();
+        assert_eq!(first["results"].as_array().unwrap().len(), 1);
+        assert!(first["next"].as_str().unwrap().contains("offset=1"));
+        assert!(first["results"][0]["pins"][0]["kind"].is_string());
+    })
+    .await;
+}

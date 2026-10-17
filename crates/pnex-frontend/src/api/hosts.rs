@@ -21,8 +21,8 @@ pub async fn create(input: PnexHostInput) -> Result<PnexHost, ApiError> {
 }
 
 /// `PUT /api/v1/edge/hosts/{id}` — édition in-place (id conservé) :
-/// host rename (always wss since D70). 409 when the target host is already
-/// used by another entry of the org.
+/// host rename (always wss since D70). 409 `edge-host-taken` when the target
+/// host is already used by another entry of the org.
 pub async fn update(id: i64, input: PnexHostInput) -> Result<PnexHost, ApiError> {
     client::request(
         reqwest::Method::PUT,
@@ -32,9 +32,10 @@ pub async fn update(id: i64, input: PnexHostInput) -> Result<PnexHost, ApiError>
     .await
 }
 
-/// `GET /api/v1/edge/lan-scan` — scan LAN côté serveur : sondes meta sur
-/// les /24 des interfaces privées (ou `prefix` explicite « a.b.c. ») et
-/// retour des serveurs s'identifiant `pnex-server`.
+/// `GET /api/v1/edge/lan-scan` — server-side LAN scan: meta probes over the
+/// private /24 ranges (or an explicit RFC 1918 `a.b.c.` prefix, else 400
+/// `field-invalid`) returning the servers identifying as `pnex-server`.
+/// Owner, admin or member (viewer → 403).
 pub async fn lan_scan(prefix: Option<&str>) -> Result<pnex_core::LanScanResult, ApiError> {
     // Un préfixe « a.b.c. » (chiffres + points) est URL-safe tel quel ;
     // tout le reste est rejeté par la garde serveur.

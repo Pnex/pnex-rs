@@ -8,7 +8,7 @@ pub(crate) fn tiers_enforced() -> bool {
         == crate::services::retention::DeploymentMode::Saas
 }
 
-/// Quota du tier de l'org pour ce type de device (None = pas de plafond).
+/// Tier quota of the org for this device type (None = no cap).
 pub(crate) async fn tier_limit_for(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -35,31 +35,45 @@ pub(crate) async fn tier_limit_for(
     })
 }
 
-// ───────────────────── Registre devices (org) ─────────────────────
+// ───────────────────── Device registry (org) ─────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct ListDevicesQuery {
     /// Type name; "all" = no-op.
     device_type: Option<String>,
     capability: Option<String>,
-    /// Correspondance exacte sur l'identifiant firmware.
+    /// Exact match on the firmware identifier.
     device_id: Option<String>,
-    /// « true » | « false » ; autre/absent = tous.
+    /// `true` | `false`; other or absent = all.
+    #[param(value_type = Option<bool>)]
     active: Option<String>,
-    /// Recherche OU sur device_id, modèle (nom/pretty/description), type et
-    /// capacités.
+    /// Case-insensitive OR over device_id, model (name, pretty name,
+    /// description), type and capabilities.
     search: Option<String>,
     /// D42: effective label (`name` or `name:value`, inherited included).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
-/// `GET /api/v1/devices` — devices de l'org, paginés (D14).
-///
-/// Les filtres `capability`/`search` portent sur la M2M du modèle :
-/// l'ensemble org est borné par les quotas tier, on filtre en Rust puis on
-/// découpe — le count reflète bien le total filtré.
+/// `GET /api/v1/devices`: devices of the org, paginated (D14).
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices",
+    tag = "devices",
+    operation_id = "devices_list",
+    summary = "List the devices of the organisation",
+    description = "Paginated. `device_token` is only returned to writers.",
+    params(ListDevicesQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::Device>),
+        (status = 400, description = "Invalid `label` filter (`field-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -182,7 +196,7 @@ pub(super) async fn list(
             select = select.filter(device_registries::Column::Id.is_in(ids));
         }
         Err(crate::services::resources::labels::ListLabelFilterError::Invalid(reason)) => {
-            return Ok(field_status(StatusCode::BAD_REQUEST, "label", &reason));
+            return Ok(field_error("label", &reason));
         }
         Err(crate::services::resources::labels::ListLabelFilterError::Db(_)) => {
             return Err(Error::InternalServerError);
@@ -235,9 +249,9 @@ pub(super) async fn list(
     // Liveness leases (D108): last seen + connected per device, batched.
     let states = crate::services::device_liveness::seen_many(&ctx.db, &device_pks).await?;
 
-    // Dernier build par device de la page (batché, clé = device_id string du
-    // registre — même sémantique que build_records). `order_by_desc(Id)` :
-    // le record le plus récent gagne dans la map.
+    // Latest build per device of the page (batched, keyed by the registry
+    // device_id string like build_records); `order_by_desc(Id)`: the newest
+    // record wins in the map.
     let mut page_devices: Vec<pnex_core::Device> = Vec::with_capacity(rows.len());
     for device in rows {
         let Some(predefined) = predefined.get(&device.predefined_device_id) else {
@@ -331,7 +345,22 @@ pub(super) async fn list(
     ))
 }
 
-/// `POST /api/v1/devices` — création inactive + token, ou réactivation.
+/// `POST /api/v1/devices`: inactive creation + token, or reactivation.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices",
+    tag = "devices",
+    operation_id = "devices_create",
+    summary = "Register a device, or reactivate a known inactive one",
+    request_body = pnex_core::CreateDevice,
+    responses(
+        (status = 201, description = "Created (inactive, with its token)", body = pnex_core::Device),
+        (status = 200, description = "Known inactive device reactivated", body = pnex_core::DeviceReactivated),
+        (status = 400, description = "`field-invalid` (`errors.fields`), `device-board-unknown`, `device-board-soc-mismatch`, `firmware-family-locked`, `firmware-chip-mismatch`, `device-already-active` or `device-quota-reached`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role or tier quota reached", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -339,17 +368,13 @@ pub(super) async fn create(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "device-write-forbidden",
+            err_codes::DEVICE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage devices.",
         ));
     }
     let device_id = params.device_id.trim().to_string();
     if device_id.is_empty() {
-        return Ok(field_status(
-            StatusCode::BAD_REQUEST,
-            "device_id",
-            err_codes::FIELD_REQUIRED,
-        ));
+        return Ok(field_error("device_id", err_codes::FIELD_REQUIRED));
     }
 
     let Some(predefined) = predefined_devices::Entity::find()
@@ -358,19 +383,15 @@ pub(super) async fn create(
         .await
         .map_err(|_| Error::InternalServerError)?
     else {
-        return Ok(field_status(
-            StatusCode::BAD_REQUEST,
+        return Ok(field_error(
             "predefined_device_name",
-            &format!(
-                "PredefinedDevice with name {} does not exist.",
-                params.predefined_device_name
-            ),
+            err_codes::FIELD_NOT_FOUND,
         ));
     };
 
-    // Board variante figée : validée puis gelée à
-    // l'enregistrement — le device garde SA variante même si le modèle
-    // évolue. Absent = board par défaut du modèle.
+    // Board variant validated then frozen at registration: the device keeps
+    // ITS variant even when the model evolves. Absent = the model's default
+    // board.
     let frozen_board_id = match params.board_id {
         Some(bid) => {
             let board_found = mcu_boards::Entity::find_by_id(bid)
@@ -378,22 +399,20 @@ pub(super) async fn create(
                 .await
                 .map_err(|_| Error::InternalServerError)?;
             let Some(board) = board_found else {
-                return Ok(field_status(
+                return Err(crate::controllers::coded_error(
                     StatusCode::BAD_REQUEST,
-                    "board_id",
-                    &format!("board {bid} inconnu"),
+                    err_codes::DEVICE_BOARD_UNKNOWN,
+                    "Unknown board.",
+                    None,
                 ));
             };
             let default_found = mcu_boards::Entity::find_by_id(predefined.board_id)
                 .one(&ctx.db)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
+            // A model without its default board is a catalogue defect.
             let Some(default_board) = default_found else {
-                return Ok(field_status(
-                    StatusCode::BAD_REQUEST,
-                    "board_id",
-                    &format!("board par défaut du modèle {} introuvable", predefined.name),
-                ));
+                return Err(Error::InternalServerError);
             };
             // Compatible = same SoC known to the chip-caps, or else the same
             // raw value (boards with an unknown SoC).
@@ -405,13 +424,11 @@ pub(super) async fn create(
                 _ => board.soc == default_board.soc,
             };
             if !compatible {
-                return Ok(field_status(
+                return Err(crate::controllers::coded_error(
                     StatusCode::BAD_REQUEST,
-                    "board_id",
-                    &format!(
-                        "board {} : SoC {} incompatible avec le modèle {} (SoC {})",
-                        board.name, board.soc, predefined.name, default_board.soc
-                    ),
+                    err_codes::DEVICE_BOARD_SOC_MISMATCH,
+                    "The board does not carry the device's chip.",
+                    None,
                 ));
             }
             Some(bid)
@@ -438,10 +455,9 @@ pub(super) async fn create(
             .await
             .map_err(|_| Error::InternalServerError)?;
         let Some(project) = project else {
-            return Ok(field_status(
-                StatusCode::BAD_REQUEST,
+            return Ok(field_error(
                 "firmware_project_id",
-                "invalid",
+                err_codes::FIELD_NOT_FOUND,
             ));
         };
         let board_soc = match frozen_board_id {
@@ -456,14 +472,14 @@ pub(super) async fn create(
             return Err(Error::CustomError(
                 StatusCode::BAD_REQUEST,
                 loco_rs::controller::ErrorDetail::new(
-                    "firmware-chip-mismatch",
+                    err_codes::FIRMWARE_CHIP_MISMATCH,
                     "The device chip does not match the project chip family.",
                 ),
             ));
         }
     }
 
-    // Device connu de l'org : réactivation (200) ou refus (400).
+    // Device known to the org: reactivation (200) or refusal (400).
     if let Some(existing) = device_registries::Entity::find()
         .filter(
             device_registries::Column::OrgId
@@ -497,7 +513,7 @@ pub(super) async fn create(
         txn.commit().await.map_err(|_| Error::InternalServerError)?;
         return Ok((
             StatusCode::OK,
-            format::json(serde_json::json!({ "reactivated": true })),
+            format::json(pnex_core::DeviceReactivated { reactivated: true }),
         )
             .into_response());
     }
@@ -511,7 +527,8 @@ pub(super) async fn create(
         .unwrap_or_default();
     let tier_limit = tier_limit_for(&ctx.db, &org, &type_name).await?;
 
-    // Création inactive + token (transaction : jamais de device sur token).
+    // Inactive creation + token (one transaction: never a device without its
+    // token).
     let is_agent = predefined.name == pnex_core::EDGE_AGENT_PREDEF;
     // Only agents ingest free-form keys; boards announce their metrics.
     let allow_dynamic = is_agent;
@@ -603,7 +620,20 @@ pub(super) async fn create(
     Ok((StatusCode::CREATED, format::json(dto)).into_response())
 }
 
-/// `GET /api/v1/devices/{id}` — détail, membres de l'org.
+/// `GET /api/v1/devices/{id}`: detail, any org member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}",
+    tag = "devices",
+    operation_id = "devices_get",
+    summary = "Get a device",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, body = pnex_core::Device),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -620,8 +650,22 @@ pub(super) async fn detail(
     format::json(dto)
 }
 
-/// `DELETE /api/v1/devices/{id}` — device + token + build_records.
-/// 204 sans body (le décompte des records nettoyés part dans les logs).
+/// `DELETE /api/v1/devices/{id}`: device + token + build_records.
+/// 204 without a body (the cleaned-records count goes to the logs).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/devices/{id}",
+    tag = "devices",
+    operation_id = "devices_delete",
+    summary = "Delete a device, its token and its build records",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -629,7 +673,7 @@ pub(super) async fn delete(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "device-write-forbidden",
+            err_codes::DEVICE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage devices.",
         ));
     }

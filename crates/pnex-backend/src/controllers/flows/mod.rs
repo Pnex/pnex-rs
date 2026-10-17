@@ -82,3 +82,27 @@ pub fn routes() -> Routes {
         .add("/{id}/start", post(start))
         .add("/{id}/restart", post(restart))
 }
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        versions,
+        version_detail,
+        deploy,
+        rollback,
+        runtime,
+        debug,
+        node_status,
+        stop,
+        start,
+        restart
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}

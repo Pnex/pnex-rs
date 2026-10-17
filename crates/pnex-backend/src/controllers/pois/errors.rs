@@ -12,13 +12,9 @@ pub(super) fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// 400 per-field error shape: `{"<field>": "..."}`.
+/// `field-invalid` 400 on one field.
 pub(super) fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    crate::controllers::field_error(field, msg)
 }
 
 /// Mapping des erreurs de service → HTTP (formes cohérentes flows/media).
@@ -38,50 +34,35 @@ pub(super) fn write_error_response(e: svc::VizWriteError) -> Response {
             "emoji",
             &format!("{}:8", err_codes::FIELD_MAX_LENGTH),
         ),
-        E::LatitudeInvalid => {
-            field_status("latitude", "Latitude invalide (bornes WGS84 −90..90).")
-        }
-        E::LongitudeInvalid => {
-            field_status("longitude", "Longitude invalide (bornes WGS84 −180..180).")
-        }
-        E::DeviceUnknown => {
-            field_status("device_id", "Device inconnu pour cette organisation.")
-        }
-        // D43 : 409 porteur du placement courant — le front propose le
-        // déplacement en connaissance de cause (jamais silencieux).
-        // Raw JSON body (dedicated device_id/current_placement_id/… keys):
-        // the shape is a frontend contract — only the code and the canonical
-        // English description migrate.
-        E::DeviceAlreadyPlaced(c) => (
+        E::LatitudeInvalid => field_status("latitude", err_codes::FIELD_INVALID),
+        E::LongitudeInvalid => field_status("longitude", err_codes::FIELD_INVALID),
+        E::DeviceUnknown => field_status("device_id", err_codes::FIELD_NOT_FOUND),
+        // D43: 409 carrying the current placement in `errors.args` (strings)
+        // so the UI offers the move knowingly (never silent).
+        E::DeviceAlreadyPlaced(c) => crate::controllers::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({
-                "error": "poi-device-already-placed",
-                "description": "This device is already placed on a POI — attaching it here moves it (confirmation required).",
+            err_codes::POI_DEVICE_ALREADY_PLACED,
+            "This device is already placed on a POI; attaching it here moves it (confirmation required).",
+            Some(serde_json::json!({
                 "device_id": c.device_id,
-                "current_placement_id": c.current_placement_id,
-                "current_pin_id": c.current_pin_id,
+                "current_placement_id": c.current_placement_id.to_string(),
+                "current_pin_id": c.current_pin_id.to_string(),
                 "current_pin_label": c.current_pin_label,
             })),
         )
-            .into_response(),
+        .into_response(),
         E::PlacementUnknown => Error::NotFound.into_response(),
-        E::PinUnknown => field_status("pin_id", "POI cible inconnu pour cette organisation."),
-        E::LinkSourceInvalid => field_status("source", "Source de lien invalide."),
-        E::LinkTargetInvalid => {
-            field_status("target", "Cible de lien inconnue pour cette organisation.")
-        }
-        E::LinkConflict => (
+        E::PinUnknown => field_status("pin_id", err_codes::FIELD_NOT_FOUND),
+        E::LinkSourceInvalid => field_status("source", err_codes::FIELD_INVALID),
+        E::LinkTargetInvalid => field_status("target", err_codes::FIELD_NOT_FOUND),
+        E::LinkConflict => crate::controllers::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({
-                "error": "poi-link-duplicate",
-                "description": "A link already exists for this pair."
-            })),
+            err_codes::POI_LINK_DUPLICATE,
+            "A link already exists for this pair.",
+            None,
         )
-            .into_response(),
-        E::PreviewKindInvalid => field_status(
-            "preview_kind",
-            "Aperçu épinglé invalide (kind ∈ media_asset | dashboard | tour, posé avec preview_id).",
-        ),
+        .into_response(),
+        E::PreviewKindInvalid => field_status("preview_kind", err_codes::FIELD_INVALID),
         E::Db => Error::InternalServerError.into_response(),
     }
 }

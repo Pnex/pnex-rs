@@ -32,6 +32,7 @@ pub const LAB_VAL_EVERY: u64 = 5;
 
 /// A project (`GET /api/v1/lab/projects`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabProject {
     pub id: String,
     pub name: String,
@@ -45,12 +46,15 @@ pub struct LabProject {
     pub annotated_count: u64,
     #[serde(default)]
     pub version_count: u64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Create / update body of a project.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabProjectInput {
     pub name: String,
     #[serde(default)]
@@ -92,6 +96,7 @@ impl LabProjectInput {
 /// One box: class index + `[x, y, w, h]` normalized to the image (0–1,
 /// top-left origin), so it does not depend on a display size.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabBox {
     pub class: u32,
     pub bbox: [f32; 4],
@@ -99,6 +104,7 @@ pub struct LabBox {
 
 /// Train / validation assignment of an image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LabSplit {
     /// Decided by the source of the image ([`auto_split`]).
@@ -110,6 +116,7 @@ pub enum LabSplit {
 
 /// An image of a project (`GET /api/v1/lab/projects/{id}/images`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabImage {
     pub id: String,
     /// Media asset (D21) holding the picture.
@@ -144,6 +151,7 @@ pub struct LabImage {
     pub frame_ms: Option<i64>,
     /// Optimistic concurrency counter of the annotations.
     pub version: i32,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
@@ -163,6 +171,7 @@ impl LabImage {
 
 /// `PUT /api/v1/lab/images/{id}/annotations`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabAnnotationsInput {
     pub boxes: Vec<LabBox>,
     #[serde(default)]
@@ -204,6 +213,7 @@ impl LabAnnotationsInput {
 /// `POST /api/v1/lab/images/{id}/suggest` — pre-annotation with a model
 /// of the registry (§4.6.1 step 4): proposals only, nothing is written.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabSuggestRequest {
     /// `ml_models.id` (detection model of the org).
     pub model_id: String,
@@ -212,8 +222,25 @@ pub struct LabSuggestRequest {
     pub min_score: f32,
 }
 
+/// Images added to a project by one gesture (media pick, recording or
+/// video import).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LabImagesAdded {
+    pub images: Vec<LabImage>,
+}
+
+/// Box proposals for one image (pre-annotation, interpolation or
+/// propagation); nothing is written.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LabSuggestions {
+    pub suggestions: Vec<LabSuggestion>,
+}
+
 /// One proposed box.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabSuggestion {
     /// Label of the model; empty for an interpolated box.
     pub label: String,
@@ -249,6 +276,7 @@ pub fn class_for_label(classes: &[String], label: &str) -> Option<u32> {
 /// `POST /api/v1/lab/projects/{id}/import-recording` — frames of a camera
 /// recording (D79) added as pictures, one import = one source (D202).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabRecordingImport {
     /// `device_registries.id` of the camera.
     pub device: i64,
@@ -292,6 +320,7 @@ fn check_extract(span_ms: i64, every_secs: f64) -> Option<(&'static str, String)
 /// `POST /api/v1/lab/projects/{id}/import-video` — frames of a video of
 /// the media library (MP4 / MOV) added as pictures, one import = one source.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabVideoImport {
     /// Media asset holding the video (its current version is read).
     pub asset_id: String,
@@ -324,6 +353,7 @@ pub const LAB_TRAIN_MAX_EPOCHS: u32 = 300;
 /// `POST /api/v1/lab/versions/{id}/train` — fine-tunes the head of a
 /// registered YOLOX model on a frozen dataset version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabTrainRequest {
     /// `ml_models.id` of the base detector (YOLOX, fixed input).
     pub base_model_id: String,
@@ -346,6 +376,7 @@ impl LabTrainRequest {
 
 /// Lifecycle of a training run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LabRunStatus {
     Queued,
@@ -383,6 +414,7 @@ impl LabRunStatus {
 
 /// Where a running training is.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabRunProgress {
     /// `features` | `epochs` | `evaluating`.
     #[serde(default)]
@@ -397,6 +429,7 @@ pub struct LabRunProgress {
 
 /// A training run (`GET /api/v1/lab/projects/{id}/runs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabTrainingRun {
     pub id: String,
     pub dataset_version_id: String,
@@ -420,8 +453,10 @@ pub struct LabTrainingRun {
     /// Model registered on success (`ml_models.id`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub finished_at: Option<String>,
 }
 
@@ -600,6 +635,7 @@ pub fn auto_split(source: &str) -> LabSplit {
 /// Counts of a dataset and the warnings shown before a training (§4.6.2,
 /// indicative floors: never blocking).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabStats {
     pub images: usize,
     pub annotated: usize,
@@ -615,6 +651,7 @@ pub struct LabStats {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabWarning {
     pub code: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -750,12 +787,14 @@ pub struct DatasetSnapshot {
 
 /// A dataset version (`GET /api/v1/lab/projects/{id}/versions`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LabDatasetVersion {
     pub id: String,
     pub version: i32,
     #[serde(default)]
     pub note: String,
     pub stats: LabStats,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[serde(default)]
     pub created_by: String,

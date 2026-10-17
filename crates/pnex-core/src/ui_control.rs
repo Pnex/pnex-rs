@@ -24,8 +24,9 @@ pub const CONTROL_SOURCE_MAX: usize = 32;
 /// Min interval between two accepted writes of one control (server-side
 /// rate limit, ~4 writes per second).
 pub const CONTROL_WRITE_MIN_INTERVAL_MS: i64 = 250;
-/// Max number of controls read in one `values` request.
-pub const CONTROL_VALUES_MAX_IDS: usize = 200;
+/// Max number of controls read in one `GET /api/v1/controls/values`
+/// (ids travel in the query string: keeps the URL under 4 KB).
+pub const CONTROL_VALUES_MAX_IDS: usize = 100;
 /// Max length of the free `via` origin tag (`dashboard:{uuid}`…).
 pub const CONTROL_VIA_MAX_LEN: usize = 80;
 
@@ -50,6 +51,7 @@ pub fn control_channel(org_id: i64) -> String {
 /// Kind of a control. Plain enum (no internally tagged enum: the workspace
 /// unifies serde_json `arbitrary_precision`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ControlKind {
     /// Two values (`on` / `off`, default 1 / 0): a digital output as is.
@@ -158,6 +160,7 @@ pub const COLOR_RGB_MAX: f64 = 16_777_215.0;
 /// sent to the flows stays a number (the whole control pipeline is
 /// numeric); `key` is its symbolic form, emitted as `msg.control.option`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlOption {
     pub value: f64,
     /// `[A-Za-z0-9_.-]{1,32}`: `heat`, `open`, `scene-evening`…
@@ -182,6 +185,7 @@ pub fn valid_option_key(key: &str) -> bool {
 
 /// Colour domain of a [`ControlKind::Color`] control.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ColorMode {
     /// `0xRRGGBB` integer (`#ff8800` = 16746496).
@@ -209,6 +213,7 @@ pub fn hex_to_rgb(hex: &str) -> Option<f64> {
 /// read through defaulting accessors (an unused field for the kind is
 /// ignored).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlSpec {
     pub kind: ControlKind,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -538,6 +543,7 @@ pub fn check_control_label(label: &str) -> Option<(&'static str, String)> {
 /// Last commanded value. Stored and published wrapped in a
 /// [`ControlEvent`] (under [`control_value_key`], on [`control_channel`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlValue {
     pub v: f64,
     /// Write time, epoch milliseconds (server clock).
@@ -575,7 +581,9 @@ pub fn valid_control_via(via: &str) -> bool {
 
 /// Reference from a surface item (dashboard widget, annotation) to a control.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlRef {
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub control_id: Uuid,
 }
 
@@ -639,9 +647,11 @@ pub fn auto_control_key(kind: &str, surface_id: Uuid, item_id: &str) -> String {
 /// list, flow node catalog). `surface_name` is `None` when the surface was
 /// deleted meanwhile.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlOrigin {
     /// [`ORIGIN_DASHBOARD`] or [`ORIGIN_ANNOTATION`].
     pub surface: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub surface_id: Uuid,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_name: Option<String>,
@@ -712,6 +722,7 @@ impl ControlSourceConfig {
 
 /// A deployed flow listening to a control (`control-source`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlListener {
     pub flow_id: i64,
     pub flow_name: String,
@@ -719,7 +730,9 @@ pub struct ControlListener {
 
 /// An org control.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UiControl {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: Uuid,
     pub org_id: i64,
     pub key: String,
@@ -733,11 +746,14 @@ pub struct UiControl {
     /// (created from the Controls page or a flow).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<ControlOrigin>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateUiControl {
     pub key: String,
     pub label: String,
@@ -745,6 +761,7 @@ pub struct CreateUiControl {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateUiControl {
     #[serde(default)]
     pub key: Option<String>,
@@ -756,22 +773,18 @@ pub struct UpdateUiControl {
 
 /// `POST /api/v1/controls/{id}/value`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WriteControlValue {
     pub value: f64,
     #[serde(default)]
     pub via: Option<String>,
 }
 
-/// `POST /api/v1/controls/values`: batch read for a surface.
+/// Answer of `GET /api/v1/controls/values`: values by control id (`null` = never written, or unknown in the org).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-pub struct ControlValuesRequest {
-    #[serde(default)]
-    pub ids: Vec<Uuid>,
-}
-
-/// Values by control id (`null` = never written, or unknown in the org).
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ControlValuesResponse {
+    #[cfg_attr(feature = "openapi", schema(value_type = BTreeMap<String, ControlValue>))]
     pub values: BTreeMap<Uuid, Option<ControlValue>>,
 }
 

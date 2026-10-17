@@ -27,7 +27,7 @@ fn fixture(id: i64, name: &str, status: &str, deployed: Option<i64>, updated: &s
         org_id: 1,
         device_id: None,
         name: name.to_string(),
-        status: status.to_string(),
+        status: pnex_core::FlowStatus::from_db(status),
         deployed_version_number: deployed,
         latest_version_number: 3,
         created_at: updated.to_string(),

@@ -15,7 +15,7 @@ fn body<T: serde::Serialize>(input: &T) -> Option<serde_json::Value> {
 
 /// `GET /api/v1/lab/projects`.
 pub async fn projects() -> Result<Vec<LabProject>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/lab/projects", None).await
+    client::request_all("/api/v1/lab/projects").await
 }
 
 /// `GET /api/v1/lab/projects/{id}`.
@@ -56,23 +56,19 @@ pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
 
 /// `GET /api/v1/lab/projects/{id}/images`.
 pub async fn images(project: &str) -> Result<Vec<LabImage>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/lab/projects/{project}/images"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/lab/projects/{project}/images")).await
 }
 
 /// `POST /api/v1/lab/projects/{id}/images` — adds media library images
 /// (one import = one source, the split unit).
 pub async fn add_images(project: &str, asset_ids: &[String]) -> Result<Vec<LabImage>, ApiError> {
-    client::request(
+    let added: pnex_core::lab::LabImagesAdded = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/projects/{project}/images"),
         Some(serde_json::json!({ "asset_ids": asset_ids })),
     )
-    .await
+    .await?;
+    Ok(added.images)
 }
 
 /// `DELETE /api/v1/lab/images/{id}` — the media asset itself stays.
@@ -98,12 +94,7 @@ pub async fn save_annotations(id: &str, input: &LabAnnotationsInput) -> Result<L
 
 /// `GET /api/v1/lab/projects/{id}/versions` — newest first.
 pub async fn versions(project: &str) -> Result<Vec<LabDatasetVersion>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/lab/projects/{project}/versions"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/lab/projects/{project}/versions")).await
 }
 
 /// `POST /api/v1/lab/projects/{id}/versions` — freezes the annotated
@@ -130,12 +121,13 @@ pub async fn export(version: &str) -> Result<Vec<u8>, ApiError> {
 /// `POST /api/v1/lab/images/{id}/suggest` — boxes proposed by a registry
 /// model (nothing is saved).
 pub async fn suggest(id: &str, req: &LabSuggestRequest) -> Result<Vec<LabSuggestion>, ApiError> {
-    client::request(
+    let found: pnex_core::lab::LabSuggestions = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/images/{id}/suggest"),
         body(req),
     )
-    .await
+    .await?;
+    Ok(found.suggestions)
 }
 
 /// `POST /api/v1/lab/projects/{id}/import-recording` — frames of a camera
@@ -144,12 +136,13 @@ pub async fn import_recording(
     project: &str,
     req: &pnex_core::lab::LabRecordingImport,
 ) -> Result<Vec<LabImage>, ApiError> {
-    client::request(
+    let added: pnex_core::lab::LabImagesAdded = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/projects/{project}/import-recording"),
         body(req),
     )
-    .await
+    .await?;
+    Ok(added.images)
 }
 
 /// `POST /api/v1/lab/projects/{id}/import-video` — frames of a video of
@@ -158,23 +151,25 @@ pub async fn import_video(
     project: &str,
     req: &pnex_core::lab::LabVideoImport,
 ) -> Result<Vec<LabImage>, ApiError> {
-    client::request(
+    let added: pnex_core::lab::LabImagesAdded = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/projects/{project}/import-video"),
         body(req),
     )
-    .await
+    .await?;
+    Ok(added.images)
 }
 
 /// `POST /api/v1/lab/images/{id}/interpolate` — boxes interpolated between
 /// the annotated frames around this one (nothing is saved).
 pub async fn interpolate(id: &str) -> Result<Vec<LabSuggestion>, ApiError> {
-    client::request(
+    let found: pnex_core::lab::LabSuggestions = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/images/{id}/interpolate"),
         None,
     )
-    .await
+    .await?;
+    Ok(found.suggestions)
 }
 
 /// `POST /api/v1/lab/versions/{id}/train` — queues a training (D204).
@@ -192,12 +187,7 @@ pub async fn train(
 
 /// `GET /api/v1/lab/projects/{id}/runs` — trainings, newest first.
 pub async fn runs(project: &str) -> Result<Vec<pnex_core::lab::LabTrainingRun>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/lab/projects/{project}/runs"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/lab/projects/{project}/runs")).await
 }
 
 /// `POST /api/v1/lab/runs/{id}/cancel`.
@@ -213,10 +203,11 @@ pub async fn cancel_run(id: &str) -> Result<pnex_core::lab::LabTrainingRun, ApiE
 /// `POST /api/v1/lab/images/{id}/propagate` — model proposals carrying the
 /// classes of the previous annotated frame (nothing is saved).
 pub async fn propagate(id: &str, req: &LabSuggestRequest) -> Result<Vec<LabSuggestion>, ApiError> {
-    client::request(
+    let found: pnex_core::lab::LabSuggestions = client::request(
         reqwest::Method::POST,
         &format!("/api/v1/lab/images/{id}/propagate"),
         body(req),
     )
-    .await
+    .await?;
+    Ok(found.suggestions)
 }

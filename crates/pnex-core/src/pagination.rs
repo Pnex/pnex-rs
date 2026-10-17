@@ -6,15 +6,17 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Enveloppe d'une liste paginée.
+/// Envelope of a paginated list.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Paginated<T> {
-    /// Total avant découpage (les filtres s'appliquent au compte).
+    /// Total before slicing (filters apply to the count).
     pub count: i64,
-    /// Lien vers la page suivante — `null` sur la dernière page.
+    /// Link to the next page — `null` on the last page.
     pub next: Option<String>,
-    /// Lien vers la page précédente — `null` sur la première page.
+    /// Link to the previous page — `null` on the first page.
     pub previous: Option<String>,
+    /// Items of this page.
     pub results: Vec<T>,
 }
 

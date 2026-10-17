@@ -95,7 +95,10 @@ pub(super) fn PoiDetail(
                 .as_str()
                 .unwrap_or_default()
                 .to_string(),
-            body["current_placement_id"].as_i64().unwrap_or_default(),
+            body["current_placement_id"]
+                .as_str()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or_default(),
         )
     });
     // Index devices (pk, slug, type) pour l'arbre — l'id containment device
@@ -444,14 +447,14 @@ pub(super) fn PoiDetail(
                             Err(err) if err.status == Some(409) => {
                                 // Device déjà placé : sur CE POI → simple
                                 // refresh ; ailleurs → boîte de confirmation
-                                // de déplacement (le corps porte le placement
-                                // courant — D43, jamais silencieux).
-                                if let Some(body) = err.body {
-                                    if body["current_pin_id"].as_str() == Some(id.as_str()) {
+                                // de déplacement (`errors.args` carries the
+                                // current placement, D43, never silent).
+                                if let Some(args) = err.args {
+                                    if args["current_pin_id"].as_str() == Some(id.as_str()) {
                                         detail_version += 1;
                                         on_changed.call(());
                                     } else {
-                                        move_conflict.set(Some(body));
+                                        move_conflict.set(Some(args));
                                     }
                                 }
                             }

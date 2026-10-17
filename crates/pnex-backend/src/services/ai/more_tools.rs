@@ -522,13 +522,15 @@ pub async fn read_memory(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
             }
         })
         .collect();
-    let resp = crate::services::memory::values(config, deps.org_id, &refs).await;
+    let Some(resp) = crate::services::memory::values(config, deps.org_id, &refs).await else {
+        return outcome(json!({ "available": false, "values": [] }));
+    };
     let values: Vec<Value> = keys
         .iter()
         .zip(resp.results.iter())
         .map(|(k, v)| json!({ "key": k, "available": v.available, "value": v.value, "ts_ms": v.ts_ms }))
         .collect();
-    outcome(json!({ "available": resp.available, "values": values }))
+    outcome(json!({ "available": true, "values": values }))
 }
 
 // ─────────────────────────── Topic taxonomies (D168) ───────────────────────────

@@ -1,27 +1,25 @@
-//! Média (D21) — bibliothèque d'assets versionnée par org, scoping org (D2).
+//! Media (D21): versioned asset library per org, org-scoped (D2).
 //!
-//! Premier chemin body-bytes du repo : l'upload est un **raw bytes
-//! octet-stream** (pas de multipart — reqwest front `request_upload`),
-//! métadonnées en query params. Le `kind` est auto-détecté (sniff GPano/
-//! extensions — `services::media_sniff`) ; priorité : kind client > sniff >
-//! `photo`. La limite d'upload est posée par handler (`DefaultBodyLimit` sur
-//! les POST) — au-delà de `settings.media.max_bytes`, réponse 413 JSON
-//! propre via `content_length()` ; la limite axum (max+1 Mo) reste le filet.
+//! Uploads are **raw `application/octet-stream` bodies** (no multipart,
+//! frontend `request_upload`), metadata in query params. The `kind` is
+//! sniffed (GPano / extensions, `services::media_sniff`); priority: client
+//! kind > sniff. The upload limit is set per handler (`DefaultBodyLimit` on
+//! the POSTs): above `settings.media.max_bytes` the handler answers a coded
+//! 413 (`media-file-too-large`); the axum limit (max + 1 MB) is the safety net.
 //!
-//! Versioning append-only nettoyable (école D18 flows) :
-//! - `POST /{id}/versions` crée version n+1, jamais d'écrasement ;
-//! - `POST /{id}/versions/{n}/restore` re-positionne la version courante ;
-//! - `DELETE /{id}/versions/{n}` purge la version **et** son blob (refus 409
-//!   `{"error":"last_version"}` si seule restante) ;
-//! - `DELETE /{id}` purge l'asset et tous ses blobs.
+//! Append-only, prunable versioning (flows school, D18):
+//! - `POST /{id}/versions` creates version n+1, never overwrites;
+//! - `POST /{id}/versions/{n}/restore` moves the current version;
+//! - `DELETE /{id}/versions/{n}` purges the version **and** its blob (409
+//!   `media-last-version` when it is the only one left);
+//! - `DELETE /{id}` purges the asset and all its blobs.
 //!
-//! Écriture : **DB d'abord, storage ensuite** — un blob orphelin (DB commit
-//! puis put en échec) est acceptable et purgeable ; l'inverse ne le serait
-//! pas (ligne sans blob).
+//! Writes: **storage first, DB next**: an orphan blob is acceptable and
+//! purgeable, a row without its blob is not.
 //!
-//! Errors: 400 per-field `{"<field>": msg}` (devices/flows school), 403 via
-//! `can_write()`, 404 masquant le cross-org (école `device_of_org`), 409 via
-//! `Error::CustomError` (patron orgs.rs::conflict).
+//! Errors (D239, all `ErrorDetail`): 400 `field-invalid` with machine tokens
+//! in `errors.fields`, 403 `media-write-forbidden` via `can_write()`, 404
+//! masking other orgs, 409 coded conflicts.
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
@@ -75,9 +73,8 @@ pub(crate) use store::{write_version, IncomingVersion};
 
 pub fn routes() -> Routes {
     use crate::services::compute_limits;
-    // Limite d'upload : env (défaut 256 Mo) + 1 Mo de marge — le 413 JSON
-    // propre part du handler (settings.media.max_bytes, vérifié sur
-    // content_length) ; au-delà, la limite axum coupe (filet).
+    // Upload limit: env (default 256 MB) + 1 MB slack; the coded 413 comes
+    // from the handler (settings.media.max_bytes), the axum limit is the net.
     let max = std::env::var("PNEX_MEDIA_MAX_BYTES")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -108,4 +105,31 @@ pub fn routes() -> Routes {
         .add("/{id}/versions/{n}", get(version_of).delete(delete_version))
         .add("/{id}/versions/{n}/content", get(version_content))
         .add("/{id}/versions/{n}/restore", post(restore))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        upload,
+        search,
+        chunk,
+        index_state,
+        reindex,
+        analyses,
+        start_analyses,
+        detail,
+        update,
+        delete,
+        content,
+        versions,
+        add_version,
+        version_of,
+        delete_version,
+        version_content,
+        restore
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

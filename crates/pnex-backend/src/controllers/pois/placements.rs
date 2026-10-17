@@ -6,6 +6,24 @@ use super::*;
 /// 201 placement ; 400 device inconnu / location trop longue ; **409
 /// conflit** porteur du POI courant (le front propose le déplacement —
 /// jamais silencieux) ; 404 masqué cross-org.
+#[utoipa::path(
+    post,
+    path = "/api/v1/pois/{id}/devices",
+    tag = "pois",
+    operation_id = "pois_attach_device",
+    summary = "Place a device on a POI",
+    description = "Attaches a device of the org to this POI (one placement per device). If the device is already placed elsewhere, answers 409 with the current placement so the caller can confirm a move (PATCH the placement). Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "POI id (UUID)")),
+    request_body = DeviceAttachPayload,
+    responses(
+        (status = 201, body = DevicePlacementDto),
+        (status = 400, description = "`field-invalid`: `device_id` not found in the org, `location_detail` too long", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`poi-device-already-placed`: `errors.args` carries `device_id`, `current_placement_id`, `current_pin_id`, `current_pin_label` (strings)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn attach_device(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -45,6 +63,23 @@ pub(super) async fn attach_device(
 /// et/ou **déplacement** (`pin_id` cible). Le retrait passe par
 /// [`delete_placement`] (amendement D43, 2026-09-13) ; supprimer le POI
 /// cascade les placements côté DB.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/pois/placements/{id}",
+    tag = "pois",
+    operation_id = "pois_placements_update",
+    summary = "Edit or move a device placement",
+    description = "Changes the placement `location_detail` and/or moves the device to another POI (`pin_id`). Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Placement id")),
+    request_body = PlacementPatchPayload,
+    responses(
+        (status = 200, body = DevicePlacementDto),
+        (status = 400, description = "`field-invalid`: `pin_id` not found in the org, `location_detail` too long", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown placement or placement of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update_placement(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -76,6 +111,21 @@ pub(super) async fn update_placement(
 /// `DELETE /api/v1/pois/placements/{id}` — détache le device (amendement
 /// D43, 2026-09-13) : 204, le device redevient libre, plaçable n'importe
 /// où. 404 masqué cross-org.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/pois/placements/{id}",
+    tag = "pois",
+    operation_id = "pois_placements_delete",
+    summary = "Detach a device from its POI",
+    description = "Deletes the placement: the device is free to be placed anywhere again. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Placement id")),
+    responses(
+        (status = 204, description = "Detached"),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown placement or placement of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete_placement(
     State(ctx): State<AppContext>,
     org: OrgContext,

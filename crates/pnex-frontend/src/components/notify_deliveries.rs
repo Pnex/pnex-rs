@@ -93,11 +93,18 @@ pub fn NotifyDeliveriesTab(
         None => (None, true, false, 0, Vec::new()),
         Some(Ok(p)) => (
             Some(Ok(())),
-            p.available,
+            true,
             p.results.is_empty(),
             p.count,
             p.results.clone(),
         ),
+        // No journal (nothing sent yet, or OpenObserve unreachable): the
+        // explanatory panel instead of a raw error.
+        Some(Err(err))
+            if err.code.as_deref() == Some(pnex_core::err_codes::NOTIFY_JOURNAL_UNAVAILABLE) =>
+        {
+            (None, false, false, 0, Vec::new())
+        }
         Some(Err(err)) => (Some(Err(err.clone())), true, false, 0, Vec::new()),
     };
     let names: std::collections::HashMap<String, String> = channels
@@ -249,14 +256,14 @@ fn DeliveryRow(
                 span { class: "ml-2 text-xs text-gray-500", "{d.channel_kind}" }
             }
             td { class: "td whitespace-nowrap",
-                span { class: "px-2 py-0.5 rounded-full text-xs {status_classes(&d.status)}",
-                    {status_label(&d.status)}
+                span { class: "px-2 py-0.5 rounded-full text-xs {status_classes(d.status.as_str())}",
+                    {status_label(d.status.as_str())}
                     if let Some(code) = d.http_status {
                         " · HTTP {code}"
                     }
                 }
             }
-            td { class: "td hidden text-gray-600 md:table-cell", {source_label(&d.source)} }
+            td { class: "td hidden text-gray-600 md:table-cell", {source_label(d.source.as_str())} }
             td { class: "td min-w-[10rem] text-gray-700 break-words",
                 {d.subject.clone().unwrap_or_default()}
             }
@@ -281,7 +288,7 @@ fn DeliveryRow(
                     colspan: "6",
                     dl { class: "grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 pt-2",
                         dt { class: "text-gray-500 md:hidden", {t!("notify-col-source")} }
-                        dd { class: "md:hidden", {source_label(&d.source)} }
+                        dd { class: "md:hidden", {source_label(d.source.as_str())} }
                         if let Some(id) = flow_id {
                             dt { class: "text-gray-500 md:hidden", {t!("notify-col-flow")} }
                             dd { class: "md:hidden", "#{id}" }

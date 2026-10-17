@@ -287,18 +287,20 @@ async fn orgs_overview_is_admin_only_and_lists_every_org() {
         let (_, bob_org, _) = provision(&server, &bob).await;
 
         let res = server
-            .get("/api/v1/system/orgs")
+            .get("/api/v1/system/orgs?limit=100")
             .add_header("Authorization", bearer(&alice))
             .await;
         assert_eq!(res.status_code(), 403);
 
         make_platform_admin(&ctx.db, alice_id).await;
         let res = server
-            .get("/api/v1/system/orgs")
+            .get("/api/v1/system/orgs?limit=100")
             .add_header("Authorization", bearer(&alice))
             .await;
         assert_eq!(res.status_code(), 200);
-        let rows: Vec<serde_json::Value> = res.json();
+        let body: serde_json::Value = res.json();
+        assert!(body["count"].as_i64().unwrap() >= 2, "paginated envelope");
+        let rows = body["results"].as_array().cloned().unwrap();
         let ids: Vec<i64> = rows.iter().map(|r| r["org_id"].as_i64().unwrap()).collect();
         // The admin sees organizations they are not a member of.
         assert!(ids.contains(&alice_org) && ids.contains(&bob_org));
@@ -340,18 +342,21 @@ async fn org_tier_is_changed_by_platform_admins_only() {
             .await;
         assert_eq!(res.status_code(), 403);
         let res = server
-            .get("/api/v1/system/tiers")
+            .get("/api/v1/system/tiers?limit=100")
             .add_header("Authorization", bearer(&bob))
             .await;
         assert_eq!(res.status_code(), 403);
 
         make_platform_admin(&ctx.db, alice_id).await;
         let res = server
-            .get("/api/v1/system/tiers")
+            .get("/api/v1/system/tiers?limit=100")
             .add_header("Authorization", bearer(&alice))
             .await;
         assert_eq!(res.status_code(), 200);
-        let tiers: Vec<serde_json::Value> = res.json();
+        let tiers = res.json::<serde_json::Value>()["results"]
+            .as_array()
+            .cloned()
+            .unwrap();
         assert!(tiers.iter().any(|t| t["id"] == tier.id));
 
         let res = server
@@ -375,10 +380,13 @@ async fn org_tier_is_changed_by_platform_admins_only() {
             .unwrap();
         assert_eq!(org.subscription_tier_id, Some(tier.id));
         let res = server
-            .get("/api/v1/system/orgs")
+            .get("/api/v1/system/orgs?limit=100")
             .add_header("Authorization", bearer(&alice))
             .await;
-        let rows: Vec<serde_json::Value> = res.json();
+        let rows = res.json::<serde_json::Value>()["results"]
+            .as_array()
+            .cloned()
+            .unwrap();
         let row = rows.iter().find(|r| r["org_id"] == bob_org).unwrap();
         assert_eq!(row["tier_id"], tier.id);
         assert_eq!(row["tier_name"], "o37-test-tier");

@@ -9,9 +9,9 @@
 //! - `DELETE /api/v1/cameras/{device}/recordings?from=&to=` — every segment
 //!   starting in the window (owner/admin/member)
 //! - `GET    /api/v1/cameras/{device}/recordings/layers?from=&to=` —
-//!   annotation layers (detection nodes, D105) stored in OpenObserve
+//!   annotation layers (detection nodes, D105) stored in OpenObserve, paginated
 //! - `GET    /api/v1/cameras/{device}/recordings/annotations?from=&to=&layers=a,b`
-//!   — boxes of the selected layers, drawn over the playback
+//!   — `{annotations}` boxes of the selected layers, drawn over the playback
 //!
 //! Both answer empty when O2 is off: the overlay is optional.
 //!
@@ -49,6 +49,14 @@ pub fn routes() -> Routes {
         .add("/{device}/recordings/annotations", get(annotations))
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(timeline, delete_range, export, layers, annotations))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 fn coded(status: StatusCode, code: &str, message: &str) -> Error {
     Error::CustomError(status, loco_rs::controller::ErrorDetail::new(code, message))
 }
@@ -68,6 +76,11 @@ pub struct RangeQuery {
     /// Comma-separated layer ids (annotations only).
     #[serde(default)]
     layers: Option<String>,
+    /// Page size of the layers list.
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default)]
+    offset: Option<String>,
 }
 
 /// Parses the mandatory `[from, to)` window, at most `max_secs` wide.
@@ -120,6 +133,21 @@ fn span_ms(seg: &video_segments::Model) -> (i64, i64) {
     )
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/cameras/{device}/recordings",
+    tag = "cameras",
+    operation_id = "cameras_recordings_timeline",
+    summary = "Get a camera's recording timeline",
+    description = "Recorded segments starting in `[from, to)` (window at most 26 h), ascending, overlaps included; capped at 5000 segments (`truncated`).",
+    params(("device" = i64, Path, description = "Device registry id of the camera"), ("from" = String, Query, format = DateTime, description = "Window start, RFC 3339 (required)"), ("to" = String, Query, format = DateTime, description = "Window end (exclusive), RFC 3339 (required)")),
+    responses(
+        (status = 200, body = pnex_core::camera::RecordingTimeline),
+        (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or device of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn timeline(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -147,6 +175,22 @@ async fn timeline(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/cameras/{device}/recordings/export",
+    tag = "cameras",
+    operation_id = "cameras_recordings_export",
+    summary = "Export a camera's recordings as one video",
+    description = "Concatenates the chained segments of `[from, to)` (window at most 26 h) into one MJPEG-AVI attachment; gaps are cut, segments at another resolution are skipped. Source size is capped.",
+    params(("device" = i64, Path, description = "Device registry id of the camera"), ("from" = String, Query, format = DateTime, description = "Window start, RFC 3339 (required)"), ("to" = String, Query, format = DateTime, description = "Window end (exclusive), RFC 3339 (required)")),
+    responses(
+        (status = 200, content_type = "video/x-msvideo", body = Vec<u8>),
+        (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device, or no recording in the range (`camera-export-empty`)", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "Range too large for one file (`camera-export-too-large`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn export(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -251,6 +295,21 @@ async fn export(
         .into_response())
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/cameras/{device}/recordings/layers",
+    tag = "cameras",
+    operation_id = "cameras_recordings_layers",
+    summary = "List a camera's annotation layers",
+    description = "Detection layers (one per detection flow node) with annotated frames in `[from, to)` (window at most 26 h). Empty when the telemetry store is off or unreachable.",
+    params(("device" = i64, Path, description = "Device registry id of the camera"), ("from" = String, Query, format = DateTime, description = "Window start, RFC 3339 (required)"), ("to" = String, Query, format = DateTime, description = "Window end (exclusive), RFC 3339 (required)"), ("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset")),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::camera::AnnotationLayer>),
+        (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or device of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn layers(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -271,9 +330,37 @@ async fn layers(
         tracing::warn!(error = %e, "annotation layers: openobserve read failed");
         Vec::new()
     });
-    format::json(layers)
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let count = layers.len() as i64;
+    let (skip, take) = page.slice(layers.len());
+    let filters = vec![
+        ("from".to_string(), from.to_rfc3339()),
+        ("to".to_string(), to.to_rfc3339()),
+    ];
+    format::json(super::pagination::envelope(
+        &format!("/api/v1/cameras/{device}/recordings/layers"),
+        &filters,
+        page,
+        count,
+        layers.into_iter().skip(skip).take(take).collect::<Vec<_>>(),
+    ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/cameras/{device}/recordings/annotations",
+    tag = "cameras",
+    operation_id = "cameras_recordings_annotations",
+    summary = "Get the detection boxes of a camera's recordings",
+    description = "Detection boxes of the selected layers over `[from, to)` (window at most 26 h), to draw over playback. Empty when the telemetry store is off or unreachable.",
+    params(("device" = i64, Path, description = "Device registry id of the camera"), ("from" = String, Query, format = DateTime, description = "Window start, RFC 3339 (required)"), ("to" = String, Query, format = DateTime, description = "Window end (exclusive), RFC 3339 (required)"), ("layers" = Option<String>, Query, description = "Comma-separated layer ids")),
+    responses(
+        (status = 200, body = pnex_core::camera::FrameAnnotations),
+        (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or device of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn annotations(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -304,9 +391,25 @@ async fn annotations(
         tracing::warn!(error = %e, "annotations: openobserve read failed");
         Vec::new()
     });
-    format::json(anns)
+    format::json(pnex_core::camera::FrameAnnotations { annotations: anns })
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/cameras/{device}/recordings",
+    tag = "cameras",
+    operation_id = "cameras_recordings_delete",
+    summary = "Delete a camera's recordings in a time window",
+    description = "Permanently deletes every segment (file and row) starting in `[from, to)` (window at most 31 days). Writer role required.",
+    params(("device" = i64, Path, description = "Device registry id of the camera"), ("from" = String, Query, format = DateTime, description = "Window start, RFC 3339 (required)"), ("to" = String, Query, format = DateTime, description = "Window end (exclusive), RFC 3339 (required)")),
+    responses(
+        (status = 200, body = CameraRecordingsDeleted),
+        (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`camera-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or device of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_range(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -337,7 +440,13 @@ async fn delete_range(
             deleted += 1;
         }
     }
-    format::json(serde_json::json!({ "deleted": deleted }))
+    format::json(CameraRecordingsDeleted { deleted })
+}
+
+/// Number of recorded segments deleted.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CameraRecordingsDeleted {
+    deleted: u64,
 }
 
 #[cfg(test)]
@@ -349,6 +458,8 @@ mod tests {
             from: Some(from.into()),
             to: Some(to.into()),
             layers: None,
+            limit: None,
+            offset: None,
         }
     }
 
@@ -379,7 +490,9 @@ mod tests {
             &RangeQuery {
                 from: None,
                 to: None,
-                layers: None
+                layers: None,
+                limit: None,
+                offset: None,
             },
             TIMELINE_MAX_SPAN_SECS
         )

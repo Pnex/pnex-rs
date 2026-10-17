@@ -36,9 +36,8 @@ pub(super) fn FunctionForm(
         if pinned_id == 0 {
             Vec::new()
         } else {
-            api::functions::versions(pinned_id, 50, 0)
+            api::functions::versions_all(pinned_id)
                 .await
-                .map(|page| page.results)
                 .unwrap_or_default()
         }
     });

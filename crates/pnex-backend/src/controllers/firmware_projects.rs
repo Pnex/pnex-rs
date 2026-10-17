@@ -58,33 +58,21 @@ fn forbidden() -> Error {
     )
 }
 
-/// 400 shapes: field token (`{field: token}`), sketch violations
-/// (`{error, violations}`), library code (`{error, errors.args}`).
+/// 400 shapes (all `ErrorDetail`): field token (`field-invalid`), sketch
+/// violations (`firmware-source-refused`), library code (`errors.args`).
 fn write_error_response(e: FirmwareWriteError) -> Response {
     match e {
-        FirmwareWriteError::Field(field, token) => (
+        FirmwareWriteError::Field(field, token) => super::field_error(field, &token),
+        FirmwareWriteError::Source(violations) => {
+            super::violations_error(pnex_core::err_codes::FIRMWARE_SOURCE_REFUSED, violations)
+        }
+        FirmwareWriteError::Lib(code, id) => super::coded_error(
             StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ field: token })),
+            code,
+            "Library not available for this project.",
+            Some(serde_json::json!({ "value": id })),
         )
-            .into_response(),
-        FirmwareWriteError::Source(violations) => (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({
-                "error": "firmware-source-refused",
-                "description": "The sketch contains constructs refused by the build policy.",
-                "violations": violations,
-            })),
-        )
-            .into_response(),
-        FirmwareWriteError::Lib(code, id) => (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({
-                "error": code,
-                "description": "Library not available for this project.",
-                "errors": { "args": { "value": id } },
-            })),
-        )
-            .into_response(),
+        .into_response(),
         FirmwareWriteError::Db(msg) => {
             tracing::error!("firmware project write: {msg}");
             Error::InternalServerError.into_response()
@@ -140,13 +128,51 @@ async fn find_project(
     Ok((project, rev))
 }
 
-#[derive(serde::Deserialize)]
+/// Answer of `POST /api/v1/firmware-projects/{id}/check`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CheckQueued {
+    #[schema(value_type = String, format = "uuid")]
+    check_id: uuid::Uuid,
+    /// Always `queued`.
+    status: pnex_core::firmware::FirmwareCheckState,
+}
+
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// `limit`/`offset` of the paginated sub-collections.
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
 }
 
 /// `GET /api/v1/firmware-projects` — org projects (name ASC).
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-projects",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_list",
+    summary = "List the custom firmware projects",
+    description = "Custom firmware projects of the org, ordered by name, with current revision number and attached device count, paginated (`limit`/`offset`). Optional label filter. Any org member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<FirmwareProjectSummary>),
+        (status = 400, description = "Invalid `label` filter (`field-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -170,11 +196,14 @@ async fn list(
         }
         Err(resp) => return Ok(resp),
     }
-    let rows = select
-        .order_by_asc(firmware_projects::Column::Name)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (count, rows) = super::pagination::sql_page(
+        &ctx.db,
+        select.order_by_asc(firmware_projects::Column::Name),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let mut results = Vec::with_capacity(rows.len());
     for p in &rows {
         let current = latest_revision(&ctx.db, p.id)
@@ -187,16 +216,72 @@ async fn list(
             .map_err(|_| Error::InternalServerError)?;
         results.push(summary_dto(p, current, devices));
     }
-    format::json(serde_json::json!({ "count": results.len(), "results": results }))
+    let filters: Vec<(String, String)> = q
+        .label
+        .iter()
+        .filter(|l| !l.is_empty())
+        .map(|l| ("label".to_string(), l.clone()))
+        .collect();
+    format::json(super::pagination::envelope(
+        "/api/v1/firmware-projects",
+        &filters,
+        page,
+        count,
+        results,
+    ))
 }
 
 /// `GET /api/v1/firmware-projects/lib-catalog` — pinned library catalog.
-async fn lib_catalog(_org: OrgContext) -> Result<Response> {
-    let items: Vec<LibCatalogItem> = LIB_CATALOG.iter().map(LibCatalogItem::from).collect();
-    format::json(serde_json::json!({ "count": items.len(), "results": items }))
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-projects/lib-catalog",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_lib_catalog",
+    summary = "Pinned library catalog",
+    description = "Libraries a custom firmware project may depend on (pinned PlatformIO specs, compatible chip families), paginated (`limit`/`offset`). Any org member.",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<LibCatalogItem>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn lib_catalog(
+    _org: OrgContext,
+    axum::extract::Query(q): axum::extract::Query<PageQuery>,
+) -> Result<Response> {
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (skip, take) = page.slice(LIB_CATALOG.len());
+    let items: Vec<LibCatalogItem> = LIB_CATALOG
+        .iter()
+        .skip(skip)
+        .take(take)
+        .map(LibCatalogItem::from)
+        .collect();
+    format::json(super::pagination::envelope(
+        "/api/v1/firmware-projects/lib-catalog",
+        &[],
+        page,
+        LIB_CATALOG.len() as i64,
+        items,
+    ))
 }
 
 /// `POST /api/v1/firmware-projects` — project + revision 1 (201).
+#[utoipa::path(
+    post,
+    path = "/api/v1/firmware-projects",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_create",
+    summary = "Create a custom firmware project",
+    description = "Creates the project and its revision 1 (`main_cpp` absent = starter sketch). The sketch passes a lexical policy guard and the libraries must suit the chip family. Owner, admin or member.",
+    request_body = pnex_core::firmware::CreateFirmwareProject,
+    responses(
+        (status = 201, body = pnex_core::firmware::FirmwareProjectDetail),
+        (status = 400, description = "Invalid input: a field token (`field-invalid`, `errors.fields`), refused sketch constructs (`firmware-source-refused`, `errors.violations`: [SourceViolation]), or an unavailable library (`firmware-lib-*`, `errors.args.value`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -214,6 +299,20 @@ async fn create(
 }
 
 /// `GET /api/v1/firmware-projects/{id}` — project + current revision.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-projects/{id}",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_get",
+    summary = "Get a firmware project with its current sketch",
+    description = "Project metadata plus the current revision content (sketch and libraries). Any org member.",
+    params(("id" = i64, Path, description = "Firmware project id")),
+    responses(
+        (status = 200, body = pnex_core::firmware::FirmwareProjectDetail),
+        (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -225,6 +324,24 @@ async fn detail(
 
 /// `PATCH /api/v1/firmware-projects/{id}` — new revision and/or metadata;
 /// 409 `version_conflict` when `expected_revision_number` is stale.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/firmware-projects/{id}",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_save",
+    summary = "Save a new revision and/or metadata",
+    description = "Appends a revision (sketch/libraries) and/or updates name/description. Optimistic concurrency: `expected_revision_number` must equal the current revision. A save with identical content creates no revision. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Firmware project id")),
+    request_body = pnex_core::firmware::SaveFirmwareRevision,
+    responses(
+        (status = 200, body = pnex_core::firmware::FirmwareProjectDetail),
+        (status = 400, description = "Invalid input: a field token (`field-invalid`, `errors.fields`), refused sketch constructs (`firmware-source-refused`, `errors.violations`: [SourceViolation]), or an unavailable library (`firmware-lib-*`, `errors.args.value`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Stale `expected_revision_number` (`firmware-version-conflict`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn save(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -236,14 +353,11 @@ async fn save(
     }
     let (p, rev) = find_project(&ctx.db, &org, id).await?;
     if input.expected_revision_number != rev.revision_number {
-        return Ok((
+        return Err(error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({
-                "error": "firmware-version-conflict",
-                "description": "Someone saved a newer revision first — the editor was reloaded.",
-            })),
-        )
-            .into_response());
+            "firmware-version-conflict",
+            "Someone saved a newer revision first — the editor was reloaded.",
+        ));
     }
     match save_revision(&ctx.db, p, rev, &input).await {
         Ok((p, rev)) => format::json(detail_dto(&p, &rev)),
@@ -252,18 +366,37 @@ async fn save(
 }
 
 /// `GET /api/v1/firmware-projects/{id}/revisions` — history (DESC).
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-projects/{id}/revisions",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_revisions",
+    summary = "Revision history of a firmware project",
+    description = "Every revision, newest first, with full content (any one can be restored by saving it), paginated (`limit`/`offset`). Any org member.",
+    params(("id" = i64, Path, description = "Firmware project id"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<FirmwareRevisionSummary>),
+        (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn revisions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<i64>,
+    axum::extract::Query(q): axum::extract::Query<PageQuery>,
 ) -> Result<Response> {
     let (p, _) = find_project(&ctx.db, &org, id).await?;
-    let rows = firmware_revisions::Entity::find()
-        .filter(firmware_revisions::Column::FirmwareProjectId.eq(p.id))
-        .order_by_desc(firmware_revisions::Column::RevisionNumber)
-        .all(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?;
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let (count, rows) = super::pagination::sql_page(
+        &ctx.db,
+        firmware_revisions::Entity::find()
+            .filter(firmware_revisions::Column::FirmwareProjectId.eq(p.id))
+            .order_by_desc(firmware_revisions::Column::RevisionNumber),
+        page,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
     let results: Vec<FirmwareRevisionSummary> = rows
         .iter()
         .map(|r| FirmwareRevisionSummary {
@@ -275,11 +408,33 @@ async fn revisions(
             created_at: r.created_at.to_rfc3339(),
         })
         .collect();
-    format::json(serde_json::json!({ "count": results.len(), "results": results }))
+    format::json(super::pagination::envelope(
+        &format!("/api/v1/firmware-projects/{id}/revisions"),
+        &[],
+        page,
+        count,
+        results,
+    ))
 }
 
 /// `DELETE /api/v1/firmware-projects/{id}` — 409 while devices are
 /// attached; 204 otherwise (revisions cascade).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/firmware-projects/{id}",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_delete",
+    summary = "Delete a firmware project",
+    description = "Deletes the project and all its revisions. Refused while devices use it. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Firmware project id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Devices attached (`firmware-project-in-use`, args.count)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -293,15 +448,12 @@ async fn delete(
         .await
         .map_err(|_| Error::InternalServerError)?;
     if n > 0 {
-        return Ok((
+        return Err(super::coded_error(
             StatusCode::CONFLICT,
-            format::json(serde_json::json!({
-                "error": "firmware-project-in-use",
-                "description": "Devices use this firmware project.",
-                "errors": { "args": { "count": n.to_string() } },
-            })),
-        )
-            .into_response());
+            pnex_core::err_codes::FIRMWARE_PROJECT_IN_USE,
+            "Devices use this firmware project.",
+            Some(serde_json::json!({ "count": n.to_string() })),
+        ));
     }
     // Revisions go with the project (FK cascade on firmware_project_id).
     firmware_projects::Entity::delete_by_id(p.id)
@@ -332,6 +484,22 @@ fn custom_settings(ctx: &AppContext) -> Result<FirmwareSettings> {
 /// `POST /api/v1/firmware-projects/{id}/check` — compile-only check of the
 /// current revision (202 + `check_id`; poll `checks/{check_id}`). Viewer
 /// allowed (read-only tool, no artifact).
+#[utoipa::path(
+    post,
+    path = "/api/v1/firmware-projects/{id}/check",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_check",
+    summary = "Start a compile-only check",
+    description = "Queues a background compile of the current revision (no artifact produced); poll `GET /api/v1/firmware-projects/{id}/checks/{check_id}`. Requires custom firmware builds enabled on the server. Any org member, viewers included.",
+    params(("id" = i64, Path, description = "Firmware project id")),
+    responses(
+        (status = 202, body = CheckQueued),
+        (status = 400, description = "Library not available for the chip (`firmware-lib-*`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Custom builds disabled (`firmware-custom-disabled`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn check(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -356,12 +524,29 @@ async fn check(
         .map_err(|_| Error::InternalServerError)?;
     Ok((
         StatusCode::ACCEPTED,
-        format::json(serde_json::json!({ "check_id": check.id, "status": "queued" })),
+        format::json(CheckQueued {
+            check_id: check.id,
+            status: pnex_core::firmware::FirmwareCheckState::Queued,
+        }),
     )
         .into_response())
 }
 
 /// `GET /api/v1/firmware-projects/{id}/checks/{check_id}` — check state.
+#[utoipa::path(
+    get,
+    path = "/api/v1/firmware-projects/{id}/checks/{check_id}",
+    tag = "firmware-projects",
+    operation_id = "firmware_projects_check_status",
+    summary = "State of a compile-only check",
+    description = "Status (`running` | `succeeded` | `failed` | `error`), compiler diagnostics and the output tail. Any org member.",
+    params(("id" = i64, Path, description = "Firmware project id"), ("check_id" = String, Path, format = "uuid", description = "Check id")),
+    responses(
+        (status = 200, body = pnex_core::firmware::FirmwareCheckStatus),
+        (status = 404, description = "Unknown project or check", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn check_status(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -374,7 +559,9 @@ async fn check_status(
         .ok_or(Error::NotFound)?;
     format::json(pnex_core::firmware::FirmwareCheckStatus {
         check_id: state.id.to_string(),
-        status: state.status,
+        // Unknown stored states never happen; `error` is the safe reading.
+        status: pnex_core::firmware::FirmwareCheckState::from_wire(&state.status)
+            .unwrap_or(pnex_core::firmware::FirmwareCheckState::Error),
         revision_number: state.revision_number,
         diagnostics: state
             .diagnostics
@@ -382,4 +569,22 @@ async fn check_status(
             .unwrap_or_default(),
         log_tail: state.log_tail.unwrap_or_default(),
     })
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        lib_catalog,
+        create,
+        detail,
+        save,
+        revisions,
+        delete,
+        check,
+        check_status
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

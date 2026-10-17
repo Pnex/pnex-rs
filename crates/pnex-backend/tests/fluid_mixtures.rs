@@ -93,13 +93,12 @@ async fn create_mixture(
 }
 
 /// Crée puis retourne l'id du mélange (utilisé par detail/update/delete).
-async fn seed_mixture(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> String {
+async fn seed_mixture(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> i64 {
     let resp = create_mixture(server, token, org, name, composition_mole()).await;
     assert_eq!(resp.status_code(), 201, "seed: {}", resp.text());
     resp.json::<serde_json::Value>()["id"]
-        .as_str()
-        .expect("id en string")
-        .to_string()
+        .as_i64()
+        .expect("integer id")
 }
 
 /// CRUD complet + isolation org : create → list → detail → cross-org 404
@@ -210,11 +209,11 @@ async fn rejets_validation_et_unicite() {
         .await;
         assert_eq!(resp.status_code(), 400, "{}", resp.text());
         assert!(
-            resp.json::<serde_json::Value>()["violations"]
+            resp.json::<serde_json::Value>()["errors"]["violations"]
                 .as_array()
                 .expect("violations")
                 .iter()
-                .any(|v| v["code"] == "fraction_sum"),
+                .any(|v| v["code"] == "mixture-fraction-sum"),
             "{}",
             resp.text()
         );
@@ -236,16 +235,19 @@ async fn rejets_validation_et_unicite() {
         .await;
         assert_eq!(resp.status_code(), 400, "{}", resp.text());
         let body = resp.json::<serde_json::Value>();
-        let msg = body["composition"].as_str().unwrap_or_default();
-        assert!(!msg.is_empty(), "message CoolProp attendu : {body}");
+        assert_eq!(body["error"], "coolprop-error", "{body}");
+        let detail = body["errors"]["args"]["detail"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(!detail.is_empty(), "CoolProp detail expected: {body}");
 
         // Doublon de nom dans la même org → 400 name.
         seed_mixture(&server, &env.alice, org_a, "Double").await;
         let resp = create_mixture(&server, &env.alice, org_a, "Double", composition_mole()).await;
         assert_eq!(resp.status_code(), 400, "{}", resp.text());
         assert_eq!(
-            resp.json::<serde_json::Value>()["name"],
-            "Un mélange porte déjà ce nom."
+            resp.json::<serde_json::Value>()["errors"]["fields"]["name"],
+            "unique"
         );
     })
     .await;

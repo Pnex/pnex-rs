@@ -30,13 +30,10 @@ use crate::state::{org, session, toasts};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer ») —
 /// même helper que `devices.rs` (privé par page, convention projet).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 #[component]
@@ -71,7 +68,7 @@ pub fn Flows(id: String) -> Element {
     // la ligne montre un spinner pour ne pas donner l'impression d'un clic perdu.
     let mut deleting = use_signal(|| None::<i64>);
 
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     let list = use_resource(move || {
         let filters = api::flows::FlowFilters {
@@ -133,7 +130,7 @@ pub fn Flows(id: String) -> Element {
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("flows-col-status").to_string(), |flow: &FlowSummary| {
-            let (badge, label) = status_badge(&flow.status);
+            let (badge, label) = status_badge(flow.status.as_str());
             rsx! {
                 span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge} w-fit",
                     {label}

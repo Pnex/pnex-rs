@@ -1,6 +1,6 @@
-//! Endpoints builds firmware (Phase 6) — `POST /build-firmware`,
-//! `GET /build-records` (paginé D14), `GET /download/firmware/{device_id}`
-//! (octets proxifiés).
+//! Firmware build endpoints (Phase 6) — `POST /build-firmware`,
+//! `GET /build-records` (paginated, D14), `GET /download/firmware/{id}`
+//! (proxied bytes).
 
 use pnex_core::{BuildRecord, CreateBuild, CreateBuildResponse, Paginated};
 
@@ -74,13 +74,13 @@ pub async fn create(params: CreateBuild) -> Result<CreateBuildResponse, ApiError
     .await
 }
 
-/// `GET /api/v1/download/firmware/{device_id}` — octets du binaire (proxy
-/// serveur). L'appelant déclenche le téléchargement navigateur
+/// `GET /api/v1/download/firmware/{id}` (registry id) — binary bytes
+/// (server proxy). The caller triggers the browser download
 /// (`util::save_blob`).
-pub async fn download(device_id: &str) -> Result<Vec<u8>, ApiError> {
+pub async fn download(device_pk: i64) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(
         reqwest::Method::GET,
-        &format!("/api/v1/download/firmware/{}", urlencode(device_id)),
+        &format!("/api/v1/download/firmware/{device_pk}"),
     )
     .await
 }

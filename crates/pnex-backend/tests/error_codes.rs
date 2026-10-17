@@ -12,11 +12,11 @@ use std::path::PathBuf;
 /// structured args. Do not grow this list with new sites: coin a specific
 /// code instead.
 const DYNAMIC_ALLOWED: &[&str] = &[
-    "flow_runtime", // flows.rs, functions.rs — embeds the engine error
-    "upstream",     // oauth2.rs — embeds the IdP error
+    // "flow_runtime" — pruned: flows/functions now coin flow-runtime (args.detail).
+    "upstream", // oauth2.rs — embeds the IdP error
     // "last_version" — pruned: media.rs 409 now coins media-last-version.
     // "render" — pruned: notify templates now coin notify-template-render.
-    "coolprop_error", // thermo.rs — embeds the CoolProp error
+    "coolprop-error", // thermo.rs, fluid_mixtures.rs: embeds the CoolProp error
 ];
 
 #[test]

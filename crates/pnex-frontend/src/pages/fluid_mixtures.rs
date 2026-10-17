@@ -29,7 +29,7 @@ type DraftRow = (String, String);
 #[derive(Clone, Debug, PartialEq)]
 enum FluidError {
     Fraction { fluid: String, value: String },
-    Message(String),
+    Violations(Vec<pnex_core::MixtureViolation>),
     Api(crate::api::error::ApiError),
 }
 
@@ -40,7 +40,18 @@ fn fluid_error_text(err: &FluidError) -> String {
             "err-fluid-fraction-invalid",
             Some(serde_json::json!({ "fluid": fluid, "value": value })).as_ref(),
         ),
-        FluidError::Message(text) => text.clone(),
+        FluidError::Violations(violations) => violations
+            .iter()
+            .map(|v| {
+                crate::api::error_i18n::localize_violation(&pnex_core::FlowViolation {
+                    node_id: None,
+                    code: v.code.clone(),
+                    message: v.message.clone(),
+                    args: v.args.clone(),
+                })
+            })
+            .collect::<Vec<_>>()
+            .join(" · "),
         FluidError::Api(err) => crate::api::error_i18n::localize(err),
     }
 }
@@ -189,12 +200,12 @@ pub fn FluidMixtures() -> Element {
                             },
                             {t!("mixtures-edit")}
                         }
-                        if confirm_delete() == Some(m.id.clone()) {
+                        if confirm_delete() == Some(m.id.to_string()) {
                             button {
                                 class: DANGER_BTN,
                                 onclick: {
                                     let m_del = m.clone();
-                                    move |_| delete_mixture(m_del.id.clone(), confirm_delete, error, reload)
+                                    move |_| delete_mixture(m_del.id.to_string(), confirm_delete, error, reload)
                                 },
                                 {t!("mixtures-confirm-delete")}
                             }
@@ -203,7 +214,7 @@ pub fn FluidMixtures() -> Element {
                                 class: DANGER_BTN,
                                 onclick: {
                                     let m_del = m.clone();
-                                    move |_| confirm_delete.set(Some(m_del.id.clone()))
+                                    move |_| confirm_delete.set(Some(m_del.id.to_string()))
                                 },
                                 icons::Trash2 { class: "h-3.5 w-3.5 inline mr-0.5" }
                                 {t!("mixtures-delete")}
@@ -397,7 +408,7 @@ pub fn FluidMixtures() -> Element {
                         DataTable {
                             columns,
                             rows: mixtures,
-                            row_key: RowKey::new(|m: &pnex_core::FluidMixture| m.id.clone()),
+                            row_key: RowKey::new(|m: &pnex_core::FluidMixture| m.id.to_string()),
                         }
                         ListPager { count, page }
                     }
@@ -439,7 +450,7 @@ fn open_edit(
     rows: &mut Signal<Vec<DraftRow>>,
     error: &mut Signal<Option<FluidError>>,
 ) {
-    editing_id.set(Some(m.id.clone()));
+    editing_id.set(Some(m.id.to_string()));
     name.set(m.name.clone());
     description.set(m.description.clone().unwrap_or_default());
     basis.set(m.composition.basis);
@@ -479,13 +490,7 @@ fn draft_composition(
     if violations.is_empty() {
         Ok(composition)
     } else {
-        Err(FluidError::Message(
-            violations
-                .into_iter()
-                .map(|v| v.message)
-                .collect::<Vec<_>>()
-                .join(" · "),
-        ))
+        Err(FluidError::Violations(violations))
     }
 }
 

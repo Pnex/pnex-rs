@@ -458,10 +458,11 @@ pub fn TourEditor(
                             for violation in banner.clone() {
                                 li { key: "{violation.code}-{violation.subject:?}-{violation.message}",
                                     {
-                                        match &violation.subject {
-                                            Some(subject) => format!("{subject} : {}", violation.message),
-                                            None => violation.message.clone(),
-                                        }
+                                        crate::api::tours::violation_text(
+                                            violation.subject.as_deref(),
+                                            &violation.code,
+                                            &violation.message,
+                                        )
                                     }
                                 }
                             }

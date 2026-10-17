@@ -87,7 +87,7 @@ pub fn can_manage_secrets() -> bool {
     user.orgs
         .iter()
         .find(|m| m.id == org_id)
-        .is_some_and(|m| crate::state::org::role_can_administer(&m.role))
+        .is_some_and(|m| crate::state::org::role_can_administer(m.role))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

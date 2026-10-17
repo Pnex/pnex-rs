@@ -44,10 +44,10 @@ use crate::services::stitch::{
 /// les mêmes, la première initialisation gagne).
 static STITCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
 
-/// Une pose au déclenchement (une entrée de `poses_json`, une par frame).
-/// Définie ici : le contrôleur valide/crée avec la même forme que le worker
-/// relit — une seule définition, pas de divergence de champs.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+/// Camera pose at trigger time (one entry of `poses_json`, one per frame).
+/// Defined here so the controller validates the exact shape the worker
+/// reads back.
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct PoseDeg {
     pub yaw_deg: f32,
     pub pitch_deg: f32,

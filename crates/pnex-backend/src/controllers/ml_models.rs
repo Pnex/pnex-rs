@@ -51,6 +51,16 @@ fn forbidden() -> Error {
     )
 }
 
+fn not_found() -> Error {
+    Error::CustomError(
+        StatusCode::NOT_FOUND,
+        loco_rs::controller::ErrorDetail::new(
+            pnex_core::err_codes::ML_MODEL_NOT_FOUND,
+            "Vision model not found",
+        ),
+    )
+}
+
 fn unprocessable(code: &str, msg: String) -> Error {
     Error::CustomError(
         StatusCode::UNPROCESSABLE_ENTITY,
@@ -84,11 +94,11 @@ fn spec_problem(p: vision::SpecProblem) -> Response {
 }
 
 fn field_errors(errs: Vec<(&'static str, String)>) -> Response {
-    let body: serde_json::Map<String, serde_json::Value> = errs
+    let fields = errs
         .into_iter()
         .map(|(k, v)| (k.to_string(), serde_json::Value::String(v)))
         .collect();
-    (StatusCode::BAD_REQUEST, format::json(body)).into_response()
+    super::fields_error(StatusCode::BAD_REQUEST, fields)
 }
 
 pub fn routes() -> Routes {
@@ -103,6 +113,16 @@ pub fn routes() -> Routes {
             "/{id}/test",
             post(test_image).layer(DefaultBodyLimit::max(TEST_IMAGE_MAX_BYTES)),
         )
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list, create, inspect, detail, update, remove, check, test_live, test_image
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }
 
 pub fn internal_routes() -> Routes {
@@ -127,15 +147,33 @@ async fn find(
         .map_err(|_| Error::InternalServerError)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct ListQuery {
+    /// Case-insensitive match on name and description.
     search: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ml/models",
+    tag = "ml",
+    operation_id = "ml_models_list",
+    summary = "List the vision models of the organisation",
+    description = "Registered ONNX detection models, sorted by name, paginated (`limit`/`offset`), filtered by `search` (name, description) and `label`. Any member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::vision::MlModel>),
+        (status = 400, description = "Invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -193,22 +231,38 @@ async fn list(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ml/models/{id}",
+    tag = "ml",
+    operation_id = "ml_models_get",
+    summary = "Get a vision model",
+    description = "Model spec (family, input size, labels, thresholds) and last load/inference check. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id")),
+    responses(
+        (status = 200, body = pnex_core::vision::MlModel),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     format::json(vision::dto(&m))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct CreateInput {
     name: String,
     #[serde(default)]
     description: Option<String>,
+    /// Media asset (kind `model`) holding the ONNX file.
+    #[schema(value_type = String, format = "uuid")]
     asset_id: Uuid,
     #[serde(default)]
     asset_version: Option<i64>,
@@ -237,6 +291,23 @@ fn validate_name(name: &str) -> Option<(&'static str, String)> {
     None
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ml/models",
+    tag = "ml",
+    operation_id = "ml_models_create",
+    summary = "Register a vision model",
+    description = "Registers an ONNX file of the media library (kind `model`) as a detection model. The file is loaded and test-run first: input size is taken from the file, a wrong label count is a field error, a model that does not load is refused. Owner, admin or member.",
+    request_body = CreateInput,
+    responses(
+        (status = 201, body = pnex_core::vision::MlModel),
+        (status = 400, description = "Field errors (`name`: `required`/`max_length:200`/`unique`, `asset_id`: `invalid`, spec fields)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`ml-model-invalid` (args.detail = loader diagnostic) or `ml-model-missing-bytes`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -294,12 +365,13 @@ async fn create(
     Ok((StatusCode::CREATED, format::json(vision::dto(&row))).into_response())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct UpdateInput {
     name: Option<String>,
     description: Option<String>,
     /// `null` unpins, a number pins.
     #[serde(default, deserialize_with = "crate::controllers::ml_models::some_null")]
+    #[schema(value_type = Option<i64>)]
     asset_version: Option<Option<i64>>,
     spec: Option<ModelSpec>,
 }
@@ -313,6 +385,25 @@ where
     Ok(Some(Option::<i64>::deserialize(d)?))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/ml/models/{id}",
+    tag = "ml",
+    operation_id = "ml_models_update",
+    summary = "Update a vision model",
+    description = "Partial update. A new `spec` or `asset_version` (`null` unpins, a number pins a file version) is re-checked against the file before saving; a failure leaves the stored model untouched. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id")),
+    request_body = UpdateInput,
+    responses(
+        (status = 200, body = pnex_core::vision::MlModel),
+        (status = 400, description = "Field errors", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`ml-model-invalid` (args.detail = loader diagnostic) or `ml-model-missing-bytes`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -323,7 +414,7 @@ async fn update(
         return Err(forbidden());
     }
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     let mut errs = Vec::new();
     if let Some(name) = &input.name {
@@ -387,6 +478,21 @@ async fn update(
     format::json(vision::dto(&saved))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ml/models/{id}",
+    tag = "ml",
+    operation_id = "ml_models_delete",
+    summary = "Delete a vision model",
+    description = "Removes the model registration; the ONNX file stays in the media library. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn remove(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -396,7 +502,7 @@ async fn remove(
         return Err(forbidden());
     }
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     // The ONNX bytes stay in the media library (the user deletes the asset
     // there): one media can back several model specs.
@@ -408,6 +514,24 @@ async fn remove(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ml/models/{id}/test",
+    tag = "ml",
+    operation_id = "ml_models_test_image",
+    summary = "Run a vision model on an image",
+    description = "Runs the model on the uploaded JPEG/PNG (raw body, 16 MB max) and returns the detections. Nothing is stored. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id")),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "JPEG or PNG bytes"),
+    responses(
+        (status = 200, body = pnex_core::vision::DetectionResult),
+        (status = 400, description = "Empty body: `field-invalid` (`image`: `required`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`ml-model-missing-bytes`, `ml-model-load-failed` or `ml-model-inference-failed`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn test_image(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -415,7 +539,7 @@ async fn test_image(
     body: axum::body::Bytes,
 ) -> Result<Response> {
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     if body.is_empty() {
         return Ok(field_errors(vec![(
@@ -448,6 +572,22 @@ async fn test_image(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ml/models/{id}/check",
+    tag = "ml",
+    operation_id = "ml_models_check",
+    summary = "Re-check a vision model",
+    description = "Re-runs the load and test-inference check and stores its outcome in `check`. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id")),
+    responses(
+        (status = 200, body = pnex_core::vision::MlModel),
+        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn check(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -457,26 +597,48 @@ async fn check(
         return Err(forbidden());
     }
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     let saved = vision::check_model(&ctx, m).await?;
     format::json(vision::dto(&saved))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct InspectQuery {
+    /// Media asset (kind `model`) holding the ONNX file.
+    #[param(value_type = String, format = "uuid")]
     asset_id: Uuid,
     #[serde(default)]
     asset_version: Option<i64>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ml/models/inspect",
+    tag = "ml",
+    operation_id = "ml_models_inspect",
+    summary = "Inspect an ONNX file",
+    description = "What an ONNX file of the media library declares (input size, class count), to prefill the model form. Read-only. Any member.",
+    params(InspectQuery),
+    responses(
+        (status = 200, body = pnex_core::vision::ModelInspection),
+        (status = 400, description = "`field-invalid`: `asset_id` is not an org media of kind `model` (`not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`ml-model-invalid` (args.detail = loader diagnostic) or `ml-model-missing-bytes`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn inspect(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Query(q): Query<InspectQuery>,
 ) -> Result<Response> {
     if !check_asset(&ctx.db, &org, q.asset_id).await? {
-        return Err(Error::NotFound);
+        return Ok(super::field_error(
+            "asset_id",
+            pnex_core::err_codes::FIELD_NOT_FOUND,
+        ));
     }
     let Some((bytes, _)) = vision::asset_bytes(&ctx, q.asset_id, q.asset_version).await? else {
         return Err(unprocessable(
@@ -499,11 +661,30 @@ const LIVE_WAIT_MS: u64 = 4_000;
 /// Mean luma under which detection is unreliable.
 const LIVE_DARK_LUMA: f32 = 40.0;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct LiveQuery {
+    /// Camera device id.
     device: i64,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ml/models/{id}/test-live",
+    tag = "ml",
+    operation_id = "ml_models_test_live",
+    summary = "Run a vision model on a live camera frame",
+    description = "Takes the latest frame of a connected camera (waking an on-demand camera for a few seconds), runs the model with a low score floor and returns the frame (base64 JPEG), every detection and warnings (`camera-frame-stale`, `image-too-dark`, `inference-slower-than-camera`). Nothing is stored. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Model id"), LiveQuery),
+    responses(
+        (status = 200, body = pnex_core::vision::LiveTestResult),
+        (status = 400, description = "`field-invalid`: unknown camera `device` (`not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`camera-offline`, `camera-no-frame`, `ml-model-missing-bytes`, `ml-model-invalid` or `ml-model-inference-failed`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn test_live(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -512,7 +693,7 @@ async fn test_live(
 ) -> Result<Response> {
     use base64::Engine as _;
     let Some(m) = find(&ctx.db, &org, id).await? else {
-        return Err(Error::NotFound);
+        return Err(not_found());
     };
     let Some(cam) = device_cameras::Entity::find_by_id(q.device)
         .filter(device_cameras::Column::OrgId.eq(org.org.id))
@@ -520,7 +701,10 @@ async fn test_live(
         .await
         .map_err(|_| Error::InternalServerError)?
     else {
-        return Err(Error::NotFound);
+        return Ok(super::field_error(
+            "device",
+            pnex_core::err_codes::FIELD_NOT_FOUND,
+        ));
     };
     let settings = camera::settings_of(&cam);
     let state = LiveCameraState {

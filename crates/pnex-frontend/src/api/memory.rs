@@ -7,17 +7,18 @@ use pnex_core::TelemetryPoint;
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/memory/keys` — live keys of the current org (empty when
-/// the memory store is disabled).
+/// `GET /api/v1/memory/keys` (all pages): live keys of the current org
+/// (empty when the memory store is disabled).
 pub async fn keys() -> Result<Vec<MemoryKeyInfo>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/memory/keys", None).await
+    client::request_all("/api/v1/memory/keys").await
 }
 
-/// `POST /api/v1/memory/values` — numeric values, same order as `refs`.
+/// `POST /api/v1/memory/values/query`: numeric values, same order as
+/// `refs` (503 `memory-unavailable` when the store is unreachable).
 pub async fn values(refs: Vec<MemoryRef>) -> Result<MemoryValuesResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/memory/values",
+        "/api/v1/memory/values/query",
         Some(serde_json::to_value(MemoryValuesRequest { refs }).unwrap_or_default()),
     )
     .await

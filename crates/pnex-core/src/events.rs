@@ -131,6 +131,7 @@ pub struct EventInput {
 
 /// One stored event (`GET /api/v1/events`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct EventRecord {
     /// Unix microseconds (O2 `_timestamp`).
     pub ts_us: i64,

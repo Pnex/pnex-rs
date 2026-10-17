@@ -49,7 +49,7 @@ pub async fn fluids() -> Result<FluidsResult, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/thermo/fluids", None).await
 }
 
-/// `POST /api/v1/thermo/diagram` — polylines (cache serveur).
+/// `POST /api/v1/thermo/diagram/query`: polylines (server cache).
 pub async fn diagram(
     fluid: &str,
     diagram: &str,
@@ -58,7 +58,7 @@ pub async fn diagram(
 ) -> Result<DiagramResult, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/thermo/diagram",
+        "/api/v1/thermo/diagram/query",
         Some(serde_json::json!({
             "fluid": fluid,
             "diagram": diagram,
@@ -69,16 +69,21 @@ pub async fn diagram(
     .await
 }
 
-/// `POST /api/v1/thermo/cycle-points` — états → propriétés + coordonnées.
+/// `POST /api/v1/thermo/cycle-points/query`: states to properties +
+/// coordinates.
 pub async fn cycle_points(
     fluid: &str,
     diagram: &str,
     points: Vec<serde_json::Value>,
     pressure: Option<f64>,
 ) -> Result<Vec<CyclePoint>, ApiError> {
-    client::request(
+    #[derive(Deserialize)]
+    struct Points {
+        points: Vec<CyclePoint>,
+    }
+    let answer: Points = client::request(
         reqwest::Method::POST,
-        "/api/v1/thermo/cycle-points",
+        "/api/v1/thermo/cycle-points/query",
         Some(serde_json::json!({
             "fluid": fluid,
             "diagram": diagram,
@@ -86,7 +91,8 @@ pub async fn cycle_points(
             "pressure": pressure,
         })),
     )
-    .await
+    .await?;
+    Ok(answer.points)
 }
 
 /// Point de cycle résolu (miroir `pnex_coolprop::CyclePointOutput`).

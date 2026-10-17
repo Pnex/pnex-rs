@@ -185,6 +185,12 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
             .to_string();
         assert!(location.contains("/auth/v1/users/register"), "{location}");
 
+        // D239: a missing PKCE challenge is a `field-invalid` ErrorDetail.
+        let res = server.get("/api/v1/oauth2/sso").await;
+        assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["errors"]["fields"]["code_challenge"], "required");
+
         // SEC-41: `prompt=login` is relayed to the authorize request, any
         // other prompt value is dropped.
         let location_of = |res: axum_test::TestResponse| {
@@ -438,6 +444,28 @@ async fn roles_viewer_owner_et_garde_fous() {
             .json(&serde_json::json!({ "role": "owner" }))
             .await;
         assert_eq!(res.status_code(), 403, "viewer ne se promeut pas");
+
+        // D241: the role change answers the lowercase role (was "Member").
+        let res = server
+            .patch(&format!("/api/v1/orgs/{org_id}/members/{bob_user_id}"))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "role": "member" }))
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert_eq!(res.json::<serde_json::Value>()["role"], "member");
+
+        // D239: an empty org name is a `field-invalid` ErrorDetail.
+        let res = server
+            .post("/api/v1/orgs")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .json(&serde_json::json!({ "name": "  " }))
+            .await;
+        assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["name"], "required");
     })
     .await;
 }

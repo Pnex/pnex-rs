@@ -195,9 +195,9 @@ pub async fn update_poi(id: &str, body: serde_json::Value) -> Result<Poi, ApiErr
 }
 
 /// `POST /api/v1/pois/{id}/devices` — attache un device (D43, délibéré).
-/// 409 = device déjà placé : `ApiError.body` porte alors le placement
-/// courant (`current_placement_id`, `current_pin_id`, `current_pin_label`)
-/// pour proposer le déplacement en connaissance de cause.
+/// 409 = device already placed: `ApiError.args` carries the current
+/// placement (`current_placement_id`, `current_pin_id`, `current_pin_label`,
+/// strings) so the UI offers the move knowingly.
 pub async fn attach_poi_device(
     pin_id: &str,
     device_id: &str,
@@ -273,13 +273,8 @@ pub async fn cluster_pois(
 
 // ─────────────────────────── positions GPS (D38) ───────────────────────────
 
-/// `GET /api/v1/device-positions` — couche live de la carte (poll 15 s).
+/// `GET /api/v1/device-positions`: live layer of the map (15 s poll),
+/// every page.
 pub async fn device_positions() -> Result<Vec<DevicePosition>, ApiError> {
-    #[derive(Deserialize)]
-    struct Envelope {
-        results: Vec<DevicePosition>,
-    }
-    let env: Envelope =
-        client::request(reqwest::Method::GET, "/api/v1/device-positions", None).await?;
-    Ok(env.results)
+    client::request_all("/api/v1/device-positions").await
 }

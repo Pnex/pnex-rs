@@ -51,12 +51,28 @@ pub async fn detach(id: &str, input: &CaseDetachInput) -> Result<CaseWorkspace, 
 
 /// Raw signals around the members over a window.
 pub async fn signals(id: &str, q: &SignalsQuery) -> Result<CaseSignals, ApiError> {
-    client::request(Method::POST, &path(id, "signals"), body(q)).await
+    let query = client::filter_query(&[("from", q.from.as_deref()), ("to", q.to.as_deref())]);
+    client::request(
+        Method::GET,
+        &format!("{}{query}", path(id, "signals")),
+        None,
+    )
+    .await
 }
 
 /// Tracks of the members over a window, generalised for the zoom level.
 pub async fn tracks(id: &str, q: &CaseTracksQuery) -> Result<CaseTracks, ApiError> {
-    client::request(Method::POST, &path(id, "tracks"), body(q)).await
+    let (resolution, gap) = (
+        q.resolution_ms.map(|v| v.to_string()),
+        q.signal_gap_s.map(|v| v.to_string()),
+    );
+    let query = client::filter_query(&[
+        ("from", Some(q.from.as_str())),
+        ("to", Some(q.to.as_str())),
+        ("resolution_ms", resolution.as_deref()),
+        ("signal_gap_s", gap.as_deref()),
+    ]);
+    client::request(Method::GET, &format!("{}{query}", path(id, "tracks")), None).await
 }
 
 /// Previews (dry run) or imports a track file onto a case member.
@@ -68,7 +84,7 @@ pub async fn import_track(
 }
 
 pub async fn track_imports(id: &str) -> Result<Vec<TrackImport>, ApiError> {
-    client::request(Method::GET, &path(id, "tracks/imports"), None).await
+    client::request_all(&path(id, "tracks/imports")).await
 }
 
 pub async fn delete_track_import(id: &str, iid: &str) -> Result<(), ApiError> {
@@ -84,7 +100,7 @@ pub async fn detect(id: &str, q: &DetectQuery) -> Result<CaseDetected, ApiError>
 }
 
 pub async fn proposals(id: &str) -> Result<Vec<CaseProposal>, ApiError> {
-    client::request(Method::GET, &path(id, "proposals"), None).await
+    client::request_all(&path(id, "proposals")).await
 }
 
 /// Retains a proposal: its event, in the user's words.
@@ -97,14 +113,16 @@ pub async fn retain(
     client::request(Method::POST, &p, body(input)).await
 }
 
-/// Rejects a proposal; it is never proposed again.
+/// Rejects a proposal (it is never proposed again); answers the case's
+/// proposals as they are now.
 pub async fn reject(
     id: &str,
     pid: &str,
     input: &ProposalReject,
 ) -> Result<Vec<CaseProposal>, ApiError> {
     let p = path(id, &format!("proposals/{}/reject", urlencode(pid)));
-    client::request(Method::POST, &p, body(input)).await
+    client::request::<CaseProposal>(Method::POST, &p, body(input)).await?;
+    proposals(id).await
 }
 
 pub async fn board(id: &str) -> Result<CaseBoard, ApiError> {
@@ -123,7 +141,7 @@ pub async fn freeze(id: &str, input: &CaseSnapshotInput) -> Result<CaseSnapshot,
 
 /// Frozen states of the case, newest first.
 pub async fn snapshots(id: &str) -> Result<Vec<CaseSnapshot>, ApiError> {
-    client::request(Method::GET, &path(id, "snapshots"), None).await
+    client::request_all(&path(id, "snapshots")).await
 }
 
 /// One frozen state, its content as fingerprinted.
@@ -133,12 +151,12 @@ pub async fn snapshot(id: &str, seq: i32) -> Result<CaseSnapshotFull, ApiError> 
 
 /// Ontology relations among the members, closed ones included (K31).
 pub async fn relations(id: &str) -> Result<Vec<LinkView>, ApiError> {
-    client::request(Method::GET, &path(id, "relations"), None).await
+    client::request_all(&path(id, "relations")).await
 }
 
 /// Neighbours of a graph node: counted facets, or the picked ones (K31).
 pub async fn expand(id: &str, input: &ExpandInput) -> Result<ExpandResult, ApiError> {
-    client::request(Method::POST, &path(id, "expand"), body(input)).await
+    client::request(Method::POST, &path(id, "graph/query"), body(input)).await
 }
 
 /// The team's arrangement of the case graph (empty = automatic layout).
@@ -151,9 +169,16 @@ pub async fn save_layout(id: &str, input: &CaseLayout) -> Result<CaseLayout, Api
     client::request(Method::PUT, &path(id, "layout"), body(input)).await
 }
 
-/// Logged reads of persons' tracks (K38); `None` = log unavailable.
-pub async fn reads(id: &str) -> Result<Option<Vec<CaseRead>>, ApiError> {
-    client::request(Method::GET, &path(id, "reads"), None).await
+/// The last logged reads of persons' tracks (K38), newest first; a 503
+/// `case-reads-unavailable` when the log cannot be read.
+pub async fn reads(id: &str, limit: usize) -> Result<Vec<CaseRead>, ApiError> {
+    let page: pnex_core::Paginated<CaseRead> = client::request(
+        Method::GET,
+        &format!("{}?limit={limit}", path(id, "reads")),
+        None,
+    )
+    .await?;
+    Ok(page.results)
 }
 
 /// A new case from a `pnex.case/1` export.
@@ -163,7 +188,7 @@ pub async fn import_case(doc: &CaseExport) -> Result<CaseImported, ApiError> {
 
 /// Page templates of the packs the org installed.
 pub async fn templates() -> Result<Vec<PageTemplate>, ApiError> {
-    client::request(Method::GET, "/api/v1/cases/templates", None).await
+    client::request_all("/api/v1/cases/templates").await
 }
 
 /// New page of the case, filled from a template; it joins as an undated piece.
@@ -173,7 +198,7 @@ pub async fn add_page(id: &str, input: &CasePageInput) -> Result<DocSummary, Api
 
 /// Persons and identifiers only this case holds.
 pub async fn purge_candidates(id: &str) -> Result<Vec<ObjectRef>, ApiError> {
-    client::request(Method::GET, &path(id, "purge"), None).await
+    client::request_all(&path(id, "purge")).await
 }
 
 /// Deletes them for good; the case must be archived.

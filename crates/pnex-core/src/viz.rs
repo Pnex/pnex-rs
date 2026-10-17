@@ -88,15 +88,16 @@ pub const WIDGET_MIN: i64 = 40;
 const TITLE_MAX: usize = 200;
 const TEXT_MAX: usize = 1_000;
 
-/// Violation de validation d'un layout (rejetée en 400 par l'API,
-/// champ `violations` — école `FlowViolation`).
+/// Layout validation violation (refused with a 400 `dashboard-invalid` or
+/// `widget-invalid`, in `errors.violations`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizViolation {
-    /// Widget fautif, si la violation est localisée.
+    /// Offending widget, when the violation is localized.
     pub widget_id: Option<String>,
-    /// Code machine (`unknown_widget_type`, `dangling_wire`…).
+    /// Machine code (`unknown_widget_type`, `dangling_wire`...).
     pub code: String,
-    /// Message en français, affichable tel quel au client.
+    /// Canonical English message (fallback when the code is not localized).
     pub message: String,
 }
 
@@ -110,26 +111,29 @@ impl VizViolation {
     }
 }
 
-/// Dimensions du canvas.
+/// Canvas dimensions.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CanvasSpec {
     pub width: i64,
     pub height: i64,
-    /// Fond du synoptique (`#rrggbb`), défaut clair.
+    /// Canvas background (`#rrggbb`), light by default.
     #[serde(default)]
     pub background: Option<String>,
 }
 
-/// Extrémité d'un trait : accrochée au **milieu d'un côté** du widget.
+/// Wire end, attached to the middle of one side of a widget.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WireEndpoint {
     pub widget_id: String,
-    /// Côté d'accroche.
+    /// Attachment side.
     pub side: WireSide,
 }
 
-/// Côtés d'accroche (milieu du côté).
+/// Attachment sides (middle of the side).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum WireSide {
     Top,
@@ -138,26 +142,27 @@ pub enum WireSide {
     Right,
 }
 
-/// Trait entre deux widgets — **décoratif**, aucune sémantique
-/// d'exécution (le rendu est un coude orthogonal, école câbles flow).
+/// Wire between two widgets: decorative only, no execution semantics
+/// (drawn as an orthogonal elbow).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Wire {
     pub id: String,
     pub from: WireEndpoint,
     pub to: WireEndpoint,
 }
 
-/// Référence d'une série télémétrie par rôle (école PRD §2 : `source`
-/// est une liste — le mini-chart peut superposer, la jauge lit
-/// `primary`).
+/// Reference to a telemetry series by role (`source` is a list: a chart
+/// may overlay several, a gauge reads `primary`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SourceRef {
     #[serde(default = "default_role")]
     pub role: String,
     pub metric: String,
     pub device_id: String,
-    /// Preset de fenêtre (`VIZ_WINDOW_PRESETS`) — le lookback du
-    /// « dernier » ET la plage du mini-chart.
+    /// Window preset (`VIZ_WINDOW_PRESETS`): the lookback of the latest
+    /// value and the range of the chart.
     pub window: String,
     /// Org shared memory value (flow `memory-write` node) instead of a
     /// telemetry series: `metric`/`device_id`/`window` are then ignored.
@@ -187,8 +192,9 @@ fn default_role() -> String {
     "primary".to_owned()
 }
 
-/// Options d'affichage par type de widget.
+/// Display options per widget type.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WidgetOptions {
     #[serde(default)]
     pub unit: Option<String>,
@@ -196,16 +202,16 @@ pub struct WidgetOptions {
     pub min: Option<f64>,
     #[serde(default)]
     pub max: Option<f64>,
-    /// Décimales affichées (0..=6).
+    /// Displayed decimals (0..=6).
     #[serde(default)]
     pub decimals: Option<u8>,
-    /// Seuils de couleur (`gauge`/`indicator`), valeur → couleur.
+    /// Colour thresholds (`gauge`/`indicator`), value to colour.
     #[serde(default)]
     pub thresholds: Vec<Threshold>,
-    /// Texte libre du widget `text`.
+    /// Free text of the `text` widget.
     #[serde(default)]
     pub text: Option<String>,
-    /// Options du widget `thermo_chart` (présentes ⇔ type thermo_chart).
+    /// Options of the `thermo_chart` widget (present iff type is thermo_chart).
     #[serde(default)]
     pub thermo: Option<ThermoChartOptions>,
     /// `symbol` widget options (present iff type is symbol).
@@ -254,6 +260,7 @@ pub struct WidgetOptions {
 /// front end only: the server checks the id *format*, an unknown id renders
 /// as a placeholder (open enum, like widget types).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SymbolOptions {
     /// Catalog id (`pid-valves-gate-valve`, `flowchart-decision`…).
     pub shape: String,
@@ -324,40 +331,38 @@ fn validate_symbol(widget_id: &str, options: &WidgetOptions) -> Vec<VizViolation
     v
 }
 
-/// Options du widget `thermo_chart` — diagramme thermodynamique (dôme +
-/// iso-lignes servies par `POST /api/v1/thermo/diagram`) et cycle live
-/// (points résolus par `POST /api/v1/thermo/cycle-points`). Tout
-/// `#[serde(default)]` : extension sans migration (JSONB).
+/// Options of the `thermo_chart` widget: thermodynamic diagram (dome and
+/// isolines served by `POST /api/v1/thermo/diagram`) and live cycle
+/// (points resolved by `POST /api/v1/thermo/cycle-points`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThermoChartOptions {
-    /// `"ph" | "ts" | "psychro"` (miroir de `pnex_coolprop::DiagramKind` —
-    /// pnex-core reste wasm-safe, pas de dépendance à pnex-coolprop).
+    /// `"ph" | "ts" | "psychro"` (mirror of `pnex_coolprop::DiagramKind`).
     pub diagram: String,
-    /// Fluide pur, prédéfini (R410A…), spec inline ou nom de mélange org.
+    /// Pure fluid, predefined mixture (R410A...), inline spec or org mixture name.
     pub fluid: String,
-    /// Iso-lignes affichées (P/T/Q pour ph/ts, RH pour psychro).
+    /// Displayed isolines (P/T/Q for ph/ts, RH for psychro).
     #[serde(default)]
     pub isolines: Vec<ThermoIsoline>,
-    /// Points du cycle — chaque point = 2 sources télémétriques.
+    /// Cycle points, each one with two telemetry sources.
     #[serde(default)]
     pub points: Vec<ThermoCyclePoint>,
-    /// Pression psychrométrique (défaut 101 325 Pa).
+    /// Psychrometric pressure (default 101 325 Pa).
     #[serde(default)]
     pub pressure: Option<f64>,
-    /// Arrondi des labels d'axes (décimales) — `None` = auto (significatif
-    /// selon l'ordre de grandeur).
+    /// Axis label decimals; `null` = automatic (by order of magnitude).
     #[serde(default)]
     pub axis_decimals: Option<u8>,
-    /// Unité d'affichage de l'axe pression du p-h — **absolue** toujours
-    /// (conversion d'affichage Pa → bar = ÷1e5 ; le relatif serait non
-    /// physique sur un diagramme thermodynamique).
+    /// Display unit of the p-h pressure axis, always absolute (Pa to bar is
+    /// a display conversion).
     #[serde(default)]
     pub pressure_unit: ThermoPressureUnit,
 }
 
-/// Unité d'affichage de l'axe pression du p-h. Absolu par nature —
-/// CoolProp calcule en Pa absolus, la conversion est purement cosmétique.
+/// Display unit of the p-h pressure axis (absolute; CoolProp computes in
+/// absolute Pa, the conversion is cosmetic).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum ThermoPressureUnit {
     #[default]
@@ -365,24 +370,26 @@ pub enum ThermoPressureUnit {
     Bar,
 }
 
-/// Iso-ligne du widget thermo (`P`, `T`, `Q` ou `RH` + valeurs SI).
+/// Isoline of the thermo widget (`P`, `T`, `Q` or `RH`, SI values).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThermoIsoline {
     pub param: String,
     pub values: Vec<f64>,
 }
 
-/// Un point du cycle : paire d'inputs CoolProp + 2 sources télémétriques.
+/// A cycle point: a CoolProp input pair and two telemetry sources.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThermoCyclePoint {
     pub label: String,
-    /// Nom de paire CoolProp (`PT_INPUTS` par défaut ; v1 = pression,
-    /// v2 = température).
+    /// CoolProp input pair name (`PT_INPUTS` by default; v1 = pressure,
+    /// v2 = temperature).
     #[serde(default = "default_thermo_input_pair")]
     pub input_pair: String,
-    /// Source télémétrique de v1 (pour `PT_INPUTS` : la pression).
+    /// Telemetry source of v1 (the pressure for `PT_INPUTS`).
     pub v1: ThermoSource,
-    /// Source télémétrique de v2 (pour `PT_INPUTS` : la température).
+    /// Telemetry source of v2 (the temperature for `PT_INPUTS`).
     pub v2: ThermoSource,
 }
 
@@ -390,9 +397,10 @@ fn default_thermo_input_pair() -> String {
     "PT_INPUTS".into()
 }
 
-/// Une source télémétrique d'un point de cycle (dernière valeur de la
-/// série `metric` du `device_id`).
+/// Telemetry source of a cycle point (latest value of the `metric`
+/// series of `device_id`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ThermoSource {
     #[serde(default)]
     pub metric: String,
@@ -414,9 +422,10 @@ impl ThermoSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Threshold {
     pub value: f64,
-    /// Couleur `#rrggbb`.
+    /// Colour `#rrggbb`.
     pub color: String,
 }
 
@@ -430,6 +439,7 @@ pub const STALE_AFTER_MAX_S: u32 = 604_800;
 
 /// Comparison of a state rule against the live value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum StateOp {
     /// Equal (within 1e-9): discrete states, `0` = closed, `1` = open.
@@ -444,6 +454,7 @@ pub enum StateOp {
 /// One value → appearance rule of a card (D135). Every field but the
 /// comparison is optional: a rule may only relabel, only recolour, etc.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StateRule {
     #[serde(default)]
     pub op: StateOp,
@@ -547,11 +558,12 @@ fn validate_states(options: &WidgetOptions, push: &mut impl FnMut(&str, String))
     }
 }
 
-/// Un widget posé sur le canvas.
+/// A widget placed on the canvas.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Widget {
     pub id: String,
-    /// Un de [`VIZ_WIDGET_TYPES`] (string validé — enum ouverte).
+    /// One of [`VIZ_WIDGET_TYPES`] (validated string, open set).
     #[serde(rename = "type")]
     pub widget_type: String,
     #[serde(default)]
@@ -598,6 +610,7 @@ impl Widget {
 
 /// Dashboard format, chosen at creation and never changed (D123).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum DashboardFormat {
     /// Free-hand canvas in absolute px (D40).
@@ -609,6 +622,7 @@ pub enum DashboardFormat {
 
 /// A section of a mobile dashboard: ordered widget ids.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MobileSection {
     pub id: String,
     #[serde(default)]
@@ -627,6 +641,7 @@ pub struct MobileSection {
 
 /// How a mobile section renders its cards (D139).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SectionStyle {
     /// Grid of cards (D124).
@@ -645,6 +660,7 @@ fn is_default_style(s: &SectionStyle) -> bool {
 
 /// A page (tab) of a mobile dashboard (D139).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MobilePage {
     /// `[a-z0-9-]{1,32}`.
     pub id: String,
@@ -679,9 +695,10 @@ impl DashboardLayout {
     }
 }
 
-/// Layout d'un dashboard — stocké en JSONB dans `dashboard_versions`.
-/// Les points télémétrie ne sont **jamais** stockés (D31).
+/// Layout of a dashboard, stored as JSONB in `dashboard_versions`.
+/// Telemetry points are never stored (D31).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DashboardLayout {
     /// Existing layouts deserialize as desktop.
     #[serde(default)]
@@ -708,6 +725,7 @@ pub struct DashboardLayout {
 /// Current sensor of a `series` property: telemetry `device_id` label and
 /// metric (ontology D181).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SeriesBinding {
     pub property: String,
     pub device_id: String,
@@ -764,7 +782,7 @@ fn validate_thermo(
     if !["ph", "ts", "psychro"].contains(&t.diagram.as_str()) {
         push(
             "thermo_bad_diagram",
-            format!("diagramme inconnu : « {} » (ph, ts, psychro)", t.diagram),
+            format!("unknown diagram \"{}\" (ph, ts, psychro)", t.diagram),
         );
     }
     if t.fluid.trim().is_empty() {
@@ -791,13 +809,13 @@ fn validate_thermo(
             } else if !naming::valid_metric_name(&s.metric) {
                 push(
                     "bad_metric",
-                    format!("point {} : métrique invalide « {} »", i + 1, s.metric),
+                    format!("point {}: invalid metric \"{}\"", i + 1, s.metric),
                 );
             }
             if s.memory.is_none() && !naming::valid_device_label(&s.device_id) {
                 push(
                     "bad_device",
-                    format!("point {} : device invalide « {} »", i + 1, s.device_id),
+                    format!("point {}: invalid device \"{}\"", i + 1, s.device_id),
                 );
             }
             // La source doit être répliquée dans widget.source (batch).
@@ -883,21 +901,21 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "duplicate_widget_id",
-                format!("id de widget dupliqué : « {} »", w.id),
+                format!("duplicate widget id \"{}\"", w.id),
             ));
         }
         if !VIZ_WIDGET_TYPES.contains(&w.widget_type.as_str()) {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "unknown_widget_type",
-                format!("type de widget inconnu : « {} »", w.widget_type),
+                format!("unknown widget type \"{}\"", w.widget_type),
             ));
         }
         if w.title.len() > TITLE_MAX || w.title.chars().any(char::is_control) {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "widget_title",
-                "titre absent de borne ou porteur de caractères de contrôle",
+                "title too long or containing control characters",
             ));
         }
         if !desktop {
@@ -912,13 +930,13 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "widget_geometry",
-                format!("géométrie invalide (x/y ≥ 0, w/h ≥ {WIDGET_MIN} px)"),
+                format!("invalid geometry (x/y >= 0, w/h >= {WIDGET_MIN} px)"),
             ));
         } else if w.x + w.w > l.canvas.width || w.y + w.h > l.canvas.height {
             v.push(VizViolation::new(
                 Some(&w.id),
                 "widget_overflow",
-                "le widget dépasse le canvas",
+                "the widget overflows the canvas",
             ));
         }
         validate_widget(&w.id, &w.widget_type, &w.source, &w.options, &mut v);
@@ -959,7 +977,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
                 v.push(VizViolation::new(
                     Some(&end.widget_id),
                     "dangling_wire",
-                    format!("le trait « {} » référence un widget inconnu", wire.id),
+                    format!("wire \"{}\" references an unknown widget", wire.id),
                 ));
             }
         }
@@ -967,7 +985,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             v.push(VizViolation::new(
                 Some(&wire.from.widget_id),
                 "self_wire",
-                "un trait ne peut pas relier un widget à lui-même",
+                "a wire cannot link a widget to itself",
             ));
         }
     }
@@ -1091,7 +1109,7 @@ pub fn validate_widget(
     if !VIZ_WIDGET_TYPES.contains(&widget_type) {
         push(
             "unknown_widget_type",
-            format!("type de widget inconnu : « {widget_type} »"),
+            format!("unknown widget type \"{widget_type}\""),
         );
         return;
     }
@@ -1197,19 +1215,19 @@ pub fn validate_widget(
         if source.is_empty() {
             push(
                 "source_missing",
-                "une source (métrique × device × fenêtre) est requise".into(),
+                "a source (metric, device, window) is required".into(),
             );
         }
         check_sources(widget_type, source, &mut push);
     }
     if let (Some(min), Some(max)) = (options.min, options.max) {
         if min >= max {
-            push("bad_range", "min doit être < max".into());
+            push("bad_range", "min must be < max".into());
         }
     }
     let decimals = options.decimals.unwrap_or(0);
     if decimals > 6 {
-        push("bad_decimals", "decimals doit être ≤ 6".into());
+        push("bad_decimals", "decimals must be <= 6".into());
     }
     for t in &options.thresholds {
         if !valid_hex_color(&t.color) {
@@ -1221,7 +1239,7 @@ pub fn validate_widget(
     }
     if let Some(unit) = &options.unit {
         if unit.len() > 16 || unit.chars().any(char::is_control) {
-            push("bad_unit", "unité trop longue ou invalide".into());
+            push("bad_unit", "unit too long or invalid".into());
         }
     }
     validate_states(options, &mut push);
@@ -1282,7 +1300,7 @@ pub(crate) fn check_sources<F: FnMut(&str, String)>(
         if !naming::valid_metric_name(&s.metric) {
             push(
                 "bad_metric",
-                format!("nom de métrique invalide : « {} »", s.metric),
+                format!("invalid metric name \"{}\"", s.metric),
             );
         }
         if let Some((code, message)) = naming::check_series_selector_labels(&s.labels) {
@@ -1293,14 +1311,14 @@ pub(crate) fn check_sources<F: FnMut(&str, String)>(
         if !device_optional && !naming::valid_device_label(&s.device_id) {
             push(
                 "bad_device",
-                format!("device_id invalide : « {} »", s.device_id),
+                format!("invalid device_id \"{}\"", s.device_id),
             );
         }
         if !valid_window(&s.window) {
             push(
                 "bad_window",
                 format!(
-                    "fenêtre inconnue : « {} » (presets : {})",
+                    "unknown window \"{}\" (presets: {})",
                     s.window,
                     VIZ_WINDOW_PRESETS
                         .iter()
@@ -1324,11 +1342,12 @@ fn valid_hex_color(s: &str) -> bool {
 // (compilés côté front wasm) — la validation `validate_layout` tourne
 // dans le navigateur avant save ET côté serveur en 400.
 
-/// Résumé d'un dashboard (liste D14).
+/// Dashboard summary (paginated list).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizDashboardSummary {
-    /// UUID sérialisé en string (le front ne le manipule jamais comme
-    /// binaire).
+    /// Dashboard id (UUID).
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
@@ -1337,46 +1356,57 @@ pub struct VizDashboardSummary {
     /// Format of the current version (D123), shown as a list badge.
     #[serde(default)]
     pub format: DashboardFormat,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Détail d'un dashboard : méta + layout de la version courante.
+/// A dashboard with the layout of its current version.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizDashboard {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub current_version_number: i64,
     pub layout: DashboardLayout,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Une entrée de l'historique.
+/// One entry of the version history.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizDashboardVersion {
     pub version_number: i64,
-    /// Version pointée par `current_version_number` (école media : le
-    /// restore re-positionne ce pointeur, il ne crée pas de version).
+    /// The version `current_version_number` points to (a restore moves
+    /// this pointer, it creates no version).
     pub current: bool,
-    /// Auteur (email du JWT), école `flow_versions.author`.
+    /// Author (email of the saving user).
     pub author: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
-/// Historique complet avec layouts (le drawer versions rend un aperçu).
+/// One version with its layout (history preview).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizDashboardVersionDetail {
     pub version_number: i64,
     pub current: bool,
     pub layout: DashboardLayout,
     pub author: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDashboard {
     pub name: String,
     #[serde(default)]
@@ -1385,10 +1415,10 @@ pub struct CreateDashboard {
     pub layout: Option<DashboardLayout>,
 }
 
-/// PATCH = save — `expected_version_number` doit viser la version
-/// courante (409 sinon, école flows). Save = nouvelle version = live
-/// (D24 : pas de publish séparé en V1).
+/// Save (PATCH): `expected_version_number` must be the current version
+/// (409 otherwise). Saving creates a new version that is live at once.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateDashboard {
     #[serde(default)]
     pub name: Option<String>,
@@ -1396,11 +1426,12 @@ pub struct UpdateDashboard {
     pub layout: DashboardLayout,
 }
 
-/// Contenu d'un **template** de la bibliothèque (D41) : un widget sans
-/// position — le x/y/w/h est choisi à la pose, le reste est un snapshot.
+/// Content of a library template (D41): a widget without a position (x,
+/// y, w, h are chosen when it is dropped), the rest is a snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct WidgetTemplate {
-    /// Un de [`VIZ_WIDGET_TYPES`].
+    /// One of [`VIZ_WIDGET_TYPES`].
     #[serde(rename = "type")]
     pub widget_type: String,
     #[serde(default)]
@@ -1440,20 +1471,25 @@ impl WidgetTemplate {
     }
 }
 
-/// Un template de la bibliothèque de l'org.
+/// A widget template of the org library.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VizWidget {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
-    /// Un de [`VIZ_WIDGET_TYPES`].
+    /// One of [`VIZ_WIDGET_TYPES`].
     pub kind: String,
     pub config: WidgetTemplate,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateVizWidget {
     pub name: String,
     pub kind: String,
@@ -1461,6 +1497,7 @@ pub struct CreateVizWidget {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateVizWidget {
     #[serde(default)]
     pub name: Option<String>,

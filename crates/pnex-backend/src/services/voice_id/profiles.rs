@@ -263,7 +263,7 @@ async fn views(
             person: titles.get(&r.object_id).cloned().unwrap_or_default(),
             model_id: r.model_id.map(|m| m.to_string()),
             model_name: r.model_id.and_then(|m| models.get(&m).cloned()),
-            status: r.status.clone(),
+            status: pnex_core::voice_id::VoiceProfileStatus::from_wire(&r.status),
             threshold: r.threshold,
             windows_used: r.windows_used.max(0) as u32,
             intra_mean: r.intra_mean,
@@ -285,7 +285,7 @@ async fn views(
                     speech_ms: c.speech_ms.map(|v| v.max(0) as u32),
                     windows: c.windows.map(|v| v.max(0) as u32),
                     score: c.score,
-                    status: c.status.clone(),
+                    status: pnex_core::voice_id::VoiceSampleStatus::from_wire(&c.status),
                     reason: c.reason.clone(),
                     created_at: c.created_at.to_rfc3339(),
                 })

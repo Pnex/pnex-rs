@@ -199,7 +199,7 @@ impl JsonMergeConfig {
         if self.default_key.trim().is_empty() {
             return Some((
                 "merge_default_key_missing",
-                "saisissez la clé par défaut (payload scalaire sans topic)".into(),
+                "enter the default key (scalar payload without topic)".into(),
             ));
         }
         None

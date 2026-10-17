@@ -26,6 +26,7 @@ pub const IMPORT_ERRORS_MAX: usize = 100;
 /// What a range belongs to: a media stream of the org, the org, or any
 /// ontology object (D182: a line's shift, a machine's batch).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ScopeKind {
     Stream,
@@ -54,6 +55,7 @@ impl ScopeKind {
 
 /// Where a range comes from (D169).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RangeOrigin {
     Epg,
@@ -102,7 +104,9 @@ pub fn flow_ref(flow_id: i64, version: i64) -> String {
 
 /// Read DTO of a range. Timestamps are RFC 3339.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TimeRange {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub scope_kind: ScopeKind,
     pub scope_id: String,
@@ -112,12 +116,16 @@ pub struct TimeRange {
     #[serde(default)]
     pub category: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub planned_start: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub planned_end: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub actual_start: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub actual_end: Option<String>,
     pub origin: RangeOrigin,
     #[serde(default)]
@@ -128,7 +136,9 @@ pub struct TimeRange {
     pub source_ref: Option<String>,
     #[serde(default)]
     pub attrs: serde_json::Value,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
@@ -165,6 +175,7 @@ pub fn occurrence_state(r: &TimeRange, now: chrono::DateTime<chrono::Utc>) -> &'
 /// Create / update body (and the payload of `range_upsert`). On update,
 /// an absent field keeps its value and an empty string clears it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TimeRangeInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope_kind: Option<String>,
@@ -194,6 +205,7 @@ pub struct TimeRangeInput {
 
 /// One rejected import row: `line` in the file, field + machine token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RangeImportError {
     pub line: u32,
     pub field: String,
@@ -202,6 +214,7 @@ pub struct RangeImportError {
 
 /// Outcome of `POST /api/v1/time-ranges/import`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RangeImportResult {
     pub created: u32,
     pub updated: u32,

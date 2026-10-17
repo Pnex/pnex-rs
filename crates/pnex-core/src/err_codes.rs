@@ -73,6 +73,8 @@ pub const ORG_OWNER_EDIT_FORBIDDEN: &str = "org-owner-edit-forbidden";
 pub const ORG_LAST_OWNER: &str = "org-last-owner";
 pub const ORG_MEMBER_REMOVE_FORBIDDEN: &str = "org-member-remove-forbidden";
 pub const ORG_OWNER_REMOVE_FORBIDDEN: &str = "org-owner-remove-forbidden";
+/// `PATCH /api/v1/profile` without any field.
+pub const PROFILE_PATCH_EMPTY: &str = "profile-patch-empty";
 pub const POI_WRITE_FORBIDDEN: &str = "poi-write-forbidden";
 pub const POI_LINK_WRITE_FORBIDDEN: &str = "poi-link-write-forbidden";
 pub const POI_POSITION_WRITE_FORBIDDEN: &str = "poi-position-write-forbidden";
@@ -119,6 +121,10 @@ pub const MEDIA_ANALYSIS_INTERRUPTED: &str = "media-analysis-interrupted";
 pub const MEDIA_ANALYSIS_LARGE: &str = "media-analysis-large";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
+/// Delete refused: deployed flows use the function (`args.flows`).
+pub const FUNCTION_IN_USE: &str = "function-in-use";
+/// Malformed `@input`/`@output` directive (`args.line`, `args.detail`).
+pub const FUNCTION_DIRECTIVE_INVALID: &str = "function-directive-invalid";
 pub const ANNOT_WRITE_FORBIDDEN: &str = "annot-write-forbidden";
 pub const ANNOT_PUBLISH_FORBIDDEN: &str = "annot-publish-forbidden";
 pub const ANNOT_VERSION_CONFLICT: &str = "annot-version-conflict";
@@ -158,11 +164,40 @@ pub const FLOW_STOP_NOT_DEPLOYED: &str = "flow-stop-not-deployed";
 pub const FLOW_START_NOT_STOPPED: &str = "flow-start-not-stopped";
 pub const FLOW_NO_DEPLOYED_VERSION: &str = "flow-no-deployed-version";
 pub const FLOW_DEVICE_WRITE_VALUES_EMPTY: &str = "flow-device-write-values-empty";
+/// The flow runtime is unavailable or did not acknowledge; `args.detail`
+/// carries the engine diagnostic verbatim.
+pub const FLOW_RUNTIME: &str = "flow-runtime";
 pub const RESOURCE_WRITE_FORBIDDEN: &str = "resource-write-forbidden";
 pub const RESOURCE_EDGE_DUPLICATE: &str = "resource-edge-duplicate";
+/// Kind outside the organisation layer registry (`args.kind`).
+pub const RESOURCE_KIND_UNKNOWN: &str = "resource-kind-unknown";
+/// A move would make a resource its own ancestor.
+pub const RESOURCE_CYCLE: &str = "resource-cycle";
 pub const EDGE_WRITE_FORBIDDEN: &str = "edge-write-forbidden";
 /// Server host referential is frozen by the deployment (`PNEX_PROD_HOST`).
 pub const EDGE_HOST_LOCKED: &str = "edge-host-locked";
+/// Another WiFi entry of the org already uses this SSID (409).
+pub const EDGE_SSID_TAKEN: &str = "edge-ssid-taken";
+/// Another host entry of the org already uses this host (409).
+pub const EDGE_HOST_TAKEN: &str = "edge-host-taken";
+/// OTA deployment (ota.md): an assignment is already active on the device.
+pub const OTA_IN_PROGRESS: &str = "ota-in-progress";
+/// Device firmware predates OTA support (no `ota` cap announced).
+pub const OTA_NOT_READY: &str = "ota-not-ready";
+/// No deployable (successful, OTA-stamped) build, or artifact missing.
+pub const OTA_NO_ARTIFACT: &str = "ota-no-artifact";
+/// Image exceeds the ESP8266 OTA staging budget.
+pub const OTA_TOO_LARGE: &str = "ota-too-large";
+/// Device already runs at least the target version (force to redeploy).
+pub const OTA_SAME_VERSION: &str = "ota-same-version";
+/// No deployable build for the requested version.
+pub const OTA_VERSION_NOT_FOUND: &str = "ota-version-not-found";
+/// No active OTA deployment to cancel.
+pub const OTA_NO_ACTIVE: &str = "ota-no-active";
+/// Device-token download refused (any authentication failure, 404).
+pub const OTA_AUTH_FAILED: &str = "ota-auth-failed";
+/// OTA artifact missing from the store at download time.
+pub const OTA_ARTIFACT_NOT_FOUND: &str = "ota-artifact-not-found";
 /// Org secrets vault (secrets.md D110–D118).
 pub const SECRET_NOT_FOUND: &str = "secret-not-found";
 pub const SECRET_IN_USE: &str = "secret-in-use";
@@ -181,6 +216,11 @@ pub const STITCH_STATE_UNKNOWN: &str = "stitch-state-unknown";
 pub const STITCH_DISABLED: &str = "stitch-disabled";
 pub const STITCH_FRAME_TOO_LARGE: &str = "stitch-frame-too-large";
 pub const FLUID_WRITE_FORBIDDEN: &str = "fluid-write-forbidden";
+/// CoolProp rejected a fluid, a mixture or a computation; the engine
+/// message travels verbatim in `args.detail`.
+pub const COOLPROP_ERROR: &str = "coolprop-error";
+/// More cycle points than one request accepts (`args.max`).
+pub const THERMO_TOO_MANY_POINTS: &str = "thermo-too-many-points";
 pub const VIZ_WRITE_FORBIDDEN: &str = "viz-write-forbidden";
 pub const LLM_PROVIDER_FORBIDDEN: &str = "llm-provider-forbidden";
 pub const LLM_PROVIDER_NOT_FOUND: &str = "llm-provider-not-found";
@@ -206,6 +246,14 @@ pub const NOTIFY_TEST_BODY_INVALID: &str = "notify-test-body-invalid";
 /// Template render failure (preview, channel test, save-time syntax check);
 /// the minijinja detail travels verbatim in `args.detail`.
 pub const NOTIFY_TEMPLATE_RENDER: &str = "notify-template-render";
+/// The channel driver refused the configuration; its English diagnostic
+/// travels verbatim in `args.detail`.
+pub const NOTIFY_CHANNEL_CONFIG_INVALID: &str = "notify-channel-config-invalid";
+/// A required configuration field of the channel kind is missing
+/// (`args.field` = field id of the `field_spec`).
+pub const NOTIFY_CHANNEL_FIELD_REQUIRED: &str = "notify-channel-field-required";
+/// A test send failed upstream (`args.detail` = verbatim transport error).
+pub const NOTIFY_TEST_FAILED: &str = "notify-test-failed";
 pub const CAPS_OUT_OF_RANGE: &str = "caps-out-of-range";
 pub const CAPS_FLASH_PINS: &str = "caps-flash-pins";
 pub const CAPS_PSRAM_PINS: &str = "caps-psram-pins";
@@ -271,12 +319,16 @@ pub const VIDEO_SEGMENT_INVALID: &str = "video-segment-invalid";
 pub const VIDEO_STORE_UNAVAILABLE: &str = "video-store-unavailable";
 /// The events storage (OpenObserve logs) is unreachable or failed.
 pub const EVENTS_UNAVAILABLE: &str = "events-unavailable";
+/// The shared memory store (Valkey) is unreachable or disabled.
+pub const MEMORY_UNAVAILABLE: &str = "memory-unavailable";
 /// The notification journal (OpenObserve, D86) could not be read.
 pub const NOTIFY_JOURNAL_UNAVAILABLE: &str = "notify-journal-unavailable";
 /// An event stream name is invalid (`ev_[a-z0-9_]+`).
 pub const EVENT_STREAM_INVALID: &str = "event-stream-invalid";
 /// Managing vision models requires the owner, admin or member role.
 pub const ML_MODEL_WRITE_FORBIDDEN: &str = "ml-model-write-forbidden";
+/// No vision model with this id in the org.
+pub const ML_MODEL_NOT_FOUND: &str = "ml-model-not-found";
 /// The model's ONNX file (media version) is missing.
 pub const ML_MODEL_MISSING_BYTES: &str = "ml-model-missing-bytes";
 /// The ONNX model could not be loaded (unsupported ops, wrong input size…).
@@ -376,6 +428,8 @@ pub const AI_FLOW_RUNNING: &str = "ai-flow-running";
 /// A reply is already being written in this conversation (one turn at a
 /// time, D145).
 pub const AI_CONVERSATION_BUSY: &str = "ai-conversation-busy";
+/// Not one of the caller's assistant conversations in this org.
+pub const AI_CONVERSATION_NOT_FOUND: &str = "ai-conversation-not-found";
 /// Changing the org's assistant retention needs the owner or admin role.
 pub const AI_RETENTION_FORBIDDEN: &str = "ai-retention-forbidden";
 /// The org's assistant retention may only be shorter than the platform
@@ -418,6 +472,10 @@ pub const DEVICE_SCREEN_BUILTIN_LOCKED: &str = "device-screen-builtin-locked";
 pub const DEVICE_SCREEN_NOT_DECLARED: &str = "device-screen-not-declared";
 /// Neither the board profile nor the model declares a screen.
 pub const DEVICE_SCREEN_NONE_DECLARED: &str = "device-screen-none-declared";
+/// OpenObserve not configured, failing or timed out for a telemetry read (503).
+pub const TELEMETRY_UNAVAILABLE: &str = "telemetry-unavailable";
+/// Too many series specs in one telemetry query (`args.max`).
+pub const TELEMETRY_BATCH_TOO_LARGE: &str = "telemetry-batch-too-large";
 /// Minimum interval between two builds of the org not reached.
 pub const BUILD_INTERVAL_NOT_MET: &str = "build-interval-not-met";
 /// The build job could not be queued.
@@ -456,6 +514,9 @@ pub const ASR_PROFILE_NAME_TAKEN: &str = "asr-profile-name-taken";
 pub const ASR_MODEL_NOT_FOUND: &str = "asr-model-not-found";
 /// A model of the org already has this name.
 pub const ASR_MODEL_NAME_TAKEN: &str = "asr-model-name-taken";
+/// The ASR model is still used by profiles (`args.profiles`, comma-joined
+/// names); `?force=true` deletes the model and those profiles.
+pub const ASR_MODEL_IN_USE: &str = "asr-model-in-use";
 /// The file is not a supported audio model.
 pub const ASR_MODEL_UNSUPPORTED: &str = "asr-model-unsupported";
 /// The model's runtime (e.g. whisper.cpp) is not compiled into this
@@ -537,6 +598,8 @@ pub const ONTOLOGY_CLAIM_UNSOURCED: &str = "ontology-claim-unsourced";
 pub const ONTOLOGY_ACTION_NO_FLOW: &str = "ontology-action-no-flow";
 /// The action bus (Valkey) is unavailable: the action was not sent.
 pub const ONTOLOGY_ACTION_UNAVAILABLE: &str = "ontology-action-unavailable";
+/// The change journal (OpenObserve) of an object cannot be read (503).
+pub const ONTOLOGY_CHANGES_UNAVAILABLE: &str = "ontology-changes-unavailable";
 /// An `action-trigger` names a type or action absent from the org schema;
 /// `args.object_type`, `args.action`.
 pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
@@ -546,6 +609,8 @@ pub const CASE_LEGAL_BASIS_REQUIRED: &str = "case-legal-basis-required";
 /// A proposal already reviewed the other way: a rejected one is not retained,
 /// a retained one is not rejected (cases-workspace.md K30).
 pub const CASE_PROPOSAL_STALE: &str = "case-proposal-stale";
+/// The read log of a case (OpenObserve) cannot be read (503).
+pub const CASE_READS_UNAVAILABLE: &str = "case-reads-unavailable";
 /// A track file whose times carry no offset needs the recording's time zone.
 pub const TRACK_IMPORT_TIMEZONE_REQUIRED: &str = "track-import-timezone-required";
 /// A track file without a single usable point.
@@ -598,11 +663,39 @@ pub const LAB_PROPAGATE_NO_PREVIOUS: &str = "lab-propagate-no-previous";
 /// The review queue of a project holds its maximum of pending pictures.
 pub const LAB_REVIEW_FULL: &str = "lab-review-full";
 
+// ── Body-level codes of the shared error shapes (D239) ───────────────────
+
+/// One or more fields are invalid: `errors.fields = {"<field>": "<token>"}`.
+pub const FIELD_INVALID_BODY: &str = "field-invalid";
+/// The request could not be read (malformed JSON, unknown enum value, bad
+/// query or path); `description` carries the parser message.
+pub const REQUEST_INVALID: &str = "request-invalid";
+/// Flow graph violations: `errors.violations = [...]`.
+pub const FLOW_INVALID: &str = "flow-invalid";
+/// Dashboard layout violations.
+pub const DASHBOARD_INVALID: &str = "dashboard-invalid";
+/// Dashboard widget violations.
+pub const WIDGET_INVALID: &str = "widget-invalid";
+/// Tour document violations.
+pub const TOUR_INVALID: &str = "tour-invalid";
+/// Annotation layer document violations.
+pub const ANNOTATION_LAYER_INVALID: &str = "annotation-layer-invalid";
+/// Fluid mixture violations.
+pub const MIXTURE_INVALID: &str = "mixture-invalid";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
 /// `description`/`message` on the frontend (never panics).
 pub const ALL: &[&str] = &[
+    FIELD_INVALID_BODY,
+    REQUEST_INVALID,
+    FLOW_INVALID,
+    DASHBOARD_INVALID,
+    WIDGET_INVALID,
+    TOUR_INVALID,
+    ANNOTATION_LAYER_INVALID,
+    MIXTURE_INVALID,
     ONTOLOGY_NOT_FOUND,
     ONTOLOGY_ALREADY_EXISTS,
     ONTOLOGY_VERSION_CONFLICT,
@@ -615,9 +708,11 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_CLAIM_UNSOURCED,
     ONTOLOGY_ACTION_NO_FLOW,
     ONTOLOGY_ACTION_UNAVAILABLE,
+    ONTOLOGY_CHANGES_UNAVAILABLE,
     ONTOLOGY_ACTION_UNKNOWN,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,
+    CASE_READS_UNAVAILABLE,
     TRACK_IMPORT_TIMEZONE_REQUIRED,
     TRACK_IMPORT_EMPTY,
     TRACK_IMPORT_UNREADABLE,
@@ -628,6 +723,8 @@ pub const ALL: &[&str] = &[
     DEVICE_SCREEN_BUILTIN_LOCKED,
     DEVICE_SCREEN_NOT_DECLARED,
     DEVICE_SCREEN_NONE_DECLARED,
+    TELEMETRY_UNAVAILABLE,
+    TELEMETRY_BATCH_TOO_LARGE,
     BUILD_INTERVAL_NOT_MET,
     BUILD_SUBMIT_FAILED,
     FUNCTION_VERSION_CONFLICT,
@@ -668,6 +765,7 @@ pub const ALL: &[&str] = &[
     ORG_LAST_OWNER,
     ORG_MEMBER_REMOVE_FORBIDDEN,
     ORG_OWNER_REMOVE_FORBIDDEN,
+    PROFILE_PATCH_EMPTY,
     POI_WRITE_FORBIDDEN,
     POI_LINK_WRITE_FORBIDDEN,
     POI_POSITION_WRITE_FORBIDDEN,
@@ -699,6 +797,8 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_LARGE,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
+    FUNCTION_IN_USE,
+    FUNCTION_DIRECTIVE_INVALID,
     ANNOT_WRITE_FORBIDDEN,
     ANNOT_PUBLISH_FORBIDDEN,
     ANNOT_VERSION_CONFLICT,
@@ -730,10 +830,24 @@ pub const ALL: &[&str] = &[
     FLOW_START_NOT_STOPPED,
     FLOW_NO_DEPLOYED_VERSION,
     FLOW_DEVICE_WRITE_VALUES_EMPTY,
+    FLOW_RUNTIME,
     RESOURCE_WRITE_FORBIDDEN,
     RESOURCE_EDGE_DUPLICATE,
+    RESOURCE_KIND_UNKNOWN,
+    RESOURCE_CYCLE,
     EDGE_WRITE_FORBIDDEN,
     EDGE_HOST_LOCKED,
+    EDGE_SSID_TAKEN,
+    EDGE_HOST_TAKEN,
+    OTA_IN_PROGRESS,
+    OTA_NOT_READY,
+    OTA_NO_ARTIFACT,
+    OTA_TOO_LARGE,
+    OTA_SAME_VERSION,
+    OTA_VERSION_NOT_FOUND,
+    OTA_NO_ACTIVE,
+    OTA_AUTH_FAILED,
+    OTA_ARTIFACT_NOT_FOUND,
     SECRET_NOT_FOUND,
     SECRET_IN_USE,
     SECRET_NOT_REFERENCED,
@@ -748,6 +862,8 @@ pub const ALL: &[&str] = &[
     STITCH_DISABLED,
     STITCH_FRAME_TOO_LARGE,
     FLUID_WRITE_FORBIDDEN,
+    COOLPROP_ERROR,
+    THERMO_TOO_MANY_POINTS,
     VIZ_WRITE_FORBIDDEN,
     LLM_PROVIDER_FORBIDDEN,
     LLM_PROVIDER_NOT_FOUND,
@@ -765,6 +881,9 @@ pub const ALL: &[&str] = &[
     NOTIFY_TEMPLATE_NAME_CONFLICT,
     NOTIFY_TEST_BODY_INVALID,
     NOTIFY_TEMPLATE_RENDER,
+    NOTIFY_CHANNEL_CONFIG_INVALID,
+    NOTIFY_CHANNEL_FIELD_REQUIRED,
+    NOTIFY_TEST_FAILED,
     CAPS_OUT_OF_RANGE,
     CAPS_FLASH_PINS,
     CAPS_PSRAM_PINS,
@@ -800,9 +919,11 @@ pub const ALL: &[&str] = &[
     VIDEO_SEGMENT_INVALID,
     VIDEO_STORE_UNAVAILABLE,
     EVENTS_UNAVAILABLE,
+    MEMORY_UNAVAILABLE,
     NOTIFY_JOURNAL_UNAVAILABLE,
     EVENT_STREAM_INVALID,
     ML_MODEL_WRITE_FORBIDDEN,
+    ML_MODEL_NOT_FOUND,
     ML_MODEL_MISSING_BYTES,
     ML_MODEL_LOAD_FAILED,
     ML_MODEL_INFERENCE_FAILED,
@@ -830,6 +951,7 @@ pub const ALL: &[&str] = &[
     CONTROL_IN_USE,
     AI_FLOW_RUNNING,
     AI_CONVERSATION_BUSY,
+    AI_CONVERSATION_NOT_FOUND,
     AI_RETENTION_FORBIDDEN,
     AI_RETENTION_ABOVE_PLATFORM,
     AI_DISABLED,
@@ -857,6 +979,7 @@ pub const ALL: &[&str] = &[
     ASR_PROFILE_NAME_TAKEN,
     ASR_MODEL_NOT_FOUND,
     ASR_MODEL_NAME_TAKEN,
+    ASR_MODEL_IN_USE,
     ASR_MODEL_UNSUPPORTED,
     ASR_RUNTIME_UNAVAILABLE,
     ASR_TEST_AUDIO_UNSUPPORTED,
@@ -934,3 +1057,8 @@ pub const FIELD_MAX_LENGTH: &str = "max_length";
 pub const FIELD_INVALID_UUID: &str = "invalid-uuid";
 /// `{"kind": "invalid"}` — value outside the accepted set or format.
 pub const FIELD_INVALID: &str = "invalid";
+/// `{"name": "unique"}`: the value is already used in the organisation.
+pub const FIELD_UNIQUE: &str = "unique";
+/// `{"wifi_credential_id": "not-found"}` — the referenced object does not
+/// exist in the org.
+pub const FIELD_NOT_FOUND: &str = "not-found";

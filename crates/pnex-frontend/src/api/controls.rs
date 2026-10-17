@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
 use pnex_core::ui_control::{
-    ControlValue, ControlValuesRequest, ControlValuesResponse, CreateUiControl, UiControl,
-    UpdateUiControl, WriteControlValue,
+    ControlValue, ControlValuesResponse, CreateUiControl, UiControl, UpdateUiControl,
+    WriteControlValue, CONTROL_VALUES_MAX_IDS,
 };
 use uuid::Uuid;
 
@@ -88,19 +88,25 @@ pub async fn write_value(
     .await
 }
 
-/// `POST /api/v1/controls/values` — last commanded values (`None` = never
-/// written).
+/// `GET /api/v1/controls/values?ids=` — last commanded values (`None` =
+/// never written), in chunks of the server cap.
 pub async fn values(ids: Vec<Uuid>) -> Result<BTreeMap<Uuid, Option<ControlValue>>, ApiError> {
-    if ids.is_empty() {
-        return Ok(BTreeMap::new());
+    let mut out = BTreeMap::new();
+    for chunk in ids.chunks(CONTROL_VALUES_MAX_IDS) {
+        let list = chunk
+            .iter()
+            .map(Uuid::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let res: ControlValuesResponse = client::request(
+            reqwest::Method::GET,
+            &format!("/api/v1/controls/values?ids={list}"),
+            None,
+        )
+        .await?;
+        out.extend(res.values);
     }
-    let res: ControlValuesResponse = client::request(
-        reqwest::Method::POST,
-        "/api/v1/controls/values",
-        Some(serde_json::to_value(ControlValuesRequest { ids }).unwrap_or_default()),
-    )
-    .await?;
-    Ok(res.values)
+    Ok(out)
 }
 
 /// Key without the surface prefix of a declared control

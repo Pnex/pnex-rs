@@ -290,7 +290,7 @@ async fn deploy_conflit_cross_flows_rejete_400() {
         let res = deploy(&server, &auth, org, flow_b).await;
         assert_eq!(res.status_code(), 400, "{}", res.text());
         let body: serde_json::Value = res.json();
-        let v = &body["violations"][0];
+        let v = &body["errors"]["violations"][0];
         assert_eq!(v["code"], "pin-already-assigned");
         assert_eq!(v["node_id"], "w1");
         assert_eq!(v["args"]["pin"], "d1");
@@ -321,8 +321,11 @@ async fn deploy_conflit_cross_flows_rejete_400() {
         let res = deploy(&server, &auth, org, flow_c).await;
         assert_eq!(res.status_code(), 400, "{}", res.text());
         let body: serde_json::Value = res.json();
-        assert_eq!(body["violations"][0]["code"], "pin-already-assigned");
-        assert_eq!(body["violations"][0]["args"]["flow"], "excl A");
+        assert_eq!(
+            body["errors"]["violations"][0]["code"],
+            "pin-already-assigned"
+        );
+        assert_eq!(body["errors"]["violations"][0]["args"]["flow"], "excl A");
     })
     .await;
 }
@@ -557,7 +560,7 @@ async fn deploy_second_recorder_same_camera_rejected() {
         let res = deploy(&server, &auth, org, flow_b).await;
         assert_eq!(res.status_code(), 400, "{}", res.text());
         let body: serde_json::Value = res.json();
-        let v = &body["violations"][0];
+        let v = &body["errors"]["violations"][0];
         assert_eq!(v["code"], "camera-already-recorded");
         assert_eq!(v["node_id"], "rec");
         assert_eq!(v["args"]["camera"], "cam-one");
@@ -572,6 +575,38 @@ async fn deploy_second_recorder_same_camera_rejected() {
             "{}",
             res.text()
         );
+    })
+    .await;
+}
+
+/// D239: a mode change on a pin used by a deployed flow answers an
+/// `ErrorDetail` 409 carrying the flow names in `errors.args`.
+#[tokio::test]
+#[serial]
+async fn set_mode_flow_conflict_is_error_detail() {
+    with_app(|server, auth, ctx| async move {
+        let org = personal_org(&server, &auth).await;
+        let dev = create_generic(&server, &auth, "gen-conflict").await;
+        let mut ws = connect(&server, &dev).await;
+        announce_and_expect_provision(&mut ws).await;
+        set_d1_output(&server, &auth, org, &dev).await;
+
+        let flow = create_write_flow(&server, &auth, org, "conflict A", "gen-conflict", "D1").await;
+        seed_deployed(&ctx, flow).await;
+
+        let res = server
+            .post(&format!("/api/v1/devices/{}/commands", dev.id))
+            .add_header("Authorization", format!("Bearer {auth}"))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "op": "set_mode", "gpio": 5, "mode": "digital_in" }))
+            .await;
+        assert_eq!(res.status_code(), 409, "{}", res.text());
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "pin-flow-conflict");
+        assert_eq!(body["errors"]["args"]["count"], "1");
+        assert_eq!(body["errors"]["args"]["flows"], "conflict A");
+        assert!(body.get("flows").is_none(), "no extra top-level key");
+        ws.close().await;
     })
     .await;
 }

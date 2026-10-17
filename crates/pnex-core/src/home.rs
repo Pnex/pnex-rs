@@ -23,6 +23,7 @@ pub const HOME_WIDGET_TYPE: &str = "home_card";
 
 /// Composite card kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum HomeCard {
     Light,
@@ -362,6 +363,7 @@ impl HomeCard {
 
 /// Options of a [`HOME_WIDGET_TYPE`] widget (`WidgetOptions.home`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HomeCardOptions {
     pub card: HomeCard,
     /// Control bound to each active role (written by the server at save).

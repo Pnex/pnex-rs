@@ -331,7 +331,6 @@ pub fn TemplateList(mut cx: EditorCx) -> Element {
         })
         .await
         .ok()
-        .map(|p| p.results)
     });
     let loaded = widgets
         .read()

@@ -480,6 +480,11 @@ tasks:
     cmds:
       - '{{.G}} cargo test --workspace'
 
+  openapi:
+    desc: Régénère docs/contracts/openapi.json depuis les annotations utoipa (source des SDK)
+    cmds:
+      - 'UPDATE_OPENAPI=1 {{.G}} cargo test -p pnex-backend --test openapi'
+
   # ---------- Dev ----------
 
   dev:

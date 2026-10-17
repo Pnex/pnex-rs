@@ -2,30 +2,17 @@
 //! logs, written by the flow `event-log` node.
 
 use pnex_core::events::EventRecord;
-use serde::Deserialize;
 
 use crate::api::client;
 use crate::api::error::ApiError;
 use crate::api::media::urlencode;
 
-/// D14 page of events + `available` (false = O2 not configured, or the org
-/// never wrote an event).
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct EventPage {
-    pub count: i64,
-    #[serde(default)]
-    pub results: Vec<EventRecord>,
-    #[serde(default = "default_true")]
-    pub available: bool,
-}
+/// D14 page of events. OpenObserve absent = 503 `events-unavailable`.
+pub type EventPage = pnex_core::Paginated<EventRecord>;
 
-fn default_true() -> bool {
-    true
-}
-
-/// `GET /api/v1/events/streams` — event streams of the org (`ev_…`).
+/// `GET /api/v1/events/streams` (all pages): event streams of the org (`ev_…`).
 pub async fn streams() -> Result<Vec<String>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/events/streams", None).await
+    client::request_all("/api/v1/events/streams").await
 }
 
 /// Event list filters.
@@ -70,7 +57,7 @@ impl EventFilters {
     }
 }
 
-/// `GET /api/v1/events` — D14 envelope + `available`.
+/// `GET /api/v1/events`: D14 page.
 pub async fn list(filters: &EventFilters) -> Result<EventPage, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -99,16 +86,5 @@ mod tests {
             "?stream=ev_doors&q=front%20door&limit=10&offset=0"
         );
         assert_eq!(EventFilters::default().to_query(), "");
-    }
-
-    #[test]
-    fn page_defaults_available() {
-        let page: EventPage =
-            serde_json::from_str(r#"{"count":0,"next":null,"previous":null,"results":[]}"#)
-                .unwrap();
-        assert!(page.available);
-        let page: EventPage =
-            serde_json::from_str(r#"{"count":0,"results":[],"available":false}"#).unwrap();
-        assert!(!page.available);
     }
 }

@@ -30,7 +30,10 @@ pub async fn embedding_models() -> Vec<AsrModel> {
         .await
         .unwrap_or_default()
         .into_iter()
-        .filter(|m| m.task == "speaker_embedding" && m.check.status == "valid")
+        .filter(|m| {
+            m.task == pnex_core::media_ingest::AsrTask::SpeakerEmbedding
+                && m.check.status == pnex_core::vision::ModelCheckStatus::Valid
+        })
         .collect()
 }
 
@@ -219,7 +222,7 @@ fn EnrolForm(object_id: String, on_created: Callback<()>) -> Element {
 fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<()>) -> Element {
     let mut busy = use_signal(|| false);
     let mut revoking = use_signal(|| false);
-    let ready = profile.status == STATUS_READY;
+    let ready = profile.status.wire() == STATUS_READY;
     let models = use_resource(embedding_models);
     let model_list = models.read().clone().unwrap_or_default();
     let current_model = profile.model_id.clone().unwrap_or_default();
@@ -263,7 +266,7 @@ fn ProfileCard(profile: VoiceProfileView, can_admin: bool, on_change: Callback<(
                 div { class: "flex flex-wrap items-center justify-between gap-2",
                     h3 { class: "text-base font-semibold text-ink", {t!("voice-title")} }
                     span { class: "rounded bg-gray-100 px-2 py-0.5 text-sm text-ink",
-                        {status_label(&profile.status)}
+                        {status_label(profile.status.wire())}
                     }
                 }
                 dl { class: "grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm",
@@ -558,7 +561,7 @@ fn SampleRow(
     can_admin: bool,
     on_change: Callback<()>,
 ) -> Element {
-    let label = sample_label(&sample.status, sample.reason.as_deref());
+    let label = sample_label(sample.status.wire(), sample.reason.as_deref());
     let duration = secs(sample.duration_ms);
     let speech = secs(sample.speech_ms);
     let score = pct(sample.score);

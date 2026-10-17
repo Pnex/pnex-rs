@@ -1555,3 +1555,80 @@ page qui demande « tout » ou plus de 100 tronque sans le dire.
   debug, stack locale).
 - **Statut** : corrigé (non commité).
 
+
+## 2026-10-17 — audit du contrat d'API (spec OpenAPI, `api-contract.md`)
+
+Constats relevés en annotant les 421 routes. Les écarts de forme (erreurs,
+pagination, types, verbes, langue) sont traités par les lots H1–H5 de
+`docs/architecture/api-contract.md` ; restent ici les défauts ponctuels.
+
+### O74 — Visite publique : assets en cache un an sans version
+
+- **Constat** : `GET /api/v1/public/tours/{token}/assets/{asset_id}` répond
+  `Cache-Control: immutable, max-age` d'un an même sans `?v=` ; cette URL
+  sert la version courante de l'asset, qui change.
+- **Correction proposée** : `immutable` seulement quand `?v=` est présent,
+  sinon `no-cache` (revalidation).
+- **Statut** : ✅ 2026-10-17 — `immutable` un an seulement avec `?v=n`,
+  `no-cache` sinon (`public_tours.rs::asset_cache_control`) ; test
+  `endpoint_public_et_cache` (`tests/tours.rs`).
+
+### O75 — Approbation de document : noms d'auteur à `null`
+
+- **Constat** : `POST /api/v1/docs/{id}/versions/{n}/approve` renvoie
+  `created_by`/`approved_by` à `null` quand l'auteur n'est pas l'approbateur
+  (la closure `name()` ne résout que l'id de l'appelant ; la liste résout
+  tous les noms).
+- **Correction proposée** : résoudre les deux ids comme la liste.
+- **Statut** : ✅ résolu (2026-10-17) — `approve_version` résout auteur et
+  approbateur via `user_names` (helper partagé avec la liste des versions) ;
+  test `approve_resolves_author_and_approver` (`tests/docs.rs`).
+
+### O76 — Liste des contrôles : le filtre `label` se perd en page suivante
+
+- **Constat** : `GET /api/v1/controls` n'ajoute pas `label` aux filtres des
+  liens `next`/`previous`.
+- **Statut** : ✅ 2026-10-17 — `label` ajouté aux filtres des liens
+  (`controls.rs::list`) ; même défaut corrigé sur `GET /api/v1/functions` ;
+  test `list_links_keep_the_label_filter` (`tests/controls.rs`).
+
+### O77 — Suppression d'un modèle ASR : cascade silencieuse
+
+- **Constat** : `DELETE /api/v1/asr/models/{id}` supprime aussi les profils
+  ASR qui l'utilisent ; leurs flux cessent d'être transcrits sans
+  avertissement.
+- **Correction proposée** : 409 `asr-model-in-use` avec la liste des
+  profils (comme `FunctionInUse`), suppression forcée explicite.
+- **Statut** : ✅ 2026-10-17 — 409 `asr-model-in-use` (`errors.args.profiles`
+  = noms des profils qui l'utilisent, toutes colonnes) ; `?force=true`
+  supprime quand même (cascade/`SET NULL` en base) ; l'UI (onglet Modèles de
+  /streams) demande une seconde confirmation listant les profils ; test dans
+  `tests/media_transcribe.rs`.
+
+### O78 — `GET /api/v1/cases/{id}/reads` renvoie `null`
+
+- **Constat** : quand le journal de lecture est indisponible, le corps est
+  `null` au lieu d'une liste vide ou d'une erreur codée.
+- **Statut** : ✅ 2026-10-17 — `Paginated<CaseRead>` (`limit`/`offset`
+  poussés dans la requête O2) ; journal illisible = 503
+  `case-reads-unavailable` ; test dans `tests/ontology.rs`
+  (`imported_tracks_feed_the_tracks_and_the_detectors`).
+
+### O79 — Documentation de module périmée
+
+- **Constat** : `controllers/cameras.rs` décrit `GET /{device}/settings` et
+  `/{device}/snapshot` qui n'existent pas ; `controllers/media/mod.rs` cite
+  un 409 `last_version` devenu `media-last-version` ; `media/crud.rs`
+  `detail_response` annonce « asset + versions » (renvoie le résumé seul) ;
+  le message d'erreur de `kind` liste 8 types sur 10 (`video`, `mesh`
+  manquent).
+- **Statut** : ✅ résolu (2026-10-17, H5) — docs de module réécrites en
+  anglais et alignées sur les routes réelles ; `kind` devient l'enum
+  `MediaKind` (10 types), l'erreur est le jeton `invalid`.
+
+### O80 — Filtres de date ignorés sans erreur
+
+- **Constat** : `GET /api/v1/cameras/segments` ignore un `from`/`to`
+  illisible au lieu de répondre 400.
+- **Statut** : ✅ résolu (2026-10-17, H1) — 400 `field-invalid`
+  (`from`/`to` : `invalid`), test dans `tests/ws_camera.rs`.

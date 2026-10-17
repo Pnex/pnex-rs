@@ -36,13 +36,10 @@ use crate::state::{org, session, toasts};
 use crate::util::{save_blob, sleep};
 
 /// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer »).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 /// Cible du modal de déploiement OTA — tout ce que le modal doit afficher
@@ -108,7 +105,7 @@ pub fn Devices() -> Element {
     let mut bulk_selected = use_signal(HashSet::<String>::new);
     let mut bulk_modal = use_signal(|| None::<bool>);
 
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     let list = use_resource(move || {
         let filters = api::devices::DeviceFilters {
@@ -254,7 +251,7 @@ pub fn Devices() -> Element {
                 // Badge + date du dernier build, téléchargement si succès.
                 let firmware = device.latest_build.as_ref().map(|build| {
                     let (class, label) = phase_badge(Some(build.build_phase.as_str()));
-                    (class, label, date_label(&build.updated_at), build.build_phase == "succeeded")
+                    (class, label, date_label(&build.updated_at), build.build_phase == pnex_core::BuildPhase::Succeeded)
                 });
                 // Failed build: its reason as the badge tooltip (O4).
                 let failure_hint = device
@@ -341,7 +338,7 @@ pub fn Devices() -> Element {
                                     onclick: move |_| {
                                         let id = download_id.clone();
                                         spawn(async move {
-                                            match api::builds::download(&id).await {
+                                            match api::builds::download(flash_pk).await {
                                                 Ok(bytes) => save_blob(&format!("{id}-firmware.bin"), &bytes),
                                                 Err(err) => toasts::error(err),
                                             }
@@ -659,10 +656,10 @@ pub fn Devices() -> Element {
                 // Flash navigateur d'un device de la liste (Web Serial,
                 // Chromium — l'état interne se réinitialise à chaque
                 // ouverture).
-                if let Some((_, flash_id, _)) = flash_target() {
+                if let Some((flash_pk, flash_id, _)) = flash_target() {
                     FlashModal {
                         key: "{flash_id}",
-                        device_id: flash_id,
+                        device_pk: flash_pk,
                         on_close: move |_| flash_target.set(None),
                     }
                 }
@@ -1473,7 +1470,7 @@ fn DeviceDetail(
                                                 span {
                                                     key: "{cap.id}",
                                                     class: "rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700",
-                                                    title: "{cap.mode}",
+                                                    title: cap.mode.name(),
                                                     {cap.name.clone()}
                                                 }
                                             }
@@ -1680,7 +1677,7 @@ fn black_box_outputs(device: &pnex_core::Device) -> Element {
                         span {
                             key: "{cap.id}",
                             class: "inline-flex items-center gap-1 rounded-full bg-gray-800 px-2.5 py-1 text-xs font-mono text-green-400",
-                            title: "{cap.mode}",
+                            title: cap.mode.name(),
                             {cap.name.clone()}
                         }
                     }

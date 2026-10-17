@@ -3,20 +3,12 @@
 //! device attachment and custom device commands. Types live in
 //! `pnex_core::firmware` (shared with the backend).
 
+use crate::api::client;
+use crate::api::error::ApiError;
 use pnex_core::firmware::{
     CreateFirmwareProject, FirmwareCheckStatus, FirmwareProjectDetail, FirmwareProjectSummary,
     FirmwareRevisionSummary, LibCatalogItem, SaveFirmwareRevision,
 };
-use serde::Deserialize;
-
-use crate::api::client;
-use crate::api::error::ApiError;
-
-/// `{count, results}` envelope of the firmware endpoints.
-#[derive(Deserialize)]
-struct Results<T> {
-    results: Vec<T>,
-}
 
 pub async fn list() -> Result<Vec<FirmwareProjectSummary>, ApiError> {
     list_labeled(None).await
@@ -31,19 +23,11 @@ pub async fn list_labeled(label: Option<String>) -> Result<Vec<FirmwareProjectSu
         ),
         None => "/api/v1/firmware-projects".to_string(),
     };
-    let r: Results<FirmwareProjectSummary> =
-        client::request(reqwest::Method::GET, &path, None).await?;
-    Ok(r.results)
+    client::request_all(&path).await
 }
 
 pub async fn lib_catalog() -> Result<Vec<LibCatalogItem>, ApiError> {
-    let r: Results<LibCatalogItem> = client::request(
-        reqwest::Method::GET,
-        "/api/v1/firmware-projects/lib-catalog",
-        None,
-    )
-    .await?;
-    Ok(r.results)
+    client::request_all("/api/v1/firmware-projects/lib-catalog").await
 }
 
 pub async fn create(input: CreateFirmwareProject) -> Result<FirmwareProjectDetail, ApiError> {
@@ -79,13 +63,7 @@ pub async fn save(
 }
 
 pub async fn revisions(id: i64) -> Result<Vec<FirmwareRevisionSummary>, ApiError> {
-    let r: Results<FirmwareRevisionSummary> = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/firmware-projects/{id}/revisions"),
-        None,
-    )
-    .await?;
-    Ok(r.results)
+    client::request_all(&format!("/api/v1/firmware-projects/{id}/revisions")).await
 }
 
 /// 204, or 409 `firmware-project-in-use` while devices are attached.
@@ -124,9 +102,7 @@ pub async fn check_status(id: i64, check_id: &str) -> Result<FirmwareCheckStatus
 
 /// Per-line sketch violations of a 400 `firmware-source-refused` body.
 pub fn source_violations(err: &ApiError) -> Vec<pnex_core::firmware::SourceViolation> {
-    err.body
-        .as_ref()
-        .and_then(|b| b.get("violations"))
+    err.violations()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default()
 }

@@ -3,6 +3,20 @@ use super::*;
 // ─────────────────────────── POI ───────────────────────────
 
 /// `GET /api/v1/pois` — liste globale org, D14.
+#[utoipa::path(
+    get,
+    path = "/api/v1/pois",
+    tag = "pois",
+    operation_id = "pois_list",
+    summary = "List the POIs of the organisation",
+    description = "Paginated (`limit`/`offset`). Each POI carries its placed devices and its outgoing links with resolved target names. Filters: `search`, `emoji`, `has_device`, `has_position`, `label`.",
+    params(PoiListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<PoiDto>),
+        (status = 400, description = "Invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -59,6 +73,21 @@ pub(super) async fn list(
 }
 
 /// `POST /api/v1/pois` — création (géo uniquement en V1).
+#[utoipa::path(
+    post,
+    path = "/api/v1/pois",
+    tag = "pois",
+    operation_id = "pois_create",
+    summary = "Create a POI",
+    description = "Creates a geographic POI (label and coordinates required). Devices are attached afterwards with `POST /pois/{id}/devices`. Requires owner, admin or member role.",
+    request_body = PoiPayload,
+    responses(
+        (status = 201, body = PoiDto),
+        (status = 400, description = "`field-invalid`: `errors.fields` maps `label`, `coordinates`, `latitude`, `longitude`, `emoji`, `location_detail`, `preview_kind` to a token", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -74,10 +103,7 @@ pub(super) async fn create(
         return Ok(field_status("label", err_codes::FIELD_REQUIRED));
     };
     let (Some(latitude), Some(longitude)) = (p.latitude, p.longitude) else {
-        return Ok(field_status(
-            "coordinates",
-            "Coordonnées requises pour ce mode.",
-        ));
+        return Ok(field_status("coordinates", err_codes::FIELD_REQUIRED));
     };
     match svc::create_pin(
         &ctx.db,
@@ -104,6 +130,20 @@ pub(super) async fn create(
 }
 
 /// `GET /api/v1/pois/cluster` — items pour le viewport (D37).
+#[utoipa::path(
+    get,
+    path = "/api/v1/pois/cluster",
+    tag = "pois",
+    operation_id = "pois_cluster",
+    summary = "Cluster the POIs of a map viewport",
+    description = "Returns the POIs inside `bbox` at `zoom`: individual points when few enough, otherwise numbered clusters (centroid + sample). Same filters as the list. Read-only.",
+    params(ClusterQuery),
+    responses(
+        (status = 200, body = ClusterResponse),
+        (status = 400, description = "Missing or malformed `bbox` / `zoom`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn cluster(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -113,23 +153,17 @@ pub(super) async fn cluster(
         return Ok(field_status("bbox", err_codes::FIELD_REQUIRED));
     };
     let Ok(zoom) = q.zoom.as_deref().unwrap_or_default().parse::<i32>() else {
-        return Ok(field_status("zoom", "Entier attendu (0..22)."));
+        return Ok(field_status("zoom", err_codes::FIELD_INVALID));
     };
     let parts: Vec<f64> = bbox
         .split(',')
         .filter_map(|p| p.trim().parse::<f64>().ok())
         .collect();
     let [west, south, east, north] = parts[..] else {
-        return Ok(field_status(
-            "bbox",
-            "Format attendu : west,south,east,north.",
-        ));
+        return Ok(field_status("bbox", err_codes::FIELD_INVALID));
     };
     if !(west < east && south < north) {
-        return Ok(field_status(
-            "bbox",
-            "bbox invalide (west<east et south<north).",
-        ));
+        return Ok(field_status("bbox", err_codes::FIELD_INVALID));
     }
     let query = svc::ClusterQuery {
         west,
@@ -160,6 +194,20 @@ pub(super) async fn cluster(
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/pois/{id}",
+    tag = "pois",
+    operation_id = "pois_get",
+    summary = "Get a POI",
+    description = "One POI with its placed devices and resolved links.",
+    params(("id" = String, Path, format = "uuid", description = "POI id (UUID)")),
+    responses(
+        (status = 200, body = PoiDto),
+        (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -182,6 +230,23 @@ pub(super) async fn detail(
 }
 
 /// `PATCH /api/v1/pois/{id}` — déplacement/édition (1 PATCH par pointer-up).
+#[utoipa::path(
+    patch,
+    path = "/api/v1/pois/{id}",
+    tag = "pois",
+    operation_id = "pois_update",
+    summary = "Update a POI",
+    description = "Partial update (move, rename, emoji, metadata, pinned preview). For nullable fields: absent = unchanged, `null` = cleared. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "POI id (UUID)")),
+    request_body = PoiPatchPayload,
+    responses(
+        (status = 200, body = PoiDto),
+        (status = 400, description = "`field-invalid`: `errors.fields` maps `label`, `coordinates`, `latitude`, `longitude`, `emoji`, `location_detail`, `preview_kind` to a token", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -230,6 +295,21 @@ pub(super) async fn update(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/pois/{id}",
+    tag = "pois",
+    operation_id = "pois_delete",
+    summary = "Delete a POI",
+    description = "Deletes the POI; its device placements and links are removed with it (devices become free again). Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "POI id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,

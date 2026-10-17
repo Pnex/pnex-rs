@@ -96,7 +96,11 @@ fn message_dto(m: ai_messages::Model) -> AiMessage {
         .unwrap_or_default();
     AiMessage {
         seq: m.seq,
-        role: m.role,
+        role: if m.role == "user" {
+            pnex_core::AiRole::User
+        } else {
+            pnex_core::AiRole::Assistant
+        },
         content: m.content,
         tool_trace,
         created_at: m.created_at.to_rfc3339(),

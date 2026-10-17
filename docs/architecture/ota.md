@@ -9,15 +9,15 @@
 ```
 USER (UI /devices)            BACKEND                                   DEVICE
 1. « Mettre à jour (OTA) » ── POST /devices/{id}/ota {version?, force?}
-                              gates : 409 ota_in_progress
-                                      400 ota_not_ready (cap `ota` absente)
-                                      409 same_version (force pour passer)
-                                      400 no_ota_artifact / ota_too_large (8266)
+                              gates : 409 ota-in-progress
+                                      400 ota-not-ready (cap `ota` absente)
+                                      409 ota-same-version (force pour passer)
+                                      400 ota-no-artifact / ota-too-large (8266)
                               ──► ota_assignments (pending = desired state)
                               ──► en ligne ? push OtaAvailable (WS) ────────► Ack{ok}
                               hors ligne → pushed:false, pickup à l'announce
-2. DEVICE : GET {scheme}://{HOST}/api/v1/ota/firmware/{device}/{version}
-            ?device_id= + Authorization: Bearer <token>   (posture /ws/device, D154)
+2. DEVICE : GET {scheme}://{HOST}/api/v1/ota/firmware/{version}
+            Authorization: Bearer <token>   (posture /ws/device, D154)
             stream 1 KB → Update.h + sha256
             ◄── OtaState{downloading, pct} ≥5 s/5 % ──┤ (ESP32 : WS ouvert)
             sha256 vérifié AVANT Update.end (sinon abort, vieux fw conservé)

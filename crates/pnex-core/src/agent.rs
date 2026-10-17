@@ -39,6 +39,7 @@ pub fn normalize_enroll_code(raw: &str) -> String {
 
 /// One key discovered from an agent (`GET /api/v1/devices/{id}/agent-keys`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentKey {
     pub id: i64,
     /// Normalized series name.
@@ -49,18 +50,22 @@ pub struct AgentKey {
     pub kind: String,
     /// OpenObserve history on/off (Valkey live cache is always on).
     pub record_o2: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub first_seen_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_seen_at: String,
 }
 
 /// `PATCH /api/v1/devices/{id}/agent-keys/{key_id}`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentKeyPatch {
     pub record_o2: bool,
 }
 
 /// `GET|PATCH /api/v1/devices/{id}/agent` — agent overview + settings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentInfo {
     /// Distinct keys quota.
     pub max_keys: i32,
@@ -75,11 +80,13 @@ pub struct AgentInfo {
     #[serde(default)]
     pub arch: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub enrolled_at: Option<String>,
 }
 
 /// `PATCH /api/v1/devices/{id}/agent`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentSettingsPatch {
     pub max_keys: i32,
 }
@@ -87,9 +94,11 @@ pub struct AgentSettingsPatch {
 /// `POST /api/v1/devices/{id}/agent-enrollment` → a fresh single-use code
 /// (previous pending codes of the device are revoked).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentEnrollmentCreated {
     /// Display form, `XXXX-XXXX-XXXX`.
     pub code: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub expires_at: String,
     /// Hex SHA-256 of the exact `/api/v1/meta/ca` body (`None` = no local CA:
     /// the server certificate is publicly trusted).
@@ -99,6 +108,7 @@ pub struct AgentEnrollmentCreated {
 
 /// `POST /api/v1/agent/enroll` (public) — body sent by `pnex-agent install`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentEnrollRequest {
     pub code: String,
     #[serde(default)]
@@ -114,6 +124,7 @@ pub struct AgentEnrollRequest {
 /// Credentials returned once to the enrolling agent. Enrolling rotates the
 /// device token and key: any previous installation is disconnected (4005).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AgentEnrollResponse {
     pub device_id: String,
     pub token: String,

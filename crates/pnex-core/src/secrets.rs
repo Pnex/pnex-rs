@@ -24,10 +24,16 @@ struct SecretValue<'a> {
 /// existing secret, or type a value (owner/admin only) that creates or
 /// replaces the field's dedicated secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(untagged)]
 pub enum SecretFieldInput {
-    Pick { secret_id: Uuid },
-    Value { value: String },
+    Pick {
+        #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+        secret_id: Uuid,
+    },
+    Value {
+        value: String,
+    },
 }
 
 /// A secret field stored inside a flow graph node (lot S5, http-fetch).
@@ -118,13 +124,16 @@ impl<'de> Deserialize<'de> for SecretSlot {
 
 /// Read side of a secret field: the reference and its display name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SecretFieldView {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub secret_id: Uuid,
     pub name: String,
 }
 
 /// Kind of consumer referencing a secret (`secret_usages.consumer_kind`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "kebab-case")]
 pub enum SecretConsumerKind {
     NotifyChannel,
@@ -164,6 +173,7 @@ impl SecretConsumerKind {
 
 /// One "used by" entry of a secret.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SecretUsage {
     pub kind: SecretConsumerKind,
     /// Consumer id as text (bigint or uuid depending on the kind).
@@ -178,7 +188,9 @@ pub struct SecretUsage {
 /// `GET /api/v1/secrets` row. Never carries a value. Viewers only get
 /// `id` + `name` (other fields empty).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OrgSecret {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: Uuid,
     pub name: String,
     #[serde(default)]
@@ -189,14 +201,17 @@ pub struct OrgSecret {
     #[serde(default)]
     pub updated_by: Option<String>,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Body of `POST /api/v1/secrets` (value required) and
-/// `PUT /api/v1/secrets/{id}` (value optional: absent = keep it).
+/// `PATCH /api/v1/secrets/{id}` (value optional: absent = keep it).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OrgSecretInput {
     pub name: String,
     #[serde(default)]
@@ -208,6 +223,7 @@ pub struct OrgSecretInput {
 /// `POST /api/v1/system/secrets/rekey` (platform admin, secrets.md S8):
 /// outcome of the master key rotation run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SecretsRekeyReport {
     /// Rows rewritten under the write key.
     pub rewritten: u64,

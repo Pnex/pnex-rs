@@ -17,7 +17,6 @@ use dioxus_i18n::t;
 use pnex_core::{FieldSpec, FieldType, NotifyChannel, NotifyKindInfo};
 
 use crate::api;
-use crate::api::notify::TestError;
 use crate::components::secret_field::{can_manage_secrets, SecretDraft, SecretField};
 use crate::components::ui::BTN_PRIMARY;
 use crate::components::ui::{FIELD_LABEL, INPUT};
@@ -169,16 +168,8 @@ pub fn NotifyChannelForm(
         spawn(async move {
             match api::notify::test_draft(&kind, name().trim(), config, channel_id.as_deref()).await
             {
-                Ok(outcome) if outcome.ok() => {
-                    toasts::success("toast-notify-test-sent");
-                }
-                Ok(outcome) => {
-                    test_error.set(Some(outcome.error.unwrap_or(outcome.status)));
-                }
-                Err(err) => match api::notify::classify_test_error(&err) {
-                    TestError::Invalid(msg) => test_error.set(Some(msg)),
-                    TestError::Other(msg) => toasts::error(msg),
-                },
+                Ok(()) => toasts::success("toast-notify-test-sent"),
+                Err(err) => toasts::error(err),
             }
             testing.set(false);
         });

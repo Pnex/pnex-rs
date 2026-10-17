@@ -47,13 +47,82 @@ pub const SAMPLE_PENDING: &str = "pending";
 pub const SAMPLE_USED: &str = "used";
 pub const SAMPLE_REJECTED: &str = "rejected";
 
+/// Lifecycle of a voice profile (wire form of [`STATUS_DRAFT`]…).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceProfileStatus {
+    /// Samples being added.
+    #[default]
+    Draft,
+    /// Centroid and threshold computed.
+    Ready,
+    /// Last generation failed (see `last_error`).
+    Failed,
+}
+
+impl VoiceProfileStatus {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Draft => STATUS_DRAFT,
+            Self::Ready => STATUS_READY,
+            Self::Failed => STATUS_FAILED,
+        }
+    }
+
+    /// Status of a stored row; an unknown value reads as `draft`.
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            STATUS_READY => Self::Ready,
+            STATUS_FAILED => Self::Failed,
+            _ => Self::Draft,
+        }
+    }
+}
+
+/// State of a sample after the last generation (wire form of
+/// [`SAMPLE_PENDING`]…).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceSampleStatus {
+    #[default]
+    Pending,
+    Used,
+    Rejected,
+}
+
+impl VoiceSampleStatus {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Pending => SAMPLE_PENDING,
+            Self::Used => SAMPLE_USED,
+            Self::Rejected => SAMPLE_REJECTED,
+        }
+    }
+
+    /// State of a stored row; an unknown value reads as `pending`.
+    pub fn from_wire(s: &str) -> Self {
+        match s {
+            SAMPLE_USED => Self::Used,
+            SAMPLE_REJECTED => Self::Rejected,
+            _ => Self::Pending,
+        }
+    }
+}
+
 /// Creation of a profile: the consent is mandatory (K19 variant A).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceProfileInput {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub object_id: String,
     /// Speaker embedding model of the org (task `speaker_embedding`).
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub model_id: String,
-    /// Date the person consented (`YYYY-MM-DD` or RFC 3339).
+    /// Date the person consented (`YYYY-MM-DD`; an RFC 3339 timestamp is
+    /// accepted too).
+    #[cfg_attr(feature = "openapi", schema(format = Date))]
     pub consent_at: String,
     /// What the person consented to (purpose, duration).
     pub consent_scope: String,
@@ -66,13 +135,18 @@ pub struct VoiceProfileInput {
 
 /// Change of embedding model: the profile goes back to `draft`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceProfilePatch {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub model_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceSampleView {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub media_asset_id: String,
     pub name: String,
     #[serde(default)]
@@ -85,23 +159,28 @@ pub struct VoiceSampleView {
     /// Mean similarity of its windows to the profile (last generation).
     #[serde(default)]
     pub score: Option<f32>,
-    pub status: String,
+    pub status: VoiceSampleStatus,
     #[serde(default)]
     pub reason: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
 /// A profile as the UI reads it. Never the vector (R4, R16).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceProfileView {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub object_id: String,
     pub person: String,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub model_id: Option<String>,
     #[serde(default)]
     pub model_name: Option<String>,
-    pub status: String,
+    pub status: VoiceProfileStatus,
     #[serde(default)]
     pub threshold: Option<f32>,
     /// Windows the centroid is built from.
@@ -112,24 +191,31 @@ pub struct VoiceProfileView {
     pub intra_mean: Option<f32>,
     #[serde(default)]
     pub intra_std: Option<f32>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub consent_at: String,
     pub consent_scope: String,
     pub consent_proof: String,
     pub consent_recorded_by: String,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub trained_at: Option<String>,
     #[serde(default)]
     pub last_error: Option<String>,
     #[serde(default)]
     pub samples: Vec<VoiceSampleView>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// One profile compared with the tested audio.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceCandidate {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub profile_id: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub object_id: String,
     pub person: String,
     pub score: f32,
@@ -138,6 +224,7 @@ pub struct VoiceCandidate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum VoiceVerdict {
     /// One profile accepted, clearly ahead of the others.
@@ -150,7 +237,9 @@ pub enum VoiceVerdict {
 /// Result of a test (verification 1:1 or identification 1:N). A match is
 /// a proposal for a human, never a fact written anywhere (K19).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VoiceTestResult {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub model_id: String,
     pub audio_ms: u32,
     pub speech_ms: u32,

@@ -13,8 +13,8 @@ pub struct ApiError {
     /// HTTP status (absent for local errors: network, unreadable body…)
     /// — lets callers tell a 409 from a 400 without parsing the message.
     pub status: Option<u16>,
-    /// Decoded body when it is JSON (409 conflict, 400 `{"violations": […]}`
-    /// of flows…).
+    /// Decoded body when it is JSON (`ErrorDetail`: `error`, `description`,
+    /// `errors.{args,fields,violations}`).
     pub body: Option<serde_json::Value>,
     /// Machine code (`pnex_core::err_codes::ALL`) extracted from the server
     /// body (`"error"` field) or set locally (`ApiError::local`). `None` =
@@ -80,6 +80,20 @@ impl ApiError {
         }
     }
 
+    /// `errors.fields` of a `field-invalid` body (`{"<field>": "<token>"}`).
+    pub fn fields(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.body
+            .as_ref()?
+            .get("errors")?
+            .get("fields")?
+            .as_object()
+    }
+
+    /// `errors.violations` of a document-violations body (`flow-invalid`…).
+    pub fn violations(&self) -> Option<&serde_json::Value> {
+        self.body.as_ref()?.get("errors")?.get("violations")
+    }
+
     pub fn network(err: &reqwest::Error) -> Self {
         Self::local(
             pnex_core::err_codes::CLIENT_NETWORK,
@@ -130,14 +144,6 @@ pub fn extract_message(status: u16, body: &str) -> String {
     if let Some(text) = as_str(&value) {
         return text;
     }
-    // Single-field body (`{"name":"This field is required."}`):
-    // first field with a string value.
-    if let Some(field) = value
-        .as_object()
-        .and_then(|obj| obj.iter().find_map(|(_, v)| v.as_str().map(str::to_string)))
-    {
-        return field;
-    }
     format!("HTTP {status}")
 }
 
@@ -181,11 +187,27 @@ mod tests {
     }
 
     #[test]
-    fn champ_single_field_unique() {
-        assert_eq!(
-            extract_message(400, r#"{"name":"This field is required."}"#),
-            "This field is required."
+    fn fields_and_violations_from_errors() {
+        let err = ApiError::http(
+            400,
+            r#"{"error":"field-invalid","description":"d","errors":{"fields":{"name":"required"}}}"#,
         );
+        assert_eq!(
+            err.fields()
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str()),
+            Some("required")
+        );
+        assert!(err.violations().is_none());
+        let err = ApiError::http(
+            400,
+            r#"{"error":"flow-invalid","errors":{"violations":[{"code":"x"}]}}"#,
+        );
+        assert_eq!(
+            err.violations().and_then(|v| v.as_array()).map(Vec::len),
+            Some(1)
+        );
+        assert!(err.fields().is_none());
     }
 
     #[test]

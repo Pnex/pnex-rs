@@ -1,9 +1,9 @@
-//! Board profiles — catalogue des profils de board v2 (`mcu_boards.details`,
-//! schéma v2) pour le picker de variantes du wizard et l'éditeur SVG.
+//! Board profiles: catalogue of the v2 board profiles (`mcu_boards.details`)
+//! for the wizard variant picker and the SVG editor.
 //!
-//! `GET /api/v1/boards` — lecture pour tout membre d'org. Les fonctions de
-//! mux, flags, modes offerts et avertissements sont **calculés serveur**
-//! (chip-caps en code, B0.6) : le front ne réimplémente jamais la validation.
+//! `GET /api/v1/boards`: read by any org member. Mux functions, flags,
+//! offered modes and warnings are **computed server-side** (chip caps in
+//! code, B0.6): the frontend never re-implements the validation.
 
 use axum::extract::{Query, State};
 use axum::response::Response;
@@ -12,24 +12,34 @@ use sea_orm::{EntityTrait, QueryOrder};
 use serde::Deserialize;
 
 use crate::auth::OrgContext;
+use crate::controllers::pagination;
 use crate::models::_entities::mcu_boards;
 
 pub fn routes() -> Routes {
     Routes::new().prefix("/api/v1").add("/boards", get(list))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    /// SoC family filter (e.g. `esp32`, `esp8266`); unknown value = empty list.
     #[serde(default)]
     soc: Option<String>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
 }
 
-/// Un pin d'un profil board — enrichissement affichage calculé serveur.
-#[derive(serde::Serialize)]
+/// One pin of a board profile, with its server-computed display enrichment.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[schema(
+    description = "One pin of a board profile, with server-computed mux functions, flags, modes and warnings."
+)]
 struct BoardPinDto {
     label: String,
     gpio: Option<u16>,
-    kind: &'static str,
+    kind: pnex_core::BoardPinKind,
     pos: pnex_core::PinPos,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
@@ -43,13 +53,21 @@ struct BoardPinDto {
     warnings: Vec<String>,
 }
 
-fn kind_str(k: pnex_core::BoardPinKind) -> &'static str {
-    match k {
-        pnex_core::BoardPinKind::Gpio => "gpio",
-        pnex_core::BoardPinKind::Power => "power",
-        pnex_core::BoardPinKind::Gnd => "gnd",
-        pnex_core::BoardPinKind::En => "en",
-    }
+/// One board profile of `GET /api/v1/boards`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct BoardDto {
+    id: i64,
+    name: String,
+    soc: String,
+    pretty_name: Option<String>,
+    chip_label: Option<String>,
+    profile_id: String,
+    pio_board: Option<String>,
+    /// Header layout of the profile (`BoardLayout`).
+    layout: serde_json::Value,
+    /// Peripherals the board can host (`BoardPeripherals`).
+    peripherals: serde_json::Value,
+    pins: Vec<BoardPinDto>,
 }
 
 fn pin_dto(soc: pnex_core::Soc, pp: &pnex_core::BoardProfilePin) -> BoardPinDto {
@@ -72,7 +90,7 @@ fn pin_dto(soc: pnex_core::Soc, pp: &pnex_core::BoardProfilePin) -> BoardPinDto 
     BoardPinDto {
         label: pp.label.clone(),
         gpio: pp.gpio,
-        kind: kind_str(pp.kind),
+        kind: pp.kind,
         pos: pp.pos,
         note: pp.note.clone(),
         fns,
@@ -82,15 +100,27 @@ fn pin_dto(soc: pnex_core::Soc, pp: &pnex_core::BoardProfilePin) -> BoardPinDto 
     }
 }
 
-/// `GET /api/v1/boards` — boards dont `details` parse en v2, enrichies
-/// chip-caps (fn/flags/modes/warnings dérivés côté serveur). `?soc=esp32`
-/// filtre par famille (picker de variantes du wizard).
+/// `GET /api/v1/boards`: boards whose `details` parse as v2, enriched with
+/// the chip caps. `?soc=esp32` filters by family (wizard variant picker).
+/// Bounded catalogue: filtered in Rust, then the page is cut.
+#[utoipa::path(
+    get,
+    path = "/api/v1/boards",
+    tag = "boards",
+    operation_id = "boards_list",
+    summary = "List the board profiles",
+    description = "Paginated global catalogue of v2 board profiles (pinout editor, provisioning wizard). Pin mux functions, flags, available modes and warnings are computed server-side from the chip capabilities. Boards whose profile does not parse as v2 are skipped. Read-only, any org member.",
+    params(ListQuery),
+    responses((status = 200, body = pnex_core::Paginated<BoardDto>)),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Query(q): Query<ListQuery>,
 ) -> Result<Response> {
-    let _ = org; // lecture : tout membre authentifié (convention catalogue)
+    let _ = org; // read: any authenticated member (catalogue convention)
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
     let rows = mcu_boards::Entity::find()
         .order_by_asc(mcu_boards::Column::Id)
         .all(&ctx.db)
@@ -115,18 +145,39 @@ async fn list(
             }
         }
         let pins: Vec<BoardPinDto> = p.pins.iter().map(|pp| pin_dto(soc, pp)).collect();
-        boards.push(serde_json::json!({
-            "id": b.id,
-            "name": b.name.clone(),
-            "soc": b.soc.clone(),
-            "pretty_name": b.pretty_name.clone().or_else(|| p.name.clone()),
-            "chip_label": p.chip_label.clone(),
-            "profile_id": p.board.clone(),
-            "pio_board": b.pio_board.clone(),
-            "layout": serde_json::to_value(p.layout).unwrap_or_default(),
-            "peripherals": serde_json::to_value(&p.peripherals).unwrap_or_default(),
-            "pins": pins,
-        }));
+        boards.push(BoardDto {
+            id: b.id,
+            name: b.name.clone(),
+            soc: b.soc.clone(),
+            pretty_name: b.pretty_name.clone().or_else(|| p.name.clone()),
+            chip_label: p.chip_label.clone(),
+            profile_id: p.board.clone(),
+            pio_board: b.pio_board.clone(),
+            layout: serde_json::to_value(p.layout).unwrap_or_default(),
+            peripherals: serde_json::to_value(&p.peripherals).unwrap_or_default(),
+            pins,
+        });
     }
-    format::json(serde_json::json!({ "boards": boards }))
+    let count = boards.len() as i64;
+    let (skip, take) = page.slice(boards.len());
+    let filters: Vec<(String, String)> = q
+        .soc
+        .iter()
+        .map(|s| ("soc".to_string(), s.clone()))
+        .collect();
+    format::json(pagination::envelope(
+        "/api/v1/boards",
+        &filters,
+        page,
+        count,
+        boards.into_iter().skip(skip).take(take).collect(),
+    ))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

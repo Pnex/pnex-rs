@@ -1,0 +1,2 @@
+# Routes not yet described in the OpenAPI spec. This list only shrinks:
+# annotate the handler with #[utoipa::path], then remove its line.

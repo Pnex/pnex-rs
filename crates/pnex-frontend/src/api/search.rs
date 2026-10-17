@@ -1,6 +1,6 @@
 //! Global search client (D69) — mirror of `controllers/global_search.rs`:
 //! grouped typeahead across the org's objects, shape
-//! `{count, q, groups:[{entity_type, results}]}` (deliberate D14 deviation).
+//! `{count, q, groups:[{entity_type, results}]}` (computed result, D240).
 
 use crate::api::{client, error::ApiError, media::urlencode};
 
@@ -47,7 +47,9 @@ pub struct SearchHit {
     pub id: String,
     pub title: String,
     pub subtitle: Option<String>,
-    pub updated_at: String,
+    /// RFC 3339; absent for label and document hits.
+    #[serde(default)]
+    pub updated_at: Option<String>,
     /// Kind of the object in a mixed group (labels, D218).
     #[serde(default)]
     pub kind: Option<String>,

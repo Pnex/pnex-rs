@@ -189,20 +189,10 @@ pub async fn detail(id: &str) -> Result<MediaAsset, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/media/{id}"), None).await
 }
 
-/// `GET /api/v1/media/{id}/versions` — liste des versions.
+/// `GET /api/v1/media/{id}/versions`: every version, oldest first (all
+/// pages).
 pub async fn versions(id: &str) -> Result<Vec<MediaVersion>, ApiError> {
-    #[derive(serde::Deserialize)]
-    struct Page {
-        results: Vec<MediaVersion>,
-    }
-
-    let page: Page = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/media/{id}/versions"),
-        None,
-    )
-    .await?;
-    Ok(page.results)
+    client::request_all(&format!("/api/v1/media/{id}/versions")).await
 }
 
 /// One document search hit (`GET /api/v1/media/search`). The snippet wraps

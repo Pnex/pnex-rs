@@ -214,12 +214,11 @@ pub fn short_time(rfc3339: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Field errors of a 400 `{field: token}` body (no machine `error` code).
+/// Field errors of a `field-invalid` body.
 pub fn field_errors(
     e: &crate::api::error::ApiError,
 ) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let obj = e.body.as_ref()?.as_object()?;
-    (e.status == Some(400) && !obj.contains_key("error")).then(|| obj.clone())
+    e.fields().cloned()
 }
 
 /// Object picker of a type dashboard (D187): the objects of `type_key`;

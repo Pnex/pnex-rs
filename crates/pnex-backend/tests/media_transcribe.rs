@@ -158,7 +158,7 @@ async fn model_import_check_and_transcription_chain() {
             )
             .await;
             assert_eq!(res.status_code(), 400);
-            assert_eq!(res.json::<Value>()["license"], "required");
+            assert_eq!(res.json::<Value>()["errors"]["fields"]["license"], "required");
             let res = post(
                 "/api/v1/asr/models",
                 json!({ "name": "Junk", "asset_id": junk_id, "license": "MIT" }),
@@ -287,7 +287,7 @@ async fn model_import_check_and_transcription_chain() {
                 .add_header("X-Org-Id", org.to_string())
                 .await
                 .json::<Value>();
-            let mut tasks: Vec<&str> = all
+            let mut tasks: Vec<&str> = all["results"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -330,7 +330,7 @@ async fn model_import_check_and_transcription_chain() {
             ] {
                 let res = post("/api/v1/asr/profiles", body).await;
                 assert_eq!(res.status_code(), 400, "{}", res.text());
-                assert_eq!(res.json::<Value>()[field], token, "{field}");
+                assert_eq!(res.json::<Value>()["errors"]["fields"][field], token, "{field}");
             }
             let res = post(
                 "/api/v1/asr/profiles",
@@ -345,6 +345,39 @@ async fn model_import_check_and_transcription_chain() {
             assert_eq!(full["vad_model_id"], vad_id.as_str());
             assert_eq!(full["diarization_embedding_model_id"], emb_id.as_str());
             let full_id = full["id"].as_str().unwrap().to_string();
+
+            // O77: a model used by a profile is not deleted silently; the
+            // forced delete clears it from the profile's optional slot.
+            let res = side("vad2", "model_type", "silero-vad").await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let vad2_id = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let res = post(
+                "/api/v1/asr/profiles",
+                json!({ "name": "Doomed", "asr_model_id": model_id, "vad_model_id": vad2_id }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let doomed_id = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let delete = |force: bool| {
+                server
+                    .delete(&format!("/api/v1/asr/models/{vad2_id}?force={force}"))
+                    .add_header("Authorization", auth.clone())
+                    .add_header("X-Org-Id", org.to_string())
+            };
+            let res = delete(false).await;
+            assert_eq!(res.status_code(), 409, "{}", res.text());
+            let e = res.json::<Value>();
+            assert_eq!(e["error"], "asr-model-in-use");
+            assert_eq!(e["errors"]["args"]["profiles"], "Doomed", "{e}");
+            let res = delete(true).await;
+            assert_eq!(res.status_code(), 204, "{}", res.text());
+            let doomed = server
+                .get(&format!("/api/v1/asr/profiles/{doomed_id}"))
+                .add_header("Authorization", auth.clone())
+                .add_header("X-Org-Id", org.to_string())
+                .await
+                .json::<Value>();
+            assert!(doomed["vad_model_id"].is_null(), "{doomed}");
 
             // Profile + enabled stream.
             let res = post(

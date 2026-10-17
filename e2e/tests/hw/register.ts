@@ -64,7 +64,8 @@ export function registerAndFlash(key: keyof typeof BOARDS) {
 
     await waitBuild(api, board.deviceId);
     const image = info.outputPath(`${board.deviceId}.bin`);
-    writeFileSync(image, await api.download(`/download/firmware/${board.deviceId}`));
+    const registered = await deviceRow(api, board.deviceId);
+    writeFileSync(image, await api.download(`/download/firmware/${registered!.id}`));
     await flashMerged(board, image);
 
     await expect

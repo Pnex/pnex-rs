@@ -177,17 +177,17 @@ async fn pack_objects_validation_and_versions() {
         // Re-install is an upgrade: idempotent, no conflict.
         let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.alice, org, None).await;
         assert_eq!(st, 200);
-        let (_, types) = call(&server, "GET", "/api/v1/ontology/types", &env.alice, org, None).await;
-        let keys: Vec<&str> = types.as_array().unwrap().iter().map(|t| t["def"]["key"].as_str().unwrap()).collect();
+        let (_, types) = call(&server, "GET", "/api/v1/ontology/types?limit=100", &env.alice, org, None).await;
+        let keys: Vec<&str> = types["results"].as_array().unwrap().iter().map(|t| t["def"]["key"].as_str().unwrap()).collect();
         for k in ["device", "folder", "site", "line", "machine", "pump"] {
             assert!(keys.contains(&k), "{k} in {keys:?}");
         }
 
         // Validation tokens.
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "pump", "title": "P12", "properties": {}}))).await;
-        assert_eq!((st, e["serial"].as_str()), (400, Some("required")));
+        assert_eq!((st, e["errors"]["fields"]["serial"].as_str()), (400, Some("required")));
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "pump", "title": "P12", "properties": {"serial": "S1", "status": "flying"}}))).await;
-        assert_eq!((st, e["status"].as_str()), (400, Some("invalid")));
+        assert_eq!((st, e["errors"]["fields"]["status"].as_str()), (400, Some("invalid")));
         let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "device", "title": "x"}))).await;
         assert_eq!(st, 409, "system objects are created by their own pages");
 
@@ -219,7 +219,7 @@ async fn pack_objects_validation_and_versions() {
         assert_eq!(st, 200, "{t2}");
         assert_eq!(t2["version"].as_i64(), t["version"].as_i64().map(|v| v + 1));
         let (_, vs) = call(&server, "GET", "/api/v1/ontology/types/pump/versions", &env.alice, org, None).await;
-        assert!(vs.as_array().unwrap().len() >= 2);
+        assert!(vs["results"].as_array().unwrap().len() >= 2);
 
         // Type in use, archive, then delete.
         let (st, e) = call(&server, "DELETE", "/api/v1/ontology/types/pump", &env.alice, org, None).await;
@@ -285,11 +285,11 @@ async fn temporal_links_containment_and_graph() {
         assert_eq!(st, 200, "{c}");
         assert!(c["valid_to"].is_string());
         let (_, now) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", id(&p1)), &env.alice, org, None).await;
-        assert!(now.as_array().unwrap().iter().all(|l| l["link_type"] != "feeds"), "{now}");
+        assert!(now["results"].as_array().unwrap().iter().all(|l| l["link_type"] != "feeds"), "{now}");
         let (_, then) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?as_of=2026-06-01T00:00:00Z", id(&p1)), &env.alice, org, None).await;
-        assert!(then.as_array().unwrap().iter().any(|l| l["link_type"] == "feeds"), "{then}");
+        assert!(then["results"].as_array().unwrap().iter().any(|l| l["link_type"] == "feeds"), "{then}");
         let (_, hist) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links?history=true", id(&p1)), &env.alice, org, None).await;
-        assert!(hist.as_array().unwrap().iter().any(|l| l["id"] == lid));
+        assert!(hist["results"].as_array().unwrap().iter().any(|l| l["id"] == lid));
         let (_, r) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org, Some(json!({"ids": [id(&p1)], "traverse": [{"link_type": "feeds"}], "as_of": "2026-06-01T00:00:00Z"}))).await;
         assert_eq!(r["count"], 1, "as_of traversal sees the closed link: {r}");
 
@@ -298,13 +298,13 @@ async fn temporal_links_containment_and_graph() {
         assert_eq!(st, 200, "{g}");
         assert!(g["nodes"].as_array().unwrap().len() >= 3);
         let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/impact", id(&p2)), &env.alice, org, None).await;
-        let titles: Vec<&str> = imp.as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
+        let titles: Vec<&str> = imp["objects"].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
         assert!(titles.contains(&"L2"), "{titles:?}");
         let (st, path) = call(&server, "GET", &format!("/api/v1/ontology/path?from={}&to={}", id(&p3), id(&line)), &env.alice, org, None).await;
         assert_eq!(st, 404, "P3 is isolated: {path}");
         let (st, path) = call(&server, "GET", &format!("/api/v1/ontology/path?from={}&to={}", id(&p1), id(&line)), &env.alice, org, None).await;
         assert_eq!(st, 200, "{path}");
-        assert_eq!(path.as_array().unwrap().last().unwrap()["title"], "L2");
+        assert_eq!(path["path"].as_array().unwrap().last().unwrap()["title"], "L2");
     })
     .await;
 }
@@ -322,7 +322,7 @@ async fn sensor_replacement_keeps_the_series_and_system_identities() {
 
         let measures = |dev: &str, prop: &str, from: &str| json!({"link_type": "measures", "source_id": dev, "target_id": pid, "attributes": {"metric": "temperature", "property": prop}, "valid_from": from});
         let (st, e) = link(&server, &env.alice, org, measures(&c47, "rated_flow", "2026-03-01T00:00:00Z")).await;
-        assert_eq!((st, e["attributes.property"].as_str()), (400, Some("invalid")), "not a series");
+        assert_eq!((st, e["errors"]["fields"]["attributes.property"].as_str()), (400, Some("invalid")), "not a series");
         let (st, l) = link(&server, &env.alice, org, measures(&c47, "temperature", "2026-03-01T00:00:00Z")).await;
         assert_eq!(st, 201, "{l}");
         let (st, e) = link(&server, &env.alice, org, measures(&c88, "temperature", "2026-06-12T00:00:00Z")).await;
@@ -356,7 +356,7 @@ async fn sensor_replacement_keeps_the_series_and_system_identities() {
         let (_, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{c47}"), &env.alice, org, None).await;
         assert!(o["valid_to"].is_string(), "{o}");
         let (_, hist) = call(&server, "GET", &format!("/api/v1/ontology/objects/{pid}/links?history=true"), &env.alice, org, None).await;
-        assert_eq!(hist.as_array().unwrap().iter().filter(|l| l["link_type"] == "measures").count(), 2);
+        assert_eq!(hist["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "measures").count(), 2);
     })
     .await;
 }
@@ -465,7 +465,7 @@ async fn ranges_search_and_type_dashboards_reach_objects() {
             "attributes": {"metric": "temperature", "property": "temperature"}})).await;
         let (st, b) = call(&server, "GET", &format!("/api/v1/ontology/objects/{pid}/bindings"), &env.alice, org, None).await;
         assert_eq!(st, 200);
-        assert_eq!(b, json!([{"property": "temperature", "device_id": "c1", "metric": "temperature"}]));
+        assert_eq!(b["results"], json!([{"property": "temperature", "device_id": "c1", "metric": "temperature"}]));
         let layout = |object_type: Value| json!({
             "canvas": {"width": 800, "height": 600}, "object_type": object_type,
             "widgets": [{"id": "w1", "type": "gauge", "x": 0, "y": 0, "w": 100, "h": 100,
@@ -511,7 +511,7 @@ async fn device_placements_become_placed_at_links() {
             None,
         )
         .await;
-        let placed: Vec<&Value> = now
+        let placed: Vec<&Value> = now["results"]
             .as_array()
             .unwrap()
             .iter()
@@ -535,7 +535,7 @@ async fn device_placements_become_placed_at_links() {
             None,
         )
         .await;
-        let titles: Vec<&str> = now
+        let titles: Vec<&str> = now["results"]
             .as_array()
             .unwrap()
             .iter()
@@ -553,7 +553,8 @@ async fn device_placements_become_placed_at_links() {
         )
         .await;
         assert_eq!(
-            hist.as_array()
+            hist["results"]
+                .as_array()
                 .unwrap()
                 .iter()
                 .filter(|l| l["link_type"] == "placed_at")
@@ -575,7 +576,8 @@ async fn device_placements_become_placed_at_links() {
         )
         .await;
         assert!(
-            now.as_array()
+            now["results"]
+                .as_array()
                 .unwrap()
                 .iter()
                 .all(|l| l["link_type"] != "placed_at"),
@@ -602,18 +604,18 @@ async fn case_tracks_window_isolation_and_unavailable_history() {
         assert_eq!(st, 201, "{w}");
 
         let path = format!("/api/v1/cases/{cid}/tracks");
-        let (st, e) = call(&server, "POST", &path, &env.alice, org, Some(json!({"from": "2026-10-10T14:00:00Z", "to": "2026-10-10T13:00:00Z"}))).await;
-        assert_eq!((st, e["to"].as_str()), (400, Some("invalid")), "{e}");
-        let (st, e) = call(&server, "POST", &path, &env.alice, org, Some(json!({"from": "2026-01-01T00:00:00Z", "to": "2026-03-01T00:00:00Z"}))).await;
-        assert_eq!((st, e["to"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "GET", &qs(&path, &json!({"from": "2026-10-10T14:00:00Z", "to": "2026-10-10T13:00:00Z"})), &env.alice, org, None).await;
+        assert_eq!((st, e["errors"]["fields"]["to"].as_str()), (400, Some("invalid")), "{e}");
+        let (st, e) = call(&server, "GET", &qs(&path, &json!({"from": "2026-01-01T00:00:00Z", "to": "2026-03-01T00:00:00Z"})), &env.alice, org, None).await;
+        assert_eq!((st, e["errors"]["fields"]["to"].as_str()), (400, Some("invalid")), "{e}");
         let window = json!({"from": "2026-10-10T13:30:00Z", "to": "2026-10-10T16:00:00Z", "resolution_ms": 10000});
-        let (st, t) = call(&server, "POST", &path, &env.alice, org, Some(window.clone())).await;
+        let (st, t) = call(&server, "GET", &qs(&path, &window.clone()), &env.alice, org, None).await;
         assert_eq!(st, 200, "{t}");
         assert_eq!(t["available"], false);
         assert_eq!(t["tracks"], json!([]));
 
         let org_b = personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &path, &env.bob, org_b, Some(window)).await;
+        let (st, _) = call(&server, "GET", &qs(&path, &window), &env.bob, org_b, None).await;
         assert_eq!(st, 404);
     })
     .await;
@@ -657,8 +659,8 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
         }
         let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{list}");
-        let row = |list: &Value, pid: &str| list.as_array().unwrap().iter().find(|p| p["id"] == pid).cloned().unwrap();
-        assert_eq!(list.as_array().unwrap().len(), 2);
+        let row = |list: &Value, pid: &str| list["results"].as_array().unwrap().iter().find(|p| p["id"] == pid).cloned().unwrap();
+        assert_eq!(list["results"].as_array().unwrap().len(), 2);
         assert_eq!(row(&list, &pids[0])["refs"].as_array().unwrap().len(), 2, "{list}");
 
         let retain = format!("/api/v1/cases/{cid}/proposals/{}/retain", pids[0]);
@@ -681,10 +683,10 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
         assert_eq!((st, e["error"].as_str()), (409, Some("case-proposal-stale")), "{e}");
 
         let reject = format!("/api/v1/cases/{cid}/proposals/{}/reject", pids[1]);
-        let (st, list) = call(&server, "POST", &reject, &env.alice, org, Some(json!({"reason": "  parked at the depot  "}))).await;
-        assert_eq!(st, 200, "{list}");
-        assert_eq!(row(&list, &pids[1])["status"], "rejected");
-        assert_eq!(row(&list, &pids[1])["reject_reason"], "parked at the depot");
+        let (st, p) = call(&server, "POST", &reject, &env.alice, org, Some(json!({"reason": "  parked at the depot  "}))).await;
+        assert_eq!(st, 200, "{p}");
+        assert_eq!((p["id"].as_str(), p["status"].as_str()), (Some(pids[1].as_str()), Some("rejected")));
+        assert_eq!(p["reject_reason"], "parked at the depot");
         let (st, e) = call(&server, "POST", &format!("/api/v1/cases/{cid}/proposals/{}/retain", pids[1]), &env.alice, org, Some(json!({"title": "x"}))).await;
         assert_eq!((st, e["error"].as_str()), (409, Some("case-proposal-stale")), "{e}");
 
@@ -759,29 +761,30 @@ async fn imported_tracks_feed_the_tracks_and_the_detectors() {
         assert_eq!((st, e["error"].as_str()), (422, Some("track-import-timezone-required")), "{e}");
 
         let window = json!({"from": "2026-03-01T09:00:00Z", "to": "2026-03-01T12:00:00Z"});
-        let (st, t) = call(&server, "POST", &format!("/api/v1/cases/{cid}/tracks"), &env.alice, org, Some(window.clone())).await;
+        let (st, t) = call(&server, "GET", &qs(&format!("/api/v1/cases/{cid}/tracks"), &window), &env.alice, org, None).await;
         assert_eq!(st, 200, "{t}");
         assert_eq!(t["available"], true);
         assert_eq!(t["tracks"][0]["raw_points"], 1_501, "{t}");
         // Thresholds of the case: bounded, then used by the detectors.
         let put_case = |min_s: i64| json!({"title": "Depot", "properties": {"status": "open", "stop_min_s": min_s}, "expected_version": case["version"]});
         let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(put_case(5))).await;
-        assert_eq!((st, e["stop_min_s"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["stop_min_s"].as_str()), (400, Some("invalid")), "{e}");
         let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(put_case(600))).await;
         assert_eq!(st, 200, "{e}");
         let (st, d) = call(&server, "POST", &format!("/api/v1/cases/{cid}/detect"), &env.alice, org, Some(window.clone())).await;
         assert_eq!(st, 200, "{d}");
         let (_, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/proposals"), &env.alice, org, None).await;
-        let kinds: Vec<&str> = list.as_array().unwrap().iter().map(|p| p["kind"].as_str().unwrap()).collect();
+        let kinds: Vec<&str> = list["results"].as_array().unwrap().iter().map(|p| p["kind"].as_str().unwrap()).collect();
         assert!(kinds.contains(&"zone") && kinds.contains(&"stop"), "{list}");
-        let stop = list.as_array().unwrap().iter().find(|p| p["kind"] == "stop").unwrap();
+        let stop = list["results"].as_array().unwrap().iter().find(|p| p["kind"] == "stop").unwrap();
         assert_eq!(stop["params"]["min_s"], 600, "{stop}");
         let (_, d2) = call(&server, "POST", &format!("/api/v1/cases/{cid}/detect"), &env.alice, org, Some(window.clone())).await;
         assert_eq!(d2["inserted"], 0, "a second run proposes nothing new");
 
-        // K38 log: unavailable without O2 (never invented), private to the org.
+        // K38 log: unavailable without O2 (never invented, O78: a coded 503),
+        // private to the org.
         let (st, r) = call(&server, "GET", &format!("/api/v1/cases/{cid}/reads"), &env.alice, org, None).await;
-        assert_eq!((st, r), (200, Value::Null));
+        assert_eq!((st, r["error"].as_str()), (503, Some("case-reads-unavailable")), "{r}");
 
         // R1 / R2, then the import goes and its track with it.
         let org_b = personal_org(&server, &env.bob).await;
@@ -794,13 +797,30 @@ async fn imported_tracks_feed_the_tracks_and_the_detectors() {
         let (st, _) = call(&server, "POST", &path, &env.bob, org, Some(body(true))).await;
         assert_eq!(st, 403);
         let (st, list) = call(&server, "GET", &format!("/api/v1/cases/{cid}/tracks/imports"), &env.bob, org, None).await;
-        assert_eq!((st, list.as_array().map(Vec::len)), (200, Some(1)));
+        assert_eq!((st, list["results"].as_array().map(Vec::len)), (200, Some(1)));
         let (st, _) = call(&server, "DELETE", &format!("/api/v1/cases/{cid}/tracks/imports/{import_id}"), &env.alice, org, None).await;
         assert_eq!(st, 204);
-        let (_, t) = call(&server, "POST", &format!("/api/v1/cases/{cid}/tracks"), &env.alice, org, Some(window)).await;
+        let (_, t) = call(&server, "GET", &qs(&format!("/api/v1/cases/{cid}/tracks"), &window), &env.alice, org, None).await;
         assert_eq!(t["tracks"], json!([]));
     })
     .await;
+}
+
+/// `path?k=v&…` of a flat JSON object: the query of a GET read.
+fn qs(path: &str, body: &Value) -> String {
+    let pairs: Vec<String> = body
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| {
+            let v = v
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| v.to_string());
+            format!("{k}={}", v.replace('+', "%2B"))
+        })
+        .collect();
+    format!("{path}?{}", pairs.join("&"))
 }
 
 /// `fuzzy_time` value of an exact instant.
@@ -847,7 +867,7 @@ async fn case_workspace_events_attachments_and_signals() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({"type_key": "case", "title": "P-12", "properties": {}}))).await;
-        assert_eq!((st, e["status"].as_str()), (400, Some("required")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["status"].as_str()), (400, Some("required")), "{e}");
         let case = object(&server, &env.alice, org, "case", "Low pressure P-12", json!({"status": "open", "question": "Why?"})).await;
         let cid = case["id"].as_str().unwrap().to_string();
         let d1 = device(&server, &env, org, "c47").await;
@@ -902,12 +922,12 @@ async fn case_workspace_events_attachments_and_signals() {
         let (st, l) = link(&server, &env.alice, org, json!({"link_type": "feeds", "source_id": d1, "target_id": d2})).await;
         assert_eq!(st, 201, "{l}");
         let around_now = json!({"from": (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339(), "to": (chrono::Utc::now() + chrono::Duration::minutes(1)).to_rfc3339()});
-        let (st, sig) = call(&server, "POST", &url("signals"), &env.alice, org, Some(around_now.clone())).await;
+        let (st, sig) = call(&server, "GET", &qs(&url("signals"), &around_now), &env.alice, org, None).await;
         assert_eq!(st, 200, "{sig}");
         let kinds: Vec<&str> = sig["items"].as_array().unwrap().iter().filter(|i| i["kind"] == "link_open").map(|i| i["link"]["link_type"].as_str().unwrap()).collect();
         assert_eq!(kinds, vec!["feeds"], "{sig}");
         // Default window: around the events.
-        let (st, sig) = call(&server, "POST", &url("signals"), &env.alice, org, Some(json!({}))).await;
+        let (st, sig) = call(&server, "GET", &url("signals"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{sig}");
         assert!(sig["from"].as_str().unwrap().starts_with("2026-10-10T13:32:00"), "{sig}");
 
@@ -918,7 +938,7 @@ async fn case_workspace_events_attachments_and_signals() {
         assert_eq!(undated(&w), vec!["Valve left closed?".to_string(), "c47".into(), "c88".into()], "{w}");
 
         // Bad window, not a case, another org.
-        let (st, _) = call(&server, "POST", &url("signals"), &env.alice, org, Some(json!({"from": "2026-10-02T00:00:00Z", "to": "2026-10-01T00:00:00Z"}))).await;
+        let (st, _) = call(&server, "GET", &qs(&url("signals"), &json!({"from": "2026-10-02T00:00:00Z", "to": "2026-10-01T00:00:00Z"})), &env.alice, org, None).await;
         assert_eq!(st, 400);
         let (st, _) = call(&server, "GET", &format!("/api/v1/cases/{d1}/workspace"), &env.alice, org, None).await;
         assert_eq!(st, 404);
@@ -990,7 +1010,7 @@ async fn case_opened_from_an_alert() {
             "planned_start": "2026-10-03T06:00:00Z", "planned_end": "2026-10-03T14:00:00Z"
         }))).await;
         assert_eq!(st, 201, "{r}");
-        let (st, sig) = call(&server, "POST", &format!("/api/v1/cases/{cid}/signals"), &env.alice, org, Some(json!({}))).await;
+        let (st, sig) = call(&server, "GET", &format!("/api/v1/cases/{cid}/signals"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{sig}");
         let range = sig["items"].as_array().unwrap().iter().find(|i| i["kind"] == "range").expect("range item");
         assert_eq!(range["range"]["label"], "Night shift");
@@ -1038,7 +1058,7 @@ async fn case_payments_and_ownership_shares() {
             "title": "Grant paid", "properties": {"occurred": day, "amount": amount}, "expected_version": v
         });
         let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{eid}"), &env.alice, org, Some(put(json!({"amount": 1000, "currency": "euro"}), &ev["version"]))).await;
-        assert_eq!((st, e["amount"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["amount"].as_str()), (400, Some("invalid")), "{e}");
         let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{eid}"), &env.alice, org, Some(put(json!({"amount": 1000, "currency": "EUR"}), &ev["version"]))).await;
         assert_eq!(st, 200, "{e}");
         let state = object(&server, &env.alice, org, "organization", "Ministry", json!({"kind": "public_body"})).await;
@@ -1108,7 +1128,7 @@ async fn gallery_depicts_a_model_and_its_poses() {
         assert!(st == 403 || st == 404, "{st}");
         let (st, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", hero["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200, "{links}");
-        let depicts: Vec<&Value> = links.as_array().unwrap().iter().filter(|l| l["link_type"] == "depicts").collect();
+        let depicts: Vec<&Value> = links["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "depicts").collect();
         assert_eq!(depicts.len(), 1, "{links}");
         assert_eq!(depicts[0]["attributes"]["role"], "model");
     })
@@ -1125,7 +1145,7 @@ async fn investigation_pack_legal_basis_and_claims() {
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
             "type_key": "event", "title": "Meeting", "properties": {"occurred": {"from": "2019-03-31T00:00:00Z", "to": "2019-03-01T00:00:00Z", "precision": "range"}}
         }))).await;
-        assert_eq!((st, e["occurred"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["occurred"].as_str()), (400, Some("invalid")), "{e}");
 
         let case = object(&server, &env.alice, org, "case", "Port affair", json!({"status": "open"})).await;
         let cid = case["id"].as_str().unwrap();
@@ -1374,11 +1394,11 @@ async fn case_pages_from_templates_and_conclusion() {
         let org = personal_org(&server, &env.alice).await;
         // Templates come with the pack.
         let (_, t) = call(&server, "GET", "/api/v1/cases/templates", &env.alice, org, None).await;
-        assert_eq!(t.as_array().unwrap().len(), 0, "{t}");
+        assert_eq!(t["results"].as_array().unwrap().len(), 0, "{t}");
         let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
         assert!(st < 300, "{p}");
-        let (_, t) = call(&server, "GET", "/api/v1/cases/templates", &env.alice, org, None).await;
-        assert!(t.as_array().unwrap().iter().any(|t| t["key"] == "five_whys"), "{t}");
+        let (_, t) = call(&server, "GET", "/api/v1/cases/templates?limit=100", &env.alice, org, None).await;
+        assert!(t["results"].as_array().unwrap().iter().any(|t| t["key"] == "five_whys"), "{t}");
 
         let case = object(&server, &env.alice, org, "case", "Pump trip", json!({"status": "open"})).await;
         let cid = case["id"].as_str().unwrap().to_string();
@@ -1398,9 +1418,9 @@ async fn case_pages_from_templates_and_conclusion() {
         let (st, blank) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "Notes"}))).await;
         assert_eq!(st, 201, "{blank}");
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "x", "template": "nope"}))).await;
-        assert_eq!((st, e["template"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["template"].as_str()), (400, Some("invalid")), "{e}");
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"title": "  "}))).await;
-        assert_eq!((st, e["title"].as_str()), (400, Some("required")));
+        assert_eq!((st, e["errors"]["fields"]["title"].as_str()), (400, Some("required")));
 
         // Both pages joined the case as undated pieces.
         let (_, w) = call(&server, "GET", &format!("/api/v1/cases/{cid}/workspace"), &env.alice, org, None).await;
@@ -1472,11 +1492,11 @@ async fn case_graph_relations_and_expansion() {
         }
         let (st, rel) = call(&server, "GET", &format!("/api/v1/cases/{cid}/relations"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{rel}");
-        let rel = rel.as_array().unwrap();
+        let rel = rel["results"].as_array().unwrap();
         assert_eq!(rel.len(), 1, "only Ann–Bob joins two members: {rel:?}");
         assert_eq!(rel[0]["link_type"], "knows");
 
-        let url = format!("/api/v1/cases/{cid}/expand");
+        let url = format!("/api/v1/cases/{cid}/graph/query");
         let shown = json!([ann["id"], bob["id"]]);
         let (st, f) = call(&server, "POST", &url, &env.alice, org, Some(json!({"object_id": ann["id"], "exclude": shown}))).await;
         assert_eq!(st, 200, "{f}");
@@ -1501,7 +1521,7 @@ async fn case_graph_relations_and_expansion() {
         let (_, l) = call(&server, "GET", &lay, &env.alice, org, None).await;
         assert_eq!(l, mine);
         let (st, e) = call(&server, "PUT", &lay, &env.alice, org, Some(json!({"positions": {"x": [1e9, 0.0]}}))).await;
-        assert_eq!((st, e["positions"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["positions"].as_str()), (400, Some("invalid")), "{e}");
 
         // R1: another org sees neither.
         let org_b = personal_org(&server, &env.bob).await;
@@ -1562,9 +1582,9 @@ async fn case_snapshots_and_export_round_trip() {
         assert_eq!(s2["seq"], 2);
         let (st, list) = call(&server, "GET", &url, &env.alice, org, None).await;
         assert_eq!(st, 200);
-        let seqs: Vec<i64> = list.as_array().unwrap().iter().map(|s| s["seq"].as_i64().unwrap()).collect();
+        let seqs: Vec<i64> = list["results"].as_array().unwrap().iter().map(|s| s["seq"].as_i64().unwrap()).collect();
         assert_eq!(seqs, [2, 1]);
-        assert_eq!(list[1]["label"], "Before the report");
+        assert_eq!(list["results"][1]["label"], "Before the report");
         let (st, full) = call(&server, "GET", &format!("{url}/1"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{full}");
         let content = full["content"].as_str().unwrap();
@@ -1609,7 +1629,7 @@ async fn case_snapshots_and_export_round_trip() {
         let mut other = before.clone();
         other["schema"] = json!("other/1");
         let (st, e) = call(&server, "POST", "/api/v1/cases/import", &env.alice, org, Some(other)).await;
-        assert_eq!((st, e["schema"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["schema"].as_str()), (400, Some("invalid")), "{e}");
 
         // R1 / R2.
         let org_b = personal_org(&server, &env.bob).await;
@@ -1624,7 +1644,7 @@ async fn case_snapshots_and_export_round_trip() {
         let (st, _) = call(&server, "POST", "/api/v1/cases/import", &env.bob, org, Some(before)).await;
         assert_eq!(st, 403);
         let (st, l) = call(&server, "GET", &url, &env.bob, org, None).await;
-        assert_eq!((st, l.as_array().map(Vec::len)), (200, Some(2)));
+        assert_eq!((st, l["results"].as_array().map(Vec::len)), (200, Some(2)));
     })
     .await;
 }
@@ -1670,10 +1690,10 @@ async fn archived_case_purges_its_own_persons_only() {
         let url = format!("/api/v1/cases/{cid}/purge");
         let (st, cands) = call(&server, "GET", &url, &env.alice, org, None).await;
         assert_eq!(st, 200, "{cands}");
-        let mut titles: Vec<&str> = cands.as_array().unwrap().iter().map(|c| c["title"].as_str().unwrap()).collect();
+        let mut titles: Vec<&str> = cands["results"].as_array().unwrap().iter().map(|c| c["title"].as_str().unwrap()).collect();
         titles.sort();
         assert_eq!(titles, ["Ann", "Ann phone"], "{cands}");
-        let ids: Vec<Value> = cands.as_array().unwrap().iter().map(|c| c["id"].clone()).chain([bob["id"].clone()]).collect();
+        let ids: Vec<Value> = cands["results"].as_array().unwrap().iter().map(|c| c["id"].clone()).chain([bob["id"].clone()]).collect();
 
         // Frozen states: the one that names Ann goes with her, the other stays.
         let oid = other["id"].as_str().unwrap();
@@ -1684,7 +1704,7 @@ async fn archived_case_purges_its_own_persons_only() {
 
         // Only an archived case purges.
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"ids": ids}))).await;
-        assert_eq!((st, e["status"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["status"].as_str()), (400, Some("invalid")), "{e}");
         let upd = json!({"title": "Fraud", "properties": {"status": "archived", "legal_basis": "legitimate interest"}, "expected_version": case["version"]});
         let (st, v) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{cid}"), &env.alice, org, Some(upd)).await;
         assert_eq!(st, 200, "{v}");
@@ -1696,9 +1716,9 @@ async fn archived_case_purges_its_own_persons_only() {
         let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", bob["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200);
         let (_, l) = call(&server, "GET", &format!("/api/v1/cases/{cid}/snapshots"), &env.alice, org, None).await;
-        assert_eq!(l, json!([]), "the frozen state naming Ann is gone");
+        assert_eq!(l["results"], json!([]), "the frozen state naming Ann is gone");
         let (_, l) = call(&server, "GET", &format!("/api/v1/cases/{oid}/snapshots"), &env.alice, org, None).await;
-        assert_eq!(l.as_array().map(Vec::len), Some(1), "{l}");
+        assert_eq!(l["results"].as_array().map(Vec::len), Some(1), "{l}");
 
         // R1: another org neither lists nor purges.
         let org_b = personal_org(&server, &env.bob).await;
@@ -1725,7 +1745,7 @@ async fn actions_are_checked_and_need_a_deployed_flow() {
         let url = format!("/api/v1/ontology/objects/{}/actions/start_maintenance", pump["id"].as_str().unwrap());
 
         let (st, e) = call(&server, "POST", &url, &env.alice, org, Some(json!({"params": {}}))).await;
-        assert_eq!((st, e["params.reason"].as_str()), (400, Some("required")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["params.reason"].as_str()), (400, Some("required")), "{e}");
         let bad = url.replace("start_maintenance", "explode");
         let (st, _) = call(&server, "POST", &bad, &env.alice, org, Some(json!({}))).await;
         assert_eq!(st, 404);
@@ -1744,7 +1764,7 @@ async fn actions_are_checked_and_need_a_deployed_flow() {
         let flow_id = f["id"].as_i64().unwrap();
         let (st, d) = call(&server, "POST", &format!("/api/v1/flows/{flow_id}/deploy"), &env.alice, org, Some(json!({}))).await;
         assert_eq!(st, 400, "{d}");
-        assert_eq!(d["violations"][0]["code"], "ontology-action-unknown", "{d}");
+        assert_eq!(d["errors"]["violations"][0]["code"], "ontology-action-unknown", "{d}");
 
         // A deployed flow holding the trigger (engine off in tests: marked
         // deployed in the database).
@@ -1798,7 +1818,7 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
             "type_key": "maintenance_plan", "title": "Bad",
             "properties": {"schedule": {"start": day(0), "every": 0, "unit": "day"}}}))).await;
-        assert_eq!((st, e["schedule"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!((st, e["errors"]["fields"]["schedule"].as_str()), (400, Some("invalid")), "{e}");
         let fixed = object(&server, &env.alice, org, "maintenance_plan", "Greasing",
             json!({"schedule": {"start": day(-1), "every": 30, "unit": "day"}})).await;
         let fixed_id = fixed["id"].as_str().unwrap().to_string();

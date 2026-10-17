@@ -99,7 +99,7 @@ impl Row {
         Some(MediaAnalysis {
             id: self.id,
             step: AnalysisStep::parse(&self.step)?,
-            state,
+            state: pnex_core::media_analysis::AnalysisState::from_wire(&state),
             progress: self.progress,
             error_code,
             page_id: self.page_id(),

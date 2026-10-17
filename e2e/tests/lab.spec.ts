@@ -60,7 +60,7 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
     await page.getByTestId('lab-next').click();
     await page.getByRole('button', { name: app.t('lab-negative') }).click();
 
-    const projects: { id: string; name: string }[] = await api.get('/lab/projects');
+    const projects: { id: string; name: string }[] = await api.list('/lab/projects');
     const id = projects.find((p) => p.name === name)!.id;
     await expect.poll(async () => (await api.get(`/lab/projects/${id}`)).annotated_count).toBe(2);
 
@@ -79,7 +79,7 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
     await page.getByTestId('lab-step').filter({ hasText: app.t('lab-step-images') }).click();
     await page.getByTestId('lab-source-remove').click();
     await page.getByRole('button', { name: app.t('lab-source-remove'), exact: true }).last().click();
-    await expect.poll(async () => (await api.get(`/lab/projects/${id}/images`)).length).toBe(0);
+    await expect.poll(async () => (await api.list(`/lab/projects/${id}/images`)).length).toBe(0);
     await expect(page.getByText(app.t('lab-no-image'))).toBeVisible();
   });
 });

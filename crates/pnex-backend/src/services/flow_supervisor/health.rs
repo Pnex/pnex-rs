@@ -18,6 +18,15 @@ pub enum FlowEngineHealth {
 }
 
 impl FlowEngineHealth {
+    /// Wire value of the runtime status DTO.
+    pub fn dto(&self) -> pnex_core::FlowEngineStatus {
+        match self {
+            Self::Running => pnex_core::FlowEngineStatus::Running,
+            Self::Error => pnex_core::FlowEngineStatus::Error,
+            Self::Stopped => pnex_core::FlowEngineStatus::Stopped,
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Running => "running",

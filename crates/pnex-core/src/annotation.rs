@@ -31,26 +31,29 @@ pub const ANNOTATION_KIND_CONTROL: &str = "control";
 /// with a sparkline (D129).
 pub const ANNOTATION_KIND_READING: &str = "reading";
 
-/// Violation de validation du document (école `TourViolation`) — message en
-/// français, affichable tel quel au client.
+/// Validation violation of the document (like `TourViolation`): machine
+/// `code`, canonical English `message` (display fallback; the UI resolves
+/// `err-<code>`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationViolation {
-    /// Item fautif (id d'item), si localisé.
+    /// Offending item id, when localized.
     pub subject: Option<String>,
     /// Code machine (`duplicate_item_id`, `invalid_yaw`…).
     pub code: String,
-    /// Message affichable.
+    /// Canonical English message.
     pub message: String,
 }
 
-/// Géométrie d'un item — sur sphère équirectangulaire (panorama) ou en
-/// pourcentage du conteneur d'une image plate (photo/floorplan).
+/// Geometry of an item: on an equirectangular sphere (panorama) or as a
+/// fraction of a flat image container (photo/floorplan).
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AnnotationGeometry {
-    /// Panorama : yaw ∈ [-180, 180], pitch ∈ [-90, 90] (degrés).
+    /// Panorama: yaw in [-180, 180], pitch in [-90, 90] (degrees).
     Equirect { yaw: f64, pitch: f64 },
-    /// Image plate : x/y ∈ [0, 1] (fraction du conteneur de l'`img`).
+    /// Flat image: x/y in [0, 1] (fraction of the `img` container).
     Flat { x: f64, y: f64 },
     /// Gaussian splat: a point in the scene's world coordinates (any finite
     /// value — the scale is the capture's own).
@@ -238,26 +241,32 @@ impl<'de> Deserialize<'de> for AnnotationTarget {
     }
 }
 
-/// Item d'annotation posé sur un média.
+/// Annotation item placed on a media.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationItem {
     pub id: String,
-    /// `media_assets.id` — l'ancre unique du système (D55).
+    /// `media_assets.id`: the single anchor of the system (D55).
     pub media_asset_id: String,
-    /// `device|pin|status|note` — string applicatif.
+    /// `device|pin|status|note|control|reading`, consistent with `target.type`.
     pub kind: String,
     pub geometry: AnnotationGeometry,
-    /// Couleur du marqueur (`#rrggbb`), défaut serveur sinon.
+    /// Marker color (`#rrggbb`), server default otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
     #[serde(default)]
     pub label: String,
+    /// Weak target, tagged by `type`: `device {device_id}`, `pin {device_id, pin_gpio}`,
+    /// `status {device_id}`, `note {text}`, `control {control_id, kind?}`,
+    /// `reading {source, display?, min?, max?}`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub target: AnnotationTarget,
 }
 
 /// Document complet d'une couche (contenu de
 /// `annotation_layer_versions.doc`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
 pub struct AnnotationDoc {
     pub items: Vec<AnnotationItem>,
@@ -295,20 +304,20 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
             v.push(violation(
                 None,
                 "empty_item_id",
-                "id d'item vide".to_string(),
+                "empty item id".to_string(),
             ));
         } else if !ids.insert(&item.id) {
             v.push(violation(
                 Some(&item.id),
                 "duplicate_item_id",
-                format!("id d'item dupliqué : {}", item.id),
+                format!("duplicate item id: {}", item.id),
             ));
         }
         if item.media_asset_id.is_empty() {
             v.push(violation(
                 Some(&item.id),
                 "empty_media_asset_id",
-                format!("item {} : media_asset_id vide", item.id),
+                format!("item {}: empty media_asset_id", item.id),
             ));
         }
         if !kind_matches_target(&item.kind, &item.target) {
@@ -316,7 +325,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                 Some(&item.id),
                 "kind_target_mismatch",
                 format!(
-                    "item {} : kind `{}` incompatible avec la cible",
+                    "item {}: kind `{}` does not match the target",
                     item.id, item.kind
                 ),
             ));
@@ -327,14 +336,14 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         "invalid_yaw",
-                        format!("item {} : yaw hors [-180, 180]", item.id),
+                        format!("item {}: yaw outside [-180, 180]", item.id),
                     ));
                 }
                 if !pitch.is_finite() || !(-90.0..=90.0).contains(pitch) {
                     v.push(violation(
                         Some(&item.id),
                         "invalid_pitch",
-                        format!("item {} : pitch hors [-90, 90]", item.id),
+                        format!("item {}: pitch outside [-90, 90]", item.id),
                     ));
                 }
             }
@@ -347,7 +356,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         "invalid_position",
-                        format!("item {} : position hors [0, 1]", item.id),
+                        format!("item {}: position outside [0, 1]", item.id),
                     ));
                 }
             }
@@ -356,7 +365,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         "invalid_position",
-                        format!("item {} : position must be finite", item.id),
+                        format!("item {}: position must be finite", item.id),
                     ));
                 }
             }
@@ -367,7 +376,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         "control_unset",
-                        format!("item {} : pick a control or a control kind", item.id),
+                        format!("item {}: pick a control or a control kind", item.id),
                     ));
                 }
                 if item.id.chars().count() > crate::ui_control::CONTROL_ORIGIN_ITEM_MAX_LEN {
@@ -392,7 +401,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         "invalid_display",
-                        format!("item {} : unknown mini chart `{shape}`", item.id),
+                        format!("item {}: unknown mini chart `{shape}`", item.id),
                     ));
                 }
                 if let (Some(lo), Some(hi)) = (min, max) {
@@ -400,7 +409,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                         v.push(violation(
                             Some(&item.id),
                             "invalid_range",
-                            format!("item {} : gauge min must be below max", item.id),
+                            format!("item {}: gauge min must be below max", item.id),
                         ));
                     }
                 }
@@ -408,7 +417,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                     v.push(violation(
                         Some(&item.id),
                         code,
-                        format!("item {} : {msg}", item.id),
+                        format!("item {}: {msg}", item.id),
                     ));
                 });
             }
@@ -421,7 +430,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
                 v.push(violation(
                     Some(&item.id),
                     "invalid_color",
-                    format!("item {} : couleur invalide (attendu #rrggbb)", item.id),
+                    format!("item {}: invalid color (expected #rrggbb)", item.id),
                 ));
             }
         }
@@ -448,82 +457,100 @@ pub fn geometry_requires_panorama(g: &AnnotationGeometry) -> bool {
 
 // ─────────────────────────── DTOs API ───────────────────────────
 
-/// Couche en liste (école `TourSummary`) — `media_asset_id` : le média
-/// associé de l'ensemble (pivot UX §9). `PartialEq` requis par les props
-/// des composants du socle CRUD (macro `#[component]` dioxus 0.7).
+/// Annotation layer in a list (like `TourSummary`); `media_asset_id` is the
+/// media the layer is attached to. `PartialEq` is required by the CRUD
+/// component props (dioxus 0.7 `#[component]`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationLayerSummary {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub media_asset_id: Option<String>,
-    /// Tour associé (000028) — XOR media_asset_id à la création.
+    /// Attached tour, exclusive with `media_asset_id` at creation.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub tour_id: Option<String>,
     pub latest_version_number: i64,
-    /// Version publiée (numéro résolu depuis `published_version_id`).
+    /// Published version number (resolved from `published_version_id`).
     pub published_version_number: Option<i64>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Couche en détail : + document de la version consultée.
+/// Annotation layer detail: the summary plus the document of the requested version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationLayerDetail {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub media_asset_id: Option<String>,
-    /// Tour associé (000028) — XOR media_asset_id à la création.
+    /// Attached tour, exclusive with `media_asset_id` at creation.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub tour_id: Option<String>,
     pub doc: AnnotationDoc,
-    /// Version du document renvoyé (latest, ou celle demandée par `?version=`).
+    /// Version of the returned document (latest, or the one asked with `?version=`).
     pub doc_version_number: i64,
     pub latest_version_number: i64,
     pub published_version_number: Option<i64>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Entrée d'historique (école `TourVersionSummary`).
+/// History entry (like `TourVersionSummary`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationLayerVersionSummary {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub published: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
-/// Détail d'une version (audit / rechargement éditeur).
+/// One version in detail (audit, editor reload).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationLayerVersionDetail {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub published: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     pub doc: AnnotationDoc,
 }
 
-/// `POST /api/v1/annotation-layers` — pivot UX 2026-09-16 : l'ensemble
-/// **déclare son média** (`media_asset_id`, pivot UX §9 — « un nom global,
-/// un média associé et les annotations ») ; tous les items du doc devront
-/// y être ancrés.
+/// `POST /api/v1/annotation-layers`: the layer declares its media
+/// (`media_asset_id`) or its tour (`tour_id`); every item of the document
+/// must be anchored there.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateAnnotationLayer {
     pub name: String,
-    /// Média associé (UUID en string) — l'ancre unique de l'ensemble.
+    /// Attached media (UUID string), the single anchor of the layer.
     #[serde(default)]
     pub media_asset_id: Option<String>,
-    /// Tour associé (UUID en string, 000028) — XOR media_asset_id.
+    /// Attached tour (UUID string), exclusive with `media_asset_id`.
     #[serde(default)]
     pub tour_id: Option<String>,
     #[serde(default)]
@@ -534,8 +561,9 @@ pub struct CreateAnnotationLayer {
     pub note: Option<String>,
 }
 
-/// `PATCH /api/v1/annotation-layers/{id}` — save append-only, 409 optimiste.
+/// `PATCH /api/v1/annotation-layers/{id}`: append-only save, optimistic 409.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateAnnotationLayer {
     pub expected_version_number: i64,
     pub doc: AnnotationDoc,
@@ -547,8 +575,9 @@ pub struct UpdateAnnotationLayer {
     pub note: Option<String>,
 }
 
-/// `POST /{id}/publish` — version absente = dernière (pointeur).
+/// `POST /api/v1/annotation-layers/{id}/publish`: absent version = latest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PublishAnnotationLayer {
     #[serde(default)]
     pub version_number: Option<i64>,
@@ -556,18 +585,20 @@ pub struct PublishAnnotationLayer {
 
 // ─────────────────────────── Read model viewers ───────────────────────────
 
-/// Réponse du read model `GET /api/v1/media/{asset_id}/annotations` — items
-/// **fusionnés des couches publiées** ancrées sur l'asset (D55 : le lien
-/// tour↔couche est implicite, la composition se fait au rendu).
+/// Read model of `GET /api/v1/media/{id}/annotations`: items merged from
+/// the published layers anchored on the media (D55).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaAnnotations {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub media_asset_id: String,
     pub items: Vec<ResolvedAnnotationItem>,
 }
 
-/// Item read-model : doc + couche d'origine + résolution de cible (D57).
-/// `PartialEq` : props dioxus (composants front, école `TourDetail`).
+/// Read-model item: document item, source layer and resolved target (D57).
+/// `PartialEq` for dioxus props.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResolvedAnnotationItem {
     // Document.
     pub id: String,
@@ -578,22 +609,27 @@ pub struct ResolvedAnnotationItem {
     pub color: Option<String>,
     #[serde(default)]
     pub label: String,
+    /// Weak target, tagged by `type`: `device {device_id}`, `pin {device_id, pin_gpio}`,
+    /// `status {device_id}`, `note {text}`, `control {control_id, kind?}`,
+    /// `reading {source, display?, min?, max?}`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub target: AnnotationTarget,
-    // Couche d'origine.
+    // Source layer.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub layer_id: String,
     pub layer_name: String,
-    /// `None` pour les items `note` (pas de cible device).
+    /// `None` for items without a device target (`note`…).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<ResolvedTargetInfo>,
 }
 
-/// Résolution de cible (batch au read, école `link_target_labels`) —
-/// `dead: true` = le device a disparu : référence morte **tolérée**, le
-/// viewer grise (jamais 500, jamais panic, école S7).
+/// Resolved target (batched at read time): `dead: true` = the device is
+/// gone; a dead reference is tolerated and shown greyed out.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResolvedTargetInfo {
-    /// PK `device_registries.id` — pour le poll live front
-    /// (`/devices/{id}/pins`) — `None` si la cible est morte.
+    /// `device_registries.id` for the live poll (`/devices/{id}/pins`);
+    /// `None` when the target is dead.
     pub device_pk: Option<i64>,
     /// Slug (`device_registries.device_id`).
     pub device_label: String,

@@ -71,15 +71,20 @@ pub fn node_attrs(name: &str) -> Option<&'static [&'static str]> {
 
 /// One page in a list.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DocSummary {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: Uuid,
     pub title: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// `POST /api/v1/docs`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDoc {
     pub title: String,
     /// Key of a page template of an installed pack (O43); absent = blank.
@@ -90,17 +95,20 @@ pub struct CreateDoc {
 /// `PATCH /api/v1/docs/{id}` (rename; the content goes through the
 /// websocket).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PatchDoc {
     pub title: String,
 }
 
 /// One named version (P5).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DocVersionSummary {
     pub version_number: i64,
     pub label: String,
     /// Display name of the author, if still known.
     pub created_by: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     /// Holds AI-generated text (D210).
     #[serde(default)]
@@ -112,11 +120,13 @@ pub struct DocVersionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved_by: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub approved_at: Option<String>,
 }
 
 /// `POST /api/v1/docs/{id}/versions`: freezes the current content.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDocVersion {
     pub label: String,
 }
@@ -124,6 +134,7 @@ pub struct CreateDocVersion {
 /// `GET /api/v1/docs/{id}/versions/{n}`: frozen Yjs state (v1 encoding,
 /// base64), opened read-only by the editor for viewing, diff and restore.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DocVersionState {
     pub version_number: i64,
     pub label: String,
@@ -133,6 +144,7 @@ pub struct DocVersionState {
 /// One comment (P12). A thread root has `parent_id = None` and carries the
 /// anchor; replies point to their root.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DocComment {
     pub id: i64,
     pub parent_id: Option<i64>,
@@ -147,11 +159,13 @@ pub struct DocComment {
     pub resolved: bool,
     /// Named version current when the comment was posted.
     pub version_number: Option<i64>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
 /// `POST /api/v1/docs/{id}/comments`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDocComment {
     pub body: String,
     #[serde(default)]
@@ -165,6 +179,7 @@ pub struct CreateDocComment {
 /// `PATCH /api/v1/docs/{id}/comments/{cid}`: new body (author only) and/or
 /// resolved state (thread roots).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PatchDocComment {
     #[serde(default)]
     pub body: Option<String>,

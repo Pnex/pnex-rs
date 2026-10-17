@@ -12,6 +12,7 @@ use url::Url;
 
 /// What a provider can do (L16). One default provider per capability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum GeoCapability {
     Basemap,
@@ -28,6 +29,7 @@ pub enum GeoCapability {
 /// Every adapter authenticates with one optional API key sent as a query
 /// parameter, the way map providers do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum GeoProviderKind {
     /// MapLibre style / tile template / PMTiles archive (L24).
@@ -111,7 +113,9 @@ pub const DEFAULT_KEY_PARAM: &str = "key";
 /// Read model of a provider (`GET /api/v1/geo/providers`). The secret is a
 /// vault reference, never a value (R4, R16).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GeoProvider {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: uuid::Uuid,
     pub name: String,
     pub kind: GeoProviderKind,
@@ -131,11 +135,13 @@ pub struct GeoProvider {
     /// Capabilities this provider is the org default for.
     #[serde(default)]
     pub default_for: Vec<GeoCapability>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Create / update body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GeoProviderInput {
     pub name: String,
     pub kind: GeoProviderKind,
@@ -168,7 +174,9 @@ fn default_timeout_ms() -> u32 {
 /// is a browser key (like a Google Maps key, restricted by referrer at the
 /// provider): it is already in `style_url`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Basemap {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: uuid::Uuid,
     pub name: String,
     /// MapLibre style URL (spec v8).
@@ -180,6 +188,7 @@ pub struct Basemap {
 
 /// Normalized geocoding hit (L18).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct GeocodeResult {
     pub label: String,
     pub lat: f64,
@@ -195,11 +204,13 @@ pub struct GeocodeResult {
     pub confidence: Option<f64>,
     /// Address parts as given (`road`, `city`, `postcode`, …).
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub address: serde_json::Map<String, Value>,
 }
 
 /// One maneuver of a [`Route`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RouteStep {
     pub instruction: String,
     pub distance_m: f64,
@@ -210,6 +221,7 @@ pub struct RouteStep {
 
 /// Normalized route (L18): geometry already decoded to GeoJSON.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Route {
     /// GeoJSON `LineString` (`[lon, lat]` pairs).
     pub geometry: Value,
@@ -421,6 +433,7 @@ pub fn parse_photon(body: &Value) -> Result<Vec<GeocodeResult>, GeoError> {
 
 /// Valhalla routing profile (`costing`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RouteProfile {
     #[default]

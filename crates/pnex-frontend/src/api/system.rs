@@ -82,7 +82,7 @@ pub async fn status() -> Result<SystemStatus, ApiError> {
 /// `GET /api/v1/system/orgs` — platform admin: every org with retention,
 /// O2 usage and quota.
 pub async fn orgs_overview() -> Result<Vec<OrgSystemRow>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/system/orgs", None).await
+    client::request_all("/api/v1/system/orgs").await
 }
 
 /// `POST /api/v1/system/secrets/rekey` — platform admin: re-encrypts every
@@ -93,7 +93,7 @@ pub async fn rekey_secrets() -> Result<pnex_core::SecretsRekeyReport, ApiError> 
 
 /// `GET /api/v1/system/tiers` — platform admin.
 pub async fn tiers() -> Result<Vec<TierOption>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/system/tiers", None).await
+    client::request_all("/api/v1/system/tiers").await
 }
 
 /// `PUT /api/v1/system/orgs/{id}/tier` — platform admin; `None` removes it.

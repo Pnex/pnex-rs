@@ -140,7 +140,8 @@ async fn basemap_only_once_added_with_its_key() {
         )
         .await
         .json();
-        assert_eq!(maps, serde_json::json!([]), "nothing seeded");
+        assert_eq!(maps["count"], 0, "nothing seeded");
+        assert_eq!(maps["results"], serde_json::json!([]));
 
         let body = serde_json::json!({
             "name": "tiles",
@@ -175,8 +176,11 @@ async fn basemap_only_once_added_with_its_key() {
         )
         .await
         .json();
-        assert_eq!(maps[0]["style_url"], format!("{STYLE}?key=browser-key"));
-        assert_eq!(maps[0]["is_default"], true);
+        assert_eq!(
+            maps["results"][0]["style_url"],
+            format!("{STYLE}?key=browser-key")
+        );
+        assert_eq!(maps["results"][0]["is_default"], true);
     })
     .await;
 }
@@ -269,8 +273,8 @@ async fn providers_crud_and_geocode_proxy() {
         .await;
         assert_eq!(hits.status_code(), 200, "{}", hits.text());
         let hits: serde_json::Value = hits.json();
-        assert_eq!(hits[0]["label"], "Tour Eiffel, Paris");
-        assert_eq!(hits[0]["lat"], 48.8582599);
+        assert_eq!(hits["results"][0]["label"], "Tour Eiffel, Paris");
+        assert_eq!(hits["results"][0]["lat"], 48.8582599);
         let seen = SEEN.lock().expect("lock").clone();
         assert_eq!(
             seen.first(),
@@ -312,7 +316,7 @@ async fn viewer_cannot_manage_providers() {
         assert_eq!(created.status_code(), 201, "{}", created.text());
         let list = send_json(&server, "GET", "/api/v1/geo/providers", &env.bob, org, None).await;
         assert_eq!(list.status_code(), 200, "{}", list.text());
-        let id = list.json::<serde_json::Value>()[0]["id"]
+        let id = list.json::<serde_json::Value>()["results"][0]["id"]
             .as_str()
             .expect("provider")
             .to_string();

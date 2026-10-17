@@ -7,9 +7,8 @@
 //! l'endpoint public sans auth (`controllers/public_tours.rs`, phase 2) —
 //! le token ne quitte l'API que pour les writers de l'org.
 //!
-//! Errors: 400 per-field `{"<field>": msg}`;
-//! 400 `{"violations": [...]}` (document) ; 409 via `Error::CustomError`
-//! (patron `orgs.rs::conflict`) ; 404 masqué cross-org.
+//! Errors: `ErrorDetail` everywhere (`field-invalid`, `tour-invalid` with
+//! `errors.violations`, coded 403/409); 404 hides other orgs.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -47,13 +46,9 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// 400 per-field error shape: `{"<field>": "..."}`.
+/// `field-invalid` 400 on one field.
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 /// Tour de l'org courante, sinon None (→ 404 masqué).
@@ -150,18 +145,24 @@ fn tour_write_error_response(e: crate::services::tour::TourWriteError) -> Respon
     match e {
         E::NameRequired => field_status("name", err_codes::FIELD_REQUIRED),
         E::NameTooLong => field_status("name", &format!("{}:200", err_codes::FIELD_MAX_LENGTH)),
-        E::Doc(v) => (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "violations": v })),
-        )
-            .into_response(),
-        E::UnknownAsset { id } => field_status(
-            "doc",
-            &format!("asset {id} inconnu pour cette organisation."),
+        E::Doc(v) => super::violations_error(pnex_core::err_codes::TOUR_INVALID, v),
+        // Database-checked asset references travel as violations (the
+        // offending asset id is the `subject`), like the structural ones.
+        E::UnknownAsset { id } => super::violations_error(
+            err_codes::TOUR_INVALID,
+            vec![pnex_core::TourViolation {
+                subject: Some(id.clone()),
+                code: "unknown_asset".to_string(),
+                message: format!("asset {id} is unknown in this organization"),
+            }],
         ),
-        E::BadAssetKind { id, expected } => field_status(
-            "doc",
-            &format!("asset {id} : kind {} requis.", expected.join(" ou ")),
+        E::BadAssetKind { id, expected } => super::violations_error(
+            err_codes::TOUR_INVALID,
+            vec![pnex_core::TourViolation {
+                subject: Some(id.clone()),
+                code: "asset_kind_mismatch".to_string(),
+                message: format!("asset {id}: kind {} required", expected.join(" or ")),
+            }],
         ),
         // Optimistic concurrency: the expected/current numbers travel in
         // `errors.args` (never pre-rendered into the description).
@@ -189,6 +190,21 @@ fn tour_write_error_response(e: crate::services::tour::TourWriteError) -> Respon
 
 /// `POST /api/v1/tours` — crée le tour **et sa version 1** (une
 /// transaction), document minimal (un étage « RDC »). Non publié.
+#[utoipa::path(
+    post,
+    path = "/api/v1/tours",
+    tag = "tours",
+    operation_id = "tours_create",
+    summary = "Create a tour",
+    description = "Creates the tour and its version 1 with a minimal document (one floor). Not published. Requires owner, admin or member role.",
+    request_body = pnex_core::CreateTour,
+    responses(
+        (status = 201, body = pnex_core::TourDetail),
+        (status = 400, description = "`field-invalid` (`name`) or `tour-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -229,18 +245,37 @@ async fn create(
 
 // ─────────────────────────── GET /tours ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListToursQuery {
+    /// Case-insensitive substring of the name.
     search: Option<String>,
     /// D42: effective label (`name` or `name:value`, inherited included).
     label: Option<String>,
+    /// Exact tour mode (e.g. `panorama`).
     mode: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/tours` — tours de l'org, paginés (D14), filtres `search`
 /// (nom) et `mode`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/tours",
+    tag = "tours",
+    operation_id = "tours_list",
+    summary = "List the tours of the organisation",
+    description = "Studio 3D tours, paginated (`limit`/`offset`), newest first, with latest and published version numbers. Filters: `search`, `mode`, `label`. `share_token` is only returned to writers.",
+    params(ListToursQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::TourSummary>),
+        (status = 400, description = "Invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -351,13 +386,29 @@ async fn list(
 
 // ─────────────────────────── GET /tours/{id} ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct DetailQuery {
+    /// Version number of the returned document (default: latest).
     version: Option<i64>,
 }
 
 /// `GET /api/v1/tours/{id}[?version=n]` — détail + document (dernière
 /// version par défaut, ou la version demandée).
+#[utoipa::path(
+    get,
+    path = "/api/v1/tours/{id}",
+    tag = "tours",
+    operation_id = "tours_get",
+    summary = "Get a tour",
+    description = "The tour with the document of its latest version, or of `?version=n`. `share_token` is only returned to writers.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)"), DetailQuery),
+    responses(
+        (status = 200, body = pnex_core::TourDetail),
+        (status = 404, description = "Unknown tour/version or tour of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -410,6 +461,24 @@ async fn detail(
 
 /// `PATCH /api/v1/tours/{id}` — enregistre une **nouvelle version**
 /// (append-only). 409 si `expected_version_number` ≠ version courante.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/tours/{id}",
+    tag = "tours",
+    operation_id = "tours_update",
+    summary = "Save a new version of a tour",
+    description = "Appends a new version with the given document (append-only history), only if `expected_version_number` is the current latest version (optimistic concurrency). Referenced media must belong to the org. Does not change what is published. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    request_body = pnex_core::UpdateTour,
+    responses(
+        (status = 200, body = pnex_core::TourDetail),
+        (status = 400, description = "`field-invalid` (`name`) or `tour-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`tour-version-conflict` (`errors.args.expected` / `errors.args.current`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -455,6 +524,21 @@ async fn update(
 
 /// `DELETE /api/v1/tours/{id}` — 204 ; versions supprimées en cascade. Aucun
 /// octet à purger : les assets média sont référencés, jamais possédés (D21).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/tours/{id}",
+    tag = "tours",
+    operation_id = "tours_delete",
+    summary = "Delete a tour",
+    description = "Deletes the tour, its versions, its labels/edges and its public link. Referenced media are kept. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -490,6 +574,20 @@ async fn delete(
 
 /// `GET /api/v1/tours/{id}/versions` — historique append-only, paginé (D14),
 /// du plus récent au plus ancien.
+#[utoipa::path(
+    get,
+    path = "/api/v1/tours/{id}/versions",
+    tag = "tours",
+    operation_id = "tours_versions_list",
+    summary = "List the versions of a tour",
+    description = "Append-only history, newest first, paginated (`limit`/`offset`).",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)"), VersionsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::TourVersionSummary>),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -534,9 +632,12 @@ async fn versions(
     .into_response())
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct VersionsQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -544,6 +645,20 @@ struct VersionsQuery {
 
 /// `GET /api/v1/tours/{id}/versions/{n}` — document d'une version précise
 /// (audit / rechargement éditeur — « restaurer » = la charger puis save).
+#[utoipa::path(
+    get,
+    path = "/api/v1/tours/{id}/versions/{version_number}",
+    tag = "tours",
+    operation_id = "tours_versions_get",
+    summary = "Get one version of a tour",
+    description = "The document of a given version (audit, or load it in the editor then save to restore it).",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)"), ("version_number" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::TourVersionDetail),
+        (status = 404, description = "Unknown tour or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn version_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -580,6 +695,22 @@ async fn version_detail(
 /// `POST /tours/{id}/publish` — publie une version (`version_number` absent =
 /// dernière) : simple marquage DB (le doc publié sert le viewer in-app et
 /// l'endpoint public).
+#[utoipa::path(
+    post,
+    path = "/api/v1/tours/{id}/publish",
+    tag = "tours",
+    operation_id = "tours_publish",
+    summary = "Publish a version of a tour",
+    description = "Marks `version_number` (default: latest) as the published version, served to the in-app viewer and, if a share link exists, to the public endpoint. Body optional. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    request_body = Option<pnex_core::PublishTour>,
+    responses(
+        (status = 200, body = pnex_core::TourDetail),
+        (status = 403, description = "`tour-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn publish(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -643,6 +774,21 @@ async fn publish(
 
 /// `POST /tours/{id}/unpublish` — dépublie **et** révoque le lien public
 /// (un seul interrupteur « public »).
+#[utoipa::path(
+    post,
+    path = "/api/v1/tours/{id}/unpublish",
+    tag = "tours",
+    operation_id = "tours_unpublish",
+    summary = "Unpublish a tour",
+    description = "Clears the published version AND revokes the public share link. Versions are kept. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::TourDetail),
+        (status = 403, description = "`tour-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn unpublish(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -686,6 +832,22 @@ async fn unpublish(
 
 /// `POST /tours/{id}/share` — génère (ou régénère : l'ancien token meurt) le
 /// token du lien public. 409 `not_published` si aucune version publiée.
+#[utoipa::path(
+    post,
+    path = "/api/v1/tours/{id}/share",
+    tag = "tours",
+    operation_id = "tours_share_create",
+    summary = "Create the public link of a tour",
+    description = "Generates a new public share token (the previous one stops working). Anyone with the token can read the published version without authentication. Requires a published version and owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    responses(
+        (status = 200, body = TourShare),
+        (status = 403, description = "`tour-share-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`tour-not-published`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_share(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -714,15 +876,38 @@ async fn create_share(
         .await
         .map_err(|_| Error::InternalServerError)?;
     tracing::info!(tour_id = tour.id.to_string().as_str(), "lien public généré");
-    Ok(format::json(serde_json::json!({
-        "share_token": token,
-        "share_enabled": true,
-    }))
+    Ok(format::json(TourShare {
+        share_token: token,
+        share_enabled: true,
+    })
     .into_response())
+}
+
+/// Public share link of a tour (secret: writers only).
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct TourShare {
+    /// 32-hex token of `GET /api/v1/public/tours/{token}`.
+    share_token: String,
+    share_enabled: bool,
 }
 
 /// `DELETE /tours/{id}/share` — révoque le lien public en gardant la
 /// publication (le viewer in-app reste servi par `published_version_id`).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/tours/{id}/share",
+    tag = "tours",
+    operation_id = "tours_share_delete",
+    summary = "Revoke the public link of a tour",
+    description = "Removes the share token; the publication stays visible in the app. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
+    responses(
+        (status = 204, description = "Revoked"),
+        (status = 403, description = "`tour-share-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_share(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -758,4 +943,24 @@ pub fn routes() -> Routes {
         .add("/{id}/publish", post(publish))
         .add("/{id}/unpublish", post(unpublish))
         .add("/{id}/share", post(create_share).delete(delete_share))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        versions,
+        version_detail,
+        publish,
+        unpublish,
+        create_share,
+        delete_share
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

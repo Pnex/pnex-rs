@@ -7,6 +7,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::OrgRole;
 
 use crate::api;
 use crate::components::crud::form::FormDialog;
@@ -96,7 +97,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
         })
         .with_td_class("font-medium text-gray-900"),
         Column::new(t!("orgs-col-role").to_string(), |summary: &pnex_core::OrgSummary| {
-            let (role_badge_class, role_label) = role_badge(&summary.role);
+            let (role_badge_class, role_label) = role_badge(summary.role);
             rsx! {
                 span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {role_badge_class}",
                     {role_label}
@@ -204,19 +205,19 @@ fn OrgsPage(initial: Option<i64>) -> Element {
     }
 }
 
-/// Badge de rôle — classes littérales complètes (scan Tailwind).
-pub fn role_badge(role: &str) -> (&'static str, String) {
+/// Role badge: full literal classes (Tailwind scan).
+pub fn role_badge(role: OrgRole) -> (&'static str, String) {
     let label = match role {
-        "owner" => t!("role-owner"),
-        "admin" => t!("role-admin"),
-        "member" => t!("role-member"),
-        _ => t!("role-viewer"),
+        OrgRole::Owner => t!("role-owner"),
+        OrgRole::Admin => t!("role-admin"),
+        OrgRole::Member => t!("role-member"),
+        OrgRole::Viewer => t!("role-viewer"),
     };
     let badge = match role {
-        "owner" => "bg-signal-100 text-signal-800",
-        "admin" => "bg-amber-100 text-amber-800",
-        "member" => "bg-green-100 text-green-800",
-        _ => "bg-gray-100 text-gray-800",
+        OrgRole::Owner => "bg-signal-100 text-signal-800",
+        OrgRole::Admin => "bg-amber-100 text-amber-800",
+        OrgRole::Member => "bg-green-100 text-green-800",
+        OrgRole::Viewer => "bg-gray-100 text-gray-800",
     };
     (badge, label)
 }
@@ -226,7 +227,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
     let mut reload = use_signal(|| 0u32);
     let mut rename = use_signal(String::new);
     let mut member_email = use_signal(String::new);
-    let mut member_role = use_signal(|| "viewer".to_string());
+    let mut member_role = use_signal(|| OrgRole::Viewer);
     let mut confirm_delete = use_signal(|| false);
 
     let detail = use_resource(move || async move {
@@ -241,8 +242,8 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
 
     match &*detail.value().read() {
         Some(Ok(detail)) => {
-            let can_write = crate::state::org::role_can_administer(&detail.role);
-            let is_owner = detail.role == "owner";
+            let can_write = crate::state::org::role_can_administer(detail.role);
+            let is_owner = detail.role == OrgRole::Owner;
             let members = detail.members.clone();
             let name = detail.name.clone();
             rsx! {
@@ -321,10 +322,10 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                         return;
                                     }
                                     member_email.set(String::new());
-                                    let role = member_role.cloned();
+                                    let role = member_role();
                                     let org_id = org_id;
                                     spawn(async move {
-                                        match api::orgs::add_member(org_id, &email, &role).await {
+                                        match api::orgs::add_member(org_id, &email, role).await {
                                             Ok(_) => toasts::success("toast-saved"),
                                             Err(err) => toasts::error(err),
                                         }
@@ -341,25 +342,27 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                                 select {
                                     aria_label: t!("orgs-member-role"),
                                     class: INPUT,
-                                    onchange: move |event| member_role.set(event.value()),
+                                    onchange: move |event| {
+                                        member_role.set(OrgRole::parse(&event.value()).unwrap_or(OrgRole::Viewer))
+                                    },
                                     option {
                                         value: "viewer",
-                                        selected: member_role() == "viewer",
+                                        selected: member_role() == OrgRole::Viewer,
                                         {t!("role-viewer")}
                                     }
                                     option {
                                         value: "member",
-                                        selected: member_role() == "member",
+                                        selected: member_role() == OrgRole::Member,
                                         {t!("role-member")}
                                     }
                                     option {
                                         value: "admin",
-                                        selected: member_role() == "admin",
+                                        selected: member_role() == OrgRole::Admin,
                                         {t!("role-admin")}
                                     }
                                     option {
                                         value: "owner",
-                                        selected: member_role() == "owner",
+                                        selected: member_role() == OrgRole::Owner,
                                         {t!("role-owner")}
                                     }
                                 }
@@ -462,7 +465,7 @@ fn member_row(
     mut reload: Signal<u32>,
 ) -> Element {
     let user_id = member.user_id;
-    let role = member.role.clone();
+    let role = member.role;
     let display = member
         .full_name
         .clone()
@@ -484,9 +487,9 @@ fn member_row(
                         aria_label: t!("orgs-member-role"),
                         class: "px-2 py-1 border border-gray-300 rounded-lg text-sm bg-white",
                         onchange: move |event| {
-                            let new_role = event.value();
+                            let new_role = OrgRole::parse(&event.value()).unwrap_or(role);
                             spawn(async move {
-                                match api::orgs::update_member(org_id, user_id, &new_role).await {
+                                match api::orgs::update_member(org_id, user_id, new_role).await {
                                     Ok(()) => toasts::success("toast-saved"),
                                     Err(err) => toasts::error(err),
                                 }
@@ -494,10 +497,18 @@ fn member_row(
                                 on_changed.call(());
                             });
                         },
-                        option { value: "viewer", selected: role == "viewer", {t!("role-viewer")} }
-                        option { value: "member", selected: role == "member", {t!("role-member")} }
-                        option { value: "admin", selected: role == "admin", {t!("role-admin")} }
-                        option { value: "owner", selected: role == "owner", {t!("role-owner")} }
+                        option {
+                            value: "viewer",
+                            selected: role == OrgRole::Viewer,
+                            {t!("role-viewer")}
+                        }
+                        option {
+                            value: "member",
+                            selected: role == OrgRole::Member,
+                            {t!("role-member")}
+                        }
+                        option { value: "admin", selected: role == OrgRole::Admin, {t!("role-admin")} }
+                        option { value: "owner", selected: role == OrgRole::Owner, {t!("role-owner")} }
                     }
                     button {
                         class: "p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors",
@@ -516,7 +527,7 @@ fn member_row(
                     }
                 } else {
                     {
-                        let (badge, label) = role_badge(&role);
+                        let (badge, label) = role_badge(role);
                         rsx! {
                             span { class: "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {badge}",
                                 {label}

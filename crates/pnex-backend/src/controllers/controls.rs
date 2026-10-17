@@ -27,8 +27,8 @@ use crate::services::controls as store;
 use pnex_core::err_codes;
 use pnex_core::ui_control::{
     check_control_label, valid_control_key, valid_control_via, ControlEvent, ControlListener,
-    ControlSpec, ControlValue, ControlValuesRequest, ControlValuesResponse, CreateUiControl,
-    UiControl, UpdateUiControl, WriteControlValue, CONTROL_VALUES_MAX_IDS,
+    ControlSpec, ControlValue, ControlValuesResponse, CreateUiControl, UiControl, UpdateUiControl,
+    WriteControlValue, CONTROL_VALUES_MAX_IDS,
 };
 
 /// Machine code + canonical English description, optional `args`.
@@ -55,14 +55,6 @@ fn write_forbidden() -> Error {
         "Owner, admin or member role required to manage or operate controls.",
         None,
     )
-}
-
-fn field_status(field: &str, token: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: token })),
-    )
-        .into_response()
 }
 
 async fn find_control(
@@ -114,19 +106,19 @@ async fn origins_of(
 /// Field checks of a full definition: `Some(response)` = invalid.
 fn validate_definition(key: &str, label: &str, spec: &ControlSpec) -> Option<Response> {
     if key.is_empty() {
-        return Some(field_status("key", err_codes::FIELD_REQUIRED));
+        return Some(super::field_error("key", err_codes::FIELD_REQUIRED));
     }
     if !valid_control_key(key) {
-        return Some(field_status("key", err_codes::FIELD_INVALID));
+        return Some(super::field_error("key", err_codes::FIELD_INVALID));
     }
     if label.trim().is_empty() {
-        return Some(field_status("label", err_codes::FIELD_REQUIRED));
+        return Some(super::field_error("label", err_codes::FIELD_REQUIRED));
     }
     if check_control_label(label).is_some() {
-        return Some(field_status("label", err_codes::FIELD_INVALID));
+        return Some(super::field_error("label", err_codes::FIELD_INVALID));
     }
     if let Some((code, _)) = spec.check() {
-        return Some(field_status("spec", code));
+        return Some(super::field_error("spec", code));
     }
     None
 }
@@ -164,23 +156,42 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/controls")
         .add("", get(list).post(create))
-        .add("/values", post(values))
+        .add("/values", get(values))
         .add("/{id}", get(detail).patch(update).delete(delete))
         .add("/{id}/value", post(write_value))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListControlsQuery {
+    /// Case-insensitive search on the label or key.
     search: Option<String>,
+    /// Control kind filter (`switch`, `slider`…).
     kind: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/controls` — controls of the org (D14), filters `search`
 /// (label or key) and `kind`; each row carries its listening flows.
+#[utoipa::path(
+    get,
+    path = "/api/v1/controls",
+    tag = "controls",
+    operation_id = "controls_list",
+    summary = "List the controls of the organisation",
+    description = "Sorted by label, paginated (`limit`/`offset`). Filters: `search` (label or key), `kind`, `label` (`name` or `name:value`). Each row lists the deployed flows listening to it and, for a control declared by a dashboard or annotation widget, its origin. Any member.",
+    params(ListControlsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ui_control::UiControl>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -242,6 +253,9 @@ async fn list(
     if let Some(k) = q.kind.as_deref().filter(|k| !k.is_empty()) {
         filters.push(("kind".to_string(), k.to_string()));
     }
+    if let Some(l) = q.label.as_deref().filter(|l| !l.is_empty()) {
+        filters.push(("label".to_string(), l.to_string()));
+    }
     Ok(format::json(pagination::envelope(
         "/api/v1/controls",
         &filters,
@@ -253,6 +267,20 @@ async fn list(
 }
 
 /// `GET /api/v1/controls/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/controls/{id}",
+    tag = "controls",
+    operation_id = "controls_get",
+    summary = "Get a control",
+    description = "Definition, listening flows and origin. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Control id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::ui_control::UiControl),
+        (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -272,6 +300,22 @@ async fn detail(
 }
 
 /// `POST /api/v1/controls` — 201.
+#[utoipa::path(
+    post,
+    path = "/api/v1/controls",
+    tag = "controls",
+    operation_id = "controls_create",
+    summary = "Create a control",
+    description = "Defines an org control (switch, slider, button…) that dashboards and annotations can show and `control-source` flow nodes listen to. The key must be unique in the org. Requires a writer role.",
+    request_body = pnex_core::ui_control::CreateUiControl,
+    responses(
+        (status = 201, body = pnex_core::ui_control::UiControl),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `key`, `label`, `spec`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`control-key-taken`: another control of the org uses this key", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -304,6 +348,24 @@ async fn create(
 /// `PATCH /api/v1/controls/{id}` — key, label and/or spec. Changing the
 /// kind is allowed: flows reference the id, the new domain applies to the
 /// next writes only.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/controls/{id}",
+    tag = "controls",
+    operation_id = "controls_update",
+    summary = "Update a control",
+    description = "Changes the key, label and/or spec (absent fields keep their value). Changing the kind is allowed: flows reference the id, the new domain applies to the next values only. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Control id (UUID)")),
+    request_body = pnex_core::ui_control::UpdateUiControl,
+    responses(
+        (status = 200, body = pnex_core::ui_control::UiControl),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `key`, `label`, `spec`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`control-key-taken`: another control of the org uses this key", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -354,6 +416,22 @@ async fn update(
 
 /// `DELETE /api/v1/controls/{id}` — 204; 409 while deployed flows listen to
 /// it (they would silently lose their trigger).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/controls/{id}",
+    tag = "controls",
+    operation_id = "controls_delete",
+    summary = "Delete a control",
+    description = "Permanently deletes the control and its stored value. Refused (409) while deployed flows listen to it. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Control id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`control-in-use` (arg `flow`: names of the listening flows)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -394,6 +472,25 @@ async fn delete(
 /// `POST /api/v1/controls/{id}/value` — operate a control: validated,
 /// stored, published to the listening flows, audited. Returns the stored
 /// value (snapped to the step grid).
+#[utoipa::path(
+    post,
+    path = "/api/v1/controls/{id}/value",
+    tag = "controls",
+    operation_id = "controls_write_value",
+    summary = "Operate a control (send a value)",
+    description = "Side effect: validates the value against the control spec (snapped to the step grid), stores it, publishes it to the deployed flows listening to the control and records an audit event. This is the user acting on the control; it never sends a device command directly (only a flow does). Rate limited. Returns the stored value. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Control id (UUID)")),
+    request_body = pnex_core::ui_control::WriteControlValue,
+    responses(
+        (status = 200, body = pnex_core::ui_control::ControlValue),
+        (status = 400, description = "`control-value-invalid` (arg `reason`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`control-rate-limited`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`control-store-unavailable`: the value was not sent", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn write_value(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -457,27 +554,65 @@ async fn write_value(
     Ok(format::json(event.value).into_response())
 }
 
-/// `POST /api/v1/controls/values` — last commanded values for a surface
-/// (viewer included). Ids of another org read as `null`.
-async fn values(
-    State(ctx): State<AppContext>,
-    org: OrgContext,
-    Json(body): Json<ControlValuesRequest>,
-) -> Result<Response> {
-    if body.ids.len() > CONTROL_VALUES_MAX_IDS {
-        return Ok(field_status(
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ControlValuesQuery {
+    /// Comma-separated control ids (UUIDs), at most 100.
+    ids: Option<String>,
+}
+
+/// Parses the comma-separated `ids`; `Err` = a ready 400.
+fn parse_value_ids(raw: Option<&str>) -> std::result::Result<Vec<Uuid>, Response> {
+    let ids: Vec<Uuid> = raw
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(Uuid::parse_str)
+        .collect::<std::result::Result<_, _>>()
+        .map_err(|_| super::field_error("ids", err_codes::FIELD_INVALID_UUID))?;
+    if ids.len() > CONTROL_VALUES_MAX_IDS {
+        return Err(super::field_error(
             "ids",
             &format!("{}:{CONTROL_VALUES_MAX_IDS}", err_codes::FIELD_MAX_LENGTH),
         ));
     }
+    Ok(ids)
+}
+
+/// `GET /api/v1/controls/values?ids=` — last commanded values for a
+/// surface (viewer included). Ids of another org read as `null`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/controls/values",
+    tag = "controls",
+    operation_id = "controls_values",
+    summary = "Read the last values of several controls",
+    description = "Any member. Returns, for each requested id (`ids`, comma-separated, at most 100), the last commanded value or `null` (never set, unknown or another org's control).",
+    params(ControlValuesQuery),
+    responses(
+        (status = 200, body = pnex_core::ui_control::ControlValuesResponse),
+        (status = 400, description = "`field-invalid`: `ids` not UUIDs (`invalid-uuid`) or too many (`max_length:100`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn values(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ControlValuesQuery>,
+) -> Result<Response> {
+    let ids = match parse_value_ids(q.ids.as_deref()) {
+        Ok(ids) => ids,
+        Err(resp) => return Ok(resp),
+    };
     // Only ids of this org are read: an unknown id answers null without a
     // Valkey round trip.
-    let known: Vec<Uuid> = if body.ids.is_empty() {
+    let known: Vec<Uuid> = if ids.is_empty() {
         Vec::new()
     } else {
         Controls::find()
             .filter(controls::Column::OrgId.eq(org.org.id))
-            .filter(controls::Column::Id.is_in(body.ids.clone()))
+            .filter(controls::Column::Id.is_in(ids.clone()))
             .all(&ctx.db)
             .await
             .map_err(|_| Error::InternalServerError)?
@@ -487,8 +622,16 @@ async fn values(
     };
     let conn = crate::services::shared_valkey::conn(&ctx.config).await;
     let mut values = store::read_values(conn, org.org.id, &known).await;
-    for id in body.ids {
+    for id in ids {
         values.entry(id).or_insert(None);
     }
     Ok(format::json(ControlValuesResponse { values }).into_response())
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, detail, create, update, delete, write_value, values))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

@@ -32,11 +32,7 @@ pub(super) fn forbidden(code: &str, msg: &str) -> Error {
 }
 
 pub(super) fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    crate::controllers::field_error(field, msg)
 }
 
 /// Asset de l'org courante, sinon None (→ 404 masquant le cross-org,

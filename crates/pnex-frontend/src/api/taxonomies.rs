@@ -11,7 +11,7 @@ fn body<T: serde::Serialize>(input: &T) -> Option<serde_json::Value> {
 
 /// `GET /api/v1/taxonomies` — with their current version.
 pub async fn list() -> Result<Vec<Taxonomy>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/taxonomies", None).await
+    client::request_all("/api/v1/taxonomies").await
 }
 
 /// `POST /api/v1/taxonomies` — created empty (version 0).
@@ -31,12 +31,7 @@ pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
 
 /// `GET /api/v1/taxonomies/{id}/versions` — newest first.
 pub async fn versions(id: &str) -> Result<Vec<TaxonomyVersion>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/taxonomies/{id}/versions"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/taxonomies/{id}/versions")).await
 }
 
 /// `POST /api/v1/taxonomies/{id}/versions` — 409 `taxonomy-version-conflict`

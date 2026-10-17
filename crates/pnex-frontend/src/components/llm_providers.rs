@@ -163,7 +163,7 @@ fn ProviderRow(
                     }
                 }
             }
-            td { class: "py-2 pr-4 text-gray-600", {provider.kind.clone()} }
+            td { class: "py-2 pr-4 text-gray-600", {provider.kind.as_str()} }
             td { class: "py-2 pr-4 hidden text-gray-600 font-mono text-xs md:table-cell",
                 {provider.model.clone()}
             }
@@ -253,7 +253,7 @@ fn ProviderForm(
     let mut name = use_signal(|| init.as_ref().map(|p| p.name.clone()).unwrap_or_default());
     let mut kind = use_signal(|| {
         init.as_ref()
-            .map(|p| p.kind.clone())
+            .map(|p| p.kind.as_str().to_string())
             .unwrap_or_else(|| "anthropic".to_string())
     });
     let mut base_url = use_signal(|| {
@@ -271,7 +271,7 @@ fn ProviderForm(
     let save = move |_| {
         let input = LlmProviderInput {
             name: name(),
-            kind: kind(),
+            kind: pnex_core::LlmProviderKind::parse(&kind()),
             base_url: Some(base_url().trim().to_string()).filter(|u| !u.is_empty()),
             model: model(),
             api_key: key.read().to_input(),

@@ -1,9 +1,6 @@
-//! Client API de la couche d'organisation transverse (D42) —
-//! labels / containment / edges / folders / recherche cross-kind.
-//! École `api/media.rs` : types miroirs du contrôleur `/api/v1/resources`.
-//!
-//! Surface client complète dès maintenant (containment/edges/folders/search
-//! consommés par les UI V2 : arbre mixte, placement, recherche).
+//! Client API of the cross-cutting organisation layer (D42): labels,
+//! containment, edges, folders, cross-kind search. Mirror types of the
+//! `/api/v1/resources` controller.
 
 #![allow(dead_code)]
 
@@ -49,10 +46,10 @@ pub struct SearchHit {
 
 // ─────────────────────────── labels ───────────────────────────
 
-/// Max ids accepted by one `labels/batch` call (server bound).
+/// Max ids accepted by one `labels/query` call (server bound).
 pub const LABELS_BATCH_MAX: usize = 200;
 
-/// `POST /api/v1/resources/labels/batch` — own labels of a page of rows
+/// `POST /api/v1/resources/labels/query`: own labels of a page of rows
 /// (`kind` + stringified PKs, at most [`LABELS_BATCH_MAX`]). Ids without
 /// labels are absent from the returned map.
 pub async fn labels_batch(
@@ -66,7 +63,7 @@ pub async fn labels_batch(
     }
     let dto: Dto = client::request(
         reqwest::Method::POST,
-        "/api/v1/resources/labels/batch",
+        "/api/v1/resources/labels/query",
         Some(serde_json::json!({ "kind": kind, "ids": ids })),
     )
     .await?;
@@ -82,20 +79,9 @@ pub struct LabelCatalogEntry {
     pub count: i64,
 }
 
-/// `GET /api/v1/resources/labels/catalog` — picker suggestions.
+/// `GET /api/v1/resources/labels/catalog`: picker suggestions (all pages).
 pub async fn labels_catalog() -> Result<Vec<LabelCatalogEntry>, ApiError> {
-    #[derive(Deserialize)]
-    struct Dto {
-        #[serde(default)]
-        labels: Vec<LabelCatalogEntry>,
-    }
-    let dto: Dto = client::request(
-        reqwest::Method::GET,
-        "/api/v1/resources/labels/catalog",
-        None,
-    )
-    .await?;
-    Ok(dto.labels)
+    client::request_all("/api/v1/resources/labels/catalog").await
 }
 
 /// `GET /api/v1/resources/{kind}/{id}/labels`.
@@ -126,43 +112,6 @@ pub async fn put_labels(kind: &str, id: &str, labels: &LabelSet) -> Result<Label
     )
     .await?;
     Ok(dto.labels)
-}
-
-/// Labels effectifs (fusion « le plus proche gagne » + héritage détaillé).
-#[derive(Debug, Clone, Deserialize)]
-pub struct EffectiveLabels {
-    pub merged: LabelSet,
-    /// (kind, id, labels) feuille → racine.
-    pub inherited: Vec<(String, String, LabelSet)>,
-}
-
-/// `GET /api/v1/resources/{kind}/{id}/labels/effective`.
-pub async fn get_effective_labels(kind: &str, id: &str) -> Result<EffectiveLabels, ApiError> {
-    #[derive(Deserialize)]
-    struct Inherited {
-        kind: String,
-        id: String,
-        labels: LabelSet,
-    }
-    #[derive(Deserialize)]
-    struct Dto {
-        merged: LabelSet,
-        inherited: Vec<Inherited>,
-    }
-    let dto: Dto = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/resources/{kind}/{id}/labels/effective"),
-        None,
-    )
-    .await?;
-    Ok(EffectiveLabels {
-        merged: dto.merged,
-        inherited: dto
-            .inherited
-            .into_iter()
-            .map(|i| (i.kind, i.id, i.labels))
-            .collect(),
-    })
 }
 
 // ─────────────────────────── containment ───────────────────────────
@@ -216,16 +165,13 @@ pub async fn set_parent(
 
 // ─────────────────────────── edges ───────────────────────────
 
-/// `GET /api/v1/resources/edges?relation=&source_kind=&source_id=…`.
+/// `GET /api/v1/resources/edges?relation=&source_kind=&source_id=…` (all
+/// pages).
 pub async fn list_edges(
     relation: Option<&str>,
     source: Option<(&str, &str)>,
     target: Option<(&str, &str)>,
 ) -> Result<Vec<Edge>, ApiError> {
-    #[derive(Deserialize)]
-    struct Page {
-        results: Vec<Edge>,
-    }
     let mut params: Vec<String> = Vec::new();
     if let Some(r) = relation {
         params.push(format!("relation={r}"));
@@ -236,13 +182,7 @@ pub async fn list_edges(
     if let Some((k, i)) = target {
         params.push(format!("target_kind={k}&target_id={i}"));
     }
-    let page: Page = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/resources/edges?{}", params.join("&")),
-        None,
-    )
-    .await?;
-    Ok(page.results)
+    client::request_all(&format!("/api/v1/resources/edges?{}", params.join("&"))).await
 }
 
 /// `POST /api/v1/resources/edges` — 201 ou 409 (doublon).
@@ -283,15 +223,9 @@ pub async fn delete_edge(id: i64) -> Result<(), ApiError> {
 
 // ─────────────────────────── folders ───────────────────────────
 
-/// `GET /api/v1/resources/folders`.
+/// `GET /api/v1/resources/folders` (all pages).
 pub async fn list_folders() -> Result<Vec<Folder>, ApiError> {
-    #[derive(Deserialize)]
-    struct Page {
-        results: Vec<Folder>,
-    }
-    let page: Page =
-        client::request(reqwest::Method::GET, "/api/v1/resources/folders", None).await?;
-    Ok(page.results)
+    client::request_all("/api/v1/resources/folders").await
 }
 
 /// `POST /api/v1/resources/folders`.
@@ -346,23 +280,12 @@ pub async fn patch_folder(
 
 // ─────────────────────────── recherche ───────────────────────────
 
-/// `POST /api/v1/resources/search` — labels effectifs cross-kind.
+/// `GET /api/v1/resources/search?label=&kinds=`: cross-kind label search
+/// (all pages).
 pub async fn search(label: &str, kinds: Option<Vec<&str>>) -> Result<Vec<SearchHit>, ApiError> {
-    #[derive(Deserialize)]
-    struct Page {
-        results: Vec<SearchHit>,
-    }
-    let body = match kinds {
-        Some(kinds) => serde_json::json!({"label": label, "kinds": kinds}),
-        None => serde_json::json!({"label": label}),
-    };
-    let page: Page = client::request(
-        reqwest::Method::POST,
-        "/api/v1/resources/search",
-        Some(body),
-    )
-    .await?;
-    Ok(page.results)
+    let kinds = kinds.map(|k| k.join(","));
+    let query = client::filter_query(&[("label", Some(label)), ("kinds", kinds.as_deref())]);
+    client::request_all(&format!("/api/v1/resources/search{query}")).await
 }
 
 /// `GET /api/v1/resources/{kind}/{id}/location` — site breadcrumb(s).

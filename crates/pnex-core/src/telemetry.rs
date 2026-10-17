@@ -16,8 +16,15 @@ use serde::{Deserialize, Serialize};
 /// Réponse du `GET /api/v1/telemetry/catalog` — séries disponibles
 /// (métrique × device) pour alimenter les sélecteurs de la page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Available series (metric x device) and label sets, for the pickers. Over HTTP, OpenObserve trouble answers 503 `telemetry-unavailable`, so `available` is always true there."
+    )
+)]
 pub struct TelemetryCatalog {
-    /// Faux : pas de credentials O2 pour l'org, erreur ou timeout (5 s).
+    /// False: no OpenObserve credentials for the org, error or timeout (5 s).
     pub available: bool,
     pub series: Vec<TelemetrySeriesInfo>,
     /// Series without a device, read by label set (D171): platform
@@ -28,6 +35,7 @@ pub struct TelemetryCatalog {
 
 /// One label set of a metric offered to the dashboard pickers (D171).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TelemetryLabelSet {
     pub metric: String,
     pub labels: std::collections::BTreeMap<String, String>,
@@ -52,32 +60,52 @@ pub fn series_key(
 /// Une série disponible = une métrique sur un device (dernière valeur
 /// sur 24 h — sert aussi à montrer que la donnée est vivante).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "An available series: one metric on one device, with its last value over 24 h."
+    )
+)]
 pub struct TelemetrySeriesInfo {
-    /// Label `__name__` Prometheus (ex. `soil_moisture`).
+    /// Prometheus `__name__` label (e.g. `soil_moisture`).
     pub metric: String,
     pub device_id: String,
-    /// Modèle prédéfini porté à l'ingest (`pred_dev`), s'il existe.
+    /// Predefined model carried at ingest (`pred_dev`), if any.
     pub pred_dev: Option<String>,
     pub last_value: f64,
-    /// RFC 3339 du dernier échantillon — `None` s'il n'en portait pas.
+    /// RFC 3339 of the last sample, `None` when it carried none.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_seen: Option<String>,
 }
 
 /// Réponse du `GET /api/v1/telemetry/series?metric=…&device_id=…&window=…`
 /// — points d'UNE série sur la fenêtre demandée.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Points of one series over the requested window. `available: false` = OpenObserve unavailable (`points` empty); only batch items carry it, `GET /api/v1/telemetry/series` answers 503 `telemetry-unavailable` instead."
+    )
+)]
 pub struct TelemetrySeriesResponse {
-    /// Faux : credentials absents, erreur ou timeout O2 — `points` vide.
+    /// False: missing credentials, OpenObserve error or timeout; `points` empty.
     pub available: bool,
     pub metric: String,
     pub device_id: String,
-    /// Triés par `ts` croissant, plafonnés côté backend (défensif).
+    /// Sorted by ascending `ts`, capped by the backend.
     pub points: Vec<TelemetryPoint>,
 }
 
 /// Un point de la série — epoch secondes (f64, forme Prometheus : le
 /// fractionnaire est possible), valeur numérique déjà re-parsée.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "A point: `ts` epoch seconds (may be fractional), numeric value.")
+)]
 pub struct TelemetryPoint {
     pub ts: f64,
     pub value: f64,
@@ -85,14 +113,21 @@ pub struct TelemetryPoint {
 
 // ───────────────────────── Batch (studio SCADA, D31) ─────────────────────────
 
-/// Une référence de série du `POST /api/v1/telemetry/series-batch` — la
+/// Une référence de série du `POST /api/v1/telemetry/series/query` — la
 /// même triple que les sources de widget (`viz::SourceRef`) : un seul
 /// appel pour tout un dashboard (un timer au lieu de N, D31).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "A series reference of the batch: metric, device and/or labels, window preset."
+    )
+)]
 pub struct SeriesSpec {
     pub metric: String,
     pub device_id: String,
-    /// Preset de fenêtre (`viz::VIZ_WINDOW_PRESETS`).
+    /// Window preset (`viz::VIZ_WINDOW_PRESETS`).
     pub window: String,
     /// Free label selector (D171); with labels, `device_id` may be empty
     /// (the read then sums the matching series).
@@ -108,6 +143,7 @@ impl SeriesSpec {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SeriesBatchRequest {
     pub specs: Vec<SeriesSpec>,
 }
@@ -116,6 +152,13 @@ pub struct SeriesBatchRequest {
 /// invalide ou non servie (budget dépassé) est **dégradée** au niveau
 /// item (`available: false`), jamais une 400 globale.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "One item per spec, same order; an invalid or unserved spec is degraded per item (`available: false`), never a global error."
+    )
+)]
 pub struct SeriesBatchResponse {
     pub available: bool,
     pub results: Vec<TelemetrySeriesResponse>,

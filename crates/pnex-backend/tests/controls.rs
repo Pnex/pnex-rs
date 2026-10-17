@@ -123,6 +123,65 @@ async fn valkey(ctx: &loco_rs::app::AppContext) -> Option<redis::Client> {
     redis::Client::open(url).ok()
 }
 
+/// O76: the `label` filter survives in the `next`/`previous` links.
+#[tokio::test]
+#[serial]
+async fn list_links_keep_the_label_filter() {
+    with_app(|server, env, _ctx| async move {
+        let org = personal_org(&server, &env.alice).await;
+        for key in ["o76.a", "o76.b", "o76.c"] {
+            let id = create_control(
+                &server,
+                &env.alice,
+                org,
+                key,
+                serde_json::json!({"kind": "switch"}),
+            )
+            .await;
+            let res = server
+                .put(&format!("/api/v1/resources/control/{id}/labels"))
+                .add_header("Content-Type", "application/json")
+                .add_header("Authorization", format!("Bearer {}", env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .json(&serde_json::json!({ "labels": { "zone": "o76" } }))
+                .await;
+            assert_eq!(res.status_code(), 200, "{}", res.text());
+        }
+        create_control(
+            &server,
+            &env.alice,
+            org,
+            "o76.other",
+            serde_json::json!({"kind": "switch"}),
+        )
+        .await;
+        let page = server
+            .get("/api/v1/controls?label=zone:o76&limit=2")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(page["count"], 3, "{page}");
+        let next = page["next"].as_str().expect("next link");
+        assert!(next.contains("label=zone%3Ao76"), "{next}");
+        let second = server
+            .get(next)
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(second["count"], 3, "{second}");
+        assert_eq!(
+            second["results"].as_array().map(Vec::len),
+            Some(1),
+            "{second}"
+        );
+        let previous = second["previous"].as_str().expect("previous link");
+        assert!(previous.contains("label=zone%3Ao76"), "{previous}");
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn crud_key_uniqueness_and_validation() {
@@ -159,7 +218,10 @@ async fn crud_key_uniqueness_and_validation() {
         )
         .await;
         assert_eq!(bad.status_code(), 400);
-        assert_eq!(bad.json::<serde_json::Value>()["key"], "invalid");
+        assert_eq!(
+            bad.json::<serde_json::Value>()["errors"]["fields"]["key"],
+            "invalid"
+        );
         let bad = post(
             &server,
             &env.alice,
@@ -168,7 +230,10 @@ async fn crud_key_uniqueness_and_validation() {
             serde_json::json!({"key": "k2", "label": " ", "spec": {"kind": "switch"}}),
         )
         .await;
-        assert_eq!(bad.json::<serde_json::Value>()["label"], "required");
+        assert_eq!(
+            bad.json::<serde_json::Value>()["errors"]["fields"]["label"],
+            "required"
+        );
         let bad = post(
             &server,
             &env.alice,
@@ -179,7 +244,7 @@ async fn crud_key_uniqueness_and_validation() {
         )
         .await;
         assert_eq!(
-            bad.json::<serde_json::Value>()["spec"],
+            bad.json::<serde_json::Value>()["errors"]["fields"]["spec"],
             "control_spec_range"
         );
 
@@ -304,17 +369,24 @@ async fn write_publishes_stores_and_rate_limits() {
 
         // Batch read: stored value, unknown id = null.
         let unknown = uuid::Uuid::new_v4().to_string();
-        let values = post(
-            &server,
-            &env.alice,
-            org,
-            "/api/v1/controls/values",
-            serde_json::json!({"ids": [id, unknown]}),
-        )
-        .await
-        .json::<serde_json::Value>();
+        let values = server
+            .get(&format!("/api/v1/controls/values?ids={id},{unknown}"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<serde_json::Value>();
         assert_eq!(values["values"][&id]["v"], 42.5);
         assert!(values["values"][&unknown].is_null());
+        let bad = server
+            .get("/api/v1/controls/values?ids=nope")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(bad.status_code(), 400);
+        assert_eq!(
+            bad.json::<serde_json::Value>()["errors"]["fields"]["ids"],
+            "invalid-uuid"
+        );
     })
     .await;
 }
@@ -344,15 +416,12 @@ async fn viewer_reads_but_never_operates_and_orgs_are_isolated() {
         )
         .await;
         assert_eq!(res.status_code(), 404);
-        let values = post(
-            &server,
-            &env.bob,
-            org_b,
-            "/api/v1/controls/values",
-            serde_json::json!({"ids": [id]}),
-        )
-        .await
-        .json::<serde_json::Value>();
+        let values = server
+            .get(&format!("/api/v1/controls/values?ids={id}"))
+            .add_header("Authorization", format!("Bearer {}", env.bob))
+            .add_header("X-Org-Id", org_b.to_string())
+            .await
+            .json::<serde_json::Value>();
         assert!(values["values"][&id].is_null());
 
         // Bob as viewer of org A: reads, cannot operate nor create.
@@ -460,7 +529,7 @@ async fn deploy_gate_listeners_and_delete_guard() {
         )
         .await;
         assert_eq!(res.status_code(), 400);
-        let v = res.json::<serde_json::Value>()["violations"][0].clone();
+        let v = res.json::<serde_json::Value>()["errors"]["violations"][0].clone();
         assert_eq!(v["code"], "control-unknown");
         assert_eq!(v["args"]["control"], ghost);
 
@@ -742,10 +811,10 @@ async fn empty_control_source_saves_but_never_deploys() {
         deploy.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
         let body: serde_json::Value = deploy.json();
         assert_eq!(
-            body["violations"][0]["code"], "control_source_empty",
+            body["errors"]["violations"][0]["code"], "control_source_empty",
             "{body}"
         );
-        assert_eq!(body["violations"][0]["node_id"], "cs", "{body}");
+        assert_eq!(body["errors"]["violations"][0]["node_id"], "cs", "{body}");
     })
     .await;
 }

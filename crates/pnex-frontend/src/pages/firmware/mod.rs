@@ -28,13 +28,10 @@ use crate::components::ui::{FIELD_LABEL, INPUT};
 use editor::FirmwareEditor;
 
 /// Role of the user in the current org (same helper as `functions`).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 /// Chip family badge label (wire id → display name, not translated).
@@ -58,7 +55,7 @@ pub fn Firmware() -> Element {
     let filter_label = use_signal(String::new);
     let mut create_open = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<(i64, String)>);
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     let list = use_resource(move || {
         let _ = reload();

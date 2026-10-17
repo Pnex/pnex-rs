@@ -45,6 +45,10 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
         });
     };
 
+    // The server refuses the scan to viewers (SEC-43): no button for them.
+    if !crate::state::org::current_can_write() {
+        return rsx! {};
+    }
     rsx! {
         div { class: "rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2",
             div { class: "flex items-center gap-2",

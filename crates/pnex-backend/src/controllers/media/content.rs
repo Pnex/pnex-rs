@@ -1,9 +1,23 @@
 use super::*;
 use axum::http::{header, HeaderMap};
 
-// ───────────────── GET /media/{id}/…/content (octets) ─────────────────
+// ───────────────── GET /media/{id}/…/content (bytes) ─────────────────
 
-/// `GET /api/v1/media/{id}/versions/{n}` — détail d'une version.
+/// `GET /api/v1/media/{id}/versions/{n}`: one version's metadata.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/versions/{n}",
+    tag = "media",
+    operation_id = "media_versions_get",
+    summary = "Get one version of a media asset",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
+    description = "Metadata of version n (filename, content type, size, sha256, note, whether current).",
+    responses(
+        (status = 200, body = MediaVersionDto),
+        (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn version_of(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -35,7 +49,7 @@ fn not_modified(headers: &HeaderMap, etag: &str) -> bool {
         })
 }
 
-/// Octets d'une version — réponse inline (école builds.rs::download).
+/// Bytes of a version, served inline (builds.rs::download school).
 /// Revalidated by ETag: a client holding the version (browser media cache)
 /// gets a bodiless 304, checked AFTER the org scoping of the caller.
 async fn content_response(
@@ -67,7 +81,22 @@ async fn content_response(
     Ok((StatusCode::OK, cache_headers, headers, bytes).into_response())
 }
 
-/// `GET /api/v1/media/{id}/content` — octets de la version courante.
+/// `GET /api/v1/media/{id}/content`: bytes of the current version.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/content",
+    tag = "media",
+    operation_id = "media_content",
+    summary = "Download the current version's file",
+    description = "Raw bytes of the current version, served with an allowlisted content type and an `ETag` (the version id). Send `If-None-Match` to get a bodiless 304 when unchanged.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, content_type = "application/octet-stream", body = Vec<u8>, description = "File bytes (actual Content-Type depends on the file)"),
+        (status = 304, description = "Not modified (`If-None-Match` matched)"),
+        (status = 404, description = "Unknown asset, no version, or stored file missing", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn content(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -90,7 +119,22 @@ pub(super) async fn content(
     content_response(&ctx, &asset, &version, &request_headers).await
 }
 
-/// `GET /api/v1/media/{id}/versions/{n}/content` — octets de la version n.
+/// `GET /api/v1/media/{id}/versions/{n}/content`: bytes of version n.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/versions/{n}/content",
+    tag = "media",
+    operation_id = "media_versions_content",
+    summary = "Download one version's file",
+    description = "Raw bytes of version n, with `ETag` revalidation (`If-None-Match` gives a bodiless 304).",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
+    responses(
+        (status = 200, content_type = "application/octet-stream", body = Vec<u8>, description = "File bytes (actual Content-Type depends on the file)"),
+        (status = 304, description = "Not modified (`If-None-Match` matched)"),
+        (status = 404, description = "Unknown asset or version, or stored file missing", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn version_content(
     State(ctx): State<AppContext>,
     org: OrgContext,

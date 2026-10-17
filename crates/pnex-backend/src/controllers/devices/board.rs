@@ -9,6 +9,23 @@ use super::*;
 /// The pin instances survive (they are validated against the chip, not the
 /// board). A soldered screen follows the board: the new board's builtin
 /// screen is turned on, the old board's one is turned off.
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}/board",
+    tag = "devices",
+    operation_id = "devices_update_board",
+    summary = "Move the device to another board variant of the same chip",
+    description = "Takes effect at the next build. Pin instances are kept; the builtin screen follows the board.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    request_body = pnex_core::UpdateDeviceBoard,
+    responses(
+        (status = 200, body = pnex_core::DeviceBoardUpdated),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 422, description = "Unknown board or other chip", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update_board(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -39,10 +56,10 @@ pub(super) async fn update_board(
     };
     let current = crate::services::provisioning::device_board(&ctx.db, &device).await?;
     if current.id == target.id {
-        return format::json(serde_json::json!({
-            "board_id": target.id,
-            "rebuild_required": false,
-        }));
+        return format::json(pnex_core::DeviceBoardUpdated {
+            board_id: target.id,
+            rebuild_required: false,
+        });
     }
     // Same rule as at registration: the chip-caps SoC, or the raw value for
     // boards with an unknown SoC.
@@ -100,8 +117,8 @@ pub(super) async fn update_board(
         by = org.auth.user.id,
         "device board changed"
     );
-    format::json(serde_json::json!({
-        "board_id": target.id,
-        "rebuild_required": true,
-    }))
+    format::json(pnex_core::DeviceBoardUpdated {
+        board_id: target.id,
+        rebuild_required: true,
+    })
 }

@@ -29,6 +29,7 @@ pub struct TrackPoint {
 
 /// Why an input point was dropped by [`normalize`] (machine token, i18n by the UI).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum RejectReason {
     /// Latitude or longitude is not a finite number.
@@ -43,6 +44,7 @@ pub enum RejectReason {
 
 /// A dropped point: its index in the input and the reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Rejected {
     pub index: usize,
     pub reason: RejectReason,

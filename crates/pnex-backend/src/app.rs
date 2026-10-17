@@ -72,6 +72,93 @@ async fn seed_catalog_at_boot(ctx: &AppContext) {
     }
 }
 
+/// Every HTTP route of the server; context-free so the OpenAPI coverage
+/// test can list them without booting the app.
+pub fn app_routes() -> AppRoutes {
+    AppRoutes::with_default_routes()
+        .add_route(controllers::health::routes())
+        .add_route(controllers::meta::routes())
+        .add_route(controllers::oauth2::routes())
+        .add_route(controllers::user_info::routes())
+        .add_route(controllers::orgs::routes())
+        .add_route(controllers::devices::routes())
+        .add_route(controllers::devices::catalogue_routes())
+        .add_route(controllers::builds::routes())
+        // Référentiels Edge (wizard device : fin de la ressaisie).
+        .add_route(controllers::edge_refs::routes())
+        // Org secrets vault (D110–D118): CRUD, never a value.
+        .add_route(controllers::secrets::routes())
+        // Edge agent (D95): keys, enrollment, public enroll + downloads.
+        .add_route(controllers::edge_agents::routes())
+        // Registre « Fonctions » (groupe « Automation ») — versionné +
+        // test en live via le binaire runtime.
+        .add_route(controllers::functions::routes())
+        .add_route(controllers::docs::routes())
+        .add_route(controllers::doc_comments::routes())
+        .add_route(controllers::firmware_projects::routes())
+        .add_route(controllers::flows::routes())
+        .add_route(controllers::media::routes())
+        .add_route(controllers::stitch_jobs::routes())
+        // POI-first (D35) : le contrôleur sites est supplanté.
+        .add_route(controllers::pois::routes())
+        // Couche d'organisation transverse (D42) : labels/containment/edges.
+        .add_route(controllers::resources::routes())
+        // Studio SCADA (D40/D41) : dashboards versionnés + bibliothèque.
+        .add_route(controllers::dashboards::routes())
+        .add_route(controllers::viz_widgets::routes())
+        .add_route(controllers::controls::routes())
+        // Mélanges de fluides personnalisés (CoolProp in-process).
+        .add_route(controllers::fluid_mixtures::routes())
+        // Diagrammes thermodynamiques (pnex-coolprop in-process).
+        .add_route(controllers::thermo::routes())
+        .add_route(controllers::tours::routes())
+        .add_route(controllers::public_tours::routes())
+        .add_route(controllers::annotation_layers::routes())
+        .add_route(controllers::annotation_layers::media_routes())
+        .add_route(controllers::dashboard::routes())
+        .add_route(controllers::visualization::routes())
+        // Org shared memory (flow memory-write) for dashboards.
+        .add_route(controllers::memory::routes())
+        .add_route(controllers::ai::routes())
+        .add_route(controllers::geo::routes())
+        // Notifications (D49–D54) : canaux/templates/journal + bus WS +
+        // endpoint interne de livraison (nœud flow / loopback Test).
+        .add_route(controllers::notify::routes())
+        .add_route(controllers::ws_notify::routes())
+        .add_route(controllers::ws_doc::routes())
+        .add_route(controllers::ws_ticket::routes())
+        .add_route(controllers::internal_notify::routes())
+        // Écriture device depuis le runtime (nœud pnex-device-write) —
+        // token interne settings.flow.runtime_token.
+        .add_route(controllers::internal_flow::routes())
+        .add_route(controllers::flow_cluster::routes())
+        .add_route(controllers::ws_device::routes())
+        // Camera & video (D73–D80): uplink + live WS, settings/segments API.
+        .add_route(controllers::ws_camera::routes())
+        // Capture boxes (media-ingest.md D160, lot 6b).
+        .add_route(controllers::ws_media::routes())
+        .add_route(controllers::cameras::routes())
+        .add_route(controllers::camera_recordings::routes())
+        .add_route(controllers::events::routes())
+        .add_route(controllers::media_ingest::routes())
+        .add_route(controllers::media_ingest::internal_routes())
+        .add_route(controllers::voice_id::routes())
+        .add_route(controllers::taxonomies::routes())
+        .add_route(controllers::time_ranges::routes())
+        .add_route(controllers::lab::routes())
+        .add_route(controllers::ontology::routes())
+        .add_route(controllers::cases::routes())
+        .add_route(controllers::ml_models::routes())
+        .add_route(controllers::ml_models::internal_routes())
+        .add_route(controllers::pins::routes())
+        .add_route(controllers::ota::routes())
+        .add_route(controllers::boards::routes())
+        // Global typeahead (D69) — additive endpoint, read-only.
+        .add_route(controllers::global_search::routes())
+        // System: O2 retention/cleanup + platform status (D72).
+        .add_route(controllers::system::routes())
+}
+
 #[async_trait]
 impl Hooks for App {
     fn app_name() -> &'static str {
@@ -116,88 +203,7 @@ impl Hooks for App {
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
-        AppRoutes::with_default_routes()
-            .add_route(controllers::health::routes())
-            .add_route(controllers::meta::routes())
-            .add_route(controllers::oauth2::routes())
-            .add_route(controllers::user_info::routes())
-            .add_route(controllers::orgs::routes())
-            .add_route(controllers::devices::routes())
-            .add_route(controllers::devices::catalogue_routes())
-            .add_route(controllers::builds::routes())
-            // Référentiels Edge (wizard device : fin de la ressaisie).
-            .add_route(controllers::edge_refs::routes())
-            // Org secrets vault (D110–D118): CRUD, never a value.
-            .add_route(controllers::secrets::routes())
-            // Edge agent (D95): keys, enrollment, public enroll + downloads.
-            .add_route(controllers::edge_agents::routes())
-            // Registre « Fonctions » (groupe « Automation ») — versionné +
-            // test en live via le binaire runtime.
-            .add_route(controllers::functions::routes())
-            .add_route(controllers::docs::routes())
-            .add_route(controllers::doc_comments::routes())
-            .add_route(controllers::firmware_projects::routes())
-            .add_route(controllers::flows::routes())
-            .add_route(controllers::media::routes())
-            .add_route(controllers::stitch_jobs::routes())
-            // POI-first (D35) : le contrôleur sites est supplanté.
-            .add_route(controllers::pois::routes())
-            // Couche d'organisation transverse (D42) : labels/containment/edges.
-            .add_route(controllers::resources::routes())
-            // Studio SCADA (D40/D41) : dashboards versionnés + bibliothèque.
-            .add_route(controllers::dashboards::routes())
-            .add_route(controllers::viz_widgets::routes())
-            .add_route(controllers::controls::routes())
-            // Mélanges de fluides personnalisés (CoolProp in-process).
-            .add_route(controllers::fluid_mixtures::routes())
-            // Diagrammes thermodynamiques (pnex-coolprop in-process).
-            .add_route(controllers::thermo::routes())
-            .add_route(controllers::tours::routes())
-            .add_route(controllers::public_tours::routes())
-            .add_route(controllers::annotation_layers::routes())
-            .add_route(controllers::annotation_layers::media_routes())
-            .add_route(controllers::dashboard::routes())
-            .add_route(controllers::visualization::routes())
-            // Org shared memory (flow memory-write) for dashboards.
-            .add_route(controllers::memory::routes())
-            .add_route(controllers::ai::routes())
-            .add_route(controllers::geo::routes())
-            // Notifications (D49–D54) : canaux/templates/journal + bus WS +
-            // endpoint interne de livraison (nœud flow / loopback Test).
-            .add_route(controllers::notify::routes())
-            .add_route(controllers::ws_notify::routes())
-            .add_route(controllers::ws_doc::routes())
-            .add_route(controllers::ws_ticket::routes())
-            .add_route(controllers::internal_notify::routes())
-            // Écriture device depuis le runtime (nœud pnex-device-write) —
-            // token interne settings.flow.runtime_token.
-            .add_route(controllers::internal_flow::routes())
-            .add_route(controllers::flow_cluster::routes())
-            .add_route(controllers::ws_device::routes())
-            // Camera & video (D73–D80): uplink + live WS, settings/segments API.
-            .add_route(controllers::ws_camera::routes())
-            // Capture boxes (media-ingest.md D160, lot 6b).
-            .add_route(controllers::ws_media::routes())
-            .add_route(controllers::cameras::routes())
-            .add_route(controllers::camera_recordings::routes())
-            .add_route(controllers::events::routes())
-            .add_route(controllers::media_ingest::routes())
-            .add_route(controllers::media_ingest::internal_routes())
-            .add_route(controllers::voice_id::routes())
-            .add_route(controllers::taxonomies::routes())
-            .add_route(controllers::time_ranges::routes())
-            .add_route(controllers::lab::routes())
-            .add_route(controllers::ontology::routes())
-            .add_route(controllers::cases::routes())
-            .add_route(controllers::ml_models::routes())
-            .add_route(controllers::ml_models::internal_routes())
-            .add_route(controllers::pins::routes())
-            .add_route(controllers::ota::routes())
-            .add_route(controllers::boards::routes())
-            // Global typeahead (D69) — additive endpoint, read-only.
-            .add_route(controllers::global_search::routes())
-            // System: O2 retention/cleanup + platform status (D72).
-            .add_route(controllers::system::routes())
+        app_routes()
     }
 
     async fn after_routes(router: axum::Router, ctx: &AppContext) -> Result<axum::Router> {
@@ -250,6 +256,10 @@ impl Hooks for App {
         let router = router.layer(axum::middleware::from_fn_with_state(
             rate_limit,
             crate::services::rate_limit::middleware,
+        ));
+        // Extractor rejections answer the contract's ErrorDetail (D239).
+        let router = router.layer(axum::middleware::from_fn(
+            crate::controllers::rejection_to_error_detail,
         ));
         // `/internal/*` is never served to requests that came through the
         // public edge (SEC-4).

@@ -44,7 +44,7 @@ pub fn Profile() -> Element {
     let mut language = use_signal(|| profile.language.clone());
     let mut timezone = use_signal(|| profile.timezone.clone());
     let mut date_format = use_signal(|| profile.date_format.clone().unwrap_or_default());
-    let mut theme = use_signal(|| normalize_theme(&profile.theme));
+    let mut theme = use_signal(|| normalize_theme(profile.theme.as_str()));
 
     rsx! {
         crate::components::crud::layout::ListLayout {

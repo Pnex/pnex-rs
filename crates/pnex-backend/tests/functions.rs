@@ -370,9 +370,9 @@ async fn validations_400_et_conflit_409() {
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("name").is_some());
+        assert_eq!(body["errors"]["fields"]["name"], "required", "{body}");
 
-        // Directive invalide → 400 sur le champ code, ligne mentionnée.
+        // Invalid directive: 400 function-directive-invalid, line in args.
         let (status, body) = post_fn(
             &server,
             &env.alice,
@@ -381,8 +381,8 @@ async fn validations_400_et_conflit_409() {
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("code").is_some());
-        assert!(body["code"].as_str().unwrap().contains("ligne 1"));
+        assert_eq!(body["error"], "function-directive-invalid", "{body}");
+        assert_eq!(body["errors"]["args"]["line"], "1", "{body}");
 
         // Conflit de version : expected ≠ courant → 409.
         let (_, created) = post_fn(
@@ -446,7 +446,7 @@ async fn delete_409_si_flow_deployed_reference() {
         link.deployed_version_id = sea_orm::Set(Some(version.id));
         link.update(&ctx.db).await.expect("flow marqué déployé");
 
-        // Delete → 409 function_in_use avec la liste des flows référents.
+        // Delete: 409 function-in-use, the referencing flows in `args.flows`.
         let resp = server
             .delete(&format!("/api/v1/functions/{fn_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -454,9 +454,12 @@ async fn delete_409_si_flow_deployed_reference() {
             .await;
         assert_eq!(resp.status_code(), 409);
         let body = resp.json::<serde_json::Value>();
-        assert_eq!(body["error"], "function_in_use");
-        assert_eq!(body["referencing_flows"][0]["flow_id"], flow.id);
-        assert_eq!(body["referencing_flows"][0]["version_number"], 1);
+        assert_eq!(body["error"], "function-in-use", "{body}");
+        let flows = body["errors"]["args"]["flows"].as_str().unwrap_or_default();
+        assert!(
+            flows.contains(&format!("#{} ", flow.id)) && flows.ends_with(" v1"),
+            "{body}"
+        );
     })
     .await;
 }
