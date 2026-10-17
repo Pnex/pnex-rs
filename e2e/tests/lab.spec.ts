@@ -41,6 +41,21 @@ test.describe('vision lab', { tag: ['@lab', '@i18n'] }, () => {
     await expect(page.getByRole('main').getByText('red_valve', { exact: true }).last()).toBeVisible();
     await capture('lab-annotate', { caption: 'Vision Lab: a box drawn around the object' });
 
+    // Classes added from the "+" bubble, by its button (touch) then by
+    // Enter: the bubble stays open across the project reload.
+    await page.getByTestId('lab-class-add').click();
+    const menu = page.getByTestId('lab-class-menu');
+    const field = menu.getByRole('textbox', { name: app.t('lab-class-new') });
+    await field.fill('glove');
+    await page.getByTestId('lab-class-submit').click();
+    await expect(menu.getByRole('button', { name: /glove/ })).toBeVisible();
+    await field.fill('boot');
+    await field.press('Enter');
+    await expect(menu.getByRole('button', { name: /boot/ })).toBeVisible();
+    await expect(menu).toBeVisible();
+    await page.getByTestId('lab-class-add').click();
+    await expect(menu).toBeHidden();
+
     // The second picture marked as a negative example.
     await page.getByTestId('lab-next').click();
     await page.getByRole('button', { name: app.t('lab-negative') }).click();
