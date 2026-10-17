@@ -356,7 +356,7 @@ pub fn Devices() -> Element {
                                 // Hidden on Android: no flashing path there.
                                 if flash::offered() {
                                     button {
-                                        class: "w-fit px-2 py-0.5 text-xs text-emerald-600 hover:text-emerald-700 transition-colors",
+                                        class: "w-fit px-2 py-0.5 text-xs text-emerald-700 hover:text-emerald-800 transition-colors",
                                         r#type: "button",
                                         title: t!("devices-flash-title"),
                                         onclick: move |_| {
