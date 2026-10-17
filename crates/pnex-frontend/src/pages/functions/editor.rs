@@ -190,6 +190,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         };
         let language = loaded().map(|d| d.language).unwrap_or_default();
         test_running.set(true);
+        // The previous result must not pass for this run's while it executes.
+        test_result.set(None);
         spawn(async move {
             let params = FunctionTestRequest {
                 version_number: None,
@@ -459,7 +461,10 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
             // ── Live test modal (toolbar "Test run") ──
             FunctionTestModal {
                 open: test_open(),
-                on_close: move |_| test_open.set(false),
+                on_close: move |_| {
+                    test_open.set(false);
+                    test_result.set(None);
+                },
                 inputs: signature_inputs,
                 outputs: signature_outputs,
                 test_inputs,
