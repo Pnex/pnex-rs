@@ -241,7 +241,7 @@ async fn project_images_boxes_versions_export() {
             .await;
         assert_eq!(res.status_code(), 200);
         let zip = zip::ZipArchive::new(std::io::Cursor::new(res.as_bytes().to_vec())).expect("zip");
-        let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+        let names: Vec<String> = zip.file_names().map(|n| n.expect("entry name").into_owned()).collect();
         assert!(names.iter().any(|n| n == "annotations/train.json"), "{names:?}");
         assert!(names.iter().any(|n| n == "classes.txt"));
         assert_eq!(names.iter().filter(|n| n.starts_with("images/")).count(), 2);

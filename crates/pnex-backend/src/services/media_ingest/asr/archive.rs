@@ -129,7 +129,10 @@ pub fn extract(bytes: &[u8], dir: &Path) -> Result<(), ArchiveError> {
                 if !file.is_file() {
                     continue;
                 }
-                if let Some(name) = kept_name(file.name()) {
+                let path = file
+                    .name()
+                    .map_err(|e| ArchiveError::Corrupt(e.to_string()))?;
+                if let Some(name) = kept_name(&path) {
                     w.write(&name, file)?;
                 }
             }
