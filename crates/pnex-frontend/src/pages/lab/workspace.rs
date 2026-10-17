@@ -1125,9 +1125,9 @@ const ZOOM_BTN: &str =
     "flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40";
 
 /// The round "+" of the picture: a bubble with the classes (a click picks
-/// the class of the next box) and a field for a new one (Enter adds, Escape
-/// closes). The bubble's keys never reach the labeling shortcuts, and
-/// pressing it never starts a box.
+/// the class of the next box) and a field for a new one (Enter adds and keeps
+/// the bubble open for the next one, Escape closes). The bubble's keys never
+/// reach the labeling shortcuts, and pressing it never starts a box.
 #[component]
 fn ClassAdd(
     classes: Vec<String>,
@@ -1141,7 +1141,6 @@ fn ClassAdd(
         let name = typing().trim().to_string();
         typing.set(String::new());
         if !name.is_empty() {
-            open.set(false);
             on_add.call(name);
         }
     };
