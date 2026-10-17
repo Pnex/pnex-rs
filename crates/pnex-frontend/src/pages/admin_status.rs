@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::{ComponentStatus, OrgSystemRow, StatusMetric, TierOption};
+use pnex_core::{ComponentStatus, MetricUnit, OrgSystemRow, StatusMetric, TierOption};
 
 use crate::api;
 use crate::api::error_i18n::resolve;
@@ -57,7 +57,7 @@ pub fn AdminStatus() -> Element {
         Some(Ok(s)) => t!(
             "admin-status-subtitle",
             version: s.server_version.clone(),
-            mode: resolve(&format!("system-mode-{}", s.deployment_mode.replace('_', "-")), None),
+            mode: resolve(&format!("system-mode-{}", s.deployment_mode.as_str().replace('_', "-")), None),
             at: s.generated_at.get(..19).unwrap_or(&s.generated_at).replace('T', " ")
         )
         .to_string(),
@@ -206,8 +206,8 @@ fn format_duration(secs: f64) -> String {
 
 /// Formatted value of a metric (text metrics may carry machine tokens).
 fn metric_value(m: &StatusMetric) -> String {
-    match m.unit.as_str() {
-        "text" => {
+    match m.unit {
+        MetricUnit::Text => {
             let text = m.text.clone().unwrap_or_default();
             match m.key.as_str() {
                 "machine_kind" => {
@@ -223,13 +223,13 @@ fn metric_value(m: &StatusMetric) -> String {
             let Some(v) = m.value else {
                 return "—".into();
             };
-            match m.unit.as_str() {
-                "bytes" => match m.total {
+            match m.unit {
+                MetricUnit::Bytes => match m.total {
                     Some(total) => format!("{} / {}", format_bytes(v), format_bytes(total)),
                     None => format_bytes(v),
                 },
-                "seconds" => format_duration(v),
-                "percent" => format!("{v:.0} %"),
+                MetricUnit::Seconds => format_duration(v),
+                MetricUnit::Percent => format!("{v:.0} %"),
                 _ => {
                     if v.fract() == 0.0 {
                         format!("{v:.0}")
@@ -244,13 +244,13 @@ fn metric_value(m: &StatusMetric) -> String {
 
 #[component]
 fn ComponentCard(comp: ComponentStatus) -> Element {
-    let (pill_class, dot_class) = status_pill(&comp.status);
+    let (pill_class, dot_class) = status_pill(comp.status.as_str());
     let title = resolve(
         &format!("system-component-{}", comp.key.replace('_', "-")),
         None,
     );
     let status_label = resolve(
-        &format!("system-status-{}", comp.status.replace('_', "-")),
+        &format!("system-status-{}", comp.status.as_str().replace('_', "-")),
         None,
     );
     rsx! {
@@ -340,7 +340,9 @@ fn OrgsOverview() -> Element {
         _ => Vec::new(),
     };
     let platform_default = match &*retention.value().read() {
-        Some(Ok(info)) if info.deployment_mode != "saas" => Some(info.global_default_days),
+        Some(Ok(info)) if info.deployment_mode != pnex_core::DeploymentMode::Saas => {
+            Some(info.global_default_days)
+        }
         _ => None,
     };
     rsx! {
@@ -498,7 +500,7 @@ fn OrgRow(row: OrgSystemRow, tiers: Vec<TierOption>, on_saved: Callback<()>) -> 
     let tier_label = t!("admin-orgs-tier-label", org : row.name.clone());
     let override_label = t!("admin-orgs-override-label", org : row.name.clone());
     let source = resolve(
-        &format!("system-retention-source-{}", row.retention_source),
+        &format!("system-retention-source-{}", row.retention_source.as_str()),
         None,
     );
     let usage = match (row.provisioned, row.used_bytes) {

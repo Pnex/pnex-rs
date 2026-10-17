@@ -27,11 +27,11 @@ pub async fn create(input: &OrgSecretInput) -> Result<OrgSecret, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/secrets", Some(value)).await
 }
 
-/// `PUT /api/v1/secrets/{id}` — `value: None` keeps the current value.
+/// `PATCH /api/v1/secrets/{id}` — `value: None` keeps the current value.
 pub async fn update(id: Uuid, input: &OrgSecretInput) -> Result<OrgSecret, ApiError> {
     let value = serde_json::to_value(input).map_err(|e| ApiError::new(e.to_string()))?;
     client::request(
-        reqwest::Method::PUT,
+        reqwest::Method::PATCH,
         &format!("/api/v1/secrets/{id}"),
         Some(value),
     )

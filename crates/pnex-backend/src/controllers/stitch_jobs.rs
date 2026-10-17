@@ -17,9 +17,9 @@
 //! bitmask « propre » : la colonne de dédoublonnage ne valait pas la
 //! complexité pour un client qui contrôle son flux (plan B2).
 //!
-//! Errors: 400 per-field `{"<field>": msg}` (devices/flows/media school),
-//! 403 via `can_write()`, 404 masquant le cross-org (école `device_of_org`),
-//! 409 sur mauvais état, 503 si le stitch serveur est désactivé.
+//! Errors (D239, all `ErrorDetail`): 400 `field-invalid` with machine
+//! tokens, 403 via `can_write()`, 404 masking other orgs, 409 on a wrong
+//! state, 503 `stitch-disabled` when server stitching is off.
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, State};
@@ -62,13 +62,9 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// 400 per-field `{"<field>": msg}`.
+/// 400 `field-invalid` with one machine token.
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 /// 409 — POST frame sur un job terminal (succeeded/failed). Carries the
@@ -83,14 +79,13 @@ fn conflict(code: &str, msg: &str) -> Error {
 
 /// 503 — kill-switch `settings.stitch.enabled=false`.
 fn disabled() -> Response {
-    (
+    super::coded_error(
         StatusCode::SERVICE_UNAVAILABLE,
-        format::json(serde_json::json!({
-            "error": "stitch-disabled",
-            "description": "Server-side stitching is disabled."
-        })),
+        pnex_core::err_codes::STITCH_DISABLED,
+        "Server-side stitching is disabled.",
+        None,
     )
-        .into_response()
+    .into_response()
 }
 
 /// Job de l'org courante, sinon None (→ 404 masquant le cross-org, école
@@ -123,11 +118,38 @@ async fn find_asset(
 
 // ─────────────────────────── DTOs ───────────────────────────
 
-#[derive(serde::Serialize)]
+/// State of a stitch job (stored as its wire string).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+enum StitchState {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+impl StitchState {
+    fn parse(raw: &str) -> Self {
+        match raw {
+            STATE_QUEUED => Self::Queued,
+            STATE_RUNNING => Self::Running,
+            STATE_SUCCEEDED => Self::Succeeded,
+            // Unknown rows are reported as failed (defence in depth).
+            _ => Self::Failed,
+        }
+    }
+}
+
+/// A server-side panorama stitch job.
+#[derive(serde::Serialize, utoipa::ToSchema)]
 struct StitchJobDto {
+    #[schema(value_type = String, format = "uuid")]
     id: Uuid,
+    #[schema(value_type = String, format = "uuid")]
     asset_id: Uuid,
-    state: String,
+    state: StitchState,
     error: Option<String>,
     frames_total: i32,
     frames_received: i32,
@@ -137,7 +159,7 @@ fn job_dto(j: &stitch_jobs::Model) -> StitchJobDto {
     StitchJobDto {
         id: j.id,
         asset_id: j.asset_id,
-        state: j.state.clone(),
+        state: StitchState::parse(&j.state),
         error: j.error.clone(),
         frames_total: j.frames_total,
         frames_received: j.frames_received,
@@ -146,16 +168,38 @@ fn job_dto(j: &stitch_jobs::Model) -> StitchJobDto {
 
 // ─────────────────────── POST /stitch-jobs ───────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 struct CreateJob {
+    /// Media asset the panorama is published to (as a new version).
+    #[schema(value_type = String, format = "uuid")]
     asset_id: Uuid,
+    /// Number of frames that will be uploaded (2 to 64).
     frames_total: u32,
+    /// Horizontal field of view of the frames, degrees (1 to 179).
     hfov_deg: f32,
+    /// One pose per frame, in upload order.
     poses: Vec<PoseDeg>,
 }
 
 /// `POST /api/v1/stitch-jobs` — crée le job `queued` (poses + hfov, ~2 Ko).
 /// Les frames partent ensuite une par une ; la dernière déclenche le worker.
+#[utoipa::path(
+    post,
+    path = "/api/v1/stitch-jobs",
+    tag = "stitch-jobs",
+    operation_id = "stitch_jobs_create",
+    summary = "Create a panorama stitch job",
+    description = "Creates a `queued` job for a 360 capture ring (poses + field of view). Frames are then uploaded one by one with `POST /api/v1/stitch-jobs/{id}/frames/{k}`; the last one starts the server stitch, whose panorama is published as a new version of the media asset. Writer role required.",
+    request_body = CreateJob,
+    responses(
+        (status = 201, body = StitchJobDto),
+        (status = 400, description = "`field-invalid`: `frames_total` `range:2..64`, `poses` `invalid` (one pose per frame), `hfov_deg` `range:1..179`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`stitch-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown media asset", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "Server-side stitching disabled (`stitch-disabled`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -176,20 +220,15 @@ async fn create(
     if body.frames_total < 2 || body.frames_total > MAX_FRAMES {
         return Ok(field_status(
             "frames_total",
-            "frames_total doit être entre 2 et 64",
+            &format!("range:2..{MAX_FRAMES}"),
         ));
     }
     if body.poses.len() != body.frames_total as usize {
-        return Ok(field_status(
-            "poses",
-            "une pose par frame : poses.len() == frames_total",
-        ));
+        // One pose per frame: poses.len() == frames_total.
+        return Ok(field_status("poses", pnex_core::err_codes::FIELD_INVALID));
     }
     if !(1.0..=179.0).contains(&body.hfov_deg) {
-        return Ok(field_status(
-            "hfov_deg",
-            "hfov_deg doit être entre 1 et 179",
-        ));
+        return Ok(field_status("hfov_deg", "range:1..179"));
     }
     if find_asset(&ctx.db, &org, body.asset_id).await?.is_none() {
         return Err(Error::NotFound);
@@ -224,6 +263,25 @@ struct FramePath {
 /// frame. Incrémente `frames_received` (sans dédoublonner, cf. doc de
 /// module) ; la dernière frame reçue enchaîne le worker **dans la requête**
 /// (ForegroundBlocking en test, queue PG en dev/prod).
+#[utoipa::path(
+    post,
+    path = "/api/v1/stitch-jobs/{id}/frames/{k}",
+    tag = "stitch-jobs",
+    operation_id = "stitch_jobs_frames_upload",
+    summary = "Upload one frame of a stitch job",
+    description = "Raw JPEG bytes of frame `k` (max 8 MB). Each call increments `frames_received` (no de-duplication: never send a frame twice); the last frame queues the stitch worker (compute-heavy). Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Stitch job UUID"), ("k" = u32, Path, description = "Frame index, 0-based (< frames_total)")),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "JPEG frame bytes"),
+    responses(
+        (status = 200, body = StitchJobDto),
+        (status = 400, description = "`field-invalid` on `k`: `invalid` (index out of bounds) or `required` (empty body)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`stitch-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown job", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Job already finished (`stitch-job-terminal`) or in an unknown state (`stitch-state-unknown`)", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "Frame too large (`stitch-frame-too-large`, `errors.args.limit`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn upload_frame(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -253,24 +311,19 @@ async fn upload_frame(
         _ => return Err(conflict("stitch-state-unknown", "Unknown job state.")),
     }
     if path.k >= job.frames_total as u32 {
-        return Ok(field_status(
-            "k",
-            "index de frame hors bornes (0..frames_total)",
-        ));
+        return Ok(field_status("k", pnex_core::err_codes::FIELD_INVALID));
     }
     if body.is_empty() {
-        return Ok(field_status("k", "corps de la requête vide"));
+        return Ok(field_status("k", pnex_core::err_codes::FIELD_REQUIRED));
     }
     if body.len() > FRAME_MAX_BYTES {
-        return Ok((
+        return Ok(super::coded_error(
             StatusCode::PAYLOAD_TOO_LARGE,
-            format::json(serde_json::json!({
-                "error": "stitch-frame-too-large",
-                "description": "Frame too large.",
-                "errors": { "args": { "limit": FRAME_MAX_BYTES.to_string() } }
-            })),
+            pnex_core::err_codes::STITCH_FRAME_TOO_LARGE,
+            "Frame too large.",
+            Some(serde_json::json!({ "limit": FRAME_MAX_BYTES.to_string() })),
         )
-            .into_response());
+        .into_response());
     }
 
     // Octets → MediaStore (d'abord, la DB ensuite — école write_version :
@@ -322,6 +375,20 @@ async fn upload_frame(
 
 /// `GET /api/v1/stitch-jobs/{id}` — état du job (poll UI : progression
 /// d'upload puis assemblage).
+#[utoipa::path(
+    get,
+    path = "/api/v1/stitch-jobs/{id}",
+    tag = "stitch-jobs",
+    operation_id = "stitch_jobs_get",
+    summary = "Get a stitch job",
+    description = "Job state and upload progress (`frames_received` / `frames_total`), polled by the UI.",
+    params(("id" = String, Path, format = "uuid", description = "Stitch job UUID")),
+    responses(
+        (status = 200, body = StitchJobDto),
+        (status = 404, description = "Unknown job or job of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -335,12 +402,24 @@ async fn detail(
 
 // ───────────────── GET /stitch-jobs/by-asset/{asset_id} ─────────────────
 
-/// `GET /api/v1/stitch-jobs/by-asset/{asset_id}` — dernier job d'un asset
-/// (le plus récent par `created_at`). Source de vérité serveur pour l'UI
-/// médias : overlay « version HD en préparation » sur l'aperçu tant que le
-/// job est `queued|running` — survit au redémarrage de l'app (contrairement
-/// au poller en mémoire du pipeline de capture). 404 si l'asset n'a jamais
-/// été stitché serveur.
+/// `GET /api/v1/stitch-jobs/by-asset/{asset_id}`: latest job of an asset
+/// (newest `created_at`). Server source of truth for the media UI overlay
+/// "HD version in preparation" while the job is `queued|running`; 404 when
+/// the asset was never stitched on the server.
+#[utoipa::path(
+    get,
+    path = "/api/v1/stitch-jobs/by-asset/{asset_id}",
+    tag = "stitch-jobs",
+    operation_id = "stitch_jobs_get_by_asset",
+    summary = "Get the latest stitch job of a media asset",
+    description = "Most recently created stitch job of the asset (shows whether an HD version is being prepared).",
+    params(("asset_id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, body = StitchJobDto),
+        (status = 404, description = "The asset was never stitched on the server", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn latest_for_asset(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -360,6 +439,14 @@ async fn latest_for_asset(
 }
 
 // ─────────────────────────── Routes ───────────────────────────
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(create, latest_for_asset, detail, upload_frame))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
 
 pub fn routes() -> Routes {
     Routes::new()

@@ -23,8 +23,7 @@ test.describe('profile', { tag: '@profile' }, () => {
   });
 
   test('dark theme applies, survives a reload, back to light', async ({ app, page, api }) => {
-    // The API reads the theme capitalized ("Dark") and takes it lowercase.
-    const before = (await api.get<{ profile: { theme: string } }>('/user-info')).profile.theme.toLowerCase();
+    const before = (await api.get<{ profile: { theme: string } }>('/user-info')).profile.theme;
     const html = page.locator('html');
     const theme = page.getByRole('combobox', { name: app.t('profile-theme') });
     const save = page.getByRole('main').getByRole('button', { name: app.t('common-save'), exact: true });
@@ -33,7 +32,7 @@ test.describe('profile', { tag: '@profile' }, () => {
       await theme.selectOption('dark');
       await save.click();
       await expect(html).toHaveAttribute('data-theme', 'dark');
-      await expect.poll(async () => (await api.get('/user-info')).profile.theme.toLowerCase()).toBe('dark');
+      await expect.poll(async () => (await api.get('/user-info')).profile.theme).toBe('dark');
 
       await page.reload();
       await app.settle();

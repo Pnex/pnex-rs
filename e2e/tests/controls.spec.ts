@@ -63,13 +63,13 @@ test.describe('surface controls', { tag: '@dashboards' }, () => {
       await expect
         .poll(
           async () => {
-            const res = await api.post('/memory/values', { refs: [{ key, field: '' }] });
+            const res = await api.post('/memory/values/query', { refs: [{ key, field: '' }] });
             return res.results[0]?.value ?? null;
           },
           { timeout: 30_000, message: `memory ${key}` },
         )
         .toBe(1);
-      const values = await api.post('/controls/values', { ids: [controlId] });
+      const values = await api.get(`/controls/values?ids=${controlId}`);
       expect(values.values[controlId].v).toBe(1);
       expect(values.values[controlId].via).toMatch(/^dashboard:/);
       await capture('mobile-live', { caption: 'Switch operated, flow wrote the memory' });

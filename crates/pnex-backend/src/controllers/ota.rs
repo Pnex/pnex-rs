@@ -14,7 +14,7 @@ use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, QueryOrde
 use serde::Deserialize;
 use uuid::Uuid;
 
-use pnex_core::ServerMsg;
+use pnex_core::{err_codes, ServerMsg};
 
 use crate::auth::OrgContext;
 use crate::controllers::ws_device;
@@ -42,17 +42,89 @@ fn not_found_code(code: &str, msg: &str) -> Error {
     )
 }
 
-fn assignment_dto(a: &ota_assignments::Model) -> serde_json::Value {
-    serde_json::json!({
-        "id": a.id,
-        "device_registry_id": a.device_registry_id,
-        "target_version": a.target_version,
-        "state": a.state,
-        "progress": a.progress,
-        "error": a.error,
-        "created_at": a.created_at.to_rfc3339(),
-        "updated_at": a.updated_at.to_rfc3339(),
-    })
+/// 404 `device-not-found` (registry id outside the org).
+fn device_not_found(id: i64) -> Error {
+    super::coded_error(
+        StatusCode::NOT_FOUND,
+        err_codes::DEVICE_NOT_FOUND,
+        "unknown device",
+        Some(serde_json::json!({ "device_id": id.to_string() })),
+    )
+}
+
+/// Lifecycle state of an OTA assignment (lowercase on the wire).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+enum OtaState {
+    Pending,
+    Downloading,
+    Flashing,
+    Succeeded,
+    Failed,
+}
+
+impl OtaState {
+    fn from_wire(s: &str) -> Self {
+        match s {
+            ota::ST_PENDING => Self::Pending,
+            ota::ST_DOWNLOADING => Self::Downloading,
+            ota::ST_FLASHING => Self::Flashing,
+            ota::ST_SUCCEEDED => Self::Succeeded,
+            // Only the five states are ever written; anything else is a failure.
+            _ => Self::Failed,
+        }
+    }
+}
+
+/// An OTA assignment (desired firmware version of a device).
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OtaAssignmentDto {
+    id: i64,
+    device_registry_id: i64,
+    target_version: String,
+    /// Lifecycle state (pending, then device-reported states; terminal: succeeded | failed).
+    state: OtaState,
+    /// Download progress in percent, when reported.
+    progress: Option<i32>,
+    /// Failure reason (`cancelled` on cancel).
+    error: Option<String>,
+    /// RFC 3339.
+    #[schema(format = DateTime)]
+    created_at: String,
+    /// RFC 3339.
+    #[schema(format = DateTime)]
+    updated_at: String,
+}
+
+/// Answer of `POST /api/v1/devices/{id}/ota`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OtaDeployed {
+    #[serde(flatten)]
+    assignment: OtaAssignmentDto,
+    /// The order was pushed to the connected device now; false = delivered at its next announce.
+    pushed: bool,
+}
+
+/// Answer of `GET /api/v1/devices/{id}/ota`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OtaStatus {
+    /// Active (non-terminal) assignment, if any.
+    current: Option<OtaAssignmentDto>,
+    /// The 10 newest assignments, newest first.
+    history: Vec<OtaAssignmentDto>,
+}
+
+fn assignment_dto(a: &ota_assignments::Model) -> OtaAssignmentDto {
+    OtaAssignmentDto {
+        id: a.id,
+        device_registry_id: a.device_registry_id,
+        target_version: a.target_version.clone(),
+        state: OtaState::from_wire(&a.state),
+        progress: a.progress,
+        error: a.error.clone(),
+        created_at: a.created_at.to_rfc3339(),
+        updated_at: a.updated_at.to_rfc3339(),
+    }
 }
 
 // ─────────────────── Routes + handlers ───────────────────
@@ -63,15 +135,12 @@ pub fn routes() -> Routes {
         .add("/devices/{id}/ota", post(deploy))
         .add("/devices/{id}/ota", get(assignment_status))
         .add("/devices/{id}/ota", delete(cancel))
-        .add(
-            "/ota/firmware/{device_id}/{version}",
-            get(download_firmware),
-        )
+        .add("/ota/firmware/{version}", get(download_firmware))
 }
 
 // ─────────────────── POST /devices/{id}/ota ───────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct DeployBody {
     /// Target build version (record id string) — None = latest deployable
     /// build (successful + OTA-stamped).
@@ -103,11 +172,14 @@ async fn resolve_target(
             .into_iter()
             .find(|r| r.fw_version.as_deref() == Some(v))
             .ok_or_else(|| {
-                not_found_code("version_not_found", "no deployable build for this version")
+                not_found_code(
+                    err_codes::OTA_VERSION_NOT_FOUND,
+                    "no deployable build for this version",
+                )
             }),
         None => record.into_iter().next().ok_or_else(|| {
             bad_request_code(
-                "no_ota_artifact",
+                err_codes::OTA_NO_ARTIFACT,
                 "no deployable build (build the firmware with an OTA-stamped server first)",
             )
         }),
@@ -118,6 +190,24 @@ async fn resolve_target(
 /// single active → ota_ready → target artifact → same-version → size
 /// guard. Offline is NOT an error: the row stays pending and is pushed at
 /// the next announce (response carries `pushed: false`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/ota",
+    tag = "devices",
+    operation_id = "devices_ota_deploy",
+    summary = "Deploy a firmware update over the air",
+    description = "Creates an OTA assignment (desired state) for the device: the given `version` (a successful OTA-stamped build of this device) or the latest deployable one. Pushed immediately to a connected device (signed order), otherwise delivered at its next announce. The device then reflashes itself. One active assignment per device. Body optional (empty = latest, no force). Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    request_body = DeployBody,
+    responses(
+        (status = 201, body = OtaDeployed),
+        (status = 400, description = "Invalid body (`field-invalid`), device not OTA-ready (`ota-not-ready`), no deployable artifact (`ota-no-artifact`), image too large (`ota-too-large`), edge agent device (`agent-unsupported-action`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device or version (`device-not-found`, `ota-version-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Deployment already in progress (`ota-in-progress`) or same version without force (`ota-same-version`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn deploy(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -134,14 +224,17 @@ async fn deploy(
             force: None,
         }
     } else {
-        serde_json::from_str(&body).map_err(|e| bad_request_code("invalid_body", &e.to_string()))?
+        match serde_json::from_str(&body) {
+            Ok(body) => body,
+            Err(_) => return Ok(super::field_error("body", err_codes::FIELD_INVALID)),
+        }
     };
     let device = device_registries::Entity::find_by_id(id)
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| not_found_code("device_not_found", "unknown device"))?;
+        .ok_or_else(|| device_not_found(id))?;
     // Edge agent (D95): no firmware, hence no OTA.
     if super::edge_agents::is_agent(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
@@ -151,13 +244,13 @@ async fn deploy(
     // concurrent creates (two pods, double click) at insert time.
     if ota::newest_active(&ctx.db, device.id).await?.is_some() {
         return Err(conflict_code(
-            "ota_in_progress",
+            err_codes::OTA_IN_PROGRESS,
             "an OTA deployment is already in progress for this device",
         ));
     }
     let Some(true) = device.ota_ready else {
         return Err(bad_request_code(
-            "ota_not_ready",
+            err_codes::OTA_NOT_READY,
             "device firmware predates OTA support — one USB (Web Serial) flash of an OTA build required",
         ));
     };
@@ -170,7 +263,7 @@ async fn deploy(
         })
     {
         return Err(conflict_code(
-            "same_version",
+            err_codes::OTA_SAME_VERSION,
             "device already runs at least the target version (force to redeploy)",
         ));
     }
@@ -179,7 +272,7 @@ async fn deploy(
     let size = target.ota_size_bytes.unwrap_or(0);
     if device.soc.as_deref() == Some("esp8266") && size > 2_000_000 {
         return Err(bad_request_code(
-            "ota_too_large",
+            err_codes::OTA_TOO_LARGE,
             "image exceeds the ESP8266 OTA staging budget (~2 MB)",
         ));
     }
@@ -197,7 +290,7 @@ async fn deploy(
         .map_err(|_| Error::InternalServerError)?;
     if !exists {
         return Err(bad_request_code(
-            "no_ota_artifact",
+            err_codes::OTA_NO_ARTIFACT,
             "OTA artifact missing from the store",
         ));
     }
@@ -218,15 +311,17 @@ async fn deploy(
     let row = row.insert(&ctx.db).await.map_err(|e| {
         if crate::services::db_lock::is_unique_violation(&e) {
             conflict_code(
-                "ota_in_progress",
+                err_codes::OTA_IN_PROGRESS,
                 "an OTA deployment is already in progress for this device",
             )
         } else {
             Error::InternalServerError
         }
     })?;
-    let mut payload = assignment_dto(&row);
-    payload["pushed"] = serde_json::json!(false);
+    let mut payload = OtaDeployed {
+        assignment: assignment_dto(&row),
+        pushed: false,
+    };
     // Online → push immediately; offline → pickup at the next announce.
     if ws_device::is_connected(device.id).await {
         let sig = crate::services::ota_signing::sign_for_order(
@@ -243,17 +338,14 @@ async fn deploy(
                 ServerMsg::OtaAvailable {
                     cmd_id: row.cmd_id.clone().unwrap_or_default(),
                     version: row.target_version.clone(),
-                    url: format!(
-                        "/api/v1/ota/firmware/{}/{}",
-                        device.device_id, row.target_version
-                    ),
+                    url: format!("/api/v1/ota/firmware/{}", row.target_version),
                     sha256: row.sha256.clone(),
                     size: row.size_bytes.map(|s| s as u64),
                     sig,
                 },
             )
             .await;
-            payload["pushed"] = serde_json::json!(true);
+            payload.pushed = true;
         }
     }
     Ok((StatusCode::CREATED, format::json(payload)).into_response())
@@ -262,6 +354,20 @@ async fn deploy(
 // ─────────────────── GET /devices/{id}/ota ───────────────────
 
 /// Current assignment + recent history for one device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/ota",
+    tag = "devices",
+    operation_id = "devices_ota_status",
+    summary = "OTA state of a device",
+    description = "Current (non-terminal) assignment and the 10 newest assignments. Any org member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, body = OtaStatus),
+        (status = 404, description = "Unknown device (`device-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn assignment_status(
     Path(id): Path<i64>,
     State(ctx): State<AppContext>,
@@ -272,7 +378,7 @@ async fn assignment_status(
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| not_found_code("device_not_found", "unknown device"))?;
+        .ok_or_else(|| device_not_found(id))?;
     // Only the 10 newest rows are loaded (the history grows forever); the
     // current assignment is the newest non-terminal row, looked up apart
     // when it is not among them.
@@ -291,12 +397,8 @@ async fn assignment_status(
             .as_ref()
             .map(assignment_dto),
     };
-    let history: Vec<serde_json::Value> = rows.iter().map(assignment_dto).collect();
-    Ok(format::json(serde_json::json!({
-        "current": current,
-        "history": history,
-    }))
-    .into_response())
+    let history: Vec<OtaAssignmentDto> = rows.iter().map(assignment_dto).collect();
+    Ok(format::json(OtaStatus { current, history }).into_response())
 }
 
 /// 403 of the OTA write routes (same code as the other device writes).
@@ -313,6 +415,22 @@ fn write_forbidden() -> Error {
 // ─────────────────── DELETE /devices/{id}/ota ───────────────────
 
 /// Cancel the active assignment (→ failed "cancelled" + journal).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/devices/{id}/ota",
+    tag = "devices",
+    operation_id = "devices_ota_cancel",
+    summary = "Cancel the active OTA deployment",
+    description = "Marks the active assignment failed with error `cancelled` and journals it. Returns the updated assignment. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, body = OtaAssignmentDto),
+        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (`device-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "No active deployment (`ota-no-active`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn cancel(
     Path(id): Path<i64>,
     State(ctx): State<AppContext>,
@@ -326,9 +444,12 @@ async fn cancel(
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| not_found_code("device_not_found", "unknown device"))?;
+        .ok_or_else(|| device_not_found(id))?;
     let Some(row) = ota::newest_active(&ctx.db, device.id).await? else {
-        return Err(conflict_code("ota_no_active", "no active OTA deployment"));
+        return Err(conflict_code(
+            err_codes::OTA_NO_ACTIVE,
+            "no active OTA deployment",
+        ));
     };
     let row = ota::transition(
         &ctx.db,
@@ -342,27 +463,39 @@ async fn cancel(
     Ok(format::json(assignment_dto(&row)).into_response())
 }
 
-// ─────────────────── GET /ota/firmware/{device_id}/{version} ───────────────────
+// ─────────────────── GET /ota/firmware/{version} ───────────────────
 
 /// Device-token authenticated download (same posture as /ws/device auth).
-/// Byte-proxy of the versioned OTA artifact.
+/// Byte-proxy of the versioned OTA artifact of the token's own device.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ota/firmware/{version}",
+    tag = "ota",
+    operation_id = "ota_firmware_download",
+    summary = "Download an OTA image (device only)",
+    description = "Called by the device itself during an OTA (the URL comes from the signed `ota_available` order): raw firmware image of the given version of the device the token designates. Authenticated with the device token (`Authorization: Bearer <device token>`, not a user JWT) plus its TLS client certificate, through the TLS edge only. Every authentication failure answers 404 `ota-auth-failed`.",
+    params(("version" = String, Path, description = "Firmware version (build record id)")),
+    responses(
+        (status = 200, content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 404, description = "Authentication failed (`ota-auth-failed`) or artifact missing (`ota-artifact-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn download_firmware(
     State(ctx): State<AppContext>,
-    Path((device_id_str, version)): Path<(String, String)>,
+    Path(version): Path<String>,
     headers: axum::http::HeaderMap,
 ) -> Result<Response> {
     let ingest = crate::services::settings::IngestSettings::from_config(&ctx.config);
+    let auth_failed = || not_found_code(err_codes::OTA_AUTH_FAILED, "authentication failed");
     if !super::device_link::arrived_over_tls(&headers, &ingest) {
-        return Err(not_found_code("auth_failed", "authentication failed"));
+        return Err(auth_failed());
     }
-    // The token designates the device; the path must name that same one.
+    // The token designates the device: only its own artifacts are served.
     let device = super::device_link::authenticate_device(&ctx.db, &headers, &ingest)
         .await
-        .map_err(|_| not_found_code("auth_failed", "authentication failed"))?
+        .map_err(|_| auth_failed())?
         .device;
-    if device.device_id != device_id_str {
-        return Err(not_found_code("auth_failed", "authentication failed"));
-    }
     // Artifact key is org-scoped: the authenticated device's own org.
     let key = pnex_firmware_builder::ota_artifact_key(device.org_id, &device.device_id, &version);
     let settings = firmware::FirmwareSettings::from_config(&ctx.config);
@@ -370,10 +503,18 @@ async fn download_firmware(
     let bytes = store
         .get(&key)
         .await
-        .map_err(|_| not_found_code("artifact_not_found", "artifact missing"))?;
+        .map_err(|_| not_found_code(err_codes::OTA_ARTIFACT_NOT_FOUND, "artifact missing"))?;
     Ok((
         [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
         bytes,
     )
         .into_response())
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(deploy, assignment_status, cancel, download_firmware))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

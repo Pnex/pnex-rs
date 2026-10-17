@@ -26,14 +26,9 @@ pub async fn set_max_keys(id: i64, max_keys: i32) -> Result<AgentInfo, ApiError>
     .await
 }
 
-/// `GET /api/v1/devices/{id}/agent-keys`.
+/// `GET /api/v1/devices/{id}/agent-keys` — every key (all pages).
 pub async fn keys(id: i64) -> Result<Vec<AgentKey>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/devices/{id}/agent-keys"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/devices/{id}/agent-keys")).await
 }
 
 /// `PATCH /api/v1/devices/{id}/agent-keys/{key_id}` — OpenObserve history.

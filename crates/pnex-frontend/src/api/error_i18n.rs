@@ -75,26 +75,24 @@ pub fn localize_field(_field: &str, value: &str) -> String {
     resolve(&key, args.as_ref())
 }
 
-/// Localize an [`ApiError`]: a 400 `{"violations": […]}` body resolves each
-/// violation (joined " ; "); otherwise a registered code → `err-<kebab>`
+/// Localize an [`ApiError`]: `errors.violations` resolves each violation
+/// (joined " ; "), a single `errors.fields` entry its token; otherwise a
+/// registered code → `err-<kebab>`
 /// with args; otherwise the verbatim extracted `message`. Also resolves
 /// client-side errors built with `ApiError::local` (err_codes client codes).
 pub fn localize(err: &ApiError) -> String {
-    // 400 {"violations": […]} — violation-level resolution first.
+    // Violation-level resolution first.
     if let Some(joined) = violations_localized(err) {
         return joined;
     }
-    // Single-field shaped body ({"<field>": "<value>"}) — resolve a
-    // machine token value; legacy prose displays verbatim.
-    let field_token = err.body.as_ref().and_then(|body| {
-        let obj = body.as_object()?;
-        if obj.len() != 1 {
-            return None;
-        }
-        obj.values().next()?.as_str().map(str::to_owned)
-    });
-    if let Some(value) = field_token {
-        return localize_field("", &value);
+    // Single field error — resolve its machine token.
+    let field_token = err
+        .fields()
+        .filter(|f| f.len() == 1)
+        .and_then(|f| f.iter().next())
+        .and_then(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())));
+    if let Some((field, value)) = field_token {
+        return localize_field(&field, &value);
     }
     match err.code.as_deref() {
         Some(code) if err_codes::exists(code) => {
@@ -164,13 +162,11 @@ pub fn localize_tool_summary(
         .unwrap_or_else(|_| summary.to_owned())
 }
 
-/// Localize a full API-violations payload (`{"violations": […]}`) — the
-/// localized form of `api::flows::violations_message`.
+/// Localize the `errors.violations` of an error — the localized form of
+/// `api::flows::violations_message`.
 pub fn violations_localized(err: &ApiError) -> Option<String> {
     let violations: Vec<String> = err
-        .body
-        .as_ref()?
-        .get("violations")?
+        .violations()?
         .as_array()?
         .iter()
         .filter_map(|v| serde_json::from_value::<FlowViolation>(v.clone()).ok())

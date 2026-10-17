@@ -13,6 +13,15 @@ use pnex_api_contract::{ServerInfo, CONTRACT, SERVICE};
 
 use crate::app;
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/meta/version",
+    tag = "meta",
+    operation_id = "meta_version",
+    security(()),
+    summary = "Server identity and API contract version (public)",
+    responses((status = 200, body = pnex_api_contract::ServerInfo))
+)]
 #[debug_handler]
 async fn version(State(ctx): State<AppContext>) -> Result<Response> {
     let issuer = crate::auth::settings::RauthySettings::from_config(&ctx.config)
@@ -45,6 +54,18 @@ fn public_origin(issuer_url: Option<&str>) -> Option<String> {
 /// `GET /api/v1/meta/ca` — the local root CA of the TLS edge (D70), public
 /// like `/version`: a client must fetch it BEFORE it can trust the server.
 /// Served as `.crt` so Android/iOS offer the certificate installer.
+#[utoipa::path(
+    get,
+    path = "/api/v1/meta/ca",
+    tag = "meta",
+    operation_id = "meta_ca",
+    security(()),
+    summary = "Local root CA of the TLS edge (public)",
+    responses(
+        (status = 200, content_type = "application/x-x509-ca-cert", body = String),
+        (status = 404, description = "No local CA (cloud mode)")
+    )
+)]
 #[debug_handler]
 async fn ca() -> Result<Response> {
     // Plain 404 (not `Error::NotFound`): no local CA is the normal state in
@@ -84,6 +105,14 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/meta")
         .add("/version", get(version))
         .add("/ca", get(ca))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(version, ca))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }
 
 #[cfg(test)]

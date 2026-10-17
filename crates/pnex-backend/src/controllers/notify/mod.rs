@@ -73,11 +73,7 @@ fn template_render_error(e: &pnex_notify::NotifyError) -> Error {
 }
 
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    crate::controllers::field_error(field, msg)
 }
 
 // Submodules (pure code moves from the former single-file controller).
@@ -120,4 +116,28 @@ pub fn routes() -> Routes {
                 .delete(delete_template),
         )
         .add("/templates/{id}/preview", post(preview_template))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        kinds,
+        list_channels,
+        create_channel,
+        test_draft,
+        channel_detail,
+        update_channel,
+        delete_channel,
+        test_channel,
+        list_deliveries,
+        list_templates,
+        create_template,
+        template_detail,
+        update_template,
+        delete_template,
+        preview_template
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

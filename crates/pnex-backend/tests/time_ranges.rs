@@ -210,13 +210,13 @@ async fn crud_upsert_and_field_tokens() {
         ] {
             let (st, e) = call(&server, "PATCH", &path, &env.alice, org, Some(body)).await;
             assert_eq!(st, 400, "{e}");
-            assert_eq!(e[field], token, "{e}");
+            assert_eq!(e["errors"]["fields"][field], token, "{e}");
         }
         let mut no_scope = range(&s, "x", "x");
         no_scope["scope_kind"] = json!("device");
         let (st, e) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(no_scope)).await;
         assert_eq!(st, 400);
-        assert_eq!(e["scope_kind"], "invalid", "{e}");
+        assert_eq!(e["errors"]["fields"]["scope_kind"], "invalid", "{e}");
 
         // Org scope: scope_id is the org, set by the server.
         let (st, o) = call(&server, "POST", "/api/v1/time-ranges", &env.alice, org, Some(json!({
@@ -279,7 +279,7 @@ END:VCALENDAR\r\n";
         // Bad format, unreadable body, too large.
         let (st, e) = upload(&server, "/api/v1/time-ranges/import?format=xml&scope_kind=org", &env.alice, org, "x").await;
         assert_eq!(st, 400);
-        assert_eq!(e["format"], "invalid");
+        assert_eq!(e["errors"]["fields"]["format"], "invalid");
         let (st, e) = upload(&server, &ics_path, &env.alice, org, "not a calendar").await;
         assert_eq!(st, 400);
         assert_eq!(e["error"], "time-range-import-invalid");
@@ -316,7 +316,7 @@ async fn org_isolation_and_viewer_read_only() {
         assert_eq!(all["count"], 0, "{all}");
         let (st, e) = call(&server, "GET", &day_query(&s), &env.bob, org_b, None).await;
         assert_eq!(st, 400);
-        assert_eq!(e["scope_id"], "invalid");
+        assert_eq!(e["errors"]["fields"]["scope_id"], "invalid");
         let (st, e) = call(
             &server,
             "POST",
@@ -327,7 +327,7 @@ async fn org_isolation_and_viewer_read_only() {
         )
         .await;
         assert_eq!(st, 400);
-        assert_eq!(e["scope_id"], "invalid");
+        assert_eq!(e["errors"]["fields"]["scope_id"], "invalid");
         let (st, e) = upload(
             &server,
             &format!("/api/v1/time-ranges/import?format=csv&scope_kind=stream&scope_id={s}"),
@@ -337,7 +337,7 @@ async fn org_isolation_and_viewer_read_only() {
         )
         .await;
         assert_eq!(st, 400);
-        assert_eq!(e["scope_id"], "invalid");
+        assert_eq!(e["errors"]["fields"]["scope_id"], "invalid");
         // Bob cannot reach alice's org scope either.
         let (st, _) = call(
             &server,
@@ -526,7 +526,7 @@ async fn range_upsert_deploy_needs_a_stream_of_the_org() {
         };
         let (st, body) = deploy(graph(&s_b)).await;
         assert_eq!(st, 400, "{body}");
-        let violations = body["violations"].as_array().expect("violations");
+        let violations = body["errors"]["violations"].as_array().expect("violations");
         assert_eq!(violations.len(), 1, "{body}");
         assert_eq!(violations[0]["code"], "time-range-scope-unknown");
         assert_eq!(violations[0]["node_id"], "r");
@@ -538,7 +538,7 @@ async fn range_upsert_deploy_needs_a_stream_of_the_org() {
     .await;
 }
 
-/// `POST /api/v1/telemetry/aggregate` (D182) without O2: bucket shapes,
+/// `POST /api/v1/telemetry/aggregate/query` (D182) without O2: bucket shapes,
 /// planned / actual basis, the org's ranges only, 400 on invalid input.
 #[tokio::test]
 #[serial]
@@ -587,7 +587,7 @@ async fn aggregate_by_range_and_slice_degrades_without_o2() {
                     "from": "2026-10-12T00:00:00+02:00", "to": "2026-10-13T00:00:00+02:00" } }
             })
         };
-        let path = "/api/v1/telemetry/aggregate";
+        let path = "/api/v1/telemetry/aggregate/query";
         let (st, v) = call(&server, "POST", path, &env.alice, org_a, Some(by_range(&s))).await;
         assert_eq!(st, 200, "{v}");
         assert_eq!(v["available"], false, "{v}");
@@ -610,7 +610,7 @@ async fn aggregate_by_range_and_slice_degrades_without_o2() {
         // Ranges are the caller's org only: alice's stream is not Bob's scope.
         let (st, e) = call(&server, "POST", path, &env.bob, org_b, Some(by_range(&s))).await;
         assert_eq!(st, 400, "{e}");
-        assert_eq!(e["scope_id"], "invalid");
+        assert_eq!(e["errors"]["fields"]["scope_id"], "invalid");
         let (st, v) = call(&server, "POST", path, &env.bob, org_b, Some(by_range(&sb))).await;
         assert_eq!(st, 200);
         assert_eq!(v["rows"].as_array().unwrap().len(), 1, "{v}");
@@ -658,7 +658,7 @@ async fn aggregate_by_range_and_slice_degrades_without_o2() {
             }
             let (st, e) = call(&server, "POST", path, &env.alice, org_a, Some(body)).await;
             assert_eq!(st, 400, "{e}");
-            assert!(e.get(field).is_some(), "{field}: {e}");
+            assert!(e["errors"]["fields"].get(field).is_some(), "{field}: {e}");
         }
         for (key, val, field) in [
             ("timezone", json!("Mars/Olympus"), "timezone"),
@@ -669,7 +669,7 @@ async fn aggregate_by_range_and_slice_degrades_without_o2() {
             body["buckets"]["slices"][key] = val;
             let (st, e) = call(&server, "POST", path, &env.alice, org_a, Some(body)).await;
             assert_eq!(st, 400, "{e}");
-            assert!(e.get(field).is_some(), "{field}: {e}");
+            assert!(e["errors"]["fields"].get(field).is_some(), "{field}: {e}");
         }
     })
     .await;

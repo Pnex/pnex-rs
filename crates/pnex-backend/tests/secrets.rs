@@ -169,7 +169,7 @@ async fn crud_never_returns_values_and_encrypts_at_rest() {
         // Rename keeps the value; a new value replaces it.
         let (s, _) = call(
             &server,
-            "PUT",
+            "PATCH",
             &format!("/api/v1/secrets/{id}"),
             &alice,
             org,
@@ -185,7 +185,7 @@ async fn crud_never_returns_values_and_encrypts_at_rest() {
         );
         let (s, _) = call(
             &server,
-            "PUT",
+            "PATCH",
             &format!("/api/v1/secrets/{id}"),
             &alice,
             org,
@@ -210,7 +210,7 @@ async fn crud_never_returns_values_and_encrypts_at_rest() {
             Some(json!({ "name": "  ", "value": "x" })),
         )
         .await;
-        assert_eq!((s, body["name"].as_str()), (400, Some("required")));
+        assert_eq!((s, body["errors"]["fields"]["name"].as_str()), (400, Some("required")));
         let (s, body) = call(
             &server,
             "POST",
@@ -220,7 +220,7 @@ async fn crud_never_returns_values_and_encrypts_at_rest() {
             Some(json!({ "name": "no-value" })),
         )
         .await;
-        assert_eq!((s, body["value"].as_str()), (400, Some("required")));
+        assert_eq!((s, body["errors"]["fields"]["value"].as_str()), (400, Some("required")));
         let (s, body) = call(
             &server,
             "POST",
@@ -263,7 +263,7 @@ async fn other_orgs_and_viewers_cannot_write_or_read_details() {
         assert_eq!(list["count"], 0);
         let (s, _) = call(
             &server,
-            "PUT",
+            "PATCH",
             &format!("/api/v1/secrets/{id}"),
             &bob,
             bob_org,
@@ -301,7 +301,7 @@ async fn other_orgs_and_viewers_cannot_write_or_read_details() {
                 Some(json!({ "name": "n", "value": "v" })),
             ),
             (
-                "PUT",
+                "PATCH",
                 format!("/api/v1/secrets/{id}"),
                 Some(json!({ "name": "n" })),
             ),

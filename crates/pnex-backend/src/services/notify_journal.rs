@@ -84,8 +84,8 @@ pub fn delivery_of(hit: &serde_json::Value) -> NotifyDelivery {
         channel_id: uuid("channel_id").unwrap_or_default(),
         channel_kind: s("channel_kind").unwrap_or_default(),
         template_id: uuid("template_id"),
-        source: s("source").unwrap_or_default(),
-        status: s("status").unwrap_or_default(),
+        source: pnex_core::DeliverySource::parse(&s("source").unwrap_or_default()),
+        status: pnex_core::DeliveryStatus::parse(&s("status").unwrap_or_default()),
         http_status: hit["http_status"]
             .as_u64()
             .and_then(|v| u16::try_from(v).ok()),
@@ -411,7 +411,7 @@ mod tests {
         assert_eq!(back.template_id, entry.template_id);
         assert_eq!(back.http_status, Some(502));
         assert_eq!(back.flow_id, Some(4));
-        assert_eq!(back.status, "failed");
+        assert_eq!(back.status, pnex_core::DeliveryStatus::Failed);
         assert!(back.created_at.starts_with("2026-"));
     }
 

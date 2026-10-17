@@ -271,7 +271,7 @@ fn Board(case_id: String, version: i32) -> Element {
 fn ReadLog(case_id: String) -> Element {
     let ws = use_context::<Ws>();
     let log = use_resource(use_reactive!(|case_id| async move {
-        api::cases::reads(&case_id).await.ok().flatten()
+        api::cases::reads(&case_id, 20).await.ok()
     }));
     let local = (ws.local_time)();
     let stamp = |s: &str| {

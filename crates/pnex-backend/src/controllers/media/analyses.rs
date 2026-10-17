@@ -8,12 +8,20 @@ fn db_error(e: sea_orm::DbErr) -> Error {
     Error::InternalServerError
 }
 
+/// Analysis offers, step states and index state of an asset's current version.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(super) struct MediaAnalysesState {
+    offers: Vec<pnex_core::media_analysis::StepOffer>,
+    analyses: Vec<pnex_core::media_analysis::MediaAnalysis>,
+    index: Option<doc_search::IndexState>,
+}
+
 /// Offers, step states and index state of the current version.
 async fn state_json(
     ctx: &AppContext,
     org_id: i64,
     asset: &media_assets::Model,
-) -> Result<serde_json::Value> {
+) -> Result<MediaAnalysesState> {
     let offers = media_analyses::offers(ctx, org_id, &asset.kind, asset.current_version_id)
         .await
         .map_err(db_error)?;
@@ -26,10 +34,28 @@ async fn state_json(
     let index = doc_search::state_of(&ctx.db, org_id, asset.id)
         .await
         .map_err(db_error)?;
-    Ok(serde_json::json!({ "offers": offers, "analyses": analyses, "index": index }))
+    Ok(MediaAnalysesState {
+        offers,
+        analyses,
+        index,
+    })
 }
 
 /// `GET /api/v1/media/{id}/analyses` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/analyses",
+    tag = "media",
+    operation_id = "media_analyses_get",
+    summary = "Get the analyses of a media asset",
+    description = "Analysis steps offered for the current version (with a blocking error code when unavailable), the state of each launched step, and the search index state.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, body = MediaAnalysesState),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn analyses(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -43,6 +69,24 @@ pub(super) async fn analyses(
 
 /// `POST /api/v1/media/{id}/analyses` — owner/admin: (re)launch steps on
 /// the current version; 202 with the new state.
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/{id}/analyses",
+    tag = "media",
+    operation_id = "media_analyses_start",
+    summary = "Start analyses on a media asset",
+    description = "(Re)launches the given steps on the current version, asynchronously: `index` (text search) or `summarize` (summary written to a page by the organisation's LLM, which consumes LLM quota). Steps over the large-call threshold need `confirm_large`. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    request_body = pnex_core::media_analysis::StartAnalyses,
+    responses(
+        (status = 202, description = "Steps queued; returns the new state", body = MediaAnalysesState),
+        (status = 400, description = "Step not offered for this kind, or large step not confirmed (`media-analysis-step-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or no current version", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "No LLM configured for the organisation (`media-analysis-no-llm`), or a step already running (`media-analysis-busy`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn start_analyses(
     State(ctx): State<AppContext>,
     org: OrgContext,

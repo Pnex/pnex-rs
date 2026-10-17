@@ -1,5 +1,5 @@
 //! Aggregation by bucket (ontology.md D182, media-ingest.md D171) behind
-//! `POST /api/v1/telemetry/aggregate`: one value of a series per time range
+//! `POST /api/v1/telemetry/aggregate/query`: one value of a series per time range
 //! of a scope, or per time-of-day slice repeated over the days of a window.
 //! Generic read primitive: a show, a shift, a production batch.
 //!
@@ -345,7 +345,7 @@ fn check_request(req: &AggregateRequest) -> Result<Checked, AggregateError> {
     })
 }
 
-/// `POST /api/v1/telemetry/aggregate` — see the module doc.
+/// `POST /api/v1/telemetry/aggregate/query` — see the module doc.
 pub async fn aggregate(
     db: &DatabaseConnection,
     client: Option<&Client>,

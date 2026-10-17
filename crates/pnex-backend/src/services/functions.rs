@@ -22,7 +22,7 @@ use pnex_core::{
 /// panne DB (500 au contrôleur).
 #[derive(Debug)]
 pub enum FunctionWriteError {
-    /// (champ, message affichable).
+    /// (field, machine token: `required`, `max_length:200`).
     Field(String, String),
     /// Directive `@input`/`@output` malformée.
     Directive(pnex_core::DirectiveError),
@@ -70,13 +70,13 @@ fn validate_name(name: Option<&str>) -> Result<String, FunctionWriteError> {
     if name.is_empty() {
         return Err(FunctionWriteError::Field(
             "name".into(),
-            "le nom est requis".into(),
+            pnex_core::err_codes::FIELD_REQUIRED.into(),
         ));
     }
     if name.len() > 200 {
         return Err(FunctionWriteError::Field(
             "name".into(),
-            "maximum 200 characters".into(),
+            format!("{}:200", pnex_core::err_codes::FIELD_MAX_LENGTH),
         ));
     }
     Ok(name.to_string())

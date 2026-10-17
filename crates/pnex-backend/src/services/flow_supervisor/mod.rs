@@ -183,7 +183,7 @@ pub fn runtime_status(settings: &FlowSettings, flow_id: i64) -> FlowRuntimeStatu
     // Santé de l'engine de CE flow (None = inconnue — backend redémarré,
     // pas encore d'annonce du runtime).
     if let Some((engine_status, last_error)) = flow_engine_health(flow_id) {
-        status.engine_status = Some(engine_status.as_str().to_string());
+        status.engine_status = Some(engine_status.dto());
         status.last_error = last_error;
     }
     status

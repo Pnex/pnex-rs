@@ -58,6 +58,38 @@ pub fn routes() -> Routes {
         )
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        stream_list,
+        stream_create,
+        stream_get,
+        stream_update,
+        stream_delete,
+        stream_test,
+        capture_device_list,
+        segment_list,
+        segment_retry,
+        transcript_search,
+        metadata_list,
+        model_list,
+        model_create,
+        model_get,
+        model_update,
+        model_delete,
+        model_check,
+        model_test,
+        profile_list,
+        profile_create,
+        profile_get,
+        profile_update,
+        profile_delete
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 /// Segments uploaded by mesh workers (D160, `capture_on = worker`).
 /// Service token, never routed by the public edge (R7, internal guard).
 pub fn internal_routes() -> Routes {
@@ -121,18 +153,40 @@ async fn internal_segment(
 /// Upload cap of a model test clip (a few minutes of compressed audio).
 const TEST_CLIP_MAX_BYTES: usize = 25 * 1024 * 1024;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct TestQuery {
     /// File name of the clip: its extension picks the demuxer when the
     /// content type does not.
     #[serde(default)]
     name: String,
+    /// ISO 639-1 language code or `auto` (default `fr`).
     #[serde(default)]
     language: Option<String>,
 }
 
 /// `POST /api/v1/asr/models/{id}/test` — `can_write`: transcribes a dropped
 /// audio clip (first 120 s) with a checked model (D167).
+#[utoipa::path(
+    post,
+    path = "/api/v1/asr/models/{id}/test",
+    tag = "asr",
+    operation_id = "asr_models_test",
+    summary = "Transcribe an audio clip with a model",
+    description = "Transcribes the first 120 s of the uploaded audio clip (raw body, up to 25 MB; format from `Content-Type` or the `name` extension) with a checked speech-to-text model. Nothing is stored. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Audio model UUID"), TestQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Audio file bytes"),
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrTestResult),
+        (status = 400, description = "Not a speech-to-text model (`asr-model-unsupported`), unreadable audio (`asr-test-audio-unsupported`) or invalid `language` (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Model has not passed its check (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "Transcription failed (`asr-test-failed`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "ffmpeg missing on the server (`asr-test-failed`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_test(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -221,11 +275,7 @@ fn require_write(org: &OrgContext) -> Result<()> {
 }
 
 fn field(field: &str, token: &str) -> Result<Response> {
-    Ok((
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: token })),
-    )
-        .into_response())
+    Ok(super::field_error(field, token))
 }
 
 fn stream_error(e: StreamError) -> Result<Response> {
@@ -321,6 +371,20 @@ struct PageQuery {
 // ───────────────────────────── Streams ─────────────────────────────
 
 /// `GET /api/v1/media/streams` — every member (D14 envelope).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/streams",
+    tag = "media",
+    operation_id = "media_streams_list",
+    summary = "List the media streams of the organisation",
+    description = "Paginated captured streams (radio, HLS, RTSP camera, replayed file…) with capture state and health. Secret values are never returned, only whether one is set and its vault reference.",
+    params(("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset"), ("search" = Option<String>, Query, description = "Name contains (case-insensitive)"), ("label" = Option<String>, Query, description = "Label filter `name` or `name:value`")),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::MediaStream>),
+        (status = 400, description = "Invalid `label` filter (`field-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -374,14 +438,68 @@ async fn stream_list(
 /// `GET /api/v1/media/capture-devices` — every member: the org's capture
 /// boxes (agents that announced `media_capture`, lot 6b), for the
 /// "capture location" picker. Names and ids only (R4).
-async fn capture_device_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/capture-devices",
+    tag = "media",
+    operation_id = "media_capture_devices_list",
+    summary = "List the capture boxes of the organisation",
+    description = "Edge agents that announced the media capture capability, usable as `capture_on = device:<id>` for a stream. Names and ids only.",
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::MediaCaptureDevice>)
+    ),
+    params(ListPage),
+    security(("bearer" = [], "org" = []))
+)]
+async fn capture_device_list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ListPage>,
+) -> Result<Response> {
     match crate::services::media_ingest::boxes::list(&ctx.db, org.org.id).await {
-        Ok(v) => format::json(v),
+        Ok(v) => paged("/api/v1/media/capture-devices", &q, v),
         Err(e) => db_error(e),
     }
 }
 
+/// Page parameters of the small org catalogues (capture boxes, ASR
+/// profiles and models), paginated in memory.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ListPage {
+    /// Page size (default 10, max 100).
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// D14 envelope of an in-memory list.
+// shortcut: the whole org list is loaded then sliced (tens of rows at most);
+// push LIMIT/OFFSET into the services if a catalogue grows.
+fn paged<T: serde::Serialize>(path: &str, q: &ListPage, all: Vec<T>) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let count = all.len() as i64;
+    let (skip, take) = page.slice(all.len());
+    let rows: Vec<T> = all.into_iter().skip(skip).take(take).collect();
+    format::json(pagination::envelope(path, &[], page, count, rows))
+}
+
 /// `GET /api/v1/media/streams/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/streams/{id}",
+    tag = "media",
+    operation_id = "media_streams_get",
+    summary = "Get a media stream",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
+    description = "One stream with its capture state and health; never the secret value.",
+    responses(
+        (status = 200, body = pnex_core::media_ingest::MediaStream),
+        (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_get(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -395,6 +513,23 @@ async fn stream_get(
 
 /// `POST /api/v1/media/streams` — `can_write`; binding a secret needs
 /// owner/admin (R9, enforced by the vault).
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/streams",
+    tag = "media",
+    operation_id = "media_streams_create",
+    summary = "Create a media stream",
+    description = "Registers a stream to capture and transcribe. An enabled stream starts being captured (network fetch, storage, ASR compute). The URL must not carry credentials: use `auth_secret` (a vault secret sent only to the URL's origin); binding a secret needs owner/admin. Writer role required. Limited number of streams per organisation.",
+    request_body = pnex_core::media_ingest::MediaStreamInput,
+    responses(
+        (status = 201, body = pnex_core::media_ingest::MediaStream),
+        (status = 400, description = "Per-field error `{\"<field>\": token}`, URL carrying a credential (`media-url-has-credentials`), unreachable stream (`media-stream-unreachable`) or capture location not supported (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`), or secret binding reserved to owner/admin", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Referenced vault secret not found", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Stream limit reached (`media-stream-limit`) or profile model not a valid audio model (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -415,6 +550,24 @@ async fn stream_create(
 /// `PATCH /api/v1/media/streams/{id}` — `can_write`; absent fields keep
 /// their value. Moving a secret-holding stream to another origin needs
 /// owner/admin (R9).
+#[utoipa::path(
+    patch,
+    path = "/api/v1/media/streams/{id}",
+    tag = "media",
+    operation_id = "media_streams_update",
+    summary = "Update a media stream",
+    description = "Absent fields keep their value; enabling/disabling starts or stops the capture. Moving a secret-holding stream to another origin, or changing its secret, needs owner/admin. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
+    request_body = pnex_core::media_ingest::MediaStreamInput,
+    responses(
+        (status = 200, body = pnex_core::media_ingest::MediaStream),
+        (status = 400, description = "Per-field error `{\"<field>\": token}`, URL carrying a credential (`media-url-has-credentials`), unreachable stream (`media-stream-unreachable`) or capture location not supported (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`), or secret change reserved to owner/admin", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream (`media-stream-not-found`) or referenced vault secret", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Profile model not a valid audio model (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -434,6 +587,21 @@ async fn stream_update(
 
 /// `DELETE /api/v1/media/streams/{id}` — `can_write`. Segment rows go with
 /// the stream (cascade); blobs still stored are removed best effort.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/media/streams/{id}",
+    tag = "media",
+    operation_id = "media_streams_delete",
+    summary = "Delete a media stream",
+    description = "Stops the capture and deletes the stream with its segments and their stored audio. Transcripts already written to the telemetry store are not deleted. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -472,6 +640,22 @@ const STREAM_TEST_LIMIT: std::time::Duration = std::time::Duration::from_secs(45
 /// extract of the saved stream (same filtered fetcher and confined decoder
 /// as the capture, nothing stored, capture state untouched) and transcribes
 /// it with the stream's profile (§7).
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/streams/{id}/test",
+    tag = "media",
+    operation_id = "media_streams_test",
+    summary = "Test a media stream",
+    description = "Captures a first extract of the saved stream (up to 45 s wait), then transcribes it with the stream's ASR profile. Nothing is stored and the capture state is untouched. Capture or transcription failures are reported in the 200 body (`capture_error`, `transcribe_error`). Not available for streams captured by a capture box. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
+    responses(
+        (status = 200, body = pnex_core::media_ingest::StreamTestResult),
+        (status = 400, description = "Stream captured by a capture box (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn stream_test(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -539,6 +723,21 @@ async fn stream_test(
 
 /// `GET /api/v1/media/streams/{id}/segments` — every member, newest
 /// first, optional `state` filter (D14 envelope).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/streams/{id}/segments",
+    tag = "media",
+    operation_id = "media_streams_segments_list",
+    summary = "List the captured segments of a stream",
+    description = "Paginated audio segments, newest first, with their transcription state.",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID"), ("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset"), ("state" = Option<String>, Query, description = "Segment state filter (`captured`, `queued`, `transcribing`, `transcribed`, `failed`, `skipped_silence`, `skipped_backlog`)")),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::MediaSegment>),
+        (status = 400, description = "Unknown `state` (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn segment_list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -578,6 +777,22 @@ async fn segment_list(
 /// `POST /api/v1/media/streams/{id}/segments/retry` — `can_write`:
 /// re-queues the failed segments whose audio is still kept (D161: a failed
 /// job is never replayed by the queue itself).
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/streams/{id}/segments/retry",
+    tag = "media",
+    operation_id = "media_streams_segments_retry",
+    summary = "Retry the failed segments of a stream",
+    description = "Re-queues for transcription every failed segment whose audio is still stored (consumes ASR compute). Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
+    responses(
+        (status = 200, body = MediaSegmentsRequeued),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Stream has no ASR profile (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn segment_retry(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -605,7 +820,15 @@ async fn segment_retry(
     for seg in &failed {
         crate::services::media_ingest::segments::enqueue(&ctx, seg, false).await;
     }
-    format::json(serde_json::json!({ "requeued": failed.len() }))
+    format::json(MediaSegmentsRequeued {
+        requeued: failed.len(),
+    })
+}
+
+/// Number of failed segments re-queued for transcription.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct MediaSegmentsRequeued {
+    requeued: usize,
 }
 
 fn segment_view(s: &media_segments::Model) -> MediaSegment {
@@ -614,7 +837,8 @@ fn segment_view(s: &media_segments::Model) -> MediaSegment {
         seq: s.seq,
         started_at: s.started_at.to_rfc3339(),
         ended_at: s.ended_at.to_rfc3339(),
-        clock_source: s.clock_source.clone(),
+        clock_source: pnex_core::media_ingest::ClockSource::from_wire(&s.clock_source)
+            .unwrap_or(pnex_core::media_ingest::ClockSource::Host),
         state: SegmentState::from_wire(&s.state).unwrap_or(SegmentState::Failed),
         size_bytes: s.size_bytes,
         asr_model_id: s.asr_model_id.map(|v| v.to_string()),
@@ -626,14 +850,49 @@ fn segment_view(s: &media_segments::Model) -> MediaSegment {
 // ───────────────────────────── Profiles ─────────────────────────────
 
 /// `GET /api/v1/asr/profiles` — every member.
-async fn profile_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/asr/profiles",
+    tag = "asr",
+    operation_id = "asr_profiles_list",
+    summary = "List the ASR profiles of the organisation",
+    description = "Paginated transcription profiles (`limit` default 10, max 100; `offset`): speech-to-text model, optional VAD and diarization models, language, beam.",
+    params(ListPage),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::AsrProfile>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn profile_list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ListPage>,
+) -> Result<Response> {
     match profiles::list(&ctx.db, org.org.id).await {
-        Ok(rows) => format::json(rows.iter().map(profiles::view).collect::<Vec<_>>()),
+        Ok(rows) => paged(
+            "/api/v1/asr/profiles",
+            &q,
+            rows.iter().map(profiles::view).collect(),
+        ),
         Err(e) => db_error(e),
     }
 }
 
 /// `GET /api/v1/asr/profiles/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/asr/profiles/{id}",
+    tag = "asr",
+    operation_id = "asr_profiles_get",
+    summary = "Get an ASR profile",
+    description = "One transcription profile.",
+    params(("id" = String, Path, format = "uuid", description = "ASR profile UUID")),
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrProfile),
+        (status = 404, description = "Unknown ASR profile (`asr-profile-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn profile_get(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -646,6 +905,22 @@ async fn profile_get(
 }
 
 /// `POST /api/v1/asr/profiles` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/asr/profiles",
+    tag = "asr",
+    operation_id = "asr_profiles_create",
+    summary = "Create an ASR profile",
+    description = "Creates a transcription profile; diarization needs both its segmentation and embedding models. Writer role required.",
+    request_body = pnex_core::media_ingest::AsrProfileInput,
+    responses(
+        (status = 201, body = pnex_core::media_ingest::AsrProfile),
+        (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`asr-profile-name-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn profile_create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -659,6 +934,24 @@ async fn profile_create(
 }
 
 /// `PATCH /api/v1/asr/profiles/{id}` — `can_write`.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/asr/profiles/{id}",
+    tag = "asr",
+    operation_id = "asr_profiles_update",
+    summary = "Update an ASR profile",
+    description = "Absent fields keep their value; an empty string clears an optional model. Applies to the next transcribed segments of the streams using it. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "ASR profile UUID")),
+    request_body = pnex_core::media_ingest::AsrProfileInput,
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrProfile),
+        (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown ASR profile (`asr-profile-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`asr-profile-name-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn profile_update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -673,6 +966,21 @@ async fn profile_update(
 }
 
 /// `DELETE /api/v1/asr/profiles/{id}` — `can_write`.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/asr/profiles/{id}",
+    tag = "asr",
+    operation_id = "asr_profiles_delete",
+    summary = "Delete an ASR profile",
+    description = "Deletes the profile; streams using it stop being transcribed until another profile is set. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "ASR profile UUID")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown ASR profile (`asr-profile-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn profile_delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -699,6 +1007,15 @@ fn model_error(e: ModelError) -> Result<Response> {
             StatusCode::CONFLICT,
             err_codes::ASR_MODEL_NAME_TAKEN,
             "A model of the org already has this name.",
+        )),
+        ModelError::InUse { profiles } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::ASR_MODEL_IN_USE,
+            format!(
+                "The model is used by ASR profiles: {}. Delete with force=true to remove them too.",
+                profiles.join(", ")
+            ),
+            Some(serde_json::json!({ "profiles": profiles.join(", ") })),
         )),
         ModelError::Unsupported => Err(detail(
             StatusCode::BAD_REQUEST,
@@ -728,10 +1045,27 @@ async fn model_view(
 }
 
 /// `GET /api/v1/asr/models` — every member.
-async fn model_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/asr/models",
+    tag = "asr",
+    operation_id = "asr_models_list",
+    summary = "List the audio models of the organisation",
+    description = "Paginated audio models of the registry (`limit` default 10, max 100; `offset`): speech-to-text, VAD, diarization, speaker embedding, with their check results on the server and on transcription workers.",
+    params(ListPage),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::AsrModel>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn model_list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ListPage>,
+) -> Result<Response> {
     match models::list(&ctx.db, org.org.id).await {
         Ok(rows) => match models::views(&ctx.db, &rows).await {
-            Ok(v) => format::json(v),
+            Ok(v) => paged("/api/v1/asr/models", &q, v),
             Err(e) => db_error(e),
         },
         Err(e) => db_error(e),
@@ -739,6 +1073,20 @@ async fn model_list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Re
 }
 
 /// `GET /api/v1/asr/models/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/asr/models/{id}",
+    tag = "asr",
+    operation_id = "asr_models_get",
+    summary = "Get an audio model",
+    description = "One audio model with its checks.",
+    params(("id" = String, Path, format = "uuid", description = "Audio model UUID")),
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrModel),
+        (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_get(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -752,6 +1100,23 @@ async fn model_get(
 
 /// `POST /api/v1/asr/models` — `can_write`. The files are read and the
 /// model checked before the answer (family read, never typed).
+#[utoipa::path(
+    post,
+    path = "/api/v1/asr/models",
+    tag = "asr",
+    operation_id = "asr_models_create",
+    summary = "Register an audio model",
+    description = "Registers a `model` media asset (archive or GGML file) as an audio model. The files are read and the model is loaded and checked on the server before the answer (family and task are read from the files, never typed); this can take a while. Writer role required.",
+    request_body = pnex_core::media_ingest::AsrModelInput,
+    responses(
+        (status = 201, body = pnex_core::media_ingest::AsrModel),
+        (status = 400, description = "Per-field error `{\"<field>\": token}`, or not a supported audio model (`asr-model-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`asr-model-name-taken`)", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "No runtime of this server runs this model family (`asr-runtime-unavailable`, `errors.args.family`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -766,6 +1131,24 @@ async fn model_create(
 
 /// `PATCH /api/v1/asr/models/{id}` — `can_write` (name, description,
 /// license; the file never changes).
+#[utoipa::path(
+    patch,
+    path = "/api/v1/asr/models/{id}",
+    tag = "asr",
+    operation_id = "asr_models_update",
+    summary = "Update an audio model",
+    description = "Name, description and license only; the model file never changes. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Audio model UUID")),
+    request_body = pnex_core::media_ingest::AsrModelInput,
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrModel),
+        (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`asr-model-name-taken`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -779,14 +1162,39 @@ async fn model_update(
     }
 }
 
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct DeleteModelQuery {
+    /// Also delete the ASR profiles that use the model (default false).
+    #[serde(default)]
+    force: bool,
+}
+
 /// `DELETE /api/v1/asr/models/{id}` — `can_write`.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/asr/models/{id}",
+    tag = "asr",
+    operation_id = "asr_models_delete",
+    summary = "Delete an audio model",
+    description = "Removes the model from the registry; the model's media asset is kept. While ASR profiles use the model, answers 409 `asr-model-in-use` (`errors.args.profiles` = their names) unless `force=true`: then the profiles whose speech-to-text model it is are deleted too (their streams stop being transcribed until another profile is set) and it is cleared from the VAD/diarization slots of the others. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Audio model UUID"), DeleteModelQuery),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Profiles use the model (`asr-model-in-use`, `errors.args.profiles`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    Query(q): Query<DeleteModelQuery>,
 ) -> Result<Response> {
     require_write(&org)?;
-    match models::delete(&ctx, org.org.id, id).await {
+    match models::delete(&ctx, org.org.id, id, q.force).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => model_error(e),
     }
@@ -794,6 +1202,23 @@ async fn model_delete(
 
 /// `POST /api/v1/asr/models/{id}/check` — `can_write`: reload the model and
 /// transcribe the reference sample on this server.
+#[utoipa::path(
+    post,
+    path = "/api/v1/asr/models/{id}/check",
+    tag = "asr",
+    operation_id = "asr_models_check",
+    summary = "Re-check an audio model",
+    description = "Reloads the model and transcribes the reference sample on this server, updating its check (load time, real-time factor, word error rate). Synchronous and compute-heavy. Writer role required.",
+    params(("id" = String, Path, format = "uuid", description = "Audio model UUID")),
+    responses(
+        (status = 200, body = pnex_core::media_ingest::AsrModel),
+        (status = 400, description = "Not a supported audio model (`asr-model-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "No runtime for this model family (`asr-runtime-unavailable`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn model_check(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -838,6 +1263,22 @@ fn parse_time(
 
 /// `GET /api/v1/media/transcripts` — every member. Slugs are resolved to
 /// stream rows of the org; O2 stream names are built server side (D165).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/transcripts",
+    tag = "media",
+    operation_id = "media_transcripts_search",
+    summary = "Search the transcripts of the organisation's streams",
+    description = "Paginated transcribed segments, read from the telemetry store, optionally filtered by streams, text and time range.",
+    params(("stream" = Option<String>, Query, description = "Comma-separated stream slugs; empty = every stream of the organisation"), ("q" = Option<String>, Query, description = "Text to search (max length enforced)"), ("from" = Option<String>, Query, format = DateTime, description = "Lower time bound, RFC 3339"), ("to" = Option<String>, Query, format = DateTime, description = "Upper time bound, RFC 3339"), ("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset")),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::TranscriptRecord>),
+        (status = 400, description = "`field-invalid`: `q` `max_length:N`, `from`/`to` `invalid`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "A listed stream slug is unknown (`media-stream-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "Telemetry store unavailable (`media-transcripts-unavailable`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn transcript_search(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -922,6 +1363,22 @@ async fn transcript_search(
 /// metadata events of one stream of the org (D170), newest first. The slug
 /// is resolved to a stream row of the org; the O2 stream name is built
 /// server side.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/metadata",
+    tag = "media",
+    operation_id = "media_metadata_list",
+    summary = "List the in-band metadata events of a stream",
+    description = "Paginated in-band metadata (e.g. ICY track titles) of one stream, newest first, read from the telemetry store.",
+    params(("stream" = String, Query, description = "Stream slug (required)"), ("from" = Option<String>, Query, format = DateTime, description = "Lower time bound, RFC 3339"), ("to" = Option<String>, Query, format = DateTime, description = "Upper time bound, RFC 3339"), ("limit" = Option<i64>, Query, description = "Page size (default 10, max 100)"), ("offset" = Option<i64>, Query, description = "Page offset")),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::media_ingest::MetadataRecord>),
+        (status = 400, description = "`field-invalid`: `stream` `required`, `from`/`to` `invalid`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream slug (`media-stream-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "Telemetry store unavailable (`media-transcripts-unavailable`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn metadata_list(
     State(ctx): State<AppContext>,
     org: OrgContext,

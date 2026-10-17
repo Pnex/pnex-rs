@@ -177,6 +177,7 @@ pub struct BoardProfilePin {
 
 /// Board-level pin kind (header role) — silicon capabilities live in caps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BoardPinKind {
     Gpio,
@@ -187,6 +188,7 @@ pub enum BoardPinKind {
 
 /// Header side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Side {
     Left,
@@ -195,6 +197,7 @@ pub enum Side {
 
 /// Pin position — side + 0-based index within that side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PinPos {
     pub side: Side,
     pub index: u16,

@@ -90,6 +90,7 @@ impl TypeSet {
 
 /// Minimal org role allowed to write objects of a type (D188).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum WriteRole {
     #[default]
@@ -100,6 +101,7 @@ pub enum WriteRole {
 
 /// An object type (D176). Containment rules live on the type (D180).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectTypeDef {
     /// `[a-z][a-z0-9_]*`, unique per org; system keys are reserved.
     pub key: String,
@@ -121,9 +123,11 @@ pub struct ObjectTypeDef {
     pub write_role: WriteRole,
     /// Types this one may contain; `None` = contains nothing.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<serde_json::Value>))]
     pub may_contain: Option<TypeSet>,
     /// Types this one may be contained in; `None` = never contained.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<serde_json::Value>))]
     pub may_be_contained_in: Option<TypeSet>,
     /// Operations invocable on the objects of this type (D183).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -134,6 +138,7 @@ pub struct ObjectTypeDef {
 /// executed by the deployed flows holding a matching `action_trigger` node,
 /// journaled. Never executed by the server itself (D123).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ActionDef {
     /// `[a-z][a-z0-9_]*`, unique within the type.
     pub key: String,
@@ -150,6 +155,7 @@ pub struct ActionDef {
 
 /// A link type (D179): directed, from a set of types to a set of types.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkTypeDef {
     pub key: String,
     #[serde(default)]
@@ -163,7 +169,11 @@ pub struct LinkTypeDef {
     pub inverse_names: Names,
     #[serde(default)]
     pub system: bool,
+    /// Source types: `"*"` or a list of type keys.
+    #[cfg_attr(feature = "openapi", schema(value_type = serde_json::Value))]
     pub from_types: TypeSet,
+    /// Target types: `"*"` or a list of type keys.
+    #[cfg_attr(feature = "openapi", schema(value_type = serde_json::Value))]
     pub to_types: TypeSet,
     /// A source has at most one open link of this type.
     #[serde(default)]

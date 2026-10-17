@@ -35,11 +35,24 @@ impl DeviceType {
 }
 
 /// Direction of a capability — `device_capabilities.mode`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
 pub enum CapabilityMode {
     Input,
     Output,
     InputOutput,
+}
+
+impl CapabilityMode {
+    /// Wire name (`input`, `output`, `input_output`).
+    pub fn name(self) -> &'static str {
+        match self {
+            CapabilityMode::Input => "input",
+            CapabilityMode::Output => "output",
+            CapabilityMode::InputOutput => "input_output",
+        }
+    }
 }
 
 /// Capability a predefined device advertises — `device_capabilities.name`.

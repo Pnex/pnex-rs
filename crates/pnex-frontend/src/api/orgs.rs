@@ -1,6 +1,8 @@
 //! Endpoints organisations — CRUD + membres (multi-tenant Phase 3).
 
-use pnex_core::{AddMember, CreateOrg, OrgDetail, OrgMember, OrgSummary, UpdateMember, UpdateOrg};
+use pnex_core::{
+    AddMember, CreateOrg, OrgDetail, OrgMember, OrgRole, OrgSummary, UpdateMember, UpdateOrg,
+};
 
 use crate::api::client;
 use crate::api::error::ApiError;
@@ -48,14 +50,14 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
 
 /// `POST /api/v1/orgs/{id}/members` — ajout par email d'un user déjà
 /// provisionné (il s'est connecté au moins une fois).
-pub async fn add_member(id: i64, email: &str, role: &str) -> Result<OrgMember, ApiError> {
+pub async fn add_member(id: i64, email: &str, role: OrgRole) -> Result<OrgMember, ApiError> {
     client::request(
         reqwest::Method::POST,
         &format!("/api/v1/orgs/{id}/members"),
         Some(
             serde_json::to_value(AddMember {
                 email: email.into(),
-                role: Some(role.into()),
+                role: Some(role),
             })
             .unwrap_or_default(),
         ),
@@ -64,11 +66,11 @@ pub async fn add_member(id: i64, email: &str, role: &str) -> Result<OrgMember, A
 }
 
 /// `PATCH /api/v1/orgs/{id}/members/{user_id}` — changement de rôle.
-pub async fn update_member(id: i64, user_id: i64, role: &str) -> Result<(), ApiError> {
+pub async fn update_member(id: i64, user_id: i64, role: OrgRole) -> Result<(), ApiError> {
     client::request(
         reqwest::Method::PATCH,
         &format!("/api/v1/orgs/{id}/members/{user_id}"),
-        Some(serde_json::to_value(UpdateMember { role: role.into() }).unwrap_or_default()),
+        Some(serde_json::to_value(UpdateMember { role }).unwrap_or_default()),
     )
     .await
 }

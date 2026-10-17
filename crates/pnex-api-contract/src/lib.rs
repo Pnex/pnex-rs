@@ -17,7 +17,11 @@ use serde::{Deserialize, Serialize};
 /// `Poi.devices: Vec<DevicePlacement>` — plusieurs devices par POI ;
 /// attacher via `POST /pois/{id}/devices`, déplacer via
 /// `PATCH /pois/placements/{id}` (plus de PATCH `device_id` sur le POI).
-pub const CONTRACT: u32 = 2;
+///
+/// 3 (2026-10-17, D238–D244): harmonized contract — one error shape
+/// (`ErrorDetail`, `errors.fields` / `errors.violations`), every list
+/// paginated, typed ids/dates/enums, GET for reads, English descriptions.
+pub const CONTRACT: u32 = 3;
 
 /// Identité annoncée par le endpoint meta — aligned with
 /// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). Le scan LAN compare ce champ pour distinguer un serveur
@@ -33,14 +37,15 @@ pub const META_VERSION_PATH: &str = "/api/v1/meta/version";
 /// server has no local CA to hand out (no edge, or public Let's Encrypt).
 pub const META_CA_PATH: &str = "/api/v1/meta/ca";
 
-/// Carte d'identité du serveur, servie par `GET {META_VERSION_PATH}`.
+/// Identity card of the server, served by `GET {META_VERSION_PATH}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ServerInfo {
-    /// Toujours [`SERVICE`] pour un serveur PNEX.
+    /// Always [`SERVICE`] for a PNEX server.
     pub service: String,
-    /// Version composée (`"0.1.0 (dev)"` — semver + sha de build).
+    /// Composite version (`"0.1.0 (dev)"`: semver + build sha).
     pub version: String,
-    /// Version du contrat d'API servie par ce binaire.
+    /// API contract version served by this binary.
     pub contract: u32,
     /// Canonical public origin of the deployment (`https://pnex.local`),
     /// when the server knows it. A native app that reached the server by IP

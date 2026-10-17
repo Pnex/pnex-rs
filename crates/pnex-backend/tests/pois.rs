@@ -308,7 +308,9 @@ async fn pin_apercu_poi() {
             }))
             .await;
         assert_eq!(res.status_code(), 400, "kind hors liste : {}", res.text());
-        assert_eq!(res.json::<serde_json::Value>()["preview_kind"], "Aperçu épinglé invalide (kind ∈ media_asset | dashboard | tour, posé avec preview_id).");
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["preview_kind"], "invalid");
 
         // Pose sans id → 400 (le couple vit ensemble).
         let res = server
@@ -413,7 +415,10 @@ async fn placements_multiples_et_deplacement() {
         // Device inconnu → 400 champ device_id.
         let res = attach_device(&server, &env.alice, org, &poi_a, "inexistant-01").await;
         assert_eq!(res.status_code(), 400, "device inconnu : {}", res.text());
-        assert!(res.text().contains("device_id"));
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["device_id"],
+            "not-found"
+        );
 
         // Déjà placé — même POI ou autre — → 409 porteur du placement courant
         // (le front propose le déplacement, jamais silencieux).
@@ -424,12 +429,17 @@ async fn placements_multiples_et_deplacement() {
             "re-attach même POI : {}",
             res.text()
         );
-        let conflict = res.json::<serde_json::Value>();
+        // The current placement travels in `errors.args` (strings).
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "poi-device-already-placed");
+        let conflict = &body["errors"]["args"];
         assert_eq!(conflict["device_id"], "soil-01");
         assert_eq!(conflict["current_pin_id"], poi_a, "même POI");
         assert_eq!(conflict["current_pin_label"], "POI A");
         assert!(
-            conflict["current_placement_id"].is_i64(),
+            conflict["current_placement_id"]
+                .as_str()
+                .is_some_and(|id| id.parse::<i64>().is_ok()),
             "id de placement fourni"
         );
         let res = attach_device(&server, &env.alice, org, &poi_b, "soil-01").await;

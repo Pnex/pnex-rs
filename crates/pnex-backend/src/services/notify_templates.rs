@@ -12,7 +12,7 @@ use crate::models::_entities::notify_templates;
 use pnex_core::TemplateVar;
 
 /// What a create or an update receives.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
 pub struct TemplateInput {
     pub name: String,
     #[serde(default)]

@@ -56,13 +56,9 @@ fn error_state(error: FlashError) -> Option<FlashState> {
 }
 
 #[component]
-pub fn FlashModal(device_id: String, on_close: Callback<()>) -> Element {
+pub fn FlashModal(device_pk: i64, on_close: Callback<()>) -> Element {
     // Octets du firmware (image mergée @0x0) — un téléchargement à l'ouverture.
-    let fetch_id = device_id.clone();
-    let firmware = use_resource(move || {
-        let id = fetch_id.clone();
-        async move { api::builds::download(&id).await }
-    });
+    let firmware = use_resource(move || async move { api::builds::download(device_pk).await });
     let mut state = use_signal(|| None::<FlashState>);
     // Chip détecté au sync (affiché tel quel, ex. « ESP32-D0WD-V3 »).
     let mut chip = use_signal(String::new);

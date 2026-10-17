@@ -42,13 +42,10 @@ fn short_utc(ts: &Option<String>) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 fn current_org_name() -> String {
@@ -73,7 +70,7 @@ enum Pending {
 pub fn System() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut pending = use_signal(|| None::<Pending>);
-    let can_write = current_role().is_some_and(|r| crate::state::org::role_can_administer(&r));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_administer);
 
     let retention = use_resource(move || async move {
         let _ = reload();
@@ -215,8 +212,8 @@ pub fn parse_days(raw: &str) -> Result<Option<u32>, ()> {
 /// admins), the subscription decides in SaaS.
 #[component]
 fn RetentionCard(info: RetentionInfo) -> Element {
-    let (badge_class, badge_label) = source_badge(&info.source);
-    let saas = info.deployment_mode == "saas";
+    let (badge_class, badge_label) = source_badge(info.source.as_str());
+    let saas = info.deployment_mode == pnex_core::DeploymentMode::Saas;
     rsx! {
         section { class: "bg-white rounded-lg shadow p-6 space-y-4",
             div { class: "flex items-start justify-between gap-4 flex-wrap",

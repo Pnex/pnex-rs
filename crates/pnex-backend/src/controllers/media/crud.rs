@@ -2,7 +2,8 @@ use super::*;
 
 // ─────────────────────────── POST /media ───────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct UploadQuery {
     name: Option<String>,
     filename: Option<String>,
@@ -10,27 +11,24 @@ pub(super) struct UploadQuery {
     content_type: Option<String>,
 }
 
-/// Kinds applicatifs — extension sans migration (kind = string). Studio :
-/// `floorplan` = plan d'étage importé (référencé par `tour_versions.doc`).
-/// `model` = ONNX model of the vision registry (camera-video.md D81).
-/// `document` / `table` = indexed for search (doc-search.md P1).
-/// `audio` = voice clips (voice-id.md: enrolment of a voice profile).
-/// `video` = MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
-/// `mesh` = GLB 3D model of an object's gallery (assisted-creation.md D231).
-const KINDS: [&str; 10] = [
-    "photo",
-    "panorama",
-    "splat",
-    "floorplan",
-    "model",
-    "document",
-    "table",
-    "audio",
-    "video",
-    "mesh",
-];
-
-/// `POST /api/v1/media` — upload octet-stream, crée asset + version 1.
+/// `POST /api/v1/media`: octet-stream upload, creates the asset + version 1.
+#[utoipa::path(
+    post,
+    path = "/api/v1/media",
+    tag = "media",
+    operation_id = "media_upload",
+    summary = "Upload a new media asset",
+    description = "Creates an asset and its version 1 from the raw request body (`application/octet-stream`, no multipart); metadata travel in the query. The kind is taken from `kind` when given, else sniffed from content and extension; the content must be an allowed format whose extension matches it. Stored in object storage; owner/admin only. Concurrent large uploads are queued per server.",
+    params(UploadQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "File bytes"),
+    responses(
+        (status = 201, body = MediaAssetDto),
+        (status = 400, description = "Format not allowed or mismatching extension (`media-format-unsupported`), or `field-invalid` (`filename`: `required` for an empty body, `kind`: `invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "Body over the upload limit (`media-file-too-large`, `errors.args.max_bytes`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn upload(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -45,7 +43,10 @@ pub(super) async fn upload(
     }
     let settings = MediaSettings::from_config(&ctx.config);
     if body.is_empty() {
-        return Ok(field_status("filename", "corps de la requête vide"));
+        return Ok(field_status(
+            "filename",
+            pnex_core::err_codes::FIELD_REQUIRED,
+        ));
     }
     if body.len() > settings.max_bytes {
         return Ok(too_large(&settings));
@@ -70,11 +71,8 @@ pub(super) async fn upload(
     };
     let kind = q.kind.as_deref().map(str::trim).filter(|k| !k.is_empty());
     if let Some(k) = kind {
-        if !KINDS.contains(&k) {
-            return Ok(field_status(
-                "kind",
-                "unknown kind (photo | panorama | splat | floorplan | model | document | table | audio)",
-            ));
+        if MediaKind::parse(k).is_none() {
+            return Ok(field_status("kind", pnex_core::err_codes::FIELD_INVALID));
         }
         if !media_sniff::accepts(k, &filename, &body) {
             return Err(format_unsupported());
@@ -106,7 +104,6 @@ pub(super) async fn upload(
         &settings,
     )
     .await?;
-    // Retourne le détail complet (asset + versions).
     detail_response(&ctx, &org, asset.id, StatusCode::CREATED).await
 }
 
@@ -119,7 +116,7 @@ fn content_type_of(q: &UploadQuery) -> String {
         .to_string()
 }
 
-/// 413 JSON propre (la limite axum, posée à max+1 Mo, n'a pas dû bouger).
+/// Coded 413 (the axum limit, set at max + 1 MB, is only the net).
 /// Machine-coded: the byte ceiling travels in `errors.args` (never
 /// pre-rendered into the description).
 pub(super) fn too_large(settings: &MediaSettings) -> Response {
@@ -140,19 +137,36 @@ pub(super) fn too_large(settings: &MediaSettings) -> Response {
 
 // ─────────────────────────── GET /media ───────────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct ListQuery {
     kind: Option<String>,
     search: Option<String>,
-    /// Filtre label **effectif** `name` ou `name:valeur` (D42 — propres ou
-    /// hérités d'un ancêtre du containment).
+    /// **Effective** label filter `name` or `name:value` (D42: own labels or
+    /// inherited from a containment ancestor).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
-/// `GET /api/v1/media?label=site:serre` — liste paginée (D14), filtres kind
-/// + search (nom) + label effectif (D42).
+/// `GET /api/v1/media?label=site:greenhouse`: paginated list (D14), filters
+/// kind + search (name) + effective label (D42).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media",
+    tag = "media",
+    operation_id = "media_list",
+    summary = "List the media assets of the organisation",
+    description = "Paginated (`limit` default 10, max 100; `offset`), most recently updated first. Filters: `kind` (comma-separated list), `search` (name contains), `label` (effective label `name` or `name:value`, inherited ones included).",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<MediaAssetDto>),
+        (status = 400, description = "Invalid `label` filter (`field-invalid`, `label`: `invalid`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -162,8 +176,8 @@ pub(super) async fn list(
     let mut query = media_assets::Entity::find()
         .filter(media_assets::Column::OrgId.eq(org.org.id))
         .order_by_desc(media_assets::Column::UpdatedAt);
-    // kind accepte une liste séparée par virgules (picker plan du studio :
-    // floorplan + photo — n'importe quelle image convient comme plan).
+    // `kind` takes a comma-separated list (studio plan picker: floorplan +
+    // photo, any image works as a plan).
     let kinds: Vec<&str> = q
         .kind
         .as_deref()
@@ -175,17 +189,13 @@ pub(super) async fn list(
     if !kinds.is_empty() {
         query = query.filter(media_assets::Column::Kind.is_in(kinds));
     }
-    // D42 : filtre par labels EFFECTIFS (propres ou hérités d'un ancêtre) —
-    // le média dans le folder « Serre » taggé site:serre sort du filtre.
+    // D42: filter on EFFECTIVE labels (own or inherited from an ancestor).
     let label_ids: Option<std::collections::HashSet<String>> = match q.label.as_deref() {
         None => None,
         Some(raw) => {
-            let (filter, err) = pnex_core::resources::parse_label_filter(raw);
+            let (filter, _) = pnex_core::resources::parse_label_filter(raw);
             let Some(filter) = filter else {
-                return Ok(field_status(
-                    "label",
-                    err.as_deref().unwrap_or("label invalide"),
-                ));
+                return Ok(field_status("label", pnex_core::err_codes::FIELD_INVALID));
             };
             let ids = crate::services::resources::labels::ids_with_label(
                 &ctx.db,
@@ -269,7 +279,8 @@ pub(super) async fn list(
 
 // ─────────────────────── GET /media/{id} ───────────────────────
 
-/// Réponse détail complète (asset + versions), réutilisée par upload/add.
+/// Asset summary response (`MediaAssetDto`), shared by detail, upload and
+/// add_version.
 pub(super) async fn detail_response(
     ctx: &AppContext,
     org: &OrgContext,
@@ -283,7 +294,21 @@ pub(super) async fn detail_response(
     Ok((status, format::json(asset_dto(&asset, &versions))).into_response())
 }
 
-/// `GET /api/v1/media/{id}` — détail + versions.
+/// `GET /api/v1/media/{id}`: asset summary.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}",
+    tag = "media",
+    operation_id = "media_get",
+    summary = "Get a media asset",
+    description = "Asset summary: kind, name, versions count, total size, current version number and content type.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, body = MediaAssetDto),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -294,13 +319,30 @@ pub(super) async fn detail(
 
 // ─────────────────────── PATCH /media/{id} ───────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub(super) struct PatchAsset {
     name: Option<String>,
     description: Option<String>,
 }
 
-/// `PATCH /api/v1/media/{id}` — rename/description.
+/// `PATCH /api/v1/media/{id}`: rename / description.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/media/{id}",
+    tag = "media",
+    operation_id = "media_update",
+    summary = "Rename a media asset or change its description",
+    description = "Absent fields are left unchanged. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    request_body = PatchAsset,
+    responses(
+        (status = 200, body = MediaAssetDto),
+        (status = 400, description = "Empty name (`field-invalid`, `name`: `required`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -319,7 +361,7 @@ pub(super) async fn update(
     let mut asset: media_assets::ActiveModel = asset.into();
     if let Some(name) = patch.name.map(|n| n.trim().to_string()) {
         if name.is_empty() {
-            return Ok(field_status("name", "le nom ne peut pas être vide"));
+            return Ok(field_status("name", pnex_core::err_codes::FIELD_REQUIRED));
         }
         asset.name = Set(name);
     }
@@ -337,8 +379,23 @@ pub(super) async fn update(
 
 // ─────────────────────── DELETE /media/{id} ───────────────────────
 
-/// `DELETE /api/v1/media/{id}` — purge l'asset, ses versions et tous les
-/// blobs (storage best-effort : la purge DB est la source de vérité).
+/// `DELETE /api/v1/media/{id}`: purges the asset, its versions and every
+/// blob (storage best effort: the DB purge is the source of truth).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/media/{id}",
+    tag = "media",
+    operation_id = "media_delete",
+    summary = "Delete a media asset",
+    description = "Permanently deletes the asset, all its versions and their stored files, and its labels, containment and links. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -373,7 +430,7 @@ pub(super) async fn delete(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// Purge best-effort des blobs (delete idempotent) — hors chemin de réponse.
+/// Best-effort blob purge (idempotent deletes).
 pub(super) async fn purge_blobs(ctx: &AppContext, keys: Vec<String>) {
     if keys.is_empty() {
         return;

@@ -21,6 +21,16 @@ pub fn routes() -> Routes {
         .add("/summary", get(summary))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboard/summary",
+    tag = "dashboard",
+    operation_id = "dashboard_summary",
+    summary = "Get the home dashboard summary",
+    description = "One call for the home page: device liveness (counts + the ~10 most recent devices), build statistics and the latest telemetry samples. Read-only, any member. The telemetry section is degraded by design (`available: false` when OpenObserve is not configured or fails), the call itself does not fail because of it.",
+    responses((status = 200, body = pnex_core::DashboardSummary)),
+    security(("bearer" = [], "org" = []))
+)]
 async fn summary(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     let ingest = IngestSettings::from_config(&ctx.config);
     let o2_client =
@@ -45,4 +55,12 @@ async fn summary(org: OrgContext, State(ctx): State<AppContext>) -> Result<Respo
         builds: builds?,
         telemetry,
     })
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(summary))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

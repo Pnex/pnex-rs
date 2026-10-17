@@ -5,8 +5,9 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::media_ingest::{
-    license_is_non_commercial, AsrModel, AsrModelInput, AsrProfileInput, ASR_LICENSES,
+    license_is_non_commercial, AsrModel, AsrModelInput, AsrProfileInput, AsrTask, ASR_LICENSES,
 };
+use pnex_core::vision::ModelCheckStatus;
 
 use crate::api;
 use crate::api::media::{MediaFilters, MediaKind, UploadParams};
@@ -26,6 +27,8 @@ const BTN: &str =
 #[derive(Clone, PartialEq)]
 enum Pending {
     Model(AsrModel),
+    /// Second confirmation: the profiles (names) the forced delete removes.
+    ModelInUse(AsrModel, String),
     Profile(String, String),
 }
 
@@ -177,6 +180,10 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                 title: t!("asr-delete-title"),
                 message: match &p {
                     Pending::Model(m) => t!("asr-models-delete-message", name : m.name.clone()),
+                    Pending::ModelInUse(m, profiles) => {
+                        let (name, profiles) = (m.name.clone(), profiles.clone());
+                        t!("asr-models-delete-force-message", name : name, profiles : profiles)
+                    }
                     Pending::Profile(_, name) => {
                         t!("asr-profiles-delete-message", name : name.clone())
                     }
@@ -187,12 +194,23 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
                     pending.set(None);
                     spawn(async move {
                         let res = match &p {
-                            Pending::Model(m) => api::media_streams::delete_model(&m.id).await,
+                            Pending::Model(m) => api::media_streams::delete_model(&m.id, false).await,
+                            Pending::ModelInUse(m, _) => {
+                                api::media_streams::delete_model(&m.id, true).await
+                            }
                             Pending::Profile(id, _) => api::media_streams::delete_profile(id).await,
                         };
-                        match res {
-                            Ok(_) => reload.with_mut(|r| *r += 1),
-                            Err(err) => toasts::error(err),
+                        match (res, &p) {
+                            (Ok(_), _) => reload.with_mut(|r| *r += 1),
+                            (
+                                Err(err),
+                                Pending::Model(m),
+                            ) if err.code.as_deref()
+                                == Some(pnex_core::err_codes::ASR_MODEL_IN_USE) => {
+                                let profiles = in_use_profiles(&err);
+                                pending.set(Some(Pending::ModelInUse(m.clone(), profiles)));
+                            }
+                            (Err(err), _) => toasts::error(err),
                         }
                     });
                 },
@@ -200,6 +218,16 @@ pub fn ModelsTab(can_write: bool, reload: Signal<u32>, importing: Signal<bool>) 
             }
         }
     }
+}
+
+/// Profile names of an `asr-model-in-use` refusal (`errors.args.profiles`).
+fn in_use_profiles(err: &api::error::ApiError) -> String {
+    err.args
+        .as_ref()
+        .and_then(|a| a.get("profiles"))
+        .and_then(|p| p.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 #[component]
@@ -212,7 +240,7 @@ fn ModelRow(
     on_test: Callback<AsrModel>,
 ) -> Element {
     let check = model.check.clone();
-    let (badge_class, badge) = match check.status.as_str() {
+    let (badge_class, badge) = match check.status.wire() {
         "valid" => ("bg-emerald-100 text-emerald-800", t!("models-check-valid")),
         "invalid" => ("bg-red-100 text-red-800", t!("models-check-invalid")),
         _ => ("bg-gray-100 text-gray-700", t!("models-check-unchecked")),
@@ -228,7 +256,7 @@ fn ModelRow(
     let carrier_lines: Vec<String> = model
         .carriers
         .iter()
-        .map(|c| match (c.check.status.as_str(), c.check.streams()) {
+        .map(|c| match (c.check.status.wire(), c.check.streams()) {
             ("valid", Some(streams)) => t!(
                 "asr-models-carrier-valid",
                 carrier: c.carrier.clone(),
@@ -243,7 +271,7 @@ fn ModelRow(
     let m_delete = model.clone();
     let m_test = model.clone();
     // Only a speech-to-text model has a transcript to show.
-    let testable = check.status == "valid" && model.task == "asr";
+    let testable = check.status == ModelCheckStatus::Valid && model.task == AsrTask::Asr;
     rsx! {
         tr {
             td { class: "td",
@@ -257,7 +285,7 @@ fn ModelRow(
                 }
             }
             td { class: "td hidden text-gray-600 md:table-cell",
-                p { {task_label(&model.task)} }
+                p { {task_label(model.task.wire())} }
                 p { class: "text-xs text-gray-500", "{model.family}" }
             }
             td { class: "td",
@@ -339,7 +367,7 @@ fn task_label(task: &str) -> String {
 fn usable(models: &[AsrModel], task: &str) -> Vec<AsrModel> {
     models
         .iter()
-        .filter(|m| m.task == task && m.check.status == "valid")
+        .filter(|m| m.task.wire() == task && m.check.status == ModelCheckStatus::Valid)
         .cloned()
         .collect()
 }

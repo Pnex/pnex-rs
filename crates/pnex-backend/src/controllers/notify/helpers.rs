@@ -40,7 +40,7 @@ pub(super) fn channel_dto(
         config: pnex_notify::mask_config(&m.kind, &m.config),
         secrets_set: pnex_notify::secrets_set(&m.kind, &m.config),
         secrets,
-        last_status: last.map(|(s, _)| s.clone()),
+        last_status: last.map(|(s, _)| pnex_core::DeliveryStatus::parse(s)),
         last_delivery_at: last.map(|(_, t)| t.clone()),
         created_at: m.created_at.to_rfc3339(),
         updated_at: m.updated_at.to_rfc3339(),

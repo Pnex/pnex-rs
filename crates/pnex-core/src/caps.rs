@@ -317,6 +317,7 @@ impl Violation {
 
 /// Pin mux function, display-only (legend, color bands, sub-labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum PinFn {
     Adc1,
@@ -336,6 +337,7 @@ pub enum PinFn {
 
 /// Pin flag, display-only — derived from the tables above, no new rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum PinFlag {
     InputOnly,

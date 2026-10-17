@@ -1,9 +1,8 @@
 //! `GET /api/v1/search` — global typeahead across the org's objects (D69).
 //!
-//! Additive endpoint: `pnex_api_contract::CONTRACT` is NOT bumped. Deliberate
-//! D14 deviation, documented in `docs/contracts/search.http` and decision
-//! D69: typeahead shape `{count, q, groups}` instead of the paginated
-//! envelope. Absent/empty `q` returns an empty 200, never a 400.
+//! Typeahead shape `{count, q, groups}`: a computed result (each group
+//! capped by `limit`), not a paginated collection (D69, D240). Absent/empty
+//! `q` returns an empty 200, never a 400.
 //!
 //! Matching is `Func::lower(col) LIKE pattern ESCAPE '\'` with the pattern
 //! lowercased in Rust (shared with the paginated lists).
@@ -44,35 +43,60 @@ pub fn routes() -> Routes {
     Routes::new().prefix("/api/v1").add("/search", get(search))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct SearchQuery {
+    /// Search term (whitespace-separated tokens, all must match). Absent or empty = empty answer.
     q: Option<String>,
+    /// Max hits per group, clamped to 1..=20.
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
 }
 
 /// One result row, uniform across entity types. `id` is a String on the
 /// wire (i64 PKs stringified, UUIDs as-is) — the frontend re-types it at
 /// navigation time.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct SearchHit {
     id: String,
     title: String,
     subtitle: Option<String>,
-    updated_at: String,
+    /// RFC 3339; absent for label and document hits.
+    #[schema(format = DateTime)]
+    updated_at: Option<String>,
     /// Kind of the hit when the group mixes kinds (labels, D218).
     #[serde(skip_serializing_if = "Option::is_none")]
     kind: Option<String>,
 }
 
+/// Entity type of a result group.
+#[derive(Debug, Clone, Copy, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+enum SearchEntityType {
+    Label,
+    Device,
+    Poi,
+    Tour,
+    Media,
+    Document,
+    Layer,
+    Function,
+    Flow,
+    Dashboard,
+    EdgeRef,
+    Object,
+}
+
 /// Results grouped by entity type, canonical order, empty groups omitted.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct SearchGroup {
-    entity_type: &'static str,
+    entity_type: SearchEntityType,
     results: Vec<SearchHit>,
 }
 
-/// Typeahead response — deliberate D14 deviation, see module header.
-#[derive(Debug, Serialize)]
+/// Typeahead response: a computed result (groups capped per type), not a
+/// paginated collection.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct SearchResponse {
     count: i64,
     q: String,
@@ -168,7 +192,7 @@ async fn fetch_devices(
                 id: r.id.to_string(),
                 title: r.device_id,
                 subtitle: None,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -203,7 +227,7 @@ async fn fetch_pois(
                 id: r.id.to_string(),
                 title: r.label,
                 subtitle: r.location_detail,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -233,7 +257,7 @@ async fn fetch_tours(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: r.description,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -263,7 +287,7 @@ async fn fetch_media(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: r.description,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -297,7 +321,7 @@ async fn fetch_layers(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: r.description,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -327,7 +351,7 @@ async fn fetch_functions(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: Some(r.language),
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -357,7 +381,7 @@ async fn fetch_flows(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: Some(r.status),
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -387,7 +411,7 @@ async fn fetch_dashboards(
                 id: r.id.to_string(),
                 title: r.name,
                 subtitle: r.description,
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -424,7 +448,7 @@ async fn fetch_edge_refs(
             id: r.id.to_string(),
             title: r.ssid,
             subtitle: Some("wifi".to_string()),
-            updated_at: r.updated_at.to_rfc3339(),
+            updated_at: Some(r.updated_at.to_rfc3339()),
             kind: None,
         },
     }));
@@ -434,7 +458,7 @@ async fn fetch_edge_refs(
             id: r.id.to_string(),
             title: r.host,
             subtitle: Some("host".to_string()),
-            updated_at: r.updated_at.to_rfc3339(),
+            updated_at: Some(r.updated_at.to_rfc3339()),
             kind: None,
         },
     }));
@@ -472,7 +496,7 @@ async fn fetch_objects(
                 id: r.id.to_string(),
                 title: r.title,
                 subtitle: Some(r.type_key),
-                updated_at: r.updated_at.to_rfc3339(),
+                updated_at: Some(r.updated_at.to_rfc3339()),
                 kind: None,
             },
         })
@@ -499,7 +523,7 @@ async fn fetch_documents(
                 id: h.asset_id.to_string(),
                 title: h.asset_name,
                 subtitle: Some(h.snippet.replace(['⟦', '⟧'], "")),
-                updated_at: String::new(),
+                updated_at: None,
                 kind: None,
             },
         })
@@ -552,7 +576,7 @@ async fn fetch_labels(
                 id,
                 title,
                 subtitle: Some(subtitle),
-                updated_at: String::new(),
+                updated_at: None,
                 kind: Some(kind),
             },
         });
@@ -570,6 +594,19 @@ fn rank_and_cap(mut candidates: Vec<Candidate>, take: i64) -> Vec<SearchHit> {
 
 /// Handler: empty `q` → empty 200 (silent default, never 400); otherwise
 /// the 11 groups run concurrently and reassemble in canonical order.
+#[utoipa::path(
+    get,
+    path = "/api/v1/search",
+    tag = "search",
+    operation_id = "search_global",
+    summary = "Global typeahead search",
+    description = "Searches the org objects (labels, devices, POIs, tours, media, documents, annotation layers, functions, flows, dashboards, edge references, ontology objects) by name. Results are grouped by entity type in a fixed order, empty groups omitted; within a group prefix matches come first, then most recently updated. Not paginated: `limit` caps each group (max 20). An empty `q` returns an empty 200. Read-only, any org member.",
+    params(SearchQuery),
+    responses(
+        (status = 200, body = SearchResponse)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn search(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -612,18 +649,18 @@ async fn search(
 
     let mut groups = Vec::new();
     for (entity_type, fetched) in [
-        ("label", labels),
-        ("device", dev),
-        ("poi", poi),
-        ("tour", tour),
-        ("media", media),
-        ("document", docs),
-        ("layer", layer),
-        ("function", func),
-        ("flow", flow),
-        ("dashboard", dash),
-        ("edge_ref", refs),
-        ("object", objs),
+        (SearchEntityType::Label, labels),
+        (SearchEntityType::Device, dev),
+        (SearchEntityType::Poi, poi),
+        (SearchEntityType::Tour, tour),
+        (SearchEntityType::Media, media),
+        (SearchEntityType::Document, docs),
+        (SearchEntityType::Layer, layer),
+        (SearchEntityType::Function, func),
+        (SearchEntityType::Flow, flow),
+        (SearchEntityType::Dashboard, dash),
+        (SearchEntityType::EdgeRef, refs),
+        (SearchEntityType::Object, objs),
     ] {
         let hits = rank_and_cap(fetched.map_err(|_| Error::InternalServerError)?, take);
         if !hits.is_empty() {
@@ -639,4 +676,12 @@ async fn search(
         q: term.to_string(),
         groups,
     })
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(search))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

@@ -1,16 +1,17 @@
 //! OAuth2 proxy to Rauthy (full-Rust OIDC IdP, D10):
 //!
-//! - `POST /api/v1/oauth2/token` : grants `password` (dev/tests) et
-//!   `authorization_code` + PKCE ; les erreurs Rauthy sont relayées telles
-//!   quelles (400 `{"error": ...}`) ;
-//! - `POST /api/v1/oauth2/refresh` : `grant_type=refresh_token` ;
-//! - `GET /api/v1/oauth2/sso` : 302 vers l'authorize endpoint Rauthy, PKCE
-//!   S256 obligatoire ; `action=register` → page UI d'inscription Rauthy
-//!   (activation par mail), `action=reset` → page compte Rauthy ;
-//! - `GET /api/v1/oauth2/logout` : 302 vers `/auth/v1/oidc/logout`
-//!   (RP-initiated logout, `id_token_hint` + `post_logout_redirect_uri`).
+//! - `POST /api/v1/oauth2/token`: grants `password` (dev/tests) and
+//!   `authorization_code` + PKCE. Our own validation errors are `ErrorDetail`;
+//!   identity provider errors are relayed verbatim in the RFC 6749 §5.2
+//!   shape `{error, error_description}` (standard OAuth2 contract);
+//! - `POST /api/v1/oauth2/refresh`: `grant_type=refresh_token`;
+//! - `GET /api/v1/oauth2/sso`: 302 to the Rauthy authorize endpoint, PKCE
+//!   S256 mandatory; `action=register` goes to the Rauthy sign-up page,
+//!   `action=reset` to the Rauthy account page;
+//! - `GET /api/v1/oauth2/logout`: auto-submitting HTML form to the Rauthy
+//!   end-session endpoint (RP-initiated logout).
 //!
-//! Le client reste public (pas de secret côté navigateur) : PKCE suffit.
+//! The client stays public (no secret in the browser): PKCE is enough.
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex, OnceLock};
@@ -23,6 +24,7 @@ use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::settings::RauthySettings;
+use pnex_core::err_codes::{FIELD_INVALID, FIELD_REQUIRED};
 
 fn http() -> &'static reqwest::Client {
     static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
@@ -36,7 +38,7 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum GrantKind {
     Password,
@@ -44,8 +46,11 @@ pub enum GrantKind {
     RefreshToken,
 }
 
-/// Body accepté pour `/token` et `/refresh` — les champs dépendent du grant.
-#[derive(Deserialize, Default)]
+/// Body of `/token` and `/refresh`; the fields depend on the grant.
+#[derive(Deserialize, Default, utoipa::ToSchema)]
+#[schema(
+    description = "Token request; required fields depend on `grant_type`: password (username, password), authorization_code (code, code_verifier, redirect_uri), refresh_token or absent (refresh_token)."
+)]
 pub struct TokenParams {
     pub grant_type: Option<GrantKind>,
     pub username: Option<String>,
@@ -56,19 +61,45 @@ pub struct TokenParams {
     pub refresh_token: Option<String>,
 }
 
-/// Relaye la réponse Rauthy (statut + JSON) telle quelle.
+/// `field-invalid` 400 marking every missing grant field `required`.
+fn missing_fields(fields: &[(&str, bool)]) -> Response {
+    let map = fields
+        .iter()
+        .filter(|(_, missing)| *missing)
+        .map(|(name, _)| ((*name).to_string(), FIELD_REQUIRED.into()))
+        .collect();
+    crate::controllers::fields_error(StatusCode::BAD_REQUEST, map)
+}
+
+/// Relays the Rauthy answer (status + JSON) verbatim.
 async fn relay(response: reqwest::Response) -> Result<Response> {
     let status = StatusCode::from_u16(response.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     let body: serde_json::Value = response.json().await.unwrap_or(serde_json::json!({
         "error": "invalid_response",
-        "error_description": "Rauthy a renvoyé une réponse illisible",
+        "error_description": "the identity provider returned an unreadable answer",
     }));
     let mut response = axum::Json(body).into_response();
     *response.status_mut() = status;
     Ok(response)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/oauth2/token",
+    tag = "oauth2",
+    operation_id = "oauth2_token",
+    summary = "Obtain tokens from the identity provider",
+    description = "Proxy to the Rauthy token endpoint (public client, scope `openid profile email`): grants `password` (dev/tests), `authorization_code` with PKCE, or `refresh_token`. The provider answer (status and JSON) is relayed as is. Error shapes: a missing grant field is an `ErrorDetail` (`field-invalid`, `errors.fields.<field> = required`); an identity provider refusal (bad credentials, expired code...) keeps the standard OAuth2 error body of RFC 6749 section 5.2, `{error, error_description}`, relayed verbatim with the provider status (400 or 401), because OAuth2 clients expect that exact shape. No authentication.",
+    request_body = TokenParams,
+    responses(
+        (status = 200, body = pnex_core::TokenResponse),
+        (status = 400, description = "`field-invalid` (`ErrorDetail`) for a missing grant field, or the provider refusal in the RFC 6749 section 5.2 shape `{error, error_description}` (standard OAuth2 exception to `ErrorDetail`)", body = serde_json::Value),
+        (status = 401, description = "Provider refusal (`invalid_client`...) in the RFC 6749 section 5.2 shape `{error, error_description}`", body = serde_json::Value),
+        (status = 502, description = "Identity provider unreachable (`upstream`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -> Result<Response> {
     let settings = RauthySettings::from_config(&ctx.config)?;
 
@@ -80,22 +111,27 @@ async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -
     ];
     match params.grant_type {
         Some(GrantKind::Password) => {
+            let missing = [
+                ("username", params.username.is_none()),
+                ("password", params.password.is_none()),
+            ];
             let (Some(username), Some(password)) = (params.username, params.password) else {
-                return Err(Error::BadRequest(
-                    "grant password : username et password requis".into(),
-                ));
+                return Ok(missing_fields(&missing));
             };
             form.push(("grant_type", "password".into()));
             form.push(("username", username));
             form.push(("password", password));
         }
         Some(GrantKind::AuthorizationCode) => {
+            let missing = [
+                ("code", params.code.is_none()),
+                ("code_verifier", params.code_verifier.is_none()),
+                ("redirect_uri", params.redirect_uri.is_none()),
+            ];
             let (Some(code), Some(code_verifier), Some(redirect_uri)) =
                 (params.code, params.code_verifier, params.redirect_uri)
             else {
-                return Err(Error::BadRequest(
-                    "grant authorization_code : code, code_verifier et redirect_uri requis".into(),
-                ));
+                return Ok(missing_fields(&missing));
             };
             form.push(("grant_type", "authorization_code".into()));
             form.push(("code", code));
@@ -104,7 +140,10 @@ async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -
         }
         Some(GrantKind::RefreshToken) | None => {
             let Some(refresh_token) = params.refresh_token else {
-                return Err(Error::BadRequest("refresh_token requis".into()));
+                return Ok(crate::controllers::field_error(
+                    "refresh_token",
+                    FIELD_REQUIRED,
+                ));
             };
             form.push(("grant_type", "refresh_token".into()));
             form.push(("refresh_token", refresh_token));
@@ -117,15 +156,42 @@ async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -
         .send()
         .await
         .map_err(|err| {
-            tracing::error!(%err, "Rauthy injoignable (token)");
+            tracing::error!(%err, "Rauthy unreachable (token)");
             Error::CustomError(
                 StatusCode::BAD_GATEWAY,
-                loco_rs::controller::ErrorDetail::new("upstream", "Rauthy injoignable".to_string()),
+                loco_rs::controller::ErrorDetail::new(
+                    "upstream",
+                    "identity provider unreachable".to_string(),
+                ),
             )
         })?;
     relay(upstream).await
 }
 
+/// Body of `POST /api/v1/oauth2/refresh` (documentation; the handler reads
+/// the raw JSON so a missing field answers 400).
+#[derive(utoipa::ToSchema)]
+#[allow(dead_code)]
+struct RefreshParams {
+    refresh_token: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/oauth2/refresh",
+    tag = "oauth2",
+    operation_id = "oauth2_refresh",
+    summary = "Refresh an access token",
+    description = "Exchanges a refresh token for new tokens at the identity provider (Rauthy); the provider answer (status and JSON) is relayed as is. A missing `refresh_token` is an `ErrorDetail` (`field-invalid`); a provider refusal (expired or revoked token) keeps the standard OAuth2 error body of RFC 6749 section 5.2, `{error, error_description}`, relayed verbatim. No authentication.",
+    request_body = RefreshParams,
+    responses(
+        (status = 200, body = pnex_core::TokenResponse),
+        (status = 400, description = "`field-invalid` (`ErrorDetail`) for a missing `refresh_token`, or the provider refusal in the RFC 6749 section 5.2 shape `{error, error_description}` (standard OAuth2 exception to `ErrorDetail`)", body = serde_json::Value),
+        (status = 401, description = "Provider refusal in the RFC 6749 section 5.2 shape `{error, error_description}`", body = serde_json::Value),
+        (status = 502, description = "Identity provider unreachable (`upstream`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn refresh(
     State(ctx): State<AppContext>,
     Json(body): Json<serde_json::Value>,
@@ -135,7 +201,10 @@ async fn refresh(
         .and_then(|v| v.as_str())
         .map(str::to_string)
     else {
-        return Err(Error::BadRequest("refresh_token requis".into()));
+        return Ok(crate::controllers::field_error(
+            "refresh_token",
+            FIELD_REQUIRED,
+        ));
     };
     let params = TokenParams {
         grant_type: Some(GrantKind::RefreshToken),
@@ -145,13 +214,14 @@ async fn refresh(
     token(State(ctx), Json(params)).await
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct LogoutParams {
-    /// Retour après déconnexion (origine de l'app, ex. `http://localhost:5150/`).
-    /// Validé par Rauthy contre la liste autorisée du client — jamais ici.
+    /// Where to land after logout (app origin, e.g. `http://localhost:5150/`).
+    /// Validated by Rauthy against the client allow-list, never here.
     pub post_logout_redirect_uri: Option<String>,
-    /// `id_token_hint` — optionnel : sans lui, Rauthy retombe sur la session
-    /// cookie (fallback interne `find_session_with_user_fallback`).
+    /// `id_token_hint`, optional: without it Rauthy falls back to its cookie
+    /// session.
     pub id_token: Option<String>,
 }
 
@@ -162,6 +232,19 @@ pub struct LogoutParams {
 /// login). C'est le seul chemin qui redirige réellement : la page logout SPA
 /// de Rauthy POSTe en `fetch` puis rejoint toujours sa landing hardcodée
 /// `/auth/v1/` — jamais l'app (vérifié dans le source 0.36.2).
+#[utoipa::path(
+    get,
+    path = "/api/v1/oauth2/logout",
+    tag = "oauth2",
+    operation_id = "oauth2_logout",
+    summary = "Log out at the identity provider",
+    description = "Browser navigation target: serves an auto-submitting HTML form that POSTs to the Rauthy end-session endpoint (RP-initiated logout), which then redirects to `post_logout_redirect_uri`. Ends the identity provider session. No authentication.",
+    params(LogoutParams),
+    responses(
+        (status = 200, description = "Auto-submitting HTML form", content_type = "text/html", body = String)
+    ),
+    security(())
+)]
 async fn logout(
     State(ctx): State<AppContext>,
     Query(params): Query<LogoutParams>,
@@ -204,16 +287,19 @@ async fn logout(
     Ok(([(header::CONTENT_TYPE, "text/html; charset=utf-8")], html).into_response())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct SsoParams {
     /// `register` | `reset` (absent = simple login).
     pub action: Option<String>,
-    /// PKCE obligatoire.
+    /// PKCE challenge, required.
     pub code_challenge: Option<String>,
+    /// Must be `S256` (default).
     pub code_challenge_method: Option<String>,
+    /// Default: `<scheme>://<host>/auth/callback` of the request.
     pub redirect_uri: Option<String>,
-    /// Corrélation du callback natif (pont backend, cf. `native_callback`) —
-    /// relayé à Rauthy qui le renvoie tels quels au redirect_uri.
+    /// Opaque state relayed to the identity provider, which returns it to
+    /// `redirect_uri` (native login bridge correlation).
     pub state: Option<String>,
     /// `login` only: forces the sign-in form even with a live IdP session
     /// (after a logout that could not end it, SEC-41). Other values ignored.
@@ -242,6 +328,20 @@ fn urlencode(input: &str) -> String {
     out
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/oauth2/sso",
+    tag = "oauth2",
+    operation_id = "oauth2_sso",
+    summary = "Start a browser sign-in (redirect)",
+    description = "Browser navigation target: redirects (302) to the Rauthy authorize endpoint with PKCE S256 (authorization code flow), or to the Rauthy registration page (`action=register`) or account page (`action=reset`). `prompt=login` forces the sign-in form. No authentication.",
+    params(SsoParams),
+    responses(
+        (status = 302, description = "Redirect to the identity provider (`Location` header)"),
+        (status = 400, description = "`field-invalid`: `code_challenge` required, `code_challenge_method` not S256 or `redirect_uri` invalid", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn sso(
     State(ctx): State<AppContext>,
     Query(params): Query<SsoParams>,
@@ -250,16 +350,18 @@ async fn sso(
     let settings = RauthySettings::from_config(&ctx.config)?;
 
     let Some(code_challenge) = params.code_challenge else {
-        return Err(Error::BadRequest(
-            "code_challenge requis (PKCE obligatoire)".into(),
+        return Ok(crate::controllers::field_error(
+            "code_challenge",
+            FIELD_REQUIRED,
         ));
     };
     let method = params
         .code_challenge_method
         .unwrap_or_else(|| "S256".into());
     if method != "S256" {
-        return Err(Error::BadRequest(
-            "code_challenge_method doit être S256".into(),
+        return Ok(crate::controllers::field_error(
+            "code_challenge_method",
+            FIELD_INVALID,
         ));
     }
     let redirect_uri = params.redirect_uri.unwrap_or_else(|| {
@@ -314,11 +416,13 @@ async fn sso(
 
     let mut response = Response::new(axum::body::Body::empty());
     *response.status_mut() = StatusCode::FOUND;
-    response.headers_mut().insert(
-        header::LOCATION,
-        HeaderValue::from_str(&location)
-            .map_err(|_| Error::BadRequest("redirect_uri ou action invalide".into()))?,
-    );
+    let Ok(location) = HeaderValue::from_str(&location) else {
+        return Ok(crate::controllers::field_error(
+            "redirect_uri",
+            FIELD_INVALID,
+        ));
+    };
+    response.headers_mut().insert(header::LOCATION, location);
     Ok(response)
 }
 
@@ -461,7 +565,8 @@ pub async fn native_bridge_take_with(
     native_local_take(state)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct NativeCallbackParams {
     code: String,
     state: String,
@@ -470,6 +575,20 @@ struct NativeCallbackParams {
 /// Rauthy callback (`redirect_uri` of the native login): stores
 /// `state → code` (5 min TTL, cross-pod) and serves the "return to the app"
 /// page.
+#[utoipa::path(
+    get,
+    path = "/api/v1/oauth2/native",
+    tag = "oauth2",
+    operation_id = "oauth2_native_callback",
+    summary = "Native login callback (browser)",
+    description = "`redirect_uri` of the native app login: the identity provider sends the browser here with `code` and `state`; the code is stored for 5 minutes under the state (single use) and an HTML page sends the user back to the app. No authentication (the random state is the capability).",
+    params(NativeCallbackParams),
+    responses(
+        (status = 200, description = "Return-to-app HTML page", content_type = "text/html", body = String),
+        (status = 400, description = "`field-invalid`: empty or oversized `state` or `code`", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
 async fn native_callback(
     State(ctx): State<AppContext>,
     Query(params): Query<NativeCallbackParams>,
@@ -480,7 +599,12 @@ async fn native_callback(
         || params.code.is_empty()
         || params.code.len() > NATIVE_CODE_MAX_LEN
     {
-        return Err(Error::BadRequest("invalid state or code".into()));
+        let field = if params.state.is_empty() || params.state.len() > NATIVE_STATE_MAX_LEN {
+            "state"
+        } else {
+            "code"
+        };
+        return Ok(crate::controllers::field_error(field, FIELD_INVALID));
     }
     native_bridge_put(&ctx.config, &params.state, &params.code).await;
     Ok(axum::response::Html(native_bridge_page(preferred_language(&headers))).into_response())
@@ -570,14 +694,28 @@ fn native_bridge_page(lang: &'static str) -> String {
     )
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 struct NativePoll {
+    /// Authorization code once the browser came back, `null` meanwhile.
     code: Option<String>,
 }
 
 /// App poll: the code once Rauthy came back, `null` meanwhile.
 /// The code is handed out once (consumed): the app stops polling as soon as
 /// it gets it.
+#[utoipa::path(
+    get,
+    path = "/api/v1/oauth2/native/{state}",
+    tag = "oauth2",
+    operation_id = "oauth2_native_poll",
+    summary = "Poll the native login code",
+    description = "Polled by the native app: returns the authorization code stored for `state` once (consumed on read), `null` while pending; the app then exchanges it with its PKCE verifier at `/api/v1/oauth2/token`. No authentication (the random state is the capability).",
+    params(("state" = String, Path, description = "PKCE flow state chosen by the app")),
+    responses(
+        (status = 200, body = NativePoll)
+    ),
+    security(())
+)]
 async fn native_poll(State(ctx): State<AppContext>, Path(state): Path<String>) -> Result<Response> {
     let code = if state.is_empty() || state.len() > NATIVE_STATE_MAX_LEN {
         None
@@ -622,4 +760,12 @@ mod tests {
         assert_eq!(preferred_language(&hdr("zh-CN,zh;q=0.9")), "en");
         assert_eq!(preferred_language(&HeaderMap::new()), "en");
     }
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(token, refresh, sso, logout, native_callback, native_poll))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

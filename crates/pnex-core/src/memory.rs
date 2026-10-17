@@ -159,6 +159,7 @@ impl MemoryReadConfig {
 /// Reference to a numeric memory value, for dashboards: `key` + optional
 /// `field` of an object value (empty = the value itself).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryRef {
     pub key: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -211,6 +212,7 @@ pub fn memory_numeric_fields(v: &serde_json::Value) -> Vec<String> {
 
 /// One live key of the org (`GET /api/v1/memory/keys`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryKeyInfo {
     pub key: String,
     pub ts_ms: i64,
@@ -219,14 +221,16 @@ pub struct MemoryKeyInfo {
     pub fields: Vec<String>,
 }
 
-/// `POST /api/v1/memory/values` body.
+/// `POST /api/v1/memory/values/query` body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryValuesRequest {
     pub refs: Vec<MemoryRef>,
 }
 
 /// One resolved reference, same order as the request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryValue {
     pub available: bool,
     #[serde(default)]
@@ -235,15 +239,15 @@ pub struct MemoryValue {
     pub ts_ms: Option<i64>,
 }
 
-/// `POST /api/v1/memory/values` response. `available: false` = memory
-/// store unreachable/disabled (every result then unavailable).
+/// `POST /api/v1/memory/values/query` answer (an unreachable memory store
+/// is a 503 `memory-unavailable`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MemoryValuesResponse {
-    pub available: bool,
     pub results: Vec<MemoryValue>,
 }
 
-/// Max refs per `POST /api/v1/memory/values`.
+/// Max refs per `POST /api/v1/memory/values/query`.
 pub const MEMORY_VALUES_CAP: usize = 64;
 
 /// Compact duration label (`90 s`, `5 min`, `1 h`, `7 d`): the largest

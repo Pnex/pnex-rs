@@ -12,8 +12,15 @@ contrats asservissent le comportement Rust (tests de parité).
 - Les rapports d'exploration d'origine (inventaire complet des endpoints
   + payloads requête/réponse, protocoles WebSocket) ont été supprimés —
   les règles ci-dessous et les exemples `.http` font foi.
-- Schéma de sortie : l'ancienne stack exposait `GET /schema/` (OpenAPI)
-  — export vers `openapi.yaml` ici si besoin d'un diff automatisé.
+- `openapi.json` — spec OpenAPI 3.1 de l'API, **généré** depuis les
+  annotations `#[utoipa::path]` des handlers et les `ToSchema` des DTO
+  (`crates/pnex-backend/src/openapi.rs`), source des SDK. Jamais édité à la
+  main : `task openapi` le régénère. Gardes (`crates/pnex-backend/tests/openapi.rs`) :
+  fichier à jour, et toute route documentée ou listée dans
+  `tests/fixtures/openapi_pending.txt` — liste qui ne fait que décroître
+  (une route neuve s'annote, elle ne s'ajoute pas à la liste). Hors
+  périmètre : WebSockets (`/ws/*`), endpoints internes (`/internal/*`),
+  sondes loco (`/_*`). Non servi en HTTP (pas de Swagger UI).
 
 ## Règles de parité retenues
 

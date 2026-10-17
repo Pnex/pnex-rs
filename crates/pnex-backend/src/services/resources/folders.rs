@@ -14,10 +14,16 @@ use crate::services::resources::ResourceError;
 /// Nom de folder valide (trim, 1..=255 chars).
 pub fn validate_name(name: &str) -> Result<String, ResourceError> {
     let name = name.trim();
-    if name.is_empty() || name.chars().count() > 255 {
-        return Err(ResourceError::LabelInvalid(
-            "nom de dossier invalide".into(),
+    if name.is_empty() {
+        return Err(ResourceError::NameInvalid(
+            pnex_core::err_codes::FIELD_REQUIRED.into(),
         ));
+    }
+    if name.chars().count() > 255 {
+        return Err(ResourceError::NameInvalid(format!(
+            "{}:255",
+            pnex_core::err_codes::FIELD_MAX_LENGTH
+        )));
     }
     Ok(name.to_string())
 }

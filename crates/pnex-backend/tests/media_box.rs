@@ -131,7 +131,10 @@ async fn capture_box_stream_list_and_upload() {
                 .json(&body)
                 .await;
             assert_eq!(res.status_code(), 400, "{}", res.text());
-            assert_eq!(res.json::<Value>()["capture_on"], "invalid");
+            assert_eq!(
+                res.json::<Value>()["errors"]["fields"]["capture_on"],
+                "invalid"
+            );
 
             // The agent announces `media_capture` on its device link.
             let mut ctl = common::DevWs::connect(
@@ -160,7 +163,7 @@ async fn capture_box_stream_list_and_upload() {
 
             let boxes = call("GET", "/api/v1/media/capture-devices", &alice, org).await;
             assert_eq!(
-                boxes.json::<Value>(),
+                boxes.json::<Value>()["results"],
                 json!([{ "id": agent.id, "name": "box-1" }])
             );
             // Another org never sees nor picks the box.
@@ -174,7 +177,7 @@ async fn capture_box_stream_list_and_upload() {
             let res = call("POST", "/api/v1/media/streams", &alice, org)
                 .json(&video)
                 .await;
-            assert_eq!(res.json::<Value>()["tracks"], "invalid");
+            assert_eq!(res.json::<Value>()["errors"]["fields"]["tracks"], "invalid");
 
             let res = call("POST", "/api/v1/media/streams", &alice, org)
                 .json(&body)

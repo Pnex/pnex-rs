@@ -44,7 +44,9 @@ pub fn VoiceId() -> Element {
         Some(Ok(v)) => (Some(Ok(())), v.clone()),
         Some(Err(e)) => (Some(Err(e.clone())), Vec::new()),
     };
-    let any_ready = all.iter().any(|p| p.status == "ready");
+    let any_ready = all
+        .iter()
+        .any(|p| p.status == pnex_core::voice_id::VoiceProfileStatus::Ready);
     let profiles_loaded = state.is_some();
     let count = all.len() as i64;
     // shortcut: client-side paging, the API returns every profile of the org; page server-side if orgs enrol hundreds.
@@ -76,7 +78,7 @@ pub fn VoiceId() -> Element {
         .secondary(),
         Column::new(t!("voice-col-status").to_string(), |p: &VoiceProfileView| {
             rsx! {
-                span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-ink", {status_label(&p.status)} }
+                span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-ink", {status_label(p.status.wire())} }
             }
         }),
     ];

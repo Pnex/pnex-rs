@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 /// Body of `POST /api/v1/build-firmware`. Unknown fields are refused.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CreateBuild {
     /// Registered device of the org; its model and frozen board drive the
@@ -31,29 +32,70 @@ pub struct CreateBuild {
 
 /// 201 answer of `POST /api/v1/build-firmware`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateBuildResponse {
     /// Id of the new `build_records` row (also the firmware version).
     pub build_id: i64,
-    /// Phase at submission — `"queued"`.
-    pub status: String,
+    /// Phase at submission — always `queued`.
+    pub status: BuildPhase,
     pub message: String,
 }
 
-/// Record de build — `GET /api/v1/build-records` (paginé D14).
+/// Phase of a firmware build record (lowercase on the wire).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum BuildPhase {
+    /// Waiting for a worker.
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+}
+
+impl BuildPhase {
+    pub const ALL: [BuildPhase; 4] = [
+        BuildPhase::Queued,
+        BuildPhase::Running,
+        BuildPhase::Succeeded,
+        BuildPhase::Failed,
+    ];
+
+    /// Wire / database value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            BuildPhase::Queued => "queued",
+            BuildPhase::Running => "running",
+            BuildPhase::Succeeded => "succeeded",
+            BuildPhase::Failed => "failed",
+        }
+    }
+
+    /// Parses a wire / database value (`None` when unknown).
+    pub fn from_wire(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|p| p.as_str() == s)
+    }
+}
+
+/// Firmware build record — `GET /api/v1/build-records` (paginated, D14).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Firmware build record of the org (`GET /api/v1/build-records`).")
+)]
 pub struct BuildRecord {
     pub id: i64,
     /// D2: owning org.
     pub org_id: i64,
     pub device_id: Option<String>,
-    /// `queued` | `running` | `succeeded` | `failed` (cf. doc module).
-    pub build_phase: String,
-    /// Clé de l'artefact dans l'`ArtifactStore` (absente si échec/en cours).
+    pub build_phase: BuildPhase,
+    /// Artifact key in the `ArtifactStore` (absent while running or on failure).
     #[serde(default)]
     pub firmware_bin_s3_key: Option<String>,
-    /// Version du firmware compilé (id du record, stampée dans le binaire
-    /// `PNEX_FW_VERSION` et annoncée par le device) — absente des records
-    /// antérieurs à l'OTA.
+    /// Version of the built firmware (record id, stamped in the binary as
+    /// `PNEX_FW_VERSION` and announced by the device); absent on records
+    /// older than OTA.
     #[serde(default)]
     pub fw_version: Option<String>,
     /// Why a failed build failed (O4): one of [`BUILD_FAILURE_CODES`],
@@ -65,15 +107,17 @@ pub struct BuildRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_detail: Option<String>,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
-    /// RFC 3339 — dernier changement de phase.
+    /// RFC 3339, last phase change.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 impl BuildRecord {
-    /// The binary is ready (`build_phase == "succeeded"`).
+    /// The binary is ready.
     pub fn succeeded(&self) -> bool {
-        self.build_phase == "succeeded"
+        self.build_phase == BuildPhase::Succeeded
     }
 }
 
@@ -187,7 +231,7 @@ mod tests {
     fn create_response_sans_champs_k8s() {
         let res = CreateBuildResponse {
             build_id: 5,
-            status: "queued".into(),
+            status: BuildPhase::Queued,
             message: "Build firmware job created".into(),
         };
         let json = serde_json::to_value(&res).unwrap();

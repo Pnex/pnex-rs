@@ -20,10 +20,23 @@ fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/telemetry/catalog` — séries (métrique × device) de
-/// l'org courante, dégradé `available: false` sans O2.
+/// `GET /api/v1/telemetry/catalog` — series (metric x device) of the
+/// current org. The 503 `telemetry-unavailable` maps back to an
+/// `available: false` catalog: every picker already renders that state.
 pub async fn catalog() -> Result<TelemetryCatalog, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/telemetry/catalog", None).await
+    match client::request(reqwest::Method::GET, "/api/v1/telemetry/catalog", None).await {
+        Err(e) if unavailable(&e) => Ok(TelemetryCatalog {
+            available: false,
+            series: Vec::new(),
+            label_sets: Vec::new(),
+        }),
+        other => other,
+    }
+}
+
+/// OpenObserve unavailable (503 `telemetry-unavailable`).
+fn unavailable(e: &ApiError) -> bool {
+    e.code.as_deref() == Some(pnex_core::err_codes::TELEMETRY_UNAVAILABLE)
 }
 
 /// `GET /api/v1/telemetry/series` — points d'UNE série ; `window` ∈
@@ -33,7 +46,7 @@ pub async fn series(
     device_id: &str,
     window: &str,
 ) -> Result<TelemetrySeriesResponse, ApiError> {
-    client::request(
+    let res = client::request(
         reqwest::Method::GET,
         &format!(
             "/api/v1/telemetry/series?metric={}&device_id={}&window={window}",
@@ -42,5 +55,15 @@ pub async fn series(
         ),
         None,
     )
-    .await
+    .await;
+    match res {
+        // Same mapping as the catalog: the page shows its "no data" state.
+        Err(e) if unavailable(&e) => Ok(TelemetrySeriesResponse {
+            available: false,
+            metric: metric.to_string(),
+            device_id: device_id.to_string(),
+            points: Vec::new(),
+        }),
+        other => other,
+    }
 }

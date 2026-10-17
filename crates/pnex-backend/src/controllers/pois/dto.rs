@@ -10,20 +10,18 @@ fn d2f(d: Option<sea_orm::entity::prelude::Decimal>) -> Option<f64> {
 /// (batch [`svc::link_target_labels`]).
 pub(super) type TargetLabels = std::collections::HashMap<(String, String), Option<String>>;
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct LinkDto {
     id: i64,
     source_kind: String,
     source_id: String,
     target_kind: String,
     target_id: String,
-    /// Sac de métadonnées de l'arête (hotspot coords, `label`, overrides).
+    /// Edge metadata bag (hotspot coords, `label`, overrides).
     placement: Option<serde_json::Value>,
-    /// Nom résolu de la cible (batch org) — `None` si morte ou hydratation
-    /// en échec.
+    /// Resolved target name; `None` when the target is dead or resolution failed.
     target_label: Option<String>,
-    /// Cible disparue des tables (supprimée hors cascade) — le front
-    /// désactive la ligne (D26 : tolérée au rendu, jamais panic).
+    /// The target no longer exists (deleted outside the cascade).
     target_dead: bool,
 }
 
@@ -53,8 +51,8 @@ pub(super) fn link_dto(
     }
 }
 
-/// D43 : placement d'un device sur le POI (1 placement par device).
-#[derive(Serialize)]
+/// D43: placement of a device on a POI (one placement per device).
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct DevicePlacementDto {
     id: i64,
     device_id: String,
@@ -69,25 +67,63 @@ pub(super) fn placement_dto(pl: &device_placements::Model) -> DevicePlacementDto
     }
 }
 
-#[derive(Serialize)]
+/// Placement mode of a POI (geographic only for now).
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum PoiMode {
+    Geo,
+}
+
+/// Kind of the pinned preview of a POI.
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum PoiPreviewKind {
+    MediaAsset,
+    Dashboard,
+    Tour,
+}
+
+impl PoiPreviewKind {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "media_asset" => Some(Self::MediaAsset),
+            "dashboard" => Some(Self::Dashboard),
+            "tour" => Some(Self::Tour),
+            _ => None,
+        }
+    }
+}
+
+/// Origin of a device position.
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum PositionSource {
+    Telemetry,
+    Manual,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct PoiDto {
+    #[schema(value_type = String, format = "uuid")]
     id: Uuid,
-    mode: String,
+    mode: PoiMode,
     latitude: Option<f64>,
     longitude: Option<f64>,
-    /// Devices placés sur ce POI (D43 : plusieurs possibles).
+    /// Devices placed on this POI (D43: several allowed).
     devices: Vec<DevicePlacementDto>,
     pub(super) label: String,
     pub(super) emoji: String,
     location_detail: Option<String>,
-    /// Aperçu épinglé : objet attaché montré en priorité à
-    /// l'ouverture du POI (kind ∈ media_asset | dashboard | tour).
-    preview_kind: Option<String>,
+    /// Pinned preview: attached object shown first when the POI opens
+    /// (kind ∈ media_asset | dashboard | tour).
+    preview_kind: Option<PoiPreviewKind>,
     preview_id: Option<String>,
     metadata: Option<serde_json::Value>,
-    /// Liens dont ce POI est la source (résolus — D32 : zéro requête au clic).
+    /// Links whose source is this POI, with resolved targets (D32).
     links: Vec<LinkDto>,
+    #[schema(format = DateTime)]
     created_at: String,
+    #[schema(format = DateTime)]
     updated_at: String,
 }
 
@@ -99,7 +135,8 @@ pub(super) fn poi_dto(
 ) -> PoiDto {
     PoiDto {
         id: p.id,
-        mode: p.mode.clone(),
+        // `map_pins.mode` only ever holds `geo` (V1).
+        mode: PoiMode::Geo,
         latitude: d2f(p.latitude),
         longitude: d2f(p.longitude),
         devices: placements
@@ -113,7 +150,7 @@ pub(super) fn poi_dto(
             .clone()
             .unwrap_or_else(|| svc::PIN_EMOJI_DEFAULT.to_string()),
         location_detail: p.location_detail.clone(),
-        preview_kind: p.preview_kind.clone(),
+        preview_kind: p.preview_kind.as_deref().and_then(PoiPreviewKind::parse),
         preview_id: p.preview_id.clone(),
         metadata: p.metadata.clone(),
         links: links
@@ -126,27 +163,28 @@ pub(super) fn poi_dto(
     }
 }
 
-/// Un item de la réponse cluster : point individuel (`count == 1`,
-/// `id` renseigné) ou cluster numéroté (centroïde + échantillon).
-#[derive(Serialize)]
+/// Cluster answer item: single POI (`count == 1`, `id` set) or numbered
+/// cluster (centroid + sample label).
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct ClusterItemDto {
     pub(super) lat: f64,
     pub(super) lon: f64,
     pub(super) count: u32,
+    #[schema(value_type = Option<String>, format = "uuid")]
     pub(super) id: Option<Uuid>,
     pub(super) label: String,
     pub(super) emoji: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct ClusterResponse {
     pub(super) zoom: i32,
-    /// Nombre de POI géo dans la bbox (pins individuels si ≤ seuil).
+    /// Number of POIs in the bbox.
     pub(super) total: usize,
     pub(super) items: Vec<ClusterItemDto>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub(super) struct DevicePositionDto {
     device_id: String,
     latitude: f64,
@@ -155,7 +193,8 @@ pub(super) struct DevicePositionDto {
     accuracy_m: Option<f64>,
     speed_mps: Option<f64>,
     heading_deg: Option<f64>,
-    source: String,
+    source: PositionSource,
+    #[schema(format = DateTime)]
     positioned_at: String,
 }
 
@@ -168,7 +207,11 @@ pub(super) fn position_dto(p: &device_positions::Model) -> DevicePositionDto {
         accuracy_m: d2f(p.accuracy_m),
         speed_mps: d2f(p.speed_mps),
         heading_deg: d2f(p.heading_deg),
-        source: p.source.clone(),
+        source: if p.source == "manual" {
+            PositionSource::Manual
+        } else {
+            PositionSource::Telemetry
+        },
         positioned_at: p.positioned_at.to_rfc3339(),
     }
 }

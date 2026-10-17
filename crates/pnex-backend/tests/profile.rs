@@ -79,7 +79,7 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
         assert_eq!(res.status_code(), 200);
         let patched: serde_json::Value = res.json();
         assert_eq!(patched["language"], "fr", "forme courte normalisée");
-        assert_eq!(patched["theme"], "Dark");
+        assert_eq!(patched["theme"], "dark");
         assert_eq!(patched["timezone"], "UTC", "champ non fourni intact");
 
         // GET /user-info reflète la mise à jour.
@@ -89,7 +89,7 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
             .await
             .json();
         assert_eq!(info["profile"]["language"], "fr");
-        assert_eq!(info["profile"]["theme"], "Dark");
+        assert_eq!(info["profile"]["theme"], "dark");
 
         // Deuxième patch : timezone seule, le reste tient.
         let res = server
@@ -123,6 +123,9 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             .json(&serde_json::json!({ "language": "klingon" }))
             .await;
         assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["language"], "invalid");
 
         // Thème inconnu.
         let res = server
@@ -132,6 +135,10 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             .json(&serde_json::json!({ "theme": "neon" }))
             .await;
         assert_eq!(res.status_code(), 400);
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["theme"],
+            "invalid"
+        );
 
         // Aucun champ.
         let res = server
@@ -141,6 +148,10 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             .json(&serde_json::json!({}))
             .await;
         assert_eq!(res.status_code(), 400);
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            "profile-patch-empty"
+        );
 
         // Sans token.
         let res = server

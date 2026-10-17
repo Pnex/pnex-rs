@@ -79,10 +79,7 @@ fn validate(input: &LlmProviderInput) -> Result<Clean, ProviderError> {
             format!("{}:{NAME_MAX}", err_codes::FIELD_MAX_LENGTH),
         ));
     }
-    let kind = Provider::parse(&input.kind);
-    if input.kind != kind.as_str() {
-        return Err(invalid("kind", err_codes::FIELD_INVALID));
-    }
+    let kind = Provider::parse(input.kind.as_str());
     let model = input.model.trim();
     if model.is_empty() {
         return Err(invalid("model", err_codes::FIELD_REQUIRED));
@@ -387,7 +384,7 @@ fn view(
     LlmProvider {
         id: r.id,
         name: r.name.clone(),
-        kind: r.kind.clone(),
+        kind: pnex_core::LlmProviderKind::parse(&r.kind),
         base_url: r.base_url.clone(),
         model: r.model.clone(),
         api_key,
@@ -511,7 +508,7 @@ mod tests {
     fn input(kind: &str, base_url: Option<&str>, model: &str) -> LlmProviderInput {
         LlmProviderInput {
             name: "main".into(),
-            kind: kind.into(),
+            kind: pnex_core::LlmProviderKind::parse(kind),
             base_url: base_url.map(str::to_string),
             model: model.into(),
             api_key: None,
@@ -523,7 +520,10 @@ mod tests {
     #[test]
     fn validation_rejects_invalid_fields() {
         assert!(
-            validate(&input("mistral", None, "m")).is_err(),
+            serde_json::from_value::<LlmProviderInput>(
+                serde_json::json!({ "name": "m", "kind": "mistral", "model": "m" })
+            )
+            .is_err(),
             "unknown kind"
         );
         assert!(

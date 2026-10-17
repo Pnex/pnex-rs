@@ -30,6 +30,7 @@ pub const SAMPLE_RATE: u32 = 16_000;
 /// Transport of a stream. Lot 1 captures the HTTP family; the other kinds
 /// of D159 (DASH, RTSP, DVB) join with their fetcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum MediaStreamKind {
     /// Icecast / Shoutcast continuous HTTP audio.
@@ -97,6 +98,7 @@ pub fn media_asset_url(id: uuid::Uuid) -> String {
 /// Tracks captured from a stream (D175): audio goes to the ASR path,
 /// video frames to the camera bus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub enum MediaTracks {
     #[default]
     #[serde(rename = "audio")]
@@ -210,6 +212,7 @@ impl AudioRetention {
 /// Lifecycle of a segment (D162). Gaps are data: `failed` and `skipped_*`
 /// rows stay visible in the coverage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentState {
     Captured,
@@ -260,6 +263,7 @@ impl SegmentState {
 /// Where the absolute time of a segment comes from (D160): a statistic must
 /// be able to say where its clock comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ClockSource {
     /// `EXT-X-PROGRAM-DATE-TIME` of the HLS playlist.
@@ -288,6 +292,7 @@ impl ClockSource {
 
 /// Capture supervisor state of a stream, shown on /media.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CaptureState {
     #[default]
@@ -410,7 +415,9 @@ pub fn url_has_credentials(url: &url::Url) -> bool {
 /// Read DTO of a stream. Never carries the secret value (R4, R16): only
 /// whether one is set.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaStream {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub name: String,
     pub slug: String,
@@ -424,6 +431,7 @@ pub struct MediaStream {
     /// `server` | `worker` | `device:<id>`.
     pub capture_on: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub asr_profile_id: Option<String>,
     #[serde(default)]
     pub tracks: MediaTracks,
@@ -435,11 +443,13 @@ pub struct MediaStream {
     /// `none` | `days:N` | `keep`.
     pub audio_retention: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub notify_channel_id: Option<String>,
     pub timezone: String,
     /// Date of the text-and-data-mining opt-out check (D172); `None` =
     /// persistent warning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub tdm_checked_at: Option<String>,
     #[serde(default)]
     pub tdm_note: String,
@@ -454,7 +464,9 @@ pub struct MediaStream {
     /// `device:<id>` (lot 6b).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capture_device: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
@@ -464,6 +476,7 @@ fn default_fps() -> i32 {
 
 /// Capture health of an enabled stream, computed when read (D160, §9).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StreamHealth {
     /// Seconds since the last captured audio.
     pub gap_secs: i64,
@@ -476,6 +489,7 @@ pub struct StreamHealth {
 /// Create / update body of a stream. On update every field is optional
 /// and absent fields keep their value.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaStreamInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -520,15 +534,20 @@ pub struct MediaStreamInput {
 
 /// Read DTO of a segment (D162).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaSegment {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub seq: i64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub started_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub ended_at: String,
-    pub clock_source: String,
+    pub clock_source: ClockSource,
     pub state: SegmentState,
     pub size_bytes: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub asr_model_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asr_ms: Option<i64>,
@@ -538,28 +557,37 @@ pub struct MediaSegment {
 
 /// Transcription profile (D164).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrProfile {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub name: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub asr_model_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub vad_model_id: Option<String>,
     /// Diarization = a segmentation model (`diarization_model_id`) and a
     /// speaker embedding model, both set or both absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub diarization_model_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub diarization_embedding_model_id: Option<String>,
     /// ISO 639-1 code, or `auto`.
     pub language: String,
     pub beam: i32,
     pub word_timestamps: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Create / update body of a profile; absent fields keep their value.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrProfileInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -582,12 +610,51 @@ pub struct AsrProfileInput {
     pub word_timestamps: Option<bool>,
 }
 
+/// Registry task of an audio model (D167), read from its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AsrTask {
+    /// Speech to text.
+    #[default]
+    Asr,
+    /// Voice activity detection.
+    Vad,
+    /// Segmentation model of the diarization.
+    DiarizationSegmentation,
+    /// Speaker embedding (diarization, voice identification).
+    SpeakerEmbedding,
+}
+
+impl AsrTask {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Asr => "asr",
+            Self::Vad => "vad",
+            Self::DiarizationSegmentation => "diarization_segmentation",
+            Self::SpeakerEmbedding => "speaker_embedding",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        [
+            Self::Asr,
+            Self::Vad,
+            Self::DiarizationSegmentation,
+            Self::SpeakerEmbedding,
+        ]
+        .into_iter()
+        .find(|t| t.wire() == s)
+    }
+}
+
 /// Check of an audio model on the server (D167): load + transcription of
 /// the reference sample.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrModelCheck {
-    /// `unchecked` | `valid` | `invalid` (same values as vision).
-    pub status: String,
+    /// Same values as vision.
+    pub status: crate::vision::ModelCheckStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -599,6 +666,7 @@ pub struct AsrModelCheck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wer: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub checked_at: Option<String>,
 }
 
@@ -612,6 +680,7 @@ impl AsrModelCheck {
 /// Check of a model on one carrier (`worker:<host>` or a name set by the
 /// platform).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrCarrierCheck {
     pub carrier: String,
     pub check: AsrModelCheck,
@@ -620,19 +689,21 @@ pub struct AsrCarrierCheck {
 /// Audio model of the registry (D167): a `model` media asset (archive or
 /// GGML file) read by the `pnex-asr` runtime.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrModel {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub name: String,
     #[serde(default)]
     pub description: String,
-    /// `asr` | `vad` | `diarization_segmentation` | `speaker_embedding`,
-    /// read from the files like the family.
+    /// Read from the files like the family.
     #[serde(default)]
-    pub task: String,
+    pub task: AsrTask,
     /// Read from the files (`parakeet_tdt`, `canary`, `whisper`,
     /// `whisper_ggml`, `silero`, `pyannote_segmentation`,
     /// `speaker_embedding`), never typed.
     pub family: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub asset_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub asset_version: Option<i64>,
@@ -644,12 +715,15 @@ pub struct AsrModel {
     /// carrier.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub carriers: Vec<AsrCarrierCheck>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Create / update body of an audio model; absent fields keep their value.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrModelInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -666,6 +740,7 @@ pub struct AsrModelInput {
 /// Result of `POST /api/v1/media/streams/{id}/test` (§7): a first extract
 /// captured, then transcribed when the stream has a usable profile.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StreamTestResult {
     /// Capture failure code (same codes as `capture_error`); `None` = an
     /// extract was captured.
@@ -686,6 +761,7 @@ pub const TEST_CLIP_MAX_SECS: u32 = 120;
 
 /// One timed word of a test transcription.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrTestWord {
     pub word: String,
     pub start_ms: u32,
@@ -695,6 +771,7 @@ pub struct AsrTestWord {
 /// Result of `POST /api/v1/asr/models/{id}/test`: an uploaded clip
 /// transcribed by the model (first [`TEST_CLIP_MAX_SECS`] only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AsrTestResult {
     pub text: String,
     #[serde(default)]
@@ -730,10 +807,13 @@ pub fn is_valid_language(s: &str) -> bool {
 /// One transcribed segment as stored in `tx_<slug>` (D165) and returned by
 /// `GET /api/v1/media/transcripts`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TranscriptRecord {
     /// Segment start, RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub ts: String,
     pub stream: String,
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub segment_id: String,
     pub text: String,
     /// Word timings as a JSON string (O2 flattens nested objects).
@@ -752,8 +832,10 @@ pub struct TranscriptRecord {
 /// One in-band metadata event as stored in `mx_<slug>` (D170) and
 /// returned by `GET /api/v1/media/metadata`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MetadataRecord {
     /// Reception time, RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub ts: String,
     pub stream: String,
     /// `icy_title` for now.
@@ -837,6 +919,7 @@ pub const CAPTURE_ERROR_DEVICE_OFFLINE: &str = "device-offline";
 
 /// A capture box of the org (stream form picker).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MediaCaptureDevice {
     /// `device_registries.id` (`capture_on = device:<id>`).
     pub id: i64,

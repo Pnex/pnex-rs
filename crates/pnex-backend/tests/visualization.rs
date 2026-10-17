@@ -94,19 +94,18 @@ async fn telemetry_degrade_et_validation_sans_o2() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 200);
+        // D240: OpenObserve unavailable = 503 coded, no `available` envelope.
+        assert_eq!(res.status_code(), 503);
         let body: serde_json::Value = res.json();
-        assert_eq!(body["available"], false);
-        assert_eq!(body["series"].as_array().unwrap().len(), 0);
+        assert_eq!(body["error"], "telemetry-unavailable");
 
         // Série dégradée avec des paramètres valides.
         let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "24h").await;
-        assert_eq!(res.status_code(), 200);
-        let body: serde_json::Value = res.json();
-        assert_eq!(body["available"], false);
-        assert_eq!(body["metric"], "soil_moisture");
-        assert_eq!(body["device_id"], "esp-001");
-        assert_eq!(body["points"].as_array().unwrap().len(), 0);
+        assert_eq!(res.status_code(), 503);
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            "telemetry-unavailable"
+        );
 
         // Anti-injection PromQL : charset fermé métrique/device + fenêtre
         // preset — tout le reste est rejeté avant d'atteindre O2. Les
@@ -122,6 +121,9 @@ async fn telemetry_degrade_et_validation_sans_o2() {
         )
         .await;
         assert_eq!(res.status_code(), 400, "métrique hostile rejetée");
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["metric"], "invalid");
         let res = series(
             &server,
             &env.alice,
@@ -134,6 +136,10 @@ async fn telemetry_degrade_et_validation_sans_o2() {
         assert_eq!(res.status_code(), 400, "device_id hostile rejeté");
         let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "90d").await;
         assert_eq!(res.status_code(), 400, "fenêtre non preset rejetée");
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["window"],
+            "invalid"
+        );
         let res = series(&server, &env.alice, org, "", "esp-001", "24h").await;
         assert_eq!(res.status_code(), 400, "métrique vide rejetée");
 
@@ -155,7 +161,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
     .await;
 }
 
-/// `POST /api/v1/telemetry/series-batch` (D31, studio SCADA) — sans O2
+/// `POST /api/v1/telemetry/series/query` (D31, studio SCADA) — sans O2
 /// configuré : les items valides sont **dégradés au niveau item**
 /// (`available: false`), une spec invalide est isolée (jamais de 400
 /// globale), l'ordre de la réponse suit l'ordre des specs, et le cap de
@@ -169,7 +175,7 @@ async fn series_batch_degrade_par_item_sans_o2() {
         // Batch mixte : 2 specs valides + 1 invalide (device hostile +
         // fenêtre inconnue).
         let res = server
-            .post("/api/v1/telemetry/series-batch")
+            .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
@@ -199,7 +205,7 @@ async fn series_batch_degrade_par_item_sans_o2() {
 
         // Sans specs : batch vide mais 200 (dashboard sans source).
         let res = server
-            .post("/api/v1/telemetry/series-batch")
+            .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
@@ -218,17 +224,20 @@ async fn series_batch_degrade_par_item_sans_o2() {
             }));
         }
         let res = server
-            .post("/api/v1/telemetry/series-batch")
+            .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({ "specs": specs }))
             .await;
         assert_eq!(res.status_code(), 400, "cap specs dépassé → 400");
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "telemetry-batch-too-large");
+        assert_eq!(body["errors"]["args"]["max"], "24");
 
         // X-Org-Id reste requis sur le batch (comme le reste du domaine).
         let res = server
-            .post("/api/v1/telemetry/series-batch")
+            .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.alice))
             .json(&serde_json::json!({ "specs": [] }))

@@ -1,9 +1,10 @@
-//! Mélanges de fluides personnalisés — CRUD org-scoped.
+//! Custom fluid mixtures: org-scoped CRUD.
 //!
-//! École `viz_widgets.rs` : scoping org (404 masqué cross-org),
-//! `can_write()` en écriture, 400 champ-par-champ / violations
-//! `pnex-core`. Le backend lie `pnex-coolprop` : conversion
-//! massique→molaire + validation CoolProp à la sauvegarde.
+//! Org scoping (cross-org masked as 404), `can_write()` on writes, 400
+//! `field-invalid` / `mixture-invalid` violations from `pnex-core`, CoolProp
+//! rejections as `coolprop-error` (engine detail in `args.detail`). The
+//! backend links `pnex-coolprop`: mass-to-mole conversion + CoolProp check
+//! on save.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -29,14 +30,21 @@ fn forbidden(code: &str, msg: &str) -> Error {
 }
 
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
-/// Mélange de l'org, sinon None (→ 404 masqué cross-org).
+/// 400 `coolprop-error`: CoolProp refused the mixture (detail verbatim).
+fn coolprop_rejected(detail: &str) -> Response {
+    super::coded_error(
+        StatusCode::BAD_REQUEST,
+        err_codes::COOLPROP_ERROR,
+        format!("CoolProp rejected the mixture: {detail}"),
+        Some(serde_json::json!({ "detail": detail })),
+    )
+    .into_response()
+}
+
+/// Mixture of the org, else None (cross-org masked as 404).
 async fn find_mixture(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -49,13 +57,13 @@ async fn find_mixture(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Réponse d'un mélange : composition stockée (avec `mole_fractions`
-/// converties) + spec CoolProp inline prête à l'emploi.
+/// API answer of a mixture: stored composition (converted
+/// `mole_fractions`) + ready-to-use inline CoolProp spec.
 fn dto(m: fluid_mixtures::Model) -> Result<pnex_core::FluidMixture> {
     let composition: FluidMixtureComposition =
         serde_json::from_value(m.composition).map_err(|_| Error::InternalServerError)?;
     Ok(pnex_core::FluidMixture {
-        id: m.id.to_string(),
+        id: m.id,
         name: m.name,
         description: m.description,
         spec: composition.to_coolprop_spec().ok(),
@@ -65,18 +73,18 @@ fn dto(m: fluid_mixtures::Model) -> Result<pnex_core::FluidMixture> {
     })
 }
 
-/// Décode la composition du body, la valide (pnex-core) et la convertit
-/// en base molaire (massique → x_i = w_i/M_i normalisé) + masse molaire.
-/// `Some(response)` = invalide (réponse 400 prête).
+/// Decodes the body composition, validates it (pnex-core) and converts it
+/// to the mole basis (mass: x_i = w_i/M_i normalised) + molar mass.
+/// `Err(response)` = invalid (ready 400).
 async fn validate_and_convert_composition(
     raw: serde_json::Value,
 ) -> std::result::Result<FluidMixtureComposition, Box<Response>> {
     let comp: FluidMixtureComposition = match serde_json::from_value(raw) {
         Ok(c) => c,
-        Err(e) => {
+        Err(_) => {
             return Err(Box::new(field_status(
                 "composition",
-                &format!("composition invalide : {e}"),
+                err_codes::FIELD_INVALID,
             )));
         }
     };
@@ -86,16 +94,13 @@ async fn validate_and_convert_composition(
         .map(|v| serde_json::to_value(&v).unwrap_or_default())
         .collect();
     if !violations.is_empty() {
-        return Err(Box::new(
-            (
-                StatusCode::BAD_REQUEST,
-                format::json(serde_json::json!({ "violations": violations })),
-            )
-                .into_response(),
-        ));
+        return Err(Box::new(super::violations_error(
+            pnex_core::err_codes::MIXTURE_INVALID,
+            violations,
+        )));
     }
-    // Base uniforme (structurellement garanti par le type) — masse
-    // molaire de chaque composant pur via CoolProp.
+    // Uniform basis (guaranteed by the type): molar mass of each pure
+    // component through CoolProp.
     let fluids: Vec<String> = comp.components.iter().map(|c| c.fluid.clone()).collect();
     // CoolProp FFI is blocking: run it on the blocking pool under the
     // per-pod CoolProp cap (503 server-busy when saturated).
@@ -107,24 +112,24 @@ async fn validate_and_convert_composition(
     .map_err(|e| Box::new(e.into_response()))?;
     let masses = match masses {
         Ok(ms) => ms,
-        Err(e) => {
-            return Err(Box::new(field_status(
-                "composition",
-                &format!("fluide inconnu : {}", e.0),
-            )));
-        }
+        Err(e) => return Err(Box::new(coolprop_rejected(&e.0))),
     };
     let mole_fractions = if comp.basis == MixtureBasis::Mass {
         match comp.to_mole_fractions(&masses) {
             Ok(x) => x,
-            Err(msg) => return Err(Box::new(field_status("composition", &msg))),
+            Err(_) => {
+                return Err(Box::new(field_status(
+                    "composition",
+                    err_codes::FIELD_INVALID,
+                )))
+            }
         }
     } else {
         comp.components.iter().map(|c| c.fraction).collect()
     };
     let molar_mass = comp
         .mixture_molar_mass(&masses)
-        .map_err(|msg| Box::new(field_status("composition", &msg)))?;
+        .map_err(|_| Box::new(field_status("composition", err_codes::FIELD_INVALID)))?;
     Ok(FluidMixtureComposition {
         basis: comp.basis,
         components: comp.components,
@@ -140,14 +145,37 @@ pub fn routes() -> Routes {
         .add("/{id}", get(detail).put(update).delete(delete))
 }
 
-#[derive(Debug, Default, Deserialize)]
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, detail, create, update, delete))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    /// Case-insensitive substring of the name.
     search: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
-/// `GET /api/v1/fluid-mixtures` — mélanges de l'org.
+/// `GET /api/v1/fluid-mixtures`: mixtures of the org.
+#[utoipa::path(
+    get,
+    path = "/api/v1/fluid-mixtures",
+    tag = "fluid-mixtures",
+    operation_id = "fluid_mixtures_list",
+    summary = "List the fluid mixtures of the organisation",
+    description = "Paginated (`limit`/`offset`), newest first. Each mixture carries its stored composition (mole fractions converted) and its ready-to-use CoolProp spec.",
+    params(ListQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::FluidMixture>)),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -179,6 +207,20 @@ async fn list(
 }
 
 /// `GET /api/v1/fluid-mixtures/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/fluid-mixtures/{id}",
+    tag = "fluid-mixtures",
+    operation_id = "fluid_mixtures_get",
+    summary = "Get a fluid mixture",
+    description = "Returns one mixture of the organisation with its CoolProp spec.",
+    params(("id" = i64, Path, description = "Mixture id")),
+    responses(
+        (status = 200, body = pnex_core::FluidMixture),
+        (status = 404, description = "Unknown mixture or mixture of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -190,12 +232,15 @@ async fn detail(
     Ok(format::json(dto(m)?).into_response())
 }
 
-/// Corps de create/update.
-#[derive(Debug, Deserialize)]
+/// Create/replace body.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct MixtureBody {
+    /// Unique within the org, 1..=255 characters.
     name: String,
     #[serde(default)]
     description: Option<String>,
+    /// Composition `{basis: "mole"|"mass", components: [{fluid, fraction}]}`.
+    #[schema(value_type = pnex_core::FluidMixtureComposition)]
     composition: serde_json::Value,
 }
 
@@ -204,6 +249,22 @@ struct MixtureBody {
 /// spec résultante est instanciée par CoolProp (400 avec son message si
 /// rejet). Le doublon de nom dans l'org répond 400 `name` (école
 /// `viz_widgets`).
+#[utoipa::path(
+    post,
+    path = "/api/v1/fluid-mixtures",
+    tag = "fluid-mixtures",
+    operation_id = "fluid_mixtures_create",
+    summary = "Create a fluid mixture",
+    description = "Validates the composition, converts mass fractions to mole fractions, checks the resulting spec with CoolProp, then stores the mixture. Requires owner, admin or member role.",
+    request_body = MixtureBody,
+    responses(
+        (status = 201, body = pnex_core::FluidMixture),
+        (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:255`, `unique`; `composition`: `invalid`), `mixture-invalid` (`errors.violations`) or `coolprop-error` (CoolProp rejected the mixture, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -231,7 +292,7 @@ async fn create(
     };
     let spec = match composition.to_coolprop_spec() {
         Ok(s) => s,
-        Err(msg) => return Ok(field_status("composition", &msg)),
+        Err(_) => return Ok(field_status("composition", err_codes::FIELD_INVALID)),
     };
     let checked = {
         let spec = spec.clone();
@@ -241,12 +302,9 @@ async fn create(
         .await?
     };
     if let Err(e) = checked {
-        return Ok(field_status(
-            "composition",
-            &format!("CoolProp a rejeté le mélange : {}", e.0),
-        ));
+        return Ok(coolprop_rejected(&e.0));
     }
-    // Unicité (org_id, name) : 400 lisible plutôt que 500 d'index.
+    // Unique (org_id, name): a readable 400 instead of an index 500.
     let clash = FluidMixtures::find()
         .filter(fluid_mixtures::Column::OrgId.eq(org.org.id))
         .filter(fluid_mixtures::Column::Name.eq(&name))
@@ -255,7 +313,7 @@ async fn create(
         .map_err(|_| Error::InternalServerError)?
         .is_some();
     if clash {
-        return Ok(field_status("name", "Un mélange porte déjà ce nom."));
+        return Ok(field_status("name", err_codes::FIELD_UNIQUE));
     }
     let m = fluid_mixtures::ActiveModel {
         org_id: Set(org.org.id),
@@ -274,6 +332,24 @@ async fn create(
 
 /// `PUT /api/v1/fluid-mixtures/{id}` — remplacement complet
 /// (nom, description, composition revalidée + reconvertie).
+#[utoipa::path(
+    put,
+    path = "/api/v1/fluid-mixtures/{id}",
+    tag = "fluid-mixtures",
+    operation_id = "fluid_mixtures_update",
+    summary = "Replace a fluid mixture",
+    description = "Full replacement of name, description and composition (revalidated and reconverted like on create). Flows and widgets that froze the former spec are not changed. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Mixture id")),
+    request_body = MixtureBody,
+    responses(
+        (status = 200, body = pnex_core::FluidMixture),
+        (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:255`, `unique`; `composition`: `invalid`), `mixture-invalid` (`errors.violations`) or `coolprop-error` (CoolProp rejected the mixture, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown mixture or mixture of another org", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -305,7 +381,7 @@ async fn update(
     };
     let spec = match composition.to_coolprop_spec() {
         Ok(s) => s,
-        Err(msg) => return Ok(field_status("composition", &msg)),
+        Err(_) => return Ok(field_status("composition", err_codes::FIELD_INVALID)),
     };
     let checked = {
         let spec = spec.clone();
@@ -315,12 +391,9 @@ async fn update(
         .await?
     };
     if let Err(e) = checked {
-        return Ok(field_status(
-            "composition",
-            &format!("CoolProp a rejeté le mélange : {}", e.0),
-        ));
+        return Ok(coolprop_rejected(&e.0));
     }
-    // Renommer vers un nom déjà pris dans l'org → 400 `name`.
+    // Renaming to a name already used in the org: 400 `name`.
     let clash = FluidMixtures::find()
         .filter(fluid_mixtures::Column::OrgId.eq(org.org.id))
         .filter(fluid_mixtures::Column::Name.eq(&name))
@@ -330,7 +403,7 @@ async fn update(
         .filter(|row| row.id != m.id)
         .is_some();
     if clash {
-        return Ok(field_status("name", "Un mélange porte déjà ce nom."));
+        return Ok(field_status("name", err_codes::FIELD_UNIQUE));
     }
     let mut active: fluid_mixtures::ActiveModel = m.into();
     active.name = Set(name);
@@ -347,6 +420,21 @@ async fn update(
 /// `DELETE /api/v1/fluid-mixtures/{id}` — 204. Les flows/widgets qui ont
 /// figé la spec inline restent valides (la spec CoolProp ne dépend pas de
 /// la ligne en base).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/fluid-mixtures/{id}",
+    tag = "fluid-mixtures",
+    operation_id = "fluid_mixtures_delete",
+    summary = "Delete a fluid mixture",
+    description = "Deletes the mixture. Flows and widgets that froze its inline spec keep working. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Mixture id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown mixture or mixture of another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,

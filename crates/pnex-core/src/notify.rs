@@ -1,41 +1,33 @@
-//! Notifications (D49–D54, amendées 2026-09-14) — DTO partagés
-//! backend ↔ frontend ↔ runtime de flows.
+//! Notifications (D49–D54): DTOs shared by the backend, the frontend and
+//! the flow runtime.
 //!
-//! Contrat `notify-kinds.v1` : [`FieldSpec`] décrit les formulaires de
-//! configuration des canaux, générés par le front depuis
-//! `GET /api/v1/notify/kinds` (source de vérité = backend, zéro drift
-//! front/back). Toute évolution est **additive-only** (école CONTRACT,
-//! reste à 2).
-//!
-//! Deux canaux v1 : `websocket` (bus interne du serveur — tout client WS
-//! authentifié s'abonne via `/ws/notify`) et `webhook` (POST générique,
-//! couvre ntfy/Gotify/Telegram/domotique). ntfy/smtp dédiés = extensions
-//! (~30 l chacune, registre prévu pour) ; push natif FCM/APNs reporté
-//! (creds configurables par instance, produit self-hosté à distribution
-//! unique).
+//! [`FieldSpec`] describes the configuration form of each channel kind; the
+//! frontend generates it from `GET /api/v1/notify/kinds` (the backend is the
+//! single source of truth).
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Type d'un champ de formulaire de canal ([`FieldSpec`]).
+/// Type of a channel form field ([`FieldSpec`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum FieldType {
     Text,
-    /// Write-only : jamais rendu par un GET (`secrets_set` liste les
-    /// champs définis, « remplacer » à l'édition) — D54.
+    /// Write-only: never returned by a GET (`secrets_set` lists the set
+    /// fields, the form offers "replace"), D54.
     Secret,
     Number,
     Select,
     Bool,
 }
 
-/// Spécification d'un champ de formulaire de canal — source unique du
-/// rendu front (contrat `notify-kinds.v1`, additif-only).
+/// Field of a channel configuration form, rendered by the frontend.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FieldSpec {
     pub id: String,
-    /// Clé i18n front (`notify-field-…`), résolue côté client.
+    /// Frontend i18n key (`notify-field-…`), resolved client-side.
     pub label_i18n: String,
     pub r#type: FieldType,
     pub required: bool,
@@ -43,35 +35,38 @@ pub struct FieldSpec {
     pub placeholder: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub help_i18n: Option<String>,
-    /// Choix d'un champ `select` (vide dès v1 — posé now pour rester
-    /// additif en N4 ; select sans options = rendu en texte).
+    /// Choices of a `select` field (a select without options renders as
+    /// text).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<String>,
 }
 
-/// Un kind de canal exposé par `GET /api/v1/notify/kinds`.
+/// A channel kind listed by `GET /api/v1/notify/kinds`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotifyKindInfo {
     pub kind: String,
-    /// Nom affichable (en) — le front garde son registre local d'icône +
-    /// i18n `notify-kind-*` (labels/icons locaux, doctrine §3).
+    /// English display name; the frontend uses its own icon and
+    /// `notify-kind-*` translation.
     pub label: String,
     pub field_spec: Vec<FieldSpec>,
 }
 
-/// Variable déclarée d'un template (`{name, example}`) — alimente le
-/// picker UI et le fallback de l'aperçu.
+/// Declared variable of a template (`{name, example}`): feeds the UI
+/// picker and the preview fallback.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TemplateVar {
     pub name: String,
     pub example: String,
 }
 
-/// Canal de notification (destination) — DTO API. Les champs `secret` de
-/// `config` ne sont **jamais** rendus (D54) : `secrets_set` liste leur
-/// présence pour l'UI (« défini » / « remplacer »).
+/// Notification channel (destination). The `secret` fields of `config`
+/// are **never** returned (D54): `secrets_set` lists which are set.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotifyChannel {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: Uuid,
     pub org_id: i64,
     pub kind: String,
@@ -83,18 +78,23 @@ pub struct NotifyChannel {
     /// name}`, secrets.md D113) — what the form shows, never a value.
     #[serde(default)]
     pub secrets: std::collections::BTreeMap<String, crate::SecretFieldView>,
-    /// Dernière livraison connue (`sent`/`failed`) — badge carte.
+    /// Outcome of the last journaled delivery.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_status: Option<String>,
+    pub last_status: Option<DeliveryStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_delivery_at: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Template minijinja (sujet optionnel + corps) — DTO API.
+/// Minijinja template (optional subject + body).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotifyTemplate {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: Uuid,
     pub org_id: i64,
     pub name: String,
@@ -102,7 +102,9 @@ pub struct NotifyTemplate {
     pub body: String,
     #[serde(default)]
     pub vars: Vec<TemplateVar>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
@@ -116,18 +118,20 @@ pub struct NotifyTemplateInput {
     pub vars: Vec<TemplateVar>,
 }
 
-/// Paramètres d'aperçu : vars fournies, fallback = `example` déclarées.
+/// Preview parameters: given vars, missing ones fall back to the declared
+/// `example`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PreviewInput {
     #[serde(default)]
     pub vars: std::collections::BTreeMap<String, String>,
-    /// Payload d'exemple (contexte `msg` du rendu) — objet quelconque.
+    /// Sample payload (the `msg` context of the rendering), any object.
     #[serde(default)]
     pub payload: serde_json::Value,
 }
 
-/// Résultat d'aperçu (rendu seul, jamais d'envoi).
+/// Preview result (rendering only, nothing is sent).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PreviewResult {
     pub subject: Option<String>,
     pub body: String,
@@ -142,6 +146,72 @@ pub const DELIVERY_SENT: &str = "sent";
 pub const DELIVERY_FAILED: &str = "failed";
 /// Held back by the node's anti-spam window (nothing left the server).
 pub const DELIVERY_BLOCKED: &str = "blocked";
+
+/// Outcome of a delivery attempt, as read back from the journal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryStatus {
+    Sent,
+    Failed,
+    /// Held back by the node's anti-spam window (nothing left the server).
+    Blocked,
+}
+
+impl DeliveryStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Sent => DELIVERY_SENT,
+            Self::Failed => DELIVERY_FAILED,
+            Self::Blocked => DELIVERY_BLOCKED,
+        }
+    }
+
+    /// Journal value to status; an unknown value reads as `failed`.
+    pub fn parse(raw: &str) -> Self {
+        match raw {
+            DELIVERY_SENT => Self::Sent,
+            DELIVERY_BLOCKED => Self::Blocked,
+            _ => Self::Failed,
+        }
+    }
+}
+
+/// What triggered a delivery attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeliverySource {
+    /// A deployed flow's notify node.
+    Flow,
+    /// A Test button.
+    Test,
+    /// An OTA outcome.
+    Ota,
+    /// A direct server-side send.
+    Direct,
+}
+
+impl DeliverySource {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Flow => "flow",
+            Self::Test => "test",
+            Self::Ota => "ota",
+            Self::Direct => "direct",
+        }
+    }
+
+    /// Journal value to source; an unknown value reads as `direct`.
+    pub fn parse(raw: &str) -> Self {
+        match raw {
+            "flow" => Self::Flow,
+            "test" => Self::Test,
+            "ota" => Self::Ota,
+            _ => Self::Direct,
+        }
+    }
+}
 
 /// One delivery attempt to journal — written by the backend (websocket
 /// bus, Test buttons, OTA outcomes) and by the `pnex-notify` flow node
@@ -174,18 +244,21 @@ pub struct NotifyDeliveryEntry {
     pub delivered: Option<i64>,
 }
 
-/// Journal entry as read back — DTO API (`GET /api/v1/notify/deliveries`).
+/// Journal entry as read back (`GET /api/v1/notify/deliveries`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct NotifyDelivery {
-    /// O2 `_timestamp` (µs) — also the row key in the UI.
+    /// OpenObserve `_timestamp` (µs), also the row key in the UI.
     pub ts_us: i64,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub channel_id: Uuid,
     #[serde(default)]
     pub channel_kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, format = "uuid"))]
     pub template_id: Option<Uuid>,
-    pub source: String,
-    pub status: String,
+    pub source: DeliverySource,
+    pub status: DeliveryStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub http_status: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -198,21 +271,13 @@ pub struct NotifyDelivery {
     pub node_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivered: Option<i64>,
-    /// RFC 3339 of `ts_us`.
+    /// `ts_us` as RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
-/// Journal page: `available: false` = the org has no O2 organization yet
-/// (nothing was ever journaled).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NotifyDeliveryPage {
-    pub available: bool,
-    pub count: i64,
-    pub results: Vec<NotifyDelivery>,
-}
-
-/// Frame du bus WS `/ws/notify` (texte JSON) — push temps réel d'une
-/// livraison websocket vers les clients abonnés de l'org.
+/// Frame of the `/ws/notify` bus (JSON text): real-time push of a websocket
+/// delivery to the org's subscribed clients.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NotifyItem {
     pub id: i64,
@@ -223,14 +288,15 @@ pub struct NotifyItem {
     pub created_at: String,
 }
 
-/// Référence notify périmée détectée au deploy (toast, non bloquant —
-/// le nœud dégradé warn + passthrough, jamais de tab cassée).
+/// Stale notify reference found at deploy (non-blocking warning: the
+/// degraded node warns and passes messages through).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StaleNotifyNode {
     pub flow_id: i64,
     pub node_id: String,
     /// `channel_missing` | `channel_disabled` | `template_missing` |
-    /// `template_changed` (vars du template ≠ stamp du pick).
+    /// `template_changed` (template variables differ from the picked stamp).
     pub reason: String,
 }
 

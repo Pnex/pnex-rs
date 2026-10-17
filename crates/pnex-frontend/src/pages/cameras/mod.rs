@@ -33,13 +33,10 @@ pub(crate) use settings::age_label;
 use settings::{framesize_label, SettingsDialog};
 
 /// User role in the current org (media/devices school).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 /// Live-state refresh period of the camera list (streaming badge, viewers,
@@ -56,7 +53,7 @@ pub fn Cameras() -> Element {
     let mut live_for = use_signal(|| None::<CameraView>);
     let mut recordings_for = use_signal(|| None::<CameraView>);
     let mut settings_for = use_signal(|| None::<CameraView>);
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     // Re-fetched on `reload` and on org switch (both read inside).
     let cameras = use_resource(move || async move {

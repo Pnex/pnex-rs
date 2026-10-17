@@ -25,13 +25,10 @@ use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::{org, session, toasts};
 
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,7 +91,7 @@ pub fn Notifications() -> Element {
     // switches to it pre-filtered).
     let journal_channel = use_signal(String::new);
 
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     // Valeurs des signaux-modals lues AVANT le rsx (pas de `let` dans rsx).
     let channel_modal = edit_channel.read().clone();
@@ -449,8 +446,8 @@ fn ChannelsTab(
                             }
                         }
                         if let Some(status) = &ch.last_status {
-                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs {crate::components::notify_deliveries::status_classes(status)}",
-                                {last_status_label(status)} " · " {ch.last_delivery_at.clone().map(|d| date_label(&d)).unwrap_or_default()}
+                            span { class: "inline-flex items-center px-2 py-0.5 rounded-full text-xs {crate::components::notify_deliveries::status_classes(status.as_str())}",
+                                {last_status_label(status.as_str())} " · " {ch.last_delivery_at.clone().map(|d| date_label(&d)).unwrap_or_default()}
                             }
                         }
                     }
@@ -479,14 +476,7 @@ fn ChannelsTab(
                                 let id = id_test.clone();
                                 spawn(async move {
                                     match api::notify::test_channel(&id, None, Default::default()).await {
-                                        Ok(outcome) if outcome.ok() => {
-                                            toasts::success("toast-notify-test-sent")
-                                        }
-                                        Ok(outcome) => toasts::error(
-                                            outcome
-                                                .error
-                                                .unwrap_or_else(|| t!("notify-test-failed").to_string()),
-                                        ),
+                                        Ok(()) => toasts::success("toast-notify-test-sent"),
                                         Err(err) => toasts::error(err),
                                     }
                                     testing_id.set(None);

@@ -19,6 +19,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use super::coded_error;
+use super::pagination::{envelope, PageParams};
 use crate::auth::OrgContext;
 use crate::services::ontology::{
     self as onto, changes, graph, link_types, links, objects, packs, query, series, types, Actor,
@@ -52,7 +53,7 @@ pub fn routes() -> Routes {
         .add("/objects/{id}/bindings", get(object_bindings))
         .add("/objects/{id}/changes", get(object_changes))
         .add("/objects/{id}/actions/{key}", post(invoke_action))
-        .add("/resolve/{kind}/{native_id}", get(resolve))
+        .add("/resolve/{kind}/{native_key}", get(resolve))
         .add("/path", get(path))
         .add("/links", post(create_link))
         .add("/links/{id}/close", post(close_link))
@@ -68,15 +69,50 @@ pub fn routes() -> Routes {
         )
 }
 
-/// Service error → HTTP answer (field errors as `{field: token}`).
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list_types,
+        get_type,
+        create_type,
+        update_type,
+        delete_type,
+        type_versions,
+        list_link_types,
+        create_link_type,
+        update_link_type,
+        delete_link_type,
+        create_object,
+        invoke_action,
+        get_object,
+        update_object,
+        archive_object,
+        resolve,
+        object_links,
+        object_graph,
+        object_impact,
+        path,
+        object_series,
+        object_bindings,
+        object_changes,
+        create_link,
+        close_link,
+        run_query,
+        list_packs,
+        install_pack,
+        export,
+        import
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+/// Service error → HTTP answer (field errors as `field-invalid`).
 pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
     let coded = |status, code: &str, msg: &str| Err(coded_error(status, code, msg, None));
     match e {
-        OntologyError::Invalid { field, token } => Ok((
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ field: token })),
-        )
-            .into_response()),
+        OntologyError::Invalid { field, token } => Ok(super::field_error(&field, &token)),
         OntologyError::NotFound => coded(
             StatusCode::NOT_FOUND,
             err_codes::ONTOLOGY_NOT_FOUND,
@@ -175,6 +211,41 @@ fn created<T: serde::Serialize>(r: onto::Result<T>) -> Result<Response> {
     }
 }
 
+/// `limit`/`offset` of a computed sub-collection (D240).
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(crate) struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+impl PageQuery {
+    pub(crate) fn page(&self) -> PageParams {
+        PageParams::from(self.limit.as_deref(), self.offset.as_deref())
+    }
+}
+
+/// Pages an already computed list into the D14 envelope; `filters` are kept
+/// in the `next`/`previous` links.
+pub(crate) fn paged<T: serde::Serialize>(
+    path: &str,
+    filters: &[(String, String)],
+    q: &PageQuery,
+    r: onto::Result<Vec<T>>,
+) -> Result<Response> {
+    let rows = match r {
+        Ok(rows) => rows,
+        Err(e) => return onto_error(e),
+    };
+    let page = q.page();
+    let count = rows.len() as i64;
+    let (skip, take) = page.slice(rows.len());
+    let rows: Vec<T> = rows.into_iter().skip(skip).take(take).collect();
+    format::json(envelope(path, filters, page, count, rows))
+}
+
 fn require_admin(org: &OrgContext) -> Result<()> {
     if org.can_administer() {
         return Ok(());
@@ -220,10 +291,42 @@ pub(crate) fn parse_uuid(raw: &str) -> Result<Uuid> {
 
 // ─────────────────────────── types ───────────────────────────
 
-async fn list_types(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
-    reply(types::list(&ctx.db, org.org.id).await)
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/types",
+    tag = "ontology",
+    operation_id = "ontology_types_list",
+    summary = "List the object types",
+    description = "Every object type visible to the organisation: the system types (version 0, native tables) and the org's own types, each with its live object count. Paginated (`limit`/`offset`). Any org member.",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::ObjectTypeView>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn list_types(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let rows = types::list(&ctx.db, org.org.id).await;
+    paged("/api/v1/ontology/types", &[], &q, rows)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/types/{key}",
+    tag = "ontology",
+    operation_id = "ontology_types_get",
+    summary = "Get an object type",
+    description = "One object type (system or org) by its key, at its current version. Any org member.",
+    params(("key" = String, Path, description = "Type key (`[a-z][a-z0-9_]*`)")),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectTypeView),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn get_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -232,6 +335,22 @@ async fn get_type(
     reply(types::get(&ctx.db, org.org.id, &key).await)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/types",
+    tag = "ontology",
+    operation_id = "ontology_types_create",
+    summary = "Create an object type",
+    description = "Creates an org object type (version 1) from `def`; `expected_version` is ignored. Org owner or admin only. Field errors come back as `field-invalid` (`errors.fields`).",
+    request_body = pnex_core::ontology::api::ObjectTypeInput,
+    responses(
+        (status = 201, body = pnex_core::ontology::api::ObjectTypeView),
+        (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-already-exists` (key taken, system keys included)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -250,6 +369,24 @@ async fn create_type(
     )
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/ontology/types/{key}",
+    tag = "ontology",
+    operation_id = "ontology_types_update",
+    summary = "Publish a new version of an object type",
+    description = "Replaces the definition of an org type with `def`, creating a new type version; existing objects keep their data. `expected_version` (optimistic concurrency) must match the current version when set. System types are read-only. Org owner or admin only.",
+    params(("key" = String, Path, description = "Type key")),
+    request_body = pnex_core::ontology::api::ObjectTypeInput,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectTypeView),
+        (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-version-conflict` (args.current = current version), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -260,6 +397,22 @@ async fn update_type(
     reply(types::update(&ctx.db, org.org.id, &key, Some(org.auth.user.id), &input).await)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ontology/types/{key}",
+    tag = "ontology",
+    operation_id = "ontology_types_delete",
+    summary = "Delete an object type",
+    description = "Deletes an org type that no live object or link type uses any more. System types cannot be deleted. Org owner or admin only. 204 with no body.",
+    params(("key" = String, Path, description = "Type key")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-type-in-use`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -272,20 +425,75 @@ async fn delete_type(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/types/{key}/versions",
+    tag = "ontology",
+    operation_id = "ontology_types_versions",
+    summary = "List the versions of an object type",
+    description = "Every published definition of an org type with its creation date. Paginated (`limit`/`offset`). Any org member.",
+    params(("key" = String, Path, description = "Type key"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::ObjectTypeVersionView>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn type_versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(key): Path<String>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
-    reply(types::versions(&ctx.db, org.org.id, &key).await)
+    let rows = types::versions(&ctx.db, org.org.id, &key).await;
+    paged(
+        &format!("/api/v1/ontology/types/{key}/versions"),
+        &[],
+        &q,
+        rows,
+    )
 }
 
 // ─────────────────────────── link types ───────────────────────────
 
-async fn list_link_types(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
-    reply(link_types::list(&ctx.db, org.org.id).await)
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/link-types",
+    tag = "ontology",
+    operation_id = "ontology_link_types_list",
+    summary = "List the link types",
+    description = "Every link type visible to the organisation (system and org), with the types each one connects. Paginated (`limit`/`offset`). Any org member.",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::LinkTypeView>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn list_link_types(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let rows = link_types::list(&ctx.db, org.org.id).await;
+    paged("/api/v1/ontology/link-types", &[], &q, rows)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/link-types",
+    tag = "ontology",
+    operation_id = "ontology_link_types_create",
+    summary = "Create a link type",
+    description = "Creates an org link type (version 1). The body is the bare definition, not wrapped in `def`. Org owner or admin only.",
+    request_body = pnex_core::ontology::LinkTypeDef,
+    responses(
+        (status = 201, body = pnex_core::ontology::api::LinkTypeView),
+        (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-already-exists`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_link_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -295,6 +503,24 @@ async fn create_link_type(
     created(link_types::create(&ctx.db, org.org.id, &def, None).await)
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/ontology/link-types/{key}",
+    tag = "ontology",
+    operation_id = "ontology_link_types_update",
+    summary = "Publish a new version of a link type",
+    description = "Replaces the definition of an org link type; `expected_version` must match the current version when set. System link types are read-only. Org owner or admin only.",
+    params(("key" = String, Path, description = "Link type key")),
+    request_body = pnex_core::ontology::api::LinkTypeInput,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::LinkTypeView),
+        (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_link_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -305,6 +531,22 @@ async fn update_link_type(
     reply(link_types::update(&ctx.db, org.org.id, &key, &input).await)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ontology/link-types/{key}",
+    tag = "ontology",
+    operation_id = "ontology_link_types_delete",
+    summary = "Delete a link type",
+    description = "Deletes an org link type no link uses any more. System link types cannot be deleted. Org owner or admin only. 204 with no body.",
+    params(("key" = String, Path, description = "Link type key")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-type-in-use`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete_link_type(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -319,6 +561,23 @@ async fn delete_link_type(
 
 // ─────────────────────────── objects ───────────────────────────
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects",
+    tag = "ontology",
+    operation_id = "ontology_objects_create",
+    summary = "Create an object",
+    description = "Creates an object of an org type with a title and properties validated against the type; the change is journaled. Needs a writer role and the type's write role. System objects are created from their own pages, not here.",
+    request_body = pnex_core::ontology::api::ObjectInput,
+    responses(
+        (status = 201, body = pnex_core::ontology::api::ObjectView),
+        (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (unknown type)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -328,14 +587,38 @@ async fn create_object(
     created(objects::create(&ctx.db, org.org.id, &actor(&org), &input).await)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 struct InvokeBody {
+    /// Action parameters by key, validated against the action's `params`.
     #[serde(default)]
+    #[schema(value_type = Object)]
     params: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Invokes an action of the object's type (D183): 202 with the flows it
 /// was dispatched to, 409 `ontology-action-no-flow` when none listens.
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects/{id}/actions/{key}",
+    tag = "ontology",
+    operation_id = "ontology_objects_invoke_action",
+    summary = "Invoke an action on an object",
+    description = "Publishes an invocation of an action declared on the object's type to the deployed flows that hold a matching action trigger; the server itself executes nothing. Journaled in the object's history. Needs a writer role and the type's write role. Answers 202 with the flows it was dispatched to.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Object id (UUID)"),
+        ("key" = String, Path, description = "Action key declared on the type")
+    ),
+    request_body = InvokeBody,
+    responses(
+        (status = 202, body = pnex_core::ontology::action::ActionInvocation),
+        (status = 400, description = "Invalid parameter (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (object or action)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-action-no-flow`: no deployed flow handles the action", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`ontology-action-unavailable`: the action bus is down, nothing was sent", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn invoke_action(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -367,6 +650,20 @@ async fn invoke_action(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}",
+    tag = "ontology",
+    operation_id = "ontology_objects_get",
+    summary = "Get an object",
+    description = "One object of the organisation (system or org type) with its properties and version. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID); a malformed id answers 404")),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectView),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn get_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -375,6 +672,24 @@ async fn get_object(
     reply(objects::get(&ctx.db, org.org.id, parse_uuid(&id)?).await)
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/ontology/objects/{id}",
+    tag = "ontology",
+    operation_id = "ontology_objects_update",
+    summary = "Update an object",
+    description = "Replaces the title and properties of an object (for a system object, only the org's extra properties are writable). `expected_version` must match the current version when set. Journaled. Needs a writer role and the type's write role.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    request_body = pnex_core::ontology::api::ObjectInput,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectView),
+        (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -385,6 +700,22 @@ async fn update_object(
     reply(objects::update(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ontology/objects/{id}",
+    tag = "ontology",
+    operation_id = "ontology_objects_archive",
+    summary = "Archive an object",
+    description = "Archives an org object: sets its `valid_to` (history kept) and drops its labels and containment like any deleted resource. System objects are archived from their own pages. Journaled. Needs a writer role and the type's write role. 204 with no body.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    responses(
+        (status = 204, description = "Archived"),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn archive_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -397,6 +728,23 @@ async fn archive_object(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/resolve/{kind}/{native_key}",
+    tag = "ontology",
+    operation_id = "ontology_resolve",
+    summary = "Resolve a native row to its object",
+    description = "Finds the ontology object that mirrors a native row of a system type (e.g. a device registry id), to reach its links and history. Any org member.",
+    params(
+        ("kind" = String, Path, description = "System type key (e.g. `device`)"),
+        ("native_key" = String, Path, description = "Key of the native row (device id, media id…)")
+    ),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectView),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn resolve(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -411,40 +759,78 @@ async fn resolve(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct LinksQuery {
+    /// RFC 3339: links valid at that instant (default now).
     as_of: Option<String>,
+    /// true: closed links too (the whole history).
     history: Option<bool>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/links",
+    tag = "ontology",
+    operation_id = "ontology_objects_links",
+    summary = "List the links of an object",
+    description = "Links where the object is source or target, open at `as_of` (default now), or every link ever with `history=true`. Paginated (`limit`/`offset`). Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), LinksQuery, PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::LinkView>),
+        (status = 400, description = "Invalid `as_of` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_links(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
     Query(q): Query<LinksQuery>,
+    Query(page): Query<PageQuery>,
 ) -> Result<Response> {
     let as_of = match onto::parse_instant("as_of", q.as_of.as_deref()) {
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
-    reply(
-        links::for_object(
-            &ctx.db,
-            org.org.id,
-            parse_uuid(&id)?,
-            as_of,
-            q.history.unwrap_or(false),
-        )
-        .await,
+    let history = q.history.unwrap_or(false);
+    let rows = links::for_object(&ctx.db, org.org.id, parse_uuid(&id)?, as_of, history).await;
+    let mut filters = vec![("history".to_string(), history.to_string())];
+    if let Some(t) = q.as_of {
+        filters.push(("as_of".to_string(), t));
+    }
+    paged(
+        &format!("/api/v1/ontology/objects/{id}/links"),
+        &filters,
+        &page,
+        rows,
     )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct GraphQuery {
+    /// Hops from the object (graph: 1–2, default 1; impact: 1–4, default 4).
     depth: Option<u32>,
+    /// Impact only: walk the links backwards (what this object depends on).
     upstream: Option<bool>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/graph",
+    tag = "ontology",
+    operation_id = "ontology_objects_graph",
+    summary = "Get the neighbourhood graph of an object",
+    description = "Objects within `depth` hops (clamped to 1–2) through open links, and the links among them. `upstream` is ignored here. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), GraphQuery),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::Neighborhood),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_graph(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -454,6 +840,20 @@ async fn object_graph(
     reply(graph::neighborhood(&ctx.db, org.org.id, parse_uuid(&id)?, q.depth.unwrap_or(1)).await)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/impact",
+    tag = "ontology",
+    operation_id = "ontology_objects_impact",
+    summary = "List the objects impacted by an object",
+    description = "Objects reachable from the object through open links within `depth` hops (1–4, default 4): downstream by default, upstream with `upstream=true`. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), GraphQuery),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectImpact),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_impact(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -472,39 +872,83 @@ async fn object_impact(
             q.upstream.unwrap_or(false),
             depth,
         )
-        .await,
+        .await
+        .map(|objects| pnex_core::ontology::api::ObjectImpact { objects }),
     )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct PathQuery {
-    from: String,
-    to: String,
+    /// Start object id (UUID).
+    from: Option<String>,
+    /// End object id (UUID).
+    to: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/path",
+    tag = "ontology",
+    operation_id = "ontology_path",
+    summary = "Find a path between two objects",
+    description = "Shortest chain of open links, followed in either direction, within 4 hops of `from`: the objects along it, ends included. 404 when there is no such path. Any org member.",
+    params(PathQuery),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectPath),
+        (status = 400, description = "Missing `from` or `to` (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (malformed or unknown id, or no path)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn path(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Query(q): Query<PathQuery>,
 ) -> Result<Response> {
     let depth = pnex_core::ontology::api::MAX_HOPS as u32;
+    let (Some(from), Some(to)) = (q.from, q.to) else {
+        return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED));
+    };
     reply(
         graph::path(
             &ctx.db,
             org.org.id,
-            parse_uuid(&q.from)?,
-            parse_uuid(&q.to)?,
+            parse_uuid(&from)?,
+            parse_uuid(&to)?,
             depth,
         )
-        .await,
+        .await
+        .map(|path| pnex_core::ontology::api::ObjectPath { path }),
     )
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct SeriesQuery {
+    /// `5m` | `15m` | `30m` | `1h` | `6h` | `24h` (default) | `7d` | `30d`.
     window: Option<String>,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/series/{property}",
+    tag = "ontology",
+    operation_id = "ontology_objects_series",
+    summary = "Read the time series of an object property",
+    description = "Recomposes a `series` property over the window from the telemetry of every device that measured it (`measures` links), segment by segment, so a sensor replacement does not break the curve. Empty points when telemetry is unavailable. Any org member.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Object id (UUID)"),
+        ("property" = String, Path, description = "Key of a `series` property of the object's type"),
+        SeriesQuery
+    ),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::SeriesView),
+        (status = 400, description = "Invalid `window` or property (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_series(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -537,40 +981,108 @@ async fn object_series(
 
 /// `GET /api/v1/ontology/objects/{id}/bindings` — current sensor of each
 /// bound series property (type dashboards, D187).
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/bindings",
+    tag = "ontology",
+    operation_id = "ontology_objects_bindings",
+    summary = "List the current sensors of an object",
+    description = "For each `series` property bound by an open `measures` link: the telemetry `device_id` label and metric that feed it now (what a type dashboard reads). Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::SeriesBinding>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_bindings(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
     if let Err(e) = objects::find(&ctx.db, org.org.id, id).await {
         return onto_error(e);
     }
-    reply(series::current_bindings(&ctx.db, org.org.id, id).await)
+    let rows = series::current_bindings(&ctx.db, org.org.id, id).await;
+    paged(
+        &format!("/api/v1/ontology/objects/{id}/bindings"),
+        &[],
+        &q,
+        rows,
+    )
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/changes",
+    tag = "ontology",
+    operation_id = "ontology_objects_changes",
+    summary = "Get the change history of an object",
+    description = "The last 200 changes of the object (create, update, archive, link open/close, action invocations) from the change journal, newest first, with before/after values. Paginated (`limit`/`offset`). 503 `ontology-changes-unavailable` when the journal cannot be read. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::ChangeView>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`ontology-changes-unavailable`: the change journal cannot be read", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn object_changes(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
     if let Err(e) = objects::find(&ctx.db, org.org.id, id).await {
         return onto_error(e);
     }
-    match changes::history(&ctx, org.org.id, &id.to_string(), 200).await {
-        Ok(rows) => format::json(
-            serde_json::json!({ "available": rows.is_some(), "changes": rows.unwrap_or_default() }),
-        ),
+    let rows = match changes::history(&ctx, org.org.id, &id.to_string(), 200).await {
+        Ok(Some(rows)) => rows,
+        Ok(None) => return Err(changes_unavailable()),
         Err(e) => {
             tracing::warn!("object changes read failed: {e}");
-            format::json(serde_json::json!({ "available": false, "changes": [] }))
+            return Err(changes_unavailable());
         }
-    }
+    };
+    paged(
+        &format!("/api/v1/ontology/objects/{id}/changes"),
+        &[],
+        &q,
+        Ok(rows),
+    )
+}
+
+fn changes_unavailable() -> Error {
+    coded_error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        err_codes::ONTOLOGY_CHANGES_UNAVAILABLE,
+        "The change journal cannot be read.",
+        None,
+    )
 }
 
 // ─────────────────────────── links ───────────────────────────
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/links",
+    tag = "ontology",
+    operation_id = "ontology_links_create",
+    summary = "Create a link between two objects",
+    description = "Opens a link of `link_type` from `source_id` to `target_id`, starting at `valid_from` (default now; may be in the past). Checks the link type allows these object types and its cardinality. Journaled on both ends. Needs a writer role.",
+    request_body = pnex_core::ontology::api::LinkInput,
+    responses(
+        (status = 201, body = pnex_core::ontology::api::LinkView),
+        (status = 400, description = "Invalid field (field → token), or `ontology-link-not-allowed`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (link type or object)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_link(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -580,6 +1092,23 @@ async fn create_link(
     created(links::create(&ctx.db, org.org.id, &actor(&org), &input).await)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/links/{id}/close",
+    tag = "ontology",
+    operation_id = "ontology_links_close",
+    summary = "Close a link",
+    description = "Ends an open link at `valid_to` (default now); the link stays in the history. The body is optional (empty = now). Journaled. Needs a writer role.",
+    params(("id" = i64, Path, description = "Link id")),
+    request_body(content = Option<pnex_core::ontology::api::LinkClose>, description = "Optional; empty body = close now"),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::LinkView),
+        (status = 400, description = "Invalid `valid_to` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn close_link(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -602,6 +1131,20 @@ async fn close_link(
 
 // ─────────────────────────── query ───────────────────────────
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/query",
+    tag = "ontology",
+    operation_id = "ontology_query",
+    summary = "Run an ontology query",
+    description = "Read-only declarative query: selects objects (by type, ids, title text, property filters, label, containment), traverses up to 4 link hops, optionally joins the last value of `series` properties, then pages (`limit` up to 500, `offset`). `count` is the total before paging. Any org member.",
+    request_body = pnex_core::ontology::api::OntologyQuery,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::QueryResult),
+        (status = 400, description = "Invalid query (field → token)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn run_query(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -613,10 +1156,45 @@ async fn run_query(
 
 // ─────────────────────────── packs ───────────────────────────
 
-async fn list_packs(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
-    reply(packs::list(&ctx.db, org.org.id).await)
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/packs",
+    tag = "ontology",
+    operation_id = "ontology_packs_list",
+    summary = "List the ontology packs",
+    description = "The packs shipped with the server (ready-made types, link types and page templates) and the version the org installed, if any. Any org member.",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::PackView>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn list_packs(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let rows = packs::list(&ctx.db, org.org.id).await;
+    paged("/api/v1/ontology/packs", &[], &q, rows)
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/packs/{key}/install",
+    tag = "ontology",
+    operation_id = "ontology_packs_install",
+    summary = "Install a shipped pack",
+    description = "Installs (or upgrades) a shipped pack into the org: creates or versions its object types, link types and page templates. No body. Org owner or admin only.",
+    params(("key" = String, Path, description = "Pack key")),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::PackView),
+        (status = 400, description = "Invalid pack content (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (unknown pack)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-already-exists`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn install_pack(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -629,6 +1207,18 @@ async fn install_pack(
     reply(packs::install(&ctx.db, org.org.id, Some(org.auth.user.id), &pack).await)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/export",
+    tag = "ontology",
+    operation_id = "ontology_export",
+    summary = "Export the org schema as a pack",
+    description = "The org's own object types and link types as pack YAML (the format `POST /api/v1/ontology/import` reads). Any org member.",
+    responses(
+        (status = 200, content_type = "application/yaml", body = String)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn export(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
     match packs::export(&ctx.db, org.org.id).await {
         Ok(yaml) => Ok((
@@ -641,6 +1231,23 @@ async fn export(State(ctx): State<AppContext>, org: OrgContext) -> Result<Respon
 }
 
 /// `POST /api/v1/ontology/import` — the YAML of a pack (D186 as-code).
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/import",
+    tag = "ontology",
+    operation_id = "ontology_import",
+    summary = "Import a pack from YAML",
+    description = "Installs a pack given as YAML text (schema as code): creates or versions its object types, link types and page templates in the org. Body up to 512 KiB. Org owner or admin only.",
+    request_body(content = String, content_type = "application/yaml", description = "Pack YAML"),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::PackView),
+        (status = 400, description = "Not UTF-8, unreadable YAML or invalid content (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ontology-already-exists`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "Body over the limit")
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn import(
     State(ctx): State<AppContext>,
     org: OrgContext,

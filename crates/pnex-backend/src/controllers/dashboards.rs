@@ -47,15 +47,6 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// 400 per-field error shape: `{"<field>": "..."}`.
-fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
-}
-
 /// Dashboard de l'org courante, sinon None (→ 404 masqué cross-org).
 async fn find_dashboard(
     db: &DatabaseConnection,
@@ -156,25 +147,23 @@ async fn detail_dto(db: &DatabaseConnection, d: dashboards::Model) -> Result<Viz
     })
 }
 
-/// Mapping service → HTTP (formes historiques : les tests d'intégration
-/// en sont la référence).
+/// Service write error to HTTP: `field-invalid` / `dashboard-invalid` 400,
+/// 409 version conflict, 404, 500.
 fn write_error_response(e: DashboardWriteError) -> Response {
     match e {
-        DashboardWriteError::NameRequired => field_status("name", err_codes::FIELD_REQUIRED),
+        DashboardWriteError::NameRequired => super::field_error("name", err_codes::FIELD_REQUIRED),
         DashboardWriteError::NameTooLong => {
-            field_status("name", &format!("{}:255", err_codes::FIELD_MAX_LENGTH))
+            super::field_error("name", &format!("{}:255", err_codes::FIELD_MAX_LENGTH))
         }
-        DashboardWriteError::Violations(v) => (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "violations": v })),
-        )
-            .into_response(),
+        DashboardWriteError::Violations(v) => {
+            super::violations_error(pnex_core::err_codes::DASHBOARD_INVALID, v)
+        }
         // Optimistic concurrency: the expected/current numbers travel in
         // `errors.args` (never pre-rendered into the description).
         DashboardWriteError::Conflict { expected, current } => Error::CustomError(
             StatusCode::CONFLICT,
             loco_rs::controller::ErrorDetail {
-                error: Some("dashboard-version-conflict".to_string()),
+                error: Some(err_codes::DASHBOARD_VERSION_CONFLICT.to_string()),
                 description: Some(
                     "Stale version — reload the latest version before saving".to_string(),
                 ),
@@ -206,17 +195,35 @@ pub fn routes() -> Routes {
 
 // ─────────────────────────── GET /dashboards ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListDashboardsQuery {
+    /// Case-insensitive search on the name.
     search: Option<String>,
     /// D42: effective label (`name` or `name:value`, inherited included).
     label: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/dashboards` — dashboards de l'org, paginés (D14),
 /// filtre `search` (nom).
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboards",
+    tag = "dashboards",
+    operation_id = "dashboards_list",
+    summary = "List the dashboards of the organisation",
+    description = "Newest first, paginated (`limit`/`offset`). Filters: `search` (name) and `label` (`name` or `name:value`, inherited labels included). Each row carries the format (desktop/mobile) of its current version. Any member.",
+    params(ListDashboardsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::VizDashboardSummary>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -234,7 +241,7 @@ async fn list(
         ));
     }
     // D42: effective label filter.
-    match crate::services::resources::labels::list_filter(
+    match pagination::label_ids(
         &ctx.db,
         org.org.id,
         q.label.as_deref(),
@@ -244,15 +251,9 @@ async fn list(
     {
         Ok(None) => {}
         Ok(Some(ids)) => {
-            let ids: Vec<Uuid> = ids.iter().filter_map(|id| id.parse().ok()).collect();
-            query = query.filter(dashboards::Column::Id.is_in(ids));
+            query = query.filter(dashboards::Column::Id.is_in(pagination::parse_ids::<Uuid>(&ids)));
         }
-        Err(crate::services::resources::labels::ListLabelFilterError::Invalid(reason)) => {
-            return Ok(field_status("label", &reason));
-        }
-        Err(crate::services::resources::labels::ListLabelFilterError::Db(_)) => {
-            return Err(Error::InternalServerError);
-        }
+        Err(resp) => return Ok(resp),
     }
     let (count, rows) = pagination::sql_page(&ctx.db, query, page)
         .await
@@ -286,6 +287,21 @@ async fn list(
 // ─────────────────────────── POST /dashboards ───────────────────────────
 
 /// `POST /api/v1/dashboards` — crée le dashboard **et sa version 1**.
+#[utoipa::path(
+    post,
+    path = "/api/v1/dashboards",
+    tag = "dashboards",
+    operation_id = "dashboards_create",
+    summary = "Create a dashboard",
+    description = "Creates the dashboard and its version 1 (empty layout when none is given). Controls declared by control widgets are provisioned. Requires a writer role.",
+    request_body = pnex_core::CreateDashboard,
+    responses(
+        (status = 201, body = pnex_core::VizDashboard),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `dashboard-invalid` (`errors.violations`: layout violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -293,7 +309,7 @@ async fn create(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "dashboard-write-forbidden",
+            err_codes::DASHBOARD_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage dashboards",
         ));
     }
@@ -320,6 +336,20 @@ async fn create(
 
 /// `GET /api/v1/dashboards/{id}` — détail + layout de la version
 /// **courante** (celle que les viewers rendent).
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboards/{id}",
+    tag = "dashboards",
+    operation_id = "dashboards_get",
+    summary = "Get a dashboard with its current layout",
+    description = "Returns the layout of the current version (the one viewers render). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::VizDashboard),
+        (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -335,6 +365,24 @@ async fn detail(
 
 /// `PATCH /api/v1/dashboards/{id}` = save — nouvelle version + pointeur
 /// (save = live). 409 si `expected_version_number` ≠ version courante.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/dashboards/{id}",
+    tag = "dashboards",
+    operation_id = "dashboards_update",
+    summary = "Save a dashboard (new version)",
+    description = "Appends a new version with the given layout (and optional new name) and makes it current immediately: saving is publishing, viewers see it on their next poll. Optimistic concurrency: `expected_version_number` must be the current version, else 409. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)")),
+    request_body = pnex_core::UpdateDashboard,
+    responses(
+        (status = 200, body = pnex_core::VizDashboard),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `dashboard-invalid` (`errors.violations`: layout violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`dashboard-version-conflict` (args `expected`, `current`): another save happened, reload first", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -343,7 +391,7 @@ async fn update(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "dashboard-write-forbidden",
+            err_codes::DASHBOARD_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage dashboards",
         ));
     }
@@ -376,6 +424,21 @@ async fn update(
 
 /// `DELETE /api/v1/dashboards/{id}` — 204 ; les versions suivent (FK
 /// CASCADE).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/dashboards/{id}",
+    tag = "dashboards",
+    operation_id = "dashboards_delete",
+    summary = "Delete a dashboard",
+    description = "Permanently deletes the dashboard and all its versions, its labels and links, and releases the controls its widgets declared (deleted unless a flow or another surface still uses them). Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -383,7 +446,7 @@ async fn delete(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "dashboard-write-forbidden",
+            err_codes::DASHBOARD_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage dashboards",
         ));
     }
@@ -420,35 +483,59 @@ async fn delete(
 
 // ─────────────────────────── GET /dashboards/{id}/versions ───────────────────────────
 
-/// Max entries of the dashboard version history list.
-const VERSIONS_LIST_CAP: u64 = 500;
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct VersionsQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
 
 /// `GET /api/v1/dashboards/{id}/versions` — historique append-only
 /// (drapeau `current` = version pointée).
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboards/{id}/versions",
+    tag = "dashboards",
+    operation_id = "dashboards_versions",
+    summary = "List the versions of a dashboard",
+    description = "Version history without layouts, newest first, paginated (`limit`/`offset`); `current` flags the version viewers render. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)"), VersionsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::VizDashboardVersion>),
+        (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    Query(q): Query<VersionsQuery>,
 ) -> Result<Response> {
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // History list without the (large) layout column, newest first, bounded
-    // (the drawer shows the recent history; older versions stay reachable
-    // through GET /versions/{n}).
-    let rows: Vec<(i64, Option<String>, sea_orm::prelude::DateTimeWithTimeZone)> =
-        dashboard_versions::Entity::find()
-            .filter(dashboard_versions::Column::DashboardId.eq(dashboard.id))
-            .select_only()
-            .column(dashboard_versions::Column::VersionNumber)
-            .column(dashboard_versions::Column::Author)
-            .column(dashboard_versions::Column::CreatedAt)
-            .order_by_desc(dashboard_versions::Column::VersionNumber)
-            .limit(VERSIONS_LIST_CAP)
-            .into_tuple()
-            .all(&ctx.db)
-            .await
-            .map_err(|_| Error::InternalServerError)?;
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let base = dashboard_versions::Entity::find()
+        .filter(dashboard_versions::Column::DashboardId.eq(dashboard.id));
+    let count = sea_orm::PaginatorTrait::count(base.clone(), &ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)? as i64;
+    // One page of the history, without the (large) layout column.
+    let rows: Vec<(i64, Option<String>, sea_orm::prelude::DateTimeWithTimeZone)> = base
+        .select_only()
+        .column(dashboard_versions::Column::VersionNumber)
+        .column(dashboard_versions::Column::Author)
+        .column(dashboard_versions::Column::CreatedAt)
+        .order_by_desc(dashboard_versions::Column::VersionNumber)
+        .offset(page.offset as u64)
+        .limit(page.limit as u64)
+        .into_tuple()
+        .all(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     let results: Vec<VizDashboardVersion> = rows
         .into_iter()
         .map(|(version_number, author, created_at)| VizDashboardVersion {
@@ -458,13 +545,34 @@ async fn versions(
             created_at: created_at.to_rfc3339(),
         })
         .collect();
-    Ok(format::json(results).into_response())
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/dashboards/{id}/versions"),
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
 }
 
 // ─────────────────────── GET /dashboards/{id}/versions/{n} ───────────────────────
 
 /// `GET /api/v1/dashboards/{id}/versions/{n}` — layout d'une version
 /// (aperçu du drawer historique).
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboards/{id}/versions/{version_number}",
+    tag = "dashboards",
+    operation_id = "dashboards_version_get",
+    summary = "Get one version of a dashboard",
+    description = "Layout of a past or current version (history preview). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)"), ("version_number" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::VizDashboardVersionDetail),
+        (status = 404, description = "Unknown dashboard or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn version_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -500,6 +608,21 @@ async fn version_detail(
 /// `POST /api/v1/dashboards/{id}/versions/{n}/restore` — re-positionne
 /// le pointeur courant (école media) : les viewers retombent sur cette
 /// version au prochain polling, aucune version n'est créée.
+#[utoipa::path(
+    post,
+    path = "/api/v1/dashboards/{id}/versions/{version_number}/restore",
+    tag = "dashboards",
+    operation_id = "dashboards_version_restore",
+    summary = "Make an older version of a dashboard current",
+    description = "Moves the current-version pointer to that version (no new version is created); viewers switch on their next poll. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)"), ("version_number" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::VizDashboard),
+        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown dashboard or version", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn restore(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -507,7 +630,7 @@ async fn restore(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "dashboard-write-forbidden",
+            err_codes::DASHBOARD_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage dashboards",
         ));
     }
@@ -518,4 +641,21 @@ async fn restore(
         Ok(dashboard) => Ok(format::json(detail_dto(&ctx.db, dashboard).await?).into_response()),
         Err(e) => Ok(write_error_response(e)),
     }
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        versions,
+        version_detail,
+        restore
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

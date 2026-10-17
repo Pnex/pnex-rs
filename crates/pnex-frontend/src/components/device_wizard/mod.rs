@@ -690,7 +690,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             if let Some(device) = created() {
                 FlashModal {
                     key: "{device.device_id}",
-                    device_id: device.device_id,
+                    device_pk: device.id,
                     on_close: move |_| flash_open.set(false),
                 }
             }

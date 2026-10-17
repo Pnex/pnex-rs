@@ -1,10 +1,26 @@
 use super::*;
 
-/// `PUT /api/v1/devices/{id}/peripherals` — état des périphériques intégrés
-/// choisis par l'utilisateur (écran actif = pins réservées côté serveur +
-/// define firmware au rebuild). Autorisé si le device peut porter un écran :
-/// profil v2 de sa board (`screens[]`) **ou** déclaration du modèle
+/// `PUT /api/v1/devices/{id}/peripherals`: builtin peripherals picked by
+/// the user (active screen = pins reserved server-side + firmware define at
+/// the next build). Allowed when the device can carry a screen: v2 profile
+/// of its board (`screens[]`) **or** the model declaration
 /// (`predefined_devices.peripherals.screen`).
+#[utoipa::path(
+    put,
+    path = "/api/v1/devices/{id}/peripherals",
+    tag = "devices",
+    operation_id = "devices_update_peripherals",
+    summary = "Pick the screen of the device",
+    params(("id" = i64, Path, description = "Device registry id")),
+    request_body = pnex_core::UpdateDevicePeripherals,
+    responses(
+        (status = 200, body = pnex_core::DevicePeripheralsUpdated),
+        (status = 400, body = crate::openapi::ErrorDetail),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update_peripherals(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -13,7 +29,7 @@ pub(super) async fn update_peripherals(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "device-write-forbidden",
+            err_codes::DEVICE_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage devices.",
         ));
     }
@@ -109,12 +125,12 @@ pub(super) async fn update_peripherals(
     am.update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    format::json(serde_json::json!({
-        "screen": wire,
-        "screen_kind": kind,
+    format::json(pnex_core::DevicePeripheralsUpdated {
+        screen: kind.clone(),
+        screen_kind: kind,
         // Le define firmware ne prendra effet qu'au prochain build.
-        "rebuild_required": true,
-    }))
+        rebuild_required: true,
+    })
 }
 
 /// Capacité écran du modèle (`predefined_devices.peripherals` jsonb, ex.

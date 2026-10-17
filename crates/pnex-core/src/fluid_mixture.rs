@@ -1,22 +1,20 @@
-//! Mélanges de fluides personnalisés — DTO partagés + validation
-//! (exécutée dans le navigateur avant save ET côté serveur en 400
-//! `violations`, école `viz.rs`). Pur, wasm-safe : la conversion
-//! massique→molaire reçoit les masses molaires CoolProp en argument —
-//! ce crate ne lie jamais `pnex-coolprop`.
+//! Custom fluid mixtures: shared DTOs + validation (run in the browser
+//! before saving AND on the server as `mixture-invalid` violations).
+//! Pure and wasm-safe: the mass-to-mole conversion receives the CoolProp
+//! molar masses as an argument, this crate never links `pnex-coolprop`.
 //!
-//! Shape stocké en JSONB (`fluid_mixtures.composition`) : la base saisie
-//! (`basis`) + les composants tels qu'entrés + les fractions molaires
-//! converties à la sauvegarde (`mole_fractions`, même ordre) + la masse
-//! molaire du mélange (`molar_mass`, kg/mol) — le rendu et les specs
-//! CoolProp (`"Propane[0.5]&Ethane[0.5]"`) consomment directement les
-//! valeurs molaires sans re-conversion.
+//! Stored JSONB shape (`fluid_mixtures.composition`): the entered basis
+//! (`basis`) + the components as entered + the mole fractions converted on
+//! save (`mole_fractions`, same order) + the mixture molar mass
+//! (`molar_mass`, kg/mol). Rendering and CoolProp specs
+//! (`"Propane[0.5]&Ethane[0.5]"`) read the mole values directly.
 
 use serde::{Deserialize, Serialize};
 
-/// Base des fractions saisies. CoolProp calcule nativement en molaires ;
-/// une saisie massique est convertie à la sauvegarde via les masses
-/// molaires CoolProp.
+/// Basis of the entered fractions. CoolProp computes in mole fractions; a
+/// mass entry is converted on save with the CoolProp molar masses.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum MixtureBasis {
     #[default]
@@ -33,34 +31,39 @@ impl MixtureBasis {
     }
 }
 
-/// Un composant du mélange : nom de fluide CoolProp (pure) + fraction
-/// dans la base du mélange.
+/// One component of the mixture: a pure CoolProp fluid name + its fraction
+/// in the mixture basis.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MixtureComponent {
     pub fluid: String,
     pub fraction: f64,
 }
 
-/// Composition d'un mélange, telle que stockée en JSONB.
+/// Composition of a mixture, as stored in JSONB.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FluidMixtureComposition {
     pub basis: MixtureBasis,
     pub components: Vec<MixtureComponent>,
-    /// Fractions molaires (même ordre que `components`), converties à la
-    /// sauvegarde ; identiques aux fractions saisies si `basis == Mole`.
+    /// Mole fractions (same order as `components`), converted on save;
+    /// equal to the entered fractions when `basis` is `mole`.
     #[serde(default)]
     pub mole_fractions: Vec<f64>,
-    /// Masse molaire du mélange (kg/mol), calculée à la sauvegarde.
+    /// Molar mass of the mixture (kg/mol), computed on save.
     #[serde(default)]
     pub molar_mass: Option<f64>,
 }
 
-/// Violation de validation d'un mélange (field = champ du formulaire).
+/// Validation violation of a mixture: machine `code` (resolved by the UI as
+/// `err-<code>` with `args`), canonical English `message` as fallback.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MixtureViolation {
     pub field: Option<String>,
     pub code: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
 }
 
 impl MixtureViolation {
@@ -69,34 +72,43 @@ impl MixtureViolation {
             field: field.map(str::to_string),
             code: code.to_string(),
             message: message.into(),
+            args: None,
         }
+    }
+
+    fn with_args(mut self, args: serde_json::Value) -> Self {
+        self.args = Some(args);
+        self
     }
 }
 
-/// Tolérance sur la somme des fractions.
+/// Tolerance on the sum of the fractions.
 pub const FRACTION_SUM_TOL: f64 = 1e-6;
-/// Bornes raisonnables (un mélange CoolProp reste petit).
+/// Upper bound on components (a CoolProp mixture stays small).
 pub const MAX_COMPONENTS: usize = 20;
 
-/// Réponse API d'un mélange : identité + composition stockée (avec
-/// `mole_fractions` converties) + spec CoolProp inline prête à l'emploi
-/// (`"Propane[0.5]&Ethane[0.5]"`), ou `None` si la composition n'a pas
-/// encore été convertie.
+/// API answer for a mixture: identity + stored composition (with the
+/// converted `mole_fractions`) + ready-to-use inline CoolProp spec
+/// (`"Propane[0.5]&Ethane[0.5]"`), `None` when the composition is not
+/// converted yet.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FluidMixture {
-    pub id: String,
+    pub id: i64,
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
     pub spec: Option<String>,
     pub composition: FluidMixtureComposition,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Corps de création/modification d'un mélange (le serveur complète
-/// `mole_fractions`/`molar_mass` après conversion).
+/// Create/replace body of a mixture (the server fills
+/// `mole_fractions`/`molar_mass` after conversion).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FluidMixtureInput {
     pub name: String,
@@ -106,57 +118,72 @@ pub struct FluidMixtureInput {
 }
 
 impl FluidMixtureComposition {
-    /// Validation structurelle partagée front/back. La vérification
-    /// d'instanciability CoolProp (fluides réels) est côté serveur
-    /// uniquement (`pnex_coolprop::validate_fluid_spec`).
+    /// Structural validation shared by the browser and the server. The
+    /// CoolProp instantiation check (real fluids) is server-side only
+    /// (`pnex_coolprop::validate_fluid_spec`).
     pub fn validate(&self) -> Vec<MixtureViolation> {
         let mut v = Vec::new();
         if self.components.is_empty() {
             v.push(MixtureViolation::new(
                 Some("composition"),
-                "components_missing",
-                "au moins un composant est requis",
+                "mixture-components-missing",
+                "at least one component is required",
             ));
             return v;
         }
         if self.components.len() > MAX_COMPONENTS {
-            v.push(MixtureViolation::new(
-                Some("composition"),
-                "too_many_components",
-                format!("au plus {MAX_COMPONENTS} composants"),
-            ));
+            v.push(
+                MixtureViolation::new(
+                    Some("composition"),
+                    "mixture-too-many-components",
+                    format!("at most {MAX_COMPONENTS} components"),
+                )
+                .with_args(serde_json::json!({ "max": MAX_COMPONENTS.to_string() })),
+            );
         }
         for (i, c) in self.components.iter().enumerate() {
+            let index = serde_json::json!({ "index": (i + 1).to_string() });
             if c.fluid.trim().is_empty() {
-                v.push(MixtureViolation::new(
-                    Some("composition"),
-                    "fluid_missing",
-                    format!("composant {} : nom de fluide requis", i + 1),
-                ));
+                v.push(
+                    MixtureViolation::new(
+                        Some("composition"),
+                        "mixture-fluid-missing",
+                        format!("component {}: fluid name required", i + 1),
+                    )
+                    .with_args(index.clone()),
+                );
             }
             if !c.fraction.is_finite() || c.fraction <= 0.0 {
-                v.push(MixtureViolation::new(
-                    Some("composition"),
-                    "fraction_invalid",
-                    format!("composant {} : fraction > 0 requise", i + 1),
-                ));
+                v.push(
+                    MixtureViolation::new(
+                        Some("composition"),
+                        "mixture-fraction-invalid",
+                        format!("component {}: fraction must be > 0", i + 1),
+                    )
+                    .with_args(index),
+                );
             }
         }
         let sum: f64 = self.components.iter().map(|c| c.fraction).sum();
-        if !v.iter().any(|x| x.code == "fraction_invalid") && (sum - 1.0).abs() > FRACTION_SUM_TOL {
-            v.push(MixtureViolation::new(
-                Some("composition"),
-                "fraction_sum",
-                format!("la somme des fractions doit valoir 1 (ici {sum:.6})"),
-            ));
+        if !v.iter().any(|x| x.code == "mixture-fraction-invalid")
+            && (sum - 1.0).abs() > FRACTION_SUM_TOL
+        {
+            v.push(
+                MixtureViolation::new(
+                    Some("composition"),
+                    "mixture-fraction-sum",
+                    format!("the fractions must add up to 1 (got {sum:.6})"),
+                )
+                .with_args(serde_json::json!({ "sum": format!("{sum:.6}") })),
+            );
         }
-        // mole_fractions : même longueur que components (présent ⇔ la
-        // composition a été validée + convertie côté serveur).
+        // mole_fractions: same length as components (present when the
+        // server validated and converted the composition).
         if !self.mole_fractions.is_empty() && self.mole_fractions.len() != self.components.len() {
             v.push(MixtureViolation::new(
                 Some("composition"),
-                "mole_fractions_length",
-                "mole_fractions doit avoir la même longueur que components",
+                "mixture-mole-fractions-length",
+                "mole_fractions must have the same length as components",
             ));
         }
         v
@@ -168,7 +195,7 @@ impl FluidMixtureComposition {
     /// calculées (composition non convertie).
     pub fn to_coolprop_spec(&self) -> Result<String, String> {
         if self.mole_fractions.len() != self.components.len() {
-            return Err("fractions molaires non calculées (composition non convertie)".into());
+            return Err("mole fractions not computed (composition not converted)".into());
         }
         let parts: Vec<String> = self
             .components
@@ -184,7 +211,7 @@ impl FluidMixtureComposition {
     /// testable — la lecture CoolProp des masses molaires est côté serveur.
     pub fn to_mole_fractions(&self, molar_masses: &[f64]) -> Result<Vec<f64>, String> {
         if molar_masses.len() != self.components.len() {
-            return Err("masses molaires : une par composant attendue".into());
+            return Err("molar masses: one per component expected".into());
         }
         let mols: Vec<f64> = self
             .components
@@ -192,14 +219,14 @@ impl FluidMixtureComposition {
             .zip(molar_masses)
             .map(|(c, m)| {
                 if !m.is_finite() || *m <= 0.0 {
-                    return Err(format!("masse molaire invalide pour {}", c.fluid.trim()));
+                    return Err(format!("invalid molar mass for {}", c.fluid.trim()));
                 }
                 Ok(c.fraction / m)
             })
             .collect::<Result<_, _>>()?;
         let total: f64 = mols.iter().sum();
         if !total.is_finite() || total <= 0.0 {
-            return Err("somme des moles nulle ou invalide".into());
+            return Err("zero or invalid mole sum".into());
         }
         Ok(mols.iter().map(|n| n / total).collect())
     }
@@ -209,7 +236,7 @@ impl FluidMixtureComposition {
     /// M = 1/Σ(w_i/M_i) en base massique.
     pub fn mixture_molar_mass(&self, molar_masses: &[f64]) -> Result<f64, String> {
         if molar_masses.len() != self.components.len() {
-            return Err("masses molaires : une par composant attendue".into());
+            return Err("molar masses: one per component expected".into());
         }
         match self.basis {
             MixtureBasis::Mole => Ok(self
@@ -226,7 +253,7 @@ impl FluidMixtureComposition {
                     .map(|(c, m)| c.fraction / m)
                     .sum();
                 if !inv.is_finite() || inv <= 0.0 {
-                    return Err("somme des moles nulle ou invalide".into());
+                    return Err("zero or invalid mole sum".into());
                 }
                 Ok(1.0 / inv)
             }
@@ -264,13 +291,16 @@ mod tests {
 
         m.components[0].fraction = 0.7;
         m.mole_fractions = vec![0.7, 0.5];
-        assert_eq!(m.validate()[0].code, "fraction_sum");
+        assert_eq!(m.validate()[0].code, "mixture-fraction-sum");
 
         m.components[1].fluid = "  ".into();
-        assert!(m.validate().iter().any(|v| v.code == "fluid_missing"));
+        assert!(m
+            .validate()
+            .iter()
+            .any(|v| v.code == "mixture-fluid-missing"));
 
         m.components.clear();
-        assert_eq!(m.validate()[0].code, "components_missing");
+        assert_eq!(m.validate()[0].code, "mixture-components-missing");
     }
 
     #[test]

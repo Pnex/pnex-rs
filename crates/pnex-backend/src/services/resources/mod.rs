@@ -36,8 +36,11 @@ pub enum ResourceError {
     KindInvalid,
     /// Ressource introuvable dans l'org (→ 404 masqué côté contrôleur).
     ResourceUnknown,
-    /// Labels invalides (message prêt à afficher).
-    LabelInvalid(String),
+    /// Invalid label set (too many, bad name or value): field token
+    /// `invalid` on `labels`.
+    LabelInvalid,
+    /// Invalid folder name: field token (`required`, `max_length:255`).
+    NameInvalid(String),
     /// Attachement créerait un cycle (une ressource ne peut pas être son
     /// propre ancêtre).
     CycleDetected,
@@ -47,8 +50,8 @@ pub enum ResourceError {
     TargetInvalid,
     /// Arête déjà existante pour cette paire (index unique).
     Conflict,
-    /// `placement` invalide (pas un objet ou trop volumineux).
-    PlacementInvalid(&'static str),
+    /// Invalid `placement` (not an object, or too large).
+    PlacementInvalid,
     Db,
 }
 

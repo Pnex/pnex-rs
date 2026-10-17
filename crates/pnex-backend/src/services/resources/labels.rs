@@ -47,23 +47,15 @@ fn set_to_doc(labels: &LabelSet) -> Value {
 /// cap [`LABELS_MAX`]) — l'écriture est tout-ou-rien.
 pub fn validate_set(labels: &LabelSet) -> Result<(), ResourceError> {
     if labels.len() > LABELS_MAX {
-        return Err(ResourceError::LabelInvalid(format!(
-            "trop de labels ({}) — cap {}",
-            labels.len(),
-            LABELS_MAX
-        )));
+        return Err(ResourceError::LabelInvalid);
     }
     for (name, value) in labels {
         if !valid_label_name(name) {
-            return Err(ResourceError::LabelInvalid(format!(
-                "nom de label invalide : {name}"
-            )));
+            return Err(ResourceError::LabelInvalid);
         }
         if let Some(v) = value {
             if !valid_label_value(v) {
-                return Err(ResourceError::LabelInvalid(format!(
-                    "valeur de label invalide pour « {name} »"
-                )));
+                return Err(ResourceError::LabelInvalid);
             }
         }
     }

@@ -83,14 +83,10 @@ async fn require_range_role(ctx: &AppContext, org: &OrgContext, id: Uuid) -> Res
 }
 
 fn field(field: &str, token: &str) -> Result<Response> {
-    Ok((
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: token })),
-    )
-        .into_response())
+    Ok(super::field_error(field, token))
 }
 
-/// Service error → HTTP answer (field errors as `{field: token}`).
+/// Service error → HTTP answer (field errors as `field-invalid`).
 fn range_error(e: RangeError) -> Result<Response> {
     match e {
         RangeError::Invalid { field: f, token } => field(&f, &token),
@@ -107,13 +103,20 @@ fn range_error(e: RangeError) -> Result<Response> {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    /// Scope filter: `stream`, `org` or `object` (with `scope_id`).
     scope_kind: Option<String>,
+    /// Id of the scope (stream or object UUID; ignored for `org`).
     scope_id: Option<String>,
+    /// Window start, RFC 3339.
     from: Option<String>,
+    /// Window end, RFC 3339.
     to: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -131,6 +134,20 @@ fn parse_time(
 
 /// `GET /api/v1/time-ranges` — every member (D14 envelope). Optional
 /// `scope_kind` + `scope_id` and `from` / `to` window (RFC 3339).
+#[utoipa::path(
+    get,
+    path = "/api/v1/time-ranges",
+    tag = "time-ranges",
+    operation_id = "time_ranges_list",
+    summary = "List time ranges",
+    description = "Paginated (`limit`/`offset`). Optional scope filter (`scope_kind` + `scope_id`) and time window (`from`/`to`, RFC 3339). Any member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::time_range::TimeRange>),
+        (status = 400, description = "`field-invalid`, e.g. `errors.fields.from = invalid` or `errors.fields.scope_id = invalid`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -181,6 +198,22 @@ async fn list(
 
 /// `POST /api/v1/time-ranges` — `can_write`; origin `manual`. With an
 /// `external_id` already used in the scope, the range is updated (upsert).
+#[utoipa::path(
+    post,
+    path = "/api/v1/time-ranges",
+    tag = "time-ranges",
+    operation_id = "time_ranges_create",
+    summary = "Create a time range",
+    description = "Creates a manual range in a scope (`scope_kind` + `scope_id` required). Upsert: when `external_id` already exists in the scope, that range is updated and 200 is returned instead of 201. Requires a writer role, plus the object type's write role for an `object` scope.",
+    request_body = pnex_core::time_range::TimeRangeInput,
+    responses(
+        (status = 201, description = "Created", body = pnex_core::time_range::TimeRange),
+        (status = 200, description = "Existing `external_id`: updated", body = pnex_core::time_range::TimeRange),
+        (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -223,6 +256,20 @@ async fn create(
 }
 
 /// `GET /api/v1/time-ranges/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/time-ranges/{id}",
+    tag = "time-ranges",
+    operation_id = "time_ranges_get",
+    summary = "Get a time range",
+    description = "Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Time range id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::time_range::TimeRange),
+        (status = 404, description = "`time-range-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn get_one(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -236,6 +283,23 @@ async fn get_one(
 
 /// `PATCH /api/v1/time-ranges/{id}` — `can_write`. Absent fields keep their
 /// value, an empty string clears; scope, origin and provenance are kept.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/time-ranges/{id}",
+    tag = "time-ranges",
+    operation_id = "time_ranges_update",
+    summary = "Update a time range",
+    description = "Partial update: absent fields keep their value, an empty string clears it; scope, origin and provenance are kept. Completing an occurrence of a recurring series restarts the series. Requires a writer role (and the object type's write role for an `object` scope).",
+    params(("id" = String, Path, format = "uuid", description = "Time range id (UUID)")),
+    request_body = pnex_core::time_range::TimeRangeInput,
+    responses(
+        (status = 200, body = pnex_core::time_range::TimeRange),
+        (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`time-range-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -265,6 +329,21 @@ async fn update(
 }
 
 /// `DELETE /api/v1/time-ranges/{id}` — `can_write`.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/time-ranges/{id}",
+    tag = "time-ranges",
+    operation_id = "time_ranges_delete",
+    summary = "Delete a time range",
+    description = "Permanently deletes the range. Requires a writer role (and the object type's write role for an `object` scope).",
+    params(("id" = String, Path, format = "uuid", description = "Time range id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`time-range-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn remove(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -278,10 +357,14 @@ async fn remove(
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ImportQuery {
+    /// `csv` (with a label column) or `ics` (iCalendar).
     format: Option<String>,
+    /// Target scope: `stream`, `org` or `object`.
     scope_kind: Option<String>,
+    /// Id of the target scope.
     scope_id: Option<String>,
 }
 
@@ -301,6 +384,23 @@ fn too_large() -> Error {
 /// — `can_write`; raw body (1 MiB, 5000 rows at most). Upserts by
 /// `external_id` with origin `import`; answers the counts and the reasons
 /// of the rejected rows.
+#[utoipa::path(
+    post,
+    path = "/api/v1/time-ranges/import",
+    tag = "time-ranges",
+    operation_id = "time_ranges_import",
+    summary = "Import time ranges from a CSV or iCalendar file",
+    description = "Raw file body (1 MiB and 5000 rows at most) imported into one scope. Rows are upserted by `external_id` with origin `import`; the answer gives the created/updated/rejected counts and the reasons of the first rejected rows. Requires a writer role (and the object type's write role for an `object` scope).",
+    params(ImportQuery),
+    request_body(content = Vec<u8>, content_type = "text/plain", description = "CSV (with a label column) or iCalendar file content"),
+    responses(
+        (status = 200, body = pnex_core::time_range::RangeImportResult),
+        (status = 400, description = "`time-range-import-invalid` (unreadable file), or `field-invalid` (bad `format` or scope)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "`time-range-import-too-large` (args `max_kib`, `max_rows`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn import_ranges(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -347,4 +447,12 @@ async fn import_ranges(
         Ok(result) => format::json(result),
         Err(e) => range_error(e.into()),
     }
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, create, get_one, update, remove, import_ranges))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

@@ -14,24 +14,26 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Réponse du `GET /api/v1/dashboard/summary`.
+/// Answer of `GET /api/v1/dashboard/summary`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DashboardSummary {
     pub liveness: LivenessSummary,
     pub telemetry: TelemetrySummary,
     pub builds: BuildStats,
 }
 
-/// Devices de l'org avec leur état live (jointure
-/// `device_registries` × `device_states`).
+/// Devices of the org with their live state (join of
+/// `device_registries` and `device_states`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LivenessSummary {
-    /// Comptes complets de l'org — la liste est tronquée, pas les compteurs.
+    /// Full org counts: the list is truncated, the counters are not.
     pub total: u64,
-    /// Devices dont `last_seen_at` est plus frais que le TTL de silence.
+    /// Devices whose `last_seen_at` is fresher than the silence TTL.
     pub live: u64,
-    /// Triés live d'abord, puis `last_seen` décroissant — plafonnés à ~10
-    /// côté backend (demande user : « only latest ~10 », pas toute l'org).
+    /// Live devices first, then by `last_seen` descending; capped at ~10
+    /// by the backend.
     pub devices: Vec<DeviceLiveness>,
     /// Device count per device type over the whole org (not capped).
     #[serde(default)]
@@ -39,46 +41,49 @@ pub struct LivenessSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeviceLiveness {
     pub id: i64,
     /// Business `device_id` declared by the firmware (the numeric PK is `id`).
     pub device_id: String,
-    /// Modèle prédéfini (`generic_esp8266`, …).
+    /// Predefined model (`generic_esp8266`, ...).
     pub predefined_device_name: String,
     pub device_type: String,
     pub live: bool,
-    /// RFC 3339, `None` = jamais vu.
+    /// RFC 3339, `null` = never seen.
     pub last_seen: Option<String>,
 }
 
-/// Dernières mesures — dégradée si OpenObserve indisponible.
+/// Latest measurements; degraded when OpenObserve is unavailable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TelemetrySummary {
-    /// Faux : pas de credentials O2 pour l'org, erreur ou timeout (3 s).
-    /// Le front affiche un encart, jamais d'erreur bloquante.
+    /// False: no OpenObserve credentials for the org, error or timeout
+    /// (3 s). The UI shows a notice, never a blocking error.
     pub available: bool,
-    /// Dernier échantillon par (métrique, device), tri ts décroissant,
-    /// plafonné à ~10 lignes côté backend.
+    /// Latest sample per (metric, device), newest first, capped at ~10
+    /// rows by the backend.
     pub latest: Vec<LatestMeasurement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LatestMeasurement {
-    /// Label `__name__` Prometheus (ex. `soil_moisture`).
+    /// Prometheus `__name__` label (e.g. `soil_moisture`).
     pub metric: String,
     pub device_id: String,
     pub value: f64,
-    /// RFC 3339 — `None` si l'échantillon n'en portait pas.
+    /// RFC 3339; `null` when the sample carried none.
     pub timestamp: Option<String>,
 }
 
-/// Agrégat des `build_records` de l'org (borné : 1/device par upsert).
+/// Aggregate of the org `build_records` (bounded: one per device).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BuildStats {
     pub total: u64,
     pub succeeded: u64,
-    /// `succeeded / total` en [0,1]. **0.0 si total == 0** (jamais de NaN :
-    /// wasm n'a pas de NaN sérialisable côté front).
+    /// `succeeded / total` in [0,1]; 0.0 when total is 0 (never NaN).
     pub success_rate: f64,
 }
 

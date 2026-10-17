@@ -35,12 +35,27 @@ pub fn routes() -> Routes {
         .add("/{id}/versions/{n}/pdf", get(version_pdf))
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        rename,
+        remove,
+        versions,
+        create_version,
+        version_state,
+        approve_version,
+        version_pdf
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
+    super::field_error(field, msg)
 }
 
 fn forbidden() -> Error {
@@ -109,9 +124,12 @@ pub(crate) async fn find_doc(db: &DatabaseConnection, org_id: i64, id: Uuid) -> 
         .ok_or(Error::NotFound)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     label: Option<String>,
@@ -120,6 +138,20 @@ struct ListQuery {
 }
 
 /// `GET /api/v1/docs` — pages of the org, most recently edited first.
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs",
+    tag = "docs",
+    operation_id = "docs_list",
+    summary = "List the pages of the organisation",
+    description = "Pages (rich-text documents) of the org, most recently edited first, paginated (`limit`/`offset`), filtered by `search` (title) and `label`. Content is not included (it is edited over the websocket). Any member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::pages::DocSummary>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -173,6 +205,21 @@ async fn list(
 }
 
 /// `POST /api/v1/docs` — empty page; 201 = DocSummary.
+#[utoipa::path(
+    post,
+    path = "/api/v1/docs",
+    tag = "docs",
+    operation_id = "docs_create",
+    summary = "Create a page",
+    description = "Creates a page, blank or seeded from a page template of an installed pack (`template` key). Owner, admin or member.",
+    request_body = pnex_core::pages::CreateDoc,
+    responses(
+        (status = 201, body = pnex_core::pages::DocSummary),
+        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`) or `template` (`invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -221,6 +268,20 @@ async fn create(
 }
 
 /// `GET /api/v1/docs/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}",
+    tag = "docs",
+    operation_id = "docs_get",
+    summary = "Get a page",
+    description = "Title and timestamps of a page (no content). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    responses(
+        (status = 200, body = pnex_core::pages::DocSummary),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -231,6 +292,23 @@ async fn detail(
 }
 
 /// `PATCH /api/v1/docs/{id}` — rename.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/docs/{id}",
+    tag = "docs",
+    operation_id = "docs_rename",
+    summary = "Rename a page",
+    description = "Sets the title of a page. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    request_body = pnex_core::pages::PatchDoc,
+    responses(
+        (status = 200, body = pnex_core::pages::DocSummary),
+        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn rename(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -260,6 +338,21 @@ async fn rename(
 }
 
 /// `DELETE /api/v1/docs/{id}` — 204; log and versions cascade.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/docs/{id}",
+    tag = "docs",
+    operation_id = "docs_delete",
+    summary = "Delete a page",
+    description = "Permanently deletes a page with its edit log, named versions, comments and labels. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn remove(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -285,12 +378,34 @@ async fn remove(
 }
 
 /// `GET /api/v1/docs/{id}/versions` — named versions, newest first.
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}/versions",
+    tag = "docs",
+    operation_id = "docs_versions_list",
+    summary = "List the named versions of a page",
+    description = "Named versions (label, author, AI flag, approval), newest first, paginated (`limit`/`offset`); frozen content is not included. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::pages::DocVersionSummary>),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn versions(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<Uuid>,
+    Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let d = find_doc(&ctx.db, org.org.id, id).await?;
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let scope = doc_versions::Column::DocId.eq(d.id);
+    let count = doc_versions::Entity::find()
+        .filter(scope.clone())
+        .count(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
     // Labels only: the frozen states stay in the database.
     let rows = doc_versions::Entity::find()
         .select_only()
@@ -304,29 +419,19 @@ async fn versions(
             doc_versions::Column::ApprovedBy,
             doc_versions::Column::ApprovedAt,
         ])
-        .filter(doc_versions::Column::DocId.eq(d.id))
+        .filter(scope)
         .order_by_desc(doc_versions::Column::VersionNumber)
+        .limit(page.limit as u64)
+        .offset(page.offset as u64)
         .into_model::<VersionHead>()
         .all(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    let authors: Vec<i64> = rows
-        .iter()
-        .flat_map(|v| [v.created_by, v.approved_by])
-        .flatten()
-        .collect();
-    let names: std::collections::HashMap<i64, String> = if authors.is_empty() {
-        Default::default()
-    } else {
-        users::Entity::find()
-            .filter(users::Column::Id.is_in(authors))
-            .all(&ctx.db)
-            .await
-            .map_err(|_| Error::InternalServerError)?
-            .into_iter()
-            .map(|u| (u.id, u.full_name.unwrap_or(u.email)))
-            .collect()
-    };
+    let names = user_names(
+        &ctx.db,
+        rows.iter().flat_map(|v| [v.created_by, v.approved_by]),
+    )
+    .await?;
     let results: Vec<DocVersionSummary> = rows
         .iter()
         .map(|v| DocVersionSummary {
@@ -340,10 +445,43 @@ async fn versions(
             approved_at: v.approved_at.map(|t| t.to_rfc3339()),
         })
         .collect();
-    Ok(
-        format::json(serde_json::json!({ "count": results.len(), "results": results }))
-            .into_response(),
-    )
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/docs/{}/versions", d.id),
+        &[],
+        page,
+        count as i64,
+        results,
+    ))
+    .into_response())
+}
+
+/// `limit`/`offset` of a plain paginated list.
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(crate) struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    pub(crate) limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    pub(crate) offset: Option<String>,
+}
+
+/// Display names (full name, else email) of the given user ids.
+pub(crate) async fn user_names(
+    db: &DatabaseConnection,
+    ids: impl IntoIterator<Item = Option<i64>>,
+) -> Result<std::collections::HashMap<i64, String>> {
+    let ids: Vec<i64> = ids.into_iter().flatten().collect();
+    if ids.is_empty() {
+        return Ok(Default::default());
+    }
+    Ok(users::Entity::find()
+        .filter(users::Column::Id.is_in(ids))
+        .all(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .into_iter()
+        .map(|u| (u.id, u.full_name.unwrap_or(u.email)))
+        .collect())
 }
 
 #[derive(sea_orm::FromQueryResult)]
@@ -359,6 +497,23 @@ struct VersionHead {
 }
 
 /// `POST /api/v1/docs/{id}/versions` — freezes the current content.
+#[utoipa::path(
+    post,
+    path = "/api/v1/docs/{id}/versions",
+    tag = "docs",
+    operation_id = "docs_versions_create",
+    summary = "Freeze a named version of a page",
+    description = "Snapshots the current content of the page as a new named version. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id")),
+    request_body = pnex_core::pages::CreateDocVersion,
+    responses(
+        (status = 201, body = pnex_core::pages::DocVersionSummary),
+        (status = 400, description = "`field-invalid`: `label` (`required`, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create_version(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -398,12 +553,28 @@ async fn create_version(
     Ok((StatusCode::CREATED, format::json(dto)).into_response())
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct PdfQuery {
+    /// Language of the PDF notices (`fr`, `en`).
     #[serde(default)]
     lang: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}/versions/{n}/pdf",
+    tag = "docs",
+    operation_id = "docs_versions_pdf",
+    summary = "Download a version as PDF",
+    description = "Renders a named version as an A4 PDF attachment; an AI-generated version not yet approved carries a 'not reviewed' notice. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), ("n" = i64, Path, description = "Version number"), PdfQuery),
+    responses(
+        (status = 200, content_type = "application/pdf", body = Vec<u8>),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `GET /api/v1/docs/{id}/versions/{n}/pdf?lang=fr` — the frozen version as
 /// an A4 PDF (D209). Read access; an AI version not yet approved carries
 /// the "not reviewed" notice.
@@ -440,6 +611,21 @@ async fn version_pdf(
         .into_response())
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/docs/{id}/versions/{n}/approve",
+    tag = "docs",
+    operation_id = "docs_versions_approve",
+    summary = "Approve a named version",
+    description = "Records the caller as approver of a frozen version (an AI report may leave the platform once approved). Idempotent: the first approval is kept. Owner, admin or member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), ("n" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::pages::DocVersionSummary),
+        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `POST /api/v1/docs/{id}/versions/{n}/approve` — a person approves a
 /// frozen version (D210: an AI report of a flow leaves PneX once
 /// approved). Editors only; idempotent (the first approval is kept).
@@ -469,15 +655,9 @@ async fn approve_version(
             .await
             .map_err(|_| Error::InternalServerError)?
     };
-    let name = |uid: Option<i64>| {
-        (uid == Some(org.auth.user.id)).then(|| {
-            org.auth
-                .user
-                .full_name
-                .clone()
-                .unwrap_or(org.auth.user.email.clone())
-        })
-    };
+    // O75: author and approver are resolved like the list, whoever calls.
+    let names = user_names(&ctx.db, [v.created_by, v.approved_by]).await?;
+    let name = |uid: Option<i64>| uid.and_then(|u| names.get(&u).cloned());
     Ok(format::json(DocVersionSummary {
         version_number: v.version_number,
         label: v.label,
@@ -491,6 +671,20 @@ async fn approve_version(
     .into_response())
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/docs/{id}/versions/{n}",
+    tag = "docs",
+    operation_id = "docs_versions_get",
+    summary = "Get the frozen state of a version",
+    description = "Frozen Yjs document state (v1 encoding, base64) of a named version, for read-only viewing, diff and restore. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Page id"), ("n" = i64, Path, description = "Version number")),
+    responses(
+        (status = 200, body = pnex_core::pages::DocVersionState),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 /// `GET /api/v1/docs/{id}/versions/{n}` — frozen state of version `n`.
 async fn version_state(
     State(ctx): State<AppContext>,

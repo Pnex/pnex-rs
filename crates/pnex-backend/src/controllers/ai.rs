@@ -58,8 +58,46 @@ pub fn routes() -> Routes {
         .add("/retention/default", put(retention_default_put))
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        status,
+        org_list,
+        org_create,
+        org_update,
+        org_delete,
+        org_test,
+        conversation_list,
+        conversation_create,
+        conversation_delete_all,
+        conversation_export,
+        conversation_detail,
+        conversation_rename,
+        conversation_delete,
+        conversation_send,
+        retention_get,
+        retention_put,
+        retention_default_put
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 /// `GET /api/v1/ai/status` — every member. Kill-switch off: answered
 /// without a database query. Never returns a key.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/status",
+    tag = "ai",
+    operation_id = "ai_status",
+    summary = "Get the assistant status",
+    description = "Whether the assistant is enabled on this server and which LLM provider/model the org uses for it. Never returns a key. Any member.",
+    responses(
+        (status = 200, body = pnex_core::AiStatus)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn status(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     if !AiSettings::from_config(&ctx.config).enabled {
         return format::json(pnex_core::AiStatus::default());
@@ -89,11 +127,7 @@ async fn status(org: OrgContext, State(ctx): State<AppContext>) -> Result<Respon
 /// HTTP mapping of provider errors.
 fn provider_error(e: ProviderError) -> Result<Response> {
     match e {
-        ProviderError::Invalid { field, token } => Ok((
-            axum::http::StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ field: token })),
-        )
-            .into_response()),
+        ProviderError::Invalid { field, token } => Ok(super::field_error(field, &token)),
         ProviderError::NotFound => Err(Error::CustomError(
             axum::http::StatusCode::NOT_FOUND,
             loco_rs::controller::ErrorDetail::new(
@@ -128,11 +162,23 @@ fn require_manage(org: &OrgContext) -> Result<()> {
     }
 }
 
-/// Providers of the org.
-async fn list_response(ctx: &AppContext, org_id: i64) -> Result<Response> {
+/// Providers of the org, one page (D240).
+async fn list_response(ctx: &AppContext, org_id: i64, q: &ListQuery) -> Result<Response> {
     let rows = providers::list(&ctx.db, org_id).await.map_err(db_error)?;
     match providers::views(&ctx.db, org_id, &rows).await {
-        Ok(views) => format::json(views),
+        Ok(views) => {
+            let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+            let count = views.len() as i64;
+            let (skip, take) = page.slice(views.len());
+            let views: Vec<_> = views.into_iter().skip(skip).take(take).collect();
+            format::json(pagination::envelope(
+                "/api/v1/ai/providers",
+                &[],
+                page,
+                count,
+                views,
+            ))
+        }
         Err(e) => crate::controllers::secrets::store_error(e),
     }
 }
@@ -211,11 +257,44 @@ fn org_author(org: &OrgContext) -> Author {
 }
 
 /// `GET /api/v1/ai/providers` — every member.
-async fn org_list(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
-    list_response(&ctx, org.org.id).await
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/providers",
+    tag = "ai",
+    operation_id = "ai_providers_list",
+    summary = "List the LLM providers of the organisation",
+    description = "LLM providers the org brings (the platform provides none), with default flag and routed usages, paginated (`limit`/`offset`). The API key is only a vault reference. Any member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::LlmProvider>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn org_list(
+    org: OrgContext,
+    State(ctx): State<AppContext>,
+    Query(q): Query<ListQuery>,
+) -> Result<Response> {
+    list_response(&ctx, org.org.id, &q).await
 }
 
 /// `POST /api/v1/ai/providers` — owner/admin.
+#[utoipa::path(
+    post,
+    path = "/api/v1/ai/providers",
+    tag = "ai",
+    operation_id = "ai_providers_create",
+    summary = "Create an LLM provider",
+    description = "Registers an LLM provider (`anthropic` or `openai_compat`). A typed `api_key` value is stored in the org vault. `is_default` and `usages` are taken away from other providers. Owner or admin only.",
+    request_body = pnex_core::LlmProviderInput,
+    responses(
+        (status = 201, body = pnex_core::LlmProvider),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`llm-provider-name-taken`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn org_create(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -226,6 +305,24 @@ async fn org_create(
 }
 
 /// `PUT /api/v1/ai/providers/{id}` — owner/admin.
+#[utoipa::path(
+    put,
+    path = "/api/v1/ai/providers/{id}",
+    tag = "ai",
+    operation_id = "ai_providers_update",
+    summary = "Replace an LLM provider",
+    description = "Full replacement of the provider settings; an absent `api_key` keeps the current key. Owner or admin only.",
+    params(("id" = String, Path, format = "uuid", description = "LLM provider id")),
+    request_body = pnex_core::LlmProviderInput,
+    responses(
+        (status = 200, body = pnex_core::LlmProvider),
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`llm-provider-name-taken`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn org_update(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -237,6 +334,21 @@ async fn org_update(
 }
 
 /// `DELETE /api/v1/ai/providers/{id}` — owner/admin.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ai/providers/{id}",
+    tag = "ai",
+    operation_id = "ai_providers_delete",
+    summary = "Delete an LLM provider",
+    description = "Deletes the provider. Owner or admin only.",
+    params(("id" = String, Path, format = "uuid", description = "LLM provider id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn org_delete(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -247,6 +359,21 @@ async fn org_delete(
 }
 
 /// `POST /api/v1/ai/providers/{id}/test` — owner/admin.
+#[utoipa::path(
+    post,
+    path = "/api/v1/ai/providers/{id}/test",
+    tag = "ai",
+    operation_id = "ai_providers_test",
+    summary = "Test an LLM provider",
+    description = "Sends one real request to the LLM (works even with the assistant switched off) and reports success, latency or the coded failure in the body (always 200 once the provider is found). Owner or admin only.",
+    params(("id" = String, Path, format = "uuid", description = "LLM provider id")),
+    responses(
+        (status = 200, body = pnex_core::LlmProviderTest),
+        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn org_test(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -258,10 +385,13 @@ async fn org_test(
 
 // ─────────────────────── Conversations (D145) ───────────────────────
 
-/// Pagination query of the conversation list.
-#[derive(Debug, serde::Deserialize)]
+/// Pagination query of the provider and conversation lists.
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListQuery {
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -275,12 +405,32 @@ async fn owned_or_404(
     conversations::find_owned(&ctx.db, org.auth.user.id, org.org.id, id)
         .await
         .map_err(db_error)?
-        .ok_or(Error::NotFound)
+        .ok_or_else(|| {
+            super::coded_error(
+                axum::http::StatusCode::NOT_FOUND,
+                err_codes::AI_CONVERSATION_NOT_FOUND,
+                "Conversation not found.",
+                None,
+            )
+        })
 }
 
 /// `GET /api/v1/ai/conversations` — my conversations in this org (D14).
 /// Rows carry no message nor tool trace. Allowed with the kill-switch off
 /// (a user can always read and erase what is stored about them).
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/conversations",
+    tag = "ai",
+    operation_id = "ai_conversations_list",
+    summary = "List my assistant conversations",
+    description = "The caller's own conversations in this org, newest first, paginated (`limit`/`offset`); rows carry no messages. Works with the assistant switched off. Any member.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::AiConversation>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_list(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -306,6 +456,19 @@ async fn conversation_list(
 }
 
 /// `POST /api/v1/ai/conversations` — new empty conversation.
+#[utoipa::path(
+    post,
+    path = "/api/v1/ai/conversations",
+    tag = "ai",
+    operation_id = "ai_conversations_create",
+    summary = "Start an assistant conversation",
+    description = "Creates an empty private conversation of the caller (title optional). Any member.",
+    request_body = pnex_core::AiConversationWrite,
+    responses(
+        (status = 201, body = pnex_core::AiConversation)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_create(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -323,6 +486,20 @@ async fn conversation_create(
 }
 
 /// `GET /api/v1/ai/conversations/{id}` — resume: every stored message.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/conversations/{id}",
+    tag = "ai",
+    operation_id = "ai_conversations_get",
+    summary = "Get an assistant conversation",
+    description = "Every stored message of one of the caller's conversations, with tool traces. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Conversation id")),
+    responses(
+        (status = 200, body = pnex_core::AiConversationDetail),
+        (status = 404, description = "`ai-conversation-not-found`: not one of the caller's conversations in this org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_detail(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -337,6 +514,22 @@ async fn conversation_detail(
 }
 
 /// `PATCH /api/v1/ai/conversations/{id}` — rename.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/ai/conversations/{id}",
+    tag = "ai",
+    operation_id = "ai_conversations_rename",
+    summary = "Rename an assistant conversation",
+    description = "Sets the title of one of the caller's conversations. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Conversation id")),
+    request_body = pnex_core::AiConversationWrite,
+    responses(
+        (status = 200, body = pnex_core::AiConversation),
+        (status = 400, description = "`field-invalid` (`title`: `required`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ai-conversation-not-found`: not one of the caller's conversations in this org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_rename(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -344,11 +537,7 @@ async fn conversation_rename(
     Json(body): Json<pnex_core::AiConversationWrite>,
 ) -> Result<Response> {
     let Some(title) = body.title.as_deref().filter(|t| !t.trim().is_empty()) else {
-        return Ok((
-            axum::http::StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "title": "required" })),
-        )
-            .into_response());
+        return Ok(super::field_error("title", err_codes::FIELD_REQUIRED));
     };
     let conv = owned_or_404(&ctx, &org, id).await?;
     let conv = conversations::rename(&ctx.db, conv, title)
@@ -358,6 +547,20 @@ async fn conversation_rename(
 }
 
 /// `DELETE /api/v1/ai/conversations/{id}` — permanent erasure.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ai/conversations/{id}",
+    tag = "ai",
+    operation_id = "ai_conversations_delete",
+    summary = "Delete an assistant conversation",
+    description = "Permanently erases one of the caller's conversations and its messages. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Conversation id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 404, description = "`ai-conversation-not-found`: not one of the caller's conversations in this org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_delete(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -370,8 +573,32 @@ async fn conversation_delete(
     Ok(axum::http::StatusCode::NO_CONTENT.into_response())
 }
 
+/// Answer of the erase-all endpoint.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct AiDeletedCount {
+    deleted: u64,
+}
+
+/// Effective platform retention (days) after an update.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct AiRetentionDays {
+    days: u32,
+}
+
 /// `DELETE /api/v1/ai/conversations` — erase all my conversations of
 /// this org.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/ai/conversations",
+    tag = "ai",
+    operation_id = "ai_conversations_delete_all",
+    summary = "Delete all my assistant conversations",
+    description = "Permanently erases every conversation of the caller in this org and returns how many were deleted. Any member.",
+    responses(
+        (status = 200, body = AiDeletedCount)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_delete_all(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -379,10 +606,22 @@ async fn conversation_delete_all(
     let deleted = conversations::delete_all(&ctx.db, org.auth.user.id, org.org.id)
         .await
         .map_err(db_error)?;
-    format::json(serde_json::json!({ "deleted": deleted }))
+    format::json(AiDeletedCount { deleted })
 }
 
 /// `GET /api/v1/ai/conversations/export` — portability export (JSON).
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/conversations/export",
+    tag = "ai",
+    operation_id = "ai_conversations_export",
+    summary = "Export my assistant conversations",
+    description = "Portability export (JSON) of every conversation of the caller in this org with all messages. Any member.",
+    responses(
+        (status = 200, body = pnex_core::AiConversationsExport)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     let rows = conversations::owned(org.auth.user.id, org.org.id)
         .all(&ctx.db)
@@ -406,6 +645,26 @@ async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> 
 /// member may converse (viewers included); write tools re-check
 /// `can_write`. Kill-switch off → 403 without any LLM request. One turn
 /// at a time per conversation → 409 `ai-conversation-busy`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/ai/conversations/{id}/messages",
+    tag = "ai",
+    operation_id = "ai_conversations_send",
+    summary = "Send a message to the assistant",
+    description = "Runs one agent turn: the server rebuilds the history, calls the org LLM, may run assistant tools (write tools re-check the caller's write role and never deploy, stop or delete) and stores the turn. One turn at a time per conversation. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Conversation id")),
+    request_body = pnex_core::AiSendMessage,
+    responses(
+        (status = 200, body = pnex_core::AiTurnResponse),
+        (status = 400, description = "`field-invalid` on `content` (`required`, `max_length:<n>`), or `ai-not-configured`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ai-disabled`: assistant switched off on this server", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ai-conversation-not-found`: not one of the caller's conversations in this org", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ai-conversation-busy`", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`ai-rate-limited` by the LLM provider", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "LLM failure (`ai-upstream`, `ai-timeout`, `ai-auth-rejected`, ...)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn conversation_send(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -417,20 +676,11 @@ async fn conversation_send(
     }
     let content = body.content.trim();
     if content.is_empty() {
-        return Ok((
-            axum::http::StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "content": "required" })),
-        )
-            .into_response());
+        return Ok(super::field_error("content", err_codes::FIELD_REQUIRED));
     }
     if content.chars().count() > conversations::CONTENT_MAX_CHARS {
-        return Ok((
-            axum::http::StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({
-                "content": format!("max_length:{}", conversations::CONTENT_MAX_CHARS)
-            })),
-        )
-            .into_response());
+        let token = format!("max_length:{}", conversations::CONTENT_MAX_CHARS);
+        return Ok(super::field_error("content", &token));
     }
     let conv = owned_or_404(&ctx, &org, id).await?;
     let Some(cfg) = config::resolve(
@@ -589,12 +839,39 @@ async fn retention_dto(ctx: &AppContext, org: &OrgContext) -> Result<pnex_core::
 }
 
 /// `GET /api/v1/ai/retention` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/ai/retention",
+    tag = "ai",
+    operation_id = "ai_retention_get",
+    summary = "Get the conversation retention",
+    description = "How long inactive assistant conversations are kept in this org (effective, platform and org values) and whether the caller may change them. Any member.",
+    responses(
+        (status = 200, body = pnex_core::AiRetention)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn retention_get(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     format::json(retention_dto(&ctx, &org).await?)
 }
 
 /// `PUT /api/v1/ai/retention` — owner/admin; the org may only SHORTEN the
 /// platform value (`null` = follow the platform).
+#[utoipa::path(
+    put,
+    path = "/api/v1/ai/retention",
+    tag = "ai",
+    operation_id = "ai_retention_update",
+    summary = "Set the org conversation retention",
+    description = "Shortens the retention of the org (1 to the platform value, in days); `null` follows the platform value. Owner or admin only.",
+    request_body = pnex_core::RetentionUpdate,
+    responses(
+        (status = 200, body = pnex_core::AiRetention),
+        (status = 403, description = "`ai-retention-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`ai-retention-above-platform` (args.max)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn retention_put(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -633,6 +910,21 @@ async fn retention_put(
 
 /// `PUT /api/v1/ai/retention/default` — platform admin (1..=3650 days,
 /// `null` = built-in default).
+#[utoipa::path(
+    put,
+    path = "/api/v1/ai/retention/default",
+    tag = "ai",
+    operation_id = "ai_retention_default_update",
+    summary = "Set the platform conversation retention",
+    description = "Platform admin only. Sets the platform retention of assistant conversations (1..=3650 days, `null` = built-in default) and returns the effective platform value.",
+    request_body = pnex_core::RetentionUpdate,
+    responses(
+        (status = 200, body = AiRetentionDays),
+        (status = 403, description = "Not a platform admin", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`retention-out-of-range`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn retention_default_put(
     admin: crate::auth::PlatformAdmin,
     State(ctx): State<AppContext>,
@@ -653,5 +945,7 @@ async fn retention_default_put(
         .await
         .map_err(db_error)?;
     tracing::info!(days = ?body.days, by = admin.0.user.id, "platform conversation retention updated");
-    format::json(serde_json::json!({ "days": conversations::retention_days(&ctx.db).await }))
+    format::json(AiRetentionDays {
+        days: conversations::retention_days(&ctx.db).await,
+    })
 }

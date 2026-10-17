@@ -351,7 +351,7 @@ fn CheckReport(
                 {t!("firmware-check-running")}
             }
         },
-        (_, Some(status)) if status.status == "succeeded" => rsx! {
+        (_, Some(status)) if status.status.as_str() == "succeeded" => rsx! {
             div { class: "{box_class} border-green-200 bg-green-50 text-green-800 flex items-center gap-2",
                 icons::CheckCircle { class: "h-4 w-4" }
                 {t!("firmware-check-ok", revision : status.revision_number)}
@@ -362,7 +362,7 @@ fn CheckReport(
                 }
             }
         },
-        (_, Some(status)) if status.status == "failed" => rsx! {
+        (_, Some(status)) if status.status.as_str() == "failed" => rsx! {
             div { class: "{box_class} border-red-200 bg-red-50 text-red-800 space-y-1",
                 div { class: "font-semibold",
                     {t!("firmware-check-failed", revision : status.revision_number)}

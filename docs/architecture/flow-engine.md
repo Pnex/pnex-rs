@@ -59,7 +59,7 @@ Choix structurants :
 - **Deploy/rollback** : bouton gated `can_write && !dirty` (deploy =
   publier une version enregistrée) ; chip runtime pollé 5 s
   (`GET /flows/{id}/runtime`) — moteur actif/arrêté, pid/version au
-  survol ; 503 `flow_runtime` toasté tel quel.
+  survol ; 503 `flow-runtime` toasté tel quel.
 - **Frontières** : `ApiError` porte désormais `status`/`body` (409/400
   distinguables sans parser le message) ; `Serialize` ajouté sur les DTOs
   requête `pnex-core` (le front construit les requêtes typées) ; handlers
@@ -209,7 +209,7 @@ Choix structurants :
 - **Versioning** (école flows/media) : `functions` + `function_versions`
   append-only (m000024), save = nouvelle version (concurrence optimiste
   409), `current_version_id` circulaire SET NULL. Delete → 409
-  `function_in_use` si référencée par un flow `deployed` (scan des graphs,
+  `function-in-use` si référencée par un flow `deployed` (scan des graphs,
   double filet avec la résolution au deploy).
 - **Test en live** : sous-commande `pnex-flow-runtime --test-function
   <req.json>` → **une ligne JSON** `FunctionTestResponse` sur stdout. Le

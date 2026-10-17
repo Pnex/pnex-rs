@@ -390,7 +390,7 @@ pub fn AnnotationLayerPanel(
                     p { class: "font-semibold", {t!("annot-violations")} }
                     for v in violations_now {
                         p { key: "{v.code}-{v.subject.clone().unwrap_or_default()}",
-                            {v.message}
+                            {crate::api::tours::violation_text(v.subject.as_deref(), &v.code, &v.message)}
                         }
                     }
                 }

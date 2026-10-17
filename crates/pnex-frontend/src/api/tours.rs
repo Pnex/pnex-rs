@@ -249,6 +249,24 @@ pub fn share_url(token: &str) -> String {
 
 // ─────────────────────────── Échecs de save ───────────────────────────
 
+/// Display text of a tour or annotation document violation: `err-<code>`
+/// with the offending id as `$subject` (prefixed when present), else the
+/// canonical English message. Render scope required.
+pub fn violation_text(subject: Option<&str>, code: &str, message: &str) -> String {
+    let violation = pnex_core::FlowViolation::with_args(
+        None,
+        code,
+        message,
+        serde_json::json!({ "subject": subject.unwrap_or_default() }),
+    );
+    let text = crate::api::error_i18n::localize_violation(&violation);
+    match subject {
+        // The English fallback message already names the element.
+        Some(s) if text != message => format!("{s} : {text}"),
+        _ => text,
+    }
+}
+
 /// Échec d'un enregistrement, trié pour l'UI (école `api/flows.rs`) :
 /// conflit de concurrence (409, modal « recharger / écraser »), document
 /// invalide (400 violations, bandeau), ou autre (toast verbatim).
@@ -268,10 +286,8 @@ pub fn classify_save_error(err: &ApiError) -> SaveError {
         };
     }
     if err.status == Some(400) {
-        if let Some(body) = &err.body {
-            if let Ok(violations) =
-                serde_json::from_value::<Vec<TourViolation>>(body["violations"].clone())
-            {
+        if let Some(v) = err.violations() {
+            if let Ok(violations) = serde_json::from_value::<Vec<TourViolation>>(v.clone()) {
                 return SaveError::Invalid(violations);
             }
         }
@@ -296,7 +312,7 @@ mod tests {
 
         let invalid = ApiError::http(
             400,
-            r#"{"violations":[{"subject":null,"code":"unknown_link_target","message":"lien orphelin"}]}"#,
+            r#"{"error":"x-invalid","errors":{"violations":[{"subject":null,"code":"unknown_link_target","message":"lien orphelin"}]}}"#,
         );
         match classify_save_error(&invalid) {
             SaveError::Invalid(violations) => {

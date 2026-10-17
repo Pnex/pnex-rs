@@ -15,6 +15,7 @@
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use loco_rs::prelude::*;
+use pnex_core::OrgRole;
 use sea_orm::TransactionTrait;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, Set,
@@ -72,44 +73,67 @@ fn can_administer(role: OrgMemberRole) -> bool {
     matches!(role, OrgMemberRole::Owner | OrgMemberRole::Admin)
 }
 
-/// Rôle tel qu'exposé dans l'API : minuscules (« owner », « admin », « viewer »).
-pub fn role_str(role: OrgMemberRole) -> &'static str {
+/// Role as exposed by the API (lowercase enum `pnex_core::OrgRole`).
+pub fn api_role(role: OrgMemberRole) -> OrgRole {
     match role {
-        OrgMemberRole::Owner => "owner",
-        OrgMemberRole::Admin => "admin",
-        OrgMemberRole::Member => "member",
-        OrgMemberRole::Viewer => "viewer",
+        OrgMemberRole::Owner => OrgRole::Owner,
+        OrgMemberRole::Admin => OrgRole::Admin,
+        OrgMemberRole::Member => OrgRole::Member,
+        OrgMemberRole::Viewer => OrgRole::Viewer,
     }
 }
 
-/// Rôle accepté en entrée d'API (minuscules).
-#[derive(Clone, Copy, Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum RoleParam {
-    Owner,
-    Admin,
-    Member,
-    Viewer,
+/// Storage form of an API role.
+fn db_role(role: OrgRole) -> OrgMemberRole {
+    match role {
+        OrgRole::Owner => OrgMemberRole::Owner,
+        OrgRole::Admin => OrgMemberRole::Admin,
+        OrgRole::Member => OrgMemberRole::Member,
+        OrgRole::Viewer => OrgMemberRole::Viewer,
+    }
 }
 
-impl From<RoleParam> for OrgMemberRole {
-    fn from(value: RoleParam) -> Self {
-        match value {
-            RoleParam::Owner => OrgMemberRole::Owner,
-            RoleParam::Admin => OrgMemberRole::Admin,
-            RoleParam::Member => OrgMemberRole::Member,
-            RoleParam::Viewer => OrgMemberRole::Viewer,
-        }
-    }
+/// Answer of `POST /api/v1/orgs` (shaped like `OrgSummary`).
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OrgCreated {
+    id: i64,
+    name: String,
+    /// Always `owner`.
+    role: OrgRole,
+}
+
+/// Answer of `PATCH /api/v1/orgs/{id}`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OrgRenamed {
+    id: i64,
+    name: String,
+}
+
+/// Answer of `POST /api/v1/orgs/{id}/members`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct MemberAdded {
+    user_id: i64,
+    email: String,
+    role: OrgRole,
+}
+
+/// Answer of `PATCH /api/v1/orgs/{id}/members/{user_id}`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct MemberRoleUpdated {
+    user_id: i64,
+    role: OrgRole,
 }
 
 // ─────────────────────────────── Orgs ───────────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListOrgsQuery {
-    /// Recherche OU sur le nom de l'org.
+    /// Case-insensitive search on the org name.
     search: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
@@ -132,6 +156,19 @@ where
 
 /// `GET /api/v1/orgs` — orgs dont je suis membre (avec rôle et tier),
 /// paginées (D14) + recherche sur le nom.
+#[utoipa::path(
+    get,
+    path = "/api/v1/orgs",
+    tag = "orgs",
+    operation_id = "orgs_list",
+    summary = "List my organisations",
+    description = "Organisations the caller is a member of, with their role and subscription tier name. Paginated (`limit`/`offset`), optional name search. Not scoped by X-Org-Id.",
+    params(ListOrgsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::OrgSummary>)
+    ),
+    security(("bearer" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -163,7 +200,7 @@ async fn list(
             serde_json::json!({
                 "id": o.id,
                 "name": o.name,
-                "role": role_str(m.role),
+                "role": api_role(m.role),
                 "subscription_tier": o.subscription_tier_id
                     .and_then(|id| tiers.get(&id).cloned()),
                 "created_at": o.created_at,
@@ -191,6 +228,21 @@ struct CreateOrgParams {
 }
 
 /// `POST /api/v1/orgs` — création, le créateur devient owner (tier Free).
+#[utoipa::path(
+    post,
+    path = "/api/v1/orgs",
+    tag = "orgs",
+    operation_id = "orgs_create",
+    summary = "Create an organisation",
+    description = "Creates an org with the default subscription tier; the caller becomes its owner. Names are globally unique.",
+    request_body = pnex_core::CreateOrg,
+    responses(
+        (status = 201, body = OrgCreated),
+        (status = 400, description = "`field-invalid`: empty name (`errors.fields.name = required`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`org-name-duplicate`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -198,7 +250,10 @@ async fn create(
 ) -> Result<Response> {
     let name = params.name.trim().to_string();
     if name.is_empty() {
-        return Err(Error::BadRequest("name requis".into()));
+        return Ok(crate::controllers::field_error(
+            "name",
+            pnex_core::err_codes::FIELD_REQUIRED,
+        ));
     }
     if organizations::Entity::find()
         .filter(organizations::Column::Name.eq(&name))
@@ -237,16 +292,30 @@ async fn create(
     Ok((
         StatusCode::CREATED,
         // Shaped like `OrgSummary`: the UI decodes it and activates the new org.
-        format::json(serde_json::json!({
-            "id": org.id,
-            "name": org.name,
-            "role": role_str(OrgMemberRole::Owner),
-        })),
+        format::json(OrgCreated {
+            id: org.id,
+            name: org.name,
+            role: api_role(OrgMemberRole::Owner),
+        }),
     )
         .into_response())
 }
 
 /// `GET /api/v1/orgs/:id` — détail (membres inclus), membres uniquement.
+#[utoipa::path(
+    get,
+    path = "/api/v1/orgs/{id}",
+    tag = "orgs",
+    operation_id = "orgs_get",
+    summary = "Get an organisation with its members",
+    description = "Org detail, the caller role and the full member list. Members only (404 otherwise).",
+    params(("id" = i64, Path, description = "Org id")),
+    responses(
+        (status = 200, body = pnex_core::OrgDetail),
+        (status = 404, description = "Unknown org or caller not a member", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -260,7 +329,7 @@ async fn detail(
         "id": org.id,
         "name": org.name,
         "subscription_tier_id": org.subscription_tier_id,
-        "role": role_str(membership.role),
+        "role": api_role(membership.role),
         "members": members,
     }))
 }
@@ -271,6 +340,24 @@ struct UpdateOrgParams {
 }
 
 /// `PATCH /api/v1/orgs/:id` — renommage (owner/admin).
+#[utoipa::path(
+    patch,
+    path = "/api/v1/orgs/{id}",
+    tag = "orgs",
+    operation_id = "orgs_update",
+    summary = "Rename an organisation",
+    description = "Renames the org. Owner or admin only. Names are globally unique.",
+    params(("id" = i64, Path, description = "Org id")),
+    request_body = pnex_core::UpdateOrg,
+    responses(
+        (status = 200, body = OrgRenamed),
+        (status = 400, description = "`field-invalid`: empty name (`errors.fields.name = required`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Not owner/admin (`org-rename-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown org or caller not a member", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Name already used (`org-name-duplicate`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -288,7 +375,10 @@ async fn update(
     }
     let name = params.name.trim().to_string();
     if name.is_empty() {
-        return Err(Error::BadRequest("name requis".into()));
+        return Ok(crate::controllers::field_error(
+            "name",
+            pnex_core::err_codes::FIELD_REQUIRED,
+        ));
     }
     let taken = organizations::Entity::find()
         .filter(
@@ -313,10 +403,29 @@ async fn update(
         .update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    format::json(serde_json::json!({ "id": org.id, "name": org.name }))
+    format::json(OrgRenamed {
+        id: org.id,
+        name: org.name,
+    })
 }
 
 /// `DELETE /api/v1/orgs/:id` — owner et dernier membre uniquement.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/orgs/{id}",
+    tag = "orgs",
+    operation_id = "orgs_delete",
+    summary = "Delete an organisation",
+    description = "Deletes the org and, by cascade, all its data. Owner only, and only when the owner is the last member. Telemetry streams are purged from OpenObserve in the background (best effort).",
+    params(("id" = i64, Path, description = "Org id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Not owner (`org-delete-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown org or caller not a member", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Other members remain (`org-not-empty`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -414,7 +523,7 @@ async fn list_members_json(
                     "user_id": user.id,
                     "email": user.email,
                     "full_name": user.full_name,
-                    "role": role_str(m.role),
+                    "role": api_role(m.role),
                     "created_at": m.created_at,
                 })
             })
@@ -422,16 +531,33 @@ async fn list_members_json(
         .collect())
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct MembersQuery {
-    /// Recherche OU sur email et nom complet.
+    /// Case-insensitive search on email and full name.
     search: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/orgs/:id/members` — membres uniquement, paginés (D14) +
 /// recherche sur email/nom complet.
+#[utoipa::path(
+    get,
+    path = "/api/v1/orgs/{id}/members",
+    tag = "orgs",
+    operation_id = "orgs_members_list",
+    summary = "List the members of an organisation",
+    description = "Paginated (`limit`/`offset`), optional search on email and full name. Members only.",
+    params(("id" = i64, Path, description = "Org id"), MembersQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::OrgMember>),
+        (status = 404, description = "Unknown org or caller not a member", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn members(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -477,14 +603,31 @@ async fn members(
 struct AddMemberParams {
     email: String,
     #[serde(default = "default_role")]
-    role: RoleParam,
+    role: OrgRole,
 }
-fn default_role() -> RoleParam {
-    RoleParam::Viewer
+fn default_role() -> OrgRole {
+    OrgRole::Viewer
 }
 
 /// `POST /api/v1/orgs/:id/members` — ajout d'un utilisateur déjà provisionné
 /// (owner/admin). Promouvoir au rôle owner : owner uniquement.
+#[utoipa::path(
+    post,
+    path = "/api/v1/orgs/{id}/members",
+    tag = "orgs",
+    operation_id = "orgs_members_add",
+    summary = "Add a member to an organisation",
+    description = "Adds an already provisioned user (they must have signed in once) by email. Owner or admin; granting the owner role requires owner. Default role viewer.",
+    params(("id" = i64, Path, description = "Org id")),
+    request_body = pnex_core::AddMember,
+    responses(
+        (status = 201, body = MemberAdded),
+        (status = 403, description = "Not allowed (`org-member-add-forbidden`, `org-owner-grant-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown org, caller not a member, or unknown user (`org-member-unknown-user`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Already a member (`org-member-duplicate`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn add_member(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -500,7 +643,7 @@ async fn add_member(
             "Owner or admin role required to add a member",
         ));
     }
-    if matches!(params.role, RoleParam::Owner) && !matches!(membership.role, OrgMemberRole::Owner) {
+    if matches!(params.role, OrgRole::Owner) && !matches!(membership.role, OrgMemberRole::Owner) {
         return Err(forbidden(
             "org-owner-grant-forbidden",
             "Owner role required to grant the owner role",
@@ -542,7 +685,7 @@ async fn add_member(
     organization_members::ActiveModel {
         org_id: Set(org_id),
         user_id: Set(target.id),
-        role: Set(OrgMemberRole::from(params.role)),
+        role: Set(db_role(params.role)),
         ..Default::default()
     }
     .insert(&ctx.db)
@@ -551,20 +694,39 @@ async fn add_member(
 
     Ok((
         StatusCode::CREATED,
-        format::json(serde_json::json!({
-            "user_id": target.id, "email": target.email, "role": role_str(OrgMemberRole::from(params.role)),
-        })),
+        format::json(MemberAdded {
+            user_id: target.id,
+            email: target.email,
+            role: params.role,
+        }),
     )
         .into_response())
 }
 
 #[derive(Deserialize)]
 struct UpdateMemberParams {
-    role: RoleParam,
+    role: OrgRole,
 }
 
 /// `PATCH /api/v1/orgs/:id/members/:user_id` — changement de rôle.
 /// Toujours au moins un owner en sortie.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/orgs/{id}/members/{user_id}",
+    tag = "orgs",
+    operation_id = "orgs_members_update",
+    summary = "Change the role of a member",
+    description = "Owner or admin; touching an owner (or granting owner) requires owner. The org always keeps at least one owner.",
+    params(("id" = i64, Path, description = "Org id"), ("user_id" = i64, Path, description = "User id of the member")),
+    request_body = pnex_core::UpdateMember,
+    responses(
+        (status = 200, body = MemberRoleUpdated),
+        (status = 403, description = "Not allowed (`org-member-role-forbidden`, `org-owner-edit-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown org/member or caller not a member", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Last owner (`org-last-owner`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn update_member(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -595,7 +757,7 @@ async fn update_member(
     }
     // Modifier un owner (ou promouvoir au rôle owner) : owner uniquement.
     let touches_owner =
-        matches!(target.role, OrgMemberRole::Owner) || matches!(params.role, RoleParam::Owner);
+        matches!(target.role, OrgMemberRole::Owner) || matches!(params.role, OrgRole::Owner);
     if touches_owner && !matches!(membership.role, OrgMemberRole::Owner) {
         return Err(forbidden(
             "org-owner-edit-forbidden",
@@ -603,7 +765,7 @@ async fn update_member(
         ));
     }
     // Garde : au moins un owner reste.
-    if matches!(target.role, OrgMemberRole::Owner) && !matches!(params.role, RoleParam::Owner) {
+    if matches!(target.role, OrgMemberRole::Owner) && !matches!(params.role, OrgRole::Owner) {
         let owners = organization_members::Entity::find()
             .filter(
                 organization_members::Column::OrgId
@@ -622,17 +784,34 @@ async fn update_member(
     }
 
     let mut active: organization_members::ActiveModel = target.into();
-    active.role = Set(OrgMemberRole::from(params.role));
+    active.role = Set(db_role(params.role));
     let updated = active
         .update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    format::json(serde_json::json!({
-        "user_id": updated.user_id, "role": updated.role,
-    }))
+    format::json(MemberRoleUpdated {
+        user_id: updated.user_id,
+        role: api_role(updated.role),
+    })
 }
 
 /// `DELETE /api/v1/orgs/:id/members/:user_id` — retrait (ou départ volontaire).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/orgs/{id}/members/{user_id}",
+    tag = "orgs",
+    operation_id = "orgs_members_remove",
+    summary = "Remove a member (or leave)",
+    description = "Removes a member, or lets the caller leave. Removing someone else needs owner or admin; removing an owner needs owner and never the last owner. Also deletes the member assistant conversations in this org.",
+    params(("id" = i64, Path, description = "Org id"), ("user_id" = i64, Path, description = "User id of the member")),
+    responses(
+        (status = 204, description = "Removed"),
+        (status = 403, description = "Not allowed (`org-member-remove-forbidden`, `org-owner-remove-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown org/member or caller not a member", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Last owner (`org-last-owner`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn remove_member(
     State(ctx): State<AppContext>,
     auth: AuthUser,
@@ -715,4 +894,22 @@ pub fn routes() -> Routes {
             "/{id}/members/{user_id}",
             patch(update_member).delete(remove_member),
         )
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        update,
+        delete,
+        members,
+        add_member,
+        update_member,
+        remove_member
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

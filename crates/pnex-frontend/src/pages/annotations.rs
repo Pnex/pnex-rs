@@ -31,13 +31,10 @@ use crate::state::{org, session, toasts};
 use crate::util::media_blob_url;
 
 /// Rôle de l'utilisateur dans l'org courante (école media.rs).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 #[derive(Clone, PartialEq)]
@@ -48,7 +45,7 @@ enum View {
 
 #[component]
 pub fn Annotations() -> Element {
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     // ─── Listes de base (médias pour les noms + filtre) ───
     let mut view = use_signal(|| View::List);

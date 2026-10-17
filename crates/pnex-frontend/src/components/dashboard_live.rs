@@ -149,7 +149,7 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
 /// Live values of `sources`, keyed by [`pnex_core::SourceRef::series_key`]:
 /// telemetry series through one `series-batch` (each series fetched over
 /// the widest window its widgets ask for), memory values through one
-/// `memory/values` call. `None` = unavailable (degraded).
+/// `memory/values/query` call. `None` = unavailable (degraded).
 pub async fn fetch_live_values(
     sources: Vec<pnex_core::SourceRef>,
 ) -> HashMap<String, Option<Vec<TelemetryPoint>>> {

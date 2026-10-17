@@ -193,15 +193,13 @@ pub fn NotifyTemplateForm(
         }
         busy.set(true);
         let vars_map = collect_vars(vars.cloned());
-        let failed_label = t!("notify-test-failed").to_string();
         spawn(async move {
             match ensure_saved(saved_id, name, subject, body, vars, on_changed).await {
                 Err(err) => toasts::error(err),
                 Ok(template_id) => {
                     match api::notify::test_channel(&channel_id, Some(&template_id), vars_map).await
                     {
-                        Ok(outcome) if outcome.ok() => toasts::success("toast-notify-test-sent"),
-                        Ok(outcome) => toasts::error(outcome.error.unwrap_or(failed_label.clone())),
+                        Ok(()) => toasts::success("toast-notify-test-sent"),
                         Err(err) => toasts::error(err),
                     }
                 }

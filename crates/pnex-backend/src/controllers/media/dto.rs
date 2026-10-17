@@ -2,8 +2,10 @@ use super::*;
 
 // ─────────────────────────── DTOs ───────────────────────────
 
-#[derive(serde::Serialize)]
+/// One version of a media asset.
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub(super) struct MediaVersionDto {
+    #[schema(value_type = String, format = "uuid")]
     id: Uuid,
     version_number: i64,
     filename: String,
@@ -13,6 +15,7 @@ pub(super) struct MediaVersionDto {
     metadata: Option<serde_json::Value>,
     note: Option<String>,
     current: bool,
+    #[schema(format = DateTime)]
     created_at: String,
 }
 
@@ -31,26 +34,64 @@ pub(super) fn version_dto(v: &media_versions::Model, current_id: Option<Uuid>) -
     }
 }
 
-#[derive(serde::Serialize)]
+/// Kind of a media asset (closed set, stored as its wire string).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, utoipa::ToSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum MediaKind {
+    Photo,
+    /// Equirectangular 360 photo.
+    Panorama,
+    /// Gaussian splat scene.
+    Splat,
+    /// Imported floor plan (referenced by `tour_versions.doc`).
+    Floorplan,
+    /// ONNX model of the vision registry (camera-video.md D81).
+    Model,
+    /// Indexed for search (doc-search.md P1).
+    Document,
+    /// Indexed for search (doc-search.md P1).
+    Table,
+    /// Voice clips (voice-id.md: enrolment of a voice profile).
+    Audio,
+    /// MP4 / MOV clips (Vision Lab frames, media-vision-studio.md).
+    Video,
+    /// GLB 3D model of an object's gallery (assisted-creation.md D231).
+    Mesh,
+}
+
+impl MediaKind {
+    /// Kind of its wire string (`photo`, `panorama`…), `None` when unknown.
+    pub(super) fn parse(raw: &str) -> Option<Self> {
+        serde_json::from_value(serde_json::Value::String(raw.to_string())).ok()
+    }
+}
+
+/// A media asset (versions summarised: count, total size, current one).
+#[derive(serde::Serialize, utoipa::ToSchema)]
 pub(super) struct MediaAssetDto {
+    #[schema(value_type = String, format = "uuid")]
     id: Uuid,
-    kind: String,
+    kind: MediaKind,
     name: String,
     description: Option<String>,
     metadata: Option<serde_json::Value>,
-    /// Labels propres (D42) — effectifs via `/resources/{kind}/{id}/labels/effective`.
+    /// Own labels (D42); effective ones via `/resources/{kind}/{id}/labels/effective`.
     pub(super) labels: pnex_core::resources::LabelSet,
     latest_version_number: i64,
     size_bytes: i64,
     current_version_number: Option<i64>,
-    /// Content-type de la version courante (data URI côté front natif).
+    /// Content type of the current version (data URI on the native frontend).
     content_type: Option<String>,
     versions_count: i64,
+    #[schema(format = DateTime)]
     created_at: String,
+    #[schema(format = DateTime)]
     updated_at: String,
 }
 
-/// DTO résumé pour la liste (hydratation versions_count/size en vrac).
+/// Summary DTO of an asset from its versions (count, total size, current).
 pub(super) fn asset_dto(
     a: &media_assets::Model,
     versions: &[media_versions::Model],
@@ -59,7 +100,9 @@ pub(super) fn asset_dto(
     let total: i64 = versions.iter().map(|v| v.size_bytes).sum();
     MediaAssetDto {
         id: a.id,
-        kind: a.kind.clone(),
+        // Only validated kinds are ever written (upload, sniff, internal
+        // producers); an unknown row would be a bug, shown as a photo.
+        kind: MediaKind::parse(&a.kind).unwrap_or(MediaKind::Photo),
         name: a.name.clone(),
         description: a.description.clone(),
         metadata: a.metadata.clone(),

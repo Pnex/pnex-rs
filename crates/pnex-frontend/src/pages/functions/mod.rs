@@ -41,13 +41,10 @@ use crate::util;
 
 /// Rôle de l'utilisateur dans l'org courante — même helper que `flows.rs`
 /// (privé par page, convention projet).
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 #[component]
@@ -78,7 +75,7 @@ pub fn Functions() -> Element {
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
 
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     let list = use_resource(move || {
         let _ = reload();
@@ -269,21 +266,8 @@ pub fn Functions() -> Element {
                                     spawn(async move {
                                         match api::functions::delete(target).await {
                                             Ok(()) => toasts::success("toast-function-deleted"),
-                                            Err(err) => {
-                                                match api::functions::referencing_flows(&err) {
-                                                    Some(flows) => {
-                                                        let list = flows
-                                                            .iter()
-                                                            .map(|(id, name, v)| format!("#{} {name} v{v}", id))
-                                                            .collect::<Vec<_>>()
-                                                            .join(", ");
-                                                        toasts::error(
-                                                            format!("{} {list}", t!("toast-function-in-use")),
-                                                        );
-                                                    }
-                                                    None => toasts::error(err),
-                                                }
-                                            }
+                                            // 409 `function-in-use` names the flows in its args.
+                                            Err(err) => toasts::error(err),
                                         }
                                         reload.with_mut(|r| *r += 1);
                                     });

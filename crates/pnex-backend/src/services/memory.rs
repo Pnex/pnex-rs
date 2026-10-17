@@ -4,7 +4,7 @@
 //! `pnex:mem:v1:{org}:{key}` (contract: `pnex_core::memory`). This service
 //! lists the live keys of an org (picker) and resolves numeric values
 //! (widgets). Degraded by design: Valkey disabled/unreachable = empty
-//! listing / `available: false`, never a 500.
+//! listing, `None` values (the controller answers 503 `memory-unavailable`).
 
 use std::time::Duration;
 
@@ -93,8 +93,12 @@ pub async fn list_keys_with(mut conn: ConnectionManager, org_id: i64) -> Vec<Mem
 }
 
 /// Numeric values of `refs`, same order. Invalid refs and non-numeric
-/// values resolve as unavailable items.
-pub async fn values(config: &Config, org_id: i64, refs: &[MemoryRef]) -> MemoryValuesResponse {
+/// values resolve as unavailable items; `None` = store unreachable.
+pub async fn values(
+    config: &Config,
+    org_id: i64,
+    refs: &[MemoryRef],
+) -> Option<MemoryValuesResponse> {
     values_with(conn(config).await, org_id, refs).await
 }
 
@@ -104,24 +108,13 @@ pub async fn values_with(
     conn: Option<ConnectionManager>,
     org_id: i64,
     refs: &[MemoryRef],
-) -> MemoryValuesResponse {
-    let unavailable = |available| MemoryValuesResponse {
-        available,
-        results: refs
-            .iter()
-            .map(|_| MemoryValue {
-                available: false,
-                value: None,
-                ts_ms: None,
-            })
-            .collect(),
-    };
+) -> Option<MemoryValuesResponse> {
     if refs.is_empty() {
-        return unavailable(true);
+        return Some(MemoryValuesResponse {
+            results: Vec::new(),
+        });
     }
-    let Some(mut conn) = conn else {
-        return unavailable(false);
-    };
+    let mut conn = conn?;
     let keys: Vec<String> = refs
         .iter()
         .map(|r| memory_cache_key(org_id, &r.key))
@@ -132,11 +125,11 @@ pub async fn values_with(
         Ok(Ok(raw)) => raw,
         Ok(Err(e)) => {
             tracing::warn!(error = %e, "memory values read failed");
-            return unavailable(false);
+            return None;
         }
         Err(_) => {
             tracing::warn!("memory values read timed out");
-            return unavailable(false);
+            return None;
         }
     };
     let results = refs
@@ -152,8 +145,5 @@ pub async fn values_with(
             }
         })
         .collect();
-    MemoryValuesResponse {
-        available: true,
-        results,
-    }
+    Some(MemoryValuesResponse { results })
 }

@@ -1,15 +1,12 @@
 //! Devices domain DTOs (Phase 4), scoped by org (D2).
 //!
-//! Deux familles :
-//! - le **catalogue global** (lecture seule, partagé entre orgs) :
-//!   `predefined-devices`, `device-capabilities` ;
-//! - le **registre scopé org** : `devices` (CRUD + réactivation + quotas).
+//! Two families:
+//! - the **global catalogue** (read-only, shared across orgs):
+//!   `predefined-devices`, `device-capabilities`;
+//! - the **org-scoped registry**: `devices` (CRUD + reactivation + quotas).
 //!
-//! Hors périmètre Phase 4 (décision utilisateur) : `actuator-channels` — la
-//! config des canaux actionneurs attend la réflexion M2M (D13).
-//!
-//! Champs dates en chaînes RFC 3339 (sérialisation SeaORM), pas de chrono
-//! dans le core (wasm32).
+//! Dates are RFC 3339 strings (SeaORM serialization), no chrono in the
+//! core (wasm32).
 
 use serde::{Deserialize, Serialize};
 
@@ -65,15 +62,16 @@ impl DeviceFamily {
 
 /// `GET /api/v1/device-capabilities`.
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeviceCapability {
     pub id: i64,
     pub name: String,
-    /// « input » | « output » | « input_output ».
-    pub mode: String,
+    pub mode: crate::catalog::CapabilityMode,
 }
 
 /// `GET /api/v1/predefined-devices` (no id: the unique `name` acts as the key).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PredefinedDevice {
     pub name: String,
     #[serde(default)]
@@ -97,38 +95,40 @@ pub struct PredefinedDevice {
     pub device_type: String,
     /// Capability names (list of strings).
     pub capabilities: Vec<String>,
-    /// Nom du board MCU.
+    /// MCU board name.
     pub board: String,
-    /// Le modèle peut porter un écran intégré (`peripherals.screen` en base) —
-    /// option de build « écran intégré » proposée à l'utilisateur.
+    /// The model can carry a builtin screen (`peripherals.screen` in base),
+    /// offered as a build option.
     #[serde(default)]
     pub has_screen: bool,
-    /// Kind du driver écran (« ssd1306 »…) si `has_screen`.
+    /// Screen driver kind (`ssd1306`…) when `has_screen`.
     #[serde(default)]
     pub screen_kind: Option<String>,
 }
 
 // ─────────────────────── Registre devices (org) ───────────────────────
 
-/// Token d'un device — renvoyé au porteur pour le provisioning (chiffré côté
-/// device avec `encryption_key`).
+/// Device token, returned to writers for provisioning (the device encrypts
+/// with `encryption_key`).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeviceTokenInfo {
     pub token: String,
     pub encryption_key: String,
     pub is_active: bool,
     /// RFC 3339.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created: Option<String>,
 }
 
-/// Dernier build firmware du device — un record par (org, device_id) en base
-/// (upsert au rebuild), hydraté dans le DTO pour l'UI (colonne Firmware).
+/// Latest firmware build of the device, hydrated into the DTO for the UI
+/// (Firmware column).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LatestBuild {
-    /// « queued » | « running » | « succeeded » | « failed ».
-    pub build_phase: String,
-    /// Version stampée du build (id record) — absente des records pré-OTA.
+    pub build_phase: crate::builds::BuildPhase,
+    /// Stamped build version (record id); absent on pre-OTA records.
     #[serde(default)]
     pub fw_version: Option<String>,
     /// Staleness tripwire (migration 000031): `Some(true)` = the firmware
@@ -137,7 +137,8 @@ pub struct LatestBuild {
     /// recommended. `None` = legacy record (pre-fingerprint), unknown.
     #[serde(default)]
     pub sources_stale: Option<bool>,
-    /// RFC 3339 — dernier changement de phase.
+    /// RFC 3339, last phase change.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
     /// Version of the newest SUCCESSFUL, OTA-deployable build of the device
     /// (the OTA target by default). May differ from `fw_version` above when
@@ -155,6 +156,7 @@ pub struct LatestBuild {
 
 /// Current OTA deployment status hydrated into `Device` (list + detail).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OtaAssignmentState {
     pub state: String,
     pub target_version: String,
@@ -164,35 +166,38 @@ pub struct OtaAssignmentState {
     pub error: Option<String>,
     /// RFC 3339.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Device du registre — `GET /api/v1/devices` et détail (même forme en liste
-/// et en détail).
+/// Registered device: `GET /api/v1/devices` and detail (same shape in list
+/// and detail).
 #[derive(PartialEq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Device {
     pub id: i64,
     /// D2: owning org.
     pub org_id: i64,
-    /// Identifiant déclaré par le firmware (MAC, hostname…).
+    /// Identifier declared by the firmware (MAC, hostname…).
     pub device_id: String,
     pub predefined_device_name: String,
-    /// Nom du type (sensor / actuator / mixed).
+    /// Type name (`sensor`, `actuator`, `mixed`…).
     pub device_type: String,
-    /// Capacités du predefined device (objets {id, name, mode}).
+    /// Capabilities of the predefined model.
     pub capabilities: Vec<DeviceCapability>,
     pub active: bool,
-    /// Dernière donnée reçue (bail de vie Phase 5, `device_states`) —
-    /// RFC 3339, absent si le device n'a jamais ingéré.
+    /// Last data received (liveness lease), RFC 3339; absent when the
+    /// device never ingested.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_seen: Option<String>,
-    /// Live WS session (`device_states.connected`). False = actuellement
-    /// déconnecté (ou jamais connecté) — l'UI grise le déploiement OTA.
+    /// Live websocket session. False = currently disconnected (or never
+    /// connected); the UI greys out OTA deployment.
     #[serde(default)]
     pub connected: bool,
     #[serde(default)]
     pub device_token: Option<DeviceTokenInfo>,
-    /// Statut du dernier build firmware (`null` si jamais compilé) —
+    /// Latest firmware build status (`null` when never built),
     /// server-side enrichment.
     #[serde(default)]
     pub latest_build: Option<LatestBuild>,
@@ -208,7 +213,8 @@ pub struct Device {
     #[serde(default)]
     pub ota: Option<OtaAssignmentState>,
     pub allow_dynamic_measurements: bool,
-    /// Noms des mesures découvertes (uniquement si dynamic autorisé).
+    /// Discovered measurement names (only when dynamic measurements are
+    /// allowed).
     #[serde(default)]
     pub discovered_measurements: Vec<String>,
     pub max_unique_measurements: i32,
@@ -218,17 +224,18 @@ pub struct Device {
     pub firmware_project_id: Option<i64>,
 }
 
-/// Corps du `POST /api/v1/devices`.
+/// Body of `POST /api/v1/devices`.
 ///
-/// Si un device inactif porte déjà ce `device_id` dans l'org : réactivation
-/// (200 + `{"detail": "Device reactivated successfully."}`), pas de création.
+/// When an inactive device already carries this `device_id` in the org, it
+/// is reactivated (200 + `{"reactivated": true}`) instead of created.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateDevice {
     pub device_id: String,
     pub predefined_device_name: String,
-    /// Board variante figée à l'enregistrement (`mcu_boards.id`) — absent =
-    /// board par défaut du modèle. Validé : existence + soc compatible avec
-    /// le board par défaut du modèle.
+    /// Board variant frozen at registration (`mcu_boards.id`); absent = the
+    /// model's default board. Must exist and carry the same SoC as the
+    /// model's default board.
     #[serde(default)]
     pub board_id: Option<i64>,
     /// Custom firmware chosen at provisioning (custom-firmware.md D94) —
@@ -238,19 +245,51 @@ pub struct CreateDevice {
     pub firmware_project_id: Option<i64>,
 }
 
-/// Corps du `PUT /api/v1/devices/{id}/peripherals` — écran choisi par
-/// l'utilisateur (`null` = aucun, kind string = écran du profil) : pins
-/// réservées + define au build.
+/// Body of `PUT /api/v1/devices/{id}/peripherals`: screen picked by the
+/// user (`null` = none, kind string = a screen of the profile); its pins are
+/// reserved and the firmware define applies at the next build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateDevicePeripherals {
+    /// `null` = no screen, otherwise the driver kind of the board profile.
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub screen: crate::boards::ScreenChoice,
 }
 
 /// Body of `PUT /api/v1/devices/{id}/board` — moves the device to another
 /// board variant of the same chip (O39). Takes effect at the next build.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateDeviceBoard {
     pub board_id: i64,
+}
+
+/// Answer of `POST /api/v1/devices` when a known inactive device is
+/// reactivated (200 instead of 201).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeviceReactivated {
+    pub reactivated: bool,
+}
+
+/// Answer of `PUT /api/v1/devices/{id}/board`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DeviceBoardUpdated {
+    pub board_id: i64,
+    /// False when the device already ran on that board.
+    pub rebuild_required: bool,
+}
+
+/// Answer of `PUT /api/v1/devices/{id}/peripherals`; takes effect at the
+/// next build.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct DevicePeripheralsUpdated {
+    /// Stored screen kind, `null` = none.
+    pub screen: Option<String>,
+    pub screen_kind: Option<String>,
+    pub rebuild_required: bool,
 }
 
 #[cfg(test)]
@@ -316,7 +355,7 @@ mod tests {
         assert_eq!(device.fw_version.as_deref(), Some("42"));
         assert!(device.ota_ready);
         let build = device.latest_build.as_ref().unwrap();
-        assert_eq!(build.build_phase, "succeeded");
+        assert_eq!(build.build_phase, crate::builds::BuildPhase::Succeeded);
         assert_eq!(build.fw_version.as_deref(), Some("42"));
         assert_eq!(build.deployable_version.as_deref(), Some("42"));
         let back = serde_json::to_value(&device).unwrap();

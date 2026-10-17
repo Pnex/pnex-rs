@@ -189,8 +189,9 @@ async fn camera_uplink_live_and_settings() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(list[0]["device_id"], "cam-one");
-        assert_eq!(list[0]["settings"]["capture_mode"], "on_demand");
+        assert_eq!(list["count"], 1);
+        assert_eq!(list["results"][0]["device_id"], "cam-one");
+        assert_eq!(list["results"][0]["settings"]["capture_mode"], "on_demand");
 
         // A live viewer wakes the on_demand camera.
         let mut viewer = server
@@ -244,8 +245,8 @@ async fn camera_uplink_live_and_settings() {
             .await;
         bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
         let body: serde_json::Value = bad.json();
-        assert_eq!(body["fps"], "range:1..25");
-        assert_eq!(body["framesize"], "invalid");
+        assert_eq!(body["errors"]["fields"]["fps"], "range:1..25");
+        assert_eq!(body["errors"]["fields"]["framesize"], "invalid");
         let ok = server
             .patch(&format!("/api/v1/cameras/{}/settings", dev.id))
             .add_header("Authorization", format!("Bearer {alice}"))
@@ -322,6 +323,17 @@ async fn segments_written_listed_and_deleted() {
             .await
             .json();
         assert_eq!(list["count"], 0);
+        // O80: an unparsable time bound is a coded 400, never ignored.
+        let bad = server
+            .get("/api/v1/cameras/segments?from=yesterday&to=2026-10-17T00:00:00Z")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        bad.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = bad.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["from"], "invalid");
+        assert!(body["errors"]["fields"].get("to").is_none(), "{body}");
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;
@@ -645,7 +657,7 @@ async fn camera_cluster_state_crosses_pods() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        let me = list
+        let me = list["results"]
             .as_array()
             .unwrap()
             .iter()
@@ -698,7 +710,7 @@ async fn camera_cluster_state_crosses_pods() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        let me = list
+        let me = list["results"]
             .as_array()
             .unwrap()
             .iter()

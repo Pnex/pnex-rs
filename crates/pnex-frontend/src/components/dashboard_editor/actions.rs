@@ -47,7 +47,7 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
             }
             Err(e) => {
                 // 400 violations : mêmes messages que la validation locale.
-                if let Some(v) = e.body.as_ref().and_then(|b| b.get("violations")).cloned() {
+                if let Some(v) = e.violations().cloned() {
                     if let Ok(list) = serde_json::from_value::<Vec<VizViolation>>(v) {
                         cx.violations.set(list);
                     }

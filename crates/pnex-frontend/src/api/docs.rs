@@ -55,19 +55,9 @@ pub async fn delete(id: Uuid) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-#[derive(serde::Deserialize)]
-struct VersionList {
-    results: Vec<DocVersionSummary>,
-}
-
+/// Every named version of the page, newest first (all pages).
 pub async fn versions(id: Uuid) -> Result<Vec<DocVersionSummary>, ApiError> {
-    let list: VersionList = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/docs/{id}/versions"),
-        None,
-    )
-    .await?;
-    Ok(list.results)
+    client::request_all(&format!("/api/v1/docs/{id}/versions")).await
 }
 
 pub async fn create_version(id: Uuid, label: String) -> Result<DocVersionSummary, ApiError> {
@@ -110,19 +100,9 @@ pub async fn version_state(id: Uuid, n: i64) -> Result<DocVersionState, ApiError
     .await
 }
 
-#[derive(serde::Deserialize)]
-struct CommentList {
-    results: Vec<DocComment>,
-}
-
+/// Every comment of the page, oldest first (all pages).
 pub async fn comments(id: Uuid) -> Result<Vec<DocComment>, ApiError> {
-    let list: CommentList = client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/docs/{id}/comments"),
-        None,
-    )
-    .await?;
-    Ok(list.results)
+    client::request_all(&format!("/api/v1/docs/{id}/comments")).await
 }
 
 pub async fn create_comment(id: Uuid, input: CreateDocComment) -> Result<(), ApiError> {

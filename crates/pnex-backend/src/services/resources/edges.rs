@@ -23,13 +23,13 @@ const PLACEMENT_MAX_BYTES: usize = 4096;
 /// moteur reste générique.
 pub fn validate_placement(placement: &Value) -> Result<(), ResourceError> {
     if !placement.is_object() {
-        return Err(ResourceError::PlacementInvalid("objet JSON attendu"));
+        return Err(ResourceError::PlacementInvalid);
     }
     if serde_json::to_vec(placement)
         .map(|b| b.len() > PLACEMENT_MAX_BYTES)
         .unwrap_or(true)
     {
-        return Err(ResourceError::PlacementInvalid("placement trop volumineux"));
+        return Err(ResourceError::PlacementInvalid);
     }
     Ok(())
 }

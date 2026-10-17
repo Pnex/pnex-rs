@@ -198,7 +198,8 @@ async fn wifi_validations_400() {
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("ssid").is_some());
+        assert_eq!(body["error"], "field-invalid", "{body}");
+        assert!(body["errors"]["fields"].get("ssid").is_some());
 
         // SSID > 32 octets (802.11).
         let (status, body) = post_wifi(
@@ -209,7 +210,8 @@ async fn wifi_validations_400() {
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("ssid").is_some());
+        assert_eq!(body["error"], "field-invalid", "{body}");
+        assert!(body["errors"]["fields"].get("ssid").is_some());
 
         // Mot de passe vide (réseaux ouverts hors scope v1).
         let (status, body) = post_wifi(
@@ -220,7 +222,7 @@ async fn wifi_validations_400() {
         )
         .await;
         assert_eq!(status, 400, "{body}");
-        assert!(body.get("password").is_some());
+        assert!(body["errors"]["fields"].get("password").is_some());
     })
     .await;
 }
@@ -264,8 +266,21 @@ async fn hosts_cycle_upsert_et_validation() {
         ] {
             let (status, body) = post_host(&server, &env.alice, org, payload).await;
             assert_eq!(status, 400, "{body}");
-            assert!(body.get("host").is_some());
+            assert_eq!(body["error"], "field-invalid", "{body}");
+            assert!(body["errors"]["fields"].get("host").is_some());
         }
+
+        // Rename onto a host used by another entry → 409 edge-host-taken.
+        let (_, other) = post_host(&server, &env.alice, org, json!({ "host": "10.0.0.2" })).await;
+        let res = server
+            .put(&format!("/api/v1/edge/hosts/{}", other["id"]))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({ "host": "192.168.1.16:5150" }))
+            .await;
+        assert_eq!(res.status_code(), 409);
+        assert_eq!(res.json::<serde_json::Value>()["error"], "edge-host-taken");
 
         // Delete → 204.
         let path = format!("/api/v1/edge/hosts/{id}");
@@ -318,6 +333,40 @@ async fn isolation_org_et_auth_401() {
         assert_eq!(rows.len(), 1, "viewer lit le référentiel");
         let (status, _) = post_host(&server, &env.bob, org_a, json!({ "host": "h:1" })).await;
         assert_eq!(status, 403, "viewer ne peut pas écrire");
+
+        // SEC-43: a viewer cannot make the server probe the network.
+        let scan = server
+            .get("/api/v1/edge/lan-scan?prefix=192.168.1.")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org_a.to_string())
+            .await;
+        assert_eq!(scan.status_code(), 403);
+        assert_eq!(
+            scan.json::<serde_json::Value>()["error"],
+            "edge-write-forbidden"
+        );
+    })
+    .await;
+}
+
+/// SEC-43: an explicit scan prefix must be an RFC 1918 `a.b.c.` prefix —
+/// anything else is refused before any probe (400 field-invalid).
+#[tokio::test]
+#[serial]
+async fn lan_scan_prefix_is_rfc1918_only() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        for prefix in ["8.8.8.", "100.64.0.", "127.0.0.", "192.168.1", "nope"] {
+            let res = server
+                .get(&format!("/api/v1/edge/lan-scan?prefix={prefix}"))
+                .add_header("Authorization", bearer(&env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .await;
+            assert_eq!(res.status_code(), 400, "{prefix}");
+            let body: serde_json::Value = res.json();
+            assert_eq!(body["error"], "field-invalid", "{body}");
+            assert_eq!(body["errors"]["fields"]["prefix"], "invalid", "{body}");
+        }
     })
     .await;
 }

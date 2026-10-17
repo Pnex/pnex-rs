@@ -60,7 +60,7 @@ pub(super) fn FlashToggle(device: i64) -> Element {
                     reload.with_mut(|r| *r += 1);
                 }
                 Ok(api::pins::CommandOutcome::Conflict { flows }) => {
-                    conflict.set(flows.into_iter().map(|(_, name)| name).collect());
+                    conflict.set(flows);
                 }
                 Err(err) => toasts::error(err),
             }

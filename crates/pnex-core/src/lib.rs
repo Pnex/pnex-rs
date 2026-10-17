@@ -225,19 +225,36 @@ use serde::{Deserialize, Serialize};
 /// Service name reported by the health endpoints.
 pub const SERVICE_NAME: &str = "pnex-server";
 
+/// State reported by the health probes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum HealthState {
+    Ok,
+    /// Readiness only: a dependency failed.
+    Degraded,
+    Error,
+    /// The dependency is not configured (deployments without telemetry).
+    NotConfigured,
+}
+
 /// Responses of the `/health/live` endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HealthLive {
-    pub status: String,
+    pub status: HealthState,
     pub service: String,
 }
 
-/// Réponses du endpoint `/health/ready` (DB critique, cache non critique).
+/// Response of `/health/ready`: the database is critical (`degraded` when it
+/// fails), the telemetry backend (`cache`) is not.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct HealthReady {
-    pub status: String,
-    pub database: String,
-    pub cache: String,
+    pub status: HealthState,
+    pub database: HealthState,
+    /// OpenObserve telemetry backend.
+    pub cache: HealthState,
 }
 
 /// Identifiant d'une organisation PNEX (le tenant, décision D2).
@@ -255,7 +272,7 @@ mod tests {
     #[test]
     fn health_live_serde_roundtrip() {
         let h = HealthLive {
-            status: "ok".into(),
+            status: HealthState::Ok,
             service: SERVICE_NAME.into(),
         };
         let json = serde_json::to_string(&h).unwrap();

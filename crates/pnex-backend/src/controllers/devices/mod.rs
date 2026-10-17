@@ -1,15 +1,16 @@
-//! Devices — registre scopé org (D2) + catalogue global partagé.
+//! Devices: org-scoped registry (D2) + shared global catalogue.
 //!
-//! Contrats (pagination D14) :
-//! - `GET /api/v1/devices` : filtres `device_type` (« all » = no-op),
-//!   `capability`, `device_id` (exact), `active` (true|false) + pagination
-//!   `limit`/`offset` → enveloppe `{count, next, previous, results}` ;
-//! - `POST` : réactivation implicite d'un device inactif connu (200) ou 400
-//!   « already registered and active », quota tier par type, sinon création
-//!   inactive + DeviceToken auto (token urlsafe 32 octets + clé ChaCha20 en
-//!   base64) → 201 avec le DTO complet ;
-//! - `PUT/PATCH /{id}` : **metadata uniquement** (toute autre clé → 400) ;
-//! - `DELETE /{id}` : nettoie build_records + device_token → 204.
+//! Contracts (pagination D14/D240, errors D239):
+//! - `GET /api/v1/devices`: filters `device_type` ("all" = no-op),
+//!   `capability`, `device_id` (exact), `active` (true|false), `search`,
+//!   `label` + `limit`/`offset` → `Paginated<Device>`;
+//! - `POST`: implicit reactivation of a known inactive device (200) or 400
+//!   `device-already-active`, tier quota per type, otherwise inactive
+//!   creation + auto DeviceToken (urlsafe 32-byte token + base64 ChaCha20
+//!   key) → 201 with the full DTO;
+//! - `PUT /{id}/board`, `PUT /{id}/peripherals`: replace the board variant
+//!   or the screen choice;
+//! - `DELETE /{id}`: cleans build_records + device_token → 204.
 //!
 //! Access rules (multi-tenant D2 + deny by default):
 //! - **org** scoping (`X-Org-Id`), never per-user;
@@ -19,9 +20,7 @@
 //!   the browser; the cleaned-records count goes to the logs);
 //! - `predefined-devices` catalog requires authentication;
 //! - the `revision` filter matches the `revision` field;
-//! - **pagination obligatoire** (D14) : listes paginées en SQL (catalogue :
-//!   SeaORM `count`/`offset`/`limit` ; registre org : filtre puis découpage,
-//!   ensemble borné par les quotas tier).
+//! - lists are paginated in SQL (catalogue and org registry alike).
 
 use axum::extract::{Path, Query, RawQuery, State};
 use axum::http::StatusCode;
@@ -46,7 +45,7 @@ use crate::models::_entities::{
 };
 use pnex_core::{boards::ScreenChoice, err_codes};
 
-// ─────────────────────────── Aides ───────────────────────────
+// ─────────────────────────── Helpers ───────────────────────────
 
 /// Forbidden with the machine code + canonical English description
 /// (frontend resolves `err-<code>` at render time, verbatim fallback).
@@ -57,10 +56,7 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-/// Field-by-field error: `{"<field>": "<token>"}`.
-fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
-    (status, format::json(serde_json::json!({ field: msg }))).into_response()
-}
+use crate::controllers::field_error;
 
 // Submodules (pure code moves from the former single-file controller).
 mod board;
@@ -99,10 +95,27 @@ pub fn routes() -> Routes {
         .add("/{id}/board", put(update_board))
 }
 
-/// Routes du catalogue global (préfixe /api/v1 commun).
+/// Routes of the global catalogue (shared /api/v1 prefix).
 pub fn catalogue_routes() -> Routes {
     Routes::new()
         .prefix("/api/v1")
         .add("/device-capabilities", get(capabilities))
         .add("/predefined-devices", get(predefined_list))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        detail,
+        delete,
+        update_board,
+        update_peripherals,
+        capabilities,
+        predefined_list
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

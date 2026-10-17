@@ -4,66 +4,119 @@
 use super::*;
 use serde::{Deserialize, Serialize};
 
-// ───────────────────────────── DTOs de l'API ─────────────────────────────
+// ───────────────────────────── API DTOs ─────────────────────────────
 
-/// Résumé d'un flow (liste paginée — sans graphe, évite le N+1).
-/// `PartialEq` requis par les props des composants du socle CRUD (macro
-/// `#[component]` dioxus 0.7 — impl généré par champ).
+/// Lifecycle status of a flow: `draft` (never deployed), `deployed`
+/// (running), `stopped` (stopped on purpose, deployed version kept for a
+/// restart). Stored as text (`flows.status`), see [`FLOW_STATUS_DRAFT`]…
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum FlowStatus {
+    #[default]
+    Draft,
+    Deployed,
+    Stopped,
+}
+
+impl FlowStatus {
+    /// Wire/database text of the status.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FlowStatus::Draft => FLOW_STATUS_DRAFT,
+            FlowStatus::Deployed => FLOW_STATUS_DEPLOYED,
+            FlowStatus::Stopped => FLOW_STATUS_STOPPED,
+        }
+    }
+
+    /// Parses the stored text; an unknown value reads as `draft`.
+    pub fn from_db(s: &str) -> Self {
+        match s {
+            FLOW_STATUS_DEPLOYED => FlowStatus::Deployed,
+            FLOW_STATUS_STOPPED => FlowStatus::Stopped,
+            _ => FlowStatus::Draft,
+        }
+    }
+}
+
+/// Engine health of one flow, as last announced by the runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum FlowEngineStatus {
+    Running,
+    Error,
+    Stopped,
+}
+
+/// Flow summary (paginated list, without the graph).
+/// `PartialEq` is required by the CRUD component props (dioxus 0.7
+/// `#[component]` derives a per-field impl).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowSummary {
     pub id: i64,
     pub org_id: i64,
     pub device_id: Option<i64>,
     pub name: String,
-    pub status: String,
+    pub status: FlowStatus,
     pub deployed_version_number: Option<i64>,
     pub latest_version_number: i64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Flow tel que renvoyé par l'API (graphe = dernière version).
+/// A flow with the graph of its latest saved version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Flow {
     pub id: i64,
     pub org_id: i64,
     pub device_id: Option<i64>,
     pub name: String,
-    pub status: String,
+    pub status: FlowStatus,
     pub deployed_version_number: Option<i64>,
     pub latest_version_number: i64,
     pub graph: FlowGraph,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Résumé d'une version (liste paginée).
+/// Version summary (paginated history, without the graph).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowVersionSummary {
     pub id: i64,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub deployed: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
-/// Détail d'une version (graphe inclus).
+/// One version with its graph.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowVersionDetail {
     pub id: i64,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub deployed: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     pub graph: FlowGraph,
 }
 
-/// Création : flow + version 1 en une transaction. `Serialize` sert au
-/// front (l'éditeur construit la requête typée) — le backend ne lit que
-/// `Deserialize`.
+/// Creation: the flow and its version 1 in one transaction. `Serialize`
+/// serves the frontend (the editor builds the typed request).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateFlow {
     pub name: String,
     #[serde(default)]
@@ -75,10 +128,11 @@ pub struct CreateFlow {
     pub note: Option<String>,
 }
 
-/// Enregistrement d'une nouvelle version (append-only). La concurrence est
-/// optimiste : `expected_version_number` doit valoir la version courante,
-/// sinon rejet 409 — deux éditeurs ne s'écrasent pas.
+/// Saves a new version (append-only). Optimistic concurrency:
+/// `expected_version_number` must be the current version, else 409 — two
+/// editors never overwrite each other.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateFlow {
     pub expected_version_number: i64,
     pub graph: FlowGraph,
@@ -90,67 +144,70 @@ pub struct UpdateFlow {
     pub note: Option<String>,
 }
 
-/// Déploiement explicite d'une version (projection + rechargement runtime).
-/// `version_number` absent → dernière version.
+/// Explicit deployment of a version (projection + runtime reload).
+/// Absent `version_number` = latest version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DeployFlow {
     #[serde(default)]
     pub version_number: Option<i64>,
 }
 
-/// État du runtime de flow vu par le superviseur backend. Santé du process
-/// (`runtime.json`) croisée avec la santé **par flow** (événements
-/// `flow_started`/`flow_error`/`flow_stopped` du runtime — ferme « N engines,
-/// 1 process ») : `deployed_flow_id`/`deployed_version_number` sont remplis
-/// par le handler au prisme du flow demandé, depuis la DB.
+/// Flow runtime status seen by the backend supervisor: process health
+/// (`runtime.json`) crossed with the health of THIS flow (runtime events
+/// `flow_started`/`flow_error`/`flow_stopped`). `deployed_flow_id` and
+/// `deployed_version_number` are filled by the handler for the requested
+/// flow, from the database.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowRuntimeStatus {
     pub running: bool,
     pub pid: Option<u32>,
     pub restarts: u64,
     pub deployed_flow_id: Option<i64>,
     pub deployed_version_number: Option<i64>,
-    /// État de l'engine de CE flow : `"running"` / `"error"` / `"stopped"`
-    /// — `None` = inconnu (backend démarré sans annonce du runtime encore).
+    /// Engine state of this flow; `null` = unknown (the runtime has not
+    /// announced it yet since the backend started).
     #[serde(default)]
-    pub engine_status: Option<String>,
-    /// Dernière erreur moteur réelle de CE flow (émise par le runtime dans
-    /// `flow_error`). Effacée au prochain `flow_started` de ce flow.
+    pub engine_status: Option<FlowEngineStatus>,
+    /// Last real engine error of this flow (from the runtime `flow_error`
+    /// event), cleared by its next `flow_started`.
     #[serde(default)]
     pub last_error: Option<String>,
-    /// Outils de debug actifs (`settings.flow.debug_tools` — mode dev/debug
-    /// uniquement ; en mode run le panneau est refusé 403 et masqué dans
-    /// l'éditeur).
+    /// Debug tools enabled (`settings.flow.debug_tools`, dev/debug mode
+    /// only; in run mode the debug panel answers 403 and is hidden).
     #[serde(default)]
     pub debug_tools: bool,
     /// Latest saved version of this flow (DB). Lets an open editor notice a
     /// version saved by another user without reloading the detail.
     #[serde(default)]
     pub latest_version_number: Option<i64>,
-    /// DB status of this flow (`draft` / `deployed` / `stopped`): an open
-    /// editor refreshes its runtime controls when another user changed it.
+    /// DB status of this flow: an open editor refreshes its runtime
+    /// controls when another user changed it.
     #[serde(default)]
-    pub flow_status: Option<String>,
+    pub flow_status: Option<FlowStatus>,
 }
 
-/// Une entrée du panneau de debug (anneau mémoire du superviseur, alimenté
-/// par le stdout du runtime — événements `debug` attribués à un flow).
+/// One entry of the debug panel (in-memory ring of the supervisor, fed by
+/// the runtime stdout `debug` events attributed to a flow).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowDebugEntry {
-    /// Ordre global croissant (horloge du process backend).
+    /// Global increasing order (backend process clock).
     pub seq: u64,
-    /// Horodatage RFC 3339 (horloge backend à la réception).
+    /// RFC 3339 timestamp (backend clock at reception).
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub ts: String,
     pub flow_id: i64,
-    /// Id éditeur du nœud émetteur (`"n2"` — brut, jamais le hash moteur).
+    /// Editor id of the emitting node (`"n2"`, never the engine hash).
     pub node_id: String,
-    /// Nom du nœud, s'il en porte un.
+    /// Node name, when it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// Valeur capturée — brute : objet pour `pnex-display`, chaîne
-    /// pré-stringifiée pour le `debug` builtin (le client tente un re-parse).
+    /// Captured value, raw: an object for `pnex-display`, a pre-stringified
+    /// string for the builtin `debug` (the client tries to re-parse it).
     pub msg: serde_json::Value,
-    /// `"debug"` (builtin) ou `"pnex-display"` (sonde).
+    /// `"debug"` (builtin) or `"pnex-display"` (probe).
     pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
@@ -158,9 +215,9 @@ pub struct FlowDebugEntry {
     pub msgid: Option<String>,
 }
 
-/// Réponse de `GET /flows/{id}/debug` — feed du panneau (les plus anciennes
-/// d'abord).
+/// Answer of `GET /flows/{id}/debug`: the panel feed, oldest first.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowDebugFeed {
     pub flow_id: i64,
     pub entries: Vec<FlowDebugEntry>,

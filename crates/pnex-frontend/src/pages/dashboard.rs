@@ -51,7 +51,7 @@ pub fn Dashboard() -> Element {
         .map(|tier| tier.name.clone())
         // No subscription tier on a self-hosted deployment: say so instead of a dash.
         .unwrap_or_else(|| {
-            if user.deployment_mode == "saas" {
+            if user.deployment_mode == pnex_core::DeploymentMode::Saas {
                 "—".into()
             } else {
                 t!("dash-tier-self-hosted").to_string()
@@ -60,7 +60,7 @@ pub fn Dashboard() -> Element {
     // Tier quotas only apply in SaaS: hide them when self-hosted (O59).
     let tier = active_org
         .and_then(|m| m.subscription_tier.as_ref())
-        .filter(|_| user.deployment_mode == "saas");
+        .filter(|_| user.deployment_mode == pnex_core::DeploymentMode::Saas);
     // Ressource : Option<Option<T>> (pending | dégradé) ; None tant que
     // pending ou en erreur (dégradé silencieux).
     let s = match summary.read().as_ref() {
@@ -229,7 +229,7 @@ pub fn Dashboard() -> Element {
                             div { class: "flex items-center justify-between",
                                 p { class: "font-medium text-ink", {membership.name.clone()} }
                                 {
-                                    let (badge, label) = crate::pages::orgs::role_badge(&membership.role);
+                                    let (badge, label) = crate::pages::orgs::role_badge(membership.role);
                                     rsx! {
                                         span { class: "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {badge}",
                                             {label}

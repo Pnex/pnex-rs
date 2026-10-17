@@ -13,6 +13,7 @@ pub const TITLE_MAX: usize = 255;
 
 /// An object type as listed: system types carry version 0.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectTypeView {
     pub def: ObjectTypeDef,
     pub version: i32,
@@ -25,6 +26,7 @@ pub struct ObjectTypeView {
 
 /// Create (`expected_version` absent) or new version of an org type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectTypeInput {
     pub def: ObjectTypeDef,
     #[serde(default)]
@@ -32,13 +34,16 @@ pub struct ObjectTypeInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectTypeVersionView {
     pub version: i32,
     pub def: ObjectTypeDef,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkTypeView {
     pub def: LinkTypeDef,
     pub version: i32,
@@ -47,6 +52,7 @@ pub struct LinkTypeView {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkTypeInput {
     pub def: LinkTypeDef,
     #[serde(default)]
@@ -55,6 +61,7 @@ pub struct LinkTypeInput {
 
 /// Compact reference to an object (link ends, breadcrumbs, search).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectRef {
     pub id: String,
     pub type_key: String,
@@ -66,6 +73,7 @@ pub struct ObjectRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectView {
     pub id: String,
     pub type_key: String,
@@ -81,13 +89,16 @@ pub struct ObjectView {
     pub valid_from: String,
     #[serde(default)]
     pub valid_to: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Create or update an object. For a system object only `properties`
 /// (the org's extra properties) is writable; its title is the native one.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ObjectInput {
     #[serde(default)]
     pub type_key: String,
@@ -100,6 +111,7 @@ pub struct ObjectInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkView {
     pub id: i64,
     pub link_type: String,
@@ -114,6 +126,7 @@ pub struct LinkView {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkInput {
     pub link_type: String,
     pub source_id: String,
@@ -127,12 +140,14 @@ pub struct LinkInput {
 
 /// Closing a link: `valid_to` RFC 3339, default now.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LinkClose {
     #[serde(default)]
     pub valid_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum Direction {
     #[default]
@@ -142,6 +157,7 @@ pub enum Direction {
 
 /// One traversal step: follow `link_type` links from the current set.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Hop {
     pub link_type: String,
     #[serde(default)]
@@ -149,6 +165,7 @@ pub struct Hop {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum FilterOp {
     Eq,
@@ -163,6 +180,7 @@ pub enum FilterOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PropertyFilter {
     pub key: String,
     pub op: FilterOp,
@@ -172,6 +190,7 @@ pub struct PropertyFilter {
 
 /// Declarative ontology query (D185): select, then traverse, then page.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OntologyQuery {
     /// Start set: objects of this type (all types when absent).
     #[serde(default)]
@@ -208,12 +227,14 @@ pub struct OntologyQuery {
 
 /// Last value of a `series` property.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LatestValue {
     pub value: f64,
     pub at: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct QueryRow {
     pub object: ObjectView,
     /// Joined last values, by property key (absent when no data).
@@ -222,6 +243,7 @@ pub struct QueryRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct QueryResult {
     pub count: i64,
     pub rows: Vec<QueryRow>,
@@ -229,6 +251,7 @@ pub struct QueryResult {
 
 /// Local graph of an object (D186): nodes and the links among them.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Neighborhood {
     pub nodes: Vec<ObjectRef>,
     pub links: Vec<LinkView>,
@@ -236,6 +259,7 @@ pub struct Neighborhood {
 
 /// One point of a recomposed series (D181).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SeriesPoint {
     pub t: String,
     pub v: f64,
@@ -245,6 +269,7 @@ pub struct SeriesPoint {
 
 /// A binding segment: which device fed the property, and when.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SeriesSegment {
     pub device: ObjectRef,
     pub metric: String,
@@ -254,6 +279,7 @@ pub struct SeriesSegment {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SeriesView {
     pub property: String,
     #[serde(default)]
@@ -265,6 +291,7 @@ pub struct SeriesView {
 /// One change of an object or a link (D184), from the O2 `object_changes`
 /// stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ChangeView {
     pub at: String,
     /// `object.create` | `object.update` | `object.archive` | `link.open` |
@@ -279,6 +306,7 @@ pub struct ChangeView {
 
 /// A pack (D190) as shipped or exported: YAML on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Pack {
     pub key: String,
     pub name: String,
@@ -301,6 +329,7 @@ pub struct Pack {
 /// A page model shipped by a pack. `body` is a Markdown subset: `#`–`###`
 /// headings, `-` and `1.` list items, paragraphs (no inline marks).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PageTemplate {
     pub key: String,
     pub name: String,
@@ -315,17 +344,20 @@ pub struct PageTemplate {
 
 /// Objects to purge from an archived case (cases.md K16).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CasePurgeInput {
     pub ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CasePurged {
     pub purged: usize,
 }
 
 /// New page of a case, optionally from a template of an installed pack.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CasePageInput {
     pub title: String,
     #[serde(default)]
@@ -334,6 +366,7 @@ pub struct CasePageInput {
 
 /// A pack the server offers, and whether the org installed it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PackView {
     pub key: String,
     pub name: String,
@@ -351,6 +384,7 @@ pub struct PackView {
 /// K20): its first event is then the alert, with the flow that raised it
 /// and the flow's neighbours attached as context.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseOpenInput {
     pub title: String,
     #[serde(default)]
@@ -358,6 +392,7 @@ pub struct CaseOpenInput {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseFrom {
     /// `notification` | `event`.
     pub kind: String,
@@ -370,6 +405,7 @@ pub struct CaseFrom {
 
 /// An object attached to an event of the case, with its role (K21).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseAttachment {
     /// The `involves` link, to change its role or close it.
     pub link_id: i64,
@@ -381,6 +417,7 @@ pub struct CaseAttachment {
 
 /// An event of the case and what it involves.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseEvent {
     pub event: ObjectView,
     pub attachments: Vec<CaseAttachment>,
@@ -389,6 +426,7 @@ pub struct CaseEvent {
 /// The case as the workspace shows it (K22): its events, oldest first,
 /// with their attachments, and its undated pieces. Members are derived.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseWorkspace {
     pub case: ObjectView,
     pub events: Vec<CaseEvent>,
@@ -404,6 +442,7 @@ pub struct CaseWorkspace {
 
 /// A located member of a case.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CasePlace {
     pub object: ObjectRef,
     pub lon: f64,
@@ -412,6 +451,7 @@ pub struct CasePlace {
 
 /// An area of a case member.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseZone {
     pub object: ObjectRef,
     /// The `geo_area` value: a circle or a GeoJSON polygon.
@@ -420,6 +460,7 @@ pub struct CaseZone {
 
 /// New event of a case with its first attachments, in one transaction.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseEventInput {
     pub title: String,
     /// `fuzzy_time` value (`from`, `to`, `precision`).
@@ -433,6 +474,7 @@ pub struct CaseEventInput {
 /// Attach an object to an event of the case (`event_id`), or put it among
 /// the undated pieces (no `event_id`). The role defaults by object type.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseAttachInput {
     #[serde(default)]
     pub event_id: Option<String>,
@@ -447,6 +489,7 @@ pub struct CaseAttachInput {
 /// if nothing else dates it), or remove it from the case (no `event_id`; for
 /// an event, its pieces stay in the case).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseDetachInput {
     #[serde(default)]
     pub event_id: Option<String>,
@@ -456,6 +499,7 @@ pub struct CaseDetachInput {
 /// A track file to import onto a case member (K26): GPX or CSV text. A dry
 /// run only previews; times without offset need `time_zone` (IANA name).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TrackImportInput {
     pub object_id: String,
     pub file_name: String,
@@ -470,6 +514,7 @@ pub struct TrackImportInput {
 
 /// An imported track, kept as case evidence.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TrackImport {
     pub id: String,
     pub object: ObjectRef,
@@ -482,12 +527,14 @@ pub struct TrackImport {
     pub rejected: usize,
     pub t_start: String,
     pub t_end: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub imported_at: String,
 }
 
 /// What an import reads (or read): clean points, rejected rows with their
 /// reason (the first ones), the span, and the import once written.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TrackImportPreview {
     pub points: usize,
     pub rejected_count: usize,
@@ -505,6 +552,7 @@ pub struct TrackImportPreview {
 
 /// Detection request (K30): RFC 3339 bounds, defaulting like signals.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DetectQuery {
     #[serde(default)]
     pub from: Option<String>,
@@ -515,6 +563,7 @@ pub struct DetectQuery {
 /// Outcome of a detection run: proposals new to this case (a rejected one is
 /// never proposed again), and whether the position history was readable.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseDetected {
     pub from: String,
     pub to: String,
@@ -526,6 +575,7 @@ pub struct CaseDetected {
 /// A detection proposed to the case (K30): retained (it became `event_id`),
 /// rejected (kept, never proposed again) or still proposed.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseProposal {
     pub id: String,
     /// `co_presence` | `stop` | `signal_loss`.
@@ -552,12 +602,14 @@ pub struct CaseProposal {
 /// Retaining a proposal: the title of the event, written by the UI in the
 /// user's language.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProposalRetain {
     pub title: String,
 }
 
 /// Rejecting a proposal, with an optional reason (K45).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ProposalReject {
     #[serde(default)]
     pub reason: Option<String>,
@@ -566,6 +618,8 @@ pub struct ProposalReject {
 /// Signals request (K30): RFC 3339 bounds, defaulting to the span of the
 /// case events, then to the last 30 days.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema, utoipa::IntoParams))]
+#[cfg_attr(feature = "openapi", into_params(parameter_in = Query))]
 pub struct SignalsQuery {
     #[serde(default)]
     pub from: Option<String>,
@@ -576,6 +630,7 @@ pub struct SignalsQuery {
 /// One raw signal around the case members, computed on read; retaining it
 /// makes an event. `lane` is the member it concerns.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SignalItem {
     pub at: String,
     /// `link_open` | `link_close` | `change` | `range` | `notification` | `occurred`.
@@ -601,6 +656,7 @@ pub struct SignalItem {
 
 /// Raw signals of a case over a window, oldest first.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseSignals {
     pub from: String,
     pub to: String,
@@ -613,6 +669,7 @@ pub struct CaseSignals {
 
 /// A claim as the hypotheses board shows it (cases.md K8).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BoardClaim {
     pub claim: ObjectRef,
     #[serde(default)]
@@ -625,6 +682,7 @@ pub struct BoardClaim {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct BoardHypothesis {
     pub hypothesis: ObjectRef,
     #[serde(default)]
@@ -637,6 +695,7 @@ pub struct BoardHypothesis {
 /// that need attention: no source, or contradicted by another claim. No
 /// score: the human concludes (K8).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseBoard {
     pub hypotheses: Vec<BoardHypothesis>,
     pub unsourced: Vec<BoardClaim>,
@@ -647,6 +706,8 @@ pub struct CaseBoard {
 /// duration one timeline pixel stands for (drives the generalisation), and
 /// the gap beyond which two observations are a signal loss.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema, utoipa::IntoParams))]
+#[cfg_attr(feature = "openapi", into_params(parameter_in = Query))]
 pub struct CaseTracksQuery {
     pub from: String,
     pub to: String,
@@ -660,6 +721,7 @@ pub struct CaseTracksQuery {
 /// `[lon, lat, alt|null, dt_ms]` with `dt_ms` relative to `t0_ms`, so the
 /// map keeps its precision in float32 (kepler.gl school).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseTrack {
     pub object: ObjectRef,
     pub t0_ms: i64,
@@ -671,6 +733,7 @@ pub struct CaseTrack {
 /// Tracks of the case members over a window. `available` = false when the
 /// position history cannot be read (O2 absent or never provisioned).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseTracks {
     pub from: String,
     pub to: String,
@@ -681,6 +744,7 @@ pub struct CaseTracks {
 
 /// Integrity line of a `piece` member (K12).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PieceEntry {
     pub id: String,
     pub title: String,
@@ -689,6 +753,7 @@ pub struct PieceEntry {
     #[serde(default)]
     pub sha256: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub captured_at: Option<String>,
 }
 
@@ -696,8 +761,10 @@ pub struct PieceEntry {
 /// with their attachments, its undated pieces, the hypotheses board and the
 /// pieces manifest, as they are now.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseExport {
     pub schema: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub exported_at: String,
     pub workspace: CaseWorkspace,
     pub board: CaseBoard,
@@ -706,10 +773,25 @@ pub struct CaseExport {
     pub persons: usize,
 }
 
+/// Shortest chain of links between two objects, ends included.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ObjectPath {
+    pub path: Vec<ObjectRef>,
+}
+
+/// Objects reachable from an object through open links (impact analysis).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ObjectImpact {
+    pub objects: Vec<ObjectRef>,
+}
+
 /// Expansion of a node of the case graph (K31). Without `pick`: the
 /// neighbours counted by link type and object type; with it: those
 /// neighbours and their links. `exclude` = nodes already shown.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExpandInput {
     pub object_id: String,
     #[serde(default)]
@@ -720,6 +802,7 @@ pub struct ExpandInput {
 
 /// Neighbours of one link type and one object type.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExpandFacet {
     pub link_type: String,
     pub type_key: String,
@@ -728,6 +811,7 @@ pub struct ExpandFacet {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ExpandResult {
     pub facets: Vec<ExpandFacet>,
     pub nodes: Vec<ObjectRef>,
@@ -739,6 +823,7 @@ pub struct ExpandResult {
 /// Positions of the case graph's nodes, in layout coordinates, as the team
 /// arranged them by hand (K31). Empty = the automatic layout.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseLayout {
     pub positions: std::collections::BTreeMap<String, (f64, f64)>,
 }
@@ -746,6 +831,7 @@ pub struct CaseLayout {
 /// A logged read of persons' tracks (K38): who, for what (`tracks`,
 /// `detect`, `snapshot`), which objects (`gone` = purged since), which window.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseRead {
     pub at: String,
     pub who: Option<String>,
@@ -761,6 +847,7 @@ pub struct CaseRead {
 /// their attachments; attachments and pieces whose object is gone (or lives
 /// in another org) are listed, not re-created.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseImported {
     pub case: ObjectRef,
     pub events: usize,
@@ -770,6 +857,7 @@ pub struct CaseImported {
 /// What a frozen state holds (K33): the export of the case, its reviewed
 /// detections and its tracks over the derived window, generalised.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseSnapshotContent {
     pub export: CaseExport,
     /// Retained or rejected proposals (pending ones are not a state).
@@ -805,9 +893,11 @@ impl CaseSnapshotContent {
 
 /// A frozen state of a case: never modified, fingerprinted.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseSnapshot {
     pub seq: i32,
     pub label: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub taken_at: String,
     /// Display name of who froze it, if still known.
     pub taken_by: Option<String>,
@@ -818,6 +908,7 @@ pub struct CaseSnapshot {
 
 /// `POST /cases/{id}/snapshots`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseSnapshotInput {
     #[serde(default)]
     pub label: Option<String>,
@@ -826,6 +917,7 @@ pub struct CaseSnapshotInput {
 /// A frozen state with its content: the canonical JSON of a
 /// [`CaseSnapshotContent`], byte for byte what was fingerprinted.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CaseSnapshotFull {
     pub snapshot: CaseSnapshot,
     pub content: String,

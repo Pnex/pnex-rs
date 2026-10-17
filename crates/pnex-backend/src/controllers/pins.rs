@@ -13,7 +13,7 @@
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use loco_rs::prelude::*;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
@@ -100,6 +100,20 @@ fn display_enrichment(soc: Option<pnex_core::Soc>, gpio: i32) -> serde_json::Val
 /// `connected` = le device générique est-il connecté au serveur (WS) —
 /// l'éditeur de flows s'en sert pour distinguer « device hors ligne »
 /// (transient, reprend à la reconnexion) d'un pin réellement absent.
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/pinout",
+    tag = "devices",
+    operation_id = "devices_pinout",
+    summary = "Readable pinout of a device",
+    description = "Pinout for the flow editor and the SVG pin editor: `{device_id, connected, board, pins, commands}`. `pins` merges configured instances (`source: instance`, real mode, `subscribed_ms`, `last_value`) with board-profile pins not configured yet (`source: overlay`, default mode) and power/ground pins (`gpio: null`); each pin carries `gpio, label, mode, pos, kind, reserved`, server-computed `fn, flags, available_modes, warnings`, and `reserved_by` (`[{flow_id, flow_name}]`) when a deployed flow owns its writes. `board` is the board profile (`id, name, soc, pretty_name, chip_label, profile_id, pio_board, layout, peripherals, peripherals_state`) or null for a bare board. `commands` lists commands announced by a custom firmware. Works offline. Any org member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, description = "Pinout object (see description)", body = serde_json::Value),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn pinout(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -330,35 +344,65 @@ async fn instances_of(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Rôle dérivé du mode (sensor/actuator — pas de colonne role, B0.6).
-fn role_str(m: Mode) -> &'static str {
+/// Role derived from the mode (no role column, B0.6).
+#[derive(Clone, Copy, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+enum PinRole {
+    Sensor,
+    Actuator,
+}
+
+fn role_of(m: Mode) -> PinRole {
     match m {
-        Mode::DigitalIn | Mode::AdcIn => "sensor",
-        Mode::DigitalOut | Mode::PwmOut => "actuator",
+        Mode::DigitalIn | Mode::AdcIn => PinRole::Sensor,
+        Mode::DigitalOut | Mode::PwmOut => PinRole::Actuator,
     }
 }
 
-/// DTO d'un pin pour l'UI.
-#[derive(serde::Serialize)]
+/// Pin mode in base naming (`analog_in`, never the wire string `adc_in`).
+#[derive(Clone, Copy, serde::Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+enum PinMode {
+    DigitalIn,
+    DigitalOut,
+    AnalogIn,
+    PwmOut,
+}
+
+impl From<Mode> for PinMode {
+    fn from(m: Mode) -> Self {
+        match m {
+            Mode::DigitalIn => PinMode::DigitalIn,
+            Mode::DigitalOut => PinMode::DigitalOut,
+            Mode::AdcIn => PinMode::AnalogIn,
+            Mode::PwmOut => PinMode::PwmOut,
+        }
+    }
+}
+
+/// A pin of a generic device, for the UI.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+#[schema(description = "A configured pin of a generic device.")]
 struct PinDto {
     gpio: i32,
     label: String,
-    mode: String,
-    role: &'static str,
+    mode: PinMode,
+    /// Derived from the mode.
+    role: PinRole,
     pullup: bool,
-    safe_state: String,
+    safe_state: SafeState,
     enabled: bool,
-    /// Cadence persistée (ms) — initialisation du select UI à la valeur
-    /// effective (0 = manuel).
+    /// Persisted report period in ms (absent = manual, no subscription).
     #[serde(skip_serializing_if = "Option::is_none")]
     interval_ms: Option<u32>,
+    /// Last value reported this session (absent when unknown or offline).
     #[serde(skip_serializing_if = "Option::is_none")]
     last_value: Option<serde_json::Value>,
     /// Modes the UI may offer for this gpio (chip caps, base naming —
     /// `analog_in`, never the wire string `adc_in`); empty when the SoC is
     /// unknown (the UI then falls back to its legacy hardcoded list).
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    available_modes: Vec<String>,
+    available_modes: Vec<PinMode>,
     /// Flows owning the WRITE claim on this pin (deployed flows only) —
     /// the Pins panel greys manual write controls for reserved pins. All
     /// owners are listed (grandfathered double-claims stay visible).
@@ -367,12 +411,59 @@ struct PinDto {
 }
 
 /// Owner of a pin's write claim (deployed flow).
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, utoipa::ToSchema)]
 struct ReservedByDto {
     flow_id: i64,
     flow_name: String,
 }
 
+/// Answer of `GET /api/v1/devices/{id}/pins`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct PinsResponse {
+    pins: Vec<PinDto>,
+    /// The device has a live websocket session.
+    connected: bool,
+}
+
+/// A deployed flow stopped by a mode change.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct FlowImpact {
+    flow_id: i64,
+    name: String,
+}
+
+/// Answer of `POST /api/v1/devices/{id}/commands`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CommandSent {
+    /// Always true: the command was pushed to the live session.
+    sent: bool,
+    /// Flows stopped by a `set_mode` (absent when none).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    flow_impacts: Option<Vec<FlowImpact>>,
+}
+
+/// Answer of `POST /api/v1/devices/{id}/custom-commands`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct CustomCommandSent {
+    sent: bool,
+    /// Command id; the device answers with `Ack{cmd_id}`.
+    cmd_id: String,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/devices/{id}/pins",
+    tag = "devices",
+    operation_id = "devices_pins",
+    summary = "Configured pins of a generic device",
+    description = "Enabled pin instances, naturally sorted by label, with mode, role, pull-up, safe state, subscription interval, last session value, offered modes and the deployed flows owning their writes; plus whether the device is connected. Any org member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, body = PinsResponse),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn pins(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -393,27 +484,22 @@ async fn pins(
         .iter()
         .filter(|r| r.enabled)
         .map(|r| {
-            let available_modes: Vec<String> = soc
+            let available_modes: Vec<PinMode> = soc
                 .as_ref()
                 .map(|s| {
                     pnex_core::caps::available_modes(*s, r.gpio as u16)
                         .into_iter()
-                        .map(mode_to_str)
-                        .map(str::to_string)
+                        .map(PinMode::from)
                         .collect()
                 })
                 .unwrap_or_default();
             PinDto {
                 gpio: r.gpio,
                 label: r.label.clone(),
-                mode: r.mode.clone(),
-                role: role_str(str_to_mode_local(&r.mode)),
+                mode: str_to_mode_local(&r.mode).into(),
+                role: role_of(str_to_mode_local(&r.mode)),
                 pullup: pin_cfg(r).pullup.unwrap_or(false),
-                safe_state: match pin_cfg(r).safe_state.unwrap_or(SafeState::Low) {
-                    SafeState::Low => "low",
-                    SafeState::High => "high",
-                }
-                .into(),
+                safe_state: pin_cfg(r).safe_state.unwrap_or(SafeState::Low),
                 enabled: r.enabled,
                 interval_ms: r
                     .config
@@ -443,9 +529,10 @@ async fn pins(
     // arbitraire et changeait d'un poll à l'autre — les cartes de l'UI
     // se mélangeaient (retour utilisateur 2026-09-03).
     dtos.sort_by_key(|p| pin_sort_key(&p.label));
-    format::json(
-        serde_json::json!({ "pins": dtos, "connected": ws_device::is_connected(device.id).await }),
-    )
+    format::json(PinsResponse {
+        pins: dtos,
+        connected: ws_device::is_connected(device.id).await,
+    })
 }
 
 /// Clé de tri « naturel » d'un label de pin : préfixe alphabétique puis
@@ -481,21 +568,26 @@ fn str_to_mode_local(s: &str) -> Mode {
 
 // ───────────────────────── POST /commands (D17 : manuel) ─────────────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
+#[schema(description = "Manual pin command.")]
 struct CommandBody {
     /// set_mode | write | subscribe
     op: String,
     gpio: u16,
+    /// set_mode: digital_in | digital_out | analog_in | pwm_out.
     #[serde(default)]
     mode: Option<String>,
+    /// set_mode: pull-up and safe state.
     #[serde(default)]
     opts: Option<ModeOpts>,
+    /// write: true/false (or 0/1) for digital_out, duty 0-100 for pwm_out.
     #[serde(default)]
     value: Option<serde_json::Value>,
+    /// subscribe: report period in ms, 100..=3600000, 0 = unsubscribe.
     #[serde(default)]
     interval_ms: Option<u32>,
-    /// set_mode only — `true` = l'utilisateur a confirmé l'arrêt des flows
-    /// déployés qui utilisent la pin (garde 409 sans ce flag).
+    /// set_mode only: true = the user confirmed stopping the deployed flows
+    /// that use the pin (409 `pin-flow-conflict` without it).
     #[serde(default)]
     confirm_stop_flows: Option<bool>,
 }
@@ -505,6 +597,24 @@ fn new_cmd_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/commands",
+    tag = "devices",
+    operation_id = "devices_commands",
+    summary = "Send a manual pin command to a device",
+    description = "Physical action on a connected device. `set_mode` validates the mode against the chip capabilities, persists it and stops the deployed flows reading the pin (requires `confirm_stop_flows: true` when some exist); `write` drives an output pin (refused when a deployed flow owns its writes); `subscribe` sets the report period. Never waits for the device: answers once pushed, the device then acks. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    request_body = CommandBody,
+    responses(
+        (status = 200, body = CommandSent),
+        (status = 400, description = "Invalid body, op, value, interval, reserved or non-admitted GPIO, chip-capability violation (`caps-*`), edge agent device", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`pin-commands-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Device offline (`pin-device-offline`), pin written by a flow (`pin-reserved-by-flow`), or deployed flows use the pin (`pin-flow-conflict`, `errors.args.count` and `errors.args.flows` = comma-separated flow names)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn commands(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -513,7 +623,7 @@ async fn commands(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "pin-commands-forbidden",
+            pnex_core::err_codes::PIN_COMMANDS_FORBIDDEN,
             "Owner, admin or member role required to send device commands.",
         ));
     }
@@ -592,21 +702,18 @@ async fn commands(
             )
             .await?;
             if !impacted.is_empty() && cmd.confirm_stop_flows != Some(true) {
-                // 409 porteur de la liste des flows (école POI placement) —
-                // le front affiche la liste et propose « arrêter et appliquer ».
-                return Ok((
+                // 409 carrying the impacted flows in `errors.args` (D239):
+                // the UI lists them and offers "stop and apply".
+                let names: Vec<&str> = impacted.iter().map(|(_, name)| name.as_str()).collect();
+                return Err(custom_error(
                     StatusCode::CONFLICT,
-                    axum::Json(serde_json::json!({
-                        "error": "pin-flow-conflict",
-                        "description": "This device is used by deployed flow(s) — stop them before changing the config.",
-                        "errors": { "args": { "count": impacted.len().to_string() } },
-                        "flows": impacted
-                            .iter()
-                            .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
-                            .collect::<Vec<_>>(),
+                    pnex_core::err_codes::PIN_FLOW_CONFLICT,
+                    "This device is used by deployed flow(s) — stop them before changing the config.",
+                    Some(serde_json::json!({
+                        "count": impacted.len().to_string(),
+                        "flows": names.join(", "),
                     })),
-                )
-                    .into_response());
+                ));
             }
             cfg.pullup = opts.pullup;
             cfg.safe_state = opts.safe_state;
@@ -741,21 +848,22 @@ async fn commands(
     if !ws_device::push_command(device.id, msg).await {
         return Err(custom_error(
             StatusCode::CONFLICT,
-            "pin-device-offline",
+            pnex_core::err_codes::PIN_DEVICE_OFFLINE,
             "Device is not connected.",
             None,
         ));
     }
     // Réponse enrichie : les flows arrêtés par le changement de mode
     // (Phase 6) — l'UI les signale explicitement.
-    let mut body = serde_json::json!({ "sent": true });
-    if !flow_impacts.is_empty() {
-        body["flow_impacts"] = serde_json::json!(flow_impacts
-            .iter()
-            .map(|(id, name)| serde_json::json!({"flow_id": id, "name": name}))
-            .collect::<Vec<_>>());
-    }
-    format::json(body)
+    format::json(CommandSent {
+        sent: true,
+        flow_impacts: (!flow_impacts.is_empty()).then(|| {
+            flow_impacts
+                .into_iter()
+                .map(|(flow_id, name)| FlowImpact { flow_id, name })
+                .collect()
+        }),
+    })
 }
 
 // ─────────────── POST /custom-commands (D88: custom firmware) ───────────────
@@ -764,6 +872,24 @@ async fn commands(
 /// registered by a custom firmware (`pnex.onCommand`). The name must be a
 /// `command` cap of the last announce (400 otherwise); 409 when offline.
 /// Returns the `cmd_id` — the device answers with `Ack{cmd_id}`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/devices/{id}/custom-commands",
+    tag = "devices",
+    operation_id = "devices_custom_commands",
+    summary = "Invoke a custom firmware command",
+    description = "Pushes a command registered by a custom firmware (`pnex.onCommand`) to the connected device. The name must be announced by the device last manifest. Returns the command id; the device answers with an Ack. Physical action. Owner, admin or member.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    request_body = pnex_core::firmware::CustomCommandRequest,
+    responses(
+        (status = 200, body = CustomCommandSent),
+        (status = 400, description = "Invalid body, unannounced command (`device-command-unknown`), or edge agent device", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`pin-commands-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Device offline (`pin-device-offline`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn custom_command(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -772,7 +898,7 @@ async fn custom_command(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "pin-commands-forbidden",
+            pnex_core::err_codes::PIN_COMMANDS_FORBIDDEN,
             "Owner, admin or member role required to send device commands.",
         ));
     }
@@ -805,12 +931,12 @@ async fn custom_command(
     if !ws_device::push_command(device.id, msg).await {
         return Err(custom_error(
             StatusCode::CONFLICT,
-            "pin-device-offline",
+            pnex_core::err_codes::PIN_DEVICE_OFFLINE,
             "Device is not connected.",
             None,
         ));
     }
-    format::json(serde_json::json!({ "sent": true, "cmd_id": cmd_id }))
+    format::json(CustomCommandSent { sent: true, cmd_id })
 }
 
 /// Is `name` a `command` cap of the device's last announce manifest?
@@ -913,4 +1039,12 @@ fn bad_request_args(code: &str, msg: &str, args: serde_json::Value) -> Error {
 
 fn forbidden(code: &str, msg: &str) -> Error {
     custom_error(StatusCode::FORBIDDEN, code, msg, None)
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(pins, pinout, commands, custom_command))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

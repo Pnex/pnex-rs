@@ -213,7 +213,7 @@ async fn stream_crud_slug_and_quota() {
         .await;
         assert_eq!(s, 400);
         // Not a capture box of the org: same answer as an unknown id.
-        assert_eq!(e["capture_on"], "invalid");
+        assert_eq!(e["errors"]["fields"]["capture_on"], "invalid");
 
         // Enabling needs a profile with a valid ASR model.
         let (s, e) = call(
@@ -326,7 +326,7 @@ async fn url_rules() {
         )
         .await;
         assert_eq!(s, 400);
-        assert_eq!(e["url"], "invalid");
+        assert_eq!(e["errors"]["fields"]["url"], "invalid");
     })
     .await;
 }
@@ -472,7 +472,7 @@ async fn org_isolation_and_viewer_read_only() {
         )
         .await;
         assert_eq!(s, 400);
-        assert_eq!(e["asr_model_id"], "invalid");
+        assert_eq!(e["errors"]["fields"]["asr_model_id"], "invalid");
 
         // Viewer: reads, never writes.
         let (s, _) = call(
@@ -568,7 +568,7 @@ async fn media_source_deploy_needs_streams_of_the_org() {
         // Another org's slug is unknown here (R1/R3): refused, slug named.
         let (s, body) = deploy(flow(json!(["france_inter", "bob_radio"]))).await;
         assert_eq!(s, 400, "{body}");
-        let violations = body["violations"].as_array().expect("violations");
+        let violations = body["errors"]["violations"].as_array().expect("violations");
         assert_eq!(violations.len(), 1, "{body}");
         assert_eq!(violations[0]["code"], "media-stream-unknown");
         assert_eq!(violations[0]["args"]["stream"], "bob_radio");
@@ -668,8 +668,11 @@ async fn camera_stream_source_needs_a_video_stream_of_the_org() {
         for slug in ["bob_cam", "radio"] {
             let (s, body) = deploy(slug).await;
             assert_eq!(s, 400, "{body}");
-            assert_eq!(body["violations"][0]["code"], "camera-stream-unknown");
-            assert_eq!(body["violations"][0]["args"]["stream"], slug);
+            assert_eq!(
+                body["errors"]["violations"][0]["code"],
+                "camera-stream-unknown"
+            );
+            assert_eq!(body["errors"]["violations"][0]["args"]["stream"], slug);
         }
         // Own video stream: the gate lets it through (503 = engine off).
         let (s, body) = deploy("lobby_cam").await;
@@ -736,7 +739,7 @@ async fn library_file_as_a_stream_source() {
         };
         let (s, e) = call(&server, "POST", "/api/v1/media/streams", a, org, Some(body(format!("media:{still}"), json!({})))).await;
         assert_eq!(s, 400, "{e}");
-        assert_eq!(e["url"], "invalid");
+        assert_eq!(e["errors"]["fields"]["url"], "invalid");
         let (s, e) = call(
             &server,
             "POST",

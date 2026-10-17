@@ -165,7 +165,7 @@ pub fn LabelChips(labels: LabelSet) -> Element {
 }
 
 /// Own labels of a page of list rows, fetched in one
-/// `POST /resources/labels/batch` call (`kind` + stringified PKs).
+/// `POST /resources/labels/query` call (`kind` + stringified PKs).
 /// `ids` runs in the synchronous part of the resource, so reading the list
 /// resource there re-fetches the labels on every list (re)load. Any
 /// failure yields an empty map: no chips, the list is never blocked.

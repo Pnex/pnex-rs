@@ -451,7 +451,7 @@ pub fn FlowEditor(
                     // Flow déjà déployé : la version en exécution reste
                     // l'ancienne — proposer le deploy (l'édition ultérieure
                     // masque l'encart, la condition de rendu porte sur dirty).
-                    if flow.status == "deployed" {
+                    if flow.status == pnex_core::FlowStatus::Deployed {
                         propose_deploy.set(Some(flow.latest_version_number));
                     }
                     // The header title comes from the detail resource.
@@ -780,8 +780,8 @@ pub fn FlowEditor(
     // Statut DB pour le conditionnement des contrôles runtime (Stop/Restart
     // sur `deployed`, Start sur `stopped`).
     let flow_status = match &*detail.value().read() {
-        Some(Ok(flow)) => flow.status.clone(),
-        _ => String::new(),
+        Some(Ok(flow)) => flow.status.as_str(),
+        _ => "",
     };
 
     // ─── Statut unifié (point + libellé) — fusion du statut DB et de la
@@ -796,8 +796,9 @@ pub fn FlowEditor(
         let runtime_ref = runtime_value.read();
         match (&*detail_ref, &*runtime_ref) {
             (Some(Ok(_flow)), Some(Ok(status))) => {
-                let engine_error = status.engine_status.as_deref() == Some("error");
-                let engine_stopped = status.engine_status.as_deref() == Some("stopped");
+                let engine_error = status.engine_status == Some(pnex_core::FlowEngineStatus::Error);
+                let engine_stopped =
+                    status.engine_status == Some(pnex_core::FlowEngineStatus::Stopped);
                 let deployed_version = status.deployed_version_number;
                 let outdated = status.running
                     && !engine_error

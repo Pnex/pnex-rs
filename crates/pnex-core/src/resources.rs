@@ -123,27 +123,28 @@ pub fn valid_label_value(value: &str) -> bool {
     !value.is_empty() && value.chars().count() <= LABEL_VALUE_MAX
 }
 
-/// Filtre de liste `"site:serre"` / `"critique"` (tag nu).
-/// `(None, Some(msg))` = invalide.
+/// List filter `"site:serre"` / `"critique"` (bare tag).
+/// `(None, Some(token))` = invalid, with the field token (`required` for an
+/// empty filter, else `invalid`).
 pub fn parse_label_filter(raw: &str) -> (Option<(String, Option<String>)>, Option<String>) {
     let raw = raw.trim();
     if raw.is_empty() {
-        return (None, Some("filtre label vide".into()));
+        return (None, Some(crate::err_codes::FIELD_REQUIRED.into()));
     }
     match raw.split_once(':') {
         Some((name, value)) => {
             let value = value.trim();
             if !valid_label_name(name) {
-                return (None, Some(format!("nom de label invalide : {name}")));
+                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
             }
             if !valid_label_value(value) {
-                return (None, Some(format!("valeur de label invalide : {value}")));
+                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
             }
             (Some((name.to_string(), Some(value.to_string()))), None)
         }
         None => {
             if !valid_label_name(raw) {
-                return (None, Some(format!("nom de label invalide : {raw}")));
+                return (None, Some(crate::err_codes::FIELD_INVALID.into()));
             }
             (Some((raw.to_string(), None)), None)
         }
@@ -154,6 +155,7 @@ pub fn parse_label_filter(raw: &str) -> (Option<(String, Option<String>)>, Optio
 
 /// One step of a location breadcrumb: a site (`map_pin`) or a folder.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LocationNode {
     pub kind: String,
     pub id: String,
@@ -166,6 +168,7 @@ pub struct LocationNode {
 /// the site down to the resource. An object attached to several sites
 /// (media, tour, dashboard) has one entry per site.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResourceLocation {
     pub site: LocationNode,
     #[serde(default)]
@@ -174,6 +177,7 @@ pub struct ResourceLocation {
 
 /// `GET /api/v1/resources/{kind}/{id}/location`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ResourceLocations {
     pub locations: Vec<ResourceLocation>,
 }

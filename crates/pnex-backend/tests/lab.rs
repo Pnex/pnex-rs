@@ -116,7 +116,7 @@ async fn project_images_boxes_versions_export() {
         let a = &env.alice;
         let (st, bad) = call(&server, "POST", "/api/v1/lab/projects", a, org, Some(json!({"name": " "}))).await;
         assert_eq!(st, 400);
-        assert_eq!(bad["name"], "required");
+        assert_eq!(bad["errors"]["fields"]["name"], "required");
         let (st, p) = call(
             &server,
             "POST",
@@ -141,6 +141,7 @@ async fn project_images_boxes_versions_export() {
         )
         .await;
         assert_eq!(st, 200, "{added}");
+        let added = added["images"].clone();
         assert_eq!(added.as_array().unwrap().len(), 2);
         assert_eq!(added[0]["width"], 1);
         assert_eq!(added[0]["source"], added[1]["source"], "one import = one source");
@@ -154,7 +155,7 @@ async fn project_images_boxes_versions_export() {
             Some(json!({"asset_ids": [img1]})),
         )
         .await;
-        assert_eq!(again, json!([]));
+        assert_eq!(again["images"], json!([]));
 
         let image = added[0]["id"].as_str().unwrap().to_string();
         let path = format!("/api/v1/lab/images/{image}/annotations");
@@ -187,7 +188,7 @@ async fn project_images_boxes_versions_export() {
         )
         .await;
         assert_eq!(st, 400, "{bad}");
-        assert_eq!(bad["model_id"], "invalid");
+        assert_eq!(bad["errors"]["fields"]["model_id"], "invalid");
         // The second picture: a negative example.
         let neg = added[1]["id"].as_str().unwrap();
         let (st, _) = call(
@@ -231,6 +232,7 @@ async fn project_images_boxes_versions_export() {
         assert_eq!(st, 201, "{v}");
         assert_eq!(v["version"], 1);
         let (_, list) = call(&server, "GET", "/api/v1/lab/projects", a, org, None).await;
+        let list = list["results"].clone();
         assert_eq!(list[0]["version_count"], 1);
         assert_eq!(list[0]["annotated_count"], 2);
 
@@ -431,7 +433,7 @@ async fn frames_imported_from_a_recording() {
         )
         .await;
         assert_eq!(st, 400);
-        assert_eq!(too_many["every_secs"], "max_frames:200");
+        assert_eq!(too_many["errors"]["fields"]["every_secs"], "max_frames:200");
         let (st, imported) = call(
             &server,
             "POST",
@@ -443,7 +445,7 @@ async fn frames_imported_from_a_recording() {
         .await;
         assert_eq!(st, 200, "{imported}");
         // 0, 2, 4, 6, 8 s in the first segment, 20…28 s in the second.
-        let list = imported.as_array().unwrap();
+        let list = imported["images"].as_array().unwrap();
         assert_eq!(list.len(), 10, "{imported}");
         assert!(list.iter().all(|i| i["source"] == list[0]["source"]));
         let (_, media) = call(&server, "GET", "/api/v1/media?kind=photo", a, org, None).await;
@@ -534,7 +536,7 @@ async fn frames_of_a_video_and_box_interpolation() {
         )
         .await;
         assert_eq!(st, 200, "{imported}");
-        let list = imported.as_array().unwrap();
+        let list = imported["images"].as_array().unwrap();
         let at: Vec<i64> = list.iter().map(|i| i["frame_ms"].as_i64().unwrap()).collect();
         assert_eq!(at, [0, 2000, 4000, 6000, 8000]);
         assert_eq!(list[0]["width"], 320);
@@ -570,6 +572,7 @@ async fn frames_of_a_video_and_box_interpolation() {
         }
         let (st, sug) = call(&server, "POST", &interp, a, org, None).await;
         assert_eq!(st, 200, "{sug}");
+        let sug = sug["suggestions"].clone();
         let x = sug[0]["bbox"][0].as_f64().unwrap();
         assert!((x - 0.3).abs() < 1e-4, "{sug}");
         assert_eq!(sug[0]["class"], 0);
@@ -584,7 +587,7 @@ async fn frames_of_a_video_and_box_interpolation() {
             Some(json!({"asset_ids": [still]})),
         )
         .await;
-        let sid = added[0]["id"].as_str().unwrap();
+        let sid = added["images"][0]["id"].as_str().unwrap();
         let (st, _) = call(
             &server,
             "POST",
@@ -710,7 +713,7 @@ async fn training_registers_a_fine_tuned_model() {
         )
         .await;
         assert_eq!(st, 200, "{added}");
-        for img in added.as_array().unwrap() {
+        for img in added["images"].as_array().unwrap() {
             let i = assets
                 .iter()
                 .position(|x| x == img["asset_id"].as_str().unwrap())
@@ -749,7 +752,7 @@ async fn training_registers_a_fine_tuned_model() {
         for _ in 0..240 {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             let (_, list) = call(&server, "GET", &runs, a, org, None).await;
-            last = list[0].clone();
+            last = list["results"][0].clone();
             if !["queued", "running"].contains(&last["status"].as_str().unwrap_or("")) {
                 break;
             }

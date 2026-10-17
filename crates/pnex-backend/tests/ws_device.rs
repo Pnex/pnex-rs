@@ -1107,7 +1107,7 @@ async fn post_build(
 /// Full online cycle: build (fixture toolchain) → announce with `ota` cap
 /// (fw "41") → POST /ota → pushed, device receives ota_available →
 /// OtaState downloading/flashing → GET /ota reflects → re-announce with
-/// fw == target → succeeded → POST again → 409 same_version.
+/// fw == target → succeeded → POST again → 409 ota-same-version.
 #[tokio::test]
 #[serial]
 async fn ota_cycle_complet_en_ligne() {
@@ -1137,8 +1137,9 @@ async fn ota_cycle_complet_en_ligne() {
         let msg: pnex_core::ServerMsg =
             serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let cmd_id = match &msg {
-            pnex_core::ServerMsg::OtaAvailable { cmd_id, version, sha256, sig, .. } => {
+            pnex_core::ServerMsg::OtaAvailable { cmd_id, version, url, sha256, sig, .. } => {
                 assert_eq!(version.as_str(), build_id.to_string());
+                assert_eq!(url.as_str(), format!("/api/v1/ota/firmware/{build_id}"));
                 assert_eq!(sha256.len(), 64);
                 // SEC-18: signed by the instance key for this device + version.
                 let ring = pnex_backend::services::secrets::Keyring::from_config(&ctx.config).unwrap();
@@ -1238,9 +1239,10 @@ async fn ota_cycle_complet_en_ligne() {
             .json(&serde_json::json!({}))
             .await;
         res.assert_status(axum_test::http::StatusCode::CONFLICT);
-        res.json::<serde_json::Value>()["error"]
-            .as_str()
-            .unwrap_or_default();
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            pnex_core::err_codes::OTA_SAME_VERSION
+        );
         ws.close().await;
     })
     .await;
@@ -1302,7 +1304,7 @@ async fn ota_offline_pickup_a_l_annonce() {
     .await;
 }
 
-/// Guards: 400 ota_not_ready without the cap; Ack{ok:false} fails the
+/// Guards: 400 ota-not-ready without the cap; Ack{ok:false} fails the
 /// active assignment; device download route is token-gated.
 #[tokio::test]
 #[serial]
@@ -1312,7 +1314,7 @@ async fn ota_gardes_et_refus_device() {
         let org = personal_org(&server, &auth).await;
         let build_id = post_build(&ctx, &server, &auth, org, &dev.device_id).await;
 
-        // Without an ota-capable announce → 400 ota_not_ready.
+        // Without an ota-capable announce → 400 ota-not-ready.
         let res = server
             .post(&format!("/api/v1/devices/{}/ota", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -1320,6 +1322,10 @@ async fn ota_gardes_et_refus_device() {
             .json(&serde_json::json!({}))
             .await;
         res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            pnex_core::err_codes::OTA_NOT_READY
+        );
 
         // Announce with the cap (fw legacy "1.0.0").
         let mut ws = connect(&server, &dev).await;
@@ -1367,30 +1373,29 @@ async fn ota_gardes_et_refus_device() {
 
         // Download route: valid device-token auth + bad token rejected.
         let dl = server
-            .get(&format!(
-                "/api/v1/ota/firmware/{}/{}",
-                dev.device_id, build_id,
-            ))
+            .get(&format!("/api/v1/ota/firmware/{build_id}"))
             .add_header("Authorization", format!("Bearer {}", dev.token))
             .await;
         dl.assert_status(axum_test::http::StatusCode::OK);
         // D154: a token in the URL is no longer read.
         let in_url = server
             .get(&format!(
-                "/api/v1/ota/firmware/{}/{}?token={}",
-                dev.device_id, build_id, dev.token,
+                "/api/v1/ota/firmware/{}?token={}",
+                build_id, dev.token,
             ))
             .await;
         in_url.assert_status(axum_test::http::StatusCode::NOT_FOUND);
         dl.assert_status(axum_test::http::StatusCode::OK);
         assert!(!dl.as_bytes().is_empty());
         let dl_bad = server
-            .get(&format!(
-                "/api/v1/ota/firmware/{}/{}/{}",
-                dev.device_id, build_id, "wrong-token"
-            ))
+            .get(&format!("/api/v1/ota/firmware/{build_id}"))
+            .add_header("Authorization", "Bearer wrong-token")
             .await;
         dl_bad.assert_status(axum_test::http::StatusCode::NOT_FOUND);
+        assert_eq!(
+            dl_bad.json::<serde_json::Value>()["error"],
+            pnex_core::err_codes::OTA_AUTH_FAILED
+        );
     })
     .await;
 }

@@ -42,7 +42,7 @@ pub fn login(user: UserInfo) {
     crate::state::org::restore(&user.orgs);
     apply_profile_language(&user);
     if let Some(profile) = &user.profile {
-        crate::state::theme::apply(&profile.theme);
+        crate::state::theme::apply(profile.theme.as_str());
     }
     SESSION.with_mut(|s| {
         *s = SessionState::Authenticated {

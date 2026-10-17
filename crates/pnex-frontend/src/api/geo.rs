@@ -13,12 +13,12 @@ const PROVIDERS: &str = "/api/v1/geo/providers";
 
 /// `GET …/basemaps` — basemaps the map can open on.
 pub async fn basemaps() -> Result<Vec<Basemap>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/geo/basemaps", None).await
+    client::request_all("/api/v1/geo/basemaps").await
 }
 
 /// `GET …/providers`.
 pub async fn providers() -> Result<Vec<GeoProvider>, ApiError> {
-    client::request(reqwest::Method::GET, PROVIDERS, None).await
+    client::request_all(PROVIDERS).await
 }
 
 /// `POST …/providers`.
@@ -55,22 +55,30 @@ pub async fn test_provider(id: Uuid) -> Result<u64, ApiError> {
     Ok(v["latency_ms"].as_u64().unwrap_or_default())
 }
 
+/// `{results}` answer of the geocoding proxy.
+#[derive(serde::Deserialize)]
+struct Hits {
+    results: Vec<GeocodeResult>,
+}
+
 /// `GET …/geocode?q=` through the org's default geocoder.
 pub async fn geocode(query: &str) -> Result<Vec<GeocodeResult>, ApiError> {
-    client::request(
+    let hits: Hits = client::request(
         reqwest::Method::GET,
         &format!("/api/v1/geo/geocode?q={}", urlencode(query)),
         None,
     )
-    .await
+    .await?;
+    Ok(hits.results)
 }
 
 /// `GET …/reverse?lat=&lon=` through the org's default reverse geocoder.
 pub async fn reverse(lat: f64, lon: f64) -> Result<Vec<GeocodeResult>, ApiError> {
-    client::request(
+    let hits: Hits = client::request(
         reqwest::Method::GET,
         &format!("/api/v1/geo/reverse?lat={lat}&lon={lon}"),
         None,
     )
-    .await
+    .await?;
+    Ok(hits.results)
 }

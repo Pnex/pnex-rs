@@ -25,56 +25,61 @@ pub const TOUR_LINK_WALK: &str = "walk";
 /// Lien inter-étages (escalier — dérivé, non éditable).
 pub const TOUR_LINK_STAIR: &str = "stair";
 
-/// Violation de validation du document (école `FlowViolation`) — message en
-/// français, affichable tel quel au client.
+/// Validation violation of the document (like `FlowViolation`): machine
+/// `code`, canonical English `message` (display fallback; the UI resolves
+/// `err-<code>`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourViolation {
-    /// Élément fautif (id de scène/étage/lien), si localisé.
+    /// Offending element (scene/floor/link id), when localized.
     pub subject: Option<String>,
-    /// Code machine (`duplicate_scene_id`, `unknown_link_target`…).
+    /// Machine code (`duplicate_scene_id`, `unknown_link_target`…).
     pub code: String,
-    /// Message affichable.
+    /// Canonical English message.
     pub message: String,
 }
 
-/// Plan d'étage importé — référence d'un `media_asset` kind `floorplan`.
-/// Les ids d'assets sont les UUIDs `media_assets.id` en forme string (le
-/// crate reste sans dep uuid — wasm32-safe ; l'existence/kind sont validés
-/// côté service backend).
+/// Imported floor plan: reference to a `media_asset` of kind `floorplan`.
+/// Asset ids are `media_assets.id` UUIDs as strings (the crate stays
+/// without the uuid dependency, wasm32-safe; existence and kind are checked
+/// by the backend service).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FloorPlan {
     pub media_asset_id: String,
-    /// Dimensions natives du plan en px (renseignées par l'éditeur au pick ;
-    /// absentes côté natif → repli affichage).
+    /// Native plan size in px (set by the editor when picked; absent on
+    /// native → display fallback).
     #[serde(default)]
     pub width: Option<f64>,
     #[serde(default)]
     pub height: Option<f64>,
-    /// Échelle mètres par pixel (facultative, saisie éditeur).
+    /// Meters per pixel (optional, entered in the editor).
     #[serde(default)]
     pub scale_m_per_px: Option<f64>,
 }
 
-/// Étage du parcours — positionné dans l'ordre du bâtiment (`level` :
-/// 0 = RDC, négatif = sous-sol).
+/// Floor of the tour, ordered like the building (`level`: 0 = ground
+/// floor, negative = basement).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourFloor {
     pub id: String,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub level: i32,
-    /// `None` = étage sans plan (toléré : le viewer liste les scènes).
+    /// `None` = floor without a plan (allowed: the viewer lists the scenes).
     #[serde(default)]
     pub plan: Option<FloorPlan>,
-    /// Nord du plan en degrés (facultatif, décoratif V1).
+    /// North of the plan in degrees (optional, decorative in V1).
     #[serde(default)]
     pub north_deg: f64,
 }
 
-/// Scène du parcours — un panorama 360 (`media_asset` kind `panorama`)
-/// posé sur le plan de son étage (`x`/`y` en px natifs du plan).
+/// Scene of the tour: a 360 panorama (`media_asset` of kind `panorama`)
+/// placed on its floor plan (`x`/`y` in native plan px).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourScene {
     pub id: String,
     pub floor_id: String,
@@ -85,7 +90,7 @@ pub struct TourScene {
     pub x: f64,
     #[serde(default)]
     pub y: f64,
-    /// Vue initiale dans le panorama (yaw/pitch en degrés, fov ∈ [1,179]).
+    /// Initial view in the panorama (yaw/pitch in degrees, fov in [1, 179]).
     #[serde(default)]
     pub initial_yaw: f64,
     #[serde(default)]
@@ -98,10 +103,11 @@ fn default_initial_fov() -> f64 {
     100.0
 }
 
-/// Hotspot de navigation : d'une scène source vers une scène cible, posé sur
-/// la sphère (`yaw`/`pitch` en degrés). Le kind `walk|stair` est **dérivé**
-/// des étages des extrémités (jamais saisi).
+/// Navigation hotspot from a source scene to a target scene, placed on the
+/// sphere (`yaw`/`pitch` in degrees). The `walk|stair` kind is derived from
+/// the floors of both ends (never entered).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourLink {
     pub id: String,
     pub from: String,
@@ -120,12 +126,13 @@ fn default_link_kind() -> String {
     TOUR_LINK_WALK.to_string()
 }
 
-/// Document complet d'un parcours (contenu de `tour_versions.doc`).
+/// Full tour document (content of `tour_versions.doc`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(default)]
 pub struct TourDoc {
     pub mode: String,
-    /// Scène d'entrée (absent = première scène du document).
+    /// Entry scene (absent = first scene of the document).
     pub start_scene: Option<String>,
     pub floors: Vec<TourFloor>,
     pub scenes: Vec<TourScene>,
@@ -178,7 +185,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
             None,
             "unknown_mode",
             format!(
-                "mode de tour inconnu : {} (attendu {TOUR_MODE_PANORAMA})",
+                "unknown tour mode: {} (expected {TOUR_MODE_PANORAMA})",
                 doc.mode
             ),
         ));
@@ -188,24 +195,24 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
     let mut floor_ids = std::collections::HashSet::new();
     for f in &doc.floors {
         if f.id.is_empty() {
-            v.push(violation(None, "empty_id", "id d'étage vide".to_string()));
+            v.push(violation(None, "empty_id", "empty floor id".to_string()));
         } else if !floor_ids.insert(&f.id) {
             v.push(violation(
                 Some(&f.id),
                 "duplicate_floor_id",
-                format!("id d'étage dupliqué : {}", f.id),
+                format!("duplicate floor id: {}", f.id),
             ));
         }
     }
     let mut scene_ids = std::collections::HashSet::new();
     for s in &doc.scenes {
         if s.id.is_empty() {
-            v.push(violation(None, "empty_id", "id de scène vide".to_string()));
+            v.push(violation(None, "empty_id", "empty scene id".to_string()));
         } else if !scene_ids.insert(&s.id) {
             v.push(violation(
                 Some(&s.id),
                 "duplicate_scene_id",
-                format!("id de scène dupliqué : {}", s.id),
+                format!("duplicate scene id: {}", s.id),
             ));
         }
     }
@@ -213,39 +220,39 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
     let mut link_pairs = std::collections::HashSet::new();
     for l in &doc.links {
         if l.id.is_empty() {
-            v.push(violation(None, "empty_id", "id de lien vide".to_string()));
+            v.push(violation(None, "empty_id", "empty link id".to_string()));
         } else if !link_ids.insert(&l.id) {
             v.push(violation(
                 Some(&l.id),
                 "duplicate_link_id",
-                format!("id de lien dupliqué : {}", l.id),
+                format!("duplicate link id: {}", l.id),
             ));
         }
         if l.from == l.to {
             v.push(violation(
                 Some(&l.id),
                 "self_link",
-                format!("le lien {} boucle sur sa scène source", l.id),
+                format!("link {} loops on its source scene", l.id),
             ));
         } else if !link_pairs.insert((l.from.clone(), l.to.clone())) {
             v.push(violation(
                 Some(&l.id),
                 "duplicate_link",
-                format!("lien déjà existant : {} → {}", l.from, l.to),
+                format!("link already exists: {} → {}", l.from, l.to),
             ));
         }
         if !scene_ids.contains(&l.from) {
             v.push(violation(
                 Some(&l.id),
                 "unknown_link_target",
-                format!("lien {} : scène source inconnue {}", l.id, l.from),
+                format!("link {}: unknown source scene {}", l.id, l.from),
             ));
         }
         if !scene_ids.contains(&l.to) {
             v.push(violation(
                 Some(&l.id),
                 "unknown_link_target",
-                format!("lien {} : scène cible inconnue {}", l.id, l.to),
+                format!("link {}: unknown target scene {}", l.id, l.to),
             ));
         }
     }
@@ -256,35 +263,35 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
             v.push(violation(
                 Some(&s.id),
                 "unknown_floor",
-                format!("scène {} : étage inconnu {}", s.id, s.floor_id),
+                format!("scene {}: unknown floor {}", s.id, s.floor_id),
             ));
         }
         if !(s.x.is_finite() && s.y.is_finite()) {
             v.push(violation(
                 Some(&s.id),
                 "invalid_position",
-                format!("scène {} : position non finie", s.id),
+                format!("scene {}: position is not finite", s.id),
             ));
         }
         if !(s.initial_fov.is_finite() && (1.0..=179.0).contains(&s.initial_fov)) {
             v.push(violation(
                 Some(&s.id),
                 "invalid_fov",
-                format!("scène {} : fov initial hors [1, 179]", s.id),
+                format!("scene {}: initial fov outside [1, 179]", s.id),
             ));
         }
         if !(s.initial_pitch.is_finite() && (-90.0..=90.0).contains(&s.initial_pitch)) {
             v.push(violation(
                 Some(&s.id),
                 "invalid_pitch",
-                format!("scène {} : pitch initial hors [-90, 90]", s.id),
+                format!("scene {}: initial pitch outside [-90, 90]", s.id),
             ));
         }
         if !s.initial_yaw.is_finite() {
             v.push(violation(
                 Some(&s.id),
                 "invalid_yaw",
-                format!("scène {} : yaw initial non fini", s.id),
+                format!("scene {}: initial yaw is not finite", s.id),
             ));
         }
     }
@@ -298,7 +305,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
                 v.push(violation(
                     Some(&f.id),
                     "invalid_plan_dimensions",
-                    format!("étage {} : dimensions de plan invalides", f.id),
+                    format!("floor {}: invalid plan dimensions", f.id),
                 ));
             }
             if plan
@@ -308,7 +315,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
                 v.push(violation(
                     Some(&f.id),
                     "invalid_plan_scale",
-                    format!("étage {} : échelle du plan invalide", f.id),
+                    format!("floor {}: invalid plan scale", f.id),
                 ));
             }
         }
@@ -316,7 +323,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
             v.push(violation(
                 Some(&f.id),
                 "invalid_north",
-                format!("étage {} : nord non fini", f.id),
+                format!("floor {}: north is not finite", f.id),
             ));
         }
     }
@@ -327,7 +334,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
             v.push(violation(
                 Some(start),
                 "unknown_start_scene",
-                format!("scène de départ inconnue : {start}"),
+                format!("unknown start scene: {start}"),
             ));
         }
     }
@@ -337,72 +344,86 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
 
 // ─────────────────────────── DTOs API ───────────────────────────
 
-/// Tour en liste (école `FlowSummary`).
-/// `PartialEq` requis par les props des composants du socle CRUD (macro
-/// `#[component]` dioxus 0.7 — impl généré par champ).
+/// Tour in a list (like `FlowSummary`). `PartialEq` is required by the
+/// CRUD component props (dioxus 0.7 `#[component]`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourSummary {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub mode: String,
     pub latest_version_number: i64,
-    /// Version publique (numéro résolu depuis `published_version_id`).
+    /// Published version number (resolved from `published_version_id`).
     pub published_version_number: Option<i64>,
     pub share_enabled: bool,
-    /// Secret de publication — peuplé **uniquement pour un writer**.
+    /// Share secret, only returned to writers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share_token: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Tour en détail : + document de la version consultée.
+/// Tour detail: the summary plus the document of the requested version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourDetail {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub org_id: i64,
     pub name: String,
     pub description: Option<String>,
     pub mode: String,
     pub doc: TourDoc,
-    /// Version du document renvoyé (latest, ou celle demandée par `?version=`).
+    /// Version of the returned document (latest, or the one asked with `?version=`).
     pub doc_version_number: i64,
     pub latest_version_number: i64,
     pub published_version_number: Option<i64>,
     pub share_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub share_token: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Entrée d'historique (école `FlowVersionSummary`).
+/// History entry (like `FlowVersionSummary`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourVersionSummary {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub published: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
-/// Détail d'une version (audit / rechargement éditeur).
+/// One version in detail (audit, editor reload).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TourVersionDetail {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub version_number: i64,
     pub author: Option<String>,
     pub note: Option<String>,
     pub published: bool,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     pub doc: TourDoc,
 }
 
 /// `POST /api/v1/tours`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateTour {
     pub name: String,
     #[serde(default)]
@@ -413,8 +434,9 @@ pub struct CreateTour {
     pub note: Option<String>,
 }
 
-/// `PATCH /api/v1/tours/{id}` — save append-only avec concurrence optimiste.
+/// `PATCH /api/v1/tours/{id}`: append-only save with optimistic concurrency.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct UpdateTour {
     pub expected_version_number: i64,
     pub doc: TourDoc,
@@ -426,15 +448,17 @@ pub struct UpdateTour {
     pub note: Option<String>,
 }
 
-/// `POST /api/v1/tours/{id}/publish` — version absente = dernière.
+/// `POST /api/v1/tours/{id}/publish`: absent version = latest.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PublishTour {
     #[serde(default)]
     pub version_number: Option<i64>,
 }
 
-/// Résolution d'un asset référencé par le doc publié (endpoint public).
+/// Media referenced by the published document (public endpoint).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PublicAssetRef {
     pub version_number: i64,
     pub content_type: String,
@@ -442,14 +466,16 @@ pub struct PublicAssetRef {
     pub size_bytes: i64,
 }
 
-/// Réponse du endpoint public (sans auth) — version publiée + carte des
-/// assets référencés, pour booter le viewer en un seul aller.
+/// Answer of the public endpoint (no auth): published version plus the map
+/// of referenced media, so the viewer boots in one round trip.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PublicTour {
     pub name: String,
     pub description: Option<String>,
     pub mode: String,
     pub published_version_number: i64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub published_at: String,
     pub doc: TourDoc,
     pub assets: HashMap<String, PublicAssetRef>,

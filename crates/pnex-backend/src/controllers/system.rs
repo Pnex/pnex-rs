@@ -6,7 +6,7 @@
 //!   (owner/admin);
 //! - platform status and platform LLM providers (platform admin only).
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::routing::{delete, get, post, put};
 use chrono::{DateTime, Timelike, Utc};
 use loco_rs::prelude::*;
@@ -26,6 +26,16 @@ fn coded(status: axum::http::StatusCode, code: &str, msg: &str) -> Error {
         status,
         loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
     )
+}
+
+/// `limit`/`offset` of the platform-admin lists (D240).
+#[derive(Debug, Default, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
 }
 
 fn db_err(err: sea_orm::DbErr) -> Error {
@@ -53,6 +63,27 @@ pub fn routes() -> Routes {
         .add("/secrets/rekey", post(super::secrets::platform_rekey))
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        retention_get,
+        retention_org_put,
+        retention_default_put,
+        o2_streams,
+        o2_stream_delete,
+        o2_stream_delete_range,
+        o2_purge,
+        orgs_overview,
+        org_tier_put,
+        tiers_list,
+        status,
+        super::secrets::platform_rekey
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 // ───────────────────────────── Retention ─────────────────────────────
 
 fn days_u32(days: Option<i32>) -> Option<u32> {
@@ -75,9 +106,9 @@ async fn retention_info(
     };
     Ok(RetentionInfo {
         days: effective.days,
-        source: effective.source.as_str().to_string(),
+        source: effective.source.into(),
         clamped: effective.clamped,
-        deployment_mode: mode.as_str().to_string(),
+        deployment_mode: mode.into(),
         org_override_days: days_u32(org.data_retention_days),
         global_default_days: global,
         tier_name: tier.as_ref().map(|t| t.name.clone()),
@@ -89,6 +120,18 @@ async fn retention_info(
 }
 
 /// `GET /api/v1/system/retention` — any member of the org.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/retention",
+    tag = "system",
+    operation_id = "system_retention_get",
+    summary = "Get the telemetry retention of the organisation",
+    description = "Effective OpenObserve retention of the current org and where it comes from (org override, platform default, subscription tier). `editable` is true for platform admins. Any org member.",
+    responses(
+        (status = 200, body = pnex_core::RetentionInfo)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn retention_get(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     let info = retention_info(&ctx, &org.org, org.auth.user.platform_admin).await?;
     format::json(info)
@@ -107,6 +150,23 @@ fn check_days(days: Option<u32>) -> Result<()> {
 
 /// `PUT /api/v1/system/retention/orgs/{org_id}` — platform admin; `null`
 /// clears the override (back to global default / subscription tier).
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/retention/orgs/{org_id}",
+    tag = "system",
+    operation_id = "system_retention_org_set",
+    summary = "Set the retention override of an organisation",
+    description = "Platform admin only. Sets (or clears with `days: null`) the per-org retention override, then reapplies retention on the org streams in the background.",
+    params(("org_id" = i64, Path, description = "Organisation id")),
+    request_body = pnex_core::RetentionUpdate,
+    responses(
+        (status = 200, body = pnex_core::RetentionInfo),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown organisation", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`retention-out-of-range`: days outside 1..=3650", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn retention_org_put(
     admin: PlatformAdmin,
     State(ctx): State<AppContext>,
@@ -130,6 +190,22 @@ async fn retention_org_put(
 
 /// `PUT /api/v1/system/retention/default` — platform admin. Irrelevant in
 /// SaaS mode (the tier decides): refused there to avoid a silent no-op.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/retention/default",
+    tag = "system",
+    operation_id = "system_retention_default_set",
+    summary = "Set the platform default retention",
+    description = "Platform admin only, self-hosted deployments only. Sets (or clears with `days: null`) the platform default retention, then reapplies retention on every org in the background. Echoes the stored value.",
+    request_body = pnex_core::RetentionUpdate,
+    responses(
+        (status = 200, body = pnex_core::RetentionUpdate),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`retention-locked-by-plan`: SaaS mode, retention follows the subscription tier", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`retention-out-of-range`: days outside 1..=3650", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn retention_default_put(
     admin: PlatformAdmin,
     State(ctx): State<AppContext>,
@@ -149,7 +225,7 @@ async fn retention_default_put(
     tracing::info!(days = ?body.days, by = admin.0.user.id, "global retention default updated");
     let bg = ctx.clone();
     tokio::spawn(async move { retention::reconcile_all(&bg).await });
-    format::json(serde_json::json!({ "days": body.days }))
+    format::json(RetentionUpdate { days: body.days })
 }
 
 // ───────────────────────────── O2 cleanup ─────────────────────────────
@@ -204,6 +280,19 @@ fn mb_to_bytes(mb: Option<f64>) -> Option<u64> {
 }
 
 /// `GET /api/v1/system/o2/streams` — any member (read-only listing).
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/o2/streams",
+    tag = "system",
+    operation_id = "system_o2_streams_list",
+    summary = "List the telemetry streams of the organisation",
+    description = "OpenObserve metrics streams of the current org with size, time bounds and retention, plus usage against the subscription quota. `configured`/`provisioned` are false when O2 is absent or the org has not ingested telemetry yet. Any org member.",
+    responses(
+        (status = 200, body = pnex_core::O2StreamList),
+        (status = 502, description = "`o2-not-configured`: OpenObserve unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn o2_streams(org: OrgContext, State(ctx): State<AppContext>) -> Result<Response> {
     if OpenobserveSettings::from_config(&ctx.config).is_none() {
         return format::json(O2StreamList::default());
@@ -256,6 +345,23 @@ async fn o2_streams(org: OrgContext, State(ctx): State<AppContext>) -> Result<Re
 }
 
 /// `DELETE /api/v1/system/o2/streams/{name}` — owner/admin.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/system/o2/streams/{name}",
+    tag = "system",
+    operation_id = "system_o2_streams_delete",
+    summary = "Delete a telemetry stream",
+    description = "Irreversibly deletes one OpenObserve metrics stream of the current org and all its data. Requires owner or admin role.",
+    params(("name" = String, Path, description = "O2 metrics stream name")),
+    responses(
+        (status = 200, body = pnex_core::O2DeleteResult),
+        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "The org has no telemetry space yet", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "`o2-delete-failed`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`o2-not-configured`: OpenObserve is not configured on this server", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn o2_stream_delete(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -277,6 +383,23 @@ async fn o2_stream_delete(
 }
 
 /// `POST /api/v1/system/o2/purge` — owner/admin, typed org-name confirmation.
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/o2/purge",
+    tag = "system",
+    operation_id = "system_o2_purge",
+    summary = "Purge all telemetry of the organisation",
+    description = "Irreversibly deletes every OpenObserve metrics stream of the current org. `confirm` must equal the organisation name. Requires owner or admin role.",
+    request_body = pnex_core::O2PurgeRequest,
+    responses(
+        (status = 200, body = pnex_core::O2DeleteResult),
+        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`confirmation-mismatch`", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "`o2-delete-failed`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`o2-not-configured`: OpenObserve is not configured on this server", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn o2_purge(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -336,6 +459,25 @@ fn parse_rfc3339(raw: &str) -> Option<DateTime<Utc>> {
 
 /// `POST /api/v1/system/o2/streams/{name}/delete-range` — owner/admin.
 /// Asynchronous on O2 (compactor job): the response says `scheduled`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/system/o2/streams/{name}/delete-range",
+    tag = "system",
+    operation_id = "system_o2_streams_delete_range",
+    summary = "Delete a time range of a telemetry stream",
+    description = "Schedules the irreversible deletion of the stream data between `start` and `end` (RFC 3339), widened to full hours. Asynchronous on OpenObserve: the answer has `scheduled: true` and the effective bounds. Requires owner or admin role.",
+    params(("name" = String, Path, description = "O2 metrics stream name")),
+    request_body = pnex_core::O2DeleteRangeRequest,
+    responses(
+        (status = 200, body = pnex_core::O2DeleteResult),
+        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "The org has no telemetry space yet", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`o2-time-range-invalid`", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "`o2-time-range-unsupported` or `o2-delete-failed`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`o2-not-configured`: OpenObserve is not configured on this server", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn o2_stream_delete_range(
     org: OrgContext,
     State(ctx): State<AppContext>,
@@ -395,11 +537,29 @@ async fn o2_stream_delete_range(
 /// `GET /api/v1/system/orgs` — platform admin: every organization with its
 /// effective retention, O2 usage and quota. O2 listings run concurrently,
 /// each bounded (an unreachable org yields `used_bytes: None`).
-async fn orgs_overview(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/orgs",
+    tag = "system",
+    operation_id = "system_orgs_list",
+    summary = "Overview of every organisation",
+    description = "Platform admin only. Every organisation with its tier, effective retention, telemetry usage and quota (`used_bytes` null when OpenObserve could not be reached), ordered by name, paginated (`limit`/`offset`).",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::OrgSystemRow>),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn orgs_overview(
+    _admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
     use sea_orm::QueryOrder;
-    let orgs = organizations::Entity::find()
-        .order_by_asc(organizations::Column::Name)
-        .all(&ctx.db)
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let query = organizations::Entity::find().order_by_asc(organizations::Column::Name);
+    let (count, orgs) = super::pagination::sql_page(&ctx.db, query, page)
         .await
         .map_err(db_err)?;
     let client = OpenobserveSettings::from_config(&ctx.config).map(|s| Client::new(&s));
@@ -425,7 +585,7 @@ async fn orgs_overview(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> 
             tier_id: org.subscription_tier_id,
             tier_name: tier.map(|t| t.name),
             retention_days: effective.days,
-            retention_source: effective.source.as_str().to_string(),
+            retention_source: effective.source.into(),
             org_override_days: days_u32(org.data_retention_days),
             provisioned: o2_org.is_some(),
             used_bytes: None,
@@ -456,31 +616,77 @@ async fn orgs_overview(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> 
             }
         }
     }
-    format::json(rows)
+    format::json(super::pagination::envelope(
+        "/api/v1/system/orgs",
+        &[],
+        page,
+        count,
+        rows,
+    ))
 }
 
 /// `GET /api/v1/system/tiers` — platform admin.
-async fn tiers_list(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/tiers",
+    tag = "system",
+    operation_id = "system_tiers_list",
+    summary = "List the subscription tiers",
+    description = "Platform admin only. Tiers an organisation can be put on, ordered by id, paginated (`limit`/`offset`).",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::TierOption>),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
+async fn tiers_list(
+    _admin: PlatformAdmin,
+    State(ctx): State<AppContext>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
     use sea_orm::QueryOrder;
-    let tiers = subscription_tiers::Entity::find()
-        .order_by_asc(subscription_tiers::Column::Id)
-        .all(&ctx.db)
+    let page = super::pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let query = subscription_tiers::Entity::find().order_by_asc(subscription_tiers::Column::Id);
+    let (count, tiers) = super::pagination::sql_page(&ctx.db, query, page)
         .await
         .map_err(db_err)?;
-    format::json(
-        tiers
-            .into_iter()
-            .map(|t| TierOption {
-                id: t.id,
-                name: t.name,
-            })
-            .collect::<Vec<_>>(),
-    )
+    let results: Vec<TierOption> = tiers
+        .into_iter()
+        .map(|t| TierOption {
+            id: t.id,
+            name: t.name,
+        })
+        .collect();
+    format::json(super::pagination::envelope(
+        "/api/v1/system/tiers",
+        &[],
+        page,
+        count,
+        results,
+    ))
 }
 
 /// `PUT /api/v1/system/orgs/{org_id}/tier` — platform admin (O37). The
 /// tier drives quotas and retention in SaaS mode only; it is still stored
 /// in self-hosted mode so that a later switch to SaaS keeps it.
+#[utoipa::path(
+    put,
+    path = "/api/v1/system/orgs/{org_id}/tier",
+    tag = "system",
+    operation_id = "system_orgs_tier_set",
+    summary = "Set the subscription tier of an organisation",
+    description = "Platform admin only. Sets (or removes with `tier_id: null`) the subscription tier; it drives quotas and retention in SaaS mode (retention reapplied in the background). Echoes the stored value.",
+    params(("org_id" = i64, Path, description = "Organisation id")),
+    request_body = pnex_core::OrgTierUpdate,
+    responses(
+        (status = 200, body = pnex_core::OrgTierUpdate),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown organisation", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "`tier-unknown`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn org_tier_put(
     admin: PlatformAdmin,
     State(ctx): State<AppContext>,
@@ -519,6 +725,19 @@ async fn org_tier_put(
 }
 
 /// `GET /api/v1/system/status` — platform admin.
+#[utoipa::path(
+    get,
+    path = "/api/v1/system/status",
+    tag = "system",
+    operation_id = "system_status",
+    summary = "Platform status",
+    description = "Platform admin only. Health, latency and metrics of every platform component (database, identity provider, OpenObserve, storage...).",
+    responses(
+        (status = 200, body = pnex_core::SystemStatus),
+        (status = 403, description = "`platform-admin-required`: not a platform admin", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = []))
+)]
 async fn status(_admin: PlatformAdmin, State(ctx): State<AppContext>) -> Result<Response> {
     format::json(system_status::collect(&ctx).await)
 }

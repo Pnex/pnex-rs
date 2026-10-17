@@ -168,12 +168,15 @@ async fn keys_of(
     a: &Agent,
 ) -> Vec<pnex_core::agent::AgentKey> {
     let res = server
-        .get(&format!("/api/v1/devices/{}/agent-keys", a.id))
+        .get(&format!("/api/v1/devices/{}/agent-keys?limit=100", a.id))
         .add_header("Authorization", format!("Bearer {auth}"))
         .add_header("X-Org-Id", a.org.to_string())
         .await;
     res.assert_status_ok();
-    res.json()
+    // Paginated (D240): one page holds every key of these tests.
+    let page: pnex_core::Paginated<pnex_core::agent::AgentKey> = res.json();
+    assert_eq!(page.count as usize, page.results.len());
+    page.results
 }
 
 /// Waits for the server-side teardown of a closed session (reconnect would

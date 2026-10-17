@@ -31,9 +31,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Langage d'une fonction du registre — `"js"` ou `"starlark"` (VARCHAR
-/// applicatif côté DB, pas d'enum PG).
+/// Language of a registry function: `"js"` or `"starlark"` (stored as
+/// text).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum FunctionLanguage {
     #[default]
@@ -58,9 +59,10 @@ impl std::fmt::Display for FunctionLanguage {
     }
 }
 
-/// Type déclaré d'une entrée/sortie — pilote le formulaire du panneau de
-/// test typé (number → champ numérique, bool → case…) et la documentation.
+/// Declared type of an input/output; drives the typed test form (number
+/// field, checkbox...) and the documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum FunctionType {
     Number,
@@ -69,20 +71,22 @@ pub enum FunctionType {
     Any,
 }
 
-/// Entrée déclarée par `// @input name type[=défaut] ["description"]`.
+/// Input declared by `// @input name type[=default] ["description"]`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionInput {
     pub name: String,
     pub ty: FunctionType,
-    /// Valeur par défaut quand le chemin binding est absent du msg entrant.
+    /// Default value when the binding path is absent from the incoming msg.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub desc: Option<String>,
 }
 
-/// Sortie déclarée par `// @output name type ["description"]`.
+/// Output declared by `// @output name type ["description"]`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionOutput {
     pub name: String,
     pub ty: FunctionType,
@@ -100,17 +104,17 @@ pub struct FunctionSignature {
     pub outputs: Vec<FunctionOutput>,
 }
 
-/// Erreur de parsing de directives (400 au save, erreur de ligne au front).
+/// Directive parse error (400 on save, line error in the editor).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DirectiveError {
-    /// Ligne 1-based dans le code source.
+    /// 1-based line in the source code.
     pub line: u32,
     pub message: String,
 }
 
 impl std::fmt::Display for DirectiveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ligne {} : {}", self.line, self.message)
+        write!(f, "line {}: {}", self.line, self.message)
     }
 }
 
@@ -138,7 +142,7 @@ fn parse_type(tok: &str, line: u32) -> Result<FunctionType, DirectiveError> {
         "any" => Ok(FunctionType::Any),
         other => Err(DirectiveError {
             line,
-            message: format!("type inconnu « {other} » (number|string|bool|any)"),
+            message: format!("unknown type \"{other}\" (number|string|bool|any)"),
         }),
     }
 }
@@ -155,7 +159,7 @@ fn parse_default(
         FunctionType::Number => text
             .parse::<f64>()
             .map(|n| serde_json::json!(n))
-            .map_err(|_| bad(format!("défaut « {text} » : nombre attendu"))),
+            .map_err(|_| bad(format!("default \"{text}\": number expected"))),
         FunctionType::String => Ok(serde_json::Value::String(
             text.trim_matches('"').to_string(),
         )),
@@ -163,11 +167,11 @@ fn parse_default(
             "true" => Ok(serde_json::Value::Bool(true)),
             "false" => Ok(serde_json::Value::Bool(false)),
             _ => Err(bad(format!(
-                "défaut « {text} » : bool attendu (true|false)"
+                "default \"{text}\": bool expected (true|false)"
             ))),
         },
         FunctionType::Any => serde_json::from_str(text)
-            .map_err(|e| bad(format!("défaut « {text} » : JSON invalide ({e})"))),
+            .map_err(|e| bad(format!("default \"{text}\": invalid JSON ({e})"))),
     }
 }
 
@@ -222,7 +226,7 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
                 return Err(DirectiveError {
                     line: line_no,
                     message: format!(
-                        "@input « {name} » : nom attendu en snake_case ([a-z_][a-z0-9_]*)"
+                        "@input \"{name}\": snake_case name expected ([a-z_][a-z0-9_]*)"
                     ),
                 });
             }
@@ -236,7 +240,7 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
             let ty = if ty_tok.is_empty() {
                 return Err(DirectiveError {
                     line: line_no,
-                    message: format!("@input {name} : type requis (number|string|bool|any)"),
+                    message: format!("@input {name}: type required (number|string|bool|any)"),
                 });
             } else {
                 parse_type(ty_tok, line_no)?
@@ -248,7 +252,7 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
             if !seen_inputs.insert(name.to_string()) {
                 return Err(DirectiveError {
                     line: line_no,
-                    message: format!("@input {name} : entrée dupliquée"),
+                    message: format!("@input {name}: duplicate input"),
                 });
             }
             sig.inputs.push(FunctionInput {
@@ -269,7 +273,7 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
                 return Err(DirectiveError {
                     line: line_no,
                     message: format!(
-                        "@output « {name} » : nom attendu en snake_case ([a-z_][a-z0-9_]*)"
+                        "@output \"{name}\": snake_case name expected ([a-z_][a-z0-9_]*)"
                     ),
                 });
             }
@@ -280,7 +284,7 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
             if !seen_outputs.insert(name.to_string()) {
                 return Err(DirectiveError {
                     line: line_no,
-                    message: format!("@output {name} : sortie dupliquée"),
+                    message: format!("@output {name}: duplicate output"),
                 });
             }
             sig.outputs.push(FunctionOutput {
@@ -640,12 +644,13 @@ pub struct FunctionSnapshot {
 /// snapshot`. Le backend le construit en batch depuis `function_versions`.
 pub type FunctionResolver = BTreeMap<(i64, i64), FunctionSnapshot>;
 
-// ───────────────────────────── DTOs de l'API ─────────────────────────────
+// ───────────────────────────── API DTOs ─────────────────────────────
 
-/// Résumé d'une fonction (liste paginée — sans code).
-/// `PartialEq` requis par les props des composants du socle CRUD (macro
-/// `#[component]` dioxus 0.7 — impl généré par champ).
+/// Function summary (paginated list, without the code).
+/// `PartialEq` is required by the CRUD component props (dioxus 0.7
+/// `#[component]` derives a per-field impl).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionSummary {
     pub id: i64,
     pub org_id: i64,
@@ -654,12 +659,15 @@ pub struct FunctionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub current_version_number: i64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Fonction + version courante (code + interface).
+/// A function with its current version (code and interface).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionDetail {
     pub id: i64,
     pub org_id: i64,
@@ -673,14 +681,16 @@ pub struct FunctionDetail {
     pub inputs: Vec<FunctionInput>,
     #[serde(default)]
     pub outputs: Vec<FunctionOutput>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
-/// Résumé d'une version (drawer d'historique + **picker de pin** de
-/// l'inspecteur : l'inspecteur pique le snapshot d'interface ici — plus
-/// besoin d'un endpoint par version).
+/// One version of a function (history drawer, and the version picker of
+/// the flow inspector, which takes the interface snapshot from here).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionVersionSummary {
     pub id: i64,
     pub version_number: i64,
@@ -690,14 +700,16 @@ pub struct FunctionVersionSummary {
     pub inputs: Vec<FunctionInput>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<FunctionOutput>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     /// Full code of this version — the history drawer restores ANY past
     /// version into the editor (append-only: saving then creates v+1).
     pub code: String,
 }
 
-/// Création : fonction + version 1 (école `CreateFlow` — une transaction).
+/// Creation: the function and its version 1, in one transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateFunction {
     pub name: String,
     pub language: FunctionLanguage,
@@ -708,11 +720,12 @@ pub struct CreateFunction {
     pub note: Option<String>,
 }
 
-/// Enregistrement d'une nouvelle version (append-only). Concurrence
-/// optimiste : `expected_version_number` doit valoir la version courante,
-/// sinon 409. `name`/`description` = mise à jour de métadonnées ; avec
-/// `code`, le save crée une nouvelle version.
+/// Saves a new version (append-only). Optimistic concurrency:
+/// `expected_version_number` must be the current version, else 409.
+/// `name`/`description` update the metadata; with `code`, the save
+/// creates a new version.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SaveFunctionVersion {
     pub expected_version_number: i64,
     #[serde(default)]
@@ -725,17 +738,19 @@ pub struct SaveFunctionVersion {
     pub note: Option<String>,
 }
 
-/// Test ad-hoc d'un code non sauvegardé (test avant save).
+/// Ad-hoc test of unsaved code (test before saving).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionTestAdHoc {
     pub language: FunctionLanguage,
     pub code: String,
 }
 
-/// Demande de test en live — version épinglée de la fonction (défaut =
-/// version courante) OU code ad-hoc. `inputs` = valeurs du formulaire typé
-/// ; `msg` = message Node-RED entrant simulé (défaut `{}`).
+/// Live test request: a pinned version of the function (default: the
+/// current version) OR ad-hoc code. `inputs` = typed form values; `msg` =
+/// simulated incoming Node-RED message (default `{}`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionTestRequest {
     #[serde(default)]
     pub version_number: Option<i64>,
@@ -747,30 +762,30 @@ pub struct FunctionTestRequest {
     pub msg: Option<serde_json::Value>,
 }
 
-/// Réponse du test en live (aussi la ligne unique du CLI
-/// `pnex-flow-runtime --test-function`).
+/// Live test answer (also the single output line of the
+/// `pnex-flow-runtime --test-function` CLI).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionTestResponse {
     pub ok: bool,
-    /// Messages sortants (un par port ayant produit un msg, dans l'ordre).
+    /// Outgoing messages (one per port that produced a message, in order).
     pub outputs: Vec<serde_json::Value>,
-    /// Sortie `console.*` capturée (mode test).
+    /// Captured `console.*` output (test mode).
     pub logs: Vec<String>,
     pub duration_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
-/// Requête portée au CLI `pnex-flow-runtime --test-function` — le wrapper
-/// JS est **déjà généré** par le backend (`build_js_wrapper`), le CLI ne
-/// dépend pas de pnex-core à l'exécution (types seulement).
+/// Request given to the `pnex-flow-runtime --test-function` CLI. The JS
+/// wrapper is already generated by the backend (`build_js_wrapper`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FunctionExecRequest {
     pub language: FunctionLanguage,
-    /// Wrapper JS complet (helpers + code + tail) — requis si `js`.
+    /// Full JS wrapper (helpers + code + tail), required for `js`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub js_wrapper: Option<String>,
-    /// Code Starlark brut — requis si `starlark`.
+    /// Raw Starlark code, required for `starlark`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     #[serde(default)]
@@ -779,19 +794,20 @@ pub struct FunctionExecRequest {
     pub timeout_ms: u64,
 }
 
-/// Requête de validation compile-only (barre d'erreurs de l'éditeur) —
-/// `POST /api/v1/functions/validate`, retransmise telle quelle au CLI
-/// `pnex-flow-runtime --check-function`. Aucune exécution du code.
+/// Compile-only validation request (editor error bar) of
+/// `POST /api/v1/functions/validate`, passed as is to the
+/// `pnex-flow-runtime --check-function` CLI. The code is never executed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionValidateRequest {
     pub language: FunctionLanguage,
     pub code: String,
 }
 
-/// Diagnostic d'éditeur — ligne/colonne 1-based, best-effort (None quand le
-/// moteur ne les expose pas). Message verbatim du moteur (exception
-/// documentée : diagnostics starlark/quickjs).
+/// Editor diagnostic: 1-based line/column, best effort (`null` when the
+/// engine does not expose them). The message is the engine's, verbatim.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionDiagnostic {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
@@ -800,9 +816,10 @@ pub struct FunctionDiagnostic {
     pub message: String,
 }
 
-/// Réponse de la validation compile-only (aussi la ligne unique du CLI
-/// `pnex-flow-runtime --check-function`).
+/// Compile-only validation answer (also the single output line of the
+/// `pnex-flow-runtime --check-function` CLI).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FunctionValidateResponse {
     pub ok: bool,
     pub diagnostics: Vec<FunctionDiagnostic>,
@@ -853,19 +870,19 @@ function handle(inputs, msg) { return inputs.temperature; }
         // type inconnu
         let e = parse_directives("// @input a float").unwrap_err();
         assert_eq!(e.line, 1);
-        assert!(e.message.contains("type inconnu"), "{}", e.message);
+        assert!(e.message.contains("unknown type"), "{}", e.message);
         // défaut non convertible
         let e = parse_directives("// @input a number=abc").unwrap_err();
-        assert!(e.message.contains("nombre attendu"), "{}", e.message);
+        assert!(e.message.contains("number expected"), "{}", e.message);
         // dupliquée
         let e = parse_directives("// @input a number\n// @input a string").unwrap_err();
-        assert!(e.message.contains("dupliquée"), "{}", e.message);
+        assert!(e.message.contains("duplicate"), "{}", e.message);
         // nom invalide
         let e = parse_directives("# @input 1abc number").unwrap_err();
         assert!(e.message.contains("snake_case"), "{}", e.message);
         // type manquant
         let e = parse_directives("// @input a").unwrap_err();
-        assert!(e.message.contains("type requis"), "{}", e.message);
+        assert!(e.message.contains("type required"), "{}", e.message);
     }
 
     #[test]

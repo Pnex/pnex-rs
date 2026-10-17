@@ -1,7 +1,7 @@
 //! Aggregation by bucket (ontology.md D182, media-ingest.md D171): one value
 //! of a series per time range of a scope, or per time-of-day slice repeated
 //! over the days of a window. Generic read primitive (a show, a shift, a
-//! batch), served by `POST /api/v1/telemetry/aggregate`. Pure, wasm-safe.
+//! batch), served by `POST /api/v1/telemetry/aggregate/query`. Pure, wasm-safe.
 //!
 //! - DTOs: [`AggregateRequest`], [`AggregateResponse`];
 //! - [`parse_bound`], [`check_slice_bounds`]: `HH:MM` slice bounds;
@@ -24,6 +24,7 @@ pub const DEFAULT_TIMEZONE: &str = "Europe/Paris";
 
 /// How the values of one bucket are combined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateOp {
     #[default]
@@ -55,6 +56,7 @@ impl AggregateOp {
 
 /// Buckets = the time ranges of a scope met by `[from, to)`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RangeBuckets {
     pub scope_kind: String,
     #[serde(default)]
@@ -67,6 +69,7 @@ pub struct RangeBuckets {
 /// over the days of `[from, to)`. The last slice wraps to the first bound
 /// of the next day.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SliceBuckets {
     pub from: String,
     pub to: String,
@@ -75,15 +78,23 @@ pub struct SliceBuckets {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Bucket definition: `{\"ranges\": RangeBuckets}` or `{\"slices\": SliceBuckets}`."
+    )
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateBuckets {
     Ranges(RangeBuckets),
     Slices(SliceBuckets),
 }
 
-/// Body of `POST /api/v1/telemetry/aggregate`; the series selector follows
-/// the `series-batch` rules (device and/or free labels, D171).
+/// Body of `POST /api/v1/telemetry/aggregate/query`; the series selector follows
+/// the `series/query` rules (device and/or free labels, D171).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AggregateRequest {
     pub metric: String,
     #[serde(default)]
@@ -96,6 +107,7 @@ pub struct AggregateRequest {
 
 /// Which time a bucket was computed on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum BucketBasis {
     /// Realigned time of a range.
@@ -110,6 +122,7 @@ pub enum BucketBasis {
 /// `start`/`end` are the local `HH:MM` bounds and `days` counts the days
 /// of the window that had data.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AggregateRow {
     pub label: String,
     pub start: String,
@@ -128,6 +141,7 @@ pub struct AggregateRow {
 /// `available: false` = O2 not configured, unreachable or past the budget:
 /// the rows keep their shape, unread values stay `None`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AggregateResponse {
     pub available: bool,
     pub rows: Vec<AggregateRow>,
@@ -177,6 +191,7 @@ pub fn valid_timezone_shape(tz: &str) -> bool {
 
 /// Bucket mode of the `range_bars` widget.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum WidgetBuckets {
     /// Time ranges of one media stream of the org.
@@ -192,6 +207,7 @@ pub enum WidgetBuckets {
 /// Options of the `range_bars` widget (per range / per time slice bars).
 /// The series is the widget's single source.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AggregateWidgetOptions {
     #[serde(default)]
     pub op: AggregateOp,

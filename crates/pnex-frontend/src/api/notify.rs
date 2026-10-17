@@ -3,7 +3,7 @@
 //! livraisons, tests d'envoi. Mêmes conventions que `api/flows.rs`.
 
 use pnex_core::{
-    NotifyChannel, NotifyDeliveryPage, NotifyKindInfo, NotifyTemplate, NotifyTemplateInput,
+    NotifyChannel, NotifyDelivery, NotifyKindInfo, NotifyTemplate, NotifyTemplateInput, Paginated,
     PreviewInput, PreviewResult, TemplateVar,
 };
 
@@ -13,7 +13,7 @@ use crate::api::error::ApiError;
 /// `GET /api/v1/notify/kinds` — catalogue des canaux + field_spec
 /// (source du formulaire dynamique, contrat `notify-kinds.v1`).
 pub async fn kinds() -> Result<Vec<NotifyKindInfo>, ApiError> {
-    client::request(reqwest::Method::GET, "/api/v1/notify/kinds", None).await
+    client::request_all("/api/v1/notify/kinds").await
 }
 
 /// `GET /api/v1/notify/channels` — every channel of the org, all pages
@@ -87,14 +87,14 @@ pub async fn delete_channel(id: &str) -> Result<(), ApiError> {
     .await
 }
 
-/// `POST /api/v1/notify/channels/test-draft` — test d'un brouillon avant
-/// sauvegarde (réponse `{status: sent|failed, error?}`).
+/// `POST /api/v1/notify/channels/test-draft`: tests a draft before saving
+/// (204 sent; a failed send is the 502 `notify-test-failed` error).
 pub async fn test_draft(
     kind: &str,
     name: &str,
     config: serde_json::Value,
     channel_id: Option<&str>,
-) -> Result<TestOutcome, ApiError> {
+) -> Result<(), ApiError> {
     client::request(
         reqwest::Method::POST,
         "/api/v1/notify/channels/test-draft",
@@ -117,7 +117,7 @@ pub async fn test_channel(
     id: &str,
     template_id: Option<&str>,
     vars: std::collections::BTreeMap<String, String>,
-) -> Result<TestOutcome, ApiError> {
+) -> Result<(), ApiError> {
     let body = template_id
         .map(|template_id| serde_json::json!({ "template_id": template_id, "vars": vars }));
     client::request(
@@ -126,47 +126,6 @@ pub async fn test_channel(
         body,
     )
     .await
-}
-
-/// Réponse des endpoints de test.
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
-pub struct TestOutcome {
-    pub status: String,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-impl TestOutcome {
-    pub fn ok(&self) -> bool {
-        self.status == "sent"
-    }
-}
-
-/// Classification des échecs de test : la config du canal est invalidée
-/// (400 `{"config": …}`) ou c'est un autre problème (réseau du serveur…).
-#[derive(Debug, Clone, PartialEq)]
-pub enum TestError {
-    /// Message sur la config (affiché sous le champ).
-    Invalid(String),
-    Other(String),
-}
-
-pub fn classify_test_error(err: &ApiError) -> TestError {
-    match err.status {
-        Some(400) => {
-            let config = err
-                .body
-                .as_ref()
-                .and_then(|b| b.get("config"))
-                .and_then(|v| v.as_str())
-                .map(str::to_owned);
-            match config {
-                Some(msg) => TestError::Invalid(msg),
-                None => TestError::Other(err.message.clone()),
-            }
-        }
-        _ => TestError::Other(err.message.clone()),
-    }
 }
 
 /// Delivery journal filters (`GET /api/v1/notify/deliveries`, D86).
@@ -214,7 +173,9 @@ impl DeliveryFilters {
 }
 
 /// `GET /api/v1/notify/deliveries` — every delivery attempt of the org.
-pub async fn list_deliveries(filters: &DeliveryFilters) -> Result<NotifyDeliveryPage, ApiError> {
+pub async fn list_deliveries(
+    filters: &DeliveryFilters,
+) -> Result<Paginated<NotifyDelivery>, ApiError> {
     client::request(
         reqwest::Method::GET,
         &format!("/api/v1/notify/deliveries{}", filters.to_query()),
@@ -300,37 +261,6 @@ pub fn vars_from_rows(rows: Vec<(String, String)>) -> Vec<TemplateVar> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::error::ApiError;
-
-    fn api_error(status: u16, body: serde_json::Value) -> ApiError {
-        ApiError {
-            status: Some(status),
-            message: "msg".into(),
-            body: Some(body),
-            code: None,
-            args: None,
-        }
-    }
-
-    #[test]
-    fn classify_400_config_vers_invalid() {
-        let err = api_error(
-            400,
-            serde_json::json!({"config": "l'URL doit commencer par http://"}),
-        );
-        assert_eq!(
-            classify_test_error(&err),
-            TestError::Invalid("l'URL doit commencer par http://".into())
-        );
-    }
-
-    #[test]
-    fn classify_autres_vers_other() {
-        let err = api_error(502, serde_json::json!({"status": "failed"}));
-        assert!(matches!(classify_test_error(&err), TestError::Other(_)));
-        let err = api_error(400, serde_json::json!({"name": "requis"}));
-        assert!(matches!(classify_test_error(&err), TestError::Other(_)));
-    }
 
     #[test]
     fn vars_from_rows_ignore_les_vides() {

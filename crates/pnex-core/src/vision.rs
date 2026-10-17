@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 /// Pre/post-processing family of a detector — fixes the input layout, the
 /// output decoding and the default input size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum VisionFamily {
     /// YOLOX (Apache-2.0, Megvii): letterbox top-left padded with 114, BGR
@@ -31,6 +32,7 @@ impl VisionFamily {
 
 /// Model task — `detection` only in V1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum VisionTask {
     #[default]
@@ -39,6 +41,7 @@ pub enum VisionTask {
 
 /// Inference spec of a registered model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelSpec {
     pub family: VisionFamily,
     pub input_width: u32,
@@ -92,6 +95,7 @@ impl ModelSpec {
 
 /// One detection, in **source image pixels**.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Detection {
     pub label: String,
     pub class_id: u32,
@@ -102,6 +106,7 @@ pub struct Detection {
 
 /// Result of one inference (test endpoint, flow node).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct DetectionResult {
     pub width: u32,
     pub height: u32,
@@ -117,6 +122,7 @@ pub const DETECT_FLOOR: f32 = 0.05;
 /// What an ONNX file declares about itself (D100) — `None` = dynamic or
 /// unreadable dimension.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelInspection {
     #[serde(default)]
     pub input_width: Option<u32>,
@@ -136,6 +142,7 @@ impl ModelInspection {
 
 /// Outcome of the load + test-inference check of a model (D100).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ModelCheckStatus {
     /// Registered before D100, never checked.
@@ -165,6 +172,7 @@ impl ModelCheckStatus {
 
 /// Stored check of a model: status, runtime diagnostic, measured speed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ModelCheck {
     #[serde(default)]
     pub status: ModelCheckStatus,
@@ -175,6 +183,7 @@ pub struct ModelCheck {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub infer_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub checked_at: Option<String>,
 }
 
@@ -187,6 +196,7 @@ impl ModelCheck {
 
 /// Camera state reported by the live test (D104).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LiveCameraState {
     pub connected: bool,
     /// `continuous` | `on_demand`.
@@ -199,6 +209,7 @@ pub struct LiveCameraState {
 /// One live-test round (D104): the analysed frame, every detection above
 /// [`DETECT_FLOOR`], the threshold the model applies and machine warnings.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LiveTestResult {
     /// JPEG bytes, base64 (standard alphabet).
     pub frame_b64: String,
@@ -215,6 +226,7 @@ pub struct LiveTestResult {
 
 /// Registered model (`GET /api/v1/ml/models`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct MlModel {
     pub id: String,
     pub name: String,
@@ -230,7 +242,9 @@ pub struct MlModel {
     /// Load + test-inference check (D100).
     #[serde(default)]
     pub check: ModelCheck,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 

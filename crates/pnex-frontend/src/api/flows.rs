@@ -142,7 +142,7 @@ pub async fn version(id: i64, version_number: i64) -> Result<FlowVersionDetail, 
 
 /// `POST /api/v1/flows/{id}/deploy` — projette **tous** les flows déployés
 /// dans `flows.json` puis rechargement à chaud ; `version_number` absent =
-/// dernière version. 503 `flow_runtime` si le moteur est off/down.
+/// dernière version. 503 `flow-runtime` si le moteur est off/down.
 /// Réponse de deploy : le flow + les références notify périmées détectées
 /// à la projection (champ additif serveur, D50 — toast non bloquant).
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -285,9 +285,8 @@ pub fn classify_save_error(err: &ApiError) -> SaveError {
         },
         Some(400) => {
             let violations = err
-                .body
-                .as_ref()
-                .and_then(|body| body.get("violations").cloned())
+                .violations()
+                .cloned()
                 .and_then(|value| serde_json::from_value::<Vec<FlowViolation>>(value).ok());
             match violations {
                 Some(violations) => SaveError::Invalid(violations),
@@ -334,7 +333,7 @@ mod tests {
     fn violations_400_extraites() {
         let err = ApiError::http(
             400,
-            r#"{"violations":[{"node_id":"n1","code":"readonly_sql","message":"mot-clé interdit en lecture seule : DELETE"}]}"#,
+            r#"{"error":"flow-invalid","errors":{"violations":[{"node_id":"n1","code":"readonly_sql","message":"mot-clé interdit en lecture seule : DELETE"}]}}"#,
         );
         match classify_save_error(&err) {
             SaveError::Invalid(violations) => {

@@ -39,6 +39,25 @@ pub fn routes() -> Routes {
         )
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list,
+        create,
+        show,
+        update,
+        revoke,
+        by_object,
+        add_sample,
+        remove_sample,
+        generate,
+        test
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(status, ErrorDetail::new(code, msg.to_string()))
 }
@@ -62,13 +81,7 @@ fn require_admin(org: &OrgContext) -> Result<()> {
 fn fail(e: VoiceIdError) -> Result<Response> {
     use VoiceIdError as E;
     Err(match e {
-        E::Invalid { field, token } => {
-            return Ok((
-                StatusCode::BAD_REQUEST,
-                format::json(serde_json::json!({ field: token })),
-            )
-                .into_response())
-        }
+        E::Invalid { field, token } => return Ok(super::field_error(field, &token)),
         E::NotPerson => detail(
             StatusCode::BAD_REQUEST,
             err_codes::VOICE_ID_NOT_PERSON,
@@ -141,13 +154,69 @@ async fn respond(
     }
 }
 
-async fn list(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/voice-id/profiles",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_list",
+    summary = "List the voice profiles of the organisation",
+    description = "Paginated voice identification profiles (`limit` default 10, max 100; `offset`), biometric data, consent-based, with their consent record, status and clips. Never the voice vector nor audio.",
+    params(PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::voice_id::VoiceProfileView>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn list(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    use crate::controllers::pagination;
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    // shortcut: views are built for the whole org then sliced (a handful of
+    // consented profiles per org); push LIMIT into the service if it grows.
     match profiles::list(&ctx.db, org.org.id).await {
-        Ok(v) => format::json(v),
+        Ok(v) => {
+            let count = v.len() as i64;
+            let (skip, take) = page.slice(v.len());
+            let rows: Vec<_> = v.into_iter().skip(skip).take(take).collect();
+            format::json(pagination::envelope(
+                "/api/v1/voice-id/profiles",
+                &[],
+                page,
+                count,
+                rows,
+            ))
+        }
         Err(e) => fail(e),
     }
 }
 
+/// Page parameters of the profiles list.
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/voice-id/profiles/{id}",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_get",
+    summary = "Get a voice profile",
+    description = "One voice profile with its clips; never the voice vector nor audio.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
+    responses(
+        (status = 200, body = pnex_core::voice_id::VoiceProfileView),
+        (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn show(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -160,6 +229,19 @@ async fn show(
 }
 
 /// The profile of a person, `null` when it has none.
+#[utoipa::path(
+    get,
+    path = "/api/v1/voice-id/by-object/{object_id}",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_get_by_object",
+    summary = "Get the voice profile of a person",
+    description = "The voice profile attached to a Person object, or `null` when the person has none.",
+    params(("object_id" = String, Path, format = "uuid", description = "Person object UUID")),
+    responses(
+        (status = 200, body = Option<pnex_core::voice_id::VoiceProfileView>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn by_object(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -172,6 +254,22 @@ async fn by_object(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/voice-id/profiles",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_create",
+    summary = "Create a voice profile for a person",
+    description = "Creates a `draft` voice profile on a Person object with a speaker embedding model. The person's explicit consent (date, scope, proof) is mandatory and must be confirmed; the caller is recorded as having registered it. Owner/admin only.",
+    request_body = pnex_core::voice_id::VoiceProfileInput,
+    responses(
+        (status = 201, body = pnex_core::voice_id::VoiceProfileView),
+        (status = 400, description = "`field-invalid` (consent, model), or object not a Person (`voice-id-not-person`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "The person already has a voice profile (`voice-id-profile-exists`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -184,6 +282,23 @@ async fn create(
     }
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/voice-id/profiles/{id}",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_update",
+    summary = "Change the embedding model of a voice profile",
+    description = "Sets another speaker embedding model; the profile goes back to `draft` and must be generated again. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
+    request_body = pnex_core::voice_id::VoiceProfilePatch,
+    responses(
+        (status = 200, body = pnex_core::voice_id::VoiceProfileView),
+        (status = 400, description = "`field-invalid` on `model_id`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -198,6 +313,21 @@ async fn update(
 }
 
 /// Consent revoked: profile, clips and their audio deleted.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/voice-id/profiles/{id}",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_delete",
+    summary = "Delete a voice profile (consent revoked)",
+    description = "Permanently deletes the profile, its clips and their stored audio. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn revoke(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -210,18 +340,40 @@ async fn revoke(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ClipQuery {
+    /// File name of the clip (its extension helps pick the decoder).
     name: String,
+    /// Content type of the clip.
     #[serde(default)]
     content_type: Option<String>,
     /// Span to enrol, in seconds into the recording (default: its start).
     #[serde(default)]
     start: u32,
+    /// Length to enrol, in seconds (clamped to the clip maximum).
     #[serde(default)]
     duration: Option<u32>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/voice-id/profiles/{id}/samples",
+    tag = "voice-id",
+    operation_id = "voice_id_samples_create",
+    summary = "Add an enrolment clip to a voice profile",
+    description = "Raw audio bytes (max 50 MB) of a recording of the person; the span `start`..`start+duration` is enrolled. The clip is stored as an `audio` media asset and its speech measured now; it is embedded at the next generation. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID"), ClipQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Audio file bytes"),
+    responses(
+        (status = 201, description = "The updated profile", body = pnex_core::voice_id::VoiceProfileView),
+        (status = 400, description = "Per-field error, or unreadable audio (`voice-id-audio-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "Not enough speech in the clip (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn add_sample(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -242,6 +394,21 @@ async fn add_sample(
     }
 }
 
+#[utoipa::path(
+    delete,
+    path = "/api/v1/voice-id/profiles/{id}/samples/{sample_id}",
+    tag = "voice-id",
+    operation_id = "voice_id_samples_delete",
+    summary = "Remove an enrolment clip from a voice profile",
+    description = "Deletes the clip and its stored audio. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID"), ("sample_id" = String, Path, format = "uuid", description = "Voice sample UUID")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown profile (`voice-id-profile-not-found`) or clip (`voice-id-sample-not-found`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn remove_sample(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -254,6 +421,23 @@ async fn remove_sample(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/voice-id/profiles/{id}/generate",
+    tag = "voice-id",
+    operation_id = "voice_id_profiles_generate",
+    summary = "Generate a voice profile from its clips",
+    description = "Computes speaker embeddings of every clip, builds the encrypted voice centroid and its acceptance threshold, and marks each clip used or rejected. Synchronous and compute-heavy. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
+    responses(
+        (status = 200, body = pnex_core::voice_id::VoiceProfileView),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "No valid speaker embedding model (`voice-id-no-model`) or not enough speech (`voice-id-not-enough-speech`, `errors.args.found`/`min_windows`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "Embedding computation failed (`voice-id-failed`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn generate(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -266,19 +450,43 @@ async fn generate(
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct TestQuery {
+    /// File name of the clip (its extension helps pick the decoder).
     name: String,
+    /// Content type of the clip.
     #[serde(default)]
     content_type: Option<String>,
     /// Verification against this person's profile.
     #[serde(default)]
+    #[param(value_type = Option<String>, format = "uuid")]
     object_id: Option<Uuid>,
     /// Identification among the ready profiles of this model.
     #[serde(default)]
+    #[param(value_type = Option<String>, format = "uuid")]
     model_id: Option<Uuid>,
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/voice-id/test",
+    tag = "voice-id",
+    operation_id = "voice_id_test",
+    summary = "Test an audio clip against voice profiles",
+    description = "Compares the uploaded audio (raw bytes, max 50 MB) with one person's profile (`object_id`, verification) or with every ready profile of a model (`model_id`, identification; default the newest valid model). The result is a proposal for a human, never written anywhere; the test itself is journaled. Writer role required.",
+    params(TestQuery),
+    request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "Audio file bytes"),
+    responses(
+        (status = 200, body = pnex_core::voice_id::VoiceTestResult),
+        (status = 400, description = "Unreadable audio (`voice-id-audio-unsupported`) or per-field error", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Person has no voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "No valid model (`voice-id-no-model`), no generated profile to compare (`voice-id-not-ready`) or not enough speech (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "Embedding computation failed (`voice-id-failed`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn test(
     State(ctx): State<AppContext>,
     org: OrgContext,

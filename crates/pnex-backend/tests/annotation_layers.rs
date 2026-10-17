@@ -394,7 +394,7 @@ async fn validation_doc_assets_et_devices() {
         doc["items"][1]["id"] = "a1".into();
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
         assert_eq!(res.status_code(), 400, "id duplique -> 400");
-        let codes: Vec<String> = res.json::<serde_json::Value>()["violations"]
+        let codes: Vec<String> = res.json::<serde_json::Value>()["errors"]["violations"]
             .as_array()
             .unwrap()
             .iter()
@@ -416,23 +416,18 @@ async fn validation_doc_assets_et_devices() {
         )
         .await;
         assert_eq!(res.status_code(), 400, "asset inconnu -> 400");
-        assert!(
-            res.json::<serde_json::Value>()["doc"]
-                .as_str()
-                .unwrap()
-                .contains("inconnu"),
-            "per-field doc message"
-        );
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["error"], "annotation-layer-invalid");
+        assert_eq!(body["errors"]["violations"][0]["code"], "unknown_asset");
 
         // Geometrie equirect sur un asset photo -> 400 kind panorama requis.
         let doc = doc_avec_items(&photo_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc.clone()).await;
         assert_eq!(res.status_code(), 400, "equirect sur photo -> 400");
+        let violation = &res.json::<serde_json::Value>()["errors"]["violations"][0];
+        assert_eq!(violation["code"], "asset_kind_mismatch");
         assert!(
-            res.json::<serde_json::Value>()["doc"]
-                .as_str()
-                .unwrap()
-                .contains("panorama"),
+            violation["message"].as_str().unwrap().contains("panorama"),
             "message kind panorama"
         );
 
@@ -447,13 +442,9 @@ async fn validation_doc_assets_et_devices() {
         )
         .await;
         assert_eq!(res.status_code(), 400, "device inconnu -> 400");
-        assert!(
-            res.json::<serde_json::Value>()["doc"]
-                .as_str()
-                .unwrap()
-                .contains("ghost"),
-            "message device inconnu"
-        );
+        let violation = &res.json::<serde_json::Value>()["errors"]["violations"][0];
+        assert_eq!(violation["code"], "unknown_device");
+        assert_eq!(violation["subject"], "ghost", "message device inconnu");
 
         // id non-UUID -> inconnu (pas de panic).
         let res = save_layer(

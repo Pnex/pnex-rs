@@ -25,13 +25,10 @@ use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::{org, session, toasts};
 
-fn current_role() -> Option<String> {
+fn current_role() -> Option<pnex_core::OrgRole> {
     let user = session::user()?;
     let org_id = org::current()?;
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .map(|m| m.role.clone())
+    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +53,7 @@ pub fn EdgeRefs() -> Element {
     let mut edit_host = use_signal(|| None::<Option<PnexHost>>);
     let mut delete_target = use_signal(|| None::<(&'static str, i64, String)>);
 
-    let can_write = current_role().is_some_and(|role| crate::state::org::role_can_write(&role));
+    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
 
     // Valeurs des signaux-modals lues AVANT le rsx (pas de `let` dans rsx).
     let wifi_modal = edit_wifi.read().clone();

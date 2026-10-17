@@ -80,13 +80,16 @@ impl ActionTriggerConfig {
 /// Invocation result, returned to the caller and journaled in the object
 /// provenance (`object_changes`, action `action.invoke`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ActionInvocation {
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub invocation_id: Uuid,
     /// Deployed flows holding a matching trigger at invocation time.
     pub flows: Vec<ActionListener>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ActionListener {
     pub flow_id: i64,
     pub flow_name: String,

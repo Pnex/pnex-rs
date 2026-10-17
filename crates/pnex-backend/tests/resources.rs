@@ -175,6 +175,10 @@ async fn labels_roundtrip_validation_et_isolation() {
             }))
             .await;
         assert_eq!(res.status_code(), 400);
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["labels"],
+            "invalid"
+        );
 
         // Isolation : bob ne voit pas les labels d'alice (404 masque)
         let res = server
@@ -317,6 +321,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         )
         .await;
         assert_eq!(res.status_code(), 400, "cycle refuse");
+        assert_eq!(res.json::<serde_json::Value>()["error"], "resource-cycle");
 
         // Parent unique : le média re-parenté de A → B (déplacement = 1 PUT).
         let res = jput(
@@ -678,12 +683,11 @@ async fn recherche_effective_cross_kind_et_folders() {
         .await;
 
         // Recherche cross-kind.
-        let res = jpost(
+        let res = jget(
             &server,
             &env.alice,
             org,
-            "/api/v1/resources/search",
-            serde_json::json!({"label": "site:serre"}),
+            "/api/v1/resources/search?label=site:serre",
         )
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
@@ -692,12 +696,11 @@ async fn recherche_effective_cross_kind_et_folders() {
         assert_eq!(body["count"], 2, "device + folder : {}", body);
 
         // Kinds filtrés : device uniquement.
-        let res = jpost(
+        let res = jget(
             &server,
             &env.alice,
             org,
-            "/api/v1/resources/search",
-            serde_json::json!({"label": "site:serre", "kinds": ["device"]}),
+            "/api/v1/resources/search?label=site:serre&kinds=device",
         )
         .await;
         let body: serde_json::Value = res.json();
@@ -1105,7 +1108,7 @@ async fn labels_batch_returns_a_page_and_stays_in_the_org() {
             &server,
             &env.alice,
             org,
-            "/api/v1/resources/labels/batch",
+            "/api/v1/resources/labels/query",
             serde_json::json!({"kind": "media_asset", "ids": [a, b]}),
         )
         .await
@@ -1120,7 +1123,7 @@ async fn labels_batch_returns_a_page_and_stays_in_the_org() {
             &server,
             &env.bob,
             bob_org,
-            "/api/v1/resources/labels/batch",
+            "/api/v1/resources/labels/query",
             serde_json::json!({"kind": "media_asset", "ids": [a]}),
         )
         .await
@@ -1130,7 +1133,7 @@ async fn labels_batch_returns_a_page_and_stays_in_the_org() {
             &server,
             &env.alice,
             org,
-            "/api/v1/resources/labels/batch",
+            "/api/v1/resources/labels/query",
             serde_json::json!({"kind": "nope", "ids": []}),
         )
         .await;
@@ -1164,7 +1167,7 @@ async fn labels_catalog_lists_org_names_and_values_only() {
             jget(&server, &env.alice, org, "/api/v1/resources/labels/catalog")
                 .await
                 .json();
-        let site = body["labels"]
+        let site = body["results"]
             .as_array()
             .unwrap()
             .iter()
@@ -1190,7 +1193,7 @@ async fn labels_catalog_lists_org_names_and_values_only() {
         )
         .await
         .json();
-        assert_eq!(body["labels"], serde_json::json!([]));
+        assert_eq!(body["results"], serde_json::json!([]));
     })
     .await;
 }
@@ -1286,12 +1289,11 @@ async fn label_only_kind_filter_search_and_purge() {
         )
         .await;
         assert!(res.status_code().is_success(), "{}", res.text());
-        let res = jpost(
+        let res = jget(
             &server,
             &env.alice,
             org,
-            "/api/v1/resources/search",
-            serde_json::json!({"label": "site:serre"}),
+            "/api/v1/resources/search?label=site:serre",
         )
         .await;
         assert_eq!(res.json::<serde_json::Value>()["count"], 0, "labels purged");

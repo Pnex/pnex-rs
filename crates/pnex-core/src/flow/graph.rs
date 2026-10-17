@@ -447,6 +447,7 @@ pub struct FlowNode {
 
 /// Violation de validation d'un graphe (rejetée en 400 par l'API).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowViolation {
     /// Nœud fautif, si la violation est localisée.
     pub node_id: Option<String>,
@@ -489,9 +490,13 @@ impl FlowViolation {
     }
 }
 
-/// Graphe d'un flow — c'est ce qui est stocké (JSONB) dans `flow_versions`.
+/// Graph of a flow, as stored (JSONB) in `flow_versions`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowGraph {
+    /// Nodes: `{id, name?, position?, outputs?, inputs?, kind, config?}`,
+    /// `kind` + `config` per node type (see the flow node docs).
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
     pub nodes: Vec<FlowNode>,
 }
 

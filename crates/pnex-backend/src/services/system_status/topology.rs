@@ -84,7 +84,7 @@ pub(super) async fn probe(ctx: &AppContext) -> ComponentStatus {
     let mut out = component("topology", OK);
     out.metrics.push(text_metric("cluster_runtime", runtime()));
     if !FlowSettings::from_config(&ctx.config).enabled {
-        out.status = NOT_CONFIGURED.into();
+        out.status = NOT_CONFIGURED;
         out.detail = Some("flow engine disabled (settings.flow.enabled = false)".into());
         return out;
     }
@@ -123,10 +123,10 @@ pub(super) async fn probe(ctx: &AppContext) -> ComponentStatus {
         out.metrics.push(m);
     }
     if flow_workers.is_empty() {
-        out.status = DEGRADED.into();
+        out.status = DEGRADED;
         out.detail = Some("no live flow worker: deployed flows are not running".into());
     } else if controller.is_none() {
-        out.status = DEGRADED.into();
+        out.status = DEGRADED;
         out.detail = Some("no placement controller holds the lease".into());
     }
     out

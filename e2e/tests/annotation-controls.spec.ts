@@ -80,13 +80,13 @@ test.describe('annotation controls', { tag: '@studio' }, () => {
       await expect
         .poll(
           async () => {
-            const res = await api.post('/memory/values', { refs: [{ key, field: '' }] });
+            const res = await api.post('/memory/values/query', { refs: [{ key, field: '' }] });
             return res.results[0]?.value ?? null;
           },
           { timeout: 30_000, message: `memory ${key}` },
         )
         .toBe(1);
-      const values = await api.post('/controls/values', { ids: [control.id] });
+      const values = await api.get(`/controls/values?ids=${control.id}`);
       expect(values.values[control.id].via).toBe(`annotation:${layer.id}`);
     } finally {
       await api.post(`/flows/${flow.id}/stop`, {}).catch(() => {});

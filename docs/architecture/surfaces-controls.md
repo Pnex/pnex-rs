@@ -81,7 +81,7 @@ C'est le pendant symétrique de la mémoire d'org :
 | Lot | Contenu | Garde |
 |---|---|---|
 | L1 core | `pnex_core::control` (`ControlKind`, `ControlSpec::accepts`, `ControlRef`), `format` / `sections` / `span`, widgets `switch`/`slider`/`button`/`number`/`sparkline`, `validate_layout` étendu | tests unitaires `pnex-core` |
-| L2 backend | migration `controls` (PG + SQLite, parité D120), CRUD `/api/v1/controls`, `POST …/value`, `POST /controls/values` (lecture groupée), Valkey SET + PUBLISH, droits, débit, événement O2, codes d'erreur + clés ftl | tests contrôleur + `error_codes.rs` |
+| L2 backend | migration `controls` (PG + SQLite, parité D120), CRUD `/api/v1/controls`, `POST …/value`, `GET /controls/values?ids=` (lecture groupée), Valkey SET + PUBLISH, droits, débit, événement O2, codes d'erreur + clés ftl | tests contrôleur + `error_codes.rs` |
 | L3 nœud | `pnex-control-source` (8 points de câblage, abonnement sur le modèle de camera-source), validation au deploy, 409 `control-in-use`, outil IA `describe_node_types` | e2e runtime : POST value → msg debug |
 | L4 front dashboards | choix PC/Mobile, éditeur composer mobile + rendu live, `components/surface/` (contrôles + lecture + sparkline), page Data > Contrôles | `i18n_guard`, build wasm |
 | L5 composer guidé | ajout depuis device/pin, « Créer le flow » (brouillon pré-câblé) | e2e Playwright : switch → LED réelle |

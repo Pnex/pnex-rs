@@ -32,6 +32,7 @@ pub fn valid_key(key: &str) -> bool {
 // `Value`) because an internally tagged enum carrying numbers breaks under
 // serde_json `arbitrary_precision`, unified on workspace builds.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PropertyKind {
     Text {
@@ -120,6 +121,7 @@ impl PropertyKind {
 
 /// A property of an object type (or an attribute of a link type).
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PropertyDef {
     pub key: String,
     #[serde(default)]

@@ -3,11 +3,30 @@ use crate::services::doc_search;
 
 // ─────────────── Document search (doc-search.md P1) ───────────────
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct SearchQuery {
     q: String,
     kind: Option<String>,
     k: Option<u64>,
+}
+
+/// Ranked search hits.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(super) struct MediaSearchHits {
+    hits: Vec<doc_search::Hit>,
+}
+
+/// A chunk and its neighbours, in document order.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(super) struct MediaChunks {
+    chunks: Vec<doc_search::ChunkText>,
+}
+
+/// Index state of the current version (`null` when never indexed).
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub(super) struct MediaIndexState {
+    index: Option<doc_search::IndexState>,
 }
 
 fn db_error(e: sea_orm::DbErr) -> Error {
@@ -17,6 +36,19 @@ fn db_error(e: sea_orm::DbErr) -> Error {
 
 /// `GET /api/v1/media/search?q=&kind=&k=` — lexical search over the
 /// current versions of the org's documents and tables.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/search",
+    tag = "media",
+    operation_id = "media_search",
+    summary = "Search the text of the organisation's documents",
+    description = "Lexical full-text search (with trigram fallback for near-miss codes) over the current versions of indexed documents and tables. Snippets mark matches between `⟦` and `⟧`.",
+    params(SearchQuery),
+    responses(
+        (status = 200, body = MediaSearchHits)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn search(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -26,16 +58,31 @@ pub(super) async fn search(
     let hits = doc_search::search(&ctx.db, org.org.id, &q.q, kind, q.k.unwrap_or(20))
         .await
         .map_err(db_error)?;
-    format::json(serde_json::json!({ "hits": hits }))
+    format::json(MediaSearchHits { hits })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct ChunkQuery {
     context: Option<u32>,
 }
 
 /// `GET /api/v1/media/chunks/{chunk_id}?context=` — a chunk and its
 /// neighbours (404 when absent or of another org).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/chunks/{chunk_id}",
+    tag = "media",
+    operation_id = "media_chunks_get",
+    summary = "Read an indexed text chunk with its neighbours",
+    description = "Returns the chunk and `context` neighbours on each side, in document order.",
+    params(("chunk_id" = String, Path, format = "uuid", description = "Chunk UUID (from a search hit)"), ChunkQuery),
+    responses(
+        (status = 200, body = MediaChunks),
+        (status = 404, description = "Unknown chunk or chunk of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn chunk(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -48,11 +95,25 @@ pub(super) async fn chunk(
     if chunks.is_empty() {
         return Err(Error::NotFound);
     }
-    format::json(serde_json::json!({ "chunks": chunks }))
+    format::json(MediaChunks { chunks })
 }
 
 /// `GET /api/v1/media/{id}/index` — index state of the current version
 /// (`null` when never indexed).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/index",
+    tag = "media",
+    operation_id = "media_index_get",
+    summary = "Get the search index state of a media asset",
+    description = "Index state of the current version; `index` is `null` when never indexed.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, body = MediaIndexState),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn index_state(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -64,10 +125,26 @@ pub(super) async fn index_state(
     let state = doc_search::state_of(&ctx.db, org.org.id, id)
         .await
         .map_err(db_error)?;
-    format::json(serde_json::json!({ "index": state }))
+    format::json(MediaIndexState { index: state })
 }
 
 /// `POST /api/v1/media/{id}/index` — (re)index the current version (F4).
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/{id}/index",
+    tag = "media",
+    operation_id = "media_index_rebuild",
+    summary = "Re-index a document for search",
+    description = "Queues text extraction and indexing of the current version (documents and tables only). Asynchronous: poll `GET /api/v1/media/{id}/index`. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 202, description = "Indexing queued"),
+        (status = 400, description = "Not a document or table, or no version (`media-index-not-a-document`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn reindex(
     State(ctx): State<AppContext>,
     org: OrgContext,

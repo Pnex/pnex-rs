@@ -33,14 +33,6 @@ fn forbidden(code: &str, msg: &str) -> Error {
     )
 }
 
-fn field_status(field: &str, msg: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        format::json(serde_json::json!({ field: msg })),
-    )
-        .into_response()
-}
-
 /// Template de l'org, sinon None (→ 404 masqué cross-org).
 async fn find_template(
     db: &DatabaseConnection,
@@ -77,22 +69,19 @@ fn validate_template(
 ) -> Option<Response> {
     let name = name.trim();
     if name.is_empty() {
-        return Some(field_status("name", err_codes::FIELD_REQUIRED));
+        return Some(super::field_error("name", err_codes::FIELD_REQUIRED));
     }
     if name.chars().count() > 255 {
-        return Some(field_status(
+        return Some(super::field_error(
             "name",
             &format!("{}:255", err_codes::FIELD_MAX_LENGTH),
         ));
     }
     if !pnex_core::VIZ_WIDGET_TYPES.contains(&kind) {
-        return Some(field_status("kind", "Type de widget inconnu."));
+        return Some(super::field_error("kind", err_codes::FIELD_INVALID));
     }
     if config.widget_type != kind {
-        return Some(field_status(
-            "kind",
-            "kind doit correspondre au type du widget dans config.",
-        ));
+        return Some(super::field_error("kind", err_codes::FIELD_INVALID));
     }
     let mut violations: Vec<VizViolation> = Vec::new();
     pnex_core::validate_widget(
@@ -114,13 +103,29 @@ fn validate_template(
     if violations.is_empty() {
         return None;
     }
-    Some(
-        (
-            StatusCode::BAD_REQUEST,
-            format::json(serde_json::json!({ "violations": violations })),
-        )
-            .into_response(),
-    )
+    Some(super::violations_error(
+        pnex_core::err_codes::WIDGET_INVALID,
+        violations,
+    ))
+}
+
+/// (org_id, name) is unique: a readable 400 rather than a unique-index 500.
+async fn name_taken(
+    db: &sea_orm::DatabaseConnection,
+    org_id: i64,
+    name: &str,
+    except: Option<Uuid>,
+) -> Result<bool> {
+    let mut q = VizWidgetLibraries::find()
+        .filter(viz_widget_library::Column::OrgId.eq(org_id))
+        .filter(viz_widget_library::Column::Name.eq(name.trim()));
+    if let Some(id) = except {
+        q = q.filter(viz_widget_library::Column::Id.ne(id));
+    }
+    Ok(q.one(db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .is_some())
 }
 
 pub fn routes() -> Routes {
@@ -130,16 +135,32 @@ pub fn routes() -> Routes {
         .add("/{id}", get(detail).patch(update).delete(delete))
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListWidgetsQuery {
+    /// Case-insensitive search on the template name.
     search: Option<String>,
+    /// Widget type filter.
     kind: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/viz/widgets` — templates de l'org (D14), filtres
 /// `search` (nom) et `kind`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/viz/widgets",
+    tag = "viz",
+    operation_id = "viz_widgets_list",
+    summary = "List the widget templates of the organisation",
+    description = "Widget library of the dashboard studio, newest first. Paginated (`limit`/`offset`), filters `search` (name) and `kind`. Any member.",
+    params(ListWidgetsQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::VizWidget>)),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -181,6 +202,20 @@ async fn list(
 }
 
 /// `GET /api/v1/viz/widgets/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/viz/widgets/{id}",
+    tag = "viz",
+    operation_id = "viz_widgets_get",
+    summary = "Get a widget template",
+    description = "Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Widget template id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::VizWidget),
+        (status = 404, description = "Unknown template (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -193,6 +228,21 @@ async fn detail(
 }
 
 /// `POST /api/v1/viz/widgets` — ajoute un template à la bibliothèque.
+#[utoipa::path(
+    post,
+    path = "/api/v1/viz/widgets",
+    tag = "viz",
+    operation_id = "viz_widgets_create",
+    summary = "Add a widget template to the library",
+    description = "The name must be unique in the org; `kind` must match `config.widget_type` and the config must be valid. Dashboards copy a template when it is dropped, so templates never affect existing dashboards. Requires a writer role.",
+    request_body = pnex_core::CreateVizWidget,
+    responses(
+        (status = 201, body = pnex_core::VizWidget),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name` `required`/`max_length:255`/`unique`, `kind` `invalid`) or `widget-invalid` (`errors.violations`: config violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -200,23 +250,15 @@ async fn create(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "viz-write-forbidden",
+            err_codes::VIZ_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage the widget library.",
         ));
     }
     if let Some(resp) = validate_template(&params.name, &params.kind, &params.config) {
         return Ok(resp);
     }
-    // Unicité (org_id, name) : 400 lisible plutôt que 500 d'index.
-    let clash = VizWidgetLibraries::find()
-        .filter(viz_widget_library::Column::OrgId.eq(org.org.id))
-        .filter(viz_widget_library::Column::Name.eq(params.name.trim()))
-        .one(&ctx.db)
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .is_some();
-    if clash {
-        return Ok(field_status("name", "Un template porte déjà ce nom."));
+    if name_taken(&ctx.db, org.org.id, &params.name, None).await? {
+        return Ok(super::field_error("name", err_codes::FIELD_UNIQUE));
     }
     let m = viz_widget_library::ActiveModel {
         org_id: Set(org.org.id),
@@ -233,6 +275,23 @@ async fn create(
 }
 
 /// `PATCH /api/v1/viz/widgets/{id}` — renomme et/ou remplace la config.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/viz/widgets/{id}",
+    tag = "viz",
+    operation_id = "viz_widgets_update",
+    summary = "Rename a widget template or replace its config",
+    description = "Absent fields keep their value; the kind cannot change. Not versioned: the template is overwritten, existing dashboards keep their copy. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Widget template id (UUID)")),
+    request_body = pnex_core::UpdateVizWidget,
+    responses(
+        (status = 200, body = pnex_core::VizWidget),
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name` `required`/`max_length:255`/`unique`, `kind` `invalid`) or `widget-invalid` (`errors.violations`: config violations)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown template (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn update(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -241,7 +300,7 @@ async fn update(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "viz-write-forbidden",
+            err_codes::VIZ_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage the widget library.",
         ));
     }
@@ -256,6 +315,9 @@ async fn update(
     if let Some(resp) = validate_template(&name, &m.kind, &config) {
         return Ok(resp);
     }
+    if name_taken(&ctx.db, org.org.id, &name, Some(m.id)).await? {
+        return Ok(super::field_error("name", err_codes::FIELD_UNIQUE));
+    }
     let mut active: viz_widget_library::ActiveModel = m.into();
     active.name = Set(name.trim().to_string());
     active.config = Set(serde_json::to_value(&config).map_err(|_| Error::InternalServerError)?);
@@ -268,6 +330,21 @@ async fn update(
 
 /// `DELETE /api/v1/viz/widgets/{id}` — 204. Les dashboards déjà composés
 /// gardent leur snapshot (aucune cascade métier).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/viz/widgets/{id}",
+    tag = "viz",
+    operation_id = "viz_widgets_delete",
+    summary = "Delete a widget template",
+    description = "Permanently deletes the template; dashboards that used it keep their copy. Requires a writer role.",
+    params(("id" = String, Path, format = "uuid", description = "Widget template id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown template (or another org's)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn delete(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -275,7 +352,7 @@ async fn delete(
 ) -> Result<Response> {
     if !org.can_write() {
         return Err(forbidden(
-            "viz-write-forbidden",
+            err_codes::VIZ_WRITE_FORBIDDEN,
             "Owner, admin or member role required to manage the widget library.",
         ));
     }
@@ -287,4 +364,12 @@ async fn delete(
         .await
         .map_err(|_| Error::InternalServerError)?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(list, detail, create, update, delete))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

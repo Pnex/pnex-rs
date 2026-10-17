@@ -65,7 +65,7 @@ export function customFirmwareTests(key: keyof typeof BOARDS): void {
     await expect.poll(() => latestBuild(api, FW_DEVICE), { timeout: 15 * 60_000, intervals: [5_000] }).toMatch(/succeeded|failed/);
     expect(await latestBuild(api, FW_DEVICE)).toBe('succeeded');
     const image = info.outputPath(`${FW_DEVICE}.bin`);
-    writeFileSync(image, await api.download(`/download/firmware/${FW_DEVICE}`));
+    writeFileSync(image, await api.download(`/download/firmware/${(await device(api, FW_DEVICE))!.id}`));
     await flashMerged(board, image);
 
     try {
@@ -80,7 +80,7 @@ export function customFirmwareTests(key: keyof typeof BOARDS): void {
     } finally {
       // 4. Back to the generic firmware already built for the board.
       const restore = info.outputPath(`${board.deviceId}.bin`);
-      writeFileSync(restore, await api.download(`/download/firmware/${board.deviceId}`));
+      writeFileSync(restore, await api.download(`/download/firmware/${(await device(api, board.deviceId))!.id}`));
       await flashMerged(board, restore);
       const fw = await device(api, FW_DEVICE);
       if (fw) await api.delete(`/devices/${fw.id}`);

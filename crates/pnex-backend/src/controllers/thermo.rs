@@ -1,14 +1,14 @@
-//! Endpoints thermodynamiques (pnex-coolprop in-process) :
+//! Thermodynamic endpoints (pnex-coolprop in-process):
 //!
-//! - `POST /api/v1/thermo/diagram` : polylines d'un diagramme (p-h / T-s /
-//!   psychrométrique) pour un fluide pur / prédéfini / mélange org
-//!   (résolu par nom) — cache en mémoire clé = hash(body + **spec résolue**)
-//!   ⇒ auto-invalidation à l'édition d'un mélange ;
-//! - `POST /api/v1/thermo/cycle-points` : états `(input_pair, v1, v2)` →
-//!   propriétés + coordonnées du diagramme cible.
+//! - `POST /api/v1/thermo/diagram/query`: polylines of a diagram (p-h, T-s,
+//!   psychrometric) for a pure / predefined fluid or an org mixture
+//!   (resolved by name); in-memory cache keyed by body + **resolved spec**,
+//!   so editing a mixture invalidates its entries;
+//! - `POST /api/v1/thermo/cycle-points/query`: states `(input_pair, v1,
+//!   v2)` to properties + coordinates on the target diagram.
 //!
-//! Les deux endpoints sont authentifiés org (header `X-Org-Id`) mais sans
-//! `can_write` (lecture) ; les mélanges nommés sont résolus dans l'org.
+//! Both are reads with a complex body (D242: `…/query`), org-authenticated
+//! without `can_write`; named mixtures are resolved in the caller's org.
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -65,30 +65,65 @@ fn cache_put(key: String, v: Arc<DiagramResult>) {
     c.0.insert(key, v);
 }
 
-/// Requête HTTP du diagramme : comme [`pnex_coolprop::DiagramRequest`] mais
-/// `fluid` peut être un nom de mélange org (résolu en spec inline).
-#[derive(Debug, Deserialize)]
+/// Diagram request: like [`pnex_coolprop::DiagramRequest`] but `fluid` may
+/// be the name of an org mixture (resolved to its inline spec).
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ThermoDiagramBody {
+    /// CoolProp fluid name, inline CoolProp spec (`HEOS::R32[0.5]&R125[0.5]`)
+    /// or the name of an org fluid mixture.
     fluid: String,
+    #[schema(value_type = DiagramKindSchema)]
     diagram: DiagramKind,
+    /// Axis range `{min, max}` in the diagram's SI units.
+    #[schema(value_type = Option<Object>)]
     x_range: Option<AxisRange>,
+    #[schema(value_type = Option<Object>)]
     y_range: Option<AxisRange>,
+    /// Isolines `[{param, values: [f64]}]` (CoolProp parameter name).
+    #[schema(value_type = Option<Vec<Object>>)]
     isolines: Option<Vec<IsolineSpec>>,
+    /// Samples per curve.
     n_points: Option<usize>,
+    /// Atmospheric pressure (Pa) of the psychrometric diagram.
     pressure: Option<f64>,
+}
+
+/// Diagram kind (schema mirror of `pnex_coolprop::DiagramKind`, which has
+/// no OpenAPI derive).
+#[derive(utoipa::ToSchema)]
+#[schema(as = ThermoDiagramKind)]
+#[allow(dead_code)]
+enum DiagramKindSchema {
+    /// log(p)-h: x = Hmass (J/kg), y = P (Pa).
+    #[schema(rename = "ph")]
+    Ph,
+    /// T-s: x = Smass (J/kg·K), y = T (K).
+    #[schema(rename = "ts")]
+    Ts,
+    /// Psychrometric: x = T (°C), y = W (kg water / kg dry air).
+    #[schema(rename = "psychro")]
+    Psychro,
 }
 
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/thermo")
-        .add("/diagram", post(diagram))
-        .add("/cycle-points", post(cycle))
+        .add("/diagram/query", post(diagram))
+        .add("/cycle-points/query", post(cycle))
         .add("/fluids", get(fluids))
 }
 
-/// Réponse de `GET /api/v1/thermo/fluids` — deux listes pour le picker :
-/// mélanges nommés de l'org + fluides CoolProp disponibles.
-#[derive(Debug, serde::Serialize)]
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(diagram, cycle, fluids))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+/// Answer of `GET /api/v1/thermo/fluids`: the two picker lists, named
+/// mixtures of the org + fluids known to CoolProp.
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
 pub struct ThermoFluids {
     pub mixtures: Vec<String>,
     pub fluids: Vec<String>,
@@ -100,6 +135,19 @@ pub struct ThermoFluids {
 /// `GET /api/v1/thermo/fluids` — plus de saisie libre du fluide : l'org
 /// fournit ses mélanges, CoolProp ses fluides (retour utilisateur
 /// 2026-09-18 : « l'utilisateur doit deviner les fluides »).
+#[utoipa::path(
+    get,
+    path = "/api/v1/thermo/fluids",
+    tag = "thermo",
+    operation_id = "thermo_fluids",
+    summary = "List the fluids usable in thermodynamic diagrams",
+    description = "Returns the org's named fluid mixtures (with their resolved CoolProp spec) and the pure fluids known to CoolProp. Read-only, any org member.",
+    responses(
+        (status = 200, body = ThermoFluids),
+        (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn fluids(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
     let rows = FluidMixtures::find()
         .filter(fluid_mixtures::Column::OrgId.eq(org.org.id))
@@ -128,8 +176,22 @@ async fn fluids(State(ctx): State<AppContext>, org: OrgContext) -> Result<Respon
     .into_response())
 }
 
-/// Résout `fluid` : spec inline (`[`/`&`) → telle quelle ; sinon nom de
-/// mélange de l'org → spec ; sinon nom de fluide CoolProp → telle quelle.
+/// Most cycle points in one query.
+const MAX_CYCLE_POINTS: usize = 64;
+
+/// 400 `coolprop-error`: CoolProp's message travels verbatim in
+/// `args.detail` (and the description).
+fn coolprop_error(detail: &str) -> Error {
+    crate::controllers::coded_error(
+        StatusCode::BAD_REQUEST,
+        pnex_core::err_codes::COOLPROP_ERROR,
+        format!("CoolProp error: {detail}"),
+        Some(serde_json::json!({ "detail": detail })),
+    )
+}
+
+/// Resolves `fluid`: inline spec (`[`/`&`) as is; else an org mixture name
+/// to its spec; else a CoolProp fluid name as is.
 async fn resolve_fluid(db: &DatabaseConnection, org: &OrgContext, fluid: &str) -> Result<String> {
     if fluid.contains('[') || fluid.contains('&') {
         return Ok(fluid.to_string());
@@ -150,7 +212,22 @@ async fn resolve_fluid(db: &DatabaseConnection, org: &OrgContext, fluid: &str) -
     Ok(fluid.to_string())
 }
 
-/// `POST /api/v1/thermo/diagram` — polylines du diagramme (cache).
+/// `POST /api/v1/thermo/diagram/query`: diagram polylines (cached).
+#[utoipa::path(
+    post,
+    path = "/api/v1/thermo/diagram/query",
+    tag = "thermo",
+    operation_id = "thermo_diagram",
+    summary = "Compute a thermodynamic diagram",
+    description = "Computes the polylines of a p-h, T-s or psychrometric diagram (saturation dome + requested isolines) for a pure fluid, an inline CoolProp spec or an org mixture name. Read-only, no side effect; results are cached in memory keyed by request + resolved spec.",
+    request_body = ThermoDiagramBody,
+    responses(
+        (status = 200, description = "Diagram result: `polylines` (curves in SI units) plus `x`/`y` axis metadata", body = serde_json::Value),
+        (status = 400, description = "`coolprop-error`: CoolProp rejected the fluid or the ranges (`args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn diagram(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -166,7 +243,7 @@ async fn diagram(
         n_points: body.n_points,
         pressure: body.pressure,
     };
-    // Clé de cache : body canonique + spec résolue.
+    // Cache key: canonical body + resolved spec.
     let key = format!(
         "{}|{}",
         serde_json::to_string(&req).unwrap_or_default(),
@@ -179,39 +256,62 @@ async fn diagram(
     // under the per-pod CoolProp cap (503 server-busy when saturated).
     let result = crate::services::compute_limits::run_coolprop(move || compute_diagram(&req))
         .await?
-        .map_err(|e| {
-            Error::CustomError(
-                StatusCode::BAD_REQUEST,
-                loco_rs::controller::ErrorDetail::new("coolprop_error", e.0),
-            )
-        })?;
+        .map_err(|e| coolprop_error(&e.0))?;
     let result = Arc::new(result);
     cache_put(key, result.clone());
     Ok(format::json(&*result).into_response())
 }
 
-/// Corps de cycle-points.
-#[derive(Debug, Deserialize)]
+/// Body of the cycle-points query.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ThermoCycleBody {
+    /// Same resolution as the diagram `fluid`.
     fluid: String,
+    #[schema(value_type = DiagramKindSchema)]
     diagram: DiagramKind,
+    /// At most 64 points `{label, input_pair, v1, v2}`; `input_pair`
+    /// is a CoolProp pair name such as `PT_INPUTS`.
+    #[schema(value_type = Vec<Object>)]
     points: Vec<pnex_coolprop::CyclePointInput>,
     pressure: Option<f64>,
 }
 
-/// `POST /api/v1/thermo/cycle-points` — états → propriétés + coordonnées.
+/// Computed cycle states, one per input point.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct ThermoCyclePoints {
+    /// Properties + diagram coordinates of each input state, input order.
+    #[schema(value_type = Vec<Object>)]
+    points: Vec<pnex_coolprop::CyclePointOutput>,
+}
+
+/// `POST /api/v1/thermo/cycle-points/query`: states to properties +
+/// coordinates.
+#[utoipa::path(
+    post,
+    path = "/api/v1/thermo/cycle-points/query",
+    tag = "thermo",
+    operation_id = "thermo_cycle_points",
+    summary = "Compute the states of a thermodynamic cycle",
+    description = "For each input state (CoolProp input pair + two values) returns its properties and its coordinates on the target diagram. At most 64 points. Read-only, no side effect.",
+    request_body = ThermoCycleBody,
+    responses(
+        (status = 200, description = "One computed point per input (properties + diagram coordinates)", body = ThermoCyclePoints),
+        (status = 400, description = "`thermo-too-many-points` (`args.max`) or `coolprop-error` (`args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn cycle(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Json(body): Json<ThermoCycleBody>,
 ) -> Result<Response> {
-    if body.points.len() > 64 {
-        return Err(Error::CustomError(
+    if body.points.len() > MAX_CYCLE_POINTS {
+        return Err(crate::controllers::coded_error(
             StatusCode::BAD_REQUEST,
-            loco_rs::controller::ErrorDetail::new(
-                "too_many_points",
-                "au plus 64 points de cycle par requête".to_string(),
-            ),
+            pnex_core::err_codes::THERMO_TOO_MANY_POINTS,
+            format!("at most {MAX_CYCLE_POINTS} cycle points per request"),
+            Some(serde_json::json!({ "max": MAX_CYCLE_POINTS.to_string() })),
         ));
     }
     let spec = resolve_fluid(&ctx.db, &org, &body.fluid).await?;
@@ -220,11 +320,6 @@ async fn cycle(
         cycle_points(&spec, diagram, &input, pressure)
     })
     .await?
-    .map_err(|e| {
-        Error::CustomError(
-            StatusCode::BAD_REQUEST,
-            loco_rs::controller::ErrorDetail::new("coolprop_error", e.0),
-        )
-    })?;
-    Ok(format::json(points).into_response())
+    .map_err(|e| coolprop_error(&e.0))?;
+    Ok(format::json(ThermoCyclePoints { points }).into_response())
 }

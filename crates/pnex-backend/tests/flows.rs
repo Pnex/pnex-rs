@@ -324,7 +324,7 @@ async fn validation_rejette_graphe_invalide() {
             .await;
         assert_eq!(bad_graph.status_code(), 400, "{}", bad_graph.text());
         let body = bad_graph.json::<serde_json::Value>();
-        let codes: Vec<&str> = body["violations"]
+        let codes: Vec<&str> = body["errors"]["violations"]
             .as_array()
             .unwrap()
             .iter()
@@ -403,8 +403,9 @@ async fn deploy_sans_moteur_repond_503() {
             .await;
         assert_eq!(res.status_code(), 503, "{}", res.text());
         let body = res.json::<serde_json::Value>();
-        // Corps Loco CustomError : {"error": code, "description": message}.
-        assert_eq!(body["error"], "flow_runtime", "{body}");
+        // Coded error, the engine diagnostic in `args.detail`.
+        assert_eq!(body["error"], "flow-runtime", "{body}");
+        assert!(body["errors"]["args"]["detail"].is_string(), "{body}");
     })
     .await;
 }
@@ -616,7 +617,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .await;
         assert_eq!(rejected.status_code(), 400, "{}", rejected.text());
         let body = rejected.json::<serde_json::Value>();
-        let violations = body["violations"].as_array().expect("violations");
+        let violations = body["errors"]["violations"].as_array().expect("violations");
         assert_eq!(violations.len(), 1, "{body}");
         assert_eq!(violations[0]["code"], "engine_load", "{body}");
         assert!(

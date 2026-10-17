@@ -92,3 +92,78 @@ pub(crate) fn coded_error(
         },
     )
 }
+
+/// `field-invalid` answer (D239): `errors.fields = {"<field>": "<token>"}`,
+/// machine tokens (`required`, `max_length:255`…).
+pub(crate) fn fields_error(
+    status: axum::http::StatusCode,
+    fields: serde_json::Map<String, serde_json::Value>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let body = loco_rs::controller::ErrorDetail {
+        error: Some(pnex_core::err_codes::FIELD_INVALID_BODY.to_string()),
+        description: Some("one or more fields are invalid".to_string()),
+        errors: Some(serde_json::json!({ "fields": fields })),
+    };
+    (status, axum::Json(body)).into_response()
+}
+
+/// Single-field `field-invalid` 400.
+pub(crate) fn field_error(field: &str, token: &str) -> axum::response::Response {
+    let mut fields = serde_json::Map::new();
+    fields.insert(field.to_string(), token.into());
+    fields_error(axum::http::StatusCode::BAD_REQUEST, fields)
+}
+
+/// Document violations 400 (D239): `code` names the document kind
+/// (`flow-invalid`, `dashboard-invalid`…), `errors.violations` the list.
+pub(crate) fn violations_error(
+    code: &str,
+    violations: impl serde::Serialize,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let body = loco_rs::controller::ErrorDetail {
+        error: Some(code.to_string()),
+        description: Some("the document is invalid".to_string()),
+        errors: Some(serde_json::json!({ "violations": violations })),
+    };
+    (axum::http::StatusCode::BAD_REQUEST, axum::Json(body)).into_response()
+}
+
+/// Axum extractor rejections (unreadable JSON body, unknown enum value,
+/// bad query or path) answer `text/plain`: rewrite them into the
+/// contract's `ErrorDetail` (D239) with code `request-invalid`, the
+/// rejection text as description.
+pub(crate) async fn rejection_to_error_detail(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{header::CONTENT_TYPE, StatusCode};
+    use axum::response::IntoResponse;
+    let res = next.run(req).await;
+    let rejection_status = [
+        StatusCode::BAD_REQUEST,
+        StatusCode::PAYLOAD_TOO_LARGE,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        StatusCode::UNPROCESSABLE_ENTITY,
+    ]
+    .contains(&res.status());
+    let plain = res
+        .headers()
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/plain"));
+    if !(rejection_status && plain) {
+        return res;
+    }
+    let status = res.status();
+    let text = axum::body::to_bytes(res.into_body(), 16 * 1024)
+        .await
+        .unwrap_or_default();
+    let body = loco_rs::controller::ErrorDetail {
+        error: Some(pnex_core::err_codes::REQUEST_INVALID.to_string()),
+        description: Some(String::from_utf8_lossy(&text).into_owned()),
+        errors: None,
+    };
+    (status, axum::Json(body)).into_response()
+}

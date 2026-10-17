@@ -195,6 +195,55 @@ async fn cycle_upload_list_detail_versions() {
         assert_eq!(updated["current_version_number"], 2);
         assert_eq!(updated["versions_count"], 2);
 
+        // Versions are a D14 page (D240).
+        let page: serde_json::Value = server
+            .get(&format!("/api/v1/media/{asset_id}/versions?limit=1"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json();
+        assert_eq!(page["count"], 2, "{page}");
+        assert_eq!(page["results"][0]["version_number"], 1, "{page}");
+        assert!(page["next"].is_string(), "{page}");
+
+        // Field errors are machine tokens under `errors.fields` (D239).
+        let res = upload(&server, &env.alice, org, "?filename=x.jpg", Vec::new()).await;
+        assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
+        assert_eq!(body["errors"]["fields"]["filename"], "required");
+        let res = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=x.jpg&kind=nope",
+            plain_jpeg(),
+        )
+        .await;
+        assert_eq!(res.status_code(), 400);
+        assert_eq!(
+            res.json::<serde_json::Value>()["errors"]["fields"]["kind"],
+            "invalid"
+        );
+        let res = upload(
+            &server,
+            &env.alice,
+            org,
+            "?filename=x.jpg&kind=mesh",
+            plain_jpeg(),
+        )
+        .await;
+        assert_eq!(
+            res.status_code(),
+            400,
+            "a JPEG is not a mesh: {}",
+            res.text()
+        );
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            "media-format-unsupported"
+        );
+
         // Restore v1.
         let res = server
             .post(&format!("/api/v1/media/{asset_id}/versions/1/restore"))

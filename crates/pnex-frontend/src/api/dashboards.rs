@@ -112,14 +112,9 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/dashboards/{id}/versions` — historique append-only.
+/// `GET /api/v1/dashboards/{id}/versions` (all pages): append-only history.
 pub async fn versions(id: &str) -> Result<Vec<VizDashboardVersion>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/dashboards/{id}/versions"),
-        None,
-    )
-    .await
+    client::request_all(&format!("/api/v1/dashboards/{id}/versions")).await
 }
 
 /// `GET /api/v1/dashboards/{id}/versions/{n}` — layout d'une version.
@@ -171,14 +166,9 @@ impl WidgetLibraryFilters {
     }
 }
 
-/// `GET /api/v1/viz/widgets` — templates de l'org.
-pub async fn widgets(filters: &WidgetLibraryFilters) -> Result<Paginated<VizWidget>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!("/api/v1/viz/widgets{}", filters.to_query()),
-        None,
-    )
-    .await
+/// `GET /api/v1/viz/widgets` (all pages): templates of the org library.
+pub async fn widgets(filters: &WidgetLibraryFilters) -> Result<Vec<VizWidget>, ApiError> {
+    client::request_all(&format!("/api/v1/viz/widgets{}", filters.to_query())).await
 }
 
 /// `POST /api/v1/viz/widgets` — ajoute un template à la bibliothèque.
@@ -205,26 +195,26 @@ pub async fn delete_widget(id: &str) -> Result<(), ApiError> {
 
 // ─────────────────────────── Télémétrie batch (D31) ───────────────────────────
 
-/// `POST /api/v1/telemetry/series-batch` — toutes les sources d'un
+/// `POST /api/v1/telemetry/series/query` — toutes les sources d'un
 /// dashboard en un appel (un timer 15 s au lieu de N, D31) ; dégradation
 /// **par item** (`available: false`), jamais d'échec global.
 pub async fn series_batch(body: SeriesBatchRequest) -> Result<SeriesBatchResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/telemetry/series-batch",
+        "/api/v1/telemetry/series/query",
         Some(serde_json::to_value(body).unwrap_or_default()),
     )
     .await
 }
 
-/// `POST /api/v1/telemetry/aggregate` (D182) — one value per time range or
+/// `POST /api/v1/telemetry/aggregate/query` (D182) — one value per time range or
 /// time-of-day slice; `available: false` when O2 is out of reach.
 pub async fn aggregate(
     body: &pnex_core::aggregate::AggregateRequest,
 ) -> Result<pnex_core::aggregate::AggregateResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
-        "/api/v1/telemetry/aggregate",
+        "/api/v1/telemetry/aggregate/query",
         Some(serde_json::to_value(body).unwrap_or_default()),
     )
     .await

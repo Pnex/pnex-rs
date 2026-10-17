@@ -39,8 +39,8 @@ test.describe('vision lab loop', { tag: ['@lab'] }, () => {
     await capture('lab-video-import', { caption: 'Vision Lab: pictures taken from an uploaded video' });
     await dialog.getByRole('button', { name: app.t('lab-rec-import') }).click();
 
-    await expect.poll(async () => (await api.get(`/lab/projects/${project.id}/images`)).length).toBe(5);
-    const images: { id: string; frame_ms: number; version: number }[] = await api.get(
+    await expect.poll(async () => (await api.list(`/lab/projects/${project.id}/images`)).length).toBe(5);
+    const images: { id: string; frame_ms: number; version: number }[] = await api.list(
       `/lab/projects/${project.id}/images`,
     );
     images.sort((a, b) => a.frame_ms - b.frame_ms);
@@ -78,10 +78,10 @@ test.describe('vision lab loop', { tag: ['@lab'] }, () => {
       );
       ids.push(up.id);
     }
-    const added: { id: string; version: number }[] = await api.post(`/lab/projects/${project.id}/images`, {
+    const added: { images: { id: string; version: number }[] } = await api.post(`/lab/projects/${project.id}/images`, {
       asset_ids: ids,
     });
-    for (const img of added) {
+    for (const img of added.images) {
       await api.put(`/lab/images/${img.id}/annotations`, {
         boxes: [{ class: 0, bbox: [0.3, 0.4, 0.4, 0.2] }],
         split: 'train',

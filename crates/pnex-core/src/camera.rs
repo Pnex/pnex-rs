@@ -89,6 +89,7 @@ impl FrameHeader {
 
 /// OV2640 resolutions exposed to users (subset of `framesize_t`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum FrameSize {
     Qvga,
@@ -146,6 +147,7 @@ impl FrameSize {
 
 /// Who asks the device to capture (D76).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CaptureMode {
     /// Streams only while a live viewer is connected (+ grace delay).
@@ -179,6 +181,7 @@ pub const FPS_MAX: u8 = 25;
 
 /// Per-device capture settings (API DTO, `device_cameras` row).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CameraSettings {
     pub framesize: FrameSize,
     pub quality: u8,
@@ -224,6 +227,7 @@ impl CameraSettings {
 
 /// Camera list item (`GET /api/v1/cameras`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CameraView {
     /// `device_registries.id`.
     pub device: i64,
@@ -277,7 +281,9 @@ pub struct BusFrameMeta {
 
 /// Recorded video segment (`video_segments` row, API DTO).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct VideoSegment {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     /// `device_registries.id`; 0 for a recording of an IP stream.
     pub device: i64,
@@ -285,19 +291,23 @@ pub struct VideoSegment {
     pub device_id: String,
     /// `media_streams.id` of an IP stream recording (D175).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub stream_id: Option<String>,
     pub stream: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flow_id: Option<i64>,
     pub node_id: String,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub started_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub ended_at: String,
     pub frame_count: i32,
     pub size_bytes: i64,
     pub width: i32,
     pub height: i32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub expires_at: Option<String>,
 }
 
@@ -317,6 +327,7 @@ pub const CHAIN_TOLERANCE_MS: i64 = 1000;
 /// order, overlapping ones included (the player/export chain them with
 /// [`playback_chain`]).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RecordingTimeline {
     pub segments: Vec<VideoSegment>,
     /// Sum of `size_bytes` of the returned segments.
@@ -335,6 +346,7 @@ pub const ANNOTATIONS_MAX: i64 = 5000;
 
 /// Detections of one analysed frame, drawn over the recording at playback.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FrameAnnotation {
     /// Layer (detection node) the boxes come from.
     #[serde(default)]
@@ -345,6 +357,15 @@ pub struct FrameAnnotation {
     pub width: u32,
     pub height: u32,
     pub detections: Vec<crate::vision::Detection>,
+}
+
+/// Detection boxes of a camera over a window
+/// (`GET /api/v1/cameras/{device}/recordings/annotations`), sorted by
+/// `ts_ms`, at most [`ANNOTATIONS_MAX`].
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FrameAnnotations {
+    pub annotations: Vec<FrameAnnotation>,
 }
 
 /// Batch posted by a detection node (`POST /internal/flow/video-annotations`).
@@ -370,6 +391,7 @@ pub fn layer_id_of(flow_id: i64, node_id: &str) -> String {
 /// Annotation layer available for a camera over a window
 /// (`GET /api/v1/cameras/{device}/recordings/layers`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AnnotationLayer {
     pub id: String,
     pub name: String,

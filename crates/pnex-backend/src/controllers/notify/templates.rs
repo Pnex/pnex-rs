@@ -19,6 +19,20 @@ fn template_write_response(e: TemplateWriteError) -> Result<Response> {
 }
 
 /// `GET /api/v1/notify/templates`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/notify/templates",
+    tag = "notify",
+    operation_id = "notify_templates_list",
+    summary = "List the notification templates of the organisation",
+    description = "Paginated, newest first. Templates are minijinja subject/body pairs with declared variables.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::NotifyTemplate>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list_templates(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -68,6 +82,20 @@ pub(super) async fn list_templates(
 }
 
 /// `GET /api/v1/notify/templates/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/notify/templates/{id}",
+    tag = "notify",
+    operation_id = "notify_templates_get",
+    summary = "Get a notification template",
+    description = "One template of the organisation; 404 when it does not exist or belongs to another organisation.",
+    params(("id" = String, Path, format = "uuid", description = "Template id")),
+    responses(
+        (status = 200, body = pnex_core::NotifyTemplate),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn template_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -80,6 +108,22 @@ pub(super) async fn template_detail(
 }
 
 /// `POST /api/v1/notify/templates`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/notify/templates",
+    tag = "notify",
+    operation_id = "notify_templates_create",
+    summary = "Create a notification template",
+    description = "Creates a minijinja template (optional subject, body, declared variables). The template must render with its declared examples. Requires owner, admin or member role. Names are unique per organisation (409).",
+    request_body = crate::services::notify_templates::TemplateInput,
+    responses(
+        (status = 201, body = pnex_core::NotifyTemplate),
+        (status = 400, description = "`field-invalid` or `notify-template-render` (template does not render, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`notify-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`notify-template-name-conflict`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn create_template(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -99,6 +143,24 @@ pub(super) async fn create_template(
 }
 
 /// `PUT /api/v1/notify/templates/{id}`.
+#[utoipa::path(
+    put,
+    path = "/api/v1/notify/templates/{id}",
+    tag = "notify",
+    operation_id = "notify_templates_update",
+    summary = "Replace a notification template",
+    description = "Edits the template in place. Deployed flows keep the snapshot taken at deploy: redeploy them to use the change. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Template id")),
+    request_body = crate::services::notify_templates::TemplateInput,
+    responses(
+        (status = 200, body = pnex_core::NotifyTemplate),
+        (status = 400, description = "`field-invalid` or `notify-template-render` (template does not render, `args.detail`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`notify-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`notify-template-name-conflict`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update_template(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -124,6 +186,21 @@ pub(super) async fn update_template(
 /// `DELETE /api/v1/notify/templates/{id}` — 204 ; les flows déployés
 /// gardent leur snapshot (re-déployer pour propager, école « save ≠
 /// déployé ») et le journal reste immuable (template_id sans FK).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/notify/templates/{id}",
+    tag = "notify",
+    operation_id = "notify_templates_delete",
+    summary = "Delete a notification template",
+    description = "Deletes the template. Deployed flows keep their snapshot until redeployed; the journal is unchanged. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Template id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete_template(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -145,7 +222,7 @@ pub(super) async fn delete_template(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
 pub(super) struct PreviewBody {
     #[serde(default)]
     vars: std::collections::BTreeMap<String, String>,
@@ -158,6 +235,22 @@ pub(super) struct PreviewBody {
 /// Body en `Bytes` parsé à la main (même école que le test de canal : un
 /// `Option<Json<T>>` casse sur les headers Content-Type injectés/dupliqués
 /// des clients de test).
+#[utoipa::path(
+    post,
+    path = "/api/v1/notify/templates/{id}/preview",
+    tag = "notify",
+    operation_id = "notify_templates_preview",
+    summary = "Render a notification template without sending",
+    description = "Renders the template with the given `vars` (missing ones take their declared example) and sample `payload` as the message context. Never sends anything. Body optional. Any role.",
+    params(("id" = String, Path, format = "uuid", description = "Template id")),
+    request_body(content = PreviewBody, description = "Optional; an empty body uses the declared examples"),
+    responses(
+        (status = 200, body = pnex_core::PreviewResult),
+        (status = 400, description = "`notify-template-render` or `notify-test-body-invalid`", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn preview_template(
     State(ctx): State<AppContext>,
     org: OrgContext,

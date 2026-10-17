@@ -224,9 +224,11 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         // Predefined inconnu → 400 champ-par-champ.
         let res = create_device(&server, &env.alice, org, "esp-x", "inconnu").await;
         assert_eq!(res.status_code(), 400);
+        let body: serde_json::Value = res.json();
+        assert_eq!(body["error"], "field-invalid");
         assert_eq!(
-            res.json::<serde_json::Value>()["predefined_device_name"],
-            "PredefinedDevice with name inconnu does not exist."
+            body["errors"]["fields"]["predefined_device_name"],
+            "not-found"
         );
     })
     .await;
@@ -476,7 +478,7 @@ async fn isolation_tenant_et_roles() {
             .json();
         assert!(owner["device_token"]["token"].is_string(), "{owner}");
         let res = server
-            .get("/api/v1/download/firmware/esp-001")
+            .get(&format!("/api/v1/download/firmware/{alice_device}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", alice_org.to_string())
             .await;

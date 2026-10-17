@@ -28,6 +28,7 @@ pub const TEXT_FIELD_MAX: usize = 128;
 
 /// One topic of a taxonomy version.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Topic {
     /// Stable slug `[a-z0-9_]{1,48}`: what flows and series carry.
     pub id: String,
@@ -40,24 +41,30 @@ pub struct Topic {
 
 /// One append-only version of a taxonomy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TaxonomyVersion {
     pub version: i32,
     pub topics: Vec<Topic>,
     #[serde(default)]
     pub note: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
 }
 
 /// A taxonomy with its current version (absent before the first one).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Taxonomy {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub id: String,
     pub name: String,
     #[serde(default)]
     pub description: String,
     /// 0 = no version yet.
     pub current_version: i32,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current: Option<TaxonomyVersion>,
@@ -65,6 +72,7 @@ pub struct Taxonomy {
 
 /// Create / update body of a taxonomy; absent fields keep their value.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TaxonomyInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -75,6 +83,7 @@ pub struct TaxonomyInput {
 /// Body of a new version: written on top of `expected_version` (optimistic
 /// concurrency, 409 `taxonomy-version-conflict` otherwise).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TaxonomyVersionInput {
     pub topics: Vec<Topic>,
     #[serde(default)]

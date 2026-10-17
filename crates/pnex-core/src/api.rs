@@ -1,34 +1,149 @@
-//! DTO de l'API `/api/v1` — source unique partagée backend ↔ frontend.
-//!
-//! Ces types reflètent les payloads des contrôleurs Phase 3 (proxy OAuth2,
-//! user-info, orgs) et du `PATCH /api/v1/profile`. Les dates arrivent en
-//! chaînes RFC 3339 (sérialisation SeaORM) — pas de chrono ici, le core
-//! reste dépendance-free (serde uniquement).
-//!
-//! Rôles : strings minuscules (« owner », « admin », « viewer ») — convention
-//! API (les enums SeaORM générés sérialisent en Capitalized, on mappe côté
-//! backend via `role_str`/`RoleParam`).
+//! DTOs of the `/api/v1` API, the single source shared by backend and
+//! frontend. Timestamps travel as RFC 3339 strings (no chrono here, the core
+//! stays serde-only). Closed sets (roles, theme, deployment mode...) are
+//! lowercase enums on the wire.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Réponse du proxy OAuth2 (`/oauth2/token`, `/oauth2/refresh`) — relay de
-/// Keycloak (champs du grant flow standard).
+/// Role of a user in an org (D2, D117). Lowercase on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OrgRole {
+    Owner,
+    Admin,
+    Member,
+    Viewer,
+}
+
+impl OrgRole {
+    pub const ALL: [OrgRole; 4] = [Self::Owner, Self::Admin, Self::Member, Self::Viewer];
+
+    /// Wire form (`owner`, `admin`, `member`, `viewer`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Admin => "admin",
+            Self::Member => "member",
+            Self::Viewer => "viewer",
+        }
+    }
+
+    /// Parses the wire form; `None` for anything else.
+    pub fn parse(value: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|r| r.as_str() == value)
+    }
+
+    /// Content writes (flows, devices, dashboards...): owner, admin, member.
+    pub fn can_write(self) -> bool {
+        !matches!(self, Self::Viewer)
+    }
+
+    /// Org governance (members, vault, telemetry deletion): owner or admin.
+    pub fn can_administer(self) -> bool {
+        matches!(self, Self::Owner | Self::Admin)
+    }
+}
+
+/// UI theme of a user profile. Lowercase on the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum UiTheme {
+    #[default]
+    Light,
+    Dark,
+    Auto,
+}
+
+impl UiTheme {
+    /// Wire form (`light`, `dark`, `auto`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::Auto => "auto",
+        }
+    }
+}
+
+/// Deployment mode of the server (`PNEX_DEPLOYMENT_MODE`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum DeploymentMode {
+    #[default]
+    SelfHosted,
+    Saas,
+}
+
+impl DeploymentMode {
+    /// Wire form (`self_hosted`, `saas`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SelfHosted => "self_hosted",
+            Self::Saas => "saas",
+        }
+    }
+}
+
+/// Origin of an effective telemetry retention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RetentionSource {
+    /// Per-org override set by a platform admin.
+    Override,
+    /// Platform default (self-hosted).
+    Global,
+    /// Subscription tier (SaaS).
+    Tier,
+    /// Server environment fallback.
+    Env,
+}
+
+impl RetentionSource {
+    /// Wire form (`override`, `global`, `tier`, `env`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Override => "override",
+            Self::Global => "global",
+            Self::Tier => "tier",
+            Self::Env => "env",
+        }
+    }
+}
+
+/// Token response of the OAuth2 proxy, relayed from the identity provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Token response of the OAuth2 proxy (`/oauth2/token`, `/oauth2/refresh`), relayed from the identity provider."
+    )
+)]
 pub struct TokenResponse {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_in: i64,
     pub token_type: String,
-    /// Émis avec `scope=openid` — requis pour l'end-session Keycloak
-    /// (`id_token_hint`).
+    /// Issued with `scope=openid`; needed for the end-session call (`id_token_hint`).
     #[serde(default)]
     pub id_token: Option<String>,
 }
 
-/// `GET /api/v1/user-info` — identité + profil + orgs + comptage devices.
+/// `GET /api/v1/user-info`: identity, profile, orgs and device count.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "`GET /api/v1/user-info`: identity, profile, org memberships and device count."
+    )
+)]
 pub struct UserInfo {
     pub id: i64,
     pub username: String,
@@ -44,44 +159,54 @@ pub struct UserInfo {
     /// Platform administrator (D72): infra status + global retention.
     #[serde(default)]
     pub platform_admin: bool,
-    /// `self_hosted` | `saas` (`PNEX_DEPLOYMENT_MODE`).
-    #[serde(default = "default_deployment_mode")]
-    pub deployment_mode: String,
+    /// Deployment mode of the server (`PNEX_DEPLOYMENT_MODE`).
+    #[serde(default)]
+    pub deployment_mode: DeploymentMode,
 }
 
-fn default_deployment_mode() -> String {
-    "self_hosted".to_string()
-}
-
-/// Bloc `profile` de `user-info` (préférences utilisateur).
+/// `profile` block of user-info (user preferences).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "User preferences (`profile` block of user-info, body of `PATCH /api/v1/profile` answers)."
+    )
+)]
 pub struct UserProfile {
     pub language: String,
     pub timezone: String,
     #[serde(default)]
     pub date_format: Option<String>,
-    /// « Light » / « Dark » / « Auto » côté storage (enum SeaORM Capitalized) ;
-    /// minuscules en entrée du PATCH.
-    pub theme: String,
+    pub theme: UiTheme,
     #[serde(default)]
     pub preferences: Option<serde_json::Value>,
     #[serde(default)]
     pub grafana_url: Option<String>,
 }
 
-/// Appartenance org d'un utilisateur, telle que renvoyée par `user-info`.
+/// Org membership of a user, as returned by user-info.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Org membership of the user as returned by user-info.")
+)]
 pub struct OrgMembership {
     pub id: i64,
     pub name: String,
-    /// « owner » | « admin » | « viewer ».
-    pub role: String,
+    pub role: OrgRole,
     #[serde(default)]
     pub subscription_tier: Option<TierInfo>,
 }
 
-/// Tier d'abonnement d'une org (quotas).
+/// Subscription tier of an org (quotas).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Subscription tier of an org (device quotas).")
+)]
 pub struct TierInfo {
     pub name: String,
     pub max_sensor_devices: i64,
@@ -89,8 +214,13 @@ pub struct TierInfo {
     pub max_mixed_devices: i64,
 }
 
-/// Comptage devices agrégé sur les orgs de l'utilisateur.
+/// Device count aggregated over the orgs of the user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Device count aggregated over the orgs of the user.")
+)]
 pub struct DeviceCount {
     pub total: u64,
     pub active: u64,
@@ -98,49 +228,68 @@ pub struct DeviceCount {
     pub by_type: HashMap<String, u64>,
 }
 
-/// `GET /api/v1/orgs` — orgs dont je suis membre.
-/// `PartialEq` requis par les props des composants du socle CRUD (macro
-/// `#[component]` dioxus 0.7 — impl généré par champ).
+/// `GET /api/v1/orgs` row: an org the caller is a member of. `PartialEq`
+/// is required by the CRUD component props.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "An org the user is a member of.")
+)]
 pub struct OrgSummary {
     pub id: i64,
     pub name: String,
-    /// « owner » | « admin » | « viewer ».
-    pub role: String,
+    pub role: OrgRole,
     #[serde(default)]
     pub subscription_tier: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: Option<String>,
 }
 
-/// `GET /api/v1/orgs/{id}` — détail avec membres.
+/// `GET /api/v1/orgs/{id}`: detail with members.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Org detail with its members.")
+)]
 pub struct OrgDetail {
     pub id: i64,
     pub name: String,
     #[serde(default)]
     pub subscription_tier_id: Option<i64>,
-    /// Rôle de l'utilisateur courant dans cette org.
-    pub role: String,
+    /// Role of the caller in this org.
+    pub role: OrgRole,
     pub members: Vec<OrgMember>,
 }
 
-/// Membre d'une organisation.
+/// Member of an organisation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Member of an organisation.")
+)]
 pub struct OrgMember {
     pub user_id: i64,
     #[serde(default)]
     pub email: Option<String>,
     #[serde(default)]
     pub full_name: Option<String>,
-    /// « owner » | « admin » | « viewer ».
-    pub role: String,
+    pub role: OrgRole,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: Option<String>,
 }
 
-/// Corps du `PATCH /api/v1/profile` — champs optionnels, formulé par le front.
+/// Body of `PATCH /api/v1/profile`: optional fields.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Body of `PATCH /api/v1/profile`: only the provided fields change.")
+)]
 pub struct ProfilePatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
@@ -152,37 +301,57 @@ pub struct ProfilePatch {
     pub theme: Option<String>,
 }
 
-/// Corps du `POST /api/v1/orgs`.
+/// Body of `POST /api/v1/orgs`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Body of `POST /api/v1/orgs`.")
+)]
 pub struct CreateOrg {
     pub name: String,
 }
 
-/// Corps du `PATCH /api/v1/orgs/{id}`.
+/// Body of `PATCH /api/v1/orgs/{id}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Body of `PATCH /api/v1/orgs/{id}`.")
+)]
 pub struct UpdateOrg {
     pub name: String,
 }
 
-/// Corps du `POST /api/v1/orgs/{id}/members`.
+/// Body of `POST /api/v1/orgs/{id}/members`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Body of `POST /api/v1/orgs/{id}/members`.")
+)]
 pub struct AddMember {
     pub email: String,
-    /// « owner » | « admin » | « viewer » (défaut « viewer » côté API).
-    pub role: Option<String>,
+    /// Default `viewer`.
+    pub role: Option<OrgRole>,
 }
 
-/// Corps du `PATCH /api/v1/orgs/{id}/members/{user_id}`.
+/// Body of `PATCH /api/v1/orgs/{id}/members/{user_id}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Body of `PATCH /api/v1/orgs/{id}/members/{user_id}`.")
+)]
 pub struct UpdateMember {
-    /// « owner » | « admin » | « viewer ».
-    pub role: String,
+    pub role: OrgRole,
 }
 
 // ─────────────────────────── Assistant IA ───────────────────────────
 
 /// `GET /api/v1/ai/status` — assistant state (drives the UI visibility).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiStatus {
     pub enabled: bool,
     /// The org has a default provider (users bring their own LLM).
@@ -200,11 +369,12 @@ pub struct AiStatus {
 /// `GET /api/v1/ai/providers`. The API key is a vault reference, never a
 /// value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmProvider {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: uuid::Uuid,
     pub name: String,
-    /// `anthropic` | `openai_compat`.
-    pub kind: String,
+    pub kind: LlmProviderKind,
     #[serde(default)]
     pub base_url: Option<String>,
     pub model: String,
@@ -218,12 +388,44 @@ pub struct LlmProvider {
     /// Usages this provider serves instead of the default (D212).
     #[serde(default)]
     pub usages: Vec<LlmUsage>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
+}
+
+/// LLM protocol of a provider.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum LlmProviderKind {
+    #[default]
+    Anthropic,
+    /// Any OpenAI-compatible chat completions endpoint.
+    OpenaiCompat,
+}
+
+impl LlmProviderKind {
+    /// Wire and stored value.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Anthropic => "anthropic",
+            Self::OpenaiCompat => "openai_compat",
+        }
+    }
+
+    /// From the wire or stored value; unknown values read as `anthropic`.
+    pub fn parse(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("openai_compat") {
+            Self::OpenaiCompat
+        } else {
+            Self::Anthropic
+        }
+    }
 }
 
 /// What an LLM call is for (D212): each usage may run on its own provider,
 /// so the assistant and the flows never have to share one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmUsage {
     /// The in-app assistant.
@@ -249,9 +451,10 @@ impl LlmUsage {
 /// Create / update body of a provider. `api_key: None` keeps the current
 /// key on update.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmProviderInput {
     pub name: String,
-    pub kind: String,
+    pub kind: LlmProviderKind,
     #[serde(default)]
     pub base_url: Option<String>,
     pub model: String,
@@ -266,6 +469,7 @@ pub struct LlmProviderInput {
 
 /// `POST …/providers/{id}/test` — one-shot ping of a provider.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LlmProviderTest {
     pub ok: bool,
     #[serde(default)]
@@ -285,8 +489,9 @@ pub struct LlmProviderTest {
     pub args: Option<serde_json::Value>,
 }
 
-/// Contexte de page (route courante + entité ouverte).
+/// Page the user is on when asking (current route and opened entity).
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiPageContext {
     #[serde(default)]
     pub page: Option<String>,
@@ -296,14 +501,15 @@ pub struct AiPageContext {
     pub device_id: Option<i64>,
 }
 
-/// Trace d'outil renvoyée au front (bulle repliable ✓/✗ + deep-link flow).
+/// Trace of one tool call shown in the chat (collapsible bubble, deep link to the flow).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiToolTrace {
     pub name: String,
     pub arguments: serde_json::Value,
     pub ok: bool,
     pub summary: String,
-    /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
+    /// Flow the tool touched: drives the "Open in the editor" button.
     #[serde(default)]
     pub flow_id: Option<i64>,
     /// Fluent key of a successful call's summary (`ai-trace-*`), rendered
@@ -322,29 +528,42 @@ pub struct AiToolTrace {
 /// One conversation of the current user in the current org (D145); list
 /// rows never carry messages nor tool traces.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiConversation {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
     pub id: uuid::Uuid,
     pub title: String,
-    /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_message_at: String,
 }
 
 /// One stored message of a conversation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiMessage {
     pub seq: i32,
-    /// `user` | `assistant`.
-    pub role: String,
+    pub role: AiRole,
     pub content: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_trace: Vec<AiToolTrace>,
-    /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+}
+
+/// Author of a stored assistant message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AiRole {
+    User,
+    Assistant,
 }
 
 /// `GET /api/v1/ai/conversations/{id}` — resume a conversation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiConversationDetail {
     pub conversation: AiConversation,
     pub messages: Vec<AiMessage>,
@@ -352,6 +571,7 @@ pub struct AiConversationDetail {
 
 /// `POST /api/v1/ai/conversations` (title optional) and `PATCH` (rename).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiConversationWrite {
     #[serde(default)]
     pub title: Option<String>,
@@ -360,6 +580,7 @@ pub struct AiConversationWrite {
 /// `POST /api/v1/ai/conversations/{id}/messages` — only the new message:
 /// the history is rebuilt by the server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiSendMessage {
     pub content: String,
     #[serde(default)]
@@ -370,6 +591,7 @@ pub struct AiSendMessage {
 
 /// Answer of one agent turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiTurnResponse {
     pub answer: String,
     pub tool_trace: Vec<AiToolTrace>,
@@ -380,6 +602,7 @@ pub struct AiTurnResponse {
 /// `GET /api/v1/ai/retention` — how long inactive assistant conversations
 /// are kept in the current org (D145).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiRetention {
     /// Effective value (days): the org value, at most the platform one.
     pub days: u32,
@@ -398,8 +621,9 @@ pub struct AiRetention {
 
 /// `GET /api/v1/ai/conversations/export` — portability export.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct AiConversationsExport {
-    /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub exported_at: String,
     pub conversations: Vec<AiConversationDetail>,
 }
@@ -440,7 +664,7 @@ mod tests {
                           "role": "viewer", "created_at": null }]
         }"#;
         let detail: OrgDetail = serde_json::from_str(detail).unwrap();
-        assert_eq!(detail.members[0].role, "viewer");
+        assert_eq!(detail.members[0].role, OrgRole::Viewer);
     }
 
     #[test]
@@ -458,16 +682,16 @@ mod tests {
 
 /// `GET /api/v1/system/retention` — effective O2 retention of the org.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RetentionInfo {
     /// Effective retention in days (always >= 1, the O2 minimum).
     pub days: u32,
-    /// `override` | `global` | `tier` | `env` — where `days` comes from.
-    pub source: String,
+    /// Where `days` comes from.
+    pub source: RetentionSource,
     /// The raw value was below 1 day and has been raised to 1.
     #[serde(default)]
     pub clamped: bool,
-    /// `self_hosted` | `saas`.
-    pub deployment_mode: String,
+    pub deployment_mode: DeploymentMode,
     /// Per-org override (days), if any.
     #[serde(default)]
     pub org_override_days: Option<u32>,
@@ -486,6 +710,7 @@ pub struct RetentionInfo {
 
 /// `PUT /api/v1/system/retention/{org,default}` — `None` clears the value.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct RetentionUpdate {
     #[serde(default)]
     pub days: Option<u32>,
@@ -493,6 +718,7 @@ pub struct RetentionUpdate {
 
 /// One O2 metrics stream of the org (`GET /api/v1/system/o2/streams`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct O2StreamInfo {
     pub name: String,
     #[serde(default)]
@@ -504,8 +730,10 @@ pub struct O2StreamInfo {
     pub compressed_bytes: Option<u64>,
     /// RFC 3339 bounds of the stored data.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub time_min: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub time_max: Option<String>,
     /// Retention applied on the stream (0 = O2 instance default).
     pub retention_days: i64,
@@ -513,6 +741,7 @@ pub struct O2StreamInfo {
 
 /// `GET /api/v1/system/o2/streams` — streams + O2 availability.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct O2StreamList {
     /// O2 configured on the server.
     pub configured: bool,
@@ -534,6 +763,7 @@ pub struct O2StreamList {
 /// One organization in the platform-admin overview
 /// (`GET /api/v1/system/orgs`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OrgSystemRow {
     pub org_id: i64,
     pub name: String,
@@ -543,7 +773,7 @@ pub struct OrgSystemRow {
     pub tier_name: Option<String>,
     /// Effective retention (days) and its source.
     pub retention_days: u32,
-    pub retention_source: String,
+    pub retention_source: RetentionSource,
     #[serde(default)]
     pub org_override_days: Option<u32>,
     /// O2 space created (first telemetry ingested).
@@ -561,6 +791,7 @@ pub struct OrgSystemRow {
 /// `GET /api/v1/system/tiers` — subscription tiers an org can be put on
 /// (platform admin).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct TierOption {
     pub id: i64,
     pub name: String,
@@ -569,6 +800,7 @@ pub struct TierOption {
 /// `PUT /api/v1/system/orgs/{id}/tier` — platform admin; `None` removes
 /// the tier (no quota).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct OrgTierUpdate {
     #[serde(default)]
     pub tier_id: Option<i64>,
@@ -576,19 +808,24 @@ pub struct OrgTierUpdate {
 
 /// `POST /api/v1/system/o2/purge` — typed confirmation (org name).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct O2PurgeRequest {
     pub confirm: String,
 }
 
 /// `POST /api/v1/system/o2/streams/{name}/delete-range` — RFC 3339 bounds.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct O2DeleteRangeRequest {
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub start: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub end: String,
 }
 
 /// Result of an O2 deletion (stream, purge or range).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct O2DeleteResult {
     /// Streams deleted (stream/purge) or targeted (range).
     #[serde(default)]
@@ -598,18 +835,55 @@ pub struct O2DeleteResult {
     pub scheduled: bool,
     /// Effective bounds after alignment on full hours (range only).
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub start: Option<String>,
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub end: Option<String>,
+}
+
+/// Health state of a platform component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ComponentState {
+    Ok,
+    Degraded,
+    Down,
+    NotConfigured,
+}
+
+impl ComponentState {
+    /// Wire form (`ok`, `degraded`, `down`, `not_configured`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Degraded => "degraded",
+            Self::Down => "down",
+            Self::NotConfigured => "not_configured",
+        }
+    }
+}
+
+/// Unit of a status metric; the UI formats the value by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum MetricUnit {
+    Bytes,
+    Count,
+    Percent,
+    Seconds,
+    Text,
 }
 
 /// Health of one platform component (`GET /api/v1/system/status`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ComponentStatus {
     /// Stable machine key (`database`, `rauthy`, `openobserve`, ...).
     pub key: String,
-    /// `ok` | `degraded` | `down` | `not_configured`.
-    pub status: String,
+    pub status: ComponentState,
     #[serde(default)]
     pub latency_ms: Option<u64>,
     /// Runtime diagnostic, verbatim (English, not translated).
@@ -621,11 +895,11 @@ pub struct ComponentStatus {
 
 /// A labelled measure; the UI formats it by `unit`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct StatusMetric {
     /// Machine key, resolved by the UI to `system-metric-<key>`.
     pub key: String,
-    /// `bytes` | `count` | `percent` | `seconds` | `text`.
-    pub unit: String,
+    pub unit: MetricUnit,
     #[serde(default)]
     pub value: Option<f64>,
     #[serde(default)]
@@ -640,10 +914,12 @@ pub struct StatusMetric {
 
 /// `GET /api/v1/system/status` — platform-wide status (platform admin).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SystemStatus {
     pub server_version: String,
-    pub deployment_mode: String,
+    pub deployment_mode: DeploymentMode,
     /// RFC 3339 generation time.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub generated_at: String,
     #[serde(default)]
     pub components: Vec<ComponentStatus>,

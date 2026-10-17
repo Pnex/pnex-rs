@@ -900,10 +900,7 @@ async fn handle_announce(
                             &ServerMsg::OtaAvailable {
                                 cmd_id: cmd_id.clone(),
                                 version: row.target_version.clone(),
-                                url: format!(
-                                    "/api/v1/ota/firmware/{}/{}",
-                                    snap.device_id, row.target_version
-                                ),
+                                url: format!("/api/v1/ota/firmware/{}", row.target_version),
                                 sha256: row.sha256.clone(),
                                 size: row.size_bytes.map(|s| s as u64),
                                 sig,

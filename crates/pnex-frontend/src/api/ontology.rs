@@ -1,9 +1,9 @@
 //! Ontology API (ontology.md D176–D191): `/api/v1/ontology/*`.
 
 use pnex_core::ontology::api::{
-    ChangeView, LinkClose, LinkInput, LinkTypeView, LinkView, Neighborhood, ObjectInput, ObjectRef,
-    ObjectTypeInput, ObjectTypeVersionView, ObjectTypeView, ObjectView, OntologyQuery, PackView,
-    QueryResult, SeriesView,
+    ChangeView, LinkClose, LinkInput, LinkTypeView, LinkView, Neighborhood, ObjectImpact,
+    ObjectInput, ObjectPath, ObjectRef, ObjectTypeInput, ObjectTypeVersionView, ObjectTypeView,
+    ObjectView, OntologyQuery, PackView, QueryResult, SeriesView,
 };
 use pnex_core::ontology::LinkTypeDef;
 use reqwest::Method;
@@ -19,7 +19,7 @@ fn body<T: serde::Serialize>(input: &T) -> Option<serde_json::Value> {
 const BASE: &str = "/api/v1/ontology";
 
 pub async fn types() -> Result<Vec<ObjectTypeView>, ApiError> {
-    client::request(Method::GET, &format!("{BASE}/types"), None).await
+    client::request_all(&format!("{BASE}/types")).await
 }
 
 pub async fn create_type(input: &ObjectTypeInput) -> Result<ObjectTypeView, ApiError> {
@@ -46,16 +46,11 @@ pub async fn delete_type(key: &str) -> Result<Option<()>, ApiError> {
 }
 
 pub async fn type_versions(key: &str) -> Result<Vec<ObjectTypeVersionView>, ApiError> {
-    client::request(
-        Method::GET,
-        &format!("{BASE}/types/{}/versions", urlencode(key)),
-        None,
-    )
-    .await
+    client::request_all(&format!("{BASE}/types/{}/versions", urlencode(key))).await
 }
 
 pub async fn link_types() -> Result<Vec<LinkTypeView>, ApiError> {
-    client::request(Method::GET, &format!("{BASE}/link-types"), None).await
+    client::request_all(&format!("{BASE}/link-types")).await
 }
 
 pub async fn create_link_type(def: &LinkTypeDef) -> Result<LinkTypeView, ApiError> {
@@ -130,7 +125,7 @@ pub async fn object_links(
     if let Some(t) = as_of {
         path.push_str(&format!("&as_of={}", urlencode(t)));
     }
-    client::request(Method::GET, &path, None).await
+    client::request_all(&path).await
 }
 
 pub async fn graph(id: &str, depth: u32) -> Result<Neighborhood, ApiError> {
@@ -144,21 +139,23 @@ pub async fn graph(id: &str, depth: u32) -> Result<Neighborhood, ApiError> {
 
 /// Shortest chain of links between two objects (both directions, bounded).
 pub async fn path(from: &str, to: &str) -> Result<Vec<ObjectRef>, ApiError> {
-    client::request(
+    let found: ObjectPath = client::request(
         Method::GET,
         &format!("{BASE}/path?from={from}&to={to}"),
         None,
     )
-    .await
+    .await?;
+    Ok(found.path)
 }
 
 pub async fn impact(id: &str, upstream: bool) -> Result<Vec<ObjectRef>, ApiError> {
-    client::request(
+    let found: ObjectImpact = client::request(
         Method::GET,
         &format!("{BASE}/objects/{id}/impact?upstream={upstream}"),
         None,
     )
-    .await
+    .await?;
+    Ok(found.objects)
 }
 
 pub async fn series(id: &str, property: &str, window: &str) -> Result<SeriesView, ApiError> {
@@ -176,17 +173,31 @@ pub async fn series(id: &str, property: &str, window: &str) -> Result<SeriesView
 
 /// Current sensor of each bound series property (type dashboards, D187).
 pub async fn bindings(id: &str) -> Result<Vec<pnex_core::SeriesBinding>, ApiError> {
-    client::request(Method::GET, &format!("{BASE}/objects/{id}/bindings"), None).await
+    client::request_all(&format!("{BASE}/objects/{id}/bindings")).await
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+/// History of an object; `available` = false when the server answers
+/// `ontology-changes-unavailable` (the change journal cannot be read).
+#[derive(Debug, Clone, PartialEq)]
 pub struct Changes {
     pub available: bool,
     pub changes: Vec<ChangeView>,
 }
 
 pub async fn changes(id: &str) -> Result<Changes, ApiError> {
-    client::request(Method::GET, &format!("{BASE}/objects/{id}/changes"), None).await
+    match client::request_all(&format!("{BASE}/objects/{id}/changes")).await {
+        Ok(changes) => Ok(Changes {
+            available: true,
+            changes,
+        }),
+        Err(e) if e.code.as_deref() == Some(pnex_core::err_codes::ONTOLOGY_CHANGES_UNAVAILABLE) => {
+            Ok(Changes {
+                available: false,
+                changes: Vec::new(),
+            })
+        }
+        Err(e) => Err(e),
+    }
 }
 
 pub async fn create_link(input: &LinkInput) -> Result<LinkView, ApiError> {
@@ -203,7 +214,7 @@ pub async fn close_link(id: i64, close: &LinkClose) -> Result<LinkView, ApiError
 }
 
 pub async fn packs() -> Result<Vec<PackView>, ApiError> {
-    client::request(Method::GET, &format!("{BASE}/packs"), None).await
+    client::request_all(&format!("{BASE}/packs")).await
 }
 
 pub async fn install_pack(key: &str) -> Result<PackView, ApiError> {

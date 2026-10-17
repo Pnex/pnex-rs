@@ -225,8 +225,9 @@ pub enum CommandOutcome {
     /// Commande envoyée (contient `flow_impacts` quand un set_mode a arrêté
     /// des flows déployés).
     Sent(serde_json::Value),
-    /// 409 `pin-flow-conflict` : flows déployés touchés, arrêt à confirmer.
-    Conflict { flows: Vec<(i64, String)> },
+    /// 409 `pin-flow-conflict`: deployed flows affected, stop to confirm
+    /// (flow names).
+    Conflict { flows: Vec<String> },
 }
 
 pub async fn command(device_pk: i64, cmd: Command) -> Result<CommandOutcome, ApiError> {
@@ -243,22 +244,15 @@ pub async fn command(device_pk: i64, cmd: Command) -> Result<CommandOutcome, Api
             "unexpected empty response",
             None,
         )),
-        Err(e) if e.status == Some(409) => {
-            let flows: Vec<(i64, String)> = e
-                .body
+        Err(e) if e.code.as_deref() == Some(pnex_core::err_codes::PIN_FLOW_CONFLICT) => {
+            // shortcut: names come joined by ", " in `errors.args.flows`; a
+            // flow name containing ", " splits in two, harmless for display.
+            let flows: Vec<String> = e
+                .args
                 .as_ref()
-                .and_then(|b| b.get("flows"))
-                .and_then(|f| f.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|x| {
-                            Some((
-                                x.get("flow_id")?.as_i64()?,
-                                x.get("name")?.as_str()?.to_string(),
-                            ))
-                        })
-                        .collect()
-                })
+                .and_then(|a| a.get("flows"))
+                .and_then(|f| f.as_str())
+                .map(|f| f.split(", ").map(str::to_string).collect())
                 .unwrap_or_default();
             if flows.is_empty() {
                 return Err(e);

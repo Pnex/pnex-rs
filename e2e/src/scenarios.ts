@@ -47,7 +47,7 @@ export async function deployMemoryFlow(
   await expect
     .poll(
       async () => {
-        const res = await api.post('/memory/values', { refs: [{ key: opts.key, field: opts.field }] });
+        const res = await api.post('/memory/values/query', { refs: [{ key: opts.key, field: opts.field }] });
         return res.results[0]?.value ?? null;
       },
       { timeout: 30_000, message: `memory ${opts.key}#${opts.field}` },

@@ -2,18 +2,32 @@ use super::*;
 
 // ─────────────────────── Catalogue global ───────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct CapabilityQuery {
-    /// input | output | input_output (autre valeur → liste vide).
+    /// `input` | `output` | `input_output` (other value = empty list).
     mode: Option<String>,
-    /// Recherche OU sur le nom.
+    /// Case-insensitive match on the name.
     search: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
-/// `GET /api/v1/device-capabilities` — catalogue, authentifié. Table de
-/// référence bornée : le filtre `mode` reste en Rust, puis découpage.
+/// `GET /api/v1/device-capabilities`: catalogue, authenticated. Bounded
+/// reference table: the `mode` filter runs in Rust, then the page is cut.
+#[utoipa::path(
+    get,
+    path = "/api/v1/device-capabilities",
+    tag = "devices",
+    operation_id = "device_capabilities_list",
+    summary = "Global catalogue of device capabilities",
+    description = "Paginated. `mode` is input, output or input_output.",
+    params(CapabilityQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::DeviceCapability>)),
+    security(("bearer" = []))
+)]
 pub(super) async fn capabilities(
     State(ctx): State<AppContext>,
     _auth: AuthUser,
@@ -36,7 +50,7 @@ pub(super) async fn capabilities(
         .map(|c| pnex_core::DeviceCapability {
             id: c.id,
             name: c.name,
-            mode: capability_mode_str(c.mode).to_string(),
+            mode: capability_mode(c.mode),
         })
         .collect();
     let count = caps.len() as i64;
@@ -57,7 +71,7 @@ pub(super) async fn capabilities(
     ))
 }
 
-/// Query-string en map multi-valeurs (`capabilities=a&capabilities=b`).
+/// Query string as a multi-value map (`capabilities=a&capabilities=b`).
 fn raw_query_map(raw: Option<&str>) -> HashMap<String, Vec<String>> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
     if let Some(q) = raw {
@@ -68,14 +82,30 @@ fn raw_query_map(raw: Option<&str>) -> HashMap<String, Vec<String>> {
     map
 }
 
-/// `GET /api/v1/predefined-devices` — catalogue global, authentifié,
-/// **paginé en SQL** (D14) : count + LIMIT/OFFSET côté base, hydration
-/// (noms type/board, capacités) limitée à la seule page renvoyée.
-///
-/// Filtres : `capabilities` (répétable, OU — sous-requête M2M), `board`,
-/// `device_type`, `name`/`pretty_name` (icontains via ILIKE), `revision`
-/// (exact), `search` (OU multi-champs : nom, pretty, description, type,
-/// board, capacités — ILIKE).
+/// `GET /api/v1/predefined-devices`: global catalogue, authenticated,
+/// **paginated in SQL** (D14): count + LIMIT/OFFSET in base, hydration
+/// (type/board names, capabilities) of the returned page only.
+#[utoipa::path(
+    get,
+    path = "/api/v1/predefined-devices",
+    tag = "devices",
+    operation_id = "predefined_devices_list",
+    summary = "Global catalogue of device models",
+    description = "Paginated. Text filters are case-insensitive; `search` matches name, pretty name, description, type, board and capabilities.",
+    params(
+        ("capabilities" = Option<Vec<String>>, Query, description = "Repeatable; matches models carrying any of them"),
+        ("board" = Option<String>, Query),
+        ("device_type" = Option<String>, Query),
+        ("name" = Option<String>, Query, description = "Case-insensitive contains"),
+        ("pretty_name" = Option<String>, Query, description = "Case-insensitive contains"),
+        ("revision" = Option<String>, Query, description = "Exact"),
+        ("search" = Option<String>, Query),
+        ("limit" = Option<i64>, Query),
+        ("offset" = Option<i64>, Query)
+    ),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::PredefinedDevice>)),
+    security(("bearer" = []))
+)]
 pub(super) async fn predefined_list(
     State(ctx): State<AppContext>,
     _auth: AuthUser,

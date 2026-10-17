@@ -1,13 +1,18 @@
 use super::*;
 
-/// Mode de capacité tel qu'exposé dans l'API (l'enum SeaORM générée
-/// sérialise en Capitalized, on mappe — cf. `role_str` dans orgs).
-pub fn capability_mode_str(mode: CapabilityMode) -> &'static str {
+/// Capability mode as exposed by the API (the generated SeaORM enum
+/// serializes Capitalized, hence the mapping).
+pub fn capability_mode(mode: CapabilityMode) -> pnex_core::catalog::CapabilityMode {
     match mode {
-        CapabilityMode::Input => "input",
-        CapabilityMode::Output => "output",
-        CapabilityMode::InputOutput => "input_output",
+        CapabilityMode::Input => pnex_core::catalog::CapabilityMode::Input,
+        CapabilityMode::Output => pnex_core::catalog::CapabilityMode::Output,
+        CapabilityMode::InputOutput => pnex_core::catalog::CapabilityMode::InputOutput,
     }
+}
+
+/// Wire name of a capability mode (`input`, `output`, `input_output`).
+pub fn capability_mode_str(mode: CapabilityMode) -> &'static str {
+    capability_mode(mode).name()
 }
 
 /// Noms des mesures découvertes (clés du JSONB) si le dynamic est autorisé.
@@ -79,7 +84,10 @@ pub(super) fn latest_builds_by_device(
 pub(super) fn latest_build_dto(record: build_records::Model) -> pnex_core::LatestBuild {
     pnex_core::LatestBuild {
         deployable_version: None,
-        build_phase: record.build_phase,
+        // Phases are written by the build service only: an unknown value
+        // is a corrupt row, shown as failed.
+        build_phase: pnex_core::BuildPhase::from_wire(&record.build_phase)
+            .unwrap_or(pnex_core::BuildPhase::Failed),
         fw_version: record.fw_version,
         // Staleness tripwire: the build's stamped fingerprint vs the one of
         // the tree embedded in THIS server binary. Null stamp (legacy
@@ -138,7 +146,7 @@ pub(super) fn device_dto(
             .map(|c| pnex_core::DeviceCapability {
                 id: c.id,
                 name: c.name.clone(),
-                mode: capability_mode_str(c.mode).to_string(),
+                mode: capability_mode(c.mode),
             })
             .collect(),
         active: device.active,

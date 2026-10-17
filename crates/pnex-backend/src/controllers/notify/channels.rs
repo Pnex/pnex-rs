@@ -2,17 +2,54 @@ use super::*;
 
 // ─────────────────────────────── Kinds ───────────────────────────────
 
-/// `GET /api/v1/notify/kinds` — catalogue des canaux + `field_spec`
-/// (source du formulaire dynamique front, contrat `notify-kinds.v1`).
-pub(super) async fn kinds() -> Result<Response> {
-    Ok(format::json(pnex_notify::kinds()).into_response())
+/// `GET /api/v1/notify/kinds`: channel kinds + `field_spec` (source of the
+/// frontend's generated form). Static catalogue, nothing org-specific,
+/// hence public.
+#[utoipa::path(
+    get,
+    path = "/api/v1/notify/kinds",
+    tag = "notify",
+    operation_id = "notify_kinds",
+    summary = "List the notification channel kinds",
+    description = "Paginated catalogue of the channel kinds the server can send to (websocket, webhook, ...) with the `field_spec` describing each kind's configuration form. Static and identical for every organisation (it exposes nothing org-specific), so no authentication is required.",
+    params(PageQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::NotifyKindInfo>)),
+    security(())
+)]
+pub(super) async fn kinds(Query(q): Query<PageQuery>) -> Result<Response> {
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let all = pnex_notify::kinds();
+    let count = all.len() as i64;
+    let (skip, take) = page.slice(all.len());
+    let results: Vec<_> = all.into_iter().skip(skip).take(take).collect();
+    Ok(format::json(pagination::envelope(
+        "/api/v1/notify/kinds",
+        &[],
+        page,
+        count,
+        results,
+    ))
+    .into_response())
+}
+
+/// `limit`/`offset` of a plain paginated list.
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(super) struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    pub(super) limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    pub(super) offset: Option<String>,
 }
 
 // ─────────────────────────────── Canaux ───────────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub(super) struct ListQuery {
+    #[param(value_type = Option<i64>)]
     pub(super) limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     pub(super) offset: Option<String>,
     /// Label filter `name` / `name:value` (D218).
     pub(super) label: Option<String>,
@@ -21,6 +58,20 @@ pub(super) struct ListQuery {
 }
 
 /// `GET /api/v1/notify/channels` — canaux de l'org (secrets masqués).
+#[utoipa::path(
+    get,
+    path = "/api/v1/notify/channels",
+    tag = "notify",
+    operation_id = "notify_channels_list",
+    summary = "List the notification channels of the organisation",
+    description = "Paginated, newest first. Secret configuration fields are never returned: `secrets_set` lists which are set and `secrets` gives their vault reference. `last_status`/`last_delivery_at` come from the delivery journal.",
+    params(ListQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::NotifyChannel>),
+        (status = 400, description = "`field-invalid`: invalid `label` filter", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn list_channels(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -78,6 +129,20 @@ pub(super) async fn list_channels(
 }
 
 /// `GET /api/v1/notify/channels/{id}`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/notify/channels/{id}",
+    tag = "notify",
+    operation_id = "notify_channels_get",
+    summary = "Get a notification channel",
+    description = "One channel of the organisation, secret fields masked. 404 when it does not exist or belongs to another organisation.",
+    params(("id" = String, Path, format = "uuid", description = "Channel id")),
+    responses(
+        (status = 200, body = pnex_core::NotifyChannel),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn channel_detail(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -107,18 +172,31 @@ pub(super) fn validate_channel_input(
         ));
     }
     let Some(ch) = pnex_notify::channel(kind) else {
-        return Some(field_status("kind", "Type de canal inconnu."));
+        return Some(field_status("kind", err_codes::FIELD_INVALID));
     };
-    if let Err(msg) = ch.validate(config) {
-        return Some(field_status("config", &msg));
+    if let Err(detail) = ch.validate(config) {
+        return Some(
+            crate::controllers::coded_error(
+                StatusCode::BAD_REQUEST,
+                err_codes::NOTIFY_CHANNEL_CONFIG_INVALID,
+                format!("Invalid channel configuration: {detail}"),
+                Some(serde_json::json!({ "detail": detail })),
+            )
+            .into_response(),
+        );
     }
-    // Champs requis du field_spec présents ?
+    // Every required field of the kind's field_spec is present.
     for f in ch.field_spec() {
         if f.required && config.get(&f.id).is_none_or(|v| v.is_null()) {
-            return Some(field_status(
-                "config",
-                &format!("champ requis absent : {}", f.id),
-            ));
+            return Some(
+                crate::controllers::coded_error(
+                    StatusCode::BAD_REQUEST,
+                    err_codes::NOTIFY_CHANNEL_FIELD_REQUIRED,
+                    format!("The field {} is required for this channel kind", f.id),
+                    Some(serde_json::json!({ "field": f.id })),
+                )
+                .into_response(),
+            );
         }
     }
     None
@@ -143,7 +221,7 @@ async fn ensure_name_free(db: &DatabaseConnection, org_id: i64, name: &str) -> R
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub(super) struct ChannelInput {
     kind: String,
     name: String,
@@ -154,6 +232,22 @@ pub(super) struct ChannelInput {
 }
 
 /// `POST /api/v1/notify/channels` — création (secrets write-only).
+#[utoipa::path(
+    post,
+    path = "/api/v1/notify/channels",
+    tag = "notify",
+    operation_id = "notify_channels_create",
+    summary = "Create a notification channel",
+    description = "Creates a channel (destination of notifications). Secret fields are write-only: a typed value is stored in the vault as the channel's dedicated secret, `{\"secret_id\"}` references an existing org secret (choosing secrets requires the secret-manager role). Requires owner, admin or member role. Channel names are unique per organisation (409).",
+    request_body = ChannelInput,
+    responses(
+        (status = 201, body = pnex_core::NotifyChannel),
+        (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:200`; `kind`: `invalid`), `notify-channel-config-invalid` (`args.detail`), `notify-channel-field-required` (`args.field`) or a vault error", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`notify-write-forbidden` (viewer) or a secret the caller may not use", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`notify-channel-name-conflict`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn create_channel(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -232,6 +326,24 @@ pub(super) async fn create_channel(
 /// `PUT /api/v1/notify/channels/{id}` — renommage/toggle/config ; les
 /// secrets absents ou `null` sont conservés (merge registre, D54).
 /// Secret fields are vault references once stored (lot S4).
+#[utoipa::path(
+    put,
+    path = "/api/v1/notify/channels/{id}",
+    tag = "notify",
+    operation_id = "notify_channels_update",
+    summary = "Replace a notification channel",
+    description = "Full update of name, kind, enabled flag and config. Secret fields sent absent or `null` keep their stored value when the kind is unchanged; a changed kind replaces the whole config. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Channel id")),
+    request_body = ChannelInput,
+    responses(
+        (status = 200, body = pnex_core::NotifyChannel),
+        (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:200`; `kind`: `invalid`), `notify-channel-config-invalid` (`args.detail`), `notify-channel-field-required` (`args.field`) or a vault error", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`notify-write-forbidden` (viewer) or a secret the caller may not use", body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`notify-channel-name-conflict`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn update_channel(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -316,6 +428,21 @@ pub(super) async fn update_channel(
 
 /// `DELETE /api/v1/notify/channels/{id}` — 204 ; the O2 journal entries of
 /// the channel stay until O2 retention drops them (D86).
+#[utoipa::path(
+    delete,
+    path = "/api/v1/notify/channels/{id}",
+    tag = "notify",
+    operation_id = "notify_channels_delete",
+    summary = "Delete a notification channel",
+    description = "Deletes the channel and releases its vault usages (its dedicated secrets are removed when nothing else uses them). Journal entries stay until retention drops them. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Channel id")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, body = crate::openapi::ErrorDetail),
+        (status = 404, body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 pub(super) async fn delete_channel(
     State(ctx): State<AppContext>,
     org: OrgContext,

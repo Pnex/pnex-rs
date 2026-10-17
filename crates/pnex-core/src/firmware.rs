@@ -181,6 +181,7 @@ pub fn lib_by_id(id: &str) -> Option<&'static LibEntry> {
 
 /// API view of a catalog entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct LibCatalogItem {
     pub id: String,
     pub name: String,
@@ -245,6 +246,7 @@ pub fn prewarm_lib_list() -> String {
 
 /// A refused construct of the sketch, 1-based line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SourceViolation {
     pub line: u32,
     /// Machine code (`firmware-include-*`, `firmware-incbin`…).
@@ -416,6 +418,7 @@ fn strip_comments(src: &str) -> String {
 /// One compiler diagnostic. `in_sketch` = points at the user's `main.cpp`
 /// (projected in the editor gutter); others are listed with their file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CompileDiagnostic {
     pub file: String,
     pub line: u32,
@@ -499,6 +502,7 @@ fn short_path(file: &str) -> String {
 
 /// Project list item (no code).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FirmwareProjectSummary {
     pub id: i64,
     pub name: String,
@@ -510,12 +514,15 @@ pub struct FirmwareProjectSummary {
     /// Devices attached to the project.
     #[serde(default)]
     pub device_count: i64,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Project + current revision (the editor loads this).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FirmwareProjectDetail {
     pub id: i64,
     pub name: String,
@@ -527,12 +534,15 @@ pub struct FirmwareProjectDetail {
     /// Catalog ids.
     #[serde(default)]
     pub lib_deps: Vec<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Creation: project + revision 1 (`main_cpp` absent = starter sketch).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CreateFirmwareProject {
     pub name: String,
     pub chip_family: String,
@@ -548,6 +558,7 @@ pub struct CreateFirmwareProject {
 /// `expected_revision_number` must be the current one, else 409. A save
 /// whose content hash equals the current revision creates nothing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SaveFirmwareRevision {
     pub expected_revision_number: i64,
     #[serde(default)]
@@ -564,6 +575,7 @@ pub struct SaveFirmwareRevision {
 
 /// History entry — full content so any past revision can be restored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FirmwareRevisionSummary {
     pub id: i64,
     pub revision_number: i64,
@@ -572,15 +584,56 @@ pub struct FirmwareRevisionSummary {
     pub main_cpp: String,
     #[serde(default)]
     pub lib_deps: Vec<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
+}
+
+/// State of a compile-only check (lowercase on the wire).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum FirmwareCheckState {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+    /// Infrastructure failure (timeout, tool).
+    Error,
+}
+
+impl FirmwareCheckState {
+    /// Wire / database value.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Error => "error",
+        }
+    }
+
+    /// Parses a wire / database value (`None` when unknown).
+    pub fn from_wire(s: &str) -> Option<Self> {
+        [
+            Self::Queued,
+            Self::Running,
+            Self::Succeeded,
+            Self::Failed,
+            Self::Error,
+        ]
+        .into_iter()
+        .find(|v| v.as_str() == s)
+    }
 }
 
 /// Compile-only check state (`GET /firmware-projects/{id}/checks/{check_id}`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FirmwareCheckStatus {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
     pub check_id: String,
-    /// `running` | `succeeded` | `failed` | `error` (infra: timeout, tool).
-    pub status: String,
+    pub status: FirmwareCheckState,
     pub revision_number: i64,
     #[serde(default)]
     pub diagnostics: Vec<CompileDiagnostic>,
@@ -591,6 +644,7 @@ pub struct FirmwareCheckStatus {
 
 /// Custom command sent to a device (D88) — `POST /devices/{id}/custom-commands`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct CustomCommandRequest {
     pub name: String,
     #[serde(default)]

@@ -83,6 +83,27 @@ impl Source {
     }
 }
 
+// Wire forms of the API DTOs (pnex-core enums).
+impl From<DeploymentMode> for pnex_core::DeploymentMode {
+    fn from(mode: DeploymentMode) -> Self {
+        match mode {
+            DeploymentMode::SelfHosted => Self::SelfHosted,
+            DeploymentMode::Saas => Self::Saas,
+        }
+    }
+}
+
+impl From<Source> for pnex_core::RetentionSource {
+    fn from(source: Source) -> Self {
+        match source {
+            Source::Override => Self::Override,
+            Source::Global => Self::Global,
+            Source::Tier => Self::Tier,
+            Source::Env => Self::Env,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Effective {
     pub days: u32,

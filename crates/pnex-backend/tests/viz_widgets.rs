@@ -112,10 +112,10 @@ async fn cycle_crud_unicite_et_validation() {
             }))
             .await;
         assert_eq!(dup.status_code(), 400);
-        assert!(dup.json::<serde_json::Value>()["name"]
-            .as_str()
-            .unwrap()
-            .contains("déjà"));
+        assert_eq!(
+            dup.json::<serde_json::Value>()["errors"]["fields"]["name"],
+            "unique"
+        );
 
         // ── kind ≠ config.type → 400 champ.
         let mismatch = server
@@ -130,7 +130,10 @@ async fn cycle_crud_unicite_et_validation() {
             }))
             .await;
         assert_eq!(mismatch.status_code(), 400);
-        assert!(mismatch.json::<serde_json::Value>()["kind"].is_string());
+        assert_eq!(
+            mismatch.json::<serde_json::Value>()["errors"]["fields"]["kind"],
+            "invalid"
+        );
 
         // ── Config invalide (source absente) → 400 violations.
         let mut bad = gauge_config();
@@ -143,7 +146,9 @@ async fn cycle_crud_unicite_et_validation() {
             .json(&serde_json::json!({ "name": "Cassé", "kind": "gauge", "config": bad }))
             .await;
         assert_eq!(invalid.status_code(), 400);
-        assert!(invalid.json::<serde_json::Value>()["violations"].is_array());
+        let body = invalid.json::<serde_json::Value>();
+        assert_eq!(body["error"], "widget-invalid", "{body}");
+        assert!(body["errors"]["violations"].is_array(), "{body}");
 
         // ── PATCH : renommage + config (mutable, pas de versioning).
         let mut cfg2 = gauge_config();
@@ -161,6 +166,57 @@ async fn cycle_crud_unicite_et_validation() {
             .json::<serde_json::Value>();
         assert_eq!(updated["name"], "Jauge four");
         assert_eq!(updated["config"]["options"]["max"], 80.0);
+
+        // ── PATCH onto another template's name → 400 unique (not a 500).
+        let other = server
+            .post("/api/v1/viz/widgets")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({
+                "name": "Other gauge",
+                "kind": "gauge",
+                "config": gauge_config(),
+            }))
+            .await
+            .json::<serde_json::Value>();
+        let clash = server
+            .patch(&format!(
+                "/api/v1/viz/widgets/{}",
+                other["id"].as_str().unwrap()
+            ))
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "name": "Jauge four" }))
+            .await;
+        assert_eq!(clash.status_code(), 400);
+        assert_eq!(
+            clash.json::<serde_json::Value>()["errors"]["fields"]["name"],
+            "unique"
+        );
+        let gone = server
+            .delete(&format!(
+                "/api/v1/viz/widgets/{}",
+                other["id"].as_str().unwrap()
+            ))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(gone.status_code(), 204);
+
+        // ── Unreadable body (extractor rejection) → ErrorDetail, not text.
+        let rejected = server
+            .post("/api/v1/viz/widgets")
+            .add_header("Content-Type", "application/json")
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&serde_json::json!({ "name": 42 }))
+            .await;
+        assert_eq!(rejected.status_code(), 422);
+        let body = rejected.json::<serde_json::Value>();
+        assert_eq!(body["error"], "request-invalid", "{body}");
+        assert!(body["description"].as_str().is_some_and(|d| !d.is_empty()));
 
         // ── Filtre kind dans la liste D14.
         let list = server

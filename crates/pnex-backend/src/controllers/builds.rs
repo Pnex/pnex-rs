@@ -8,12 +8,12 @@
 //! - `GET /build-records`: org-scoped list, paginated (D14), `device_id` /
 //!   `build_phase` filters (old records are pruned by the worker,
 //!   `build_retention`);
-//! - `GET /download/firmware/{device_id}`: proxies the artifact bytes
+//! - `GET /download/firmware/{id}` (registry id): proxies the artifact bytes
 //!   (no presigned URL), attachment
 //!   `{device_id}-firmware.bin`.
 //!
 //! Errors: machine code + English description (`coded_error`); field
-//! validation `{"<field>": "<token>"}`.
+//! validation `field-invalid` with `errors.fields`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -34,20 +34,18 @@ use crate::models::_entities::{
     build_records, device_registries, device_types, mcu_boards, predefined_devices,
     subscription_tiers,
 };
-use crate::services::firmware::{
-    FirmwareSettings, PHASE_FAILED, PHASE_QUEUED, PHASE_RUNNING, PHASE_SUCCEEDED,
-};
+use crate::services::firmware::{FirmwareSettings, PHASE_QUEUED, PHASE_RUNNING, PHASE_SUCCEEDED};
 
-/// Build phases accepted by the `?build_phase=` filter.
-const PHASES: [&str; 4] = [PHASE_QUEUED, PHASE_RUNNING, PHASE_SUCCEEDED, PHASE_FAILED];
 use crate::workers::build_firmware::{BuildFirmwareArgs, BuildFirmwareWorker};
 use pnex_core::err_codes;
 
 // ─────────────────────────── Aides ───────────────────────────
 
-/// Field-by-field error: `{"<field>": "<token>"}`.
+/// Field-by-field error (`field-invalid`, `errors.fields`).
 fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
-    (status, format::json(serde_json::json!({ field: msg }))).into_response()
+    let mut fields = serde_json::Map::new();
+    fields.insert(field.to_string(), msg.into());
+    crate::controllers::fields_error(status, fields)
 }
 
 /// Forbidden with the machine code + canonical English description
@@ -65,7 +63,9 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
         id: r.id,
         org_id: r.org_id,
         device_id: r.device_id,
-        build_phase: r.build_phase,
+        // The worker only writes the four phases; an unknown value reads as failed.
+        build_phase: pnex_core::BuildPhase::from_wire(&r.build_phase)
+            .unwrap_or(pnex_core::BuildPhase::Failed),
         firmware_bin_s3_key: r.firmware_bin_s3_key,
         fw_version: r.fw_version,
         failure_code: r.failure_code,
@@ -110,6 +110,25 @@ async fn count_devices_of_type(db: &DatabaseConnection, org_id: i64, type_id: i6
 
 /// `POST /api/v1/build-firmware` — inserts a new build record (new
 /// firmware version) and enqueues the build job.
+#[utoipa::path(
+    post,
+    path = "/api/v1/build-firmware",
+    tag = "build-firmware",
+    operation_id = "build_firmware_create",
+    summary = "Launch a firmware build for a device",
+    description = "Creates a `queued` build record (its id is the new firmware version) and enqueues the background build of the device firmware, embedding the device token, key, the WiFi credential (vault reference) and the server host (`PNEX_PROD_HOST` wins when set). Subject to tier quota and a minimum interval between builds; one build at a time per device. Poll `GET /api/v1/build-records`. Owner, admin or member.",
+    request_body = pnex_core::CreateBuild,
+    responses(
+        (status = 201, body = pnex_core::CreateBuildResponse),
+        (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`: unknown WiFi entry, host...) or edge agent device (`agent-unsupported-action`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Viewer (`build-create-forbidden`) or tier quota reached (`device-quota-reached`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (`device-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "A build is already in progress (`build-in-progress`)", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "Minimum interval between builds not met (`build-interval-not-met`)", body = crate::openapi::ErrorDetail),
+        (status = 500, description = "Job submission failed (`build-submit-failed`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn create(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -151,7 +170,7 @@ async fn create(
         return Ok(field_status(
             StatusCode::BAD_REQUEST,
             "pnex_host",
-            "Must be a host without spaces (e.g. dev1.pnex.io).",
+            err_codes::FIELD_INVALID,
         ));
     }
     // WiFi: the build references the vault secret of a referential entry
@@ -168,7 +187,7 @@ async fn create(
         return Ok(field_status(
             StatusCode::BAD_REQUEST,
             "wifi_credential_id",
-            "WiFi entry not found in this organization.",
+            err_codes::FIELD_NOT_FOUND,
         ));
     };
     let Some(wifi_secret_id) = cred.secret_id else {
@@ -222,7 +241,10 @@ async fn create(
             .one(&ctx.db)
             .await
             .map_err(|_| Error::InternalServerError)?
-            .ok_or_else(|| loco_rs::Error::Message("board du modèle introuvable".to_string()))?,
+            .ok_or_else(|| {
+                tracing::error!(device = %device_id, "build: board of the model not found");
+                Error::InternalServerError
+            })?,
     };
     let soc = board_row.soc.clone();
     let pio_board = board_row
@@ -417,7 +439,7 @@ async fn create(
         StatusCode::CREATED,
         format::json(pnex_core::CreateBuildResponse {
             build_id: record.id,
-            status: PHASE_QUEUED.to_string(),
+            status: pnex_core::BuildPhase::Queued,
             message: "Firmware build job created successfully".to_string(),
         }),
     )
@@ -426,16 +448,34 @@ async fn create(
 
 // ─────────────────────────── GET /build-records ───────────────────────────
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 struct ListBuildsQuery {
+    /// Exact device id.
     device_id: Option<String>,
-    /// « true » | « false » ; autre/absent = tous.
+    /// Phase filter; an unknown value is ignored.
+    #[param(value_type = Option<pnex_core::BuildPhase>)]
     build_phase: Option<String>,
+    #[param(value_type = Option<i64>)]
     limit: Option<String>,
+    #[param(value_type = Option<i64>)]
     offset: Option<String>,
 }
 
 /// `GET /api/v1/build-records` — records de l'org, paginés (D14).
+#[utoipa::path(
+    get,
+    path = "/api/v1/build-records",
+    tag = "build-records",
+    operation_id = "build_records_list",
+    summary = "List firmware build records",
+    description = "Build records of the org, newest first, paginated (`limit`/`offset`), filterable by device and phase. Old records are pruned by the worker. Any org member.",
+    params(ListBuildsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::BuildRecord>)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn list(
     State(ctx): State<AppContext>,
     org: OrgContext,
@@ -448,8 +488,12 @@ async fn list(
     if let Some(device_id) = q.device_id.as_deref().filter(|d| !d.is_empty()) {
         query = query.filter(build_records::Column::DeviceId.eq(device_id));
     }
-    if let Some(phase) = q.build_phase.as_deref().filter(|p| PHASES.contains(p)) {
-        query = query.filter(build_records::Column::BuildPhase.eq(phase));
+    let phase = q
+        .build_phase
+        .as_deref()
+        .and_then(pnex_core::BuildPhase::from_wire);
+    if let Some(phase) = phase {
+        query = query.filter(build_records::Column::BuildPhase.eq(phase.as_str()));
     }
     // COUNT + LIMIT/OFFSET in SQL.
     let (count, rows) = pagination::sql_page(&ctx.db, query, page)
@@ -463,8 +507,8 @@ async fn list(
             filters.push(("device_id".to_string(), d.to_string()));
         }
     }
-    if let Some(phase) = q.build_phase.as_deref().filter(|p| PHASES.contains(p)) {
-        filters.push(("build_phase".to_string(), phase.to_string()));
+    if let Some(phase) = phase {
+        filters.push(("build_phase".to_string(), phase.as_str().to_string()));
     }
     Ok(format::json(pagination::envelope(
         "/api/v1/build-records",
@@ -478,13 +522,27 @@ async fn list(
 
 // ─────────────────────────── GET /download/firmware/{device_id} ───────────────────────────
 
-/// `GET /api/v1/download/firmware/{device_id}` — proxies the bytes of the
-/// device's last successful build, attachment
-/// `{device_id}-firmware.bin`.
+/// `GET /api/v1/download/firmware/{id}` — proxies the bytes of the
+/// device's last successful build, attachment `{device_id}-firmware.bin`.
+#[utoipa::path(
+    get,
+    path = "/api/v1/download/firmware/{id}",
+    tag = "download",
+    operation_id = "download_firmware",
+    summary = "Download the latest firmware binary of a device",
+    description = "Streams the binary of the device last successful build as an attachment `<device_id>-firmware.bin`. The image embeds the device credentials and WiFi password: owner, admin or member only.",
+    params(("id" = i64, Path, description = "Device registry id")),
+    responses(
+        (status = 200, content_type = "application/octet-stream", body = Vec<u8>),
+        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown device (`device-not-found`), no successful build or artifact missing", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
 async fn download(
     State(ctx): State<AppContext>,
     org: OrgContext,
-    Path(device_id): Path<String>,
+    Path(id): Path<i64>,
 ) -> Result<Response> {
     // The image embeds the device token, its key and the WiFi credentials
     // (SEC-8): same roles as the build itself, never a viewer.
@@ -494,9 +552,23 @@ async fn download(
             "Owner, admin or member role required to manage devices.",
         ));
     }
+    let Some(device) = device_registries::Entity::find_by_id(id)
+        .filter(device_registries::Column::OrgId.eq(org.org.id))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+    else {
+        return Err(crate::controllers::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::DEVICE_NOT_FOUND,
+            "Device not found",
+            Some(serde_json::json!({ "device_id": id.to_string() })),
+        ));
+    };
+    let device_id = device.device_id;
     let Some(record) = build_records::Entity::find()
         .filter(build_records::Column::OrgId.eq(org.org.id))
-        .filter(build_records::Column::DeviceId.eq(device_id.trim()))
+        .filter(build_records::Column::DeviceId.eq(&device_id))
         .filter(build_records::Column::BuildPhase.eq(PHASE_SUCCEEDED))
         .order_by_desc(build_records::Column::Id)
         .one(&ctx.db)
@@ -513,7 +585,7 @@ async fn download(
     let bytes = store.get(&key).await.map_err(|_| Error::NotFound)?;
     let filename = format!(
         "{}-firmware.bin",
-        pnex_firmware_builder::sanitize_segment(device_id.trim())
+        pnex_firmware_builder::sanitize_segment(&device_id)
     );
     Ok((
         StatusCode::OK,
@@ -536,5 +608,13 @@ pub fn routes() -> Routes {
         .prefix("/api/v1")
         .add("/build-firmware", post(create))
         .add("/build-records", get(list))
-        .add("/download/firmware/{device_id}", get(download))
+        .add("/download/firmware/{id}", get(download))
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(create, list, download))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
 }

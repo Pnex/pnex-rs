@@ -298,7 +298,7 @@ async fn validation_doc_structure_et_assets() {
         .await;
         assert_eq!(res.status_code(), 400, "lien orphelin → 400");
         let body: serde_json::Value = res.json();
-        let codes: Vec<&str> = body["violations"]
+        let codes: Vec<&str> = body["errors"]["violations"]
             .as_array()
             .unwrap()
             .iter()
@@ -309,7 +309,8 @@ async fn validation_doc_structure_et_assets() {
             "violations : {codes:?}"
         );
 
-        // Asset inexistant (UUID bien formé mais hors org) → 400 {"doc": …}.
+        // Unknown asset (well-formed UUID outside the org) → `tour-invalid`
+        // violation `unknown_asset` on that asset.
         let res = save_tour(
             &server,
             &env.alice,
@@ -321,9 +322,11 @@ async fn validation_doc_structure_et_assets() {
         .await;
         assert_eq!(res.status_code(), 400, "asset inconnu → 400");
         let body: serde_json::Value = res.json();
-        assert!(
-            body["doc"].as_str().unwrap().contains("inconnu"),
-            "per-field doc message: {body}"
+        assert_eq!(body["error"], "tour-invalid", "{body}");
+        assert_eq!(body["errors"]["violations"][0]["code"], "unknown_asset");
+        assert_eq!(
+            body["errors"]["violations"][0]["subject"],
+            "00000000-0000-0000-0000-0000000000bb"
         );
 
         // Asset panorama réel (upload GPano) → save accepté, v2.
@@ -566,11 +569,13 @@ async fn kind_floorplan_et_plan_d_etage() {
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc).await;
         assert_eq!(res.status_code(), 400, "panorama en plan → 400");
         let body: serde_json::Value = res.json();
+        let violation = &body["errors"]["violations"][0];
+        assert_eq!(violation["code"], "asset_kind_mismatch", "{body}");
         assert!(
-            body["doc"]
+            violation["message"]
                 .as_str()
                 .unwrap()
-                .contains("kind floorplan ou photo requis"),
+                .contains("kind floorplan or photo required"),
             "message kind : {body}"
         );
 
@@ -707,15 +712,13 @@ async fn endpoint_public_et_cache() {
         assert_eq!(body["assets"][&pano_id]["version_number"], 1);
         assert_eq!(body["assets"][&pano_id]["content_type"], "image/jpeg");
 
-        // Octets : version courante par défaut, cache immutable.
+        // Bytes: current version by default; the unversioned URL follows
+        // the current version, so it is revalidated, never immutable (O74).
         let res = server
             .get(&format!("/api/v1/public/tours/{token}/assets/{pano_id}"))
             .await;
         assert_eq!(res.status_code(), 200);
-        assert_eq!(
-            res.header("cache-control").to_str().unwrap(),
-            "public, max-age=31536000, immutable"
-        );
+        assert_eq!(res.header("cache-control").to_str().unwrap(), "no-cache");
         assert_eq!(
             res.header("x-content-type-options").to_str().unwrap(),
             "nosniff"
@@ -748,6 +751,11 @@ async fn endpoint_public_et_cache() {
             ))
             .await;
         assert_eq!(res.status_code(), 200);
+        // A versioned URL is append-only bytes: immutable for a year (O74).
+        assert_eq!(
+            res.header("cache-control").to_str().unwrap(),
+            "public, max-age=31536000, immutable"
+        );
 
         // Version inconnue → 404.
         let res = server

@@ -125,7 +125,10 @@ async fn crud_versions_isolation_and_viewer() {
             Some(json!({ "title": "  " })),
         )
         .await;
-        assert_eq!((st, e["title"].as_str()), (400, Some("required")));
+        assert_eq!(
+            (st, e["errors"]["fields"]["title"].as_str()),
+            (400, Some("required"))
+        );
         let long = "x".repeat(256);
         let (st, e) = call(
             &server,
@@ -136,7 +139,10 @@ async fn crud_versions_isolation_and_viewer() {
             Some(json!({ "title": long })),
         )
         .await;
-        assert_eq!((st, e["title"].as_str()), (400, Some("max_length:255")));
+        assert_eq!(
+            (st, e["errors"]["fields"]["title"].as_str()),
+            (400, Some("max_length:255"))
+        );
 
         let (st, d) = call(
             &server,
@@ -269,7 +275,11 @@ async fn crud_versions_isolation_and_viewer() {
             tpl("five_whys"),
         )
         .await;
-        assert_eq!((st, e["template"].as_str()), (400, Some("invalid")), "{e}");
+        assert_eq!(
+            (st, e["errors"]["fields"]["template"].as_str()),
+            (400, Some("invalid")),
+            "{e}"
+        );
         let (st, _) = call(
             &server,
             "POST",
@@ -576,7 +586,10 @@ async fn comments_threads_roles_and_live_notice() {
             Some(json!({ "body": " " })),
         )
         .await;
-        assert_eq!((st, e["body"].as_str()), (400, Some("required")));
+        assert_eq!(
+            (st, e["errors"]["fields"]["body"].as_str()),
+            (400, Some("required"))
+        );
         let long_quote = "q".repeat(400);
         let (st, root) = call(
             &server,
@@ -613,7 +626,10 @@ async fn comments_threads_roles_and_live_notice() {
             Some(json!({ "body": "nested", "parent_id": reply["id"] })),
         )
         .await;
-        assert_eq!((st, e["parent_id"].as_str()), (400, Some("invalid")));
+        assert_eq!(
+            (st, e["errors"]["fields"]["parent_id"].as_str()),
+            (400, Some("invalid"))
+        );
 
         let (_, list) = call(&server, "GET", &base, &env.alice, org_a, None).await;
         assert_eq!(list["count"], 2);
@@ -1046,6 +1062,55 @@ async fn flow_writes_pages_and_versions_get_approved() {
             .await;
         assert_eq!(res.status_code(), 404);
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
+
+/// O75: approving a version written by someone else resolves both names,
+/// the author's and the approver's, like the list does.
+#[tokio::test]
+#[serial]
+async fn approve_resolves_author_and_approver() {
+    with_app(|server, env| async move {
+        let org_a = personal_org(&server, &env.alice).await;
+        personal_org(&server, &env.bob).await;
+        add_member(&server, &env.alice, org_a, "member").await;
+        let (_, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org_a,
+            Some(json!({ "title": "Report" })),
+        )
+        .await;
+        let path = format!("/api/v1/docs/{}/versions", d["id"].as_str().unwrap());
+        let (st, v) = call(
+            &server,
+            "POST",
+            &path,
+            &env.alice,
+            org_a,
+            Some(json!({ "label": "v1" })),
+        )
+        .await;
+        assert_eq!(st, 201, "{v}");
+        let (st, approved) = call(
+            &server,
+            "POST",
+            &format!("{path}/1/approve"),
+            &env.bob,
+            org_a,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{approved}");
+        let author = approved["created_by"].as_str().expect("author resolved");
+        let approver = approved["approved_by"].as_str().expect("approver resolved");
+        assert_ne!(author, approver, "{approved}");
+        let (_, list) = call(&server, "GET", &path, &env.alice, org_a, None).await;
+        assert_eq!(list["results"][0]["created_by"], author, "{list}");
+        assert_eq!(list["results"][0]["approved_by"], approver, "{list}");
     })
     .await;
 }

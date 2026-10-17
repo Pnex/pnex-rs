@@ -14,17 +14,26 @@ use serde::{Deserialize, Serialize};
 
 /// Credential WiFi enregistré — `GET /api/v1/edge/wifi-credentials`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Saved WiFi credential of the org (`GET /api/v1/edge/wifi-credentials`). The password is a vault reference, never a value."
+    )
+)]
 pub struct WifiCredential {
     pub id: i64,
     pub org_id: i64,
-    /// Case-sensitive (byte-sensitive 802.11) — l'upsert l'est aussi.
+    /// Case-sensitive (byte-sensitive 802.11), so is the upsert.
     pub ssid: String,
     /// Vault secret of the password (`None` = not set).
     #[serde(default)]
     pub password: Option<crate::SecretFieldView>,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
@@ -34,6 +43,13 @@ pub struct WifiCredential {
 /// the dedicated secret `wifi/<ssid>/password`). Absent on an update =
 /// unchanged. Unknown fields are refused.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Body of the WiFi credential upsert/update. `password`: pick a vault secret or type a value (owner/admin); absent on update = unchanged. Unknown fields are refused."
+    )
+)]
 #[serde(deny_unknown_fields)]
 pub struct WifiCredentialInput {
     pub ssid: String,
@@ -45,11 +61,23 @@ pub struct WifiCredentialInput {
 /// `GET /api/v1/edge/hosts/locked` — server host imposed by the deployment
 /// (`PNEX_PROD_HOST`). `host: None` = free choice from the org's referential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "Server host imposed by the deployment (`PNEX_PROD_HOST`); `host: null` = free choice from the org referential."
+    )
+)]
 pub struct LockedHost {
     pub host: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(description = "Saved PNeX server host of the org (`GET /api/v1/edge/hosts`).")
+)]
 pub struct PnexHost {
     pub id: i64,
     pub org_id: i64,
@@ -57,13 +85,16 @@ pub struct PnexHost {
     /// always connect over wss (D154).
     pub host: String,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     /// RFC 3339.
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
 }
 
 /// Body of `POST /api/v1/edge/hosts` (upsert on (org, host)).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PnexHostInput {
     pub host: String,
@@ -73,12 +104,19 @@ pub struct PnexHostInput {
 /// `GET /api/v1/edge/lan-scan`. L'identité `pnex-server` est vérifiée par
 /// la sonde meta (champ `service` du contrat), pas un simple port ouvert.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "A PNeX server found by the server-side LAN scan (identity checked through the meta probe)."
+    )
+)]
 pub struct LanScanHit {
-    /// Hôte NU sans schéma, prêt pour [`PnexHost::host`] (`192.168.1.16:5150`).
+    /// Bare host without scheme, ready for [`PnexHost::host`].
     pub host: String,
-    /// Version du serveur détecté (badge d'aide, pas bloquant).
+    /// Version of the detected server (informative).
     pub version: String,
-    /// Contrat API du serveur détecté (info).
+    /// API contract of the detected server (informative).
     pub contract: u32,
 }
 
@@ -86,6 +124,13 @@ pub struct LanScanHit {
 /// (auto-détection des interfaces privées du serveur, ou préfixe passé en
 /// query) et les serveurs trouvés (triés par hôte).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(
+        description = "LAN scan answer: the probed `a.b.c.` prefixes and the servers found, sorted by host."
+    )
+)]
 pub struct LanScanResult {
     pub prefixes: Vec<String>,
     pub hits: Vec<LanScanHit>,

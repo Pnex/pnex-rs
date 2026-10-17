@@ -196,18 +196,18 @@ async fn consented_profile_generation_test_and_revocation() {
             body["consent_confirmed"] = json!(false);
             let (st, e) = call(&alice, org, "POST", "/api/v1/voice-id/profiles", Some(body)).await;
             assert_eq!(
-                (st, &e["consent_confirmed"]),
+                (st, &e["errors"]["fields"]["consent_confirmed"]),
                 (400, &json!("required")),
                 "{e}"
             );
             let mut body = consent(&ada_id);
             body["consent_at"] = json!("2999-01-01");
             let (st, e) = call(&alice, org, "POST", "/api/v1/voice-id/profiles", Some(body)).await;
-            assert_eq!((st, &e["consent_at"]), (400, &json!("invalid")), "{e}");
+            assert_eq!((st, &e["errors"]["fields"]["consent_at"]), (400, &json!("invalid")), "{e}");
             let mut body = consent(&ada_id);
             body["consent_proof"] = json!(" ");
             let (st, e) = call(&alice, org, "POST", "/api/v1/voice-id/profiles", Some(body)).await;
-            assert_eq!((st, &e["consent_proof"]), (400, &json!("required")), "{e}");
+            assert_eq!((st, &e["errors"]["fields"]["consent_proof"]), (400, &json!("required")), "{e}");
             let (st, e) = call(
                 &alice,
                 org,
@@ -291,7 +291,7 @@ async fn consented_profile_generation_test_and_revocation() {
             .await;
             assert!(st == 200 || st == 201, "{st}");
             let (st, list) = call(&bob, org, "GET", "/api/v1/voice-id/profiles", None).await;
-            assert_eq!((st, list.as_array().map(Vec::len)), (200, Some(1)));
+            assert_eq!((st, list["results"].as_array().map(Vec::len)), (200, Some(1)));
             let (st, e) = upload(
                 &bob,
                 org,
