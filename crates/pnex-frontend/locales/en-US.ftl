@@ -4998,7 +4998,7 @@ lab-state-boxes = { $count ->
     [one] { $count } box
    *[other] { $count } boxes
 }
-lab-class-label = What do you outline?
+lab-class-label = Classes
 lab-remove-box = Remove the box
 lab-negative = Nothing to label here
 lab-split = Set:

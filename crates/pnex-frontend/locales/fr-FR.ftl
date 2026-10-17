@@ -4994,7 +4994,7 @@ lab-state-boxes = { $count ->
     [one] { $count } boîte
    *[other] { $count } boîtes
 }
-lab-class-label = Que voulez-vous entourer ?
+lab-class-label = Classes
 lab-remove-box = Retirer la boîte
 lab-negative = Rien à étiqueter ici
 lab-split = Ensemble :
