@@ -87,7 +87,7 @@ maintenant, en une rupture de contrat (`pnex_api_contract::CONTRACT` 2 → 3).
   droits, pas plus). Les routes destructrices ou physiques (OTA, commandes
   device, deploy/stop de flow, purge, suppressions) ne sont pas exposées par
   défaut : liste d'autorisation explicite, cohérente avec les consignes de
-  l'assistant (D123, D144). PRD dédié avant implémentation.
+  l'assistant (D123, D144). PRD dédié : `mcp.md` (D246–D249, M1 livré).
 
 ## 3. Lots
 
@@ -155,3 +155,5 @@ sur son domaine, front compris) après H0.
   français (`contract_text_is_english`, heuristique). Les verbes (D242) et
   les enums restent à la revue.
 - `error_codes.rs` : tout code littéral enregistré (inchangé).
+- `tests/mcp.rs` : toute opération exposée par le MCP ou exclue sous un
+  motif, rien de destructif ni de physique exposé (`mcp.md` §3).

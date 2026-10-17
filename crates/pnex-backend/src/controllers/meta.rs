@@ -39,7 +39,7 @@ async fn version(State(ctx): State<AppContext>) -> Result<Response> {
 /// base (`RAUTHY_ISSUER_URL`, `https://<public host>` behind the edge),
 /// reduced to `scheme://host[:port]`. HTTPS only — it is what OIDC redirect
 /// URIs and the certificate are issued for. Already public (OIDC discovery).
-fn public_origin(issuer_url: Option<&str>) -> Option<String> {
+pub(crate) fn public_origin(issuer_url: Option<&str>) -> Option<String> {
     let url = reqwest::Url::parse(issuer_url?.trim()).ok()?;
     if url.scheme() != "https" {
         return None;

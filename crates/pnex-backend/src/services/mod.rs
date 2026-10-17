@@ -38,6 +38,7 @@ pub mod geo;
 pub mod lab;
 pub mod lab_train;
 pub mod last_cache;
+pub mod mcp;
 pub mod media;
 pub mod media_analyses;
 pub mod media_ingest;

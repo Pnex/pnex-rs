@@ -8452,6 +8452,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-tungstenite 0.26.2",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "utoipa",

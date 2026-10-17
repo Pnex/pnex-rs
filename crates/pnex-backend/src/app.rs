@@ -78,6 +78,7 @@ pub fn app_routes() -> AppRoutes {
     AppRoutes::with_default_routes()
         .add_route(controllers::health::routes())
         .add_route(controllers::meta::routes())
+        .add_route(controllers::mcp::routes())
         .add_route(controllers::oauth2::routes())
         .add_route(controllers::user_info::routes())
         .add_route(controllers::orgs::routes())
@@ -266,6 +267,9 @@ impl Hooks for App {
         let router = router.layer(axum::middleware::from_fn(
             crate::auth::internal_guard::middleware,
         ));
+        // MCP tool calls are replayed on this final router (D245).
+        ctx.shared_store
+            .insert(crate::services::mcp::AppRouter(router.clone()));
         Ok(router)
     }
 

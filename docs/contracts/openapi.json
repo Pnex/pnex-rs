@@ -19245,6 +19245,32 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/.well-known/oauth-protected-resource/api/v1/mcp": {
+      "get": {
+        "description": "RFC 9728 protected resource metadata: the MCP resource URL and its authorization server (the Rauthy issuer). Public.",
+        "operationId": "mcp_resource_metadata",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Protected resource metadata"
+          },
+          "404": {
+            "description": "No public HTTPS issuer configured"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "OAuth metadata of the MCP endpoint (public)",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/v1/agent/download/{target}": {
       "get": {
         "description": "Streams the agent binary shipped with this server for a whitelisted target id, or `SHA256SUMS` (text checksums). No authentication.",
@@ -38912,6 +38938,52 @@
         "summary": "Train a model on a dataset version",
         "tags": [
           "lab"
+        ]
+      }
+    },
+    "/api/v1/mcp": {
+      "post": {
+        "description": "Model Context Protocol endpoint (Streamable HTTP, JSON answers, stateless): `initialize`, `ping`, `tools/list`, `tools/call`. The tools are the operations of this spec listed as exposed (D245); a call runs with the caller's token and rights. `X-Org-Id` on this request is the default organisation of the calls. Notifications answer 202.",
+        "operationId": "mcp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "JSON-RPC answer"
+          },
+          "202": {
+            "description": "Notification accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "MCP server (JSON-RPC)",
+        "tags": [
+          "mcp"
         ]
       }
     },

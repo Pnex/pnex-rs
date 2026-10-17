@@ -33,6 +33,7 @@ pub mod internal_flow;
 pub mod internal_notify;
 /// Time ranges (media-ingest.md D169).
 pub mod lab;
+pub mod mcp;
 pub mod media;
 /// Vision model registry (D81) + internal model fetch for the flow runtime.
 pub mod media_ingest;
