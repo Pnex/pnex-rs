@@ -24,6 +24,13 @@ ignore = [
     # rrgen (code generator). Our own YAML parsing, incl. user-uploaded ontology
     # packs, uses serde-saphyr (safe Rust).
     { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml unmaintained (loco-rs config / rrgen), no untrusted input" },
+    # zip < 9 extraction flaws (SUID bits kept, symlinks escaping the target,
+    # permissions applied through symlinks): all in `extract()` to disk. Our
+    # own code is on zip 9; what remains is zip 8.6 via calamine 0.36.1 (xlsx
+    # read in memory, never extracted to disk). Drop when calamine moves to 9.
+    { id = "RUSTSEC-2026-0367", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
+    { id = "RUSTSEC-2026-0368", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
+    { id = "RUSTSEC-2026-0369", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
 ]
 

@@ -41,7 +41,7 @@ url = "2"
 petgraph = { version = "0.6", default-features = false, features = ["graphmap", "stable_graph"] }
 tokio = { version = "1", default-features = false, features = ["net"], optional = true }
 # Document extraction (all MIT): docx/xlsx containers, docx XML, PDF text (lopdf, no ttf-parser since 0.45), sheets.
-zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 quick-xml = { version = "0.41", optional = true }
 lopdf = { version = "0.45", default-features = false, optional = true }
 calamine = { version = "0.36", optional = true }
