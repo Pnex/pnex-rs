@@ -586,16 +586,7 @@ pub fn LabProjectPage(id: String) -> Element {
                 }
             }
             if now == Step::Label {
-                div {
-                    class: "grid gap-4 outline-none lg:grid-cols-[13rem_minmax(0,1fr)]",
-                    tabindex: "0",
-                    onkeydown: on_key,
-                    ClassPalette {
-                        classes: classes.clone(),
-                        counts: stats.boxes_per_class.clone(),
-                        current: class(),
-                        on_pick: move |c: u32| pick_class(c),
-                    }
+                div { class: "outline-none", tabindex: "0", onkeydown: on_key,
                     div { class: "min-w-0 space-y-3",
                         if current.is_some() {
                             p { class: "text-sm text-slate", {t!("lab-label-help")} }
@@ -855,69 +846,6 @@ pub fn LabProjectPage(id: String) -> Element {
                         reload.with_mut(|r| *r += 1);
                     },
                 }
-            }
-        }
-    }
-}
-
-/// The classes as big buttons: the one picked is the class of the next box
-/// (keys 1–9), each with its number of boxes.
-#[component]
-fn ClassPalette(
-    classes: Vec<String>,
-    counts: Vec<usize>,
-    current: u32,
-    on_pick: EventHandler<u32>,
-) -> Element {
-    rsx! {
-        div { class: "space-y-2",
-            p { class: "text-sm font-medium text-ink", {t!("lab-class-label")} }
-            div { class: "flex flex-wrap gap-2 lg:flex-col",
-                for (i, name) in classes.iter().enumerate() {
-                    ClassButton {
-                        key: "{i}",
-                        index: i as u32,
-                        name: name.clone(),
-                        count: counts.get(i).copied().unwrap_or(0),
-                        on: i as u32 == current,
-                        on_pick,
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn ClassButton(
-    index: u32,
-    name: String,
-    count: usize,
-    on: bool,
-    on_pick: EventHandler<u32>,
-) -> Element {
-    let color = class_color(index);
-    let style = if on {
-        format!("background: {color}; border-color: {color}; color: white;")
-    } else {
-        format!("border-color: color-mix(in srgb, {color} 45%, transparent);")
-    };
-    let key = (index < 9).then(|| t!("lab-class-key", key : index + 1).to_string());
-    rsx! {
-        button {
-            class: "flex items-center gap-2 rounded-lg border-2 bg-surface px-3 py-2 text-left text-sm font-medium text-ink transition-transform duration-100 ease-out active:scale-[0.97]",
-            style: "{style}",
-            r#type: "button",
-            "aria-pressed": on,
-            title: key,
-            onclick: move |_| on_pick.call(index),
-            span {
-                class: "h-3 w-3 shrink-0 rounded-full border border-white/60",
-                style: "background: {color}",
-            }
-            span { class: "flex-1 truncate", "{name}" }
-            span { class: if on { "font-mono text-xs text-white/80" } else { "font-mono text-xs text-slate" },
-                "{count}"
             }
         }
     }
