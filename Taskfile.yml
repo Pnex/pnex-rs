@@ -485,6 +485,29 @@ tasks:
     cmds:
       - 'UPDATE_OPENAPI=1 {{.G}} cargo test -p pnex-backend --test openapi'
 
+  openapi:lint:
+    desc: Lint docs/contracts/openapi.json with Redocly (rules and exceptions in docs/contracts/redocly.yaml)
+    dir: docs/contracts
+    cmds:
+      - bunx @redocly/cli@2.0.8 lint openapi.json --config redocly.yaml
+
+  sdk:
+    desc: Generate and compile the TypeScript and Rust SDKs from docs/contracts/openapi.json → target/sdk/{ts,rust}
+    cmds:
+      - rm -rf target/sdk && mkdir -p target/sdk
+      - bunx @hey-api/openapi-ts@0.80.1 -i docs/contracts/openapi.json -o target/sdk/ts -c @hey-api/client-fetch
+      - bunx -p typescript@5.8.3 tsc --noEmit --strict --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext target/sdk/ts/index.ts
+      # `file=Vec<u8>`: the rust generator maps binary bodies to PathBuf,
+      # which reqwest cannot send (8 upload routes would not compile).
+      - >-
+        docker run --rm -u "$(id -u):$(id -g)" -v "{{.ROOT_DIR}}:/local"
+        openapitools/openapi-generator-cli:v7.14.0 generate
+        -i /local/docs/contracts/openapi.json -g rust -o /local/target/sdk/rust
+        --additional-properties=packageName=pnex_sdk --type-mappings='file=Vec<u8>'
+      # Own workspace root: the crate lives under this repo's workspace.
+      - echo '[workspace]' >> target/sdk/rust/Cargo.toml
+      - 'CARGO_TARGET_DIR=target/sdk/target {{.G}} cargo check --manifest-path target/sdk/rust/Cargo.toml'
+
   # ---------- Dev ----------
 
   dev:

@@ -61,6 +61,10 @@ pub const PIN_NOT_SUBSCRIBED: &str = "pin_not_subscribed";
 // ── Controller codes (batch orgs/pois/tours/dashboards/media/functions/annotation_layers) ──
 
 pub const ORG_NAME_DUPLICATE: &str = "org-name-duplicate";
+/// The caller is not a member of the `X-Org-Id` organisation (403).
+pub const ORG_NOT_MEMBER: &str = "org-not-member";
+/// An org-scoped route was called without a valid `X-Org-Id` header (400).
+pub const ORG_HEADER_REQUIRED: &str = "org-header-required";
 pub const ORG_RENAME_FORBIDDEN: &str = "org-rename-forbidden";
 pub const ORG_DELETE_FORBIDDEN: &str = "org-delete-forbidden";
 pub const ORG_NOT_EMPTY: &str = "org-not-empty";
@@ -753,6 +757,8 @@ pub const ALL: &[&str] = &[
     DEVICE_WRITE_PIN_MODE,
     PIN_NOT_SUBSCRIBED,
     ORG_NAME_DUPLICATE,
+    ORG_NOT_MEMBER,
+    ORG_HEADER_REQUIRED,
     ORG_RENAME_FORBIDDEN,
     ORG_DELETE_FORBIDDEN,
     ORG_NOT_EMPTY,

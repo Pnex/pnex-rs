@@ -21,6 +21,28 @@ contrats asservissent le comportement Rust (tests de parité).
   (une route neuve s'annote, elle ne s'ajoute pas à la liste). Hors
   périmètre : WebSockets (`/ws/*`), endpoints internes (`/internal/*`),
   sondes loco (`/_*`). Non servi en HTTP (pas de Swagger UI).
+  Règles de forme (erreurs, pagination, types, verbes, langue) :
+  `docs/architecture/api-contract.md` (D238–D245).
+- **Lint** : `task openapi:lint` (Redocly, `redocly.yaml`) — toute
+  opération documente au moins une 2xx et une 4xx. Le spec ajoute de
+  lui-même 401 (route authentifiée), 403 `org-not-member` (route d'org) et
+  429 (route sous rate-limit, d'après `services/rate_limit.rs`). Exceptions
+  motivées, route par route : `.redocly.lint-ignore.yaml` (jamais pour
+  masquer une annotation manquante) ; chemins « ambigus » désactivés car
+  les paramètres sont typés.
+- **SDK** : `task sdk` génère et compile les deux SDK dans `target/sdk/`
+  (non versionnés) :
+  - TypeScript (`@hey-api/openapi-ts` 0.80.1, client fetch embarqué, sans
+    dépendance) → `target/sdk/ts`, vérifié par `tsc --strict` ;
+  - Rust (`openapi-generator` 7.14.0, client reqwest) → `target/sdk/rust`.
+    `--type-mappings=file=Vec<u8>` est obligatoire : sans lui le générateur
+    type les corps binaires (`application/octet-stream`, 8 routes d'upload)
+    en `PathBuf`, que reqwest ne sait pas envoyer (`Body: From<PathBuf>`).
+    Un téléchargement binaire renvoie la `reqwest::Response` brute
+    (`.bytes()`).
+
+  Chaque appel envoie `Authorization: Bearer <jeton Rauthy>` et, sur les
+  routes d'une org, l'en-tête obligatoire `X-Org-Id`.
 
 ## Règles de parité retenues
 

@@ -153,6 +153,19 @@ async fn dashboard_summary_degrade_sans_o2() {
             .add_header("Authorization", bearer(&env.alice))
             .await;
         assert_eq!(res.status_code(), 400);
+        assert_eq!(
+            res.json::<serde_json::Value>()["error"],
+            "org-header-required"
+        );
+
+        // Another user's org → 403 coded, never a French message.
+        let res = server
+            .get("/api/v1/dashboard/summary")
+            .add_header("Authorization", bearer(&env.bob))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 403);
+        assert_eq!(res.json::<serde_json::Value>()["error"], "org-not-member");
     })
     .await;
 }

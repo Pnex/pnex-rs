@@ -92,12 +92,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   page: async ({ page, authenticated, tokens, runState, uiLocale }, use) => {
     if (DIST) {
       // The UI comes from a local build, the API and auth from the server.
+      const dist = DIST;
       await page.route(`${BASE_URL}/**`, async (route) => {
         const { pathname } = new URL(route.request().url());
         if (/^\/(api|auth|ws|health)(\/|$)/.test(pathname)) return route.continue();
-        const file = path.join(DIST, pathname);
+        const file = path.join(dist, pathname);
         const isFile = existsSync(file) && statSync(file).isFile();
-        return route.fulfill({ path: isFile ? file : path.join(DIST, 'index.html') });
+        return route.fulfill({ path: isFile ? file : path.join(dist, 'index.html') });
       });
     }
     if (authenticated) {

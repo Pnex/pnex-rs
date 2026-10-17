@@ -1,0 +1,12 @@
+# Lint of the generated spec (`task openapi:lint`). Missing 2xx/4xx
+# responses are errors: a new route documents what it answers.
+extends:
+  - recommended
+rules:
+  operation-4xx-response: error
+  operation-2xx-response: error
+  # `/cameras/segments/{id}` vs `/cameras/{device}/recordings`,
+  # `/media/chunks/{chunk_id}` vs `/media/{id}/…`, `/pois/placements/{id}`
+  # vs `/pois/{id}/devices`: the path parameters are typed (int64 / uuid),
+  # a literal segment can never match them.
+  no-ambiguous-paths: off
