@@ -4967,6 +4967,9 @@ lab-more-advice = { $count ->
    *[other] { $count } conseils pour un meilleur modèle
 }
 lab-source = Source
+lab-source-remove = Retirer
+lab-source-remove-confirm = Retirer { $name } du projet, avec ses { $count } images et leur étiquetage ? Les fichiers restent dans la médiathèque.
+lab-source-removed = Source retirée du projet
 lab-source-video = Vidéo
 lab-source-recording = Enregistrement
 lab-source-review = À revoir
