@@ -851,3 +851,63 @@ async fn followed_account_videos_are_captured_once() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn live_parts_land_as_video_media() {
+    with_app(|server, env| async move {
+        use sha2::Digest as _;
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, m) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/missions",
+            &env.alice,
+            org,
+            Some(json!({
+                "name": "Morning show",
+                "spec": { "kind": "watch_live", "params": { "url": "https://www.youtube.com/watch?v=live1234567" } },
+                "interval_secs": 300,
+            })),
+        )
+        .await;
+        assert_eq!(s, 201, "{m}");
+        assert!(m["target"].as_str().unwrap().starts_with("youtube:live:"));
+        let mission = m["id"].as_str().unwrap().to_string();
+        let send = |raw: Vec<u8>, part: &str| {
+            let sha: String = sha2::Sha256::digest(&raw).iter().map(|b| format!("{b:02x}")).collect();
+            let ts = chrono::Utc::now().timestamp_millis();
+            let signature = install.sign(&ba::live_upload_message(
+                &a.device_id,
+                ts,
+                &mission,
+                part.parse().unwrap_or(0),
+                &sha,
+            ));
+            server
+                .post("/api/v1/extension/uploads/live")
+                .add_header("Authorization", format!("Bearer {}", a.token))
+                .add_header("X-Pnex-Ts", ts.to_string())
+                .add_header("X-Pnex-Signature", signature)
+                .add_header("X-Pnex-Mission", mission.clone())
+                .add_header("X-Pnex-Part", part.to_string())
+                .add_header("X-Pnex-Started", "2026-10-18T07:00:00Z")
+                .bytes(raw.into())
+        };
+        let webm = b"\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\x82\x84webm\x42\x87".to_vec();
+        let res = send(webm.clone(), "1").await;
+        assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+        let stored: Value = res.json();
+        assert_eq!(stored["part"], 1);
+        let asset = stored["asset_id"].as_str().unwrap();
+        let (_, media) = call(&server, "GET", &format!("/api/v1/media/{asset}"), &env.alice, org, None).await;
+        assert_eq!(media["kind"], "video", "{media}");
+        assert_eq!(media["metadata"]["live"], true);
+        // An mp4, or a part of another kind of mission, is refused.
+        let res = send(b"\0\0\0\x18ftypisom\0\0\x02\0isommp41".to_vec(), "2").await;
+        assert_eq!(res.status_code().as_u16(), 400);
+    })
+    .await;
+}

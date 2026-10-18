@@ -1,0 +1,33 @@
+{
+  "cursor": "1729000000000",
+  "hasMore": true,
+  "itemList": [
+    {
+      "id": "7420000000000000001",
+      "desc": "First clip #tag",
+      "createTime": 1760781845,
+      "author": { "uniqueId": "some.account", "nickname": "Some" },
+      "video": {
+        "duration": 42,
+        "playAddr": "https://v16-webapp-prime.tiktok.com/video/tos/a.mp4?expire=1",
+        "subtitleInfos": [
+          { "LanguageCodeName": "fra-FR", "Url": "https://v16-webapp.tiktok.com/sub/a.vtt", "Format": "webvtt", "Source": "ASR" }
+        ]
+      }
+    },
+    {
+      "id": "7420000000000000002",
+      "desc": "Photo post",
+      "createTime": 1760700000,
+      "author": { "uniqueId": "some.account" },
+      "imagePost": { "images": [] }
+    },
+    {
+      "id": "7420000000000000003",
+      "desc": "Someone else",
+      "createTime": 1760600000,
+      "author": { "uniqueId": "other" },
+      "video": { "duration": 5, "playAddr": "https://v16-webapp-prime.tiktok.com/video/tos/b.mp4" }
+    }
+  ]
+}

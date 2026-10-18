@@ -20,3 +20,26 @@ api.runtime.onMessage.addListener((msg, sender) => {
   }
 });
 api.action.onClicked.addListener(() => api.runtime.openOptionsPage());
+
+// Recordings sent by recorder.js, chunk by chunk (base64), kept here for
+// the agent (host.js reads the same registry).
+globalThis.__pnexRecordings ??= new Map();
+api.runtime.onConnect.addListener((port) => {
+  if (port.name !== "pnex-recorder" || port.sender?.id !== api.runtime.id) return;
+  port.onMessage.addListener((msg) => {
+    const rec = globalThis.__pnexRecordings.get(msg?.id);
+    if (!rec) return;
+    if (msg.t === "chunk") {
+      const bin = atob(msg.data);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      rec.size += bytes.length;
+      // Past the cap the recording is cut, never grown without bound.
+      if (rec.size <= rec.max) rec.chunks.push(bytes);
+      else rec.reason ??= "max-size";
+    } else if (msg.t === "done") {
+      rec.reason ??= String(msg.reason ?? "ended");
+      rec.done = true;
+    }
+  });
+});

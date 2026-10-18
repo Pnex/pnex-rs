@@ -229,6 +229,8 @@ pub enum SocialPlatform {
     X,
     #[serde(rename = "youtube")]
     YouTube,
+    #[serde(rename = "tiktok")]
+    TikTok,
 }
 
 impl SocialPlatform {
@@ -236,6 +238,7 @@ impl SocialPlatform {
         match self {
             Self::X => "x",
             Self::YouTube => "youtube",
+            Self::TikTok => "tiktok",
         }
     }
 
@@ -243,6 +246,7 @@ impl SocialPlatform {
         match raw {
             "x" => Some(Self::X),
             "youtube" => Some(Self::YouTube),
+            "tiktok" => Some(Self::TikTok),
             _ => None,
         }
     }
@@ -255,7 +259,14 @@ impl SocialPlatform {
                 format!("https://www.youtube.com/@{handle}/videos"),
                 format!("https://www.youtube.com/@{handle}/shorts"),
             ],
+            Self::TikTok => vec![format!("https://www.tiktok.com/@{handle}")],
         }
+    }
+
+    /// The platform pauses its videos in a hidden tab (D269): its tab is
+    /// brought to the front while the agent reads it.
+    pub fn needs_foreground(self) -> bool {
+        matches!(self, Self::TikTok)
     }
 
     /// Sites the agent must be allowed on: the pages, plus where the files
@@ -264,6 +275,8 @@ impl SocialPlatform {
         match self {
             Self::X => &["https://x.com/", "https://video.twimg.com/"],
             Self::YouTube => &["https://www.youtube.com/"],
+            // Play addresses and captions live on subdomains of tiktok.com.
+            Self::TikTok => &["https://www.tiktok.com/", "https://*.tiktok.com/"],
         }
     }
 }
@@ -292,7 +305,40 @@ pub enum MissionSpec {
     CollectValue(CollectValueParams),
     CollectPage(CollectPageParams),
     FollowAccount(FollowAccountParams),
+    WatchLive(WatchLiveParams),
 }
+
+/// `watch_live` (D260): record a live page while it is on air, in parts
+/// of at most [`LIVE_PART_MAX_MS`], each a `video` media.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WatchLiveParams {
+    /// http(s) page of the live.
+    pub url: String,
+}
+
+/// Message the install key signs to upload a part of a recorded live.
+pub fn live_upload_message(
+    device_id: &str,
+    ts_ms: i64,
+    mission_id: &str,
+    part: u32,
+    body_sha256: &str,
+) -> String {
+    format!("pnex-ext-live\n{device_id}\n{ts_ms}\n{mission_id}\n{part}\n{body_sha256}")
+}
+
+/// Answer of a live part upload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LivePartStored {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub asset_id: String,
+    pub part: u32,
+}
+
+/// Longest part of a recorded live (keeps a part under [`VIDEO_MAX`]).
+pub const LIVE_PART_MAX_MS: i64 = 30 * 60 * 1000;
 
 impl MissionSpec {
     pub fn kind(&self) -> &'static str {
@@ -300,6 +346,7 @@ impl MissionSpec {
             Self::CollectValue(_) => "collect_value",
             Self::CollectPage(_) => "collect_page",
             Self::FollowAccount(_) => "follow_account",
+            Self::WatchLive(_) => "watch_live",
         }
     }
 }
@@ -341,6 +388,7 @@ pub const AGENT_STATE_CODES: &[&str] = &[
     err_codes::EXT_RATE_LIMITED,
     err_codes::EXT_TAB_HIDDEN,
     err_codes::EXT_PERMISSION_MISSING,
+    err_codes::EXT_DRM_PROTECTED,
 ];
 
 /// A mission of the org.
@@ -475,6 +523,24 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
         MissionSpec::CollectPage(p) => {
             let (url, target) = check_page_url(&p.url, "spec.params.url")?;
             Ok((MissionSpec::CollectPage(CollectPageParams { url }), target))
+        }
+        MissionSpec::WatchLive(p) => {
+            let (url, page_target) = check_page_url(&p.url, "spec.params.url")?;
+            // A live occupies its platform's tab (D255); one lease per live.
+            let host = page_target
+                .trim_start_matches("web:")
+                .split('/')
+                .next()
+                .unwrap_or_default();
+            let target = match host {
+                "www.youtube.com" | "youtube.com" | "m.youtube.com" => {
+                    format!("youtube:live:{url}")
+                }
+                "x.com" | "twitter.com" => format!("x:live:{url}"),
+                "www.tiktok.com" | "tiktok.com" => format!("tiktok:live:{url}"),
+                _ => page_target,
+            };
+            Ok((MissionSpec::WatchLive(WatchLiveParams { url }), target))
         }
         MissionSpec::FollowAccount(p) => {
             let handle = p.handle.trim().trim_start_matches('@');
@@ -826,6 +892,32 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn a_live_takes_its_platform_tab() {
+        let live = |url: &str| {
+            let spec = MissionSpec::WatchLive(WatchLiveParams { url: url.into() });
+            check_spec(&spec).unwrap().1
+        };
+        assert_eq!(
+            platform_of(&live("https://www.youtube.com/watch?v=abc")),
+            "youtube"
+        );
+        assert_eq!(platform_of(&live("https://x.com/i/broadcasts/1")), "x");
+        assert_eq!(
+            platform_of(&live("https://www.tiktok.com/@a/live")),
+            "tiktok"
+        );
+        assert_eq!(
+            platform_of(&live("https://tv.example.org/direct")),
+            "web:tv.example.org"
+        );
+        assert!(SocialPlatform::TikTok.needs_foreground());
+        assert_eq!(
+            SocialPlatform::parse("tiktok"),
+            Some(SocialPlatform::TikTok)
+        );
     }
 
     #[test]

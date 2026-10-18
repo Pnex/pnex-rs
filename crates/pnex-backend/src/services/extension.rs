@@ -1206,6 +1206,77 @@ pub async fn store_captions(
     Ok(updated.view())
 }
 
+/// Stores one part of a recorded live (`watch_live`, D260) as a `video`
+/// media of the library, with the live's provenance.
+pub async fn store_live_part(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    mission_id: &str,
+    part: u32,
+    started_at: Option<&str>,
+    bytes: axum::body::Bytes,
+) -> Result<ba::LivePartStored, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    let (id, mission, spec) = own_mission(&ctx.db, agent, mission_id).await?;
+    let MissionSpec::WatchLive(params) = spec else {
+        return Err(ExtensionError::MissionNotFound);
+    };
+    // Only browser recordings (WebM) come in parts.
+    if bytes.len() > ba::VIDEO_MAX || !bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        return Err(ExtensionError::Invalid {
+            field: "body".into(),
+            token: err_codes::FIELD_INVALID.into(),
+        });
+    }
+    let started_at = started_at
+        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .map(|t| t.to_rfc3339());
+    let day = started_at.as_deref().map_or("", |t| &t[..10.min(t.len())]);
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(agent.org_id),
+        kind: Set("video".into()),
+        name: Set(format!("{} · {day} · {part}", mission.name)
+            .chars()
+            .take(200)
+            .collect()),
+        description: Set(None),
+        metadata: Set(Some(serde_json::json!({
+            "source": "browser_agent",
+            "mission_id": id.to_string(),
+            "source_url": params.url,
+            "platform": ba::platform_of(&mission.target),
+            "live": true,
+            "part": part,
+            "started_at": started_at,
+            "captured_at": chrono::Utc::now().to_rfc3339(),
+        }))),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?;
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    crate::controllers::media::write_version(
+        ctx,
+        agent.org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: format!("live-{part}.webm"),
+            content_type: "video/webm".into(),
+            note: None,
+            bytes,
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| ExtensionError::Db(DbErr::Custom(format!("live part: {e}"))))?;
+    report_state(&ctx.db, agent, id, MissionState::Running, None).await?;
+    Ok(ba::LivePartStored {
+        asset_id: asset.id.to_string(),
+        part,
+    })
+}
+
 /// Registry of the org, newest first (SQL pagination: it grows).
 pub async fn list_videos(
     db: &DatabaseConnection,

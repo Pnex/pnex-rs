@@ -62,7 +62,22 @@ extern "C" {
         url: &str,
         bearer: &str,
         extra: &str,
+        content_type: &str,
     ) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn focus_tab(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn start_recording(
+        tab: f64,
+        id: &str,
+        max_ms: f64,
+        bitrate: f64,
+        live: bool,
+        max_bytes: f64,
+    ) -> Result<JsValue, JsValue>;
+    pub fn recording_state(id: &str) -> String;
+    #[wasm_bindgen(catch)]
+    pub async fn recording_to_blob(id: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch)]
     pub async fn ws_open(

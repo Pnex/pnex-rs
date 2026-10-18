@@ -32,6 +32,16 @@ pub fn routes() -> Routes {
         .add("/uploads/page", post(upload_page))
         .add("/uploads/captions", post(upload_captions))
         .add(
+            "/uploads/live",
+            post(upload_live)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    pnex_core::browser_agent::VIDEO_MAX + 1024 * 1024,
+                ))
+                .layer(axum::middleware::from_fn(
+                    crate::services::compute_limits::upload_gate,
+                )),
+        )
+        .add(
             "/uploads/video",
             post(upload_video)
                 .layer(axum::extract::DefaultBodyLimit::max(
@@ -61,6 +71,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         upload_page,
         upload_video,
         upload_captions,
+        upload_live,
         videos,
         missions,
         mission,
@@ -350,7 +361,11 @@ fn public_base(headers: &axum::http::HeaderMap) -> Option<String> {
 
 /// Zip of the unpacked extension plus `server.json` (this server's URL, so
 /// the user only signs in).
-fn zip_extension(dir: &std::path::Path, server: Option<&str>) -> std::io::Result<Vec<u8>> {
+fn zip_extension(
+    dir: &std::path::Path,
+    server: Option<&str>,
+    firefox: bool,
+) -> std::io::Result<Vec<u8>> {
     use std::io::Write as _;
     let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = zip::write::SimpleFileOptions::default()
@@ -368,9 +383,14 @@ fn zip_extension(dir: &std::path::Path, server: Option<&str>) -> std::io::Result
                 .map_err(std::io::Error::other)?
                 .to_string_lossy()
                 .replace('\\', "/");
-            if name == "server.json" {
-                continue;
-            }
+            // One manifest per browser: Firefox's replaces Chrome's.
+            let name = match name.as_str() {
+                "server.json" => continue,
+                "manifest.firefox.json" if !firefox => continue,
+                "manifest.json" if firefox => continue,
+                "manifest.firefox.json" => "manifest.json".to_string(),
+                _ => name,
+            };
             zip.start_file(name, options)
                 .map_err(std::io::Error::other)?;
             zip.write_all(&std::fs::read(&path)?)?;
@@ -388,6 +408,14 @@ fn zip_extension(dir: &std::path::Path, server: Option<&str>) -> std::io::Result
     Ok(zip.finish().map_err(std::io::Error::other)?.into_inner())
 }
 
+/// Browser of the extension download.
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct DownloadQuery {
+    /// `chrome` (default) or `firefox`.
+    browser: Option<String>,
+}
+
 /// `GET /api/v1/extension/download` — public.
 #[utoipa::path(
     get,
@@ -395,14 +423,19 @@ fn zip_extension(dir: &std::path::Path, server: Option<&str>) -> std::io::Result
     tag = "extension",
     operation_id = "extension_download",
     summary = "Download the browser extension (public)",
-    description = "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
+    description = "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in: Chrome by default, `browser=firefox` for Firefox. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
+    params(DownloadQuery),
     responses(
         (status = 200, description = "Zip archive", content_type = "application/zip", body = Vec<u8>),
         (status = 404, description = "`extension-dist-not-found`: this server ships no extension build", body = crate::openapi::ErrorDetail)
     ),
     security(())
 )]
-async fn download(headers: axum::http::HeaderMap) -> Result<Response> {
+async fn download(
+    headers: axum::http::HeaderMap,
+    Query(q): Query<DownloadQuery>,
+) -> Result<Response> {
+    let firefox = q.browser.as_deref() == Some("firefox");
     let dir = dist_dir();
     if !dir.join("manifest.json").is_file() {
         return Err(Error::CustomError(
@@ -414,20 +447,25 @@ async fn download(headers: axum::http::HeaderMap) -> Result<Response> {
         ));
     }
     let server = public_base(&headers);
-    let bytes = tokio::task::spawn_blocking(move || zip_extension(&dir, server.as_deref()))
-        .await
-        .map_err(|_| Error::InternalServerError)?
-        .map_err(|e| {
-            tracing::error!(error = %e, "browser extension zip failed");
-            Error::InternalServerError
-        })?;
+    let bytes =
+        tokio::task::spawn_blocking(move || zip_extension(&dir, server.as_deref(), firefox))
+            .await
+            .map_err(|_| Error::InternalServerError)?
+            .map_err(|e| {
+                tracing::error!(error = %e, "browser extension zip failed");
+                Error::InternalServerError
+            })?;
     Ok((
         StatusCode::OK,
         [
             ("content-type", "application/zip"),
             (
                 "content-disposition",
-                "attachment; filename=\"pnex-browser-agent.zip\"",
+                if firefox {
+                    "attachment; filename=\"pnex-browser-agent-firefox.zip\""
+                } else {
+                    "attachment; filename=\"pnex-browser-agent.zip\""
+                },
             ),
         ],
         bytes,
@@ -644,6 +682,54 @@ async fn upload_captions(
     }
 }
 
+/// `POST /api/v1/extension/uploads/live` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/live",
+    tag = "extension",
+    operation_id = "extension_upload_live",
+    summary = "Upload a part of a live recorded by a browser agent",
+    description = "Called by a browser agent for its `watch_live` missions, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Part` (1, 2…), optional `X-Pnex-Started` (RFC 3339), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, part and SHA-256 of the file, usable once). Body: the WebM recording of the part. Stores it as a `video` media of the library with the live's provenance. Rate-limited per agent.",
+    request_body(content = Vec<u8>, content_type = "video/webm"),
+    responses(
+        (status = 201, body = pnex_core::browser_agent::LivePartStored),
+        (status = 400, description = "`field-invalid`: not a WebM recording, or larger than the cap", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`: not a running live mission of this agent", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_live(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
+    let mission_id = header("x-pnex-mission");
+    let Ok(part) = header("x-pnex-part").parse::<u32>() else {
+        return Ok(super::field_error("x-pnex-part", err_codes::FIELD_INVALID));
+    };
+    let started = header("x-pnex-started");
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::live_upload_message(device_id, ts, &mission_id, part, &body_sha)
+    })
+    .await?;
+    let started = (!started.is_empty()).then_some(started.as_str());
+    match extension::store_live_part(&ctx, &agent, &mission_id, part, started, raw).await {
+        Ok(stored) => Ok((StatusCode::CREATED, format::json(stored)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
 /// `GET /api/v1/extension/videos` — every member.
 #[utoipa::path(
     get,
@@ -834,7 +920,15 @@ mod tests {
         std::fs::write(dir.join("manifest.json"), "{}").unwrap();
         std::fs::write(dir.join("pkg/a.js"), "x").unwrap();
         std::fs::write(dir.join("server.json"), "{\"server\":\"stale\"}").unwrap();
-        let bytes = zip_extension(&dir, Some("https://p.io")).unwrap();
+        std::fs::write(dir.join("manifest.firefox.json"), "{\"firefox\":1}").unwrap();
+        let bytes = zip_extension(&dir, Some("https://p.io"), false).unwrap();
+        let firefox = zip_extension(&dir, None, true).unwrap();
+        let mut ff = zip::ZipArchive::new(std::io::Cursor::new(firefox)).unwrap();
+        let mut manifest = String::new();
+        std::io::Read::read_to_string(&mut ff.by_name("manifest.json").unwrap(), &mut manifest)
+            .unwrap();
+        assert_eq!(manifest, "{\"firefox\":1}");
+        assert!(ff.by_name("manifest.firefox.json").is_err());
         std::fs::remove_dir_all(&dir).unwrap();
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut names: Vec<String> = zip.file_names().map(|n| n.unwrap().into_owned()).collect();

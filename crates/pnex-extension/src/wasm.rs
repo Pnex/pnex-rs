@@ -440,7 +440,9 @@ impl Session {
                         }
                         for id in platform_ids {
                             if let Some(url) = p.videos.remove(&id) {
-                                p.downloads.push_back((mission_id.clone(), id, url));
+                                let page =
+                                    p.post_urls.get(&id).cloned().unwrap_or_else(|| url.clone());
+                                p.downloads.push_back((mission_id.clone(), id, url, page));
                             }
                         }
                     }
@@ -476,17 +478,31 @@ impl Session {
                 });
             }
             // One download at a time, a pause between two (D258).
+            // A capture may record in the platform's tab: it waits for it.
             let next_download = {
                 let mut p = plan.borrow_mut();
-                let ready = !p.downloading && host::now_ms() >= p.next_download_at;
+                let now = host::now_ms();
+                let ready = !p.downloading
+                    && now >= p.next_download_at
+                    && p.downloads
+                        .front()
+                        .is_some_and(|(_, _, _, page)| !p.busy.contains(platform_of_url(page)));
                 ready.then(|| p.downloads.pop_front()).flatten()
             };
-            if let Some((mission_id, post, url)) = next_download {
-                plan.borrow_mut().downloading = true;
+            if let Some((mission_id, post, url, page)) = next_download {
+                let platform = platform_of_url(&page).to_string();
+                {
+                    let mut p = plan.borrow_mut();
+                    p.downloading = true;
+                    p.busy.insert(platform.clone());
+                }
                 let (this, plan) = (this.clone(), plan.clone());
                 spawn_local(async move {
-                    let outcome = capture_video(&this, &mission_id, &post, &url).await;
+                    let outcome =
+                        capture_video(&this, &plan, &platform, &mission_id, &post, &url, &page)
+                            .await;
                     let mut p = plan.borrow_mut();
+                    p.busy.remove(&platform);
                     p.downloading = false;
                     p.next_download_at =
                         host::now_ms() + 5_000.0 + js_sys::Math::random() * 5_000.0;
@@ -564,8 +580,10 @@ struct Plan {
     post_urls: BTreeMap<String, String>,
     /// Captions to read: (mission, post, url).
     caption_queue: std::collections::VecDeque<(String, String, String)>,
-    /// Videos to capture: (mission, post, url).
-    downloads: std::collections::VecDeque<(String, String, String)>,
+    /// Videos to capture: (mission, post, file or watch URL, post page).
+    downloads: std::collections::VecDeque<(String, String, String, String)>,
+    /// Caption track a platform listed with the post (TikTok): (lang, URL).
+    tracks: BTreeMap<String, (String, String)>,
     downloading: bool,
     next_download_at: f64,
 }
@@ -591,6 +609,7 @@ async fn run_mission(
         MissionSpec::CollectValue(p) => p.url.clone(),
         MissionSpec::CollectPage(p) => p.url.clone(),
         MissionSpec::FollowAccount(p) => p.platform.list_urls(&p.handle)[0].clone(),
+        MissionSpec::WatchLive(p) => p.url.clone(),
     };
     // Sites the mission reads: its page, or the platform's sites.
     let needed: Vec<String> = match &m.spec {
@@ -638,6 +657,7 @@ async fn run_mission(
         MissionSpec::FollowAccount(f) => {
             return follow_account(session, plan, m, f, tab, platform).await
         }
+        MissionSpec::WatchLive(l) => return watch_live(session, plan, m, l, platform).await,
     };
     #[derive(Deserialize)]
     struct Read {
@@ -747,10 +767,22 @@ fn read_posts(
     handle: &str,
     docs: &[(String, String)],
     posts: &mut BTreeMap<String, ba::SeenPost>,
+    tracks: &mut BTreeMap<String, (String, String)>,
 ) {
-    use crate::adapters::{x, youtube};
+    use crate::adapters::{tiktok, x, youtube};
     for (url, body) in docs {
         let found = match platform {
+            ba::SocialPlatform::TikTok if tiktok::is_list_url(url) => {
+                tiktok::posts_of(body, handle)
+                    .into_iter()
+                    .map(|(post, track)| {
+                        if let Some(track) = track {
+                            tracks.insert(post.platform_id.clone(), track);
+                        }
+                        post
+                    })
+                    .collect()
+            }
             ba::SocialPlatform::X if x::is_timeline_url(url) => x::posts_of(body, handle),
             ba::SocialPlatform::YouTube if url.is_empty() || youtube::is_list_url(url) => {
                 youtube::posts_of(body, handle)
@@ -777,6 +809,7 @@ async fn follow_account(
 ) -> String {
     let depth = m.scroll_depth.max(ba::RECENT_DEPTH);
     let mut posts: BTreeMap<String, ba::SeenPost> = BTreeMap::new();
+    let mut tracks: BTreeMap<String, (String, String)> = BTreeMap::new();
     let mut end_reached = true;
     let mut deepest = 0;
     let mut tab = first_tab;
@@ -800,6 +833,7 @@ async fn follow_account(
                     &params.handle,
                     &[(String::new(), initial)],
                     &mut posts,
+                    &mut tracks,
                 );
             }
         }
@@ -808,7 +842,12 @@ async fn follow_account(
             &params.handle,
             &take_responses(tab),
             &mut posts,
+            &mut tracks,
         );
+        // D269: some platforms pause a hidden tab.
+        if params.platform.needs_foreground() {
+            let _ = host::focus_tab(tab).await;
+        }
         let mut idle = 0;
         let mut scrolls = 0;
         while scrolls < depth {
@@ -826,7 +865,13 @@ async fn follow_account(
                 }
             } else {
                 idle = 0;
-                read_posts(params.platform, &params.handle, &docs, &mut posts);
+                read_posts(
+                    params.platform,
+                    &params.handle,
+                    &docs,
+                    &mut posts,
+                    &mut tracks,
+                );
             }
         }
         deepest = deepest.max(scrolls);
@@ -863,6 +908,7 @@ async fn follow_account(
                     .insert(post.platform_id.clone(), post.url.clone());
             }
         }
+        p.tracks.extend(tracks);
     }
     let count = posts.len();
     // Batches within the server's bound; only the last one carries the end.
@@ -883,6 +929,8 @@ async fn follow_account(
 fn platform_of_url(url: &str) -> &'static str {
     if url.starts_with("https://www.youtube.com/") {
         "youtube"
+    } else if url.starts_with("https://www.tiktok.com/") {
+        "tiktok"
     } else {
         "x"
     }
@@ -897,28 +945,41 @@ async fn fetch_captions(
     mission_id: &str,
     post: &str,
 ) -> String {
-    use crate::adapters::youtube;
-    if platform != "youtube" {
-        return "no-captions".into();
-    }
-    let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
-    let watch = format!("https://www.youtube.com/watch?v={post}");
-    let tab = match host::agent_tab(tab, &watch).await {
-        Ok(id) => id.as_f64().unwrap_or(-1.0),
-        Err(e) => return err_text(&e),
-    };
-    plan.borrow_mut().tabs.insert(platform.to_string(), tab);
-    take_responses(tab);
-    let player = host::read_player_response(tab)
-        .await
-        .map(|v| text(&v))
-        .unwrap_or_default();
-    let Some((lang, url)) = youtube::caption_track(&player) else {
-        return "no-captions".into();
-    };
-    let cues = match host::fetch_text(&url).await {
-        Ok(body) => youtube::cues_of(&text(&body)),
-        Err(e) => return err_text(&e),
+    use crate::adapters::{tiktok, youtube};
+    let (lang, cues) = match platform {
+        // TikTok listed the track with the post: no page to open.
+        "tiktok" => {
+            let Some((lang, url)) = plan.borrow().tracks.get(post).cloned() else {
+                return "no-captions".into();
+            };
+            match host::fetch_text(&url).await {
+                Ok(body) => (lang, tiktok::vtt_cues(&text(&body))),
+                Err(e) => return err_text(&e),
+            }
+        }
+        "youtube" => {
+            let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+            let watch = format!("https://www.youtube.com/watch?v={post}");
+            let tab = match host::agent_tab(tab, &watch).await {
+                Ok(id) => id.as_f64().unwrap_or(-1.0),
+                Err(e) => return err_text(&e),
+            };
+            plan.borrow_mut().tabs.insert(platform.to_string(), tab);
+            take_responses(tab);
+            let player = host::read_player_response(tab)
+                .await
+                .map(|v| text(&v))
+                .unwrap_or_default();
+            let Some((lang, url)) = youtube::caption_track(&player) else {
+                return "no-captions".into();
+            };
+            match host::fetch_text(&url).await {
+                Ok(body) => (lang, youtube::cues_of(&text(&body))),
+                Err(e) => return err_text(&e),
+            }
+        }
+        // X posts rarely carry captions.
+        _ => return "no-captions".into(),
     };
     if cues.is_empty() {
         return "no-captions".into();
@@ -965,50 +1026,213 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-/// Downloads one video and uploads it signed (D260, D262).
-async fn capture_video(session: &Session, mission_id: &str, post: &str, url: &str) -> String {
-    // shortcut: a watch page (YouTube) has no file to fetch; it is recorded
-    // in real time with the live lot (L4, webm), skipped until then.
-    if url.starts_with("https://www.youtube.com/") {
-        return "recording-pending".into();
+/// A file ready to upload (kept on the JS side, see host.js).
+#[derive(Deserialize)]
+struct Blob {
+    id: f64,
+    sha256: String,
+}
+
+/// Bitrate of a browser recording: ~5 MB a minute, 40 minutes under the
+/// upload cap.
+const RECORD_BITRATE: f64 = 600_000.0;
+/// Longest recording of a video (a live is cut in parts instead).
+const RECORD_MAX_MS: f64 = 40.0 * 60_000.0;
+
+/// Records what `page` plays in the platform's tab, in real time (D260).
+async fn record(
+    plan: &Rc<RefCell<Plan>>,
+    platform: &str,
+    page: &str,
+    max_ms: f64,
+    live: bool,
+    navigate: bool,
+) -> Result<(Blob, String), String> {
+    let mut tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+    if navigate || tab < 0.0 {
+        tab = host::agent_tab(tab, page)
+            .await
+            .map_err(|e| err_text(&e))?
+            .as_f64()
+            .unwrap_or(-1.0);
+        plan.borrow_mut().tabs.insert(platform.to_string(), tab);
     }
+    if platform == "tiktok" {
+        let _ = host::focus_tab(tab).await;
+    }
+    let id = host::random_b64(12);
+    host::start_recording(tab, &id, max_ms, RECORD_BITRATE, live, ba::VIDEO_MAX as f64)
+        .await
+        .map_err(|e| err_text(&e))?;
     #[derive(Deserialize)]
-    struct Blob {
-        id: f64,
-        sha256: String,
+    struct State {
+        done: bool,
+        reason: Option<String>,
     }
-    let blob = match host::fetch_blob(url, ba::VIDEO_MAX as f64).await {
-        Ok(v) => match serde_json::from_str::<Blob>(&text(&v)) {
-            Ok(b) => b,
-            Err(e) => return e.to_string(),
+    let started = host::now_ms();
+    let reason = loop {
+        host::sleep(2_000.0).await;
+        let state: State = serde_json::from_str(&host::recording_state(&id)).unwrap_or(State {
+            done: true,
+            reason: Some("lost".into()),
+        });
+        if state.done {
+            break state.reason.unwrap_or_else(|| "ended".into());
+        }
+        if host::now_ms() - started > max_ms + 120_000.0 {
+            break "timeout".into();
+        }
+    };
+    if matches!(reason.as_str(), "no-video" | "no-capture" | "lost")
+        || reason == err_codes::EXT_DRM_PROTECTED
+    {
+        return Err(reason);
+    }
+    let blob = host::recording_to_blob(&id)
+        .await
+        .map_err(|e| err_text(&e))?;
+    let blob: Blob = serde_json::from_str(&text(&blob)).map_err(|e| e.to_string())?;
+    Ok((blob, reason))
+}
+
+/// Signs and uploads a file to an agent upload route.
+async fn upload(
+    session: &Session,
+    route: &str,
+    blob: &Blob,
+    message: &str,
+    mut headers: serde_json::Value,
+    content_type: &str,
+) -> Result<HttpReply, String> {
+    let creds = &session.creds;
+    let signature = host::sign(message).await.map_err(|e| err_text(&e))?;
+    headers["X-Pnex-Signature"] = text(&signature).into();
+    let reply = host::upload_blob(
+        blob.id,
+        &format!("{}{route}", creds.server),
+        &creds.token,
+        &headers.to_string(),
+        content_type,
+    )
+    .await
+    .map_err(|e| err_text(&e))?;
+    serde_json::from_str::<HttpReply>(&text(&reply)).map_err(|e| e.to_string())
+}
+
+/// Captures one video: its file when the platform exposes it, else a
+/// recording of its page (D260); uploaded signed (D262).
+async fn capture_video(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    platform: &str,
+    mission_id: &str,
+    post: &str,
+    url: &str,
+    page: &str,
+) -> String {
+    let watch_page = url == page || url.starts_with("https://www.youtube.com/");
+    let fetched = if watch_page {
+        None
+    } else {
+        host::fetch_blob(url, ba::VIDEO_MAX as f64)
+            .await
+            .ok()
+            .and_then(|v| serde_json::from_str::<Blob>(&text(&v)).ok())
+    };
+    let (blob, content_type) = match fetched {
+        Some(blob) => (blob, "video/mp4"),
+        None => match record(plan, platform, page, RECORD_MAX_MS, false, true).await {
+            Ok((blob, _)) => (blob, "video/webm"),
+            Err(reason) => return reason,
         },
-        Err(e) => return err_text(&e),
     };
     let creds = &session.creds;
     let ts = host::now_ms() as i64;
     let message = ba::video_upload_message(&creds.device_id, ts, mission_id, post, &blob.sha256);
-    let signature = match host::sign(&message).await {
-        Ok(sig) => text(&sig),
-        Err(e) => return err_text(&e),
-    };
     let headers = serde_json::json!({
         "X-Pnex-Ts": ts.to_string(),
-        "X-Pnex-Signature": signature,
         "X-Pnex-Mission": mission_id,
         "X-Pnex-Post": post,
     });
-    let reply = host::upload_blob(
-        blob.id,
-        &format!("{}/api/v1/extension/uploads/video", creds.server),
-        &creds.token,
-        &headers.to_string(),
+    match upload(
+        session,
+        "/api/v1/extension/uploads/video",
+        &blob,
+        &message,
+        headers,
+        content_type,
     )
-    .await;
-    match reply.map(|v| serde_json::from_str::<HttpReply>(&text(&v))) {
-        Ok(Ok(r)) if r.status == 201 => format!("video {post}"),
-        Ok(Ok(r)) => error_of(&r),
-        Ok(Err(e)) => e.to_string(),
-        Err(e) => err_text(&e),
+    .await
+    {
+        Ok(r) if r.status == 201 => format!("video {post}"),
+        Ok(r) => error_of(&r),
+        Err(e) => e,
+    }
+}
+
+/// `watch_live` (D260): records the live part after part (each at most
+/// [`ba::LIVE_PART_MAX_MS`]) until it ends; each part is a media.
+async fn watch_live(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    m: &AssignedMission,
+    params: &ba::WatchLiveParams,
+    platform: &str,
+) -> String {
+    let mut part: u32 = 0;
+    loop {
+        part += 1;
+        let started = String::from(js_sys::Date::new_0().to_iso_string());
+        // The first part opens the page; the next ones keep it playing.
+        let (blob, reason) = match record(
+            plan,
+            platform,
+            &params.url,
+            ba::LIVE_PART_MAX_MS as f64,
+            true,
+            part == 1,
+        )
+        .await
+        {
+            Ok(done) => done,
+            Err(reason) => {
+                if part == 1 {
+                    session.send(&AgentMsg::State {
+                        mission_id: m.id.clone(),
+                        state: MissionState::Blocked,
+                        code: (reason == err_codes::EXT_DRM_PROTECTED).then(|| reason.clone()),
+                    });
+                }
+                return reason;
+            }
+        };
+        let creds = &session.creds;
+        let ts = host::now_ms() as i64;
+        let message = ba::live_upload_message(&creds.device_id, ts, &m.id, part, &blob.sha256);
+        let headers = serde_json::json!({
+            "X-Pnex-Ts": ts.to_string(),
+            "X-Pnex-Mission": m.id,
+            "X-Pnex-Part": part.to_string(),
+            "X-Pnex-Started": started,
+        });
+        match upload(
+            session,
+            "/api/v1/extension/uploads/live",
+            &blob,
+            &message,
+            headers,
+            "video/webm",
+        )
+        .await
+        {
+            Ok(r) if r.status == 201 => {}
+            Ok(r) => return error_of(&r),
+            Err(e) => return e,
+        }
+        // A part cut at its maximum means the live goes on.
+        if reason != "max-duration" && reason != "max-size" {
+            return format!("live: {part} parts");
+        }
     }
 }
 
