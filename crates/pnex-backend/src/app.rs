@@ -145,6 +145,8 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::media_ingest::internal_routes())
         .add_route(controllers::voice_id::routes())
         .add_route(controllers::taxonomies::routes())
+        .add_route(controllers::extension::routes())
+        .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())

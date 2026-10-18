@@ -221,8 +221,8 @@ async fn create(
         .await
         .map_err(|_| Error::InternalServerError)?
         .ok_or(Error::InternalServerError)?;
-    // Edge agent (D95): no firmware to build.
-    if super::edge_agents::is_agent(&ctx.db, &device).await {
+    // Software agent (edge D95, browser D255): no firmware to build.
+    if super::edge_agents::is_software(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
     }
     // Board figée du device : soc merge-bin + pio_board +

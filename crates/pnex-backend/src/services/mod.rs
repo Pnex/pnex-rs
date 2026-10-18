@@ -25,6 +25,7 @@ pub mod doc_search;
 pub mod drain;
 pub mod edge_agent;
 pub mod events;
+pub mod extension;
 pub mod firmware;
 pub mod firmware_projects;
 pub mod flow;

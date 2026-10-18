@@ -19,6 +19,8 @@ pub mod edge_agents;
 pub mod edge_refs;
 /// JSON events stored as OpenObserve logs (D84).
 pub mod events;
+/// Browser agents API (extension-collector.md D254–D269).
+pub mod extension;
 pub mod firmware_projects;
 pub mod flow_cluster;
 pub mod flows;
@@ -70,6 +72,8 @@ pub mod voice_id;
 pub mod ws_camera;
 pub mod ws_device;
 pub mod ws_doc;
+/// Browser agent link `/ws/extension` (D262).
+pub mod ws_extension;
 /// Media link of capture boxes (media-ingest.md D160, lot 6b).
 pub mod ws_media;
 /// Bus WS des notifications (canal `websocket`, D51).

@@ -1,0 +1,770 @@
+//! Browser agents (extension-collector.md D254–D269): pairing, tickets,
+//! missions and their leases. Shared by the HTTP controller and the
+//! `/ws/extension` link.
+//!
+//! - an agent is a `device_registries` row of the `browser_agent` model
+//!   plus an `extension_agents` row holding its credentials: the install
+//!   key (D266), the hash of its token and its Noise key. The token lives
+//!   apart from `device_tokens`, so no other device link accepts it;
+//! - every request of the agent is signed by its install key (WebCrypto
+//!   ECDSA P-256, non extractable): a copied token alone opens nothing;
+//! - a mission runs only on the agent holding the Valkey lease of its
+//!   target (D257).
+
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use base64::Engine as _;
+use chrono::{DateTime, FixedOffset, Utc};
+use loco_rs::config::Config;
+use pnex_core::browser_agent::{
+    self as ba, BrowserAgent, Mission, MissionCreate, MissionPatch, MissionSpec, MissionState,
+    PairRequest, PairResponse,
+};
+use pnex_core::err_codes;
+use rand::RngExt;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    FromQueryResult, QueryFilter, Set, Statement, TransactionTrait,
+};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+use crate::models::_entities::{device_registries, predefined_devices};
+
+/// Lifetime of an unused websocket ticket.
+pub const TICKET_TTL_SECS: u64 = 60;
+/// Lease of a mission target; renewed by the link well before it expires.
+pub const LEASE_TTL_MS: u64 = 45_000;
+
+#[derive(Debug, thiserror::Error)]
+pub enum ExtensionError {
+    #[error("invalid field {field}")]
+    Invalid { field: String, token: String },
+    #[error("agent not found")]
+    AgentNotFound,
+    #[error("mission not found")]
+    MissionNotFound,
+    #[error("stale version")]
+    VersionConflict { current: i32 },
+    #[error("pairing refused")]
+    PairRefused,
+    #[error("install paired with another org")]
+    PairedElsewhere,
+    #[error(transparent)]
+    Db(#[from] DbErr),
+}
+
+impl From<(String, String)> for ExtensionError {
+    fn from((field, token): (String, String)) -> Self {
+        Self::Invalid { field, token }
+    }
+}
+
+fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
+    Statement::from_sql_and_values(sea_orm::DbBackend::Postgres, sql, values)
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    Sha256::digest(data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn random_b64(url_safe: bool) -> String {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill(&mut bytes);
+    if url_safe {
+        URL_SAFE_NO_PAD.encode(bytes)
+    } else {
+        STANDARD.encode(bytes)
+    }
+}
+
+/// Raw uncompressed P-256 point (65 bytes, `0x04‖x‖y`).
+fn decode_install_key(raw: &str) -> Option<Vec<u8>> {
+    let key = URL_SAFE_NO_PAD.decode(raw.trim()).ok()?;
+    (key.len() == 65 && key[0] == 0x04).then_some(key)
+}
+
+/// ECDSA P-256 SHA-256 signature (WebCrypto's 64-byte r‖s) of `message`
+/// by `key`, made within the accepted clock skew.
+fn signed_now(key: &[u8], message: &str, ts_ms: i64, signature: &str) -> bool {
+    if (Utc::now().timestamp_millis() - ts_ms).abs() > ba::SIGNED_SKEW_MS {
+        return false;
+    }
+    let Ok(sig) = URL_SAFE_NO_PAD.decode(signature.trim()) else {
+        return false;
+    };
+    ring::signature::UnparsedPublicKey::new(&ring::signature::ECDSA_P256_SHA256_FIXED, key)
+        .verify(message.as_bytes(), &sig)
+        .is_ok()
+}
+
+// ───────────────────────── Agents ─────────────────────────
+
+#[derive(Debug, FromQueryResult)]
+struct AgentRow {
+    device_registry_id: i64,
+    org_id: i64,
+    device_id: String,
+    install_key: String,
+    encryption_key: String,
+    name: String,
+    fingerprint: serde_json::Value,
+    created_at: DateTime<FixedOffset>,
+    updated_at: DateTime<FixedOffset>,
+}
+
+const AGENT_SELECT: &str = "SELECT a.device_registry_id, a.org_id, d.device_id, a.install_key,
+    a.encryption_key, a.name, a.fingerprint, a.created_at, a.updated_at
+    FROM extension_agents a JOIN device_registries d ON d.id = a.device_registry_id";
+
+impl AgentRow {
+    fn view(&self, online: bool) -> BrowserAgent {
+        BrowserAgent {
+            id: self.device_registry_id,
+            device_id: self.device_id.clone(),
+            name: self.name.clone(),
+            fingerprint: serde_json::from_value(self.fingerprint.clone()).unwrap_or_default(),
+            online,
+            created_at: self.created_at.to_rfc3339(),
+            updated_at: self.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+/// The authenticated agent of a link or a ticket request.
+#[derive(Debug, Clone)]
+pub struct AgentAuth {
+    pub org_id: i64,
+    pub device_registry_id: i64,
+    pub device_id: String,
+    pub encryption_key: [u8; 32],
+}
+
+/// Pairs an install with the org (D266): creates its agent, or rotates the
+/// credentials of the install's existing agent in this org.
+pub async fn pair(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: i64,
+    req: &PairRequest,
+) -> Result<PairResponse, ExtensionError> {
+    let key = decode_install_key(&req.install_key).ok_or(ExtensionError::PairRefused)?;
+    if !signed_now(
+        &key,
+        &ba::pair_message(org_id, req.ts),
+        req.ts,
+        &req.signature,
+    ) {
+        return Err(ExtensionError::PairRefused);
+    }
+    let install_key = URL_SAFE_NO_PAD.encode(&key);
+    let fingerprint = req.fingerprint.bounded();
+    let token = random_b64(true);
+    let encryption_key = random_b64(false);
+
+    let txn = db.begin().await?;
+    let existing = AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.install_key = $1 FOR UPDATE OF a"),
+        vec![install_key.clone().into()],
+    ))
+    .one(&txn)
+    .await?;
+    let device_registry_id =
+        match existing {
+            Some(row) if row.org_id != org_id => return Err(ExtensionError::PairedElsewhere),
+            Some(row) => {
+                txn.execute_raw(stmt(
+                    "UPDATE extension_agents SET token_hash = $2, encryption_key = $3,
+                    fingerprint = $4, updated_at = now() WHERE device_registry_id = $1",
+                    vec![
+                        row.device_registry_id.into(),
+                        sha256_hex(token.as_bytes()).into(),
+                        encryption_key.clone().into(),
+                        serde_json::to_value(&fingerprint)
+                            .unwrap_or_default()
+                            .into(),
+                    ],
+                ))
+                .await?;
+                row.device_registry_id
+            }
+            None => {
+                let model = predefined_devices::Entity::find()
+                    .filter(predefined_devices::Column::Name.eq(pnex_core::BROWSER_AGENT_PREDEF))
+                    .one(&txn)
+                    .await?
+                    .ok_or_else(|| DbErr::RecordNotFound("browser_agent model".into()))?;
+                let device = device_registries::ActiveModel {
+                    device_id: Set(format!("ext_{}", &sha256_hex(&key)[..12])),
+                    active: Set(false),
+                    allow_dynamic_measurements: Set(true),
+                    discovered_measurements: Set(None),
+                    max_unique_measurements: Set(100),
+                    org_id: Set(org_id),
+                    predefined_device_id: Set(model.id),
+                    board_id: Set(Some(model.board_id)),
+                    ..Default::default()
+                }
+                .insert(&txn)
+                .await?;
+                txn.execute_raw(stmt(
+                "INSERT INTO extension_agents (device_registry_id, org_id, install_key, token_hash,
+                    encryption_key, name, fingerprint, paired_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                vec![
+                    device.id.into(),
+                    org_id.into(),
+                    install_key.clone().into(),
+                    sha256_hex(token.as_bytes()).into(),
+                    encryption_key.clone().into(),
+                    fingerprint.default_name().into(),
+                    serde_json::to_value(&fingerprint).unwrap_or_default().into(),
+                    user_id.into(),
+                ],
+            ))
+            .await?;
+                device.id
+            }
+        };
+    let row = agent_row(&txn, org_id, device_registry_id)
+        .await?
+        .ok_or(ExtensionError::AgentNotFound)?;
+    txn.commit().await?;
+    Ok(PairResponse {
+        agent: row.view(false),
+        token,
+        encryption_key,
+    })
+}
+
+async fn agent_row<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    id: i64,
+) -> Result<Option<AgentRow>, DbErr> {
+    AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.org_id = $1 AND a.device_registry_id = $2"),
+        vec![org_id.into(), id.into()],
+    ))
+    .one(db)
+    .await
+}
+
+async fn online_of(db: &DatabaseConnection, ids: &[i64]) -> std::collections::HashMap<i64, bool> {
+    crate::services::device_liveness::seen_many(db, ids)
+        .await
+        .map(|m| m.into_iter().map(|(id, s)| (id, s.connected)).collect())
+        .unwrap_or_default()
+}
+
+/// Agents of the org, newest first.
+pub async fn list_agents(
+    db: &DatabaseConnection,
+    org_id: i64,
+) -> Result<Vec<BrowserAgent>, ExtensionError> {
+    let rows = AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.org_id = $1 ORDER BY a.created_at DESC"),
+        vec![org_id.into()],
+    ))
+    .all(db)
+    .await?;
+    let ids: Vec<i64> = rows.iter().map(|r| r.device_registry_id).collect();
+    let online = online_of(db, &ids).await;
+    Ok(rows
+        .iter()
+        .map(|r| r.view(online.get(&r.device_registry_id).copied().unwrap_or(false)))
+        .collect())
+}
+
+/// Renames an agent.
+pub async fn rename_agent(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: i64,
+    name: &str,
+) -> Result<BrowserAgent, ExtensionError> {
+    let name = ba::check_name(name)?;
+    let done = db
+        .execute_raw(stmt(
+            "UPDATE extension_agents SET name = $3, updated_at = now()
+             WHERE org_id = $1 AND device_registry_id = $2",
+            vec![org_id.into(), id.into(), name.into()],
+        ))
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ExtensionError::AgentNotFound);
+    }
+    let row = agent_row(db, org_id, id)
+        .await?
+        .ok_or(ExtensionError::AgentNotFound)?;
+    let online = online_of(db, &[id]).await;
+    Ok(row.view(online.get(&id).copied().unwrap_or(false)))
+}
+
+/// Agent of a bearer token, if the request is signed by its install key.
+pub async fn authenticate(
+    db: &DatabaseConnection,
+    token: &str,
+    ts_ms: i64,
+    signature: &str,
+) -> Result<Option<AgentAuth>, DbErr> {
+    let Some(row) = AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.token_hash = $1"),
+        vec![sha256_hex(token.trim().as_bytes()).into()],
+    ))
+    .one(db)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let Some(key) = decode_install_key(&row.install_key) else {
+        return Ok(None);
+    };
+    if !signed_now(
+        &key,
+        &ba::ticket_message(&row.device_id, ts_ms),
+        ts_ms,
+        signature,
+    ) {
+        return Ok(None);
+    }
+    Ok(auth_of(&row))
+}
+
+fn auth_of(row: &AgentRow) -> Option<AgentAuth> {
+    let encryption_key = STANDARD
+        .decode(row.encryption_key.trim())
+        .ok()
+        .and_then(|k| <[u8; 32]>::try_from(k).ok())?;
+    Some(AgentAuth {
+        org_id: row.org_id,
+        device_registry_id: row.device_registry_id,
+        device_id: row.device_id.clone(),
+        encryption_key,
+    })
+}
+
+/// Agent still paired (not deleted, credentials not rotated since).
+pub async fn still_paired(db: &DatabaseConnection, auth: &AgentAuth) -> bool {
+    let row = AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.device_registry_id = $1"),
+        vec![auth.device_registry_id.into()],
+    ))
+    .one(db)
+    .await;
+    matches!(row, Ok(Some(r)) if auth_of(&r).is_some_and(|a| a.encryption_key == auth.encryption_key))
+}
+
+// ───────────────────────── Tickets ─────────────────────────
+
+fn ticket_key(ticket: &str) -> String {
+    format!("pnex:ws-ticket:ext:{ticket}")
+}
+
+/// One-time ticket of `/ws/extension` for an agent; `None` when Valkey is
+/// unreachable or the signature was already used (replay).
+pub async fn issue_ticket(config: &Config, agent: &AgentAuth, signature: &str) -> Option<String> {
+    let mut conn = crate::services::shared_valkey::conn(config).await?;
+    let fresh: Option<String> = redis::cmd("SET")
+        .arg(format!("pnex:ext:sig:{}", sha256_hex(signature.as_bytes())))
+        .arg(1)
+        .arg("NX")
+        .arg("PX")
+        .arg(ba::SIGNED_SKEW_MS * 2)
+        .query_async(&mut conn)
+        .await
+        .ok()?;
+    fresh?;
+    let ticket = random_b64(true);
+    redis::cmd("SET")
+        .arg(ticket_key(&ticket))
+        .arg(agent.device_registry_id)
+        .arg("EX")
+        .arg(TICKET_TTL_SECS)
+        .query_async::<()>(&mut conn)
+        .await
+        .ok()?;
+    Some(ticket)
+}
+
+/// Consumes a ticket: the agent's device registry id, once.
+pub async fn redeem_ticket(config: &Config, ticket: &str) -> Option<i64> {
+    let ticket = ticket.trim();
+    if ticket.is_empty() || ticket.len() > 64 {
+        return None;
+    }
+    let mut conn = crate::services::shared_valkey::conn(config).await?;
+    redis::cmd("GETDEL")
+        .arg(ticket_key(ticket))
+        .query_async::<Option<i64>>(&mut conn)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Agent of a redeemed ticket.
+pub async fn agent_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<AgentAuth>, DbErr> {
+    Ok(AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.device_registry_id = $1"),
+        vec![id.into()],
+    ))
+    .one(db)
+    .await?
+    .as_ref()
+    .and_then(auth_of))
+}
+
+// ───────────────────────── Missions ─────────────────────────
+
+#[derive(Debug, FromQueryResult)]
+struct MissionRow {
+    id: Uuid,
+    name: String,
+    spec: serde_json::Value,
+    target: String,
+    interval_secs: i32,
+    agent_id: Option<i64>,
+    enabled: bool,
+    state: String,
+    state_code: Option<String>,
+    version: i32,
+    created_at: DateTime<FixedOffset>,
+    updated_at: DateTime<FixedOffset>,
+}
+
+const MISSION_COLUMNS: &str = "id, name, spec, target, interval_secs, agent_id, enabled, state,
+    state_code, version, created_at, updated_at";
+
+impl MissionRow {
+    /// `None` for a spec this server no longer reads (kind removed).
+    fn view(&self) -> Option<Mission> {
+        Some(Mission {
+            id: self.id.to_string(),
+            name: self.name.clone(),
+            spec: serde_json::from_value(self.spec.clone()).ok()?,
+            target: self.target.clone(),
+            interval_secs: self.interval_secs,
+            agent_id: self.agent_id,
+            enabled: self.enabled,
+            state: MissionState::parse(&self.state).unwrap_or_default(),
+            state_code: self.state_code.clone(),
+            version: self.version,
+            created_at: self.created_at.to_rfc3339(),
+            updated_at: self.updated_at.to_rfc3339(),
+        })
+    }
+}
+
+/// Pinned agent must be a browser agent of the org.
+async fn check_agent<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    agent_id: Option<i64>,
+) -> Result<(), ExtensionError> {
+    let Some(id) = agent_id else {
+        return Ok(());
+    };
+    match agent_row(db, org_id, id).await? {
+        Some(_) => Ok(()),
+        None => Err(ExtensionError::Invalid {
+            field: "agent_id".into(),
+            token: err_codes::FIELD_NOT_FOUND.into(),
+        }),
+    }
+}
+
+pub async fn list_missions(
+    db: &DatabaseConnection,
+    org_id: i64,
+) -> Result<Vec<Mission>, ExtensionError> {
+    let rows = MissionRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {MISSION_COLUMNS} FROM extension_missions WHERE org_id = $1 ORDER BY created_at DESC"
+        ),
+        vec![org_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows.iter().filter_map(MissionRow::view).collect())
+}
+
+async fn mission_row<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    id: Uuid,
+) -> Result<MissionRow, ExtensionError> {
+    MissionRow::find_by_statement(stmt(
+        &format!("SELECT {MISSION_COLUMNS} FROM extension_missions WHERE org_id = $1 AND id = $2"),
+        vec![org_id.into(), id.into()],
+    ))
+    .one(db)
+    .await?
+    .ok_or(ExtensionError::MissionNotFound)
+}
+
+pub async fn get_mission(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<Mission, ExtensionError> {
+    mission_row(db, org_id, id)
+        .await?
+        .view()
+        .ok_or(ExtensionError::MissionNotFound)
+}
+
+pub async fn create_mission(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: i64,
+    input: &MissionCreate,
+) -> Result<Mission, ExtensionError> {
+    let name = ba::check_name(&input.name)?;
+    let (spec, target) = ba::check_spec(&input.spec)?;
+    let interval = ba::check_interval(input.interval_secs)?;
+    check_agent(db, org_id, input.agent_id).await?;
+    let id = Uuid::new_v4();
+    db.execute_raw(stmt(
+        "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,
+            agent_id, enabled, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        vec![
+            id.into(),
+            org_id.into(),
+            name.into(),
+            spec.kind().into(),
+            serde_json::to_value(&spec).unwrap_or_default().into(),
+            target.into(),
+            interval.into(),
+            input.agent_id.into(),
+            input.enabled.into(),
+            user_id.into(),
+        ],
+    ))
+    .await?;
+    get_mission(db, org_id, id).await
+}
+
+/// Partial update on the version the caller read (optimistic concurrency).
+pub async fn update_mission(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    patch: &MissionPatch,
+) -> Result<Mission, ExtensionError> {
+    let txn = db.begin().await?;
+    let row = MissionRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {MISSION_COLUMNS} FROM extension_missions WHERE org_id = $1 AND id = $2 FOR UPDATE"
+        ),
+        vec![org_id.into(), id.into()],
+    ))
+    .one(&txn)
+    .await?
+    .ok_or(ExtensionError::MissionNotFound)?;
+    if row.version != patch.expected_version {
+        return Err(ExtensionError::VersionConflict {
+            current: row.version,
+        });
+    }
+    let name = match &patch.name {
+        Some(n) => ba::check_name(n)?,
+        None => row.name.clone(),
+    };
+    let (spec, target) = match &patch.spec {
+        Some(s) => ba::check_spec(s)?,
+        None => (
+            serde_json::from_value::<MissionSpec>(row.spec.clone()).map_err(|_| {
+                ExtensionError::Invalid {
+                    field: "spec".into(),
+                    token: err_codes::FIELD_REQUIRED.into(),
+                }
+            })?,
+            row.target.clone(),
+        ),
+    };
+    let interval = match patch.interval_secs {
+        Some(i) => ba::check_interval(i)?,
+        None => row.interval_secs,
+    };
+    let agent_id = patch.agent_id.unwrap_or(row.agent_id);
+    check_agent(&txn, org_id, agent_id).await?;
+    let enabled = patch.enabled.unwrap_or(row.enabled);
+    // A re-enabled or changed mission starts over: its last state is stale.
+    txn.execute_raw(stmt(
+        "UPDATE extension_missions SET name = $3, kind = $4, spec = $5, target = $6,
+            interval_secs = $7, agent_id = $8, enabled = $9, state = 'idle', state_code = NULL,
+            version = version + 1, updated_at = now()
+         WHERE org_id = $1 AND id = $2",
+        vec![
+            org_id.into(),
+            id.into(),
+            name.into(),
+            spec.kind().into(),
+            serde_json::to_value(&spec).unwrap_or_default().into(),
+            target.into(),
+            interval.into(),
+            agent_id.into(),
+            enabled.into(),
+        ],
+    ))
+    .await?;
+    let row = mission_row(&txn, org_id, id).await?;
+    txn.commit().await?;
+    row.view().ok_or(ExtensionError::MissionNotFound)
+}
+
+pub async fn delete_mission(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+) -> Result<(), ExtensionError> {
+    let done = db
+        .execute_raw(stmt(
+            "DELETE FROM extension_missions WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), id.into()],
+        ))
+        .await?;
+    if done.rows_affected() == 0 {
+        return Err(ExtensionError::MissionNotFound);
+    }
+    Ok(())
+}
+
+/// Enabled missions an agent may run (pinned on it or on no agent), oldest
+/// first: candidates of the lease.
+pub async fn candidates(
+    db: &DatabaseConnection,
+    agent: &AgentAuth,
+) -> Result<Vec<ba::AssignedMission>, DbErr> {
+    let rows = MissionRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {MISSION_COLUMNS} FROM extension_missions
+             WHERE org_id = $1 AND enabled AND (agent_id IS NULL OR agent_id = $2)
+             ORDER BY created_at"
+        ),
+        vec![agent.org_id.into(), agent.device_registry_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows
+        .iter()
+        .filter_map(MissionRow::view)
+        .map(|m| ba::AssignedMission {
+            id: m.id,
+            spec: m.spec,
+            target: m.target,
+            interval_secs: m.interval_secs,
+        })
+        .collect())
+}
+
+/// State reported by the agent for one of its missions; unknown codes are
+/// stored empty (an untrusted agent never writes free text).
+pub async fn report_state(
+    db: &DatabaseConnection,
+    agent: &AgentAuth,
+    mission_id: Uuid,
+    state: MissionState,
+    code: Option<&str>,
+) -> Result<(), DbErr> {
+    let code = code.filter(|c| ba::AGENT_STATE_CODES.contains(c));
+    db.execute_raw(stmt(
+        "UPDATE extension_missions SET state = $3, state_code = $4
+         WHERE org_id = $1 AND id = $2 AND enabled",
+        vec![
+            agent.org_id.into(),
+            mission_id.into(),
+            state.wire().into(),
+            code.map(str::to_string).into(),
+        ],
+    ))
+    .await?;
+    Ok(())
+}
+
+// ───────────────────────── Leases (D257) ─────────────────────────
+
+/// Granted when free or already this session's; renews the TTL.
+const CLAIM: &str = r"
+local cur = redis.call('GET', KEYS[1])
+if cur and cur ~= ARGV[1] then return 0 end
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+return 1";
+
+const RELEASE: &str = r"
+if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+return 0";
+
+fn lease_key(org_id: i64, target: &str) -> String {
+    format!(
+        "pnex:ext:v1:{org_id}:lease:{}",
+        sha256_hex(target.as_bytes())
+    )
+}
+
+/// Claims (or renews) the lease of `target` for `session`.
+pub async fn claim_lease(config: &Config, org_id: i64, target: &str, session: &str) -> bool {
+    let Some(mut conn) = crate::services::shared_valkey::conn(config).await else {
+        return false;
+    };
+    redis::Script::new(CLAIM)
+        .key(lease_key(org_id, target))
+        .arg(session)
+        .arg(LEASE_TTL_MS)
+        .invoke_async::<i64>(&mut conn)
+        .await
+        .is_ok_and(|granted| granted == 1)
+}
+
+/// Releases the lease of `target` if `session` still holds it.
+pub async fn release_lease(config: &Config, org_id: i64, target: &str, session: &str) {
+    if let Some(mut conn) = crate::services::shared_valkey::conn(config).await {
+        let _ = redis::Script::new(RELEASE)
+            .key(lease_key(org_id, target))
+            .arg(session)
+            .invoke_async::<i64>(&mut conn)
+            .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_key_shape() {
+        let mut key = vec![0x04u8];
+        key.extend([7u8; 64]);
+        assert!(decode_install_key(&URL_SAFE_NO_PAD.encode(&key)).is_some());
+        key[0] = 0x02;
+        assert!(decode_install_key(&URL_SAFE_NO_PAD.encode(&key)).is_none());
+        assert!(decode_install_key("not base64!").is_none());
+    }
+
+    #[test]
+    fn signature_is_checked_and_bounded_in_time() {
+        use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_FIXED_SIGNING};
+        let rng = ring::rand::SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
+        let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &rng)
+            .unwrap();
+        let public = pair.public_key().as_ref().to_vec();
+        let now = Utc::now().timestamp_millis();
+        let sign = |msg: &str| URL_SAFE_NO_PAD.encode(pair.sign(&rng, msg.as_bytes()).unwrap());
+        let msg = ba::pair_message(7, now);
+        assert!(signed_now(&public, &msg, now, &sign(&msg)));
+        // Another org, or a stale timestamp, never verifies.
+        assert!(!signed_now(
+            &public,
+            &ba::pair_message(8, now),
+            now,
+            &sign(&msg)
+        ));
+        let old = now - ba::SIGNED_SKEW_MS - 1;
+        let stale = ba::pair_message(7, old);
+        assert!(!signed_now(&public, &stale, old, &sign(&stale)));
+    }
+}

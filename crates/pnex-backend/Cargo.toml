@@ -93,6 +93,8 @@ base64 = "0.22"
 yrs = "0.28"
 # Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
 sha2 = "0.10"
+# Browser agent signatures (WebCrypto ECDSA P-256, D266); already in the tree via rustls-webpki.
+ring = "0.17"
 # Backend S3 des artefacts firmware (D5 v2, tier industriel) — dépendance
 # directe plutôt que la feature loco `storage-aws-s3` : sa config Storage
 # n'expose pas l'adressage path-style, requis pour RustFS & co

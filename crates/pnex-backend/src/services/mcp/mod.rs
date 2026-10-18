@@ -37,6 +37,7 @@ const REDACTED: &[&str] = &[
     "refresh_token",
     "secrets",
     "share_token",
+    "token",
 ];
 
 struct Tool {

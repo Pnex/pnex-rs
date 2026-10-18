@@ -1,0 +1,425 @@
+//! Browser agents API (extension-collector.md D254–D269).
+//!
+//! - management plane (user bearer + org): pairing, agents, missions. Org
+//!   from the principal (R1), `can_write` at the head of every write (R2);
+//! - data plane (agent): `POST /extension/ws-ticket`, device token in
+//!   `Authorization`, request signed by the install key (D266), then
+//!   `/ws/extension?ticket=` (`ws_extension.rs`).
+
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
+use axum::routing::{get, patch, post};
+use axum::Json;
+use loco_rs::controller::{format, ErrorDetail};
+use loco_rs::prelude::*;
+use pnex_core::browser_agent::{
+    BrowserAgentPatch, MissionCreate, MissionPatch, PairRequest, TicketRequest,
+};
+use pnex_core::err_codes;
+use uuid::Uuid;
+
+use crate::auth::OrgContext;
+use crate::controllers::pagination::{self, PageParams};
+use crate::services::extension::{self, ExtensionError};
+
+pub fn routes() -> Routes {
+    Routes::new()
+        .prefix("/api/v1/extension")
+        .add("/agents", get(agents).post(pair))
+        .add("/agents/{id}", patch(update_agent))
+        .add("/ws-ticket", post(ws_ticket))
+        .add("/missions", get(missions).post(create_mission))
+        .add(
+            "/missions/{id}",
+            get(mission).patch(update_mission).delete(remove_mission),
+        )
+}
+
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        agents,
+        pair,
+        update_agent,
+        ws_ticket,
+        missions,
+        mission,
+        create_mission,
+        update_mission,
+        remove_mission
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
+fn require_write(org: &OrgContext) -> Result<()> {
+    if org.can_write() {
+        return Ok(());
+    }
+    Err(Error::CustomError(
+        StatusCode::FORBIDDEN,
+        ErrorDetail::new(
+            err_codes::EXTENSION_WRITE_FORBIDDEN,
+            "Viewer role: browser agents and missions are read-only.",
+        ),
+    ))
+}
+
+fn extension_error(e: ExtensionError) -> Result<Response> {
+    let coded = |status, code: &str, msg: &str| {
+        Err(Error::CustomError(status, ErrorDetail::new(code, msg)))
+    };
+    match e {
+        ExtensionError::Invalid { field, token } => Ok(super::field_error(&field, &token)),
+        ExtensionError::AgentNotFound => coded(
+            StatusCode::NOT_FOUND,
+            err_codes::EXTENSION_AGENT_NOT_FOUND,
+            "Browser agent not found.",
+        ),
+        ExtensionError::MissionNotFound => coded(
+            StatusCode::NOT_FOUND,
+            err_codes::EXTENSION_MISSION_NOT_FOUND,
+            "Mission not found.",
+        ),
+        ExtensionError::VersionConflict { current } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXTENSION_MISSION_VERSION_CONFLICT,
+            "The mission changed since it was read; reload it.",
+            Some(serde_json::json!({ "current": current.to_string() })),
+        )),
+        ExtensionError::PairRefused => coded(
+            StatusCode::BAD_REQUEST,
+            err_codes::EXTENSION_PAIR_REFUSED,
+            "Malformed install key or bad signature.",
+        ),
+        ExtensionError::PairedElsewhere => coded(
+            StatusCode::CONFLICT,
+            err_codes::EXTENSION_INSTALL_PAIRED_ELSEWHERE,
+            "This browser install is paired with another organization.",
+        ),
+        ExtensionError::Db(e) => {
+            tracing::error!(error = %e, "browser agent database error");
+            Err(Error::InternalServerError)
+        }
+    }
+}
+
+/// Page of a list (`limit`/`offset`, D14).
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct PageQuery {
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Result<Response> {
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let count = items.len() as i64;
+    let (skip, take) = page.slice(items.len());
+    let results: Vec<T> = items.into_iter().skip(skip).take(take).collect();
+    format::json(pagination::envelope(path, &[], page, count, results))
+}
+
+/// `GET /api/v1/extension/agents` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/agents",
+    tag = "extension",
+    operation_id = "extension_agents_list",
+    summary = "List the browser agents",
+    description = "Browser agents paired with the org, newest first, with their fingerprint and whether they are connected now. Paginated (`limit`/`offset`). Any member.",
+    params(PageQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::BrowserAgent>)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn agents(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match extension::list_agents(&ctx.db, org.org.id).await {
+        Ok(rows) => paged("/api/v1/extension/agents", &q, rows),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/agents` — `can_write`: pairing from the
+/// extension's options page.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/agents",
+    tag = "extension",
+    operation_id = "extension_agents_pair",
+    summary = "Pair a browser extension",
+    description = "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). Returns the device token and Noise key once. Requires owner, admin or member role.",
+    request_body = PairRequest,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::PairResponse),
+        (status = 400, description = "`extension-pair-refused`: malformed install key or bad signature", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`extension-install-paired-elsewhere`: the install is paired with another org", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn pair(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(req): Json<PairRequest>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match extension::pair(&ctx.db, org.org.id, org.auth.user.id, &req).await {
+        Ok(paired) => Ok((StatusCode::CREATED, format::json(paired)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `PATCH /api/v1/extension/agents/{id}` — `can_write`: rename.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/extension/agents/{id}",
+    tag = "extension",
+    operation_id = "extension_agents_update",
+    summary = "Rename a browser agent",
+    description = "Renames a browser agent (absent fields unchanged). Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+    params(("id" = i64, Path, description = "Agent id (device registry id)")),
+    request_body = BrowserAgentPatch,
+    responses(
+        (status = 200, body = pnex_core::browser_agent::BrowserAgent),
+        (status = 400, description = "`field-invalid`: `errors.fields.name` `required` or `max_length:N`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-agent-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn update_agent(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+    Json(input): Json<BrowserAgentPatch>,
+) -> Result<Response> {
+    require_write(&org)?;
+    let Some(name) = input.name else {
+        return match extension::list_agents(&ctx.db, org.org.id).await {
+            Ok(rows) => match rows.into_iter().find(|a| a.id == id) {
+                Some(a) => format::json(a),
+                None => extension_error(ExtensionError::AgentNotFound),
+            },
+            Err(e) => extension_error(e),
+        };
+    };
+    match extension::rename_agent(&ctx.db, org.org.id, id, &name).await {
+        Ok(a) => format::json(a),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// One-time ticket of `/ws/extension`.
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct ExtensionTicket {
+    ticket: String,
+    /// Lifetime of the ticket in seconds.
+    expires_in: u64,
+}
+
+/// `POST /api/v1/extension/ws-ticket` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/ws-ticket",
+    tag = "extension",
+    operation_id = "extension_ws_ticket",
+    summary = "Issue a browser agent websocket ticket",
+    description = "Called by a browser agent, no user session: `Authorization: Bearer <agent token>` plus a body signed by the install key (timestamp within two minutes, each signature usable once). Returns a single-use ticket for `GET /ws/extension?ticket=`, since browsers cannot set headers on websockets nor present a client certificate.",
+    request_body = TicketRequest,
+    responses(
+        (status = 200, body = ExtensionTicket),
+        (status = 401, description = "`extension-ticket-refused`: unknown token, bad or reused signature, clock skew", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn ws_ticket(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<TicketRequest>,
+) -> Result<Response> {
+    let refused = || {
+        Err(Error::CustomError(
+            StatusCode::UNAUTHORIZED,
+            ErrorDetail::new(
+                err_codes::EXTENSION_TICKET_REFUSED,
+                "Unknown agent token or bad signature.",
+            ),
+        ))
+    };
+    let Some(token) = super::device_link::device_token(&headers) else {
+        return refused();
+    };
+    let agent = match extension::authenticate(&ctx.db, token, req.ts, &req.signature).await {
+        Ok(Some(agent)) => agent,
+        Ok(None) => return refused(),
+        Err(e) => {
+            tracing::error!(error = %e, "browser agent lookup failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    if crate::services::shared_valkey::conn(&ctx.config)
+        .await
+        .is_none()
+    {
+        return Err(Error::CustomError(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorDetail::new(
+                err_codes::EXTENSION_TICKET_UNAVAILABLE,
+                "Websocket tickets are unavailable.",
+            ),
+        ));
+    }
+    // `None` past the Valkey check = the signature was already used.
+    match extension::issue_ticket(&ctx.config, &agent, &req.signature).await {
+        Some(ticket) => format::json(ExtensionTicket {
+            ticket,
+            expires_in: extension::TICKET_TTL_SECS,
+        }),
+        None => refused(),
+    }
+}
+
+/// `GET /api/v1/extension/missions` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/missions",
+    tag = "extension",
+    operation_id = "extension_missions_list",
+    summary = "List the browser agent missions",
+    description = "Missions of the org, newest first, with the state last reported by their agent. Paginated (`limit`/`offset`). Any member.",
+    params(PageQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::Mission>)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn missions(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    match extension::list_missions(&ctx.db, org.org.id).await {
+        Ok(rows) => paged("/api/v1/extension/missions", &q, rows),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/missions/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/missions/{id}",
+    tag = "extension",
+    operation_id = "extension_missions_get",
+    summary = "Get a browser agent mission",
+    description = "One mission with its last reported state. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Mission id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::browser_agent::Mission),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn mission(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match extension::get_mission(&ctx.db, org.org.id, id).await {
+        Ok(m) => format::json(m),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/missions` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/missions",
+    tag = "extension",
+    operation_id = "extension_missions_create",
+    summary = "Create a browser agent mission",
+    description = "Declares a mission (`collect_value`: refresh a page every `interval_secs`, at least 60, and read one value into a series). Any online browser agent of the org runs it, or only the pinned `agent_id`; one agent at a time per target. Requires owner, admin or member role.",
+    request_body = MissionCreate,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::Mission),
+        (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`); spec fields as `spec.params.<name>`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn create_mission(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Json(input): Json<MissionCreate>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match extension::create_mission(&ctx.db, org.org.id, org.auth.user.id, &input).await {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `PATCH /api/v1/extension/missions/{id}` — `can_write`, optimistic.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/extension/missions/{id}",
+    tag = "extension",
+    operation_id = "extension_missions_update",
+    summary = "Update a browser agent mission",
+    description = "Changes a mission on the version the caller read (`expected_version`); absent fields unchanged, `agent_id: null` unpins it. The mission state starts over (`idle`). Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Mission id (UUID)")),
+    request_body = MissionPatch,
+    responses(
+        (status = 200, body = pnex_core::browser_agent::Mission),
+        (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`extension-mission-version-conflict` (`args.current`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn update_mission(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(patch): Json<MissionPatch>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match extension::update_mission(&ctx.db, org.org.id, id, &patch).await {
+        Ok(m) => format::json(m),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `DELETE /api/v1/extension/missions/{id}` — `can_write`.
+#[utoipa::path(
+    delete,
+    path = "/api/v1/extension/missions/{id}",
+    tag = "extension",
+    operation_id = "extension_missions_delete",
+    summary = "Delete a browser agent mission",
+    description = "Deletes a mission; its agent stops it at its next refresh. Series already written stay. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Mission id (UUID)")),
+    responses(
+        (status = 204, description = "Deleted"),
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn remove_mission(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    require_write(&org)?;
+    match extension::delete_mission(&ctx.db, org.org.id, id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) => extension_error(e),
+    }
+}

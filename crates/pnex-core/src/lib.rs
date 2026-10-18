@@ -133,6 +133,10 @@ pub mod media_ingest;
 /// K19): profile DTOs, windowing, centroid, calibrated threshold, verdict.
 pub mod voice_id;
 
+/// Browser agents (extension-collector.md D254–D269): pairing, missions,
+/// `/ws/extension` protocol.
+pub mod browser_agent;
+
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;

@@ -687,6 +687,43 @@ pub const ANNOTATION_LAYER_INVALID: &str = "annotation-layer-invalid";
 /// Fluid mixture violations.
 pub const MIXTURE_INVALID: &str = "mixture-invalid";
 
+// ── Browser agents (extension-collector.md D254–D269) ───────────────────
+
+/// Viewer role: browser agents and missions are read-only.
+pub const EXTENSION_WRITE_FORBIDDEN: &str = "extension-write-forbidden";
+/// Browser agent not found (or not in the org).
+pub const EXTENSION_AGENT_NOT_FOUND: &str = "extension-agent-not-found";
+/// Browser agent mission not found (or not in the org).
+pub const EXTENSION_MISSION_NOT_FOUND: &str = "extension-mission-not-found";
+/// Mission changed meanwhile (stale `expected_version`); `args.current` = the
+/// current version.
+pub const EXTENSION_MISSION_VERSION_CONFLICT: &str = "extension-mission-version-conflict";
+/// Pairing refused: malformed install key or bad signature (D266).
+pub const EXTENSION_PAIR_REFUSED: &str = "extension-pair-refused";
+/// This browser install is paired with another organisation: remove the
+/// agent there first.
+pub const EXTENSION_INSTALL_PAIRED_ELSEWHERE: &str = "extension-install-paired-elsewhere";
+/// A browser agent is created by pairing from the extension, never from
+/// the device wizard.
+pub const EXTENSION_AGENT_PAIR_ONLY: &str = "extension-agent-pair-only";
+/// Websocket ticket refused: unknown agent token, bad signature or clock
+/// skew.
+pub const EXTENSION_TICKET_REFUSED: &str = "extension-ticket-refused";
+/// Websocket tickets unavailable (Valkey unreachable).
+pub const EXTENSION_TICKET_UNAVAILABLE: &str = "extension-ticket-unavailable";
+/// Agent state: the selector matched nothing on the page.
+pub const EXT_SELECTOR_NOT_FOUND: &str = "ext-selector-not-found";
+/// Agent state: the value read is not a number.
+pub const EXT_VALUE_NOT_NUMERIC: &str = "ext-value-not-numeric";
+/// Agent state: the site asks to sign in (D258).
+pub const EXT_LOGIN_REQUIRED: &str = "ext-login-required";
+/// Agent state: the site shows a challenge (captcha); never bypassed (D258).
+pub const EXT_CHALLENGE: &str = "ext-challenge";
+/// Agent state: the site says the pace is too high (D258).
+pub const EXT_RATE_LIMITED: &str = "ext-rate-limited";
+/// Agent state: the agent's tab is hidden, the mission is paused (D269).
+pub const EXT_TAB_HIDDEN: &str = "ext-tab-hidden";
+
 // ── Registered codes ─────────────────────────────────────────────────────
 
 /// All registered codes. A code not listed here falls back to the verbatim
@@ -1005,6 +1042,21 @@ pub const ALL: &[&str] = &[
     TAXONOMY_NAME_TAKEN,
     TAXONOMY_VERSION_CONFLICT,
     TAXONOMY_WRITE_FORBIDDEN,
+    EXTENSION_WRITE_FORBIDDEN,
+    EXTENSION_AGENT_NOT_FOUND,
+    EXTENSION_MISSION_NOT_FOUND,
+    EXTENSION_MISSION_VERSION_CONFLICT,
+    EXTENSION_PAIR_REFUSED,
+    EXTENSION_INSTALL_PAIRED_ELSEWHERE,
+    EXTENSION_AGENT_PAIR_ONLY,
+    EXTENSION_TICKET_REFUSED,
+    EXTENSION_TICKET_UNAVAILABLE,
+    EXT_SELECTOR_NOT_FOUND,
+    EXT_VALUE_NOT_NUMERIC,
+    EXT_LOGIN_REQUIRED,
+    EXT_CHALLENGE,
+    EXT_RATE_LIMITED,
+    EXT_TAB_HIDDEN,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,
