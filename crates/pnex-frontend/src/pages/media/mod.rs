@@ -475,8 +475,11 @@ fn DocHitRow(hit: api::media::SearchHit, on_open: Callback<String>) -> Element {
 mod analyses;
 mod detail;
 mod preview;
+mod review;
 mod upload;
 mod util;
+
+pub use review::MediaReview;
 
 use crate::components::gerbe::Gerbe;
 use crate::components::ui::INPUT;

@@ -262,6 +262,23 @@ pub async fn analyses(id: &str) -> Result<AnalysesState, ApiError> {
     .await
 }
 
+/// `GET /api/v1/media/{id}/transcript` — runs and the segments of one run
+/// (the default one without `run`), media-review.md D276.
+pub async fn transcript(
+    id: &str,
+    run: Option<&str>,
+) -> Result<pnex_core::media_review::MediaTranscript, ApiError> {
+    let query = run
+        .map(|r| format!("?run={}", urlencode(r)))
+        .unwrap_or_default();
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/{}/transcript{query}", urlencode(id)),
+        None,
+    )
+    .await
+}
+
 /// `POST /api/v1/media/{id}/analyses` — (re)launch steps (202 + state).
 pub async fn start_analyses(
     id: &str,

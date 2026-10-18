@@ -205,6 +205,16 @@ pub fn media_clock(secs: f64) -> String {
     }
 }
 
+/// Moves the [`MediaPlayer`] of element `id` to `secs`.
+pub fn seek_media(id: &str, secs: f64) {
+    let js = format!(
+        "const el = document.getElementById({}); if (el) el.currentTime = {};",
+        serde_json::Value::from(id),
+        secs.max(0.0)
+    );
+    let _ = dioxus::document::eval(&js);
+}
+
 /// Playback rates of [`MediaPlayer`], in percent.
 const MEDIA_RATES: [(u32, &str); 4] = [(50, "×0.5"), (100, "×1"), (150, "×1.5"), (200, "×2")];
 
@@ -212,7 +222,15 @@ const MEDIA_RATES: [(u32, &str); 4] = [(50, "×0.5"), (100, "×1"), (150, "×1.5
 /// controls. `id` must be unique in the page (it is also how callers read
 /// the element, e.g. its `currentTime`).
 #[component]
-pub fn MediaPlayer(id: String, src: String, video: bool) -> Element {
+pub fn MediaPlayer(
+    id: String,
+    src: String,
+    video: bool,
+    /// `(position s, duration s)` on every time update (synchronised views:
+    /// transcript, timeline).
+    #[props(default)]
+    on_time: EventHandler<(f64, f64)>,
+) -> Element {
     // (position s, duration s, paused) as last read from the element.
     let mut state = use_signal(|| (0.0f64, 0.0f64, true));
     let mut rate = use_signal(|| 100u32);
@@ -230,6 +248,7 @@ pub fn MediaPlayer(id: String, src: String, video: bool) -> Element {
                 let num = |i: usize| v.get(i).and_then(|x| x.as_f64()).unwrap_or(0.0);
                 let paused = v.get(2).and_then(|x| x.as_bool()).unwrap_or(true);
                 state.set((num(0), num(1), paused));
+                on_time.call((num(0), num(1)));
             }
         });
     };
