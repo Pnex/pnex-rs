@@ -591,6 +591,7 @@ fn LinkForm(
                     target_id: tgt,
                     attributes: attrs.read().clone(),
                     valid_from: (!from().is_empty()).then(|| format!("{}:00Z", from())),
+                    valid_to: None,
                 };
                 busy.set(true);
                 spawn(async move {

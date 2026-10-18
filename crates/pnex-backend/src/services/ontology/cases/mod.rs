@@ -181,6 +181,7 @@ fn link(kind: &str, source: Uuid, target: Uuid, attributes: Map<String, Value>) 
         target_id: target.to_string(),
         attributes,
         valid_from: None,
+        valid_to: None,
     }
 }
 

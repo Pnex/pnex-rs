@@ -136,6 +136,11 @@ pub struct LinkInput {
     /// RFC 3339; default now. A link may start in the past (history entry).
     #[serde(default)]
     pub valid_from: Option<String>,
+    /// RFC 3339, after `valid_from` and not in the future: the link is
+    /// written closed, as history, even while the same pair has an open
+    /// link (only open links are unique per pair).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_to: Option<String>,
 }
 
 /// Closing a link: `valid_to` RFC 3339, default now.

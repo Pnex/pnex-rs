@@ -689,6 +689,12 @@ clés, lisible en YAML.
   actions, attributs de lien, types source/cible) sont conservés ; avant,
   la nouvelle version les effaçait et rendait invalides les données qui
   les portaient. Test `pack_upgrade_keeps_org_additions`.
+- Lien écrit clos (2026-10-18) : `valid_to` à la création (après
+  `valid_from`, pas dans le futur) écrit directement une entrée
+  d'historique, même quand la paire a déjà un lien ouvert (seuls les liens
+  ouverts sont uniques par paire) ; les cardinalités ne lient que les liens
+  ouverts. Avant, un mandat passé ne pouvait pas être saisi à côté du mandat
+  en cours. Test `closed_link_is_history_beside_the_open_one`.
 - Assistant : schéma de l'org injecté dans le prompt système et outil
   `describe_ontology` ; `query_ontology`, `get_object`, `create_object`,
   `update_object`, `open_link`, `close_link`, `save_object_type` via les

@@ -98,6 +98,7 @@ async fn attach(
         target_id: object_id.into(),
         attributes,
         valid_from: None,
+        valid_to: None,
     })
     .await
     .map(|_| ())

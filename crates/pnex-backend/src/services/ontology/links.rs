@@ -184,6 +184,17 @@ pub async fn create<C: ConnectionTrait>(
     }
     let attrs = check_values(&lt.attributes, &input.attributes)
         .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    let from = parse_instant("valid_from", input.valid_from.as_deref())?.unwrap_or(now);
+    if from > now {
+        return Err(super::invalid("valid_from", FIELD_INVALID));
+    }
+    let to = parse_instant("valid_to", input.valid_to.as_deref())?;
+    if to.is_some_and(|to| to < from || to > now) {
+        return Err(super::invalid("valid_to", FIELD_INVALID));
+    }
+    // Cardinalities bind open links only: a closed link is history.
+    let open = to.is_none();
     if lt.key == REL_DEPICTS
         && attrs
             .get(DEPICTS_POSE)
@@ -195,7 +206,7 @@ pub async fn create<C: ConnectionTrait>(
             FIELD_INVALID,
         ));
     }
-    if lt.key == REL_MEASURES {
+    if open && lt.key == REL_MEASURES {
         // The bound property must be a `series` of the target type, fed by
         // one device at a time.
         let prop = attrs
@@ -233,7 +244,8 @@ pub async fn create<C: ConnectionTrait>(
             return Err(OntologyError::LinkCardinality);
         }
     }
-    if lt.one_target
+    if open
+        && lt.one_target
         && open_exists(
             db,
             org_id,
@@ -246,7 +258,8 @@ pub async fn create<C: ConnectionTrait>(
     {
         return Err(OntologyError::LinkCardinality);
     }
-    if lt.one_source
+    if open
+        && lt.one_source
         && open_exists(
             db,
             org_id,
@@ -259,11 +272,6 @@ pub async fn create<C: ConnectionTrait>(
     {
         return Err(OntologyError::LinkCardinality);
     }
-    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
-    let from = parse_instant("valid_from", input.valid_from.as_deref())?.unwrap_or(now);
-    if from > now {
-        return Err(super::invalid("valid_from", FIELD_INVALID));
-    }
     let row = resource_edges::ActiveModel {
         org_id: Set(org_id),
         relation: Set(lt.key.clone()),
@@ -273,6 +281,7 @@ pub async fn create<C: ConnectionTrait>(
         target_id: Set(tgt.native_id.clone()),
         attributes: Set(Value::Object(attrs)),
         valid_from: Set(from),
+        valid_to: Set(to),
         source_ref: Set(Some(actor.source_ref.clone())),
         ..Default::default()
     }
@@ -283,8 +292,15 @@ pub async fn create<C: ConnectionTrait>(
         _ => e.into(),
     })?;
     let v = views(db, org_id, &[row]).await?.remove(0);
-    for c in Change::link(org_id, "link.open", &actor.source_ref, &v) {
-        changes::submit(c);
+    let events: &[&str] = if open {
+        &["link.open"]
+    } else {
+        &["link.open", "link.close"]
+    };
+    for kind in events {
+        for c in Change::link(org_id, kind, &actor.source_ref, &v) {
+            changes::submit(c);
+        }
     }
     Ok(v)
 }
