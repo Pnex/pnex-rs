@@ -8175,6 +8175,25 @@
         ],
         "type": "object"
       },
+      "LivePartStored": {
+        "description": "Answer of a live part upload.",
+        "properties": {
+          "asset_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "part": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "part"
+        ],
+        "type": "object"
+      },
       "LiveTestResult": {
         "description": "One live-test round (D104): the analysed frame, every detection above\n[`DETECT_FLOOR`], the threshold the model applies and machine warnings.",
         "properties": {
@@ -9534,6 +9553,24 @@
               },
               "params": {
                 "$ref": "#/components/schemas/FollowAccountParams"
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "watch_live"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/WatchLiveParams"
               }
             },
             "required": [
@@ -16853,7 +16890,8 @@
         "description": "Social platform an agent follows accounts on (D254). TikTok comes with\nits adapter (lot L3).",
         "enum": [
           "x",
-          "youtube"
+          "youtube",
+          "tiktok"
         ],
         "type": "string"
       },
@@ -19957,6 +19995,19 @@
           "no_match"
         ],
         "type": "string"
+      },
+      "WatchLiveParams": {
+        "description": "`watch_live` (D260): record a live page while it is on air, in parts\nof at most [`LIVE_PART_MAX_MS`], each a `video` media.",
+        "properties": {
+          "url": {
+            "description": "http(s) page of the live.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
       },
       "Widget": {
         "description": "A widget placed on the canvas.",
@@ -34177,8 +34228,19 @@
     },
     "/api/v1/extension/download": {
       "get": {
-        "description": "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
+        "description": "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in: Chrome by default, `browser=firefox` for Firefox. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
         "operationId": "extension_download",
+        "parameters": [
+          {
+            "description": "`chrome` (default) or `firefox`.",
+            "in": "query",
+            "name": "browser",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -34701,6 +34763,92 @@
           {}
         ],
         "summary": "Upload the platform captions of a post",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/live": {
+      "post": {
+        "description": "Called by a browser agent for its `watch_live` missions, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Part` (1, 2…), optional `X-Pnex-Started` (RFC 3339), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, part and SHA-256 of the file, usable once). Body: the WebM recording of the part. Stores it as a `video` media of the library with the live's provenance. Rate-limited per agent.",
+        "operationId": "extension_upload_live",
+        "requestBody": {
+          "content": {
+            "video/webm": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivePartStored"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: not a WebM recording, or larger than the cap"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`: not a running live mission of this agent"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`: too many captures"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`: Valkey unreachable"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Upload a part of a live recorded by a browser agent",
         "tags": [
           "extension"
         ]

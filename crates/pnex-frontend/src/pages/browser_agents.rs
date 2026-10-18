@@ -12,7 +12,7 @@ use dioxus_i18n::t;
 use pnex_core::browser_agent::{
     BrowserAgent, CollectPageParams, CollectValueParams, FollowAccountParams, Mission,
     MissionCreate, MissionPatch, MissionSpec, MissionState, SocialPlatform, SocialVideo,
-    VideoState, ATTR_TEXT, MIN_INTERVAL_SECS,
+    VideoState, WatchLiveParams, ATTR_TEXT, MIN_INTERVAL_SECS,
 };
 
 use crate::api;
@@ -88,6 +88,12 @@ pub fn BrowserAgents() -> Element {
                     href: "{download}",
                     download: "pnex-browser-agent.zip",
                     {t!("browser-agents-download")}
+                }
+                a {
+                    class: BTN_SECONDARY,
+                    href: "{download}?browser=firefox",
+                    download: "pnex-browser-agent-firefox.zip",
+                    {t!("browser-agents-download-firefox")}
                 }
             },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
@@ -483,16 +489,18 @@ fn MissionsTab(
 }
 
 /// Mission kinds offered by the form (D256), with their label key.
-const KINDS: [(&str, &str); 3] = [
+const KINDS: [(&str, &str); 4] = [
     ("collect_value", "browser-missions-kind-value"),
     ("collect_page", "browser-missions-kind-page"),
     ("follow_account", "browser-missions-kind-account"),
+    ("watch_live", "browser-missions-kind-live"),
 ];
 
 /// Platforms an account can be followed on (D282), with their label.
-const PLATFORMS: [(SocialPlatform, &str); 2] = [
+const PLATFORMS: [(SocialPlatform, &str); 3] = [
     (SocialPlatform::X, "X"),
     (SocialPlatform::YouTube, "YouTube"),
+    (SocialPlatform::TikTok, "TikTok"),
 ];
 
 /// Create (`mission: None`) or edit form of a mission.
@@ -510,6 +518,7 @@ fn MissionForm(
     let initial_url = match mission.as_ref().map(|m| &m.spec) {
         Some(MissionSpec::CollectValue(p)) => p.url.clone(),
         Some(MissionSpec::CollectPage(p)) => p.url.clone(),
+        Some(MissionSpec::WatchLive(p)) => p.url.clone(),
         Some(MissionSpec::FollowAccount(_)) | None => String::new(),
     };
     let account = match mission.as_ref().map(|m| &m.spec) {
@@ -560,6 +569,7 @@ fn MissionForm(
     let save = move |_| {
         let spec = match kind().as_str() {
             "collect_page" => MissionSpec::CollectPage(CollectPageParams { url: url() }),
+            "watch_live" => MissionSpec::WatchLive(WatchLiveParams { url: url() }),
             "follow_account" => MissionSpec::FollowAccount(FollowAccountParams {
                 platform: SocialPlatform::parse(&platform()).unwrap_or(SocialPlatform::X),
                 handle: handle(),

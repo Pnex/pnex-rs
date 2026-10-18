@@ -738,6 +738,8 @@ pub const EXT_CHALLENGE: &str = "ext-challenge";
 pub const EXT_RATE_LIMITED: &str = "ext-rate-limited";
 /// Agent state: the agent's tab is hidden, the mission is paused (D269).
 pub const EXT_TAB_HIDDEN: &str = "ext-tab-hidden";
+/// Agent state: the video is protected (EME/DRM); never recorded (D260).
+pub const EXT_DRM_PROTECTED: &str = "ext-drm-protected";
 /// Agent state: the site is not allowed yet in the extension (optional host
 /// permission, granted by a click in its options page).
 pub const EXT_PERMISSION_MISSING: &str = "ext-permission-missing";
@@ -1083,6 +1085,7 @@ pub const ALL: &[&str] = &[
     EXT_RATE_LIMITED,
     EXT_TAB_HIDDEN,
     EXT_PERMISSION_MISSING,
+    EXT_DRM_PROTECTED,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,

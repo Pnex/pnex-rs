@@ -293,11 +293,11 @@ export async function fetch_blob(url, maxBytes) {
 }
 
 /** POSTs a downloaded file, then forgets it: JSON `{"status", "body"}`. */
-export async function upload_blob(id, url, bearer, extra) {
+export async function upload_blob(id, url, bearer, extra, contentType) {
   const bytes = blobs.get(id);
   blobs.delete(id);
   if (!bytes) throw new Error("no such download");
-  const headers = { ...JSON.parse(extra), Authorization: `Bearer ${bearer}`, "Content-Type": "video/mp4" };
+  const headers = { ...JSON.parse(extra), Authorization: `Bearer ${bearer}`, "Content-Type": contentType };
   const res = await fetch(url, { method: "POST", headers, body: bytes, credentials: "omit" });
   return JSON.stringify({ status: res.status, body: await res.text() });
 }
@@ -308,7 +308,50 @@ function originOf(url) {
 }
 
 export async function has_origin(url) {
-  return api.permissions.contains({ origins: [originOf(url)] });
+  // A pattern with a wildcard host (`https://*.tiktok.com/`) is asked as is.
+  const origin = url.includes("*") ? `${url.replace(/\/+$/, "")}/*` : originOf(url);
+  return api.permissions.contains({ origins: [origin] });
+}
+
+/** Brings the agent's tab and its window to the front (D269). */
+export async function focus_tab(tabId) {
+  const tab = await api.tabs.update(tabId, { active: true });
+  if (tab?.windowId != null) await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+}
+
+// ── Recording (recorder.js in the tab, chunks gathered by background.js) ──
+
+globalThis.__pnexRecordings ??= new Map();
+
+/** Starts recording the tab's video; resolves once the recorder is asked. */
+export async function start_recording(tabId, id, maxMs, bitrate, live, maxBytes) {
+  globalThis.__pnexRecordings.set(id, { chunks: [], size: 0, max: maxBytes, done: false, reason: null });
+  await api.scripting.executeScript({ target: { tabId }, files: ["recorder.js"] });
+  await api.tabs.sendMessage(tabId, { t: "pnex-record", id, maxMs, bitrate, live });
+}
+
+/** JSON `{"done", "reason", "size"}` of a recording. */
+export function recording_state(id) {
+  const rec = globalThis.__pnexRecordings.get(id);
+  return JSON.stringify(rec ? { done: rec.done, reason: rec.reason, size: rec.size } : { done: true, reason: "lost", size: 0 });
+}
+
+/** Turns a finished recording into a download (see upload_blob): JSON `{"id", "sha256", "size"}`. */
+export async function recording_to_blob(id) {
+  const rec = globalThis.__pnexRecordings.get(id);
+  globalThis.__pnexRecordings.delete(id);
+  if (!rec || rec.chunks.length === 0) throw new Error("empty recording");
+  const bytes = new Uint8Array(rec.chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of rec.chunks) {
+    bytes.set(c, at);
+    at += c.length;
+  }
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const blobId = nextBlob++;
+  blobs.set(blobId, bytes);
+  const sha256 = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  return JSON.stringify({ id: blobId, sha256, size: bytes.length });
 }
 
 // ── Websocket ───────────────────────────────────────────────────────────

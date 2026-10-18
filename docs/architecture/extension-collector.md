@@ -575,6 +575,32 @@ L0c (page « Agents navigateur »).
   `media-review`), enregistrement temps réel des vidéos YouTube (webm,
   avec le lot live L4) — d'ici là une vidéo YouTube forcée reste `seen`.
 
+- **L3–L5 codés le 2026-10-18 (à éprouver en campagne de test)** :
+  - **sous-titres plateforme** : le serveur demande les sous-titres de
+    chaque nouvelle vidéo ; YouTube = piste de la page de lecture (humaine
+    de préférence, sinon automatique), TikTok = WebVTT listé avec le post ;
+    rangés en passe `platform` (`store_platform_run`, `media-review.md`)
+    sur le média du post, créé sans fichier au besoin ; état `captioned`
+    au registre ;
+  - **enregistrement temps réel** (`recorder.js`, `captureStream` +
+    `MediaRecorder` WebM ~600 kb/s, morceaux de 4 s vers le service
+    worker) quand aucun fichier direct n'est accessible (YouTube, TikTok
+    si l'adresse de lecture refuse) ; 40 min au plus par vidéo ; vidéo
+    protégée → `ext-drm-protected` ;
+  - **TikTok** (L3) : adaptateur `item_list`, onglet mis au premier plan
+    pendant la lecture (D269 ; le mode `dedicated` reste à faire selon
+    les mesures §16.1) ;
+  - **lives** (L4, `watch_live`) : l'onglet de la plateforme enregistre le
+    direct en parties de 30 min ; **écart à D260** : chaque partie est un
+    média `video` (`POST /api/v1/extension/uploads/live`, provenance
+    `live`, `part`, `started_at`) plutôt qu'un flux `browser` segmenté —
+    la relecture et la transcription D211 s'appliquent partie par partie ;
+  - **Firefox** (L5) : `manifest.firefox.json` (fond en page d'événements,
+    pas de groupes d'onglets, Firefox 128+), zip à
+    `GET /api/v1/extension/download?browser=firefox`, chargement
+    temporaire par about:debugging tant que la signature AMO
+    (question 4) n'est pas faite.
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip
