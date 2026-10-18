@@ -37,6 +37,11 @@ pub fn routes() -> Routes {
         .add("/media/capture-devices", get(capture_device_list))
         .add("/media/streams/{id}/segments", get(segment_list))
         .add("/media/streams/{id}/segments/retry", post(segment_retry))
+        .add("/media/streams/{id}/review", get(stream_review))
+        .add(
+            "/media/streams/{id}/segments/{segment}/audio",
+            get(segment_audio),
+        )
         .add("/media/transcripts", get(transcript_search))
         .add("/media/metadata", get(metadata_list))
         .add("/asr/models", get(model_list).post(model_create))
@@ -65,6 +70,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         stream_list,
         stream_create,
         stream_get,
+        stream_review,
+        segment_audio,
         stream_update,
         stream_delete,
         stream_test,
@@ -510,6 +517,122 @@ async fn stream_get(
         Ok(row) => one(&ctx, org.org.id, &row, StatusCode::OK).await,
         Err(e) => stream_error(e),
     }
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ReviewQuery {
+    /// Window start, RFC 3339.
+    #[param(value_type = String, format = DateTime)]
+    from: String,
+    /// Window end, RFC 3339 (at most 6 h after `from`).
+    #[param(value_type = String, format = DateTime)]
+    to: String,
+}
+
+/// `GET /api/v1/media/streams/{id}/review` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/streams/{id}/review",
+    tag = "media",
+    operation_id = "media_streams_review",
+    summary = "Review a window of a media stream",
+    params(("id" = String, Path, format = "uuid", description = "Media stream UUID"), ReviewQuery),
+    description = "Transcribed segments of the stream between `from` and `to` (at most 6 h), oldest first, words and speaker turns in ms from `from`, and the segments whose audio is still kept by the retention (playable through `…/segments/{segment}/audio`). `unavailable` when the text store cannot be read. Any member.",
+    responses(
+        (status = 200, body = pnex_core::media_review::StreamReview),
+        (status = 400, description = "Invalid window (`from`, `to`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown stream or stream of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn stream_review(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<ReviewQuery>,
+) -> Result<Response> {
+    let parse = |s: &str| {
+        chrono::DateTime::parse_from_rfc3339(s.trim())
+            .ok()
+            .map(|t| t.with_timezone(&chrono::Utc))
+    };
+    let Some(from) = parse(&q.from) else {
+        return Ok(crate::controllers::field_error(
+            "from",
+            err_codes::FIELD_INVALID,
+        ));
+    };
+    let Some(to) = parse(&q.to) else {
+        return Ok(crate::controllers::field_error(
+            "to",
+            err_codes::FIELD_INVALID,
+        ));
+    };
+    match crate::services::media_runs::stream_review(&ctx, org.org.id, id, from, to).await {
+        Ok(r) => format::json(r),
+        Err(crate::services::media_runs::RunError::NotFound) => Err(Error::NotFound),
+        Err(crate::services::media_runs::RunError::Invalid(_)) => Ok(
+            crate::controllers::field_error("to", err_codes::FIELD_INVALID),
+        ),
+        Err(e) => {
+            tracing::error!(stream = %id, error = %e, "stream review failed");
+            Err(Error::InternalServerError)
+        }
+    }
+}
+
+/// `GET /api/v1/media/streams/{id}/segments/{segment}/audio` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/streams/{id}/segments/{segment}/audio",
+    tag = "media",
+    operation_id = "media_streams_segment_audio",
+    summary = "Play the kept audio of a stream segment",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Media stream UUID"),
+        ("segment" = String, Path, format = "uuid", description = "Media segment UUID")
+    ),
+    description = "16 kHz mono WAV of a captured segment while the stream's retention keeps it (none = deleted once transcribed). Any member.",
+    responses(
+        (status = 200, content_type = "audio/wav", body = Vec<u8>),
+        (status = 404, description = "Unknown stream or segment, or its audio is no longer kept", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn segment_audio(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, segment)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    use crate::models::_entities::media_segments;
+    let Some(seg) = media_segments::Entity::find_by_id(segment)
+        .filter(media_segments::Column::OrgId.eq(org.org.id))
+        .filter(media_segments::Column::StreamId.eq(id))
+        .one(&ctx.db)
+        .await
+        .map_err(|_| Error::InternalServerError)?
+    else {
+        return Err(Error::NotFound);
+    };
+    let Some(key) = seg.storage_key else {
+        return Err(Error::NotFound);
+    };
+    let bytes = crate::services::media::MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|_| Error::InternalServerError)?
+        .get(&key)
+        .await
+        .map_err(|_| Error::NotFound)?;
+    Ok((
+        StatusCode::OK,
+        [
+            ("content-type", "audio/wav".to_string()),
+            ("content-disposition", "inline".to_string()),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 /// `POST /api/v1/media/streams` — `can_write`; binding a secret needs

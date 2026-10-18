@@ -341,6 +341,43 @@ pub fn detection_spans(frames: &[crate::camera::FrameAnnotation], gap_ms: i64) -
     out
 }
 
+/// Longest window of a stream review (D271 V2).
+pub const STREAM_REVIEW_MAX_SECS: i64 = 6 * 3600;
+
+/// A segment of a stream whose audio is still kept, on the window clock.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AudioPiece {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub segment_id: uuid::Uuid,
+    pub start_ms: i64,
+    pub end_ms: i64,
+}
+
+/// A window of a live stream for the review screen (D271 V2): its text
+/// and speakers, and the pieces of audio still kept (retention), every
+/// time in ms from `from`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct StreamReview {
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub from: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub to: String,
+    pub segments: Vec<ReviewSegment>,
+    pub audio: Vec<AudioPiece>,
+    /// The text store (O2) is not reachable.
+    #[serde(default)]
+    pub unavailable: bool,
+}
+
+/// The piece of audio playing at `ms`, if any.
+pub fn piece_at(pieces: &[AudioPiece], ms: i64) -> Option<usize> {
+    pieces
+        .iter()
+        .position(|p| p.start_ms <= ms && ms < p.end_ms)
+}
+
 /// Run shown by default: the latest `pnex` run of the current version,
 /// else the latest run of any origin (`runs` newest first).
 pub fn default_run(runs: &[MediaRun], current_version: Option<uuid::Uuid>) -> Option<uuid::Uuid> {
@@ -550,6 +587,19 @@ mod tests {
         assert_eq!(spans.len(), 2);
         assert_eq!((spans[0].start_ms, spans[0].end_ms), (0, 2_001));
         assert_eq!(spans[1].start_ms, 8_000);
+    }
+
+    #[test]
+    fn the_piece_under_the_cursor() {
+        let p = |start_ms, end_ms| AudioPiece {
+            segment_id: uuid::Uuid::nil(),
+            start_ms,
+            end_ms,
+        };
+        let pieces = [p(0, 30_000), p(29_000, 60_000)];
+        assert_eq!(piece_at(&pieces, 10_000), Some(0));
+        assert_eq!(piece_at(&pieces, 30_000), Some(1));
+        assert_eq!(piece_at(&pieces, 90_000), None);
     }
 
     #[test]

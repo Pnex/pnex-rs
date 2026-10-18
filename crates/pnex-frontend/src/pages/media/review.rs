@@ -20,7 +20,7 @@ use crate::components::timeline::{Body, Item, ItemKind, Lane, TimeBase, Timeline
 use crate::components::transport::{seek_media, MediaPlayer};
 use crate::components::ui::{BTN_SECONDARY_SM, INPUT, PANEL};
 
-const PLAYER: &str = "media-review-player";
+pub(crate) const PLAYER: &str = "media-review-player";
 const CANVAS: &str = "media-review-frise";
 
 /// Colours of the speakers, in order of first appearance.
@@ -86,7 +86,7 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 /// Speaker labels in order of first appearance.
-fn speakers(segments: &[ReviewSegment]) -> Vec<String> {
+pub(crate) fn speakers(segments: &[ReviewSegment]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for t in segments.iter().flat_map(|s| s.turns.iter()) {
         if !out.contains(&t.label) {
@@ -129,7 +129,7 @@ fn persons(t: &MediaTranscript) -> Vec<(uuid::Uuid, String)> {
 /// apart), then one per speaker, or the text spans of a run without
 /// speakers. A speaker lane is a selection tool: drag a span, or click its
 /// title to take every turn of the voice.
-fn lanes(
+pub(crate) fn lanes(
     t: &MediaTranscript,
     all: &[String],
     picked: Option<uuid::Uuid>,
@@ -810,7 +810,7 @@ fn RunPicker(
 }
 
 #[component]
-fn TranscriptPanel(
+pub(crate) fn TranscriptPanel(
     asset_id: String,
     can_write: bool,
     data: Option<MediaTranscript>,

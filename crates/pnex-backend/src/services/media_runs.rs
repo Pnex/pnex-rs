@@ -319,3 +319,78 @@ mod tests {
         assert!(check_cues("fr", &[cue(0, 1, &"a".repeat(CUE_TEXT_MAX + 1))]).is_err());
     }
 }
+
+/// A window of a live stream of the org for the review screen (D271 V2):
+/// the transcripts on the window clock and the segments whose audio is
+/// still kept. `from`..`to` at most [`STREAM_REVIEW_MAX_SECS`].
+pub async fn stream_review(
+    ctx: &AppContext,
+    org_id: i64,
+    stream_id: Uuid,
+    from: chrono::DateTime<chrono::Utc>,
+    to: chrono::DateTime<chrono::Utc>,
+) -> Result<pnex_core::media_review::StreamReview, RunError> {
+    use crate::models::_entities::media_segments;
+    use pnex_core::media_review::{AudioPiece, StreamReview, STREAM_REVIEW_MAX_SECS};
+    use sea_orm::QueryOrder;
+    if to <= from || (to - from).num_seconds() > STREAM_REVIEW_MAX_SECS {
+        return Err(RunError::Invalid("window"));
+    }
+    let stream = streams::find(&ctx.db, org_id, stream_id)
+        .await
+        .map_err(|_| RunError::NotFound)?;
+    let from_ms = from.timestamp_millis();
+    let pieces: Vec<AudioPiece> = media_segments::Entity::find()
+        .filter(media_segments::Column::OrgId.eq(org_id))
+        .filter(media_segments::Column::StreamId.eq(stream.id))
+        .filter(media_segments::Column::StorageKey.is_not_null())
+        .filter(media_segments::Column::EndedAt.gt(from))
+        .filter(media_segments::Column::StartedAt.lt(to))
+        .order_by_asc(media_segments::Column::StartedAt)
+        .all(&ctx.db)
+        .await?
+        .into_iter()
+        .map(|s| AudioPiece {
+            segment_id: s.id,
+            start_ms: s.started_at.timestamp_millis() - from_ms,
+            end_ms: s.ended_at.timestamp_millis() - from_ms,
+        })
+        .collect();
+    let mut out = StreamReview {
+        from: from.to_rfc3339(),
+        to: to.to_rfc3339(),
+        segments: Vec::new(),
+        audio: pieces,
+        unavailable: false,
+    };
+    match transcripts::window_documents(
+        ctx,
+        org_id,
+        &stream.slug,
+        from.timestamp_micros(),
+        to.timestamp_micros(),
+    )
+    .await
+    {
+        Ok(Some(docs)) => {
+            out.segments = docs
+                .into_iter()
+                .map(|(start_us, end_us, text, words, turns)| {
+                    shift_segment(
+                        start_us / 1000 - from_ms,
+                        (end_us - start_us) / 1000,
+                        text,
+                        &words,
+                        &turns,
+                    )
+                })
+                .collect();
+        }
+        Ok(None) => out.unavailable = true,
+        Err(e) => {
+            tracing::warn!(stream = %stream.slug, error = %e, "stream transcript not read");
+            out.unavailable = true;
+        }
+    }
+    Ok(out)
+}

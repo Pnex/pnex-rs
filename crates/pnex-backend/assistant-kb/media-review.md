@@ -2,11 +2,11 @@
 id: media-review
 title: Review a media with its transcript and speakers
 kind: feature
-pages: /media/:id/review
+pages: /media/:id/review, /streams/:id/review
 nodes: 
 err_codes: media-analysis-no-detector, media-analysis-detect-failed, voice-id-not-enough-speech, media-attribution-conflict, media-write-forbidden, media-analysis-no-asr, media-analysis-no-voice-profile, media-analysis-no-speakers, media-analysis-identify-failed
 tools: 
-tags: detection, détection, objects, objets, boxes, boîtes, enrol, enrôler, retranscribe, retranscrire, voice, voix, recognition, reconnaissance, voice profile, profil vocal, statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
+tags: stream review, relire un flux, radio, retention, rétention, detection, détection, objects, objets, boxes, boîtes, enrol, enrôler, retranscribe, retranscrire, voice, voix, recognition, reconnaissance, voice profile, profil vocal, statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
 ---
 The review screen of an audio or video file (Media › open a file › Analyses card › **Review with the transcript**) shows the media in the centre, its transcript on the right and the speakers on the timeline below, with one cursor across the three.
 
@@ -21,6 +21,10 @@ The review screen of an audio or video file (Media › open a file › Analyses 
 - **Retranscribe**: relaunch the Transcription on the Analyses card; it adds a new run, the attributions stay (they are tied to the time of the media, not to S1, S2…).
 - **See what is detected** on a video: launch *Object detection* on the Analyses card (one picture every 2 s, with the first valid detection model of the organization, Models page); the boxes show over the video while it plays and a *Detections* lane marks where something was found. Boxes only: no picture is kept.
 - Proposals (from a voice profile, the transcript or the programme grid) are shown apart: **confirm** or **reject** them; a rejected proposal is not made again.
+
+## Review a stream
+- **Review** on a row of Streams opens the last hour of the stream: its text with speakers, and its audio when the retention of the stream keeps it (Retention set to *days* or *keep*; with *none* the audio is deleted once transcribed and only the text is left). Choose 1 h or 6 h, go **Earlier** or **Later**, or back to **Now**. Click a word or the timeline to listen; the pieces of audio follow each other.
+- Saying who speaks, statements and voice recognition work on a media file of the library, not on a stream.
 
 ## Good to know
 - Speakers S1, S2… are anonymous voices told apart by the transcription; they are never named automatically.

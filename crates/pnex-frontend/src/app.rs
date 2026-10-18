@@ -15,7 +15,7 @@ use crate::pages::{
     Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
     Functions, Lab, LabProjectPage, Map, Media, MediaReview, Models, NotFound, Notifications,
     Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour,
-    Showcase, Sites, Streams, Studio, System, Visualisation, VoiceId,
+    Showcase, Sites, StreamReview, Streams, Studio, System, Visualisation, VoiceId,
 };
 use dioxus::prelude::*;
 
@@ -71,6 +71,10 @@ pub enum Route {
         // Captured audio streams, transcribed by the queue (media-ingest.md P2.13).
         #[route("/streams")]
         Streams {},
+
+        // Review of a window of a stream: text, speakers, kept audio (media-review.md D271).
+        #[route("/streams/:id/review")]
+        StreamReview { id: String },
 
         // Consented voice profiles of persons (voice-id.md).
         #[route("/voice-id")]

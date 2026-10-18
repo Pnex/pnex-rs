@@ -23,10 +23,13 @@ mod form;
 mod models;
 mod ranges;
 mod recordings;
+mod review;
 mod segments;
 mod taxonomies;
 mod test;
 mod transcripts;
+
+pub use review::StreamReview;
 
 use form::StreamFormModal;
 use models::ModelsTab;
@@ -465,6 +468,14 @@ fn StreamRow(
                         r#type: "button",
                         onclick: move |_| on_action.call(Dialog::Segments(s_segments.clone())),
                         {t!("streams-segments")}
+                    }
+                    Link {
+                        class: "px-2 py-1 text-xs border border-gray-300 rounded-lg hover:bg-gray-50",
+                        "data-testid": "stream-review",
+                        to: crate::app::Route::StreamReview {
+                            id: stream.id.to_string(),
+                        },
+                        {t!("streams-review")}
                     }
                     if has_video {
                         button {

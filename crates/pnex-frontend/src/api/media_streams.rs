@@ -231,3 +231,28 @@ pub async fn test_stream(id: &str) -> Result<pnex_core::media_ingest::StreamTest
     )
     .await
 }
+
+/// `GET /api/v1/media/streams/{id}/review` — a window of the stream
+/// (media-review.md D271 V2), times in ms from `from`.
+pub async fn review(
+    id: &str,
+    from: &str,
+    to: &str,
+) -> Result<pnex_core::media_review::StreamReview, ApiError> {
+    let enc = |s: &str| s.replace('+', "%2B").replace(':', "%3A");
+    client::request(
+        reqwest::Method::GET,
+        &format!(
+            "/api/v1/media/streams/{id}/review?from={}&to={}",
+            enc(from),
+            enc(to)
+        ),
+        None,
+    )
+    .await
+}
+
+/// Path of the kept audio of a segment (`audio/wav`).
+pub fn segment_audio_path(id: &str, segment: &str) -> String {
+    format!("/api/v1/media/streams/{id}/segments/{segment}/audio")
+}
