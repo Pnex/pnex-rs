@@ -266,4 +266,4 @@ identification vocale, entraînement de modèles (Lab), analyse en direct
 | D215 | Détection d'objets sur fichier, D105 généralisé (`media:<asset>`) | 2026-10-14 (proposé) |
 | D215bis | Description dynamique d'un fichier : survol + fenêtres de 30 s chevauchantes avec histoire cumulée, événements horodatés cités | 2026-10-16 (proposé) |
 | D216 | `TimelineItem` + `GET /timeline` + composant `Timeline` commun | 2026-10-14 (proposé) |
-| D217 | Lecteur « relire avec les analyses » + création d'événements ontologie | 2026-10-14 (proposé) |
+| D217 | Lecteur « relire avec les analyses » + création d'événements ontologie ; écran précisé et remplacé par `media-review.md` (D271–D280) | 2026-10-14 (proposé) |
