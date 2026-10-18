@@ -310,6 +310,37 @@ pub fn label_spans(segments: &[ReviewSegment], label: &str) -> Vec<MediaSpan> {
     )
 }
 
+/// Objects detected on a video of the library (D215), for the review
+/// screen: the boxes of the latest detection, `ts_ms` = position in the
+/// media (ms), in media order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MediaDetections {
+    /// Name of the detection model; `None` before any detection.
+    #[serde(default)]
+    pub model: Option<String>,
+    pub frames: Vec<crate::camera::FrameAnnotation>,
+    /// The detection store (O2) is not reachable.
+    #[serde(default)]
+    pub unavailable: bool,
+}
+
+/// Spans of the media where something is detected: consecutive pictures
+/// with boxes (at most `gap_ms` apart) form one span.
+pub fn detection_spans(frames: &[crate::camera::FrameAnnotation], gap_ms: i64) -> Vec<MediaSpan> {
+    let mut out: Vec<MediaSpan> = Vec::new();
+    for f in frames.iter().filter(|f| !f.detections.is_empty()) {
+        match out.last_mut() {
+            Some(last) if f.ts_ms - last.end_ms <= gap_ms => last.end_ms = f.ts_ms + 1,
+            _ => out.push(MediaSpan {
+                start_ms: f.ts_ms,
+                end_ms: f.ts_ms + 1,
+            }),
+        }
+    }
+    out
+}
+
 /// Run shown by default: the latest `pnex` run of the current version,
 /// else the latest run of any origin (`runs` newest first).
 pub fn default_run(runs: &[MediaRun], current_version: Option<uuid::Uuid>) -> Option<uuid::Uuid> {
@@ -491,6 +522,34 @@ mod tests {
         let spans = label_spans(&[seg], "S1");
         assert_eq!(spans.len(), 3, "{spans:?}");
         assert_eq!((spans[2].start_ms, spans[2].end_ms), (90_000, 100_000));
+    }
+
+    #[test]
+    fn detections_gather_into_spans() {
+        let frame = |ts_ms: i64, n: usize| crate::camera::FrameAnnotation {
+            layer_id: "a1".into(),
+            ts_ms,
+            width: 640,
+            height: 360,
+            detections: (0..n)
+                .map(|_| crate::vision::Detection {
+                    label: "person".into(),
+                    class_id: 0,
+                    score: 0.9,
+                    bbox: [0.0, 0.0, 10.0, 10.0],
+                })
+                .collect(),
+        };
+        let frames = [
+            frame(0, 1),
+            frame(2_000, 2),
+            frame(4_000, 0),
+            frame(8_000, 1),
+        ];
+        let spans = detection_spans(&frames, 2_000);
+        assert_eq!(spans.len(), 2);
+        assert_eq!((spans[0].start_ms, spans[0].end_ms), (0, 2_001));
+        assert_eq!(spans[1].start_ms, 8_000);
     }
 
     #[test]

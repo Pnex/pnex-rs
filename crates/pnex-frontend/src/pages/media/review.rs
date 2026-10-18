@@ -6,9 +6,10 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
+use pnex_core::camera::{annotation_at, FrameAnnotation};
 use pnex_core::media_review::{
-    person_at, AttributionInput, AttributionPatch, AttributionStatus, MediaRun, MediaSpan,
-    MediaTranscript, ReviewSegment, RunOrigin, SpeechAttribution,
+    detection_spans, person_at, AttributionInput, AttributionPatch, AttributionStatus, MediaRun,
+    MediaSpan, MediaTranscript, ReviewSegment, RunOrigin, SpeechAttribution,
 };
 
 use crate::api;
@@ -242,6 +243,11 @@ pub fn MediaReview(id: String) -> Element {
         let id = aid.clone();
         async move { api::media::detail(&id).await }
     });
+    let did = id.clone();
+    let dets = use_resource(move || {
+        let id = did.clone();
+        async move { api::media::detections(&id).await.ok() }
+    });
     let tid = id.clone();
     let transcript = use_resource(move || {
         let id = tid.clone();
@@ -340,10 +346,35 @@ pub fn MediaReview(id: String) -> Element {
             }
         }
     };
-    let lanes_now = data
+    let frames: Vec<FrameAnnotation> = dets
+        .read()
+        .as_ref()
+        .and_then(|d| d.as_ref().map(|d| d.frames.clone()))
+        .unwrap_or_default();
+    let end = end.max(frames.last().map_or(0, |f| f.ts_ms + 2_000));
+    let mut lanes_now = data
         .as_ref()
         .map(|t| lanes(t, &all, picked(), can_write))
         .unwrap_or_default();
+    if !frames.is_empty() {
+        let mut lane = Lane::new(
+            "detections",
+            t!("media-review-detections").to_string(),
+            Body::Spans {
+                spans: detection_spans(&frames, DETECTION_GAP_MS)
+                    .into_iter()
+                    .map(|s| (s.start_ms, s.end_ms))
+                    .collect(),
+                gaps: false,
+                marks: Vec::new(),
+            },
+        );
+        lane.color = Some("#f97316".into());
+        lane.tinted = true;
+        lanes_now.push(lane);
+    }
+    let shown = annotation_at(&frames, pos, DETECTION_GAP_MS / 2).cloned();
+    let has_lanes = !lanes_now.is_empty();
     let speaker_turns = data.clone();
 
     rsx! {
@@ -375,6 +406,9 @@ pub fn MediaReview(id: String) -> Element {
                                 pos_ms.set((p * 1000.0) as i64);
                                 dur_ms.set((d * 1000.0) as i64);
                             },
+                            overlay: shown.map(|f| rsx! {
+                                BoxOverlay { frame: f }
+                            }),
                         }
                     }
                 }
@@ -389,7 +423,7 @@ pub fn MediaReview(id: String) -> Element {
                     on_seek: seek,
                 }
             }
-            if data.as_ref().is_some_and(|t| !t.segments.is_empty()) {
+            if has_lanes {
                 div {
                     class: "mt-4 {PANEL} outline-none",
                     tabindex: "0",
@@ -646,6 +680,44 @@ fn PickedBar(
                 EnrolButton {
                     asset_id: asset_id.clone(),
                     object_id: a.object_id.to_string(),
+                }
+            }
+        }
+    }
+}
+
+/// Pictures of a video are analysed every 2 s: closer ones are one span.
+const DETECTION_GAP_MS: i64 = 2_000;
+
+/// Boxes of one analysed picture over the video (same box, `meet` like the
+/// video's own `object-fit: contain`).
+#[component]
+fn BoxOverlay(frame: FrameAnnotation) -> Element {
+    let (w, h) = (frame.width.max(1), frame.height.max(1));
+    rsx! {
+        svg {
+            class: "pointer-events-none absolute inset-0 h-full w-full",
+            view_box: "0 0 {w} {h}",
+            preserve_aspect_ratio: "xMidYMid meet",
+            "data-testid": "media-review-boxes",
+            for (i, d) in frame.detections.iter().enumerate() {
+                g { key: "{i}",
+                    rect {
+                        x: "{d.bbox[0]}",
+                        y: "{d.bbox[1]}",
+                        width: "{d.bbox[2]}",
+                        height: "{d.bbox[3]}",
+                        fill: "none",
+                        stroke: "#f97316",
+                        stroke_width: "3",
+                    }
+                    text {
+                        x: "{d.bbox[0]}",
+                        y: "{(d.bbox[1] - 4.0).max(12.0)}",
+                        fill: "#f97316",
+                        font_size: "16",
+                        "{d.label} {(d.score * 100.0).round()} %"
+                    }
                 }
             }
         }

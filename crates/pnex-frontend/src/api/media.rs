@@ -279,6 +279,17 @@ pub async fn transcript(
     .await
 }
 
+/// `GET /api/v1/media/{id}/detections` — boxes of the latest detection
+/// (D215), positions on the media clock.
+pub async fn detections(id: &str) -> Result<pnex_core::media_review::MediaDetections, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/{}/detections", urlencode(id)),
+        None,
+    )
+    .await
+}
+
 /// `POST /api/v1/media/{id}/attributions` — spans to a person (D273).
 pub async fn attribute(
     id: &str,

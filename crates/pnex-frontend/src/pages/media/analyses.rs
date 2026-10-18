@@ -47,6 +47,7 @@ fn step_label(step: AnalysisStep) -> String {
         AnalysisStep::Summarize => t!("media-analysis-step-summarize"),
         AnalysisStep::Transcribe => t!("media-analysis-step-transcribe"),
         AnalysisStep::Identify => t!("media-analysis-step-identify"),
+        AnalysisStep::Detect => t!("media-analysis-step-detect"),
     }
     .to_string()
 }
@@ -235,10 +236,12 @@ fn StepLine(
 ) -> Element {
     let step = offer.step;
     // A transcription is reviewed as soon as it started (text comes in).
-    let review = matches!(step, AnalysisStep::Transcribe | AnalysisStep::Identify)
-        && analysis
-            .as_ref()
-            .is_some_and(|a| matches!(a.state.wire(), "running" | "done"));
+    let review = matches!(
+        step,
+        AnalysisStep::Transcribe | AnalysisStep::Identify | AnalysisStep::Detect
+    ) && analysis
+        .as_ref()
+        .is_some_and(|a| matches!(a.state.wire(), "running" | "done"));
     let (status, detail) = match step {
         AnalysisStep::Index => match &index {
             Some(i) => index_texts(i),
@@ -263,7 +266,17 @@ fn StepLine(
         li { class: "py-2 flex items-start justify-between gap-3",
             div { class: "min-w-0",
                 p { class: "text-sm text-gray-900", {step_label(step)} }
-                if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE) {
+                if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_DETECTOR) {
+                    p { class: "text-xs text-gray-500",
+                        {t!("media-analysis-needs-detector")}
+                        " "
+                        Link {
+                            class: "text-signal-600 hover:underline",
+                            to: Route::Models {},
+                            {t!("media-analysis-open-asr")}
+                        }
+                    }
+                } else if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE) {
                     p { class: "text-xs text-gray-500",
                         {t!("media-analysis-needs-voice")}
                         " "

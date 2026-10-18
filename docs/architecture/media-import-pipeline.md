@@ -263,7 +263,7 @@ identification vocale, entraînement de modèles (Lab), analyse en direct
 | D212 | Usages LLM par org (`assistant`, `extraction`, `vision`), repli sur le défaut. Codé : cases « Utilisé pour » dans le formulaire du fournisseur (pas de sélecteurs séparés), table `llm_usages` | 2026-10-16 (codé) |
 | D213 | `media_analyses` : orchestrateur + état par (version, étape), délègue aux briques existantes. Codé : `index` (état dans `media_text_index`) + `summarize` ; pas de route retry/cancel (relancer = même POST), une ligne `running` de plus de 15 min est reprise | 2026-10-16 (codé, I2) |
 | D214 | Résumé → page versionnée IA liée au fichier, map-reduce borné. Codé : relance = section ajoutée + nouvelle version de la même page (pas de remplacement du contenu) | 2026-10-16 (codé, I2) |
-| D215 | Détection d'objets sur fichier, D105 généralisé (`media:<asset>`) | 2026-10-14 (proposé) |
+| D215 | Détection d'objets sur fichier, D105 généralisé (`media:<asset>`). Codé (media-review.md R5) : étape `detect`, 1 image / 2 s, premier détecteur valide, documents datés sur la passe (O2 refuse les dates anciennes), `result_ref {layer_id, base_ms}` | 2026-10-18 (codé) |
 | D215bis | Description dynamique d'un fichier : survol + fenêtres de 30 s chevauchantes avec histoire cumulée, événements horodatés cités | 2026-10-16 (proposé) |
 | D216 | `TimelineItem` + `GET /timeline` + composant `Timeline` commun | 2026-10-14 (proposé) |
 | D217 | Lecteur « relire avec les analyses » + création d'événements ontologie ; écran précisé et remplacé par `media-review.md` (D271–D280) | 2026-10-14 (proposé) |

@@ -96,6 +96,7 @@ pub fn routes() -> Routes {
         .add("/{id}/index", get(index_state).post(reindex))
         .add("/{id}/analyses", get(analyses).post(start_analyses))
         .add("/{id}/transcript", get(transcript))
+        .add("/{id}/detections", get(detections))
         .add(
             "/{id}/attributions",
             get(attributions).post(create_attribution),
@@ -131,6 +132,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         analyses,
         start_analyses,
         transcript,
+        detections,
         attributions,
         create_attribution,
         update_attribution,

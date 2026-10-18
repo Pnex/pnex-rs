@@ -230,6 +230,9 @@ pub fn MediaPlayer(
     /// transcript, timeline).
     #[props(default)]
     on_time: EventHandler<(f64, f64)>,
+    /// Drawn over the video, same box (detection boxes of the review).
+    #[props(default)]
+    overlay: Option<Element>,
 ) -> Element {
     // (position s, duration s, paused) as last read from the element.
     let mut state = use_signal(|| (0.0f64, 0.0f64, true));
@@ -293,18 +296,21 @@ pub fn MediaPlayer(
     rsx! {
         div { class: "w-full space-y-2",
             if video {
-                video {
-                    id: "{id}",
-                    class: "w-full max-h-[420px] rounded-lg bg-gray-900 cursor-pointer",
-                    src: "{src}",
-                    preload: "metadata",
-                    "playsinline": "true",
-                    onclick: move |_| toggle_frame(),
-                    ontimeupdate: move |_| r1(),
-                    ondurationchange: move |_| r2(),
-                    onplay: move |_| r3(),
-                    onpause: move |_| r4(),
-                    onended: move |_| r5(),
+                div { class: "relative",
+                    video {
+                        id: "{id}",
+                        class: "w-full max-h-[420px] rounded-lg bg-gray-900 cursor-pointer",
+                        src: "{src}",
+                        preload: "metadata",
+                        "playsinline": "true",
+                        onclick: move |_| toggle_frame(),
+                        ontimeupdate: move |_| r1(),
+                        ondurationchange: move |_| r2(),
+                        onplay: move |_| r3(),
+                        onpause: move |_| r4(),
+                        onended: move |_| r5(),
+                    }
+                    {overlay}
                 }
             } else {
                 audio {

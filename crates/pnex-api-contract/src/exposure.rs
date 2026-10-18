@@ -176,6 +176,7 @@ pub const EXPOSED: &[&str] = &[
     "media_attributions_update",
     "media_capture_devices_list",
     "media_chunks_get",
+    "media_detections_get",
     "media_get",
     "media_index_get",
     "media_index_rebuild",

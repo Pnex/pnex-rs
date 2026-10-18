@@ -48,6 +48,8 @@ pub enum AnalysisError {
     NoAsr,
     #[error("no ready voice profile")]
     NoVoiceProfile,
+    #[error("no valid detection model")]
+    NoDetector,
     #[error("step already queued or running")]
     Busy,
     #[error(transparent)]
@@ -61,6 +63,7 @@ impl AnalysisError {
             Self::NoLlm => err_codes::MEDIA_ANALYSIS_NO_LLM,
             Self::NoAsr => err_codes::MEDIA_ANALYSIS_NO_ASR,
             Self::NoVoiceProfile => err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE,
+            Self::NoDetector => err_codes::MEDIA_ANALYSIS_NO_DETECTOR,
             Self::Busy => err_codes::MEDIA_ANALYSIS_BUSY,
             Self::Db(_) => "internal",
         }
@@ -154,6 +157,13 @@ pub async fn offers(
     } else {
         false
     };
+    let detector = if steps.contains(&AnalysisStep::Detect) {
+        crate::services::media_detect::detector_model(&ctx.db, org_id)
+            .await
+            .is_some()
+    } else {
+        false
+    };
     let chars = match version_id {
         Some(v) if steps.contains(&AnalysisStep::Summarize) => {
             doc_search::version_chars(&ctx.db, org_id, v).await?
@@ -170,6 +180,8 @@ pub async fn offers(
                 Some(err_codes::MEDIA_ANALYSIS_NO_ASR.to_string())
             } else if step == AnalysisStep::Identify && !voices {
                 Some(err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE.to_string())
+            } else if step == AnalysisStep::Detect && !detector {
+                Some(err_codes::MEDIA_ANALYSIS_NO_DETECTOR.to_string())
             } else {
                 None
             },
@@ -213,6 +225,30 @@ pub async fn list(
     .all(db)
     .await?;
     Ok(rows.iter().filter_map(Row::view).collect())
+}
+
+/// `result_ref` of the finished `step` of a version of the org.
+pub async fn done_result(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+    step: AnalysisStep,
+) -> Result<Option<serde_json::Value>, DbErr> {
+    Ok(Row::find_by_statement(stmt(
+        &format!(
+            "SELECT {COLUMNS} FROM media_analyses
+             WHERE org_id = $1 AND media_version_id = $2 AND step = $3 AND state = $4"
+        ),
+        vec![
+            org_id.into(),
+            version_id.into(),
+            step.as_str().into(),
+            STATE_DONE.into(),
+        ],
+    ))
+    .one(db)
+    .await?
+    .map(|r| r.result_ref))
 }
 
 async fn find_row<C: ConnectionTrait>(db: &C, id: Uuid) -> Result<Option<Row>, DbErr> {
@@ -280,6 +316,13 @@ pub async fn start(
     if steps.contains(&AnalysisStep::Identify) && !has_voice_profile(ctx, org_id).await {
         return Err(AnalysisError::NoVoiceProfile);
     }
+    if steps.contains(&AnalysisStep::Detect)
+        && crate::services::media_detect::detector_model(&ctx.db, org_id)
+            .await
+            .is_none()
+    {
+        return Err(AnalysisError::NoDetector);
+    }
     let lang = if locale.starts_with("fr") { "fr" } else { "en" };
     let mut queued = Vec::new();
     for &step in steps.iter().filter(|s| **s != AnalysisStep::Index) {
@@ -318,7 +361,10 @@ pub async fn start(
             .map(|r| r.try_get("", "id"))
             .transpose()?;
         let id = id.ok_or(AnalysisError::Busy)?;
-        if matches!(step, AnalysisStep::Transcribe | AnalysisStep::Identify) {
+        if matches!(
+            step,
+            AnalysisStep::Transcribe | AnalysisStep::Identify | AnalysisStep::Detect
+        ) {
             dispatch(ctx, id).await;
         } else {
             queued.push(id);
@@ -449,6 +495,9 @@ pub async fn run(ctx: &AppContext, id: Uuid) -> Result<(), DbErr> {
             };
         }
         Some(AnalysisStep::Identify) => identify(ctx, &row).await,
+        Some(AnalysisStep::Detect) => {
+            crate::services::media_detect::run(ctx, row.org_id, row.media_version_id, row.id).await
+        }
         _ => Err(err_codes::MEDIA_ANALYSIS_STEP_INVALID),
     };
     match outcome {

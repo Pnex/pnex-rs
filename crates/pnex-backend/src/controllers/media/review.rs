@@ -252,3 +252,43 @@ pub(super) async fn delete_attribution(
         Err(e) => attribution_error(e),
     }
 }
+
+/// `GET /api/v1/media/{id}/detections` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/detections",
+    tag = "media",
+    operation_id = "media_detections_get",
+    summary = "Get the objects detected on a media video",
+    description = "Boxes of the latest finished object detection of the current version (one picture every 2 s), positions in ms on the media clock, at most 5000 pictures. Empty before any detection; `unavailable` when the detection store cannot be read. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
+    responses(
+        (status = 200, body = pnex_core::media_review::MediaDetections),
+        (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+pub(super) async fn detections(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    let result = match asset.current_version_id {
+        Some(v) => crate::services::media_analyses::done_result(
+            &ctx.db,
+            org.org.id,
+            v,
+            pnex_core::media_analysis::AnalysisStep::Detect,
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "media detections query failed");
+            Error::InternalServerError
+        })?,
+        None => None,
+    };
+    format::json(crate::services::media_detect::read(&ctx, org.org.id, asset.id, result).await)
+}

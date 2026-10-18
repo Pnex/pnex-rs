@@ -4,9 +4,9 @@ title: Review a media with its transcript and speakers
 kind: feature
 pages: /media/:id/review
 nodes: 
-err_codes: voice-id-not-enough-speech, media-attribution-conflict, media-write-forbidden, media-analysis-no-asr, media-analysis-no-voice-profile, media-analysis-no-speakers, media-analysis-identify-failed
+err_codes: media-analysis-no-detector, media-analysis-detect-failed, voice-id-not-enough-speech, media-attribution-conflict, media-write-forbidden, media-analysis-no-asr, media-analysis-no-voice-profile, media-analysis-no-speakers, media-analysis-identify-failed
 tools: 
-tags: enrol, enrôler, retranscribe, retranscrire, voice, voix, recognition, reconnaissance, voice profile, profil vocal, statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
+tags: detection, détection, objects, objets, boxes, boîtes, enrol, enrôler, retranscribe, retranscrire, voice, voix, recognition, reconnaissance, voice profile, profil vocal, statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
 ---
 The review screen of an audio or video file (Media › open a file › Analyses card › **Review with the transcript**) shows the media in the centre, its transcript on the right and the speakers on the timeline below, with one cursor across the three.
 
@@ -19,6 +19,7 @@ The review screen of an audio or video file (Media › open a file › Analyses 
 - **Recognise the voices** (Analyses card › *Voice recognition*, owners and admins): each speaker of the PNeX transcription is compared with the **consented voice profiles** of the organization (persons expected in the media — appearing in it, its publisher, already attributed — or every profile when there is none). A match is only a **proposal** on the timeline. Relaunch it after creating a new voice profile: older proposals are replaced, what a person confirmed or rejected stays.
 - **Enrol their voice** from a confirmed passage (owners and admins): the passages confirmed for that person in this media (180 s at most, longest first) are added to their voice profile; then generate the profile on their page (Voice tab). A person without a voice profile needs one first, created on their page with their consent.
 - **Retranscribe**: relaunch the Transcription on the Analyses card; it adds a new run, the attributions stay (they are tied to the time of the media, not to S1, S2…).
+- **See what is detected** on a video: launch *Object detection* on the Analyses card (one picture every 2 s, with the first valid detection model of the organization, Models page); the boxes show over the video while it plays and a *Detections* lane marks where something was found. Boxes only: no picture is kept.
 - Proposals (from a voice profile, the transcript or the programme grid) are shown apart: **confirm** or **reject** them; a rejected proposal is not made again.
 
 ## Good to know
