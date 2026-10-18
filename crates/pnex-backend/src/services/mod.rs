@@ -42,6 +42,7 @@ pub mod last_cache;
 pub mod mcp;
 pub mod media;
 pub mod media_analyses;
+pub mod media_attributions;
 pub mod media_ingest;
 pub mod media_runs;
 pub mod media_sniff;

@@ -97,6 +97,9 @@ pub struct MediaTranscript {
     /// The text store (O2) is not reachable: runs are listed, no text.
     #[serde(default)]
     pub unavailable: bool,
+    /// Spans attributed to persons (D272), every status, in media order.
+    #[serde(default)]
+    pub attributions: Vec<SpeechAttribution>,
 }
 
 /// How a span of a media got its person (D272): every technique is an
