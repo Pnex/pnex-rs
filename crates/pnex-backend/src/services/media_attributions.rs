@@ -357,3 +357,89 @@ async fn sync_appearance<C: ConnectionTrait>(
 
 /// Link type of a person appearing in a media file (investigation pack).
 const APPEARS_IN: &str = "appears_in";
+
+/// Replaces the voice proposals of an asset (D275): one proposed span per
+/// merged turn of each matched speaker, except where a person already
+/// confirmed someone, or rejected this very person. Returns how many.
+pub async fn propose_voices(
+    db: &DatabaseConnection,
+    org_id: i64,
+    asset_id: Uuid,
+    segments: &[pnex_core::media_review::ReviewSegment],
+    matches: &[crate::services::voice_id::media::SpeakerMatch],
+) -> Result<usize, AttributionError> {
+    let txn = db.begin().await?;
+    txn.execute_raw(stmt(
+        "DELETE FROM speech_attributions
+         WHERE org_id = $1 AND media_asset_id = $2 AND origin = 'voice' AND status = 'proposed'",
+        vec![org_id.into(), asset_id.into()],
+    ))
+    .await?;
+    let existing = list(&txn, org_id, asset_id).await?;
+    let mut count = 0;
+    for m in matches {
+        for span in pnex_core::media_review::label_spans(segments, &m.label) {
+            let overlaps =
+                |a: &SpeechAttribution| a.start_ms < span.end_ms && span.start_ms < a.end_ms;
+            let decided = existing.iter().any(|a| {
+                overlaps(a)
+                    && (a.status == AttributionStatus::Confirmed
+                        || (a.status == AttributionStatus::Rejected && a.object_id == m.object_id))
+            });
+            if decided || !span_ok(&span) {
+                continue;
+            }
+            txn.execute_raw(stmt(
+                "INSERT INTO speech_attributions (id, org_id, media_asset_id, object_id, start_ms,
+                    end_ms, origin, confidence, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                vec![
+                    Uuid::new_v4().into(),
+                    org_id.into(),
+                    asset_id.into(),
+                    m.object_id.into(),
+                    span.start_ms.into(),
+                    span.end_ms.into(),
+                    AttributionOrigin::Voice.wire().into(),
+                    m.score.into(),
+                    AttributionStatus::Proposed.wire().into(),
+                ],
+            ))
+            .await?;
+            count += 1;
+        }
+    }
+    txn.commit().await?;
+    Ok(count)
+}
+
+/// Persons expected in a media (D274): those appearing in it, its
+/// publisher, and those already attributed (confirmed).
+pub async fn expected_persons<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    asset_id: Uuid,
+) -> Result<Vec<Uuid>, DbErr> {
+    #[derive(FromQueryResult)]
+    struct P {
+        id: Uuid,
+    }
+    let rows = P::find_by_statement(stmt(
+        "SELECT e.source_object_id AS id FROM resource_edges e JOIN media_assets m
+            ON m.object_id = e.target_object_id
+         WHERE m.id = $2 AND e.org_id = $1 AND e.relation = 'appears_in' AND e.valid_to IS NULL
+           AND e.source_object_id IS NOT NULL
+         UNION
+         SELECT e.target_object_id FROM resource_edges e JOIN media_assets m
+            ON m.object_id = e.source_object_id
+         WHERE m.id = $2 AND e.org_id = $1 AND e.relation = 'published_by' AND e.valid_to IS NULL
+           AND e.target_object_id IS NOT NULL
+         UNION
+         SELECT object_id FROM speech_attributions
+         WHERE org_id = $1 AND media_asset_id = $2 AND status = 'confirmed'",
+        vec![org_id.into(), asset_id.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok(rows.into_iter().map(|p| p.id).collect())
+}

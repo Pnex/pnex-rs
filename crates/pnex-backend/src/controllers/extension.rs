@@ -222,13 +222,13 @@ async fn pair(
     path = "/api/v1/extension/agents/{id}",
     tag = "extension",
     operation_id = "extension_agents_update",
-    summary = "Rename a browser agent",
-    description = "Renames a browser agent (absent fields unchanged). Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+    summary = "Rename a browser agent or change its mode",
+    description = "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); absent fields unchanged, the mode applies at the agent's next connection. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
     params(("id" = i64, Path, description = "Agent id (device registry id)")),
     request_body = BrowserAgentPatch,
     responses(
         (status = 200, body = pnex_core::browser_agent::BrowserAgent),
-        (status = 400, description = "`field-invalid`: `errors.fields.name` `required` or `max_length:N`", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`field-invalid`: `errors.fields.name` `required` or `max_length:N`, `errors.fields.mode` `invalid`", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`extension-agent-not-found`", body = crate::openapi::ErrorDetail)
     ),
@@ -241,16 +241,7 @@ async fn update_agent(
     Json(input): Json<BrowserAgentPatch>,
 ) -> Result<Response> {
     require_write(&org)?;
-    let Some(name) = input.name else {
-        return match extension::list_agents(&ctx.db, org.org.id).await {
-            Ok(rows) => match rows.into_iter().find(|a| a.id == id) {
-                Some(a) => format::json(a),
-                None => extension_error(ExtensionError::AgentNotFound),
-            },
-            Err(e) => extension_error(e),
-        };
-    };
-    match extension::rename_agent(&ctx.db, org.org.id, id, &name).await {
+    match extension::update_agent(&ctx.db, org.org.id, id, &input).await {
         Ok(a) => format::json(a),
         Err(e) => extension_error(e),
     }

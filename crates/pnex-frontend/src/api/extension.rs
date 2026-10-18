@@ -17,13 +17,12 @@ pub async fn agents() -> Result<Vec<BrowserAgent>, ApiError> {
     client::request_all("/api/v1/extension/agents").await
 }
 
-/// `PATCH /api/v1/extension/agents/{id}` — rename.
-pub async fn rename_agent(id: i64, name: String) -> Result<BrowserAgent, ApiError> {
-    let patch = BrowserAgentPatch { name: Some(name) };
+/// `PATCH /api/v1/extension/agents/{id}` — name and mode (D269).
+pub async fn update_agent(id: i64, patch: &BrowserAgentPatch) -> Result<BrowserAgent, ApiError> {
     client::request(
         reqwest::Method::PATCH,
         &format!("/api/v1/extension/agents/{id}"),
-        body(&patch),
+        body(patch),
     )
     .await
 }

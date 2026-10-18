@@ -46,6 +46,8 @@ pub enum AnalysisError {
     NoLlm,
     #[error("no valid transcription profile")]
     NoAsr,
+    #[error("no ready voice profile")]
+    NoVoiceProfile,
     #[error("step already queued or running")]
     Busy,
     #[error(transparent)]
@@ -58,6 +60,7 @@ impl AnalysisError {
             Self::StepInvalid => err_codes::MEDIA_ANALYSIS_STEP_INVALID,
             Self::NoLlm => err_codes::MEDIA_ANALYSIS_NO_LLM,
             Self::NoAsr => err_codes::MEDIA_ANALYSIS_NO_ASR,
+            Self::NoVoiceProfile => err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE,
             Self::Busy => err_codes::MEDIA_ANALYSIS_BUSY,
             Self::Db(_) => "internal",
         }
@@ -146,6 +149,11 @@ pub async fn offers(
     } else {
         false
     };
+    let voices = if steps.contains(&AnalysisStep::Identify) {
+        has_voice_profile(ctx, org_id).await
+    } else {
+        false
+    };
     let chars = match version_id {
         Some(v) if steps.contains(&AnalysisStep::Summarize) => {
             doc_search::version_chars(&ctx.db, org_id, v).await?
@@ -160,6 +168,8 @@ pub async fn offers(
                 Some(err_codes::MEDIA_ANALYSIS_NO_LLM.to_string())
             } else if step == AnalysisStep::Transcribe && !asr {
                 Some(err_codes::MEDIA_ANALYSIS_NO_ASR.to_string())
+            } else if step == AnalysisStep::Identify && !voices {
+                Some(err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE.to_string())
             } else {
                 None
             },
@@ -247,6 +257,7 @@ pub async fn start(
     steps: &[AnalysisStep],
     locale: &str,
     confirm_large: bool,
+    voice_scope: pnex_core::media_analysis::VoiceScope,
 ) -> Result<(), AnalysisError> {
     let offered = steps_for_kind(kind);
     if steps.is_empty() || steps.iter().any(|s| !offered.contains(s)) {
@@ -265,6 +276,9 @@ pub async fn start(
         if transcribing_elsewhere(&ctx.db, org_id, version_id).await? {
             return Err(AnalysisError::Busy);
         }
+    }
+    if steps.contains(&AnalysisStep::Identify) && !has_voice_profile(ctx, org_id).await {
+        return Err(AnalysisError::NoVoiceProfile);
     }
     let lang = if locale.starts_with("fr") { "fr" } else { "en" };
     let mut queued = Vec::new();
@@ -291,7 +305,11 @@ pub async fn start(
                     version_id.into(),
                     step.as_str().into(),
                     STATE_QUEUED.into(),
-                    serde_json::json!({ "lang": lang, "confirm_large": confirm_large }).into(),
+                    serde_json::json!({
+                        "lang": lang, "confirm_large": confirm_large, "voice_scope": voice_scope,
+                        "user_id": user_id,
+                    })
+                    .into(),
                     user_id.into(),
                     (STALE_SECS as f64).into(),
                 ],
@@ -300,7 +318,7 @@ pub async fn start(
             .map(|r| r.try_get("", "id"))
             .transpose()?;
         let id = id.ok_or(AnalysisError::Busy)?;
-        if step == AnalysisStep::Transcribe {
+        if matches!(step, AnalysisStep::Transcribe | AnalysisStep::Identify) {
             dispatch(ctx, id).await;
         } else {
             queued.push(id);
@@ -430,6 +448,7 @@ pub async fn run(ctx: &AppContext, id: Uuid) -> Result<(), DbErr> {
                 Err(code) => set_state(&ctx.db, id, STATE_FAILED, 0, Some(code)).await,
             };
         }
+        Some(AnalysisStep::Identify) => identify(ctx, &row).await,
         _ => Err(err_codes::MEDIA_ANALYSIS_STEP_INVALID),
     };
     match outcome {
@@ -502,6 +521,94 @@ async fn start_transcribe(ctx: &AppContext, row: &Row) -> Result<serde_json::Val
         "run": run.to_string(),
         "started_at": started_at.to_rfc3339(),
     }))
+}
+
+/// Whether the org has a ready voice profile on a valid embedding model.
+async fn has_voice_profile(ctx: &AppContext, org_id: i64) -> bool {
+    use crate::services::voice_id::{audio, profiles};
+    let Ok(model) = audio::model(&ctx.db, org_id, None).await else {
+        return false;
+    };
+    profiles::ready_with_model(&ctx.db, org_id, model.id)
+        .await
+        .is_ok_and(|p| !p.is_empty())
+}
+
+/// Voice recognition of the latest PNeX run of the row's version (D275):
+/// proposals only. `{proposals, run}` for the result.
+async fn identify(ctx: &AppContext, row: &Row) -> Result<serde_json::Value, &'static str> {
+    use crate::models::_entities::media_versions;
+    use crate::services::{media_attributions, media_runs, voice_id};
+    use pnex_core::media_analysis::VoiceScope;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let failed = err_codes::MEDIA_ANALYSIS_IDENTIFY_FAILED;
+    let version = media_versions::Entity::find_by_id(row.media_version_id)
+        .filter(media_versions::Column::OrgId.eq(row.org_id))
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(failed)?;
+    let runs = media_runs::list(&ctx.db, row.org_id, version.asset_id)
+        .await
+        .map_err(|_| failed)?;
+    let run = runs
+        .iter()
+        .find(|r| {
+            r.origin == pnex_core::media_review::RunOrigin::Pnex && r.version_id == Some(version.id)
+        })
+        .ok_or(err_codes::MEDIA_ANALYSIS_NO_SPEAKERS)?;
+    let t = media_runs::transcript(ctx, row.org_id, version.asset_id, Some(run.id))
+        .await
+        .map_err(|_| failed)?;
+    if t.unavailable {
+        return Err(failed);
+    }
+    if !t.segments.iter().any(|s| !s.turns.is_empty()) {
+        return Err(err_codes::MEDIA_ANALYSIS_NO_SPEAKERS);
+    }
+    let scope: VoiceScope = row
+        .params
+        .get("voice_scope")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+    let persons = match scope {
+        VoiceScope::Expected => Some(
+            media_attributions::expected_persons(&ctx.db, row.org_id, version.asset_id)
+                .await
+                .map_err(|_| failed)?,
+        ),
+        VoiceScope::All => None,
+    };
+    let user = row.params.get("user_id").and_then(|v| v.as_i64());
+    let matches = voice_id::media::identify(
+        ctx,
+        row.org_id,
+        version.id,
+        &t.segments,
+        persons.as_deref(),
+        user,
+    )
+    .await
+    .map_err(|e| match e {
+        voice_id::VoiceIdError::NotReady | voice_id::VoiceIdError::NoModel => {
+            err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE
+        }
+        e => {
+            tracing::warn!(analysis = %row.id, error = %e, "voice identification failed");
+            failed
+        }
+    })?;
+    let n = media_attributions::propose_voices(
+        &ctx.db,
+        row.org_id,
+        version.asset_id,
+        &t.segments,
+        &matches,
+    )
+    .await
+    .map_err(|_| failed)?;
+    Ok(serde_json::json!({ "proposals": n, "run": run.id.to_string() }))
 }
 
 /// The capture of a batch stream ended: the analysis fails at once on a

@@ -37,6 +37,7 @@ mod m20261018_000027_social_videos;
 mod m20261018_000028_media_stream_pace;
 mod m20261018_000029_media_runs;
 mod m20261018_000030_speech_attributions;
+mod m20261018_000031_extension_agent_mode;
 
 pub struct Migrator;
 
@@ -70,6 +71,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261018_000028_media_stream_pace::Migration),
             Box::new(m20261018_000029_media_runs::Migration),
             Box::new(m20261018_000030_speech_attributions::Migration),
+            Box::new(m20261018_000031_extension_agent_mode::Migration),
         ]
     }
 }

@@ -1950,6 +1950,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "mode": {
+            "description": "`shared` or `dedicated:<platform>` (D269).",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -1966,6 +1970,7 @@
           "device_id",
           "name",
           "fingerprint",
+          "mode",
           "online",
           "created_at",
           "updated_at"
@@ -1975,6 +1980,13 @@
       "BrowserAgentPatch": {
         "description": "Partial update of an agent.",
         "properties": {
+          "mode": {
+            "description": "`shared` or `dedicated:<platform>` (D269).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": [
               "string",
@@ -6081,6 +6093,14 @@
           },
           "platform": {
             "$ref": "#/components/schemas/SocialPlatform"
+          },
+          "publisher_id": {
+            "description": "Ontology object (person or organization) behind the account: each\ncaptured media is linked to it by `published_by` (D278, D281).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -34129,7 +34149,7 @@
     },
     "/api/v1/extension/agents/{id}": {
       "patch": {
-        "description": "Renames a browser agent (absent fields unchanged). Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+        "description": "Renames a browser agent and/or sets its mode: `shared` (every platform but the exclusive ones) or `dedicated:<platform>` (that platform only, D269); absent fields unchanged, the mode applies at the agent's next connection. Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
         "operationId": "extension_agents_update",
         "parameters": [
           {
@@ -34182,7 +34202,7 @@
                 }
               }
             },
-            "description": "`field-invalid`: `errors.fields.name` `required` or `max_length:N`"
+            "description": "`field-invalid`: `errors.fields.name` `required` or `max_length:N`, `errors.fields.mode` `invalid`"
           },
           "401": {
             "content": {
@@ -34220,7 +34240,7 @@
             "bearer": []
           }
         ],
-        "summary": "Rename a browser agent",
+        "summary": "Rename a browser agent or change its mode",
         "tags": [
           "extension"
         ]

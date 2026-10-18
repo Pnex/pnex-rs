@@ -15,6 +15,7 @@ use serial_test::serial;
 struct Env {
     alice: String,
     bob: String,
+    ctx: loco_rs::app::AppContext,
 }
 
 async fn with_app<F, Fut>(f: F)
@@ -42,7 +43,7 @@ where
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            f(server, Env { alice, bob }).await;
+            f(server, Env { alice, bob, ctx }).await;
         },
     )
     .await;
@@ -344,6 +345,157 @@ async fn spans_are_attributed_to_persons_without_voice() {
         assert_eq!(st, 204);
         let (st, _) = call(&server, "DELETE", &one, &env.alice, org, None).await;
         assert_eq!(st, 404);
+    })
+    .await;
+}
+
+/// Voice recognition (D275): without a ready voice profile the step is
+/// offered greyed and refused; its proposals replace the previous ones and
+/// never contradict a person (a confirmed span, a rejected match).
+#[tokio::test]
+#[serial]
+async fn voice_proposals_respect_what_people_decided() {
+    use pnex_backend::services::{media_attributions, voice_id::media::SpeakerMatch};
+    use pnex_core::media_review::{ReviewSegment, ReviewTurn};
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(st < 300, "{p}");
+        let media = audio(&server, &env.alice, org).await;
+        let (st, state) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{media}/analyses"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{state}");
+        let identify = state["offers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["step"] == "identify")
+            .expect("identify offered");
+        assert_eq!(identify["blocked"], "media-analysis-no-voice-profile");
+        let (st, e) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/media/{media}/analyses"),
+            &env.alice,
+            org,
+            Some(json!({"steps": ["identify"]})),
+        )
+        .await;
+        assert_eq!(st, 409, "{e}");
+        assert_eq!(e["error"], "media-analysis-no-voice-profile");
+
+        let alice_p = object(&server, &env.alice, org, "person", "Alice Martin").await;
+        let bob_p = object(&server, &env.alice, org, "person", "Bob Durand").await;
+        let path = format!("/api/v1/media/{media}/attributions");
+        // A person said 0–10 s is Bob, and that 20–30 s is not Alice.
+        call(
+            &server,
+            "POST",
+            &path,
+            &env.alice,
+            org,
+            Some(json!({"object_id": bob_p, "spans": spans(&[(0, 10_000)])})),
+        )
+        .await;
+        let (_, all) = call(
+            &server,
+            "POST",
+            &path,
+            &env.alice,
+            org,
+            Some(json!({"object_id": alice_p, "spans": spans(&[(20_000, 30_000)])})),
+        )
+        .await;
+        let aid = all["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["person"] == "Alice Martin")
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (st, _) = call(
+            &server,
+            "PATCH",
+            &format!("{path}/{aid}"),
+            &env.alice,
+            org,
+            Some(json!({"expected_version": 1, "status": "rejected"})),
+        )
+        .await;
+        assert_eq!(st, 200);
+
+        let turn = |start_ms, end_ms| ReviewTurn {
+            label: "S1".into(),
+            start_ms,
+            end_ms,
+        };
+        let segments = [ReviewSegment {
+            start_ms: 0,
+            end_ms: 60_000,
+            text: String::new(),
+            words: Vec::new(),
+            turns: vec![
+                turn(2_000, 8_000),
+                turn(20_000, 30_000),
+                turn(40_000, 50_000),
+            ],
+        }];
+        let s1_is_alice = [SpeakerMatch {
+            label: "S1".into(),
+            object_id: alice_p.parse().unwrap(),
+            score: 0.71,
+        }];
+        let asset: uuid::Uuid = media.parse().unwrap();
+        let n =
+            media_attributions::propose_voices(&env.ctx.db, org, asset, &segments, &s1_is_alice)
+                .await
+                .unwrap();
+        assert_eq!(
+            n, 1,
+            "only 40–50 s: 2–8 s is Bob's, 20–30 s was rejected for Alice"
+        );
+        // A second run replaces its own proposals, never adds to them.
+        let n =
+            media_attributions::propose_voices(&env.ctx.db, org, asset, &segments, &s1_is_alice)
+                .await
+                .unwrap();
+        assert_eq!(n, 1);
+        let (_, list) = call(
+            &server,
+            "GET",
+            &format!("{path}?limit=100"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let proposed: Vec<&Value> = list["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["status"] == "proposed")
+            .collect();
+        assert_eq!(proposed.len(), 1, "{list}");
+        assert_eq!(proposed[0]["origin"], "voice");
+        assert_eq!(proposed[0]["start_ms"], 40_000);
+        assert!((proposed[0]["confidence"].as_f64().unwrap() - 0.71).abs() < 1e-3);
     })
     .await;
 }

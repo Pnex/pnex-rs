@@ -10,8 +10,8 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::browser_agent::{
-    BrowserAgent, CollectPageParams, CollectValueParams, FollowAccountParams, Mission,
-    MissionCreate, MissionPatch, MissionSpec, MissionState, SocialPlatform, SocialVideo,
+    BrowserAgent, BrowserAgentPatch, CollectPageParams, CollectValueParams, FollowAccountParams,
+    Mission, MissionCreate, MissionPatch, MissionSpec, MissionState, SocialPlatform, SocialVideo,
     VideoState, WatchLiveParams, ATTR_TEXT, MIN_INTERVAL_SECS,
 };
 
@@ -167,6 +167,12 @@ fn AgentsTab(agents: AgentsResource, can_write: bool, reload: Signal<u32>) -> El
                 }
             }
         }),
+        Column::new(t!("browser-agents-col-mode").to_string(), |a: &BrowserAgent| {
+            let label = mode_label(&a.mode);
+            rsx! { "{label}" }
+        })
+        .with_td_class("text-gray-600")
+        .secondary(),
         Column::new(t!("browser-agents-col-paired").to_string(), |a: &BrowserAgent| {
             rsx! { {date_label(&a.created_at)} }
         })
@@ -181,7 +187,7 @@ fn AgentsTab(agents: AgentsResource, can_write: bool, reload: Signal<u32>) -> El
                             class: BTN_SECONDARY_SM,
                             r#type: "button",
                             onclick: move |_| dialog.set(Some(AgentDialog::Rename(to_rename.clone()))),
-                            {t!("browser-agents-rename")}
+                            {t!("browser-agents-edit")}
                         }
                         button {
                             class: DANGER_BTN,
@@ -267,12 +273,17 @@ fn InstallSteps() -> Element {
 #[component]
 fn RenameAgent(agent: BrowserAgent, on_close: Callback<()>, on_saved: Callback<()>) -> Element {
     let mut name = use_signal(|| agent.name.clone());
+    let mut mode = use_signal(|| agent.mode.clone());
     let mut busy = use_signal(|| false);
     let save = move |_| {
-        let (id, value) = (agent.id, name());
+        let id = agent.id;
+        let patch = BrowserAgentPatch {
+            name: Some(name()),
+            mode: Some(mode()),
+        };
         busy.set(true);
         spawn(async move {
-            let res = api::extension::rename_agent(id, value).await;
+            let res = api::extension::update_agent(id, &patch).await;
             busy.set(false);
             match res {
                 Ok(_) => on_saved.call(()),
@@ -282,7 +293,7 @@ fn RenameAgent(agent: BrowserAgent, on_close: Callback<()>, on_saved: Callback<(
     };
     rsx! {
         FormDialog {
-            title: t!("browser-agents-rename-title").to_string(),
+            title: t!("browser-agents-edit-title").to_string(),
             submit_label: t!("browser-agents-save").to_string(),
             on_close,
             on_submit: save,
@@ -298,8 +309,41 @@ fn RenameAgent(agent: BrowserAgent, on_close: Callback<()>, on_saved: Callback<(
                     oninput: move |e| name.set(e.value()),
                 }
             }
+            div {
+                label { r#for: "agent-mode", class: FIELD_LABEL, {t!("browser-agents-col-mode")} }
+                select {
+                    id: "agent-mode",
+                    class: INPUT,
+                    value: "{mode}",
+                    onchange: move |e| mode.set(e.value()),
+                    for (value, key) in MODES {
+                        option {
+                            key: "{value}",
+                            value: "{value}",
+                            selected: mode() == value,
+                            {t!(key)}
+                        }
+                    }
+                }
+                p { class: FIELD_HELP, {t!("browser-agents-mode-help")} }
+            }
         }
     }
+}
+
+/// Modes of an agent (D269), with their label key.
+const MODES: [(&str, &str); 4] = [
+    ("shared", "browser-agents-mode-shared"),
+    ("dedicated:x", "browser-agents-mode-dedicated-x"),
+    ("dedicated:youtube", "browser-agents-mode-dedicated-youtube"),
+    ("dedicated:tiktok", "browser-agents-mode-dedicated-tiktok"),
+];
+
+fn mode_label(mode: &str) -> String {
+    MODES
+        .iter()
+        .find(|(value, _)| *value == mode)
+        .map_or_else(|| mode.to_string(), |(_, key)| t!(*key).to_string())
 }
 
 #[derive(Clone, PartialEq)]
@@ -535,6 +579,11 @@ fn MissionForm(
     });
     let mut platform = use_signal(|| initial_platform.wire().to_string());
     let mut force_video = use_signal(|| initial_force);
+    let initial_publisher = account
+        .as_ref()
+        .and_then(|a| a.publisher_id.clone())
+        .unwrap_or_default();
+    let publisher = use_signal(|| initial_publisher);
     let initial_kind = mission.as_ref().map_or("collect_value", |m| m.spec.kind());
     let mut kind = use_signal(|| initial_kind.to_string());
     let mut name = use_signal(|| mission.as_ref().map(|m| m.name.clone()).unwrap_or_default());
@@ -574,6 +623,7 @@ fn MissionForm(
                 platform: SocialPlatform::parse(&platform()).unwrap_or(SocialPlatform::X),
                 handle: handle(),
                 force_video: force_video(),
+                publisher_id: Some(publisher()).filter(|p| !p.is_empty()),
             }),
             _ => MissionSpec::CollectValue(CollectValueParams {
                 url: url(),
@@ -716,6 +766,10 @@ fn MissionForm(
                             {t!("browser-missions-field-force-video")}
                         }
                         p { class: FIELD_HELP, {t!("browser-missions-field-force-video-help")} }
+                    }
+                    PublisherPicker { selected: publisher }
+                    if platform() == "tiktok" {
+                        p { class: FIELD_HELP, {t!("browser-missions-tiktok-dedicated")} }
                     }
                 } else {
                     div {
@@ -900,6 +954,53 @@ fn VideosTab(reload: Signal<u32>) -> Element {
                 }
                 ListPager { count, page }
             }
+        }
+    }
+}
+
+/// Person or organization of the ontology behind a followed account
+/// (D278 `published_by`), optional.
+#[component]
+fn PublisherPicker(selected: Signal<String>) -> Element {
+    let mut selected = selected;
+    let objects = use_resource(|| async {
+        let mut all = Vec::new();
+        for type_key in ["person", "organization"] {
+            let q = pnex_core::ontology::api::OntologyQuery {
+                type_key: Some(type_key.into()),
+                limit: Some(500),
+                ..Default::default()
+            };
+            if let Ok(page) = api::ontology::query(&q).await {
+                all.extend(page.rows.into_iter().map(|r| (r.object.id, r.object.title)));
+            }
+        }
+        all.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        all
+    });
+    let rows = objects.read().clone().unwrap_or_default();
+    rsx! {
+        div {
+            label { r#for: "mission-publisher", class: FIELD_LABEL,
+                {t!("browser-missions-field-publisher")}
+            }
+            select {
+                id: "mission-publisher",
+                class: INPUT,
+                onchange: move |e| selected.set(e.value()),
+                option { value: "", selected: selected().is_empty(),
+                    {t!("browser-missions-publisher-none")}
+                }
+                for (id, title) in rows {
+                    option {
+                        key: "{id}",
+                        value: "{id}",
+                        selected: selected() == id,
+                        "{title}"
+                    }
+                }
+            }
+            p { class: FIELD_HELP, {t!("browser-missions-field-publisher-help")} }
         }
     }
 }

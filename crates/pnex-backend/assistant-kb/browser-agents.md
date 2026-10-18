@@ -4,27 +4,31 @@ title: Browser agents
 kind: feature
 pages: /edges/browser-agents
 nodes: 
-err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found
+err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, media-transcripts-unavailable
 tools: 
-tags: browser, extension, chrome, firefox, agent, mission, collect, scraping, web page, value, selector, onglet, navigateur, agent navigateur
+tags: browser, extension, chrome, firefox, agent, mission, collect, web page, value, selector, follow, account, x, twitter, youtube, tiktok, shorts, live, video, captions, subtitles, history, registry, onglet, navigateur, agent navigateur, compte, sous-titres, registre
 ---
-The Browser agents page (Devices menu) lists the browser extensions paired with the organization and the missions they run. A browser agent is a Chrome extension shipped with PNeX: it runs missions in its own tabs, one tab per site, at a human pace. Pair one browser agent per computer.
+The Browser agents page (Devices menu) lists the browser extensions paired with the organization, their missions and the video registry. A browser agent is a Chrome or Firefox extension shipped with PNeX: it runs missions in its own tabs, one tab per site or platform, at a human pace. Pair one browser agent per computer, ideally in a browser profile kept for it and signed in to the platforms it follows.
 
 ## What you can do
 
-- **Download the extension** (header button): the zip already holds this server's address.
-- Install it: unzip, open chrome://extensions, turn on Developer mode, click **Load unpacked** and pick the folder. In the extension options, sign in, pick the organization and pair the browser: it appears in the **Browser agents** tab, Online while its browser runs.
-- **Rename** or **Delete** a browser agent from its row. Deleting revokes its credentials; pair the browser again to bring it back.
-- **Missions** tab, **New mission**: a page address, a CSS selector of the element that shows the value, what to read (`text`, or `attr:name` for an attribute), a series name and an interval (60 seconds at least). Leave the browser agent on "Any browser agent" or pin one.
-- **Pause**, **Resume**, **Edit** or **Delete** a mission from its row.
-- The value appears under the series name on the browser agent in Visualisation (the agent is a device of the organization).
+- **Extension for Chrome** / **Extension for Firefox** (header buttons): the zip already holds this server's address.
+- Install it: Chrome, unzip, open chrome://extensions, turn on Developer mode, click **Load unpacked**; Firefox, open about:debugging, This Firefox, **Load Temporary Add-on**, pick manifest.json. In the extension options, sign in, pick the organization and pair the browser: it appears in the **Browser agents** tab, Online while its browser runs.
+- **Rename** or **Delete** a browser agent. Deleting revokes its credentials.
+- **Missions** tab, **New mission**, four kinds:
+  - **Read a value**: a page, a CSS selector, a series name, an interval; the value appears on the browser agent in Visualisation.
+  - **Keep the page**: the page's readable text becomes a document of the media library, a new version only when the text changes; it is searchable.
+  - **Follow an account**: pick X, YouTube or TikTok and type the account. The agent collects the account's whole history (a little deeper at each visit, until the start of the account), then its new posts. By default it keeps posts, text and the platform's own captions (no file). Tick **Force the video collection** to download or record every video, then transcribed by PNeX.
+  - **Record a live**: the page of a live; the agent records it in parts of 30 minutes while it is on air, each part a video of the media library.
+- **Video registry** tab: every post the agents saw, once per organization (a post seen again is never downloaded or processed twice), with its state: text post, video not downloaded, transcript in the media library, video in the media library. **Open the review** opens the media with its transcript.
 
 ## Good to know
 
-- One browser agent runs a mission at a time; two never share a target. A site runs one mission at a time, at least 20 seconds apart, and each refresh varies a little.
-- State **Blocked — the site is not allowed yet**: open the extension options and click **Allow** next to the site.
-- **The selector matches nothing**: open the page in a browser and check the selector with the inspector; the page may also need a sign-in.
-- **The value is not a number**: pick an element that shows only the number.
+- Sign in to X, YouTube or TikTok in the agent's browser before following an account there.
+- State **Blocked — the site is not allowed yet**: open the extension options and click **Allow** next to the site (X needs x.com and video.twimg.com; TikTok needs tiktok.com and its subdomains).
 - **The site asks to sign in** or **shows a verification**: sign in or solve it in the agent's browser, then resume the mission. The agent never bypasses a verification.
-- **This browser is already paired with another organization**: delete its browser agent in that organization first.
+- TikTok pauses its videos in a hidden tab: keep the agent's window in front, screen unlocked, while it reads TikTok.
+- A video without a downloadable file (YouTube) is recorded in real time: it takes as long as the video. A protected video (DRM) is never recorded.
+- Platform captions are kept as a transcript of origin "platform"; **Retranscribe** on the review screen adds a PNeX transcript.
+- One browser agent runs a target at a time; a site runs one mission at a time, at least 20 seconds apart.
 - Viewers see the page read-only.

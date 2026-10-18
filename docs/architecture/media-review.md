@@ -309,16 +309,19 @@ d'attribution à trancher (Q5) ; `identify` = `EXCLUDED` (biométrie).
 | **R0** | D211 batch + D216 contrat (lots I3, I4 de `media-import-pipeline.md`) | — | un fichier analysé, transcription au mot avec `S#` et `offset_ms`. **D211 codé le 2026-10-18** (`tests/media_transcribe.rs` `file_analysis_transcribes_in_batch`) ; D216 part avec R1 |
 | **R1** | Écran D271 (centre, texte, frise, lecture synchronisée), couloir Locuteurs | R0 | clic sur un mot → la vidéo saute ; curseur commun texte / frise. **Codé le 2026-10-18** : `/media/:id/review`, `GET /media/{id}/transcript`, passes `media_runs` (D276), sous-titres plateforme (`store_platform_run`) |
 | **R2** | D272 + D273 + D278 : attributions manuelles, couloirs d'intervenants, apparitions, déclarations | R1 | « 12:30 → 14:10, c'est X » sans profil vocal ; X a une apparition `speaking`. **Codé le 2026-10-18** (`tests/media_review.rs`) : `/media/{id}/attributions`, palette 1–9, sélection d'un locuteur entier, `appears_in` ouvert / fermé, pack `investigation` 1.10.0 (`statement`, `said_by`, `appears_in`). Reste : bouton « Créer une déclaration » depuis le texte |
-| **R3** | D274 + D275 + D276 « Réidentifier » | R2, activation Q1 | deux voix enrôlées dans un débat : deux propositions justes, rien d'écrit avant confirmation |
+| **R3** | D274 + D275 + D276 « Réidentifier » | R2, activation Q1 | deux voix enrôlées dans un débat : deux propositions justes, rien d'écrit avant confirmation. **Codé le 2026-10-18** : étape `identify` (`services/voice_id/media.rs`), empreinte par locuteur sur ses 4 plus longs tours (≤ 30 s, ≤ 15 fenêtres), verdict V7, propositions `voice` qui remplacent les précédentes sans contredire un humain ; portée « intervenants attendus » par défaut (sélecteur « tous » non exposé). Non vérifié de bout en bout (O2 absent en test) |
 | **R4** | D276 « Retranscrire » (runs) + D277 enrôlement depuis le média | R3 | une retranscription garde les attributions manuelles |
 | **R5** | Source flux (D271 V2) ; détections en surimpression (D215) | R1, D215 | même écran sur une heure d'un flux à audio conservé |
 | — | D280 ton : schéma seulement, aucun lot tant que Q4 est ouverte | — | — |
 
 ## 9. Questions ouvertes
 
-- **Q1 — Activation de l'identification vocale** : réglage par org
-  (owner) avec déclaration d'usage, ou aussi un commutateur plateforme
-  (K19 le demandait, non livré) ?
+- **Q1 — Activation de l'identification vocale** : **tranchée au codage
+  (2026-10-18)** — pas de réglage d'org : l'identification est un geste
+  explicite par média (étape `identify` de la carte Analyses, owner/admin,
+  V8), contre les seuls profils consentis (V3), et ne produit que des
+  propositions. Le commutateur plateforme de K19 reste à décider avec
+  l'avis juridique.
 - **Q2 — Stockage des apparitions d'un fichier** : Postgres seul
   (`speech_attributions` fait foi, proposé) ou aussi O2 `appearances`
   comme les flux (une seule source de lecture pour la frise des dossiers) ?

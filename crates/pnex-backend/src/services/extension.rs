@@ -116,12 +116,13 @@ struct AgentRow {
     encryption_key: String,
     name: String,
     fingerprint: serde_json::Value,
+    mode: String,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
 }
 
 const AGENT_SELECT: &str = "SELECT a.device_registry_id, a.org_id, d.device_id, a.install_key,
-    a.encryption_key, a.name, a.fingerprint, a.created_at, a.updated_at
+    a.encryption_key, a.name, a.fingerprint, a.mode, a.created_at, a.updated_at
     FROM extension_agents a JOIN device_registries d ON d.id = a.device_registry_id";
 
 impl AgentRow {
@@ -131,6 +132,7 @@ impl AgentRow {
             device_id: self.device_id.clone(),
             name: self.name.clone(),
             fingerprint: serde_json::from_value(self.fingerprint.clone()).unwrap_or_default(),
+            mode: self.mode.clone(),
             online,
             created_at: self.created_at.to_rfc3339(),
             updated_at: self.updated_at.to_rfc3339(),
@@ -145,6 +147,8 @@ pub struct AgentAuth {
     pub device_registry_id: i64,
     pub device_id: String,
     pub encryption_key: [u8; 32],
+    /// `shared` or `dedicated:<platform>` (D269), read at connection.
+    pub mode: String,
 }
 
 /// Pairs an install with the org (D266): creates its agent, or rotates the
@@ -284,18 +288,21 @@ pub async fn list_agents(
 }
 
 /// Renames an agent.
-pub async fn rename_agent(
+pub async fn update_agent(
     db: &DatabaseConnection,
     org_id: i64,
     id: i64,
-    name: &str,
+    patch: &ba::BrowserAgentPatch,
 ) -> Result<BrowserAgent, ExtensionError> {
-    let name = ba::check_name(name)?;
+    let name = patch.name.as_deref().map(ba::check_name).transpose()?;
+    let mode = patch.mode.as_deref().map(ba::check_mode).transpose()?;
+    // A new mode reaches the agent at its next connection.
     let done = db
         .execute_raw(stmt(
-            "UPDATE extension_agents SET name = $3, updated_at = now()
+            "UPDATE extension_agents
+             SET name = coalesce($3, name), mode = coalesce($4, mode), updated_at = now()
              WHERE org_id = $1 AND device_registry_id = $2",
-            vec![org_id.into(), id.into(), name.into()],
+            vec![org_id.into(), id.into(), name.into(), mode.into()],
         ))
         .await?;
     if done.rows_affected() == 0 {
@@ -308,7 +315,6 @@ pub async fn rename_agent(
     Ok(row.view(online.get(&id).copied().unwrap_or(false)))
 }
 
-/// Agent of a bearer token, if the request is signed by its install key.
 /// Agent of a bearer token, if `signature` is its install key's signature
 /// of `message(device_id)` made within the clock skew.
 pub async fn authenticate(
@@ -346,6 +352,7 @@ fn auth_of(row: &AgentRow) -> Option<AgentAuth> {
         device_registry_id: row.device_registry_id,
         device_id: row.device_id.clone(),
         encryption_key,
+        mode: row.mode.clone(),
     })
 }
 
@@ -676,6 +683,10 @@ pub async fn candidates(
         .iter()
         .filter_map(|row| {
             let m = row.view()?;
+            // D269: exclusive platforms only on an agent dedicated to them.
+            if !ba::mode_allows(&agent.mode, ba::platform_of(&m.target)) {
+                return None;
+            }
             let scroll_depth = match &m.spec {
                 MissionSpec::FollowAccount(_) => {
                     let (depth, done) = history_of(row.cursor.as_ref());
@@ -1061,7 +1072,7 @@ pub async fn store_video(
             token: format!("{}:{}", err_codes::FIELD_MAX_LENGTH, ba::VIDEO_MAX),
         });
     }
-    let asset = post_asset(ctx, agent, id, &row).await?;
+    let asset = post_asset(ctx, agent, id, &row, params.publisher_id.as_deref()).await?;
     let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
     crate::controllers::media::write_version(
         ctx,
@@ -1097,6 +1108,7 @@ async fn post_asset(
     agent: &AgentAuth,
     mission_id: Uuid,
     row: &VideoRow,
+    publisher: Option<&str>,
 ) -> Result<crate::models::_entities::media_assets::Model, ExtensionError> {
     use crate::models::_entities::media_assets;
     if let Some(existing) = row.media_asset_id {
@@ -1126,6 +1138,7 @@ async fn post_asset(
             "author_handle": row.author,
             "published_at": row.published_at.map(|t| t.to_rfc3339()),
             "captured_at": chrono::Utc::now().to_rfc3339(),
+            "published_by_object": publisher,
         }))),
         ..Default::default()
     }
@@ -1137,7 +1150,53 @@ async fn post_asset(
             vec![row.id.into(), asset.id.into()],
         ))
         .await?;
+    if let Some(publisher) = publisher {
+        link_publisher(ctx, agent, asset.id, publisher).await;
+    }
     Ok(asset)
+}
+
+/// `published_by` from the media to the account's person or organization
+/// (D278): read by the review's expected participants (D274). An org
+/// without that link type (pack absent) or an object gone: no link.
+async fn link_publisher(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    asset_id: Uuid,
+    publisher: &str,
+) {
+    use crate::services::ontology;
+    let media_object = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT object_id FROM media_assets WHERE id = $1 AND org_id = $2",
+            vec![asset_id.into(), agent.org_id.into()],
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<Option<Uuid>>("", "object_id").ok().flatten());
+    let Some(media_object) = media_object else {
+        return;
+    };
+    let actor = ontology::Actor {
+        user_id: None,
+        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
+        source_ref: format!("agent:{}", agent.device_id),
+    };
+    let input = pnex_core::ontology::api::LinkInput {
+        link_type: "published_by".into(),
+        source_id: media_object.to_string(),
+        target_id: publisher.to_string(),
+        attributes: serde_json::Map::new(),
+        valid_from: None,
+        valid_to: None,
+    };
+    if let Err(e) = ontology::links::create(&ctx.db, agent.org_id, &actor, &input).await {
+        if !matches!(e, ontology::OntologyError::Invalid { .. }) {
+            tracing::warn!(error = %e, "published_by link not written");
+        }
+    }
 }
 
 /// Stores a post's platform captions as a transcription run of origin
@@ -1176,7 +1235,7 @@ pub async fn store_captions(
             text: c.text.clone(),
         })
         .collect();
-    let asset = post_asset(ctx, agent, id, &row).await?;
+    let asset = post_asset(ctx, agent, id, &row, params.publisher_id.as_deref()).await?;
     match media_runs::store_platform_run(ctx, agent.org_id, asset.id, &upload.lang, &cues).await {
         Ok(_) => {}
         Err(RunError::Invalid(why)) => {

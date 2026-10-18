@@ -16,16 +16,25 @@ pub enum AnalysisStep {
     /// Speech of an audio or video file transcribed with speakers (D211):
     /// a hidden batch stream on the version, transcripts in O2.
     Transcribe,
+    /// Speakers of the transcription matched against the consented voice
+    /// profiles (media-review.md D275): proposals only, a person confirms.
+    Identify,
 }
 
 impl AnalysisStep {
-    pub const ALL: [Self; 3] = [Self::Index, Self::Summarize, Self::Transcribe];
+    pub const ALL: [Self; 4] = [
+        Self::Index,
+        Self::Summarize,
+        Self::Transcribe,
+        Self::Identify,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Index => "index",
             Self::Summarize => "summarize",
             Self::Transcribe => "transcribe",
+            Self::Identify => "identify",
         }
     }
 
@@ -43,7 +52,7 @@ impl AnalysisStep {
 pub fn steps_for_kind(kind: &str) -> &'static [AnalysisStep] {
     match kind {
         "document" | "table" => &[AnalysisStep::Index, AnalysisStep::Summarize],
-        "audio" | "video" => &[AnalysisStep::Transcribe],
+        "audio" | "video" => &[AnalysisStep::Transcribe, AnalysisStep::Identify],
         _ => &[],
     }
 }
@@ -134,6 +143,23 @@ pub struct StartAnalyses {
     /// The user accepted a step over [`LARGE_CALLS`] calls.
     #[serde(default)]
     pub confirm_large: bool,
+    /// Voices compared by `identify` (D274).
+    #[serde(default)]
+    pub voice_scope: VoiceScope,
+}
+
+/// Profiles a voice identification compares with (media-review.md D274).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceScope {
+    /// Persons expected in the media (appearing in it, its publisher, or
+    /// already attributed); every profile when there is none.
+    #[default]
+    Expected,
+    /// Every ready profile of the org's model: more false matches as the
+    /// number of profiles grows.
+    All,
 }
 
 #[cfg(test)]
@@ -147,7 +173,10 @@ mod tests {
         }
         assert!(steps_for_kind("document").contains(&AnalysisStep::Summarize));
         assert!(steps_for_kind("splat").is_empty());
-        assert_eq!(steps_for_kind("video"), &[AnalysisStep::Transcribe]);
+        assert_eq!(
+            steps_for_kind("video"),
+            &[AnalysisStep::Transcribe, AnalysisStep::Identify]
+        );
         assert!(!AnalysisStep::Transcribe.needs_llm());
     }
 }

@@ -67,6 +67,8 @@ extern "C" {
     #[wasm_bindgen(catch)]
     pub async fn focus_tab(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
+    pub async fn is_tab_visible(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
     pub async fn start_recording(
         tab: f64,
         id: &str,
