@@ -2630,6 +2630,13 @@ media-review-origin-transcript = Proposée par la transcription
 media-review-origin-grid = Proposée par la grille
 media-review-statement = Créer une déclaration
 media-review-statement-open = Voir la déclaration
+media-review-enrol = Enrôler sa voix
+media-review-enrolled = { $n ->
+    [one] 1 extrait dans son profil vocal : générez-le sur sa fiche.
+   *[other] { $n } extraits dans son profil vocal : générez-le sur sa fiche.
+}
+media-review-enrol-consent = Pas encore de profil vocal : créez-le sur sa fiche, avec son consentement.
+media-review-enrol-open = Ouvrir sa fiche
 media-analysis-state-none = Pas encore lancé
 media-analysis-state-queued = En attente
 media-analysis-state-running = En cours ({ $pct } %)

@@ -310,6 +310,7 @@ pub const EXPOSED: &[&str] = &[
     "voice_id_profiles_get_by_object",
     "voice_id_profiles_list",
     "voice_id_profiles_update",
+    "voice_id_samples_from_media",
 ];
 
 /// Operations never served as tools, grouped by reason.

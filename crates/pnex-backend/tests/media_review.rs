@@ -499,3 +499,89 @@ async fn voice_proposals_respect_what_people_decided() {
     })
     .await;
 }
+
+/// 12 s of a steady tone (speech for the energy gate), a real WAV.
+fn tone_wav() -> Vec<u8> {
+    let samples: Vec<i16> = (0..12 * 16_000)
+        .map(|i| ((i as f32 * 440.0 * std::f32::consts::TAU / 16_000.0).sin() * 8_000.0) as i16)
+        .collect();
+    pnex_backend::services::media_ingest::capture::segmenter::wav_bytes(&samples)
+}
+
+/// Enrolment from a media (D277): the confirmed passages of the person,
+/// decoded from the original file, become clips of an existing consented
+/// profile; without a confirmed passage nothing is enrolled.
+#[tokio::test]
+#[serial]
+async fn confirmed_passages_enrol_a_consented_profile() {
+    let models_dir =
+        std::env::temp_dir().join(format!("pnex-review-models-{}", std::process::id()));
+    unsafe {
+        std::env::set_var(
+            "PNEX_ASR_BIN",
+            format!(
+                "{}/tests/fixtures/asr/fake-pnex-asr.sh",
+                env!("CARGO_MANIFEST_DIR")
+            ),
+        );
+        std::env::set_var("PNEX_ASR_MODELS_DIR", &models_dir);
+    }
+    if pnex_backend::services::media_ingest::capture::decoder::resolve(
+        &pnex_backend::services::media_ingest::capture::CaptureSettings::from_env().ffmpeg,
+    )
+    .is_none()
+    {
+        eprintln!("ffmpeg not installed: skipped");
+        return;
+    }
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        let upload = |name: &str, kind: &str, bytes: Vec<u8>| {
+            server
+                .post(&format!("/api/v1/media?filename={name}&kind={kind}"))
+                .add_header("Authorization", format!("Bearer {}", env.alice))
+                .add_header("X-Org-Id", org.to_string())
+                .add_header("Content-Type", "application/octet-stream")
+                .bytes(bytes.into())
+        };
+        let emb = upload("emb.onnx", "model", {
+            let (key, value) = ("framework", "3d-speaker");
+            let mut entry = vec![0x0a, key.len() as u8];
+            entry.extend_from_slice(key.as_bytes());
+            entry.extend_from_slice(&[0x12, value.len() as u8]);
+            entry.extend_from_slice(value.as_bytes());
+            let mut out = vec![0x08, 0x07, 0x72, entry.len() as u8];
+            out.extend(entry);
+            out
+        })
+        .await
+        .json::<Value>();
+        let (st, m) = call(&server, "POST", "/api/v1/asr/models", &env.alice, org, Some(json!({"name": "emb", "asset_id": emb["id"], "license": "Apache-2.0"}))).await;
+        assert_eq!(st, 201, "{m}");
+        let ada = object(&server, &env.alice, org, "person", "Ada").await;
+        let (st, p) = call(&server, "POST", "/api/v1/voice-id/profiles", &env.alice, org, Some(json!({
+            "object_id": ada, "model_id": "", "consent_at": "2026-10-01",
+            "consent_scope": "public debates", "consent_proof": "signed form #3", "consent_confirmed": true,
+        }))).await;
+        assert_eq!(st, 201, "{p}");
+        let pid = p["id"].as_str().unwrap().to_string();
+        let res = upload("debate.wav", "audio", tone_wav()).await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+        let media = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let enrol = format!("/api/v1/voice-id/profiles/{pid}/samples/from-media");
+
+        let (st, e) = call(&server, "POST", &enrol, &env.alice, org, Some(json!({"asset_id": media}))).await;
+        assert_eq!(st, 409, "no confirmed passage of Ada: {e}");
+        assert_eq!(e["error"], "voice-id-not-enough-speech");
+        let (st, _) = call(&server, "POST", &format!("/api/v1/media/{media}/attributions"), &env.alice, org, Some(json!({"object_id": ada, "spans": spans(&[(1_000, 11_000)])}))).await;
+        assert_eq!(st, 201);
+        let (st, p) = call(&server, "POST", &enrol, &env.alice, org, Some(json!({"asset_id": media}))).await;
+        assert_eq!(st, 201, "{p}");
+        let samples = p["samples"].as_array().unwrap();
+        assert_eq!(samples.len(), 1, "{p}");
+        assert_eq!(samples[0]["status"], "pending");
+        assert!(samples[0]["duration_ms"].as_i64().unwrap() >= 9_000, "{p}");
+    })
+    .await;
+}

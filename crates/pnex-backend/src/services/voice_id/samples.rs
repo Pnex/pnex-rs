@@ -5,7 +5,7 @@
 //! Removing a clip, or the whole profile, deletes the asset and its blobs.
 
 use loco_rs::app::AppContext;
-use pnex_core::voice_id::{self as core, SAMPLE_PENDING};
+use pnex_core::voice_id::{self as core, CLIP_MAX_SECS, SAMPLE_PENDING};
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, ModelTrait, QueryFilter, Set};
 use uuid::Uuid;
 
@@ -35,10 +35,24 @@ pub async fn add(
     bytes: axum::body::Bytes,
     span: (u32, u32),
 ) -> Result<voice_samples::Model> {
-    let profile = profiles::find(&ctx.db, org_id, profile_id).await?;
     if !media_sniff::accepts(AUDIO_KIND, filename, &bytes) {
         return Err(VoiceIdError::AudioUnsupported);
     }
+    add_checked(ctx, org_id, profile_id, filename, content_type, bytes, span).await
+}
+
+/// [`add`] of bytes whose format is already known: a file of the media
+/// library, sniffed at its upload (audio, or the audio track of a video).
+async fn add_checked(
+    ctx: &AppContext,
+    org_id: i64,
+    profile_id: Uuid,
+    filename: &str,
+    content_type: &str,
+    bytes: axum::body::Bytes,
+    span: (u32, u32),
+) -> Result<voice_samples::Model> {
+    let profile = profiles::find(&ctx.db, org_id, profile_id).await?;
     let (start, secs) = span;
     let clip =
         audio::decode_span(bytes.to_vec(), filename, Some(content_type), start, secs).await?;
@@ -96,6 +110,71 @@ pub async fn add(
     .insert(&ctx.db)
     .await?;
     Ok(row)
+}
+
+/// Enrols the passages of a media file confirmed for the profile's person
+/// (media-review.md D277): the longest first, [`CLIP_MAX_SECS`] in all,
+/// each decoded from the original file and stored like an uploaded clip.
+/// The profile exists (its consent was recorded at creation, V3).
+pub async fn add_from_media(
+    ctx: &AppContext,
+    org_id: i64,
+    profile_id: Uuid,
+    asset_id: Uuid,
+) -> Result<Vec<voice_samples::Model>> {
+    use pnex_core::media_review::AttributionStatus;
+    let profile = profiles::find(&ctx.db, org_id, profile_id).await?;
+    let mut spans: Vec<(i64, i64)> =
+        crate::services::media_attributions::list(&ctx.db, org_id, asset_id)
+            .await?
+            .into_iter()
+            .filter(|a| {
+                a.object_id == profile.object_id && a.status == AttributionStatus::Confirmed
+            })
+            .map(|a| (a.start_ms, a.end_ms))
+            .collect();
+    if spans.is_empty() {
+        return Err(VoiceIdError::NotEnoughSpeech { found: 0, min: 1 });
+    }
+    spans.sort_by_key(|(s, e)| std::cmp::Reverse(e - s));
+    let asset = media_assets::Entity::find_by_id(asset_id)
+        .filter(media_assets::Column::OrgId.eq(org_id))
+        .one(&ctx.db)
+        .await?
+        .ok_or(VoiceIdError::SampleNotFound)?;
+    let version = crate::services::vision::asset_version_row(&ctx.db, asset.id, None)
+        .await
+        .map_err(|e| VoiceIdError::Db(e.to_string()))?
+        .ok_or(VoiceIdError::SampleNotFound)?;
+    let bytes: axum::body::Bytes = MediaSettings::from_config(&ctx.config)
+        .store()
+        .map_err(|e| VoiceIdError::Failed(e.to_string()))?
+        .get(&version.storage_key)
+        .await
+        .map_err(|e| VoiceIdError::Failed(e.to_string()))?
+        .into();
+    let mut left = CLIP_MAX_SECS;
+    let mut out = Vec::new();
+    for (start, end) in spans {
+        if left == 0 {
+            break;
+        }
+        let secs = (((end - start) / 1000) as u32).clamp(1, left);
+        left -= secs;
+        out.push(
+            add_checked(
+                ctx,
+                org_id,
+                profile.id,
+                &version.filename,
+                &version.content_type,
+                bytes.clone(),
+                ((start / 1000) as u32, secs),
+            )
+            .await?,
+        );
+    }
+    Ok(out)
 }
 
 pub async fn remove(ctx: &AppContext, org_id: i64, profile_id: Uuid, id: Uuid) -> Result<()> {

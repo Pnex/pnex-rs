@@ -2631,6 +2631,13 @@ media-review-origin-transcript = Proposed by the transcript
 media-review-origin-grid = Proposed by the grid
 media-review-statement = Create a statement
 media-review-statement-open = Open the statement
+media-review-enrol = Enrol their voice
+media-review-enrolled = { $n ->
+    [one] 1 clip in their voice profile: generate it on their page.
+   *[other] { $n } clips in their voice profile: generate it on their page.
+}
+media-review-enrol-consent = No voice profile yet: create it on their page, with their consent.
+media-review-enrol-open = Open their page
 media-analysis-state-none = Not launched yet
 media-analysis-state-queued = Queued
 media-analysis-state-running = Running ({ $pct } %)

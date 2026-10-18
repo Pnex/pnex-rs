@@ -89,6 +89,17 @@ pub async fn remove_sample(id: &str, sample_id: &str) -> Result<Option<()>, ApiE
     .await
 }
 
+/// `POST /api/v1/voice-id/profiles/{id}/samples/from-media` — the confirmed
+/// passages of the person in a media (media-review.md D277).
+pub async fn add_from_media(id: &str, asset_id: &str) -> Result<VoiceProfileView, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/voice-id/profiles/{id}/samples/from-media"),
+        Some(serde_json::json!({ "asset_id": asset_id })),
+    )
+    .await
+}
+
 /// `POST /api/v1/voice-id/profiles/{id}/generate`.
 pub async fn generate(id: &str) -> Result<VoiceProfileView, ApiError> {
     client::request(

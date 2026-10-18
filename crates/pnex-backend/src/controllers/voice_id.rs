@@ -32,6 +32,10 @@ pub fn routes() -> Routes {
             post(add_sample).layer(DefaultBodyLimit::max(CLIP_MAX_BYTES)),
         )
         .add("/profiles/{id}/samples/{sample_id}", delete(remove_sample))
+        .add(
+            "/profiles/{id}/samples/from-media",
+            post(add_samples_from_media),
+        )
         .add("/profiles/{id}/generate", post(generate))
         .add(
             "/test",
@@ -50,6 +54,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         revoke,
         by_object,
         add_sample,
+        add_samples_from_media,
         remove_sample,
         generate,
         test
@@ -354,6 +359,47 @@ struct ClipQuery {
     /// Length to enrol, in seconds (clamped to the clip maximum).
     #[serde(default)]
     duration: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+struct FromMediaInput {
+    /// Media asset whose confirmed passages of the person are enrolled.
+    #[schema(value_type = String, format = "uuid")]
+    asset_id: Uuid,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/voice-id/profiles/{id}/samples/from-media",
+    tag = "voice-id",
+    operation_id = "voice_id_samples_from_media",
+    summary = "Enrol the attributed passages of a media file",
+    description = "Adds to the voice profile the passages of a media file attributed to the profile's person and confirmed (media review), the longest first, 180 s in all, decoded from the original file. The profile must exist (consent recorded at its creation). The clips are embedded at the next generation. Owner/admin only.",
+    params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
+    request_body = FromMediaInput,
+    responses(
+        (status = 201, description = "The updated profile", body = pnex_core::voice_id::VoiceProfileView),
+        (status = 400, description = "Unreadable audio (`voice-id-audio-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "Unknown voice profile or media (`voice-id-profile-not-found`, `voice-id-sample-not-found`)", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "No confirmed passage of the person in the media (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn add_samples_from_media(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<FromMediaInput>,
+) -> Result<Response> {
+    require_admin(&org)?;
+    match samples::add_from_media(&ctx, org.org.id, id, input.asset_id).await {
+        Ok(_) => match profiles::find(&ctx.db, org.org.id, id).await {
+            Ok(p) => respond(&ctx, &org, StatusCode::CREATED, p).await,
+            Err(e) => fail(e),
+        },
+        Err(e) => fail(e),
+    }
 }
 
 #[utoipa::path(
