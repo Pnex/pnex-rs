@@ -389,6 +389,16 @@ pub(super) async fn create(
         ));
     };
 
+    // A browser agent comes from pairing (it holds no device token).
+    if predefined.name == pnex_core::BROWSER_AGENT_PREDEF {
+        return Err(crate::controllers::coded_error(
+            StatusCode::BAD_REQUEST,
+            err_codes::EXTENSION_AGENT_PAIR_ONLY,
+            "A browser agent is paired from the extension.",
+            None,
+        ));
+    }
+
     // Board variant validated then frozen at registration: the device keeps
     // ITS variant even when the model evolves. Absent = the model's default
     // board.

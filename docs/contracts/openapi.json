@@ -212,6 +212,36 @@
         ],
         "type": "object"
       },
+      "AgentFingerprint": {
+        "description": "What the extension reads by itself at pairing (no user input, D266).",
+        "properties": {
+          "arch": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "string"
+          },
+          "browser_version": {
+            "type": "string"
+          },
+          "extension_version": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "screen": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "AgentInfo": {
         "description": "`GET|PATCH /api/v1/devices/{id}/agent` — agent overview + settings.",
         "properties": {
@@ -1832,6 +1862,58 @@
         ],
         "type": "string"
       },
+      "BrowserAgent": {
+        "description": "A browser agent of the org (a device of the `browser_agent` model).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/AgentFingerprint"
+          },
+          "id": {
+            "description": "Device registry id.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "device_id",
+          "name",
+          "fingerprint",
+          "online",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "BrowserAgentPatch": {
+        "description": "Partial update of an agent.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "BucketBasis": {
         "description": "Which time a bucket was computed on.",
         "enum": [
@@ -2991,6 +3073,33 @@
           "zoom",
           "total",
           "items"
+        ],
+        "type": "object"
+      },
+      "CollectValueParams": {
+        "description": "`collect_value` (v1 school): refresh a page, read one value.",
+        "properties": {
+          "attr": {
+            "description": "`text` (default) or `attr:<name>`.",
+            "type": "string"
+          },
+          "metric": {
+            "description": "Series name `[a-z][a-z0-9_]{0,63}`.",
+            "type": "string"
+          },
+          "selector": {
+            "description": "CSS selector of the element (the \"pin\", D48).",
+            "type": "string"
+          },
+          "url": {
+            "description": "http(s) page, without credentials.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "selector",
+          "metric"
         ],
         "type": "object"
       },
@@ -4927,6 +5036,25 @@
           "nodes",
           "links",
           "truncated"
+        ],
+        "type": "object"
+      },
+      "ExtensionTicket": {
+        "description": "One-time ticket of `/ws/extension`.",
+        "properties": {
+          "expires_in": {
+            "description": "Lifetime of the ticket in seconds.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ticket": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticket",
+          "expires_in"
         ],
         "type": "object"
       },
@@ -8938,6 +9066,181 @@
         ],
         "type": "string"
       },
+      "Mission": {
+        "description": "A mission of the org.",
+        "properties": {
+          "agent_id": {
+            "description": "Pinned agent (device registry id); none = any online agent.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "interval_secs": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/MissionSpec"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MissionState"
+          },
+          "state_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "target": {
+            "description": "Normalized target, key of the lease (D257).",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "spec",
+          "target",
+          "interval_secs",
+          "enabled",
+          "state",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "MissionCreate": {
+        "description": "Create body of a mission.",
+        "properties": {
+          "agent_id": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "interval_secs": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/MissionSpec"
+          }
+        },
+        "required": [
+          "name",
+          "spec",
+          "interval_secs"
+        ],
+        "type": "object"
+      },
+      "MissionPatch": {
+        "description": "Partial update of a mission, on the version the caller read.",
+        "properties": {
+          "agent_id": {
+            "description": "`Some(None)` unpins the mission.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "interval_secs": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "$ref": "#/components/schemas/MissionSpec"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "MissionSpec": {
+        "description": "A typed mission (D256). Other kinds (`collect_page`, `follow_account`,\n`watch_live`) arrive with their lots.",
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "collect_value"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CollectValueParams"
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "MissionState": {
+        "description": "Run state of a mission, reported by its agent.",
+        "enum": [
+          "idle",
+          "running",
+          "blocked",
+          "failed"
+        ],
+        "type": "string"
+      },
       "MixtureBasis": {
         "description": "Basis of the entered fractions. CoolProp computes in mole fractions; a\nmass entry is converted on save with the CoolProp molar masses.",
         "enum": [
@@ -10892,6 +11195,42 @@
         ],
         "type": "object"
       },
+      "Paginated_BrowserAgent": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/BrowserAgent"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_BuildRecord": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -12296,6 +12635,42 @@
         ],
         "type": "object"
       },
+      "Paginated_Mission": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/Mission"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_MlModel": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -13553,6 +13928,55 @@
         "required": [
           "count",
           "results"
+        ],
+        "type": "object"
+      },
+      "PairRequest": {
+        "description": "Pairing body, sent with the user's bearer token (the only user gesture).",
+        "properties": {
+          "fingerprint": {
+            "$ref": "#/components/schemas/AgentFingerprint"
+          },
+          "install_key": {
+            "description": "Raw uncompressed P-256 public key (65 bytes), base64url without padding.",
+            "type": "string"
+          },
+          "signature": {
+            "description": "ECDSA P-256 SHA-256 signature (64 bytes r‖s, base64url) of\n[`pair_message`].",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Unix milliseconds of the signature.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "install_key",
+          "ts",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "PairResponse": {
+        "description": "Pairing answer: the device credentials, shown once.",
+        "properties": {
+          "agent": {
+            "$ref": "#/components/schemas/BrowserAgent"
+          },
+          "encryption_key": {
+            "description": "Noise pre-shared key of `/ws/extension` (base64, 32 bytes).",
+            "type": "string"
+          },
+          "token": {
+            "description": "Device token (bearer of the ticket request).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "token",
+          "encryption_key"
         ],
         "type": "object"
       },
@@ -16922,6 +17346,24 @@
         "required": [
           "value",
           "color"
+        ],
+        "type": "object"
+      },
+      "TicketRequest": {
+        "description": "Ticket body, sent with the device token.",
+        "properties": {
+          "signature": {
+            "description": "Signature of [`ticket_message`] (64 bytes r‖s, base64url).",
+            "type": "string"
+          },
+          "ts": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ts",
+          "signature"
         ],
         "type": "object"
       },
@@ -32791,6 +33233,734 @@
         "summary": "List the event streams of the organisation",
         "tags": [
           "events"
+        ]
+      }
+    },
+    "/api/v1/extension/agents": {
+      "get": {
+        "description": "Browser agents paired with the org, newest first, with their fingerprint and whether they are connected now. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_agents_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_BrowserAgent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the browser agents",
+        "tags": [
+          "extension"
+        ]
+      },
+      "post": {
+        "description": "Called by the extension right after the user signs in: the install key signs the org and a timestamp (proof of possession). Creates the browser agent of this install, or rotates the credentials of its existing agent in this org (any former session is cut). Returns the device token and Noise key once. Requires owner, admin or member role.",
+        "operationId": "extension_agents_pair",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-pair-refused`: malformed install key or bad signature"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-write-forbidden`: viewer role"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-install-paired-elsewhere`: the install is paired with another org"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Pair a browser extension",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/agents/{id}": {
+      "patch": {
+        "description": "Renames a browser agent (absent fields unchanged). Remove an agent with `DELETE /api/v1/devices/{id}`. Requires owner, admin or member role.",
+        "operationId": "extension_agents_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Agent id (device registry id)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserAgentPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAgent"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields.name` `required` or `max_length:N`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-write-forbidden`: viewer role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-agent-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rename a browser agent",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/missions": {
+      "get": {
+        "description": "Missions of the org, newest first, with the state last reported by their agent. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_missions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the browser agent missions",
+        "tags": [
+          "extension"
+        ]
+      },
+      "post": {
+        "description": "Declares a mission (`collect_value`: refresh a page every `interval_secs`, at least 60, and read one value into a series). Any online browser agent of the org runs it, or only the pinned `agent_id`; one agent at a time per target. Requires owner, admin or member role.",
+        "operationId": "extension_missions_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MissionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`); spec fields as `spec.params.<name>`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-write-forbidden`: viewer role"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a browser agent mission",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/missions/{id}": {
+      "delete": {
+        "description": "Deletes a mission; its agent stops it at its next refresh. Series already written stay. Requires owner, admin or member role.",
+        "operationId": "extension_missions_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mission id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-write-forbidden`: viewer role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a browser agent mission",
+        "tags": [
+          "extension"
+        ]
+      },
+      "get": {
+        "description": "One mission with its last reported state. Any member.",
+        "operationId": "extension_missions_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mission id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a browser agent mission",
+        "tags": [
+          "extension"
+        ]
+      },
+      "patch": {
+        "description": "Changes a mission on the version the caller read (`expected_version`); absent fields unchanged, `agent_id: null` unpins it. The mission state starts over (`idle`). Requires owner, admin or member role.",
+        "operationId": "extension_missions_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mission id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MissionPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-write-forbidden`: viewer role"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-version-conflict` (`args.current`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a browser agent mission",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/ws-ticket": {
+      "post": {
+        "description": "Called by a browser agent, no user session: `Authorization: Bearer <agent token>` plus a body signed by the install key (timestamp within two minutes, each signature usable once). Returns a single-use ticket for `GET /ws/extension?ticket=`, since browsers cannot set headers on websockets nor present a client certificate.",
+        "operationId": "extension_ws_ticket",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionTicket"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-refused`: unknown token, bad or reused signature, clock skew"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`: Valkey unreachable"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Issue a browser agent websocket ticket",
+        "tags": [
+          "extension"
         ]
       }
     },

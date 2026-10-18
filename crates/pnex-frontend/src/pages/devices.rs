@@ -241,6 +241,12 @@ pub fn Devices() -> Element {
         Column::new(
             t!("devices-col-firmware").to_string(),
             move |device: &Device| {
+                // Browser agent (D255): no firmware, no version.
+                if device.predefined_device_name == pnex_core::BROWSER_AGENT_PREDEF {
+                    return rsx! {
+                        span { class: "text-xs text-gray-500", "—" }
+                    };
+                }
                 // Edge agent (D95): no firmware — show the agent version.
                 if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF {
                     let version = device.fw_version.clone().unwrap_or_else(|| "—".into());
@@ -1172,7 +1178,7 @@ enum FwStatus {
 /// `None` = nothing meaningful to show (edge agent, never built, never
 /// announced).
 fn fw_status(device: &Device) -> Option<FwStatus> {
-    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF {
+    if pnex_core::DeviceFamily::of(&device.predefined_device_name).is_software() {
         return None;
     }
     let build = device.latest_build.as_ref()?;
@@ -1249,7 +1255,7 @@ impl BulkPlan {
 /// Bulk build plan of one device: custom types and edge agents have no
 /// firmware to build (O3/D95); a build already in flight is skipped.
 fn build_plan(device: &Device) -> BulkPlan {
-    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF
+    if pnex_core::DeviceFamily::of(&device.predefined_device_name).is_software()
         || device.allow_dynamic_measurements
     {
         return BulkPlan::SkipNotBuildable;
@@ -1270,7 +1276,9 @@ fn build_plan(device: &Device) -> BulkPlan {
 /// Bulk OTA plan of one device: only online, OTA-ready devices whose newest
 /// deployable build is newer than the running version (never forced).
 fn ota_plan(device: &Device) -> BulkPlan {
-    if device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF || !device.ota_ready {
+    if pnex_core::DeviceFamily::of(&device.predefined_device_name).is_software()
+        || !device.ota_ready
+    {
         return BulkPlan::SkipNotReady;
     }
     if device.ota.is_some() {

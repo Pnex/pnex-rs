@@ -8436,6 +8436,7 @@ dependencies = [
  "redis",
  "regex",
  "reqwest 0.12.28",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "sea-orm",

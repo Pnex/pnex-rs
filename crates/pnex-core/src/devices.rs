@@ -14,6 +14,11 @@ use serde::{Deserialize, Serialize};
 /// firmware, pins or OTA (daemon on a computer).
 pub const EDGE_AGENT_PREDEF: &str = "edge_agent";
 
+/// Predefined device name of a browser agent (extension-collector.md
+/// D255): a browser extension paired from its options page, never created
+/// from the device wizard.
+pub const BROWSER_AGENT_PREDEF: &str = "browser_agent";
+
 /// `Announce.chip` sent by the edge agent (never a real SoC).
 pub const EDGE_AGENT_CHIP: &str = "agent";
 
@@ -38,6 +43,8 @@ pub enum DeviceFamily {
     Predefined,
     /// Edge agent: software on a computer, not a board.
     Agent,
+    /// Browser agent (D255): an extension, paired from the browser.
+    Browser,
 }
 
 impl DeviceFamily {
@@ -45,11 +52,18 @@ impl DeviceFamily {
     pub fn of(predefined_name: &str) -> Self {
         if predefined_name == EDGE_AGENT_PREDEF {
             Self::Agent
+        } else if predefined_name == BROWSER_AGENT_PREDEF {
+            Self::Browser
         } else if GENERIC_IO_PREDEFS.contains(&predefined_name) {
             Self::Generic
         } else {
             Self::Predefined
         }
+    }
+
+    /// Software agents (edge or browser): no firmware, pins nor OTA.
+    pub fn is_software(self) -> bool {
+        matches!(self, Self::Agent | Self::Browser)
     }
 
     /// A custom firmware project may only replace the generic firmware.

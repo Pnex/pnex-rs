@@ -628,8 +628,8 @@ async fn commands(
         ));
     }
     let device = device_of_org(&ctx.db, &org, id).await?;
-    // Edge agent (D95): no pins, no firmware commands.
-    if super::edge_agents::is_agent(&ctx.db, &device).await {
+    // Software agent (edge D95, browser D255): no pins, no firmware commands.
+    if super::edge_agents::is_software(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
     }
     // SoC du board — la validation silicium dépend du SoC (flash/USB/strapping
@@ -903,8 +903,8 @@ async fn custom_command(
         ));
     }
     let device = device_of_org(&ctx.db, &org, id).await?;
-    // Edge agent (D95): no pins, no firmware commands.
-    if super::edge_agents::is_agent(&ctx.db, &device).await {
+    // Software agent (edge D95, browser D255): no pins, no firmware commands.
+    if super::edge_agents::is_software(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
     }
     let req: pnex_core::firmware::CustomCommandRequest =

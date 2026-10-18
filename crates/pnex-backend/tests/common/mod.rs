@@ -216,6 +216,8 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
         ("generic_esp8266", "mixed", vec![]),
         // Edge agent (D95): no board, no pins.
         ("edge_agent", "agent", vec![]),
+        // Browser agent (D255): paired from the extension.
+        ("browser_agent", "agent", vec![]),
     ] {
         let pd = predefined_devices::ActiveModel {
             name: Set(name.into()),

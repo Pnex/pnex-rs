@@ -101,6 +101,20 @@ pub(crate) async fn is_agent(db: &DatabaseConnection, device: &device_registries
         .is_some_and(|pd| pd.name == pnex_core::EDGE_AGENT_PREDEF)
 }
 
+/// `true` for a software agent, edge or browser (D255): no firmware, OTA
+/// nor pins.
+pub(crate) async fn is_software(
+    db: &DatabaseConnection,
+    device: &device_registries::Model,
+) -> bool {
+    predefined_devices::Entity::find_by_id(device.predefined_device_id)
+        .one(db)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|pd| pnex_core::DeviceFamily::of(&pd.name).is_software())
+}
+
 /// 400 `agent-unsupported-action` (firmware build, OTA, pins on an agent).
 pub(crate) fn unsupported_action() -> Error {
     agent_error(

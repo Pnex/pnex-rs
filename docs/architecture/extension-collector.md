@@ -432,12 +432,28 @@ ne remplit jamais de formulaire de connexion.
 | L5 | portage Firefox (fond en page, fenêtre dédiée) | mêmes e2e sous Firefox |
 | L6 | YouTube (selon Q1) | — |
 
+**Avancement.** L0 se découpe en L0a (serveur), L0b (extension wasm) et
+L0c (page « Agents navigateur »).
+
+- **L0a livré le 2026-10-18** : modèle de catalogue `browser_agent`
+  (famille `Browser`, ni firmware, ni pins, ni OTA, refusé par l'assistant
+  de device) ; tables `extension_agents` (clé d'installation, **hash** du
+  jeton, clé Noise, empreinte) et `extension_missions` (migration 000025) ;
+  le jeton d'un agent ne vit pas dans `device_tokens`, aucun autre lien
+  device ne l'accepte ; appairage signé (preuve de possession de la clé,
+  liée à l'org), rotation au réappairage, refus d'une installation appairée
+  ailleurs ; ticket signé à usage unique (signature rejouée refusée) ;
+  `/ws/extension` sous Noise NNpsk0 (vérifié compilable en wasm32 avec le
+  backend `wasm_js` de getrandom : la question 2 est close), bail de
+  présence D108 et bail par cible D257 ; mission `collect_value` →
+  série O2 ; CRUD des missions avec `expected_version`.
+
 ## 15. Questions ouvertes
 
 1. **YouTube VOD** : capture du fichier, ou live + métadonnées seulement
    (proposé) ?
-2. **Noise en wasm32** : à mesurer au L0 (taille, compatibilité
-   `getrandom`).
+2. ~~**Noise en wasm32**~~ : compile (getrandom 0.2 `js` + 0.3
+   `wasm_js`) ; taille du wasm à mesurer au L0b.
 3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
    du §16.1, plateforme par plateforme.
 
