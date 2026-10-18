@@ -72,6 +72,11 @@ tasks:
       - rm -rf {{.FRONT_DIST}}
       - cp -r {{.DX_OUT}}/release/web/public {{.FRONT_DIST}}
 
+  build:extension:
+    desc: Build the PNeX browser agent (wasm) as an unpacked extension in dist/extension (load it from chrome://extensions, developer mode)
+    cmds:
+      - '{{.G}} crates/pnex-extension/build-dist.sh {{.ROOT_DIR}}/dist/extension'
+
   build:frontend:android:
     desc: Build l'APK Android release arm64 (validation chaîne mobile — cf. docs/architecture/features.md)
     deps: [css:build, js:build]

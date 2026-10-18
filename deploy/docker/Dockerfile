@@ -97,7 +97,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pnex-cargo-registry-w
     deploy/docker/touch-changed.sh target/.src-manifest; \
     (cd crates/pnex-frontend && dx build --platform web --release); \
     mv target/.src-manifest.new target/.src-manifest; \
-    cp -r target/dx/pnex-frontend/release/web/public /dist
+    cp -r target/dx/pnex-frontend/release/web/public /dist; \
+    crates/pnex-extension/build-dist.sh /ext-dist
 
 # ── Native binaries, cross-compiled for $TARGETPLATFORM ───────────────────
 FROM toolchain AS build
@@ -204,6 +205,8 @@ FROM cgr.dev/chainguard/glibc-dynamic:latest AS server
 COPY --from=build /out/bin/ /usr/local/bin/
 COPY --from=build /out/dist/ /app/pnex-frontend/dist/
 COPY --from=agent-dist /agent-dist/ /opt/pnex/agent-dist/
+# Browser agent extension (D255), zipped per download with the server URL.
+COPY --from=web /ext-dist/ /opt/pnex/extension-dist/
 COPY --from=media-tools / /
 COPY crates/pnex-backend/config/ /app/pnex-backend/config/
 # Catalog fixtures: seeded idempotently at API boot (PNEX_AUTO_SEED).
@@ -217,6 +220,7 @@ ENV PATH=/usr/local/bin:/usr/bin:/bin \
     LOCO_ENV=production \
     PNEX_FLOW_RUNTIME_CMD=pnex-flow-runtime \
     PNEX_AGENT_DIST_DIR=/opt/pnex/agent-dist \
+    PNEX_EXTENSION_DIST_DIR=/opt/pnex/extension-dist \
     PNEX_FLOW_STATE_DIR=/data/flow-state \
     PNEX_FFMPEG=/usr/local/bin/ffmpeg \
     PNEX_ASR_BIN=/usr/local/bin/pnex-asr \

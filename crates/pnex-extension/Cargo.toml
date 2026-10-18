@@ -1,0 +1,26 @@
+[package]
+name = "pnex-extension"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX browser agent (extension-collector.md D254–D269): Chrome/Firefox extension logic compiled to wasm (sign-in, pairing, Noise link, missions)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pnex-core = { path = "../pnex-core", features = ["frame-crypto"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
+sha2 = "0.10"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+
+# snow pulls both getrandom generations: the browser's crypto.getRandomValues
+# for each (0.3 also needs `--cfg getrandom_backend="wasm_js"`, set by
+# build-dist.sh).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

@@ -28,6 +28,7 @@ pub fn routes() -> Routes {
         .add("/agents", get(agents).post(pair))
         .add("/agents/{id}", patch(update_agent))
         .add("/ws-ticket", post(ws_ticket))
+        .add("/download", get(download))
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -43,6 +44,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         pair,
         update_agent,
         ws_ticket,
+        download,
         missions,
         mission,
         create_mission,
@@ -287,6 +289,121 @@ async fn ws_ticket(
     }
 }
 
+/// Unpacked extension shipped with the server (built by
+/// `crates/pnex-extension/build-dist.sh`).
+fn dist_dir() -> std::path::PathBuf {
+    std::env::var("PNEX_EXTENSION_DIST_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("../../dist/extension"))
+}
+
+/// Base URL the browser reached this server on (`X-Forwarded-*` from the
+/// edge, else `Host`); `None` when the host is not a plain host[:port].
+fn public_base(headers: &axum::http::HeaderMap) -> Option<String> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let host = header("x-forwarded-host")
+        .or_else(|| header("host"))?
+        .split(',')
+        .next()?
+        .trim();
+    let plain = !host.is_empty()
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'));
+    let scheme = match header("x-forwarded-proto") {
+        Some(p) if p.trim().eq_ignore_ascii_case("https") => "https",
+        _ => "http",
+    };
+    plain.then(|| format!("{scheme}://{host}"))
+}
+
+/// Zip of the unpacked extension plus `server.json` (this server's URL, so
+/// the user only signs in).
+fn zip_extension(dir: &std::path::Path, server: Option<&str>) -> std::io::Result<Vec<u8>> {
+    use std::io::Write as _;
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        for entry in std::fs::read_dir(&current)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let name = path
+                .strip_prefix(dir)
+                .map_err(std::io::Error::other)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if name == "server.json" {
+                continue;
+            }
+            zip.start_file(name, options)
+                .map_err(std::io::Error::other)?;
+            zip.write_all(&std::fs::read(&path)?)?;
+        }
+    }
+    if let Some(server) = server {
+        zip.start_file("server.json", options)
+            .map_err(std::io::Error::other)?;
+        zip.write_all(
+            serde_json::json!({ "server": server })
+                .to_string()
+                .as_bytes(),
+        )?;
+    }
+    Ok(zip.finish().map_err(std::io::Error::other)?.into_inner())
+}
+
+/// `GET /api/v1/extension/download` — public.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/download",
+    tag = "extension",
+    operation_id = "extension_download",
+    summary = "Download the browser extension (public)",
+    description = "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
+    responses(
+        (status = 200, description = "Zip archive", content_type = "application/zip", body = Vec<u8>),
+        (status = 404, description = "`extension-dist-not-found`: this server ships no extension build", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn download(headers: axum::http::HeaderMap) -> Result<Response> {
+    let dir = dist_dir();
+    if !dir.join("manifest.json").is_file() {
+        return Err(Error::CustomError(
+            StatusCode::NOT_FOUND,
+            ErrorDetail::new(
+                err_codes::EXTENSION_DIST_NOT_FOUND,
+                "This server ships no browser extension build.",
+            ),
+        ));
+    }
+    let server = public_base(&headers);
+    let bytes = tokio::task::spawn_blocking(move || zip_extension(&dir, server.as_deref()))
+        .await
+        .map_err(|_| Error::InternalServerError)?
+        .map_err(|e| {
+            tracing::error!(error = %e, "browser extension zip failed");
+            Error::InternalServerError
+        })?;
+    Ok((
+        StatusCode::OK,
+        [
+            ("content-type", "application/zip"),
+            (
+                "content-disposition",
+                "attachment; filename=\"pnex-browser-agent.zip\"",
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
 /// `GET /api/v1/extension/missions` — every member.
 #[utoipa::path(
     get,
@@ -421,5 +538,41 @@ async fn remove_mission(
     match extension::delete_mission(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => extension_error(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_base_reads_the_edge_then_host() {
+        let mut h = axum::http::HeaderMap::new();
+        h.insert("host", "localhost:5150".parse().unwrap());
+        assert_eq!(public_base(&h).as_deref(), Some("http://localhost:5150"));
+        h.insert("x-forwarded-host", "pnex.example.com".parse().unwrap());
+        h.insert("x-forwarded-proto", "https".parse().unwrap());
+        assert_eq!(public_base(&h).as_deref(), Some("https://pnex.example.com"));
+        h.insert("x-forwarded-host", "evil\"}.com/x".parse().unwrap());
+        assert_eq!(public_base(&h), None);
+    }
+
+    #[test]
+    fn zip_holds_the_files_and_the_server() {
+        let dir = std::env::temp_dir().join(format!("pnex-ext-zip-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("pkg")).unwrap();
+        std::fs::write(dir.join("manifest.json"), "{}").unwrap();
+        std::fs::write(dir.join("pkg/a.js"), "x").unwrap();
+        std::fs::write(dir.join("server.json"), "{\"server\":\"stale\"}").unwrap();
+        let bytes = zip_extension(&dir, Some("https://p.io")).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut names: Vec<String> = zip.file_names().map(|n| n.unwrap().into_owned()).collect();
+        names.sort();
+        assert_eq!(names, ["manifest.json", "pkg/a.js", "server.json"]);
+        let mut server = String::new();
+        std::io::Read::read_to_string(&mut zip.by_name("server.json").unwrap(), &mut server)
+            .unwrap();
+        assert_eq!(server, "{\"server\":\"https://p.io\"}");
     }
 }

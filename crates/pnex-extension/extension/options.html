@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PNeX</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1 data-i18n="ext_name"></h1>
+
+    <section id="setup" hidden>
+      <p data-i18n="setup_intro"></p>
+      <label for="server" data-i18n="server_label"></label>
+      <input id="server" type="url" placeholder="https://pnex.example.com" autocomplete="url">
+      <button id="login" data-i18n="login"></button>
+      <div id="orgs" hidden>
+        <label for="org" data-i18n="org_label"></label>
+        <select id="org"></select>
+        <button id="pair" data-i18n="pair"></button>
+      </div>
+    </section>
+
+    <section id="paired" hidden>
+      <p><span data-i18n="agent_label"></span> <strong id="name"></strong></p>
+      <p><span data-i18n="server_paired_label"></span> <span id="paired-server"></span></p>
+      <p><span data-i18n="link_label"></span> <span id="link"></span></p>
+      <p class="hint" data-i18n="one_agent_per_computer"></p>
+      <div id="permissions" hidden>
+        <h2 data-i18n="permissions_title"></h2>
+        <p class="hint" data-i18n="permissions_hint"></p>
+        <ul id="origins"></ul>
+      </div>
+      <h2 data-i18n="missions_title"></h2>
+      <ul id="missions"></ul>
+      <p class="hint" id="no-missions" data-i18n="no_missions"></p>
+      <button id="unpair" class="secondary" data-i18n="unpair"></button>
+    </section>
+
+    <p id="error" role="alert" hidden></p>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

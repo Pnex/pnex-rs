@@ -52,6 +52,7 @@ members = [
     "crates/pnex-edge-agent",
     # Admin CLI (D251): the OpenAPI spec as commands.
     "crates/pnex-cli",
+    "crates/pnex-extension",
 ]
 # EdgeLinkd vendored (submodule) reste un workspace séparé — sans exclude,
 # Cargo rattacherait ses crates au workspace PNEX et l'héritage

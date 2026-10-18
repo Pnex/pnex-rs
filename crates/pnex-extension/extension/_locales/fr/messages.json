@@ -1,0 +1,94 @@
+{
+  "ext_name": {
+    "message": "Agent navigateur PNeX"
+  },
+  "ext_description": {
+    "message": "Exécute les missions de collecte de votre organisation PNeX dans ses propres onglets, un onglet par site, à un rythme humain."
+  },
+  "setup_intro": {
+    "message": "Connectez-vous à votre serveur PNeX pour appairer ce navigateur. Un agent navigateur par ordinateur."
+  },
+  "server_label": {
+    "message": "Serveur PNeX"
+  },
+  "login": {
+    "message": "Se connecter"
+  },
+  "org_label": {
+    "message": "Organisation"
+  },
+  "pair": {
+    "message": "Appairer ce navigateur"
+  },
+  "agent_label": {
+    "message": "Agent navigateur :"
+  },
+  "link_label": {
+    "message": "Connexion :"
+  },
+  "link_up": {
+    "message": "connecté"
+  },
+  "link_down": {
+    "message": "non connecté"
+  },
+  "one_agent_per_computer": {
+    "message": "Gardez un seul agent navigateur sur cet ordinateur. Ses onglets sont regroupés sous « PNeX » : laissez-les ouverts."
+  },
+  "permissions_title": {
+    "message": "Sites à autoriser"
+  },
+  "permissions_hint": {
+    "message": "Une mission a besoin de ces sites. Autorisez chacun pour que l'agent puisse le lire."
+  },
+  "allow": {
+    "message": "Autoriser"
+  },
+  "missions_title": {
+    "message": "Missions"
+  },
+  "no_missions": {
+    "message": "Aucune mission pour l'instant : créez-en une dans PNeX, page Agents navigateur."
+  },
+  "unpair": {
+    "message": "Désappairer ce navigateur"
+  },
+  "error_server_invalid": {
+    "message": "Saisissez l'adresse de votre serveur PNeX, en commençant par https://."
+  },
+  "error_permission_denied": {
+    "message": "L'extension a besoin d'accéder à votre serveur PNeX : acceptez la demande du navigateur."
+  },
+  "error_login_timeout": {
+    "message": "La connexion a pris trop de temps : réessayez."
+  },
+  "error_extension_pair_refused": {
+    "message": "Appairage refusé : réinstallez l'extension et réessayez."
+  },
+  "error_extension_install_paired_elsewhere": {
+    "message": "Ce navigateur est déjà appairé à une autre organisation : supprimez d'abord son agent navigateur là-bas."
+  },
+  "error_extension_write_forbidden": {
+    "message": "Les lecteurs ne peuvent pas appairer un navigateur : demandez à un propriétaire, un admin ou un membre."
+  },
+  "error_generic": {
+    "message": "Erreur : $CODE$",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "server_paired_label": {
+    "message": "Serveur PNeX :"
+  },
+  "state_ext_permission_missing": {
+    "message": "site pas encore autorisé (voir plus haut)"
+  },
+  "state_ext_selector_not_found": {
+    "message": "le sélecteur ne trouve rien sur la page"
+  },
+  "state_ext_value_not_numeric": {
+    "message": "la valeur n'est pas un nombre"
+  }
+}
