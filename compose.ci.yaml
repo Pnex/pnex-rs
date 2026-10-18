@@ -25,6 +25,8 @@ services:
       RAUTHY_ISSUER_URL: http://localhost:8080
       # Tests read the flow editor debug feed.
       PNEX_FLOW_DEBUG_TOOLS: "true"
+      # No TLS edge here: the browser agent spec links over plain ws.
+      PNEX_DEVICE_REQUIRE_TLS: "false"
 
   pnex-builder:
     pull_policy: never
