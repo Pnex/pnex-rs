@@ -1001,6 +1001,17 @@ ArtCraft, Zennotes, **Reticulum** (licence non OSI ; le transport M2M
 reste celui de `m2m-resilient.md` : zenoh-pico + OpenThread, tout open
 source — pas de discussion).
 
+### P2.25 — Gestion des accès (IAM) et comptes de service (ajout 2026-10-18) — **PRD en étude**
+
+`iam.md`, D285–D299 : moteur d'autorisation unique (rôles gérés = rôles
+actuels, rôles personnalisés, équipes, attributions à portée), registre
+des actions gardé, filtrage de toutes les lectures, accès fins sur
+l'ontologie (rouvre D188), puis comptes de service et clés d'accès pour
+les applications externes (usage serveur). Lots I0 → I7 ; chemin court
+vers les comptes de service : I0, I1, I3, I4 restreint, I6, géré par la
+CLI `pnex` ; page Accès ensuite (I7). Jamais par le MCP (2026-10-19).
+Toutes les questions tranchées le 2026-10-19 (§14) ; reste la validation finale.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
