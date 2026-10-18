@@ -9,12 +9,15 @@
 # Since 1.5.0 names carry their French translation (`names`, O43).
 # Since 1.6.0 `owns` carries the share held (cases-money.md K56): chains
 # of shares give the computed beneficial owners.
+# Since 1.7.0 people and organizations carry their Wikidata id, and
+# `owns`, `employs`, `member_of` carry their provenance (source, retrieval
+# date, note): a fact that cannot be sourced is a claim, not a link.
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.6.0"
+version: "1.7.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -26,6 +29,7 @@ types:
     properties:
       - { key: aliases, name: Aliases, names: {fr: "Alias"}, kind: text, max_len: 1000 }
       - { key: role_label, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: organization
     name: Organization
@@ -38,6 +42,7 @@ types:
         names: {fr: "Nature"}
         kind: enum
         values: [company, public_body, association, party, media, group, other]
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: place
     name: Place
@@ -147,6 +152,11 @@ link_types:
     inverse_names: {fr: "a pour membre"}
     from_types: [person, organization]
     to_types: [organization]
+    attributes:
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: employs
     name: employs
     names: {fr: "emploie"}
@@ -156,6 +166,9 @@ link_types:
     to_types: [person]
     attributes:
       - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: owns
     name: owns
     names: {fr: "possède"}
@@ -165,6 +178,10 @@ link_types:
     to_types: "*"
     attributes:
       - { key: share, name: Share held, names: {fr: "Part détenue"}, kind: number, unit: "%", min: 0, max: 100 }
+      - { key: voting_rights, name: Voting rights, names: {fr: "Droits de vote"}, kind: number, unit: "%", min: 0, max: 100 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: knows
     name: knows
     names: {fr: "connaît"}

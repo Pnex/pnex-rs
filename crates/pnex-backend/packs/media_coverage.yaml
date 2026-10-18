@@ -1,0 +1,194 @@
+# Reference pack "Media coverage" (ontology.md D190, discourse-analysis.md
+# §8): who owns, funds and staffs the media, which programmes they
+# broadcast, who presents them, and the parties and mandates of the people
+# who appear on air. Country-neutral: national identifiers (parliament ids,
+# company registries) are the org's own properties, Wikidata is the shared
+# one. Every link carries its provenance (source, retrieval date) and the
+# start as collected when it is fuzzier than an instant ("2014-09").
+# Builds on the Investigation pack (person, organization, owns, employs,
+# member_of): installing this pack installs it first.
+key: media_coverage
+name: Media coverage
+names: {fr: "Couverture médiatique"}
+version: "1.0.0"
+requires: [investigation]
+description: Media outlets, programmes, parties and mandates — ownership, funding, hosts and office holders, every link sourced.
+descriptions: {fr: "Médias, émissions, partis et mandats — propriété, financement, présentateurs et élus, chaque lien sourcé."}
+types:
+  - key: media
+    name: Media outlet
+    names: {fr: "Média"}
+    icon: newspaper
+    may_be_contained_in: [folder]
+    properties:
+      - key: medium
+        name: Medium
+        names: {fr: "Support"}
+        kind: enum
+        values: [tv, radio, daily_press, weekly_press, magazine, online, video_channel, podcast, agency, other]
+      - { key: status, name: Status, names: {fr: "Statut"}, kind: text, max_len: 255 }
+      - { key: business_model, name: Business model, names: {fr: "Modèle économique"}, kind: text, max_len: 255 }
+      - { key: website, name: Website, names: {fr: "Site"}, kind: text, max_len: 500 }
+      - { key: founded, name: Founded, names: {fr: "Création"}, kind: text, max_len: 64 }
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
+      - { key: registry_id, name: Company registry id, names: {fr: "Immatriculation"}, kind: text, max_len: 255, indexed: true }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
+  - key: program
+    name: Programme
+    names: {fr: "Émission"}
+    icon: radio
+    may_be_contained_in: [folder]
+    properties:
+      - { key: slot, name: Slot, names: {fr: "Créneau"}, kind: text, max_len: 255 }
+      - { key: frequency, name: Frequency, names: {fr: "Fréquence"}, kind: text, max_len: 255 }
+      - { key: genre, name: Genre, names: {fr: "Genre"}, kind: text, max_len: 255 }
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
+  - key: party
+    name: Political party
+    names: {fr: "Parti politique"}
+    icon: flag
+    may_be_contained_in: [folder]
+    properties:
+      - { key: acronym, name: Acronym, names: {fr: "Sigle"}, kind: text, max_len: 64, indexed: true }
+      - { key: founded, name: Founded, names: {fr: "Création"}, kind: text, max_len: 64 }
+      - { key: declared_orientation, name: Declared orientation, names: {fr: "Orientation déclarée"}, kind: text, max_len: 2000 }
+      - { key: website, name: Website, names: {fr: "Site"}, kind: text, max_len: 500 }
+      - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
+      - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
+  - key: mandate
+    name: Mandate
+    names: {fr: "Mandat"}
+    icon: landmark
+    may_be_contained_in: [folder]
+    properties:
+      - { key: office, name: Office, names: {fr: "Fonction"}, kind: text, max_len: 500 }
+      - { key: body, name: Body, names: {fr: "Institution"}, kind: text, max_len: 255, indexed: true }
+      - { key: constituency, name: Constituency, names: {fr: "Circonscription"}, kind: text, max_len: 255 }
+link_types:
+  - key: controls
+    name: controls
+    names: {fr: "contrôle"}
+    inverse_name: is controlled by
+    inverse_names: {fr: "est contrôlé par"}
+    from_types: [person, organization]
+    to_types: [organization, media]
+    attributes:
+      - { key: mode, name: Mode, names: {fr: "Mode"}, kind: text, max_len: 500 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: finances
+    name: finances
+    names: {fr: "finance"}
+    inverse_name: is financed by
+    inverse_names: {fr: "est financé par"}
+    from_types: [person, organization]
+    to_types: [organization, media]
+    attributes:
+      - { key: amount, name: Amount, names: {fr: "Montant"}, kind: number }
+      - { key: currency, name: Currency, names: {fr: "Devise"}, kind: text, max_len: 3 }
+      - { key: year, name: Year, names: {fr: "Année"}, kind: number }
+      - { key: nature, name: Nature, names: {fr: "Nature"}, kind: text, max_len: 255 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: broadcasts
+    name: broadcasts
+    names: {fr: "diffuse"}
+    inverse_name: is broadcast by
+    inverse_names: {fr: "est diffusé par"}
+    from_types: [media]
+    to_types: [program]
+    attributes:
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: staffs
+    name: has on staff
+    names: {fr: "emploie"}
+    inverse_name: works at
+    inverse_names: {fr: "travaille à"}
+    from_types: [media]
+    to_types: [person]
+    attributes:
+      - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: presents
+    name: presents
+    names: {fr: "présente"}
+    inverse_name: is presented by
+    inverse_names: {fr: "est présenté par"}
+    from_types: [person]
+    to_types: [program]
+    attributes:
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: columnist_of
+    name: is a columnist of
+    names: {fr: "est chroniqueur de"}
+    inverse_name: has as columnist
+    inverse_names: {fr: "a pour chroniqueur"}
+    from_types: [person]
+    to_types: [program, media]
+    attributes:
+      - { key: section, name: Section, names: {fr: "Rubrique"}, kind: text, max_len: 255 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: party_member
+    name: is a member of
+    names: {fr: "est membre de"}
+    inverse_name: has as member
+    inverse_names: {fr: "a pour membre"}
+    from_types: [person]
+    to_types: [party]
+    attributes:
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 500 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: holds_mandate
+    name: holds
+    names: {fr: "exerce"}
+    inverse_name: is held by
+    inverse_names: {fr: "est exercé par"}
+    from_types: [person]
+    to_types: [mandate]
+    attributes:
+      - { key: office, name: Office, names: {fr: "Fonction"}, kind: text, max_len: 500 }
+      - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+      - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
+  - key: appears_on
+    name: appears on
+    names: {fr: "intervient dans"}
+    inverse_name: has as guest
+    inverse_names: {fr: "a pour invité"}
+    from_types: [person]
+    to_types: [program]
+    attributes:
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+      - { key: segment, name: Captured segment, names: {fr: "Passage capté"}, kind: text, max_len: 500 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+  - key: describes
+    name: describes
+    names: {fr: "est la fiche de"}
+    inverse_name: is described by
+    inverse_names: {fr: "a pour fiche"}
+    from_types: [doc]
+    to_types: [person, organization, media, program, party, mandate]
+    one_source: true
