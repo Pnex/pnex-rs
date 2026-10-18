@@ -13,9 +13,9 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
     Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
-    Functions, Lab, LabProjectPage, Map, Media, MediaReview, Models, NotFound, Notifications, Ontology,
-    OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites,
-    Streams, Studio, System, Visualisation, VoiceId,
+    Functions, Lab, LabProjectPage, Map, Media, MediaReview, Models, NotFound, Notifications,
+    Ontology, OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour,
+    Showcase, Sites, Streams, Studio, System, Visualisation, VoiceId,
 };
 use dioxus::prelude::*;
 
