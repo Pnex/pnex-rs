@@ -31,6 +31,8 @@ pub mod error;
 pub mod error_i18n;
 /// JSON events stored in OpenObserve logs (camera-video.md D84).
 pub mod events;
+/// Browser agents and their missions (extension-collector.md D254–D270).
+pub mod extension;
 /// Custom firmware IDE (custom-firmware.md D87–D94).
 pub mod firmware;
 pub mod flows;

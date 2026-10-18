@@ -316,6 +316,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
     let devices = at(Route::Devices {})
         || at(Route::Catalog {})
         || at(Route::EdgeRefs {})
+        || at(Route::BrowserAgents {})
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
         || at(Route::Functions {})
@@ -501,6 +502,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::EdgeRefs {},
                     label: t!("nav-edge-refs"),
                     active: at(Route::EdgeRefs {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::BrowserAgents {},
+                    label: t!("nav-browser-agents"),
+                    active: at(Route::BrowserAgents {}),
                     on_navigate,
                 }
             }

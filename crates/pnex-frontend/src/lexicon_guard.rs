@@ -30,6 +30,20 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // D255: the extension that runs collection missions is an « agent
+    // navigateur », never a « collecteur » (no collector domain, D254).
+    Rule {
+        scope: Scope::Fr,
+        term: "collecteur",
+        use_instead: "agent navigateur (D255)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "collecteurs",
+        use_instead: "agents navigateur (D255)",
+        allowed_keys: &[],
+    },
     // The storyline view of a case is the « Histoire » (its tab name).
     Rule {
         scope: Scope::Fr,

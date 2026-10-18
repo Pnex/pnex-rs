@@ -464,6 +464,14 @@ L0c (page « Agents navigateur »).
   par Dioxus : une page de quatre écrans ne justifie pas un second build
   dx.
 
+- **L0c livré le 2026-10-18** : page `/edges/browser-agents` (menu
+  Appareils) : étapes d'installation et bouton « Télécharger l'extension »,
+  onglet Agents navigateur (en ligne, navigateur, renommer, supprimer =
+  révocation), onglet Missions (état traduit, pause/reprise, création et
+  édition sur la version lue) ; fiche assistant `browser-agents` ; lexique
+  « Agent navigateur » / « Mission » + règle « collecteur » dans la garde.
+  Vérifiée dans Chromium (fr).
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip

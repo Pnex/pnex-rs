@@ -15,6 +15,8 @@ pub mod dashboard;
 pub mod dashboards;
 pub mod devices;
 // Pages (pages.md #21)
+/// Browser agents and their missions (extension-collector.md D254–D270).
+pub mod browser_agents;
 /// Investigation cases (cases.md).
 pub mod cases;
 pub mod docs;
