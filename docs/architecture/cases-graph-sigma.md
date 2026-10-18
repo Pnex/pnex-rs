@@ -60,6 +60,7 @@ Appels (toutes les données en JSON, R13) :
 - ForceAtlas2 synchrone, 600 itérations, `inferSettings` puis `gravity: 0.6`, `scalingRatio: 12`, `strongGravityMode: true`, `slowDown: 3`, `barnesHutOptimize: false` (sous 300 nœuds). Puis `noverlap` : `maxIterations: 300`, `margin: 10`, `ratio: 1.6`, `expansion: 1.1`. Budget : moins de 150 ms pour 300 nœuds sur le portable de référence, mesuré en GS-L1 ; au-delà, passer en worker (`graphology-layout-forceatlas2/worker`) plutôt que baisser les itérations.
 - **Nœuds de degré 0 exclus de la simulation** et rangés en colonne à droite du dessin, centrée verticalement, triés par titre. Fini les rangées collées aux bords.
 - `layout.rs` reste en place pour le repli (§GS11) et ses tests ; il n'est pas supprimé dans ce chantier.
+- **Grands dossiers (2026-10-18)** : Sigma dessine jusqu'à **2 000 nœuds** (`SIGMA_CAP`, un parlement tient dans un dossier) ; le repli SVG garde 300 (`CAP`). Au-delà de 300 nœuds : `barnesHutOptimize` et itérations ForceAtlas2 / noverlap réduites en `300/n` (planchers 120 et 40), environ 1,2 s à 2 000 nœuds, mesuré par `graph_layout.test.js` ; un statut « Disposition du graphe… » s'affiche avant (deux images, puis le calcul). Le serveur garde autant de positions (`layout.rs` `MAX_NODES` = 2 000).
 
 ### GS5 — Vue chronologique
 

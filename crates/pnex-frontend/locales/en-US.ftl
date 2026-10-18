@@ -5014,6 +5014,7 @@ cw-undated-status = Undated: drag it onto an event to date it.
 cw-links = Links
 cw-links-empty = Events and their attached pieces show here.
 cw-graph-hidden = { $count } hidden
+cw-graph-laying-out = Laying out the graph…
 cw-graph-relayout = Re-layout
 cw-graph-simplified = Simplified view
 cw-graph-relayout-help = Compute the layout again (nodes moved by hand are released).
