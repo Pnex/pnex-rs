@@ -145,8 +145,9 @@ seule.
 
 - Sélecteur des personnes contre lesquelles comparer les voix :
   **intervenants attendus** (personnes liées au média ou au dossier qui
-  le contient, par `appears_in`, `about`, `sourced_by`), **personnes
-  choisies**, ou **tous les profils prêts** du modèle d'empreinte.
+  le contient, par `appears_in`, `about`, `sourced_by`, et le compte qui
+  l'a publié par `published_by`, D278), **personnes choisies**, ou **tous
+  les profils prêts** du modèle d'empreinte.
 - Défaut : intervenants attendus s'il y en a, sinon tous.
 - Réduire les candidats réduit les fausses identifications (le seuil de
   V5 n'est calibré que sur la voix de la personne elle-même, §3 de
@@ -181,8 +182,19 @@ seule.
 
 - Les attributions `manual` et `confirmed` **survivent** : elles sont des
   plages (R-P1). Les `proposed` de l'ancienne passe sont remplacées.
-- Une passe = un `run` (tranche D211 Q-B) ; l'écran montre la dernière,
-  les précédentes restent consultables.
+- Une passe = un `run` (tranche D211 Q-B) ; l'écran montre la dernière
+  passe `pnex`, sinon la dernière tout court ; les précédentes restent
+  consultables.
+- Une passe porte une **origine** : `pnex` (ASR + diarisation de PNeX)
+  ou `platform` (sous-titres fournis par la plateforme d'où vient le
+  média, `extension-collector.md` D267). Une passe `platform` :
+  - n'a ni diarisation ni `S#` : pas de couloir Locuteurs, « Réidentifier
+    les voix » grisé avec la raison (« retranscrire d'abord ») ;
+  - est horodatée par sous-titre, pas au mot : la règle du milieu (D272)
+    s'applique au sous-titre entier ;
+  - reste du texte non fiable (D208) ;
+  - n'est jamais remplacée : « Retranscrire » crée une passe `pnex` à
+    côté. L'attribution manuelle (D273) marche sur les deux.
 - Pas d'empreinte stockée (R-P5) : pour un fichier, l'original reste en
   médiathèque ; pour un flux, l'audio doit être conservé, sinon
   « Réidentifier » est grisé avec la raison.
@@ -209,6 +221,27 @@ seule.
   du passage (origine portée par le lien).
 - Retirer une attribution confirmée retire son apparition ; le lien
   `appears_in` tombe quand il n'en reste plus.
+- Lien **`published_by`** (pack `investigation`, « publié par ») :
+  `piece` ou `media_asset` (type système) → `person` ou `organization`.
+  Il dit **qui a publié** le contenu, jamais qui parle dedans : un compte
+  qui reprend l'extrait d'une émission n'est pas un intervenant. Posé par
+  l'agent navigateur quand la mission suit un compte rattaché à un objet
+  (`extension-collector.md`), ou à la main. `sourced_by` et `about` ne
+  conviennent pas : les deux partent d'une `claim`.
+
+## 5bis. Articulation avec les agents navigateur (`extension-collector.md`, D254–D270)
+
+Accord du 2026-10-18 avec la session des agents navigateur :
+
+| Capture de l'agent | Source de la relecture | Ce qui s'applique |
+|---|---|---|
+| Vidéo publiée (D260) | média `video` de la médiathèque (D271 V1) | D213 `transcribe` selon la `media_policy` de la mission (`always` ou `if_no_transcript`) |
+| Sous-titres de la plateforme (D267) | passe d'origine `platform` (D276) | affichés tels quels ; « Retranscrire » pour avoir des locuteurs |
+| Direct (`watch_live`) | flux `browser` (D159, D271 V2) | rétention par mission (D268, vocabulaire D161) ; relecture et « Réidentifier » exigent une rétention ≠ `none` |
+| Provenance | `media_assets.metadata` : `source`, `mission_id`, `source_url`, `platform`, `platform_id`, `author_handle`, `published_at`, `captured_at` | lu par la fiche du média |
+| Compte suivi rattaché à un objet | lien `published_by` (D278) | candidat parmi les intervenants attendus (D274) |
+
+Les décisions suivantes des agents navigateur commencent à D281.
 
 ### D279 — Les couloirs de la frise
 
@@ -310,8 +343,8 @@ est en différé), empreintes de voix non enrôlées.
 | D273 | Attribution manuelle sans reconnaissance vocale (plage, locuteur entier, raccourcis) | 2026-10-18 (proposé) |
 | D274 | Sélecteur de candidats (attendus / choisis / tous), coût borné | 2026-10-18 (proposé) |
 | D275 | Identification vocale par locuteur, proposition seulement, exception encadrée à K17 | 2026-10-18 (proposé) |
-| D276 | « Régénérer » = Réidentifier (sans ASR) ou Retranscrire ; attributions conservées | 2026-10-18 (proposé) |
+| D276 | « Régénérer » = Réidentifier (sans ASR) ou Retranscrire ; attributions conservées ; passe d'origine `pnex` ou `platform` | 2026-10-18 (proposé) |
 | D277 | Enrôlement d'un profil vocal depuis les passages confirmés, consentement d'abord | 2026-10-18 (proposé) |
-| D278 | Attribution confirmée → apparition K17 ; sélection → déclaration K43 | 2026-10-18 (proposé) |
+| D278 | Attribution confirmée → apparition K17 ; sélection → déclaration K43 ; lien `published_by` (publié par) | 2026-10-18 (proposé) |
 | D279 | Couloirs de la frise et `kind` `attribution` / `tone` du contrat D216 | 2026-10-18 (proposé) |
 | D280 | Ton = métadonnées réservées, liste fermée, jamais un fait sur une personne | 2026-10-18 (proposé) |
