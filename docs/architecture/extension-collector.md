@@ -534,11 +534,11 @@ Firefox : question 4.
 3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
    du §16.1, plateforme par plateforme.
 
-5. **Éditeur d'un média capturé** (D281) : lien d'ontologie
-   `published_by` ou propriété de provenance `published_by_object` ?
 4. **Publication** : Chrome Web Store (installation en un clic, mises à
    jour automatiques) et signature AMO pour Firefox (obligatoire hors
    mode développeur), ou chargement non empaqueté seulement ?
+5. **Éditeur d'un média capturé** (D281) : lien d'ontologie
+   `published_by` ou propriété de provenance `published_by_object` ?
 
 Tranchées le 2026-10-18 : un agent par PC (D255) ; téléchargement quand
 c'est possible, enregistrement en direct pour les lives (D260) ;
