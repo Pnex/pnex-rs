@@ -1,238 +1,509 @@
-# Extension navigateur « type device » — spécification (C1b)
+# Agents navigateur (extension Chrome/Firefox) — spécification v2 (C1b)
 
-> Statut : **spécification** (amendement edge-model 2026-09-15 : pas de
-> domaine « collecteurs » dédié ; la collecte web à deux types — C1a = nœud
-> flow `http_fetch`, livré ; C1b = cette extension). **Zéro code tant que la
-> spec n'est pas validée** ; l'implémentation est le jalon C3 de la roadmap
-> (`edge-model.md` §11).
+> Statut : **proposition v2 (2026-10-18)**, décisions D254–D269 à valider.
+> **Zéro code tant que la v2 n'est pas validée** ; l'implémentation reste le
+> jalon C3 (`edge-model.md` §11) et P2.1 de la roadmap.
+>
+> La v1 (2026-09-15, 10 décisions) visait une collecte basique : un
+> sélecteur CSS rafraîchi, une valeur vers une série O2. La directive du
+> 2026-10-18 élargit l'objet à des **agents de veille** : suivre des
+> comptes (X, TikTok), des lives, capturer vidéos et métadonnées, collecter
+> du HTML, plusieurs agents déployés, chacun verrouillé sur une seule
+> page. La collecte basique devient une mission parmi d'autres (§5).
 
-## 1. Objet et périmètre
+Liens : `edge-model.md` §8 (doctrine edge), `security-tiers.md` §6 bis
+(identité device D153–D158), `media-ingest.md` (flux, segments, D159),
+`media.md` (médias), `doc-search.md` (indexation), `cases.md` §4 et
+`discourse-analysis.md` DA6 (périmètre, rouvert par D254),
+`api-contract.md`, `mcp.md`, `ai-assistant.md` §9, `security.md`.
 
-L'extension Chrome/Firefox collecte le web **JS-lourd** (SPA, dashboards
-tiers, pages animées) inaccessible au nœud `http_fetch` (C1a couvre le cas
-« page statique / API JSON »). La spec couvre : identité, auth, transport,
-format des règles, exécution in-browser, mapping vers les séries O2, cycle
-de vie MV3, sécurité, consentement.
+## 1. Ce qui change par rapport à la v1
 
+| | v1 | v2 |
+|---|---|---|
+| Rôle | un capteur « type device » | un **agent** : un onglet, des missions, un rythme |
+| Sortie | valeur → série O2 | valeur → O2 ; **page HTML, vidéo, métadonnées → médias PNEX** |
+| État | aucun | **registre des vidéos** vues/capturées, curseur par compte suivi |
+| Concurrence | une extension | **N agents**, bail serveur par cible, une page par agent |
+| Transport | `/ws/device` (devenu mTLS depuis D153 : inaccessible au navigateur) | ticket device → `/ws/extension` (contrôle) + **upload HTTP** (binaire) |
+| Règles | `extension_rules` / `RuleSpec` (CSS) | `extension_missions`, typées (§5) |
+| Navigateurs | Chrome, Firefox « plus tard » | Chrome d'abord, **chemin commun Firefox dès la conception** (§11) |
 
-**Principe cardinal** (amendement §8) : l'extension réutilise l'identité et
-le pattern **devices** — pas de domaine « collecteurs » (aucune table
-source/binding), pas de JWT user dans le plan de données (edge-model §8.2
-décision 7 : « jamais le JWT Rauthy user en collecteur » ; l'app mobile est
-l'exception OIDC sanctionnée, pas l'extension).
+Ce qui reste de la v1 : identité device (pas de JWT user dans le plan de
+données), deux plans gestion/données, config-as-data sans eval,
+consentement par origine, journal local des exécutions.
 
-## 2. Rappel doctrine (edge-model §8)
+## 2. Périmètre et position
 
-| | Firmware | App mobile | Extension | Agent |
-|---|---|---|---|---|
-| Contexte | MCU non supervisé | poche de l'user | navigateur de l'user | machine de l'user |
-| Confiance | totale au serveur | user via OIDC | user-délégué | user via token |
-| Présence | connexion WS permanente | à l'usage | éphémère (navigateur ouvert) | daemon + file disque |
-| Survit coupure réseau | profils autonomes : oui | n/a | non (léger) | oui |
+**D254 — Périmètre étendu : sources publiques déclarées, une par une.**
+Rouvre `cases.md` §4 et `discourse-analysis.md` DA6 pour l'extension :
 
-Doctrine MV3 déjà consignée : `chrome.alarms` >= 30 s + jitter,
-config-as-data sans eval, **cast != apply** avec consentement par tâche,
-extension user-déléguée tab-open v1, sélecteur CSS = pin.
+- l'utilisateur **déclare** chaque cible (un compte, un live, une page) ;
+  aucune découverte automatique, aucune recherche de profils, aucun
+  parcours de graphe social (abonnés, réponses, mentions) : PNEX ne
+  devient pas un collecteur de personnes ;
+- l'agent lit ce que le navigateur affiche **à un humain connecté**, au
+  rythme d'un humain (D258) : pas d'API privée appelée directement, pas de
+  parallélisme, pas de contournement (captcha, mur de connexion, limite de
+  débit, DRM : la mission passe en `blocked`, jamais de contournement) ;
+- la position de `media-ingest.md` §13 reste vraie : PNEX est un outil
+  générique, l'utilisateur répond de ses sources et des conditions des
+  plateformes qu'il utilise (les CGU de plusieurs plateformes interdisent
+  l'accès automatisé, quel que soit le rythme ; le risque de suspension
+  porte sur le compte utilisé, rappelé à la création d'une mission) ;
+- YouTube : **live et métadonnées** dans le périmètre ; la capture de VOD
+  reste exclue tant que Q1 (§15) n'est pas tranchée (§13 de
+  `media-ingest.md` : pas de préréglage de téléchargeur).
 
+## 3. Vocabulaire
 
-## 3. Deux plans : gestion vs données
+- **Agent** : un device de classe `extension` (une ligne `device_registries`,
+  jeton device), qui possède **au plus un onglet par plateforme**.
+- **Plateforme** : X, TikTok, YouTube, Facebook… ; pour le web générique,
+  le site (origine). Clé de l'onglet de l'agent.
+- **Hôte** : une installation de l'extension dans un profil navigateur.
+  Un hôte porte un seul agent (D255).
+- **Mission** : ce qu'un agent fait, typée (§5), déclarée dans l'UI PNEX.
+- **Cible** : ce que vise une mission, normalisée (`x:@handle`,
+  `tiktok:@handle`, `youtube:live:<id>`, `web:<url>`). Clé du bail (D257).
+- **Adaptateur** : le code propre à une plateforme (§8), livré avec
+  l'extension, jamais téléchargé.
+- **Registre des vidéos** : ce que l'org a déjà vu ou capturé (D259).
 
-L'extension vit sur **deux plans séparés** :
+## 4. Architecture
 
-- **Plan gestion** (rare, authentifié user) : login OIDC PKCE,
-  choix/création du device, écriture des règles. API org classique
-  (Bearer JWT + `X-Org-Id`).
-- **Plan données** (fréquent, silencieux) : sync des règles (desired-state)
-  + ingestion des valeurs. Identité **device** (token + clé de chiffrement),
-  jamais le JWT user.
-
-La « petite page de login » = la page d'options de l'extension : elle sert
-le plan gestion. Une fois le device créé et le token stocké, la page n'est
-plus nécessaire tant que le token vit.
-
-## 4. Identité et auth
-
-**Création** : `POST /api/v1/devices` (JWT + `X-Org-Id`, `can_write`),
-payload `CreateDevice { device_id, predefined_device_name, metadata }` ;
-le **201** renvoie le DTO complet incluant
-`device_token { token, encryption_key, is_active, created }`.
-`device_id` suggéré : `ext_<handle>-<slug>` (chaîne libre, l'admission
-Tier 2 est permissive). Révocation : `is_active=false` ou
-`DELETE /devices/{id}` (purge token) — école existante.
-
-**Stockage local** (décision 8) : `chrome.storage.session` — mémoire du
-navigateur ouvert, jamais localStorage ; re-pairing accepté v1 après
-redémarrage du navigateur.
-
-
-## 5. Transport (décision 1)
-
-**WS `/ws/device` canal unique** : le canal existe, chiffré ChaCha20
-(framing D8 à l'époque ; lien Noise depuis D156, 2026-10-08), et le
-**re-cast desired-state à l'announce** (`ws_device.rs` : ProvisionAck →
-re-push des `Subscribe` persistés → re-cast `ControlConfig`) rend la sync
-des règles gratuite côté serveur. Zéro changement serveur pour le
-transport.
-
-REST fallback : **différé** — aucun endpoint REST de télémétrie n'existe ;
-en créer un = un 2e chemin d'ingestion à sécuriser. Si le service worker
-MV3 s'avère trop hostile au pattern connect-on-wake (§9), un
-`POST /devices/{id}/ingest` (token device, école `internal_notify`)
-restera l'option de repli documentée.
-
-**Crypto client** (décision 2) : **WASM de `pnex-core`** — le crate est
-déjà compilable `wasm32` (proto + framing ChaCha20 partagés, golden
-vectors communs avec le firmware). Implémentation pure-JS en secours
-documentée (libs matures), au prix d'une 2e implémentation du framing.
-
-
-## 6. Règles : écriture, stockage, sync
-
-### 6.1 Où vivent les règles (décision 3)
-
-Nouvelle entité org **`extension_rules`** : `{id, org_id,
-device_registry_id, match (origin/pattern d'URL), selector (CSS),
-attr? (text|attr|html), interval_ms (>= 30 000 + jitter), enabled}`.
-CRUD REST `/api/v1/extension-rules` (`can_write`). Source de vérité côté
-serveur ; l'extension n'exécute que ce que le serveur lui pousse
-(desired-state — l'inverse serait un chemin de contrôle user non consenti).
-
-Rejets argumentés :
-- `regulator_configs` : projection de **flow déployé** (slot unique
-  (device, flow, node), GPIO-centrique) — ne peut pas porter des règles
-  génériques.
-- `POST /devices/{id}/commands` : GPIO-centrique + 409 si device hors
-  ligne — inadapté.
-
-### 6.2 Format de sync (décisions 4-5-6)
-
-Nouveau variant **`ServerMsg::RulesConfig { cmd_id, rules: Vec<RuleSpec> }`**
-— additif, zéro impact firmware : le serveur n'envoie `RulesConfig` qu'aux
-devices extension (l'ESP ne le recevra jamais ; à vérifier à
-l'implémentation que le désérialiseur du firmware tolère un variant
-inconnu — non bloquant, question §12).
-
-
-`RuleSpec` (école ControlSpec, struct plate) :
-
-```
-RuleSpec { rule_id, origin, selector, attr?, interval_ms, enabled }
+```mermaid
+flowchart LR
+  subgraph Navigateur["Profil navigateur (hôte)"]
+    SW["Service worker<br/>wasm : agents, missions,<br/>protocole, adaptateurs"]
+    OFF["Document hors écran (Chrome)<br/>MediaRecorder"]
+    OPT["Page d'options<br/>appairage, agents, journal"]
+    subgraph Onglet["Onglet de l'agent (groupe dédié)"]
+      ISO["Content script isolé<br/>(wasm) : DOM, défilement"]
+      MAIN["Crochet MAIN (JS minimal)<br/>observe fetch/XHR"]
+    end
+    MAIN -- postMessage brut --> ISO
+    ISO <--> SW
+    SW <--> OFF
+    OPT <--> SW
+  end
+  subgraph PNEX
+    T["POST /api/v1/extension/ws-ticket"]
+    WS["/ws/extension<br/>missions, baux, état"]
+    UP["POST /api/v1/extension/uploads<br/>pages, vidéos, segments"]
+    REG[("social_videos<br/>extension_missions")]
+    MED["médias + segments<br/>→ analyse PNEX classique"]
+  end
+  SW -- jeton device --> T
+  SW <--> WS
+  SW --> UP
+  WS --- REG
+  UP --> MED
 ```
 
-- `rule_id` : identifiant stable de la règle (clé de série O2, §7).
-- `origin` : pattern d'URL (ex. `https://exemple.tld/*`) — l'exécution ne
-  tourne que sur une page dont l'URL matche.
-- `selector` : sélecteur CSS = **pin** (D48).
-- `attr` : `text` (défaut) | `attr:<nom>` | `html` — ce qu'on lit.
-- `interval_ms` : >= 30 000 (contrainte MV3 chrome.alarms) ; le jitter est
-  ajouté côté extension.
-- `enabled` : la règle désactivée n'est plus castée.
+Le crochet MAIN reste en JS : la CSP des sites cibles bloque en général
+l'instanciation wasm dans le contexte de la page. Il ne fait que relayer
+les réponses brutes ; tout le décodage est en wasm, côté isolé ou worker.
 
-Ack d'apply = `DeviceMsg::Ack { cmd_id, ok, err }` (RPC existant).
+## 5. Missions
 
-## 7. Exécution in-browser et mapping séries O2
+**D256 — Missions typées, remplacent `extension_rules`.** Entité org
+`extension_missions` (CRUD `can_write`, §9) :
 
-Sélecteur CSS = pin ; **device = le device extension** (device_id
-`ext_…`) ; clé de série = `rule_id` sanitizé (école `device_payload_key`,
-casse conservée). L'extension envoie des `StateReport` standard :
+| Type | Cible | Ce que fait l'agent | Sortie |
+|---|---|---|---|
+| `collect_value` | URL + sélecteur CSS + `attr` | refresh à intervalle, lit une valeur | `StateReport` → série O2 (v1 inchangée) |
+| `collect_page` | URL | refresh à intervalle, instantané HTML + texte lisible | `media_asset` `document` (D261) |
+| `follow_account` | compte X / TikTok | ouvre le profil, défile jusqu'au curseur, relève les nouveaux posts | métadonnées → registre ; vidéos neuves → capture (D260) |
+| `watch_live` | URL d'un live (X, TikTok, YouTube) | ouvre le live, enregistre tant qu'il dure | segments → flux média (D260) |
 
-```
-StateReport { gpio: rule_id, value: "valeur lue", ... }
-```
+Champs communs : `id`, `org_id`, `kind`, `target` (normalisée),
+`params` (jsonb validé par type), `interval_secs` (≥ 60, jitter côté
+agent), `agent_id` (option : épingler sur un agent), `enabled`,
+`state` (`idle | running | blocked | failed`), `state_code`,
+`cursor` (jsonb, dernier élément vu, écrit par le serveur), `version`.
 
-— l'ingestion serveur existante fait le reste (série O2, diag). Une valeur
-non numérique est signalée, pas droppée silencieusement (écart assumé avec
-l'ingestion firmware : le DOM est textuel, le champ `attr` décide).
+`collect_value` sert de **mission de recette** du socle (L0) : elle
+valide appairage, onglet, bail, transport avant toute plateforme.
 
+## 6. Agents, onglet, verrou, rythme
 
-## 8. Consentement : cast != apply (décision 10)
+**D255 — Un PC = un agent ; un onglet par plateforme, jamais deux.**
+L'installation de l'extension porte un seul agent (consigne : un agent
+par machine). L'agent ouvre ses onglets dans un groupe à son nom et
+n'agit sur aucun autre onglet. Il tient **au plus un onglet par
+plateforme** (un X, un Facebook, un YouTube, un TikTok, un par site web)
+et ces onglets travaillent **en parallèle** ; jamais deux onglets X.
+Les missions d'une même plateforme passent **l'une après l'autre** dans
+son onglet ; un live occupe l'onglet de sa plateforme tant qu'il dure,
+les autres missions de cette plateforme attendent, celles des autres
+plateformes continuent. Plus de débit sur une plateforme = plus de
+machines. Exception : une plateforme qui exige un onglet visible (TikTok)
+prend le PC pour elle seule (D269). L'extension ne peut pas empêcher deux profils d'un même PC
+d'être appairés : la règle est affichée, pas imposée (aucune API ne
+donne d'identifiant matériel).
 
-Recevoir des règles n'applique rien. L'**apply** est par tâche, consenti et
-journalisé :
+**D269 — Plateformes exclusives : un agent dédié à une seule plateforme.**
+*Statut : note de conception, à régler finement par les mesures du
+§16.1 ; aucune valeur `needs_foreground` n'est figée avant sa mesure.*
 
-- déclencheur `tab-open` : l'user ouvre l'onglet → la règle s'applique sur
-  cette page (user-délégué, v1) ;
-- déclencheur `interval` : `chrome.alarms` >= 30 s + jitter — l'extension
-  ouvre/attache un onglet seulement si `host_permissions` couvre l'origin
-  **consentie à l'installation de la règle** (prompt par origin, jamais
-  `<all_urls>` en v1) ;
-- chaque apply est journalisé localement (onglet, règle, ts) et rapporté
-  via l'ingestion diag.
+*Le problème.* Un navigateur ne montre qu'un onglet par fenêtre ; les
+autres sont « cachés » (`document.visibilityState = hidden`). Deux
+choses se produisent alors :
 
-## 9. Cycle de vie MV3 : connect-on-wake (décision 9)
+- le **site** réagit : certaines plateformes mettent la vidéo en pause
+  dès que l'onglet est caché (événement `visibilitychange`) et ne
+  chargent plus la suite du fil. C'est le cas signalé pour **TikTok**
+  (à confirmer par mesure) : en
+  arrière-plan, la vidéo s'arrête, l'enregistrement temps réel capte une
+  image figée et le défilement ne charge plus rien ;
+- le **navigateur** ralentit les onglets cachés (minuteries réduites à une
+  par seconde puis par minute, rendu suspendu) ; une fenêtre réduite, ou
+  entièrement recouverte par une autre, compte aussi comme cachée
+  (détection d'occlusion de Chrome), de même qu'une session verrouillée.
 
-Le service worker MV3 est éphémère — pas de WS persistant v1. Pattern :
+Une plateforme qui fonctionne en arrière-plan (lecture des réponses
+réseau, fichier direct) se partage sans problème ; une plateforme qui
+exige d'être visible ne peut pas partager le PC avec une autre.
 
-```
-wake (alarm >= 30 s + jitter, ou tab-open, ou on-navigate)
-  → connect WS /ws/device?device_id=… (jeton en en-tête Authorization, D154)
-  → Announce { chip: "extension", board: <chrome|firefox>, fw: version, caps: ["extension"] }
-  → ProvisionAck (admission Tier 2 permissive)
-  → drain : Subscribe persistés + RulesConfig (re-cast desired-state)
-  → Ack cmd_id
-  → exécution des règles dues (alarmes dues, onglet ouvert)
-  → StateReport (valeurs lues)
-  → disconnect
-```
+*La règle.* Chaque adaptateur déclare `needs_foreground` (constante
+compilée, revue à chaque version de l'adaptateur) :
 
-Compatible serveur **sans changement** : c'est exactement la séquence
-announce → re-cast que `ws_device.rs` exécute à chaque reconnexion d'un
-device (un reflash/reconnect retrouve ses configs sans EEPROM).
+- `false` (X, Facebook, web générique, YouTube hors live selon mesure) :
+  l'onglet tourne en parallèle des autres (D255) ;
+- `true` (TikTok attendu, et toute plateforme dont la mesure montre
+  une pause en arrière-plan) : **1 agent = 1 PC = 1 plateforme**. L'agent
+  passe en mode `dedicated:<plateforme>`, n'ouvre que cet onglet, dans
+  une fenêtre à lui gardée au premier plan ; aucune autre plateforme ne
+  tourne sur ce PC.
 
+Le mode de l'agent (`shared` ou `dedicated:<plateforme>`) se choisit
+dans PNEX (page de l'agent) ; le serveur n'assigne une mission d'une
+plateforme exclusive qu'à un agent dédié à cette plateforme, et
+n'assigne rien d'autre à un agent dédié. Sans agent dédié en ligne, la
+mission reste `blocked`, code `ext-needs-dedicated-agent` (geste dans
+l'UI : dédier un agent). L'agent vérifie lui-même, à chaque pas, que
+son onglet est visible ; s'il ne l'est plus (fenêtre réduite,
+recouverte, écran verrouillé), il met la mission en pause,
+code `ext-tab-hidden`, plutôt que d'enregistrer du vide.
 
-## 10. Sécurité
+Consigne d'exploitation affichée : un PC dédié reste allumé, session
+ouverte, écran non verrouillé, fenêtre de l'agent au premier plan.
 
-- Plan données : device token **jamais** le JWT user ; révocable à tout
-  moment (`is_active`, DELETE), revalidé en session par le serveur.
-- Secrets en `chrome.storage.session` (jamais localStorage).
-- MV3 : pas de code distant (CSP), config-as-data (les règles sont des
-  données sérialisées, jamais du JS évalué).
-- `host_permissions` par origin consentie (pas de wildcard v1).
-- Anti-injection : le contenu lu vient du DOM (texte/attribut), jamais
-  interprété ; `html` ne fait que capturer, pas exécuter.
-- Journal d'apply consultable dans la page d'options.
+**D257 — Bail serveur par cible.** Côté agent, la règle « un onglet par
+plateforme » est tenue localement (file par plateforme). Côté serveur,
+une mission ne s'exécute que si son
+agent tient le bail `pnex:ext:v1:{org}:lease:{target}` (script Lua, école
+D108 `device_liveness` : prise, renouvellement, libération par
+propriétaire). Le serveur assigne une mission à un agent en ligne,
+sans bail actif ailleurs ; perte de connexion = bail
+expiré = réassignation. Deux agents ne suivent jamais la même cible.
 
-## 11. Non-goals v1
+**D258 — Rythme d'humain, borné des deux côtés.** Budget par agent :
+une action de navigation au plus toutes les N s (défaut 20 s, jitter
+±30 %), défilement progressif, pause longue aléatoire entre deux
+missions, plafond de vidéos capturées par heure. Valeurs fixées par le
+serveur (réglage org), **bornes dures compilées** dans l'extension
+(impossible de descendre sous le plancher). Mur de connexion, captcha,
+message de limite → mission `blocked` + code (`ext-login-required`,
+`ext-challenge`, `ext-rate-limited`), notification à l'org, reprise
+manuelle seulement.
 
-- Pas de REST ingest fallback (décision 1 : différé).
-- Pas de `chrome.storage.local` pour les secrets.
-- Pas de wildcard `<all_urls>`.
-- Pas de provider de scraping (c'est C1a, côté serveur).
-- Pas de WS persistant v1 (service worker éphémère).
-- Firefox : WebExtensions compatibles visées, mais le développement et les
-  tests v1 ciblent Chrome MV3 ; Firefox suit en C3.
+## 7. Registre des vidéos et capture
 
-## 12. Questions ouvertes (non bloquantes pour la spec)
+**D259 — Registre `social_videos`.** `(org_id, platform, platform_id)`
+unique ; `account`, `url`, `published_at`, `metadata` jsonb (texte,
+auteur affiché, compteurs, durée, langue : ce que l'adaptateur relève),
+`state` (`seen | captured | skipped | failed`), `state_code`,
+`media_asset_id` (option), `transcript_source` (`platform | pnex | none`),
+`first_seen_at`, `captured_at`, `mission_id`.
+Avant toute capture, l'agent envoie la liste des `platform_id` relevés
+(`known?`) et ne capture que les inconnus : on ne repasse jamais sur une
+vidéo déjà prise, quel que soit l'agent.
 
-- Tolérance du firmware à un variant `ServerMsg` inconnu (théoriquement
-  sans objet : le serveur n'envoie `RulesConfig` qu'aux devices extension).
-- Format exact du `StateReport` pour les valeurs textuelles (le contrat
-  actuel porte des valeurs numériques floatées au bord — l'extension voudra
-  peut-être porter du texte brut ; décision à prendre à l'implémentation
-  C3, école `ts_source` : soit champ `raw` additif, soit droppé).
-- UX de pairing (QR code comme l'app mobile ? saisie manuelle de l'URL +
-  sélection du device ?).
+**D267 — Sous-titres de la plateforme d'abord.** Quand la plateforme
+publie une piste de sous-titres pour une vidéo (fréquent sur TikTok et
+YouTube, rare sur X ; jamais garanti pour un live), l'adaptateur la
+relève (WebVTT/JSON, langue, origine auto/manuelle) et l'envoie comme
+transcription horodatée de la vidéo (`transcript_source = platform`),
+indexée comme une transcription PNEX. Paramètre de mission
+`media_policy` :
 
-## 13. Plan de tests et acceptation
+- `if_no_transcript` (défaut) : sous-titres trouvés → pas de
+  téléchargement ni d'ASR chez nous ; absents → téléchargement + ASR ;
+- `always` : on télécharge toujours (vision, preuve, sous-titres jugés
+  peu fiables) ; les sous-titres de la plateforme sont gardés à côté ;
+- `metadata_only` : registre et sous-titres seulement.
 
-- Vectors proto réutilisés (`pnex-core` golden vectors) pour le framing
-  WASM — même référence que le firmware.
-- Device « ext » de staging : séquence announce → drain → report rejouée
-  par un harnais node (mêmes assertions que `tests/ws_device.rs`).
-- E2E UI : écrire une règle dans PNeX → la voir castée à l'announce →
-  valeur lue visible en Visualisation (`device_id=ext_…`).
+Un **live est toujours enregistré** (D260) : aucune plateforme ne
+garantit une transcription ni une rediffusion. Limite assumée : une
+vidéo non téléchargée peut disparaître de la plateforme ; seuls le texte
+et les métadonnées restent.
 
-## 14. Récapitulatif des décisions
+**D260 — Capture : fichier direct si observé, sinon temps réel.**
+
+- **Fichier direct** : si l'adaptateur observe une URL progressive (mp4)
+  dans les réponses que la page reçoit déjà, l'agent la récupère dans la
+  session du navigateur et l'envoie par upload (§9) → `media_asset`
+  `video` lié à la ligne du registre.
+- **Temps réel** : sinon (flux segmenté, live), `captureStream()` sur
+  l'élément `<video>` + `MediaRecorder` (webm), à vitesse 1×, découpé en
+  segments.
+- **Jamais de déchiffrement** : élément protégé (EME/DRM) → `skipped`,
+  code `ext-drm-protected`.
+- **Live** : `watch_live` ouvre un flux média (`media_streams`) de kind
+  `browser`, porté par l'agent (`capture_on = device:<agent>`, école
+  D159) ; les segments suivent la chaîne existante (transcription,
+  plages, vision). Le contrôle d'upload actuel n'accepte que du WAV
+  (`segments::accept_upload`) : il s'étend au webm (vidéo) avec
+  extraction audio côté serveur (lot L4).
+
+**D268 — Rétention portée par la mission, vocabulaire D161.** La durée
+de conservation appartient à la source, pas au flow (un flow traite ce
+qui arrive ; il ne possède pas le blob). Chaque mission porte
+`media_retention` : `none` (blob supprimé dès la transcription réussie,
+école D161), `days:N` (glissante, même pruner horaire), `keep` ; défaut
+= réglage d'org « rétention des captures navigateur ». Un live hérite
+de la mission sur son flux `browser` (`audio_retention` existant, plus
+une rétention vidéo du même vocabulaire). Le texte (transcriptions,
+métadonnées, registre) est durable, comme D165. `AudioRetention` de
+`pnex-core` est généralisé en `MediaRetention` (même format filaire).
+
+**D261 — Collecte HTML = document, jamais rendu.** `collect_page` envoie
+le DOM sérialisé (scripts, iframes, gestionnaires d'événements retirés
+côté extension **et** re-nettoyé côté serveur) + le texte lisible.
+Stocké comme `media_asset` `document` versionné (une version par
+changement de texte, pas par refresh), indexé par `doc-search`. Le HTML
+n'est jamais servi sur l'origine de l'app (R11–R13) : téléchargement ou
+texte seulement.
+
+## 8. Adaptateurs
+
+Un adaptateur par plateforme, en Rust, compilé dans le wasm :
+
+- `matches(url)` : l'adaptateur s'applique-t-il à cet onglet ;
+- `observe(response)` : décode une réponse relayée par le crochet MAIN
+  (JSON de la plateforme) → posts, vidéos, URLs média ;
+- `scan(dom)` : repli DOM quand rien n'est observé ;
+- `next_step(state)` : défiler, attendre, arrêter (curseur atteint).
+
+Les formats des plateformes changent sans prévenir : un décodage en
+échec n'est **jamais silencieux** (code `ext-adapter-outdated` + version
+de l'adaptateur dans l'état de la mission) ; la correction passe par une
+nouvelle version de l'extension (pas de code distant, MV3). Fixtures de
+réponses réelles anonymisées en tests unitaires par adaptateur.
+
+Ordre : web générique (L1), X (L2), TikTok (L3), lives (L4), YouTube
+(selon Q1).
+
+## 9. Identité, transport, API
+
+**D262 — Plan données : ticket device → `/ws/extension` + upload HTTP.**
+
+- Appairage (plan gestion) : la page d'options fait un login OIDC PKCE
+  (`identity.launchWebAuthFlow`, Chrome et Firefox) ; c'est le seul
+  geste de l'utilisateur. L'extension crée l'agent
+  (`POST /api/v1/devices`, classe `extension`, D266) et reçoit le jeton
+  device dans le 201. Le JWT user est ensuite oublié.
+- Un navigateur ne peut ni présenter de certificat client (mTLS D153)
+  ni poser d'en-tête `Authorization` sur un websocket. Donc :
+  `POST /api/v1/extension/ws-ticket` (jeton device en en-tête, `fetch`)
+  → ticket à usage unique (école `ws-ticket`, lié au device et à l'org)
+  → `/ws/extension?ticket=…`. Admission refusée à tout device qui n'est
+  pas de classe `extension` ; les devices `extension` sont refusés sur
+  `/ws/device`, `/ws/camera`, `/ws/media`.
+- Messages (JSON) : serveur → agent `missions` (desired-state complet à
+  la connexion puis à chaque changement), `lease` (accordé/perdu),
+  `known` (réponse registre) ; agent → serveur `state` (mission, état,
+  code), `seen` (posts relevés), `known?`, `report` (`collect_value`),
+  `ping`.
+- Binaire : `POST /api/v1/extension/uploads` (jeton device), multipart
+  `{mission_id, kind: page|video|segment, ref}` ; mêmes contrôles que
+  l'upload média (type réel, plafonds, dédup) ; débit borné par device
+  (`RateLimiter`, compteur Valkey partagé entre pods).
+- Org et device viennent toujours de l'identité du jeton (R1) ; tout ce
+  que l'agent envoie est non fiable et revalidé (missions qui ne sont pas
+  les siennes → 404).
+
+**Noise** : la couche Noise des devices (D156) n'est gardée que si `snow`
+compile et tient en wasm32 (vérification au lot L0). Sinon, TLS seul pour
+la classe `extension`, écart consigné au registre `security.md` §7 :
+l'agent ne transporte aucune commande physique, seulement des données
+lues sur le web.
+
+**D266 — Identité de l'installation sans geste de l'utilisateur.** Une
+extension n'a accès ni au nom de la machine ni à un identifiant
+matériel. À l'installation, elle génère une **paire de clés WebCrypto
+non extractible** (ECDSA P-256, gardée en IndexedDB de l'extension :
+utilisable, jamais exportable). À l'appairage elle envoie la clé
+publique + une empreinte descriptive relevée automatiquement
+(navigateur et version, OS et architecture via
+`navigator.userAgentData`, langue, fuseau, écran, version de
+l'extension) ; le serveur stocke la clé publique dans les métadonnées de
+l'agent et propose un nom par défaut (« Chrome · Linux · Paris »),
+renommable dans PNEX. Chaque demande de ticket est **signée** (défi
+serveur) : un jeton copié ailleurs, sans la clé, n'ouvre rien.
+Réappairer depuis la même installation remplace l'agent existant au lieu
+d'en créer un second. C'est l'équivalent navigateur du certificat client
+D153, au niveau que permet un navigateur.
+
+**D263 — Jeton persistant, révocable.** Un agent tourne longtemps : la v1
+(`storage.session`, re-appairage à chaque redémarrage) est abandonnée.
+Jeton en `storage.local` de l'extension (inaccessible aux pages),
+révocable depuis PNEX (`is_active`, suppression), rotation à chaque
+appairage. Aucun identifiant de plateforme n'est stocké par PNEX ni par
+l'extension : l'agent utilise la session déjà ouverte dans le profil
+(D265).
+
+API, contrat et MCP : chaque route suit `api-contract.md` (annotation,
+`ErrorDetail`, `Paginated`), le CRUD `extension-missions` et la lecture
+du registre (`GET /api/v1/extension/videos`) sont des routes org
+`can_write`/lecture ; les routes `ws-ticket`, `uploads`, `ws` sont
+`EXCLUDED` du MCP (motif runtime). Créer une mission déclenche une
+collecte sortante : `EXCLUDED` (motif sortant), lecture des missions et
+du registre `EXPOSED`.
+
+## 10. Compte et profil
+
+**D265 — Profil dédié recommandé, jamais imposé.** L'agent agit avec la
+session déjà connectée dans son profil navigateur. Recommandé (affiché à
+l'appairage) : un profil navigateur dédié, avec un compte dédié aux
+plateformes, sur une machine ou une VM allumée en continu. L'extension
+ne remplit jamais de formulaire de connexion.
+
+## 11. Rust → wasm, Chrome puis Firefox
+
+**D264 — Un crate `pnex-extension` (wasm-bindgen), JS réduit au strict.**
+
+- Rust : agents, missions, protocole, registre, adaptateurs, budget,
+  dans le service worker (`wasm-unsafe-eval` dans la CSP de l'extension)
+  et le content script isolé. Types partagés avec le serveur via
+  `pnex-core` (features wasm-safe seulement).
+- JS : manifest, chargeurs wasm, crochet MAIN (§4).
+- Page d'options : Dioxus web, textes par `t!` (fluent fr-FR/en-US,
+  mêmes gardes de parité et de lexique que le front).
+- **Chemin commun Chrome/Firefox** : `captureStream()` +
+  `MediaRecorder` sur l'élément `<video>` (`mozCaptureStream` sous
+  Firefox), pas de `tabCapture` ni de `pageCapture`. Seule différence :
+  Chrome enregistre dans un document hors écran (le service worker n'a
+  pas `MediaRecorder`), Firefox dans sa page de fond.
+- Permissions : `tabs`, `tabGroups` (Chrome ; Firefox : onglets dans une
+  fenêtre dédiée), `storage`, `alarms`, `identity`, `offscreen`
+  (Chrome) ; `optional_host_permissions` demandées **par plateforme** à
+  la première mission qui la vise, jamais `<all_urls>`.
+
+## 12. Assistant, UI, i18n
+
+- UI PNEX : page **Agents navigateur** (liste des agents, en ligne,
+  missions, état, codes), CRUD missions (socle CRUD, tableau + pager),
+  vue du registre des vidéos (filtres plateforme/compte/état, lien vers
+  le média capturé). Mots au lexique (`design-system.md` §7) : « Agent
+  navigateur », « Mission », « Cible », « Registre des vidéos ».
+- Codes d'erreur `ext-*` dans `err_codes::ALL` + clés `err-*` dans les
+  deux `.ftl`.
+- Assistant : fiche `assistant-kb` (agents, missions, codes `blocked` →
+  geste dans l'UI), lecture des missions et du registre ; aucun outil
+  qui crée ou lance une mission (collecte sortante, même logique que
+  deploy, D144).
+
+## 13. Sécurité (grille `security.md` §6, points saillants)
+
+- R1/R2 : org depuis l'identité (jeton device ou principal), garde de rôle
+  sur le CRUD + test viewer → 403.
+- Contenu collecté = non fiable : jamais exécuté, jamais rendu en HTML,
+  texte traité comme injection potentielle par l'assistant et les
+  synthèses.
+- Plafonds : taille par upload, débit par device, nombre d'agents par
+  org, missions par agent.
+- Extension : pas de code distant, missions = données validées par
+  schéma, crochet MAIN sans privilège (il ne voit que la page).
+- Révocation : désactiver l'agent coupe ticket, websocket et uploads à
+  la prochaine requête.
+
+## 14. Lots
+
+| Lot | Contenu | Sortie |
+|---|---|---|
+| L0 | crate `pnex-extension`, appairage OIDC, identité d'installation (D266), classe `extension`, ticket signé + `/ws/extension`, onglet/groupe, bail, `collect_value` ; vérif `snow` wasm32 | valeur lue visible en Visualisation |
+| L1 | upload, `collect_page`, adaptateur web générique | page versionnée et cherchable |
+| L2 | registre `social_videos`, `follow_account` X, capture fichier direct, sous-titres plateforme (D267), rétention (D268) | vidéos X dans les médias, sans doublon |
+| L3 | adaptateur TikTok, mode d'agent `dedicated` (D269), contrôle de visibilité | idem TikTok, sur un PC dédié |
+| L4 | `watch_live`, flux `browser`, upload webm + extraction audio | live transcrit dans la chaîne média |
+| L5 | portage Firefox (fond en page, fenêtre dédiée) | mêmes e2e sous Firefox |
+| L6 | YouTube (selon Q1) | — |
+
+## 15. Questions ouvertes
+
+1. **YouTube VOD** : capture du fichier, ou live + métadonnées seulement
+   (proposé) ?
+2. **Noise en wasm32** : à mesurer au L0 (taille, compatibilité
+   `getrandom`).
+3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
+   du §16.1, plateforme par plateforme.
+
+Tranchées le 2026-10-18 : un agent par PC (D255) ; téléchargement quand
+c'est possible, enregistrement en direct pour les lives (D260) ;
+sous-titres de la plateforme d'abord (D267) ; rétention par mission
+(D268).
+
+## 16. Tests et acceptation
+
+- Unitaires : adaptateurs sur fixtures de réponses, budget (planchers),
+  normalisation des cibles, décodeurs du protocole (golden vectors
+  partagés avec le serveur).
+- Backend : ticket (usage unique, classe), bail (deux agents, une cible),
+  registre (`known?`), upload (type, plafond, dédup, org), viewer → 403.
+- E2E Chrome (Playwright + extension chargée) : appairer, créer une
+  mission `collect_page` sur une page de test locale, voir le document ;
+  `follow_account` sur un faux site de test qui imite la forme des
+  réponses (jamais une vraie plateforme en CI).
+
+### 16.1 Mesures d'arrière-plan (réglage de D269)
+
+Avant de figer `needs_foreground` d'un adaptateur, mesurer sur un profil
+de test, compte de test, pour chaque plateforme et chaque usage (fil,
+vidéo, live), dans quatre états de l'onglet : visible, autre onglet de
+la même fenêtre au premier plan, fenêtre recouverte, fenêtre réduite.
+Relever :
+
+- la vidéo continue-t-elle (`currentTime` avance, images non figées dans
+  l'enregistrement) ;
+- le fil charge-t-il de nouveaux éléments au défilement ;
+- les réponses réseau observées par le crochet arrivent-elles encore ;
+- le rythme réel des pas de l'agent (minuteries ralenties).
+
+Le contrôle de visibilité de l'agent (`ext-tab-hidden`) et le mode
+`dedicated` sont codés quel que soit le résultat ; seule la valeur par
+plateforme dépend des mesures. Tableau à remplir au fil des lots, revu à
+chaque version d'adaptateur (les plateformes changent) :
+
+| Plateforme | Usage | Onglet caché | Fenêtre recouverte | Fenêtre réduite | `needs_foreground` | Date |
+|---|---|---|---|---|---|---|
+| X | fil + vidéo | à mesurer | à mesurer | à mesurer | — | — |
+| X | live | à mesurer | à mesurer | à mesurer | — | — |
+| TikTok | fil + vidéo | pause signalée | à mesurer | à mesurer | — | — |
+| TikTok | live | à mesurer | à mesurer | à mesurer | — | — |
+| YouTube | live | à mesurer | à mesurer | à mesurer | — | — |
+| Facebook | fil + vidéo | à mesurer | à mesurer | à mesurer | — | — |
+| Web générique | page | à mesurer | à mesurer | à mesurer | — | — |
+
+## 17. Récapitulatif des décisions
 
 | # | Décision | Choix |
 |---|---|---|
-| 1 | Transport | WS `/ws/device` unique ; REST fallback différé |
-| 2 | Crypto client | WASM `pnex-core` (framing partagé, golden vectors) |
-| 3 | Stockage des règles | Nouvelle entité org `extension_rules` + CRUD `can_write` |
-| 4 | Format de sync | Nouveau variant `ServerMsg::RulesConfig` (additif) |
-| 5 | `RuleSpec` | `{rule_id, origin, selector, attr?, interval_ms, enabled}` |
-| 6 | Ack d'apply | `DeviceMsg::Ack { cmd_id }` existant |
-| 7 | Login | OIDC PKCE (plan gestion) / device token (plan données) |
-| 8 | Persistance locale | `chrome.storage.session` |
-| 9 | Cycle de vie | Connect-on-wake (pas de WS persistant v1) |
-| 10 | Consentement | Cast != apply par tâche, host_permissions par origin |
+| D254 | Périmètre | sources publiques déclarées une par une, rythme humain, aucun contournement ; YouTube VOD exclu (Q1) |
+| D255 | Agent | un PC = un agent ; ≤ 1 onglet par plateforme, plateformes en parallèle, missions d'une plateforme en série |
+| D256 | Missions | `collect_value`, `collect_page`, `follow_account`, `watch_live` ; entité `extension_missions` |
+| D257 | Verrou | bail Valkey par cible (école D108) |
+| D258 | Rythme | budget serveur, planchers compilés, `blocked` sur tout obstacle |
+| D259 | Registre | `social_videos` unique `(org, platform, platform_id)`, `known?` avant capture |
+| D260 | Capture | fichier direct si observé, sinon `captureStream` 1× ; live = flux `browser` ; jamais de DRM |
+| D261 | HTML | document versionné, nettoyé deux fois, jamais rendu |
+| D262 | Transport | ticket device → `/ws/extension` + upload HTTP ; Noise si wasm32 le permet |
+| D263 | Jeton | `storage.local`, révocable, rotation à l'appairage |
+| D264 | Code | crate wasm `pnex-extension`, JS minimal, chemin commun Chrome/Firefox |
+| D265 | Compte | session du profil, profil dédié recommandé, aucun identifiant stocké |
+| D266 | Identité | paire de clés WebCrypto non extractible + empreinte auto, tickets signés |
+| D267 | Transcription | sous-titres de la plateforme d'abord, `media_policy`, live toujours enregistré |
+| D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
+| D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |
