@@ -711,6 +711,9 @@ pub const EXTENSION_AGENT_PAIR_ONLY: &str = "extension-agent-pair-only";
 pub const EXTENSION_TICKET_REFUSED: &str = "extension-ticket-refused";
 /// Websocket tickets unavailable (Valkey unreachable).
 pub const EXTENSION_TICKET_UNAVAILABLE: &str = "extension-ticket-unavailable";
+/// Capture upload refused: unknown agent token, bad or reused signature,
+/// body not matching its signature.
+pub const EXTENSION_UPLOAD_REFUSED: &str = "extension-upload-refused";
 /// This server ships no browser extension build (`PNEX_EXTENSION_DIST_DIR`).
 pub const EXTENSION_DIST_NOT_FOUND: &str = "extension-dist-not-found";
 /// Agent state: the selector matched nothing on the page.
@@ -1057,6 +1060,7 @@ pub const ALL: &[&str] = &[
     EXTENSION_TICKET_REFUSED,
     EXTENSION_TICKET_UNAVAILABLE,
     EXTENSION_DIST_NOT_FOUND,
+    EXTENSION_UPLOAD_REFUSED,
     EXT_SELECTOR_NOT_FOUND,
     EXT_VALUE_NOT_NUMERIC,
     EXT_LOGIN_REQUIRED,

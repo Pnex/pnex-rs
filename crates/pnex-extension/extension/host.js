@@ -6,9 +6,12 @@ const api = globalThis.browser ?? globalThis.chrome;
 
 // ── HTTP ────────────────────────────────────────────────────────────────
 
-/** Returns JSON text `{"status": n, "body": "..."}`; throws on network errors. */
-export async function http(method, url, bearer, org, body) {
-  const headers = {};
+/**
+ * Returns JSON text `{"status": n, "body": "..."}`; throws on network errors.
+ * `extra`: JSON object of more headers (signed uploads), or "".
+ */
+export async function http(method, url, bearer, org, body, extra) {
+  const headers = extra ? JSON.parse(extra) : {};
   if (bearer) headers["Authorization"] = `Bearer ${bearer}`;
   if (org) headers["X-Org-Id"] = org;
   if (body) headers["Content-Type"] = "application/json";
@@ -210,6 +213,19 @@ export async function read_value(tabId, selector, attr) {
     },
   });
   return JSON.stringify(result?.result ?? { found: false, value: "" });
+}
+
+/** Readable text of the tab: JSON `{"url", "title", "text"}` (1 MB cap). */
+export async function read_page(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    func: () => ({
+      url: location.href,
+      title: document.title ?? "",
+      text: (document.body?.innerText ?? "").slice(0, 1000000),
+    }),
+  });
+  return JSON.stringify(result?.result ?? { url: "", title: "", text: "" });
 }
 
 /** Origin pattern of a page (`https://host/*`). */

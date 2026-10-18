@@ -472,6 +472,20 @@ L0c (page « Agents navigateur »).
   « Agent navigateur » / « Mission » + règle « collecteur » dans la garde.
   Vérifiée dans Chromium (fr).
 
+- **L1 livré le 2026-10-18** : mission `collect_page` ; l'agent lit le
+  texte lisible de la page (`innerText`, 1 Mo au plus) et l'envoie à
+  `POST /api/v1/extension/uploads/page`, signé par la clé d'installation
+  (horodatage, mission et SHA-256 du corps, signature à usage unique),
+  limité à 30 captures par minute et par agent. Le serveur range le texte
+  en document Markdown de la mission (titre, source, texte), indexé par la
+  recherche documentaire ; un texte inchangé n'ajoute pas de version
+  (empreinte dans `extension_missions.cursor`, migration 000026). Essai
+  réel Chromium : document créé avec le texte de la page.
+  **Amendement D261** : aucun HTML ne quitte la page en v1 (la liste
+  blanche d'upload le refuse et un texte suffit à la recherche) ; un
+  instantané HTML nettoyé reviendra si un besoin de preuve visuelle
+  l'exige.
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip

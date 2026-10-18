@@ -38,6 +38,44 @@ pub fn ticket_message(device_id: &str, ts_ms: i64) -> String {
     format!("pnex-ext-ticket\n{device_id}\n{ts_ms}")
 }
 
+/// Message the install key signs to upload a capture (D262): bound to the
+/// mission and to the SHA-256 (hex) of the body. Sent as the `X-Pnex-Ts`
+/// and `X-Pnex-Signature` headers.
+pub fn upload_message(device_id: &str, ts_ms: i64, mission_id: &str, body_sha256: &str) -> String {
+    format!("pnex-ext-upload\n{device_id}\n{ts_ms}\n{mission_id}\n{body_sha256}")
+}
+
+/// Largest readable text of a page snapshot (bytes).
+pub const PAGE_TEXT_MAX: usize = 1024 * 1024;
+/// What a `collect_page` mission uploads (D261): the readable text only,
+/// stored as a Markdown document (title, source, text) and indexed by the
+/// document search. No HTML leaves the page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PageSnapshot {
+    pub mission_id: String,
+    /// Address after redirects.
+    pub url: String,
+    #[serde(default)]
+    pub title: String,
+    /// Readable text (what is indexed and versioned).
+    pub text: String,
+}
+
+/// Answer of a page upload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PageStored {
+    /// Media document of the mission.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub asset_id: String,
+    /// Current version number of the document.
+    #[cfg_attr(feature = "openapi", schema(format = Int64))]
+    pub version: i64,
+    /// `false` when the text did not change (no new version).
+    pub changed: bool,
+}
+
 /// What the extension reads by itself at pairing (no user input, D266).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -173,19 +211,30 @@ fn default_attr() -> String {
     ATTR_TEXT.into()
 }
 
-/// A typed mission (D256). Other kinds (`collect_page`, `follow_account`,
-/// `watch_live`) arrive with their lots.
+/// `collect_page` (D261): refresh a page, keep its readable text (and the
+/// cleaned HTML) as a versioned document.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CollectPageParams {
+    /// http(s) page, without credentials.
+    pub url: String,
+}
+
+/// A typed mission (D256). Other kinds (`follow_account`, `watch_live`)
+/// arrive with their lots.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", content = "params", rename_all = "snake_case")]
 pub enum MissionSpec {
     CollectValue(CollectValueParams),
+    CollectPage(CollectPageParams),
 }
 
 impl MissionSpec {
     pub fn kind(&self) -> &'static str {
         match self {
             Self::CollectValue(_) => "collect_value",
+            Self::CollectPage(_) => "collect_page",
         }
     }
 }
@@ -358,6 +407,10 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
                 target,
             ))
         }
+        MissionSpec::CollectPage(p) => {
+            let (url, target) = check_page_url(&p.url, "spec.params.url")?;
+            Ok((MissionSpec::CollectPage(CollectPageParams { url }), target))
+        }
     }
 }
 
@@ -467,7 +520,9 @@ mod tests {
         .unwrap();
         assert_eq!(target, "web:example.org/a/b");
         assert_eq!(platform_of(&target), "web:example.org");
-        let MissionSpec::CollectValue(p) = spec;
+        let MissionSpec::CollectValue(p) = spec else {
+            panic!("collect_value expected");
+        };
         assert_eq!(p.url, "https://example.org/a/b?x=1");
         assert_eq!(p.selector, ".price");
     }

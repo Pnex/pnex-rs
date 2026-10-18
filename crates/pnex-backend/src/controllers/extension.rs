@@ -29,6 +29,7 @@ pub fn routes() -> Routes {
         .add("/agents/{id}", patch(update_agent))
         .add("/ws-ticket", post(ws_ticket))
         .add("/download", get(download))
+        .add("/uploads/page", post(upload_page))
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -45,6 +46,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         update_agent,
         ws_ticket,
         download,
+        upload_page,
         missions,
         mission,
         create_mission,
@@ -259,7 +261,11 @@ async fn ws_ticket(
     let Some(token) = super::device_link::device_token(&headers) else {
         return refused();
     };
-    let agent = match extension::authenticate(&ctx.db, token, req.ts, &req.signature).await {
+    let agent = match extension::authenticate(&ctx.db, token, req.ts, &req.signature, |device_id| {
+        pnex_core::browser_agent::ticket_message(device_id, req.ts)
+    })
+    .await
+    {
         Ok(Some(agent)) => agent,
         Ok(None) => return refused(),
         Err(e) => {
@@ -402,6 +408,107 @@ async fn download(headers: axum::http::HeaderMap) -> Result<Response> {
         bytes,
     )
         .into_response())
+}
+
+/// Captures per agent and minute (a page every 20 s per site, a few sites).
+const UPLOADS_PER_MINUTE: u32 = 30;
+
+/// `POST /api/v1/extension/uploads/page` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/page",
+    tag = "extension",
+    operation_id = "extension_upload_page",
+    summary = "Upload a page capture of a browser agent",
+    description = "Called by a browser agent for its `collect_page` missions, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, the mission and the SHA-256 of the body, usable once). Stores the readable text as a version of the mission's Markdown document, indexed by the document search; an unchanged text adds no version. Rate-limited per agent.",
+    request_body = pnex_core::browser_agent::PageSnapshot,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::PageStored),
+        (status = 400, description = "`field-invalid`: `errors.fields.text` `required` or `max_length:N`", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`: not a running page mission of this agent", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_page(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    use sha2::Digest as _;
+    let refused = || {
+        Err(Error::CustomError(
+            StatusCode::UNAUTHORIZED,
+            ErrorDetail::new(
+                err_codes::EXTENSION_UPLOAD_REFUSED,
+                "Unknown agent token or bad signature.",
+            ),
+        ))
+    };
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let (Some(token), Some(ts), Some(signature)) = (
+        super::device_link::device_token(&headers),
+        header("x-pnex-ts").and_then(|v| v.trim().parse::<i64>().ok()),
+        header("x-pnex-signature"),
+    ) else {
+        return refused();
+    };
+    let Ok(snapshot) = serde_json::from_slice::<pnex_core::browser_agent::PageSnapshot>(&raw)
+    else {
+        return Ok(super::field_error("body", err_codes::FIELD_INVALID));
+    };
+    let body_sha: String = sha2::Sha256::digest(&raw)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let agent = match extension::authenticate(&ctx.db, token, ts, signature, |device_id| {
+        pnex_core::browser_agent::upload_message(device_id, ts, &snapshot.mission_id, &body_sha)
+    })
+    .await
+    {
+        Ok(Some(agent)) => agent,
+        Ok(None) => return refused(),
+        Err(e) => {
+            tracing::error!(error = %e, "browser agent lookup failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    match extension::first_use(&ctx.config, signature).await {
+        Some(true) => {}
+        Some(false) => return refused(),
+        None => {
+            return Err(Error::CustomError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorDetail::new(
+                    err_codes::EXTENSION_TICKET_UNAVAILABLE,
+                    "Browser agent captures are unavailable.",
+                ),
+            ))
+        }
+    }
+    let limiter = crate::services::rate_limit::RateLimiter::new(
+        crate::services::shared_valkey::conn(&ctx.config).await,
+    );
+    let bucket = format!("extension-upload:{}", agent.device_registry_id);
+    if let crate::services::rate_limit::Decision::Deny { .. } = limiter
+        .hit(
+            &bucket,
+            UPLOADS_PER_MINUTE,
+            std::time::Duration::from_secs(60),
+        )
+        .await
+    {
+        return Err(Error::CustomError(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorDetail::new(err_codes::RATE_LIMITED, "Too many captures."),
+        ));
+    }
+    match extension::store_page(&ctx, &agent, &snapshot).await {
+        Ok(stored) => Ok((StatusCode::CREATED, format::json(stored)).into_response()),
+        Err(e) => extension_error(e),
+    }
 }
 
 /// `GET /api/v1/extension/missions` — every member.

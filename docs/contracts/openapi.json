@@ -3076,6 +3076,19 @@
         ],
         "type": "object"
       },
+      "CollectPageParams": {
+        "description": "`collect_page` (D261): refresh a page, keep its readable text (and the\ncleaned HTML) as a versioned document.",
+        "properties": {
+          "url": {
+            "description": "http(s) page, without credentials.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "type": "object"
+      },
       "CollectValueParams": {
         "description": "`collect_value` (v1 school): refresh a page, read one value.",
         "properties": {
@@ -9223,7 +9236,7 @@
         "type": "object"
       },
       "MissionSpec": {
-        "description": "A typed mission (D256). Other kinds (`collect_page`, `follow_account`,\n`watch_live`) arrive with their lots.",
+        "description": "A typed mission (D256). Other kinds (`follow_account`, `watch_live`)\narrive with their lots.",
         "oneOf": [
           {
             "properties": {
@@ -9235,6 +9248,24 @@
               },
               "params": {
                 "$ref": "#/components/schemas/CollectValueParams"
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "collect_page"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CollectPageParams"
               }
             },
             "required": [
@@ -10853,6 +10884,56 @@
           "name",
           "version",
           "description"
+        ],
+        "type": "object"
+      },
+      "PageSnapshot": {
+        "description": "What a `collect_page` mission uploads (D261): the readable text only,\nstored as a Markdown document (title, source, text) and indexed by the\ndocument search. No HTML leaves the page.",
+        "properties": {
+          "mission_id": {
+            "type": "string"
+          },
+          "text": {
+            "description": "Readable text (what is indexed and versioned).",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "description": "Address after redirects.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mission_id",
+          "url",
+          "text"
+        ],
+        "type": "object"
+      },
+      "PageStored": {
+        "description": "Answer of a page upload.",
+        "properties": {
+          "asset_id": {
+            "description": "Media document of the mission.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "changed": {
+            "description": "`false` when the text did not change (no new version).",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Current version number of the document.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asset_id",
+          "version",
+          "changed"
         ],
         "type": "object"
       },
@@ -33954,6 +34035,91 @@
           }
         ],
         "summary": "Update a browser agent mission",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/page": {
+      "post": {
+        "description": "Called by a browser agent for its `collect_page` missions, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, the mission and the SHA-256 of the body, usable once). Stores the readable text as a version of the mission's Markdown document, indexed by the document search; an unchanged text adds no version. Rate-limited per agent.",
+        "operationId": "extension_upload_page",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageSnapshot"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageStored"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields.text` `required` or `max_length:N`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`: not a running page mission of this agent"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`: too many captures"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`: Valkey unreachable"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Upload a page capture of a browser agent",
         "tags": [
           "extension"
         ]

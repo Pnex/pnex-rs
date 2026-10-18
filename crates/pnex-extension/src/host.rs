@@ -12,6 +12,7 @@ extern "C" {
         bearer: &str,
         org: &str,
         body: &str,
+        extra: &str,
     ) -> Result<JsValue, JsValue>;
     pub async fn sleep(ms: f64);
     pub fn now_ms() -> f64;
@@ -41,6 +42,8 @@ extern "C" {
     pub async fn agent_tab(id: f64, url: &str) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn read_value(tab: f64, selector: &str, attr: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn read_page(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn has_origin(url: &str) -> Result<JsValue, JsValue>;
 

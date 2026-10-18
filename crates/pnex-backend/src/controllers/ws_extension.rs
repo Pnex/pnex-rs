@@ -226,7 +226,10 @@ impl Link {
             }
             AgentMsg::Report { mission_id, value } => {
                 let id = self.held_id(&mission_id)?;
-                let MissionSpec::CollectValue(params) = &self.held.get(&mission_id)?.spec;
+                // Only a `collect_value` reports a value; pages are uploaded.
+                let MissionSpec::CollectValue(params) = &self.held.get(&mission_id)?.spec else {
+                    return None;
+                };
                 let number = value
                     .trim()
                     .chars()
