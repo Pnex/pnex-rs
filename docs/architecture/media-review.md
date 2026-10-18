@@ -1,6 +1,6 @@
 # PRD — Relecture d'un média : intervenants, transcription, attributions (D271–D280)
 
-> **Statut : proposé** (2026-10-18), zéro code. Précise et remplace la
+> **Statut : codé** (R0 → R5 livrés et poussés le 2026-10-18, 886adaab) ; ce qui reste est au §12. Précise et remplace la
 > partie écran de **D217** (`media-import-pipeline.md`). S'appuie sur
 > D211 (transcription d'un fichier), D216 (frise commune), K17
 > (apparitions), K43 (déclarations) et le Voice ID (`voice-id.md`,
@@ -345,13 +345,74 @@ est en différé), empreintes de voix non enrôlées.
 
 | # | Décision | Date |
 |---|---|---|
-| D271 | Écran de relecture = mise en page du Lab sur un média (onglet de la fiche), remplace l'écran de D217 | 2026-10-18 (proposé) |
-| D272 | Attribution = plage de temps → personne, origine, confiance, statut ; table `speech_attributions` | 2026-10-18 (proposé) |
-| D273 | Attribution manuelle sans reconnaissance vocale (plage, locuteur entier, raccourcis) | 2026-10-18 (proposé) |
-| D274 | Sélecteur de candidats (attendus / choisis / tous), coût borné | 2026-10-18 (proposé) |
-| D275 | Identification vocale par locuteur, proposition seulement, exception encadrée à K17 | 2026-10-18 (proposé) |
-| D276 | « Régénérer » = Réidentifier (sans ASR) ou Retranscrire ; attributions conservées ; passe d'origine `pnex` ou `platform` | 2026-10-18 (proposé) |
-| D277 | Enrôlement d'un profil vocal depuis les passages confirmés, consentement d'abord | 2026-10-18 (proposé) |
-| D278 | Attribution confirmée → apparition K17 ; sélection → déclaration K43 ; lien `published_by` (publié par) | 2026-10-18 (proposé) |
-| D279 | Couloirs de la frise et `kind` `attribution` / `tone` du contrat D216 | 2026-10-18 (proposé) |
-| D280 | Ton = métadonnées réservées, liste fermée, jamais un fait sur une personne | 2026-10-18 (proposé) |
+| D271 | Écran de relecture = mise en page du Lab sur un média (onglet de la fiche), remplace l'écran de D217 | 2026-10-18 (codé) |
+| D272 | Attribution = plage de temps → personne, origine, confiance, statut ; table `speech_attributions` | 2026-10-18 (codé) |
+| D273 | Attribution manuelle sans reconnaissance vocale (plage, locuteur entier, raccourcis) | 2026-10-18 (codé) |
+| D274 | Sélecteur de candidats (attendus / choisis / tous), coût borné | 2026-10-18 (codé, « tous » non exposé dans l'UI) |
+| D275 | Identification vocale par locuteur, proposition seulement, exception encadrée à K17 | 2026-10-18 (codé, non vérifié de bout en bout) |
+| D276 | « Régénérer » = Réidentifier (sans ASR) ou Retranscrire ; attributions conservées ; passe d'origine `pnex` ou `platform` | 2026-10-18 (codé) |
+| D277 | Enrôlement d'un profil vocal depuis les passages confirmés, consentement d'abord | 2026-10-18 (codé) |
+| D278 | Attribution confirmée → apparition K17 ; sélection → déclaration K43 ; lien `published_by` (publié par) | 2026-10-18 (codé) |
+| D279 | Couloirs de la frise et `kind` `attribution` / `tone` du contrat D216 | 2026-10-18 (couloirs codés dans l'UI ; contrat D216 `GET /timeline` non fait) |
+| D280 | Ton = métadonnées réservées, liste fermée, jamais un fait sur une personne | 2026-10-18 (réservé, rien de codé) |
+
+## 12. Suite (reste à faire, au 2026-10-18)
+
+Tout R0 → R5 est livré. Ce qui suit est noté pour ne pas se perdre ; les
+raccourcis assumés portent aussi un commentaire `shortcut:` dans le code.
+
+### 12.1 Vérifier en conditions réelles (dev.pnex.io) — voir O81
+
+- [ ] Transcription d'un **vieux** fichier (déposé il y a plus de 5 h) après
+  le correctif 538b57a9 : documents O2 datés sur la passe, `offset_ms` juste.
+- [ ] Reconnaissance des voix **de bout en bout** : deux voix enrôlées
+  (consentement), un débat, deux propositions justes, rien d'écrit avant
+  confirmation. Jamais exécutée hors tests (O2 et vrai modèle d'empreinte
+  absents des tests).
+- [ ] Détection d'objets sur une vraie vidéo MP4 avec un vrai détecteur :
+  cadres alignés sur la vidéo, couloir Détections.
+- [ ] Relecture d'un flux à rétention `days:N` : lecture enchaînée des
+  morceaux, clic sur un mot → bon passage.
+- [ ] Sous-titres plateforme (agents navigateur) → passe `platform` visible
+  dans l'écran de relecture.
+
+### 12.2 Écarts assumés à combler
+
+- [ ] **Profil de transcription** : sélecteur sur l'étape (aujourd'hui le
+  premier profil valide de l'org, `streams::runnable_profile`).
+- [ ] **Modèle de détection** : sélecteur (aujourd'hui le premier détecteur
+  valide, `media_detect::detector_model`).
+- [ ] **Portée « tous les profils »** de la reconnaissance vocale dans l'UI
+  (le serveur l'accepte : `StartAnalyses.voice_scope`).
+- [ ] **Borne de 4 h** de la transcription d'un fichier (seuls 512 Mo bornés).
+- [ ] **Progression en %** de la transcription (« En cours » sans chiffre).
+- [ ] **Port `finished`** du nœud `media_source` (D211 point 5) : déclencher
+  un flow à la fin d'une analyse.
+- [ ] **Résumé d'un audio / d'une vidéo** → page (D214 sur la transcription ;
+  `summarize` ne lit que les documents aujourd'hui).
+- [ ] **Détection sur WebM** (lives des agents navigateur) :
+  `decoder::video_file_format` n'accepte que MP4 / MOV.
+- [ ] **Relecture d'un flux** : frise en heure murale (aujourd'hui relative
+  au début de la fenêtre) ; `WindowPicker` partagé (D220, inexistant) ;
+  attributions sur un flux (elles n'existent que sur un média).
+- [ ] **Contrat D216** `GET /api/v1/timeline` (les couloirs sont construits
+  côté front pour l'instant).
+- [ ] **Lexique** : « Intervenant », « Attribution », « Ton » au §7 de
+  `design-system.md` et règles dans `lexicon_guard.rs`.
+
+### 12.3 Décisions en attente
+
+- [ ] **Avis juridique** sur l'identification vocale (K19) et le commutateur
+  plateforme (Q1 : tranchée pour l'org — geste explicite par média).
+- [ ] **Q3** : passage à des milliers de profils (index vectoriel contre
+  scellement V6).
+- [ ] **Q4 / D280** : ton — usage, contenus, avis juridique (art. 5 du
+  règlement IA). Aucun modèle avant.
+- [ ] **Q5** : exposition MCP de l'écriture d'attributions (exposée
+  aujourd'hui, rôle re-vérifié).
+- [ ] **Q6** : visage (`face`), même régime que la voix ?
+
+### 12.4 Hors de ce PRD, vu en route
+
+- [ ] Dependabot : 2 vulnérabilités signalées sur la branche par défaut
+  (1 modérée, 1 faible), non regardées.

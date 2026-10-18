@@ -1632,3 +1632,19 @@ pagination, types, verbes, langue) sont traités par les lots H1–H5 de
   illisible au lieu de répondre 400.
 - **Statut** : ✅ résolu (2026-10-17, H1) — 400 `field-invalid`
   (`from`/`to` : `invalid`), test dans `tests/ws_camera.rs`.
+
+## 2026-10-18 — relecture média (media-review.md R0 → R5)
+
+### O81 — Relecture média : chaîne jamais exécutée de bout en bout
+
+- **Constat** : R0 → R5 sont livrés et testés (`tests/media_transcribe.rs`,
+  `tests/media_review.rs`), mais les tests n'ont ni O2 ni vrai modèle : la
+  transcription s'y arrête à l'écriture O2, la reconnaissance vocale et la
+  détection n'y ont jamais produit de résultat réel.
+- **Déjà trouvé ainsi** : O2 refuse les documents datés au-delà de
+  `ZO_INGEST_ALLOWED_UPTO` (5 h par défaut) ; la transcription d'un fichier
+  ancien aurait échoué en prod — corrigé (538b57a9, datation sur la passe).
+- **À faire sur dev.pnex.io** : la liste de `media-review.md` §12.1 (vieux
+  fichier, deux voix enrôlées, vraie vidéo + détecteur, flux à rétention,
+  sous-titres plateforme).
+- **Statut** : ⏳ à vérifier.
