@@ -511,38 +511,25 @@ pub async fn runnable_profile<C: ConnectionTrait>(
     Ok(None)
 }
 
-/// Starts a run of the hidden batch stream of a media version (D211):
-/// created on the first analysis (slug `file_<asset>`), switched back on
-/// with a new run id on a relaunch. Returns the stream and its run.
-pub async fn start_batch(
+/// Hidden batch stream of a media asset (D211, D276): created on first
+/// use (slug `file_<asset>`, switched off), never listed nor counted.
+pub async fn batch_stream(
     db: &DatabaseConnection,
     org_id: i64,
     asset_id: Uuid,
-    version_id: Uuid,
-    profile_id: Uuid,
     user_id: Option<i64>,
-) -> Result<(media_streams::Model, Uuid), StreamError> {
-    let run = Uuid::new_v4();
-    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
-    let existing = media_streams::Entity::find()
-        .filter(media_streams::Column::OrgId.eq(org_id))
-        .filter(media_streams::Column::MediaVersionId.eq(version_id))
-        .one(db)
-        .await?;
-    if let Some(row) = existing {
-        let mut am: media_streams::ActiveModel = row.into();
-        am.enabled = Set(true);
-        am.asr_profile_id = Set(Some(profile_id));
-        am.run_id = Set(Some(run));
-        am.deleted_at = Set(None);
-        am.capture_state = Set(CaptureState::Stopped.wire().into());
-        am.capture_error = Set(None);
-        // A new `updated_at` restarts the capture task (fingerprint).
-        am.updated_at = Set(now);
-        return Ok((am.update(db).await?, run));
+) -> Result<media_streams::Model, StreamError> {
+    let find = || {
+        media_streams::Entity::find()
+            .filter(media_streams::Column::OrgId.eq(org_id))
+            .filter(media_streams::Column::MediaAssetId.eq(asset_id))
+    };
+    if let Some(row) = find().one(db).await? {
+        return Ok(row);
     }
     let short: String = asset_id.simple().to_string().chars().take(8).collect();
     let name = format!("file_{short}");
+    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
     let txn = db.begin().await?;
     let slug = free_slug(&txn, org_id, &name).await?;
     let am = media_streams::ActiveModel {
@@ -553,9 +540,9 @@ pub async fn start_batch(
         kind: Set(MediaStreamKind::MediaAsset.wire().to_string()),
         url: Set(pnex_core::media_ingest::media_asset_url(asset_id)),
         secret_id: Set(None),
-        enabled: Set(true),
+        enabled: Set(false),
         capture_on: Set(CaptureOn::Server.wire()),
-        asr_profile_id: Set(Some(profile_id)),
+        asr_profile_id: Set(None),
         tracks: Set(MediaTracks::Audio.wire().into()),
         fps: Set(FPS_DEFAULT),
         segment_secs: Set(SEGMENT_SECS_DEFAULT),
@@ -573,12 +560,48 @@ pub async fn start_batch(
         created_at: Set(now),
         updated_at: Set(now),
         pace: Set(PACE_BATCH.into()),
-        media_version_id: Set(Some(version_id)),
-        run_id: Set(Some(run)),
+        media_version_id: Set(None),
+        run_id: Set(None),
+        media_asset_id: Set(Some(asset_id)),
     };
-    let row = am.insert(&txn).await?;
-    txn.commit().await?;
-    Ok((row, run))
+    match am.insert(&txn).await {
+        Ok(row) => {
+            txn.commit().await?;
+            Ok(row)
+        }
+        // Created meanwhile by a concurrent call (unique per asset).
+        Err(_) => {
+            drop(txn);
+            find().one(db).await?.ok_or(StreamError::Limit)
+        }
+    }
+}
+
+/// Starts a run of the asset's batch stream on `version_id` (D211): the
+/// capture task picks it up, segments are tagged with `run`. Returns the
+/// stream and its run.
+pub async fn start_batch(
+    db: &DatabaseConnection,
+    org_id: i64,
+    asset_id: Uuid,
+    version_id: Uuid,
+    profile_id: Uuid,
+    user_id: Option<i64>,
+) -> Result<(media_streams::Model, Uuid), StreamError> {
+    let row = batch_stream(db, org_id, asset_id, user_id).await?;
+    let run = Uuid::new_v4();
+    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
+    let mut am: media_streams::ActiveModel = row.into();
+    am.enabled = Set(true);
+    am.asr_profile_id = Set(Some(profile_id));
+    am.media_version_id = Set(Some(version_id));
+    am.run_id = Set(Some(run));
+    am.deleted_at = Set(None);
+    am.capture_state = Set(CaptureState::Stopped.wire().into());
+    am.capture_error = Set(None);
+    // A new `updated_at` restarts the capture task (fingerprint).
+    am.updated_at = Set(now);
+    Ok((am.update(db).await?, run))
 }
 
 /// First free slug for `name` in the org (`_2`, `_3`… on conflict). A
@@ -680,6 +703,7 @@ pub async fn create(
         pace: Set(PACE_REALTIME.into()),
         media_version_id: Set(None),
         run_id: Set(None),
+        media_asset_id: Set(None),
     };
     apply(&txn, org_id, &mut am, input).await?;
     check_kind_url(&am)?;

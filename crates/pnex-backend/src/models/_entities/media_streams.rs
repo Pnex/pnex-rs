@@ -44,10 +44,12 @@ pub struct Model {
     /// `realtime` (live, or a file replayed with `-re`) or `batch` (a file
     /// analysed as fast as the ASR keeps up, D211).
     pub pace: String,
-    /// Version analysed by a batch stream (one stream per version).
+    /// Version analysed by the current run of a batch stream.
     pub media_version_id: Option<Uuid>,
     /// Current run of a batch stream: tags its transcripts (D276).
     pub run_id: Option<Uuid>,
+    /// Asset of a batch stream (one stream per asset, D276).
+    pub media_asset_id: Option<Uuid>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

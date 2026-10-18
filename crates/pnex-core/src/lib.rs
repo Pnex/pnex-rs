@@ -128,6 +128,7 @@ pub mod vision_ai;
 /// transcript records, server-built names.
 pub mod media_analysis;
 pub mod media_ingest;
+pub mod media_review;
 
 /// Voice identification by consented enrolment (voice-id.md, cases.md
 /// K19): profile DTOs, windowing, centroid, calibrated threshold, verdict.

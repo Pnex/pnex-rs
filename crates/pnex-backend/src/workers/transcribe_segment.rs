@@ -678,6 +678,8 @@ async fn file_pos(
     Some(transcripts::FilePos {
         offset_ms: (seg.started_at - version.created_at).num_milliseconds(),
         run: stream.run_id?,
+        origin: pnex_core::media_review::RunOrigin::Pnex,
+        version: Some(version.id),
     })
 }
 

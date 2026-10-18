@@ -375,6 +375,7 @@ mod tests {
             pace: "realtime".into(),
             media_version_id: None,
             run_id: None,
+            media_asset_id: None,
         }
     }
 
