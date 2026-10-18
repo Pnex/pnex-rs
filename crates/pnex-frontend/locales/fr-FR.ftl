@@ -5010,6 +5010,7 @@ cw-undated-status = Non daté : glissez-le sur un événement pour le dater.
 cw-links = Liens
 cw-links-empty = Les événements et les pièces attachées apparaissent ici.
 cw-graph-hidden = { $count } masqué(s)
+cw-graph-laying-out = Disposition du graphe…
 cw-graph-relayout = Réorganiser
 cw-graph-simplified = Rendu simplifié
 cw-graph-relayout-help = Recalculer la disposition (les nœuds déplacés à la main sont libérés).

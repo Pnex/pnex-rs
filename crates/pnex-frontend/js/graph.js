@@ -381,6 +381,29 @@ function show(h, animate) {
   }
 }
 
+// Past this many nodes to place, the layout blocks the page for a second or
+// more (graph_layout.js): the status shows first, then the layout runs.
+const BUSY_OVER = 300;
+
+function busy(h, on) {
+  h.busy?.remove();
+  h.busy = null;
+  if (!on) return;
+  if (getComputedStyle(h.el).position === 'static') h.el.style.position = 'relative';
+  const d = document.createElement('div');
+  d.setAttribute('role', 'status');
+  d.style.cssText = 'position:absolute;inset:0;z-index:5;display:flex;align-items:center;'
+    + 'justify-content:center;gap:8px;pointer-events:none;font:13px "IBM Plex Sans",system-ui,sans-serif;'
+    + `color:${h.colors.ink};background:color-mix(in srgb, ${h.colors.ground} 75%, transparent)`;
+  const ring = document.createElement('span');
+  // A transform animation keeps turning while the layout holds the thread.
+  ring.style.cssText = 'width:16px;height:16px;border-radius:50%;border:2px solid currentColor;'
+    + 'border-right-color:transparent;animation:spin 1s linear infinite';
+  d.append(ring, document.createTextNode(h.opts.busyLabel || '…'));
+  h.el.append(d);
+  h.busy = d;
+}
+
 function setData(hostId, raw) {
   const h = hosts[hostId];
   if (!h?.renderer) return false;
@@ -407,6 +430,23 @@ function setData(hostId, raw) {
   work.forEachNode((n, attr) => {
     work.mergeNodeAttributes(n, { size: nodeSize(attr, work.degree(n)), ...paint(attr, h.colors) });
   });
+  const tok = (h.tok = (h.tok || 0) + 1);
+  if (work.filterNodes((n) => !h.force.has(n)).length > BUSY_OVER) {
+    busy(h, true);
+    // Two frames: the status is painted before the layout takes the thread.
+    requestAnimationFrame(() => setTimeout(() => {
+      if (h.tok !== tok || !h.renderer) return;
+      place(h, work, known);
+      busy(h, false);
+    }, 0));
+    return true;
+  }
+  place(h, work, known);
+  return true;
+}
+
+function place(h, work, known) {
+  const g = h.graph;
   forcePositions(h, work);
   const target = viewTarget(h);
   work.forEachNode((n) => work.mergeNodeAttributes(n, target[n]));
@@ -415,7 +455,6 @@ function setData(hostId, raw) {
   g.clear();
   g.import(work);
   repaint(h);
-  return true;
 }
 
 function setState(hostId, raw) {

@@ -11,8 +11,9 @@ use uuid::Uuid;
 use super::super::{invalid, Actor, Result};
 use super::case_of;
 
-/// Positions kept at most (the graph draws 300 nodes, expansions included).
-const MAX_NODES: usize = 1_000;
+/// Positions kept at most: the Sigma graph draws 2 000 nodes, expansions
+/// included (graph.rs SIGMA_CAP).
+const MAX_NODES: usize = 2_000;
 /// Far beyond any layout: a position past it is a client bug, not a layout.
 const MAX_COORD: f64 = 1.0e6;
 

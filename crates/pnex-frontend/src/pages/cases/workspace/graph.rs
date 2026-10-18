@@ -30,8 +30,11 @@ use crate::components::ui::{BTN_GHOST, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::graph_viewer;
 use crate::state::toasts;
 
-/// Nodes drawn at most; the rest is counted.
+/// Nodes drawn at most by the SVG fallback; the rest is counted.
 const CAP: usize = 300;
+/// Nodes drawn at most by Sigma (WebGL): a parliament fits, Barnes-Hut lays
+/// it out (graph_layout.js), the server keeps as many positions (layout.rs).
+const SIGMA_CAP: usize = 2_000;
 /// Under this many nodes every label shows; above, on hover or selection.
 const LABELS_UNDER: usize = 40;
 const SVG_ID: &str = "cw-graph";
@@ -88,6 +91,7 @@ pub(super) fn build(
     follow: Option<&str>,
     relations: &[LinkView],
     extra: &[ExpandResult],
+    cap: usize,
 ) -> (Vec<GNode>, Vec<GEdge>, usize) {
     let mut nodes: Vec<GNode> = Vec::new();
     let mut index: HashMap<String, usize> = HashMap::new();
@@ -97,7 +101,7 @@ pub(super) fn build(
             if let Some(i) = index.get(&o.id) {
                 return Some(*i);
             }
-            if nodes.len() == CAP {
+            if nodes.len() == cap {
                 hidden += 1;
                 return None;
             }
@@ -477,11 +481,19 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
     let mut seeded = use_signal(|| false);
     // Sigma renderer: None while it mounts, then whether it took (else SVG).
     let mut sigma = use_signal(|| None::<bool>);
+    let cap = move || {
+        if *sigma.peek() == Some(true) {
+            SIGMA_CAP
+        } else {
+            CAP
+        }
+    };
     use_effect(move || {
         let opts = json!({
             "caseId": ws.case_id.peek().clone(),
             "canWrite": ws.can_write,
             "canDrag": true,
+            "busyLabel": t!("cw-graph-laying-out").to_string(),
         });
         spawn(async move {
             let ok = graph_viewer::mount(GRAPH_HOST, &opts).await;
@@ -499,7 +511,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         };
         let rel = relations.read().clone().unwrap_or_default();
         let (nodes, edges, _) = without(
-            build(&w, (ws.follow)().as_deref(), &rel, &extra()),
+            build(&w, (ws.follow)().as_deref(), &rel, &extra(), cap()),
             &families.read(),
         );
         let mut prev = positions.peek().clone();
@@ -578,7 +590,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         let Some(w) = (ws.data)() else { return };
         let rel = relations.read().clone().unwrap_or_default();
         let (nodes, edges, _) = without(
-            build(&w, (ws.follow)().as_deref(), &rel, &extra()),
+            build(&w, (ws.follow)().as_deref(), &rel, &extra(), cap()),
             &families.read(),
         );
         let aspect = crate::util::element_rect(GRAPH_HOST).map_or(1.6, |r| r.2 / r.3.max(1.0));
@@ -635,7 +647,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                     let rel = relations.peek().clone().unwrap_or_default();
                     let follow = ws.follow.peek().clone();
                     let (nodes, _, _) = without(
-                        build(&w, follow.as_deref(), &rel, &extra.peek()),
+                        build(&w, follow.as_deref(), &rel, &extra.peek(), cap()),
                         &families.peek(),
                     );
                     let title = nodes
@@ -661,12 +673,12 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
     let follow = (ws.follow)();
     let rel = relations.read().clone().unwrap_or_default();
     let (nodes, edges, hidden) = without(
-        build(&workspace, follow.as_deref(), &rel, &extra()),
+        build(&workspace, follow.as_deref(), &rel, &extra(), cap()),
         &families.read(),
     );
     // Nodes per family before filtering, for the legend.
     let mut per_family: HashMap<&'static str, usize> = HashMap::new();
-    for n in build(&workspace, follow.as_deref(), &rel, &extra()).0 {
+    for n in build(&workspace, follow.as_deref(), &rel, &extra(), cap()).0 {
         let f = if is_evidence(n.family) {
             EVIDENCE
         } else {
@@ -1242,7 +1254,7 @@ mod tests {
             valid_to: None,
             source_ref: None,
         };
-        let full = build(&w, None, &[rel], &[]);
+        let full = build(&w, None, &[rel], &[], CAP);
         assert_eq!(full.0.len(), 4);
         let hide = HashSet::from([EVIDENCE.to_string()]);
         let (nodes, edges, _) = without(full.clone(), &hide);
@@ -1276,7 +1288,7 @@ mod tests {
             valid_to: None,
             source_ref: None,
         };
-        let (nodes, edges, hidden) = build(&w, None, &[rel], &[]);
+        let (nodes, edges, hidden) = build(&w, None, &[rel], &[], CAP);
         let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
         assert_eq!(ids, ["e1", "ann", "bob", "e2", "carl", "memo"]);
         assert_eq!((edges.len(), hidden), (5, 0));
@@ -1289,7 +1301,7 @@ mod tests {
         assert_eq!(relation_at(Some(t), None, t - 1), Shown::Ahead);
         assert_eq!(relation_at(None, Some(t), t), Shown::Gone);
         // Following Ann keeps e1 and what it involves only.
-        let (n2, _, _) = build(&w, Some("ann"), &[], &[]);
+        let (n2, _, _) = build(&w, Some("ann"), &[], &[], CAP);
         assert_eq!(n2.len(), 3);
     }
 
@@ -1347,7 +1359,7 @@ mod tests {
             valid_to: None,
             source_ref: None,
         };
-        let (nodes, edges, _) = build(&w, None, std::slice::from_ref(&rel), &[]);
+        let (nodes, edges, _) = build(&w, None, std::slice::from_ref(&rel), &[], CAP);
         assert_eq!(
             (nodes[0].family, nodes[1].family),
             ("event", "organization")
@@ -1355,7 +1367,7 @@ mod tests {
         // Role labels need the i18n runtime: the data is checked on objects
         // and a relation only.
         let loose = workspace(Vec::new(), &["ann", "carl"]);
-        let (n2, e2, _) = build(&loose, None, &[rel], &[]);
+        let (n2, e2, _) = build(&loose, None, &[rel], &[], CAP);
         let pos = HashMap::from([("ann".to_string(), (3.0, 4.0))]);
         let data = sigma_data(&n2, &e2, &pos, 1.6);
         assert_eq!(
@@ -1386,7 +1398,10 @@ mod tests {
         let names: Vec<String> = (0..CAP + 5).map(|i| format!("o{i}")).collect();
         let refs: Vec<&str> = names.iter().map(String::as_str).collect();
         let w = workspace(Vec::new(), &refs);
-        let (nodes, _, hidden) = build(&w, None, &[], &[]);
+        let (nodes, _, hidden) = build(&w, None, &[], &[], CAP);
         assert_eq!((nodes.len(), hidden), (CAP, 5));
+        // Sigma draws them all.
+        let (nodes, _, hidden) = build(&w, None, &[], &[], SIGMA_CAP);
+        assert_eq!((nodes.len(), hidden), (CAP + 5, 0));
     }
 }

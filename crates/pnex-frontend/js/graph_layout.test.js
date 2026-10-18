@@ -85,3 +85,16 @@ test('the chronological view: dates left to right, objects in their lane', () =>
   // Unlinked: the column on the left.
   expect(p.memo.x).toBeLessThan(p.e1.x);
 });
+
+test('a parliament-sized case lays out in about a second (Barnes-Hut, scaled iterations)', () => {
+  const g = new Graph({ multi: true, type: 'undirected' });
+  for (let i = 0; i < 2000; i++) g.addNode(`p${i}`, { title: `p${i}`, size: 8 });
+  // Members of 12 groups, as deputies of a chamber.
+  for (let i = 12; i < 2000; i++) g.addEdge(`p${i}`, `p${i % 12}`);
+  const t0 = performance.now();
+  forceLayout(g, 'case-1', 1.6);
+  const ms = performance.now() - t0;
+  g.forEachNode((_n, a) => expect(Number.isFinite(a.x) && Number.isFinite(a.y)).toBe(true));
+  expect(ms).toBeLessThan(4000);
+  console.log(`2000 nodes: ${Math.round(ms)} ms`);
+}, 10000);

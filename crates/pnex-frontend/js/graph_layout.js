@@ -45,8 +45,10 @@ export function forceLayout(graph, seed, aspect) {
   graph.forEachEdge((_e, _attr, s, t) => {
     if (s !== t && sim.hasNode(s) && sim.hasNode(t) && !sim.hasEdge(s, t)) sim.addEdge(s, t);
   });
-  // shortcut: synchronous, ~40 ms at 75 nodes but ~300 ms at the 300 cap;
-  // move to a worker with a fixed iteration count if large cases feel stuck.
+  // shortcut: synchronous, ~40 ms at 75 nodes, ~400 ms at 300. Past 300,
+  // Barnes-Hut and iterations scaled by 300/n keep a parliament-sized case
+  // (graph.rs SIGMA_CAP, 2 000) near 1.1 s; move to a worker if that drags.
+  const scale = Math.min(1, 300 / sim.order);
   if (sim.order > 0 && sim.filterNodes((n) => !sim.getNodeAttribute(n, 'fixed')).length > 0) {
     const settings = {
       ...forceAtlas2.inferSettings(sim),
@@ -54,11 +56,11 @@ export function forceLayout(graph, seed, aspect) {
       scalingRatio: 12,
       strongGravityMode: true,
       slowDown: 3,
-      barnesHutOptimize: false,
+      barnesHutOptimize: sim.order > 300,
     };
-    forceAtlas2.assign(sim, { iterations: 600, settings });
+    forceAtlas2.assign(sim, { iterations: Math.max(120, Math.round(600 * scale)), settings });
     noverlap.assign(sim, {
-      maxIterations: 300,
+      maxIterations: Math.max(40, Math.round(300 * scale)),
       settings: { margin: 10, ratio: 1.6, expansion: 1.1 },
       // noverlap ignores `fixed`: put the fixed ones back where they were.
       outputReducer: (key, pos) =>
