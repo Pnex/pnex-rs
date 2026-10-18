@@ -88,6 +88,8 @@ maintenant, en une rupture de contrat (`pnex_api_contract::CONTRACT` 2 → 3).
   device, deploy/stop de flow, purge, suppressions) ne sont pas exposées par
   défaut : liste d'autorisation explicite, cohérente avec les consignes de
   l'assistant (D123, D144). PRD dédié : `mcp.md` (D246–D249, M1 livré).
+  La CLI d'administration `pnex` se génère du même spec, toutes routes
+  comprises, le dangereux derrière `--yes` : `cli.md` (D251–D253).
 
 ## 3. Lots
 

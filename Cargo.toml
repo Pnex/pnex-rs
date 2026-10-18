@@ -50,6 +50,8 @@ members = [
     "crates/pnex-coolprop",
     # Edge agent (D95): local ingestion API + disk queue + /ws/device uplink.
     "crates/pnex-edge-agent",
+    # Admin CLI (D251): the OpenAPI spec as commands.
+    "crates/pnex-cli",
 ]
 # EdgeLinkd vendored (submodule) reste un workspace séparé — sans exclude,
 # Cargo rattacherait ses crates au workspace PNEX et l'héritage

@@ -11,6 +11,9 @@
 
 use serde::{Deserialize, Serialize};
 
+/// What the MCP exposes, and what the `pnex` CLI asks `--yes` for.
+pub mod exposure;
+
 /// Version du contrat attendue par CE binaire. Un bump = rupture d'API.
 ///
 /// 2 (2026-09-12, D43) : `Poi.device_id` (colonne unique) remplacé par

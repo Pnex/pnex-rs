@@ -8462,6 +8462,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pnex-cli"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "clap",
+ "getrandom 0.2.17",
+ "pnex-api-contract",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "webbrowser",
+]
+
+[[package]]
 name = "pnex-coolprop"
 version = "0.2.0"
 dependencies = [
@@ -10046,6 +10062,7 @@ dependencies = [
  "bytes",
  "cookie",
  "cookie_store",
+ "futures-channel",
  "futures-core",
  "futures-util",
  "http",

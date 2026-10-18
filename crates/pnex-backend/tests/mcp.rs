@@ -45,7 +45,7 @@ fn every_operation_is_exposed_or_excluded_once() {
         .collect();
     assert!(
         missing.is_empty(),
-        "operations neither exposed nor excluded in services/mcp/exposure.rs \
+        "operations neither exposed nor excluded in pnex-api-contract/src/exposure.rs \
          (add each to EXPOSED, or to EXCLUDED under its reason): {missing:?}"
     );
     let stale: Vec<_> = seen.keys().filter(|id| !ops.contains_key(**id)).collect();

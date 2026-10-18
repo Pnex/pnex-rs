@@ -1,0 +1,22 @@
+[package]
+name = "pnex-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PNeX admin CLI (D251): every operation of the embedded OpenAPI spec as `pnex <tag> <action>`, browser sign-in once"
+
+[[bin]]
+name = "pnex"
+path = "src/main.rs"
+
+[dependencies]
+pnex-api-contract = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { version = "4", features = ["string"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.2"
+webbrowser = "1"
+anyhow = "1"

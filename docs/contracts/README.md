@@ -45,7 +45,7 @@ contrats asservissent le comportement Rust (tests de parité).
   routes d'une org, l'en-tête obligatoire `X-Org-Id`.
 - **MCP** : `POST /api/v1/mcp` sert les opérations de ce spec comme
   outils MCP, avec les droits de l'appelant ; la table d'exposition
-  (`crates/pnex-backend/src/services/mcp/exposure.rs`) et le branchement
+  (`crates/pnex-api-contract/src/exposure.rs`) et le branchement
   d'un client sont décrits dans `docs/architecture/mcp.md`.
 
 ## Règles de parité retenues

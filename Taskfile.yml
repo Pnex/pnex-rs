@@ -202,6 +202,19 @@ tasks:
       - mkdir -p target/dist
       - tar -C {{.DX_OUT}}/release/linux -czf target/dist/pnex-desktop-linux-{{.ARCH}}.tar.gz --transform 's,^app,pnex,' app
 
+  build:cli:
+    desc: 'Build the pnex admin CLI (D251) → target/dist/pnex-cli-<target>.tar.gz (.zip on Windows), TARGET=<triple> (default: host)'
+    vars:
+      HOST:
+        sh: rustc -vV | awk '/^host/ {print $2}'
+      TARGET: '{{.TARGET | default .HOST}}'
+      EXE: '{{if contains "windows" .TARGET}}pnex.exe{{else}}pnex{{end}}'
+    cmds:
+      - '{{.G}} cargo build --release --locked -p pnex-cli --target {{.TARGET}}'
+      - mkdir -p target/dist
+      - >-
+        {{if contains "windows" .TARGET}}cd target/{{.TARGET}}/release && zip -j ../../dist/pnex-cli-{{.TARGET}}.zip {{.EXE}}{{else}}tar -C target/{{.TARGET}}/release -czf target/dist/pnex-cli-{{.TARGET}}.tar.gz {{.EXE}}{{end}}
+
   build:frontend:linux:e2e:
     desc: Build the Linux e2e app (feature `e2e` = harness hooks + WebKitWebDriver automation; never distributed) → target/dx/pnex-frontend/linux-e2e/
     deps: [css:build, js:build]
