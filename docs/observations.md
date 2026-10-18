@@ -1757,10 +1757,11 @@ décisions ci-dessous.
   `store_captions` ne vérifient ni `force_video` ni le bail de l'agent (même
   org, agent semi-fiable) ; un upload refusé au contrôle de type laisse un
   média vide (borné à 30 uploads/min par agent).
-- **À trancher** : plafond de lignes du registre par org (proposé 500 000,
-  ou par tier avec les quotas SEC-40), et si l'on resserre `store_video`
-  (refus hors `force_video` / hors bail, média créé après le contrôle).
-- **Statut** : ⏳ ouvert.
+- **Décision (utilisateur, 2026-10-18)** : valeurs arbitraires, à régler en
+  campagne. Plafond de 500 000 posts par org (`VIDEOS_MAX`) : au-delà, les
+  missions de compte passent bloquées `ext-registry-full`. `store_video`
+  reste tel quel.
+- **Statut** : ✅ code (test `a_full_registry_blocks_account_missions`).
 
 ### O90 — `collect_page` sur x.com et youtube.com (SEC-46)
 
@@ -1774,7 +1775,9 @@ décisions ci-dessous.
   (X et YouTube seulement par « Suivre un compte ») ; B) liste de chemins
   refusés (`/messages`, `/i/`, `/settings`, `/feed/history`…) ; C) accepter
   (même org, l'agent est le compte de l'org) et le dire dans le formulaire.
-- **Statut** : ⏳ à trancher.
+- **Décision (utilisateur, 2026-10-18)** : C, aucune contrainte en plus ;
+  l'agent doit pouvoir tout collecter. SEC-46 accepté.
+- **Statut** : ✅ tranché, rien à coder.
 
 ### O91 — Rétention des captures (D268) non codée
 
@@ -1789,20 +1792,28 @@ décisions ci-dessous.
   (lecteur et relecture affichent le texte seul, « Retranscrire » grisé) ;
   B) le pruner supprime l'asset entier et la transcription survit ailleurs
   (pas de support aujourd'hui) ; C) `keep` seul en v1, le formulaire le dit.
-- **À trancher avec** l'agent de la relecture média, avant toute campagne
-  longue (disque).
-- **Statut** : ⏳ ouvert.
+- **Décision (utilisateur, 2026-10-18)** : phase de développement à part.
+  Elle revoit d'un bloc toutes les rétentions et limites d'usage (D161
+  audio, D268 captures, O2, assistant, builds, quotas par tier, plafonds
+  O89 et SEC-40). Rien n'est codé d'ici là ; la seule précaution est de
+  prévoir la migration de base : `media_versions.storage_key` nullable
+  (version « fichier purgé »), et la provenance `mission_id` déjà
+  présente sur chaque capture pour retrouver sa règle.
+- **Statut** : ⏳ reporté (phase « rétention et limites d'usage »).
 
 ### O92 — Vidéo de plus de 40 minutes tronquée
 
 - **Constat** : sans fichier téléchargeable (YouTube), une vidéo forcée est
   enregistrée en temps réel jusqu'à 40 min (plafond de 200 Mo à 600 kbit/s),
   puis envoyée comme vidéo complète : la fin est perdue sans le dire.
-- **Options** : A) découper en parties de 30 min comme un live (une vidéo =
-  N médias, reprise à `currentTime`) ; B) baisser le débit au-delà de 40 min
-  (qualité) ; C) marquer `truncated` dans la provenance et l'afficher au
-  registre.
-- **Statut** : ⏳ à trancher.
+- **Décision (utilisateur, 2026-10-18)** : A, découpage obligatoire.
+- **Correction** : enregistrement par parties de 30 min, chaque partie
+  reprend où la précédente s'est arrêtée (`currentTime`), 16 parties au
+  plus (8 h). La partie 1 est le média du post (registre `captured`) ; les
+  suivantes sont des médias à part (`part`, `part_of`), envoyées par
+  `uploads/video` avec `X-Pnex-Part` (signé).
+- **Statut** : ✅ code (test `followed_account_videos_are_captured_once`) ;
+  ⏳ à éprouver sur une vraie vidéo longue en campagne.
 
 ### O93 — Reste du périmètre, à planifier
 
@@ -1813,7 +1824,9 @@ décisions ci-dessous.
   compte est traitée deux fois (empreinte perceptuelle, plus tard).
 - **Publication** Chrome Web Store et signature AMO (question 4 de la
   spec) ; d'ici là, chargement non empaqueté / temporaire.
-- **Statut** : ⏳ ouvert.
+- **Décision (utilisateur, 2026-10-18)** : tout est à planifier, inscrit à
+  la roadmap (P2.1).
+- **Statut** : ⏳ planifié.
 
 ### O94 — Campagne de test des agents navigateur : quoi observer
 
@@ -1826,8 +1839,9 @@ décisions ci-dessous.
 - TikTok : téléchargement direct de `playAddr` ou bascule en
   enregistrement ; mode dédié sur un vrai PC.
 - Firefox : chargement temporaire et lien.
-- Valeurs à régler sur mesure : 20 agents / 200 missions par org, 60 lots
-  `seen`/min, `NAV_GAP_MS` 20 s, profondeur +20 par visite.
+- Valeurs à régler sur mesure : 20 agents / 200 missions / 500 000 posts
+  par org, 60 lots `seen`/min, `NAV_GAP_MS` 20 s, profondeur +20 par
+  visite, parties de 30 min (16 au plus).
 - `e2e/tests/browser-agent.spec.ts` n'a tourné qu'en local : premier
   passage CI à surveiller (`PNEX_DEVICE_REQUIRE_TLS=false` dans
   `compose.ci.yaml`).

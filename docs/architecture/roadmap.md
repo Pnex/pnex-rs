@@ -492,6 +492,16 @@ connect-on-wake, cast ≠ apply — plus **refresh auto configurable** et
 MV3 + consentement par tâche. Pré-requis : validation de la spec amendée
 (P1.5).
 
+**État 2026-10-18** : v2 codée (L0–L5, X / YouTube / TikTok, historique,
+sous-titres, enregistrement par parties, lives, Firefox, mode dédié),
+revue de sécurité faite ; campagne de test à mener (O94). **À planifier**
+(O93) : L7 recherche sur les plateformes filtrée par le registre,
+adaptateur Facebook, déduplication par contenu (même vidéo republiée),
+publication Chrome Web Store et signature AMO. **Phase à part**
+« rétention et limites d'usage » (O91) : revoit ensemble D161, D268, O2,
+assistant, builds, quotas par tier et plafonds ; migration
+`media_versions.storage_key` nullable à prévoir.
+
 ### P2.2 — Axe G : GPS (G1 + G2), après PRD
 
 G1 : capacité `gps` firmware (parse NMEA côté transport/cap, télémétrie

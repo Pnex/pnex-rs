@@ -616,8 +616,11 @@ L0c (page « Agents navigateur »).
   anti-rejeu sur `r`, 60 lots `seen`/min par lien), plafonds §13 (20
   agents, 200 missions par org, `extension-limit-reached`), scénario
   Chromium réel dans `e2e/tests/browser-agent.spec.ts` (`@extension`).
-  Non codés, à trancher : rétention D268 (O91), vidéos > 40 min (O92),
-  `collect_page` sur X/YouTube (O90), plafond du registre (O89).
+  Ensuite, sur décision de l'utilisateur : registre plafonné à 500 000
+  posts par org (O89), `collect_page` sans restriction sur X/YouTube
+  (O90), vidéo sans fichier enregistrée par parties de 30 min, 16 au plus
+  (O92). D268 (rétention) est reportée à une phase « rétention et limites
+  d'usage » (O91).
 
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
