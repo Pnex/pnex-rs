@@ -116,7 +116,8 @@ documenter certaines :
   les **jeux de données importés** avec leur provenance (par exemple un
   export fourni par une équipe de recherche).
 - Étendre ce périmètre serait une **décision produit et juridique** à
-  part, non prise ici.
+  part, non prise ici. Proposée le 2026-10-18 : `extension-collector.md`
+  D254 (sources publiques déclarées une par une, agents navigateur).
 
 ## 5. Où vit le composant (ouvert)
 

@@ -107,6 +107,9 @@ dossier (§K13).
 - La collecte OSINT automatisée sur les réseaux sociaux ou le web
   (scraping de profils) : les sources entrent par import, flux déclarés
   (D159) ou `http-fetch`, jamais par un collecteur de personnes.
+  Réexamen en cours (2026-10-18) : `extension-collector.md` D254 propose
+  le suivi de sources publiques **déclarées une par une** par des agents
+  navigateur, sans découverte ni parcours de profils.
 - La publication d'un dossier sur le web (D173 : rien ne sort de l'org
   autrement que par un export volontaire).
 - La fédération de dossiers entre orgs.

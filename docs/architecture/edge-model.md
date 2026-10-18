@@ -458,7 +458,10 @@ modèle eboot 8266, stratégie TLS/CA, checklists matérielles) :
      spec.
 5. **C2** — agent local (premier client Rust) — **livré** 2026-09-30, cf. `edge-agent.md` (D95–D99).
 6. **C3** — extension Chrome/Firefox : implémentation de la spec C1b
-   (`extension-collector.md`), MV3 + consentement par tâche.
+   (`extension-collector.md`), MV3 + consentement par tâche. **v2
+   proposée le 2026-10-18** (D254–D265) : agents de veille, transport
+   ticket device + upload (le `/ws/device` mTLS est hors de portée d'un
+   navigateur).
 7. **A1** — app mobile (thin, API existante).
 8. **M1–M3 — mode M2M résilient distribué** (nouvelle piste, PRD :
    `docs/architecture/m2m-resilient.md`, statut proposition) — boucle

@@ -175,8 +175,9 @@ Architecture pressentie :
 
 ### Axe X — Extension navigateur (C1b → C3) : élevé
 
-La spec est écrite (`extension-collector.md`, 10 décisions tranchées) ;
-la directive précise la sémantique attendue : **collecte en temps réel et
+**Spec v2 proposée le 2026-10-18** (`extension-collector.md`, D254–D269) :
+agents de veille (comptes X/TikTok, lives, pages HTML, registre des
+vidéos, un agent par PC avec un onglet par plateforme, bail par cible). Historique v1 : la directive précisait la sémantique attendue : **collecte en temps réel et
 refresh auto d'un site** — content-script avec polling configurable
 (refresh auto) et détection d'événements quand le site s'y prête
 (MutationObserver/réseau), transmission en WS device → pnex. Valider la
@@ -201,7 +202,7 @@ tâche).
 | **Studio** (tours + annotations) | Mergés (0aae2ad, 9e78241) | Maquette 3D, LRU panoramas, éditeur vue initiale, export offline ; annotations : reste couche ETL/device |
 | **Assistant IA** (v1 + v2 D142–D145) | Livré — 35 outils fermés, base de connaissance embarquée + diagnostics, dashboards (D144), conversations privées en base + rétention (D145), LLM apporté par l'org (D119) ; finalisation i18n/audit 2026-10-07 (`ai-assistant.md` §10) | SEC-14 (filtrage d'URL du fournisseur, avec SEC-W3) |
 | **Collection C1a** | http_fetch livré (2026-09-15) | — |
-| **Extension navigateur (C1b)** | **Spec écrite** (`extension-collector.md`, 10 décisions) — implémentation = jalon C3 | Implémentation après validation de la spec |
+| **Extension navigateur (C1b)** | **Spec v2 proposée** 2026-10-18 (`extension-collector.md`, D254–D269 : agents de veille) — implémentation = jalon C3 | Validation v2 puis lots L0 → L6 |
 | **Agent local (C2)** | **Livré** (2026-09-30) (`edge-agent.md`, D95–D99) : API locale libre, file disque, enrôlement une commande, Linux musl + Windows | Test Windows réel, macOS, pont WS devices LAN |
 | **M2M résilient (M1–M3)** | PRD posé (`m2m-resilient.md`) | M1 POC zenoh-pico WiFi (zéro achat), M2 6LoWPAN à prototyper avant engagement |
 | **Android** | Build + login PKCE E2E validé ; storage persistant ; scan LAN ; APK arm64 publié à chaque `main` vert (CI Apps, pré-release `nightly`, signé debug → sideload) ; bouton Flash masqué (`flash::offered()`), package `io.pnex.app` (`[bundle]` Dioxus.toml) | Clé de release à générer et APK release à valider (P1.2) ; libellé de l'app déjà « PNeX » |
@@ -478,7 +479,12 @@ une forme d'ouverture par usage, primitives sans copie.
 
 ### P2.1 — Extension navigateur (C1b → jalon C3) — **élevé (directive produit)**
 
-Implémentation de `extension-collector.md` amendée par la directive :
+**v2 du 2026-10-18** (`extension-collector.md`, D254–D269, proposée) :
+agents navigateur (un par PC, un onglet par plateforme), missions `collect_value` /
+`collect_page` / `follow_account` / `watch_live`, registre des vidéos,
+ticket device → `/ws/extension` + upload HTTP, crate wasm
+`pnex-extension`, Chrome puis Firefox ; lots L0 → L6. Ancien libellé
+(v1) : implémentation de `extension-collector.md` amendée par la directive :
 WS device unique, crypto WASM pnex-core, entité `extension_rules`,
 `ServerMsg::RulesConfig`, OIDC plan gestion / device token plan données,
 connect-on-wake, cast ≠ apply — plus **refresh auto configurable** et

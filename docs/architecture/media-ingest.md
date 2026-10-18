@@ -822,8 +822,10 @@ Dépendances :
 - Apparitions des personnes dans les flux (présent, parle, mentionné ;
   heure de diffusion live ou différé) : `cases.md` K17–K18.
 - Empreintes de jingles (recalage précis des plages sans transcription).
-- Extension navigateur (P2.1) comme porteur de capture « signalement »
-  (URL + position de lecture), jamais pour du contenu protégé.
+- Extension navigateur (P2.1) : v2 proposée (`extension-collector.md`
+  D254–D269) — lives captés en temps réel comme flux `browser`, vidéos
+  de comptes déclarés ; jamais de contenu protégé (DRM), YouTube VOD
+  exclu tant que la question Q1 n'est pas tranchée.
 - **Studio de rapports et publication** (retirés de la V1, D173/D174) :
   format paginé, rapport figé et rejouable, bloc méthode, extraits
   sourcés, export Markdown/PDF, lien public, synthèse IA. À rouvrir avec
