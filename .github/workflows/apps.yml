@@ -188,6 +188,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          submodules: true
       - if: matrix.apt
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
       - uses: dtolnay/rust-toolchain@stable
