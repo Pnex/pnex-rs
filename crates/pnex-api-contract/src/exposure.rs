@@ -475,6 +475,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "agent_install_sh",
             "download_firmware",
             "extension_agents_pair",
+            "extension_upload_page",
             "extension_ws_ticket",
             "health_live",
             "health_ready",

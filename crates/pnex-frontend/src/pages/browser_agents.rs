@@ -10,8 +10,8 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::browser_agent::{
-    BrowserAgent, CollectValueParams, Mission, MissionCreate, MissionPatch, MissionSpec,
-    MissionState, ATTR_TEXT, MIN_INTERVAL_SECS,
+    BrowserAgent, CollectPageParams, CollectValueParams, Mission, MissionCreate, MissionPatch,
+    MissionSpec, MissionState, ATTR_TEXT, MIN_INTERVAL_SECS,
 };
 
 use crate::api;
@@ -477,7 +477,13 @@ fn MissionsTab(
     }
 }
 
-/// Create (`mission: None`) or edit form of a `collect_value` mission.
+/// Mission kinds offered by the form (D256), with their label key.
+const KINDS: [(&str, &str); 2] = [
+    ("collect_value", "browser-missions-kind-value"),
+    ("collect_page", "browser-missions-kind-page"),
+];
+
+/// Create (`mission: None`) or edit form of a mission.
 #[component]
 fn MissionForm(
     mission: Option<Mission>,
@@ -485,29 +491,31 @@ fn MissionForm(
     on_close: Callback<()>,
     on_saved: Callback<()>,
 ) -> Element {
-    let params = mission.as_ref().map(|m| {
-        let MissionSpec::CollectValue(p) = &m.spec;
-        p.clone()
-    });
+    let value = match mission.as_ref().map(|m| &m.spec) {
+        Some(MissionSpec::CollectValue(p)) => Some(p.clone()),
+        _ => None,
+    };
+    let initial_url = match mission.as_ref().map(|m| &m.spec) {
+        Some(MissionSpec::CollectValue(p)) => p.url.clone(),
+        Some(MissionSpec::CollectPage(p)) => p.url.clone(),
+        None => String::new(),
+    };
+    let initial_kind = mission.as_ref().map_or("collect_value", |m| m.spec.kind());
+    let mut kind = use_signal(|| initial_kind.to_string());
     let mut name = use_signal(|| mission.as_ref().map(|m| m.name.clone()).unwrap_or_default());
-    let mut url = use_signal(|| params.as_ref().map(|p| p.url.clone()).unwrap_or_default());
+    let mut url = use_signal(|| initial_url);
     let mut selector = use_signal(|| {
-        params
+        value
             .as_ref()
             .map(|p| p.selector.clone())
             .unwrap_or_default()
     });
     let mut attr = use_signal(|| {
-        params
+        value
             .as_ref()
             .map_or_else(|| ATTR_TEXT.to_string(), |p| p.attr.clone())
     });
-    let mut metric = use_signal(|| {
-        params
-            .as_ref()
-            .map(|p| p.metric.clone())
-            .unwrap_or_default()
-    });
+    let mut metric = use_signal(|| value.as_ref().map(|p| p.metric.clone()).unwrap_or_default());
     let mut interval = use_signal(|| {
         mission
             .as_ref()
@@ -524,12 +532,16 @@ fn MissionForm(
     let mut busy = use_signal(|| false);
     let editing = mission.clone();
     let save = move |_| {
-        let spec = MissionSpec::CollectValue(CollectValueParams {
-            url: url(),
-            selector: selector(),
-            attr: attr(),
-            metric: metric(),
-        });
+        let spec = if kind() == "collect_page" {
+            MissionSpec::CollectPage(CollectPageParams { url: url() })
+        } else {
+            MissionSpec::CollectValue(CollectValueParams {
+                url: url(),
+                selector: selector(),
+                attr: attr(),
+                metric: metric(),
+            })
+        };
         let interval_secs = interval().trim().parse::<i32>().unwrap_or(0);
         let agent_id = agent().parse::<i64>().ok();
         let editing = editing.clone();
@@ -570,10 +582,10 @@ fn MissionForm(
     } else {
         t!("browser-missions-create-title")
     };
+    let is_value = kind() == "collect_value";
     let valid = !name().trim().is_empty()
         && !url().trim().is_empty()
-        && !selector().trim().is_empty()
-        && !metric().trim().is_empty();
+        && (!is_value || (!selector().trim().is_empty() && !metric().trim().is_empty()));
     let min = MIN_INTERVAL_SECS.to_string();
     rsx! {
         FormDialog {
@@ -584,6 +596,25 @@ fn MissionForm(
             busy: busy(),
             valid,
             div { class: "space-y-3",
+                div {
+                    label { r#for: "mission-kind", class: FIELD_LABEL,
+                        {t!("browser-missions-field-kind")}
+                    }
+                    select {
+                        id: "mission-kind",
+                        class: INPUT,
+                        value: "{kind}",
+                        onchange: move |e| kind.set(e.value()),
+                        for (value, key) in KINDS {
+                            option {
+                                key: "{value}",
+                                value: "{value}",
+                                selected: kind() == value,
+                                {t!(key)}
+                            }
+                        }
+                    }
+                }
                 div {
                     label { r#for: "mission-name", class: FIELD_LABEL,
                         {t!("browser-missions-field-name")}
@@ -609,43 +640,45 @@ fn MissionForm(
                         oninput: move |e| url.set(e.value()),
                     }
                 }
-                div {
-                    label { r#for: "mission-selector", class: FIELD_LABEL,
-                        {t!("browser-missions-field-selector")}
+                if is_value {
+                    div {
+                        label { r#for: "mission-selector", class: FIELD_LABEL,
+                            {t!("browser-missions-field-selector")}
+                        }
+                        input {
+                            id: "mission-selector",
+                            class: "{INPUT} font-mono",
+                            placeholder: ".price",
+                            value: "{selector}",
+                            oninput: move |e| selector.set(e.value()),
+                        }
+                        p { class: FIELD_HELP, {t!("browser-missions-field-selector-help")} }
                     }
-                    input {
-                        id: "mission-selector",
-                        class: "{INPUT} font-mono",
-                        placeholder: ".price",
-                        value: "{selector}",
-                        oninput: move |e| selector.set(e.value()),
+                    div {
+                        label { r#for: "mission-attr", class: FIELD_LABEL,
+                            {t!("browser-missions-field-attr")}
+                        }
+                        input {
+                            id: "mission-attr",
+                            class: "{INPUT} font-mono",
+                            value: "{attr}",
+                            oninput: move |e| attr.set(e.value()),
+                        }
+                        p { class: FIELD_HELP, {t!("browser-missions-field-attr-help")} }
                     }
-                    p { class: FIELD_HELP, {t!("browser-missions-field-selector-help")} }
-                }
-                div {
-                    label { r#for: "mission-attr", class: FIELD_LABEL,
-                        {t!("browser-missions-field-attr")}
+                    div {
+                        label { r#for: "mission-metric", class: FIELD_LABEL,
+                            {t!("browser-missions-field-metric")}
+                        }
+                        input {
+                            id: "mission-metric",
+                            class: "{INPUT} font-mono",
+                            placeholder: "price",
+                            value: "{metric}",
+                            oninput: move |e| metric.set(e.value()),
+                        }
+                        p { class: FIELD_HELP, {t!("browser-missions-field-metric-help")} }
                     }
-                    input {
-                        id: "mission-attr",
-                        class: "{INPUT} font-mono",
-                        value: "{attr}",
-                        oninput: move |e| attr.set(e.value()),
-                    }
-                    p { class: FIELD_HELP, {t!("browser-missions-field-attr-help")} }
-                }
-                div {
-                    label { r#for: "mission-metric", class: FIELD_LABEL,
-                        {t!("browser-missions-field-metric")}
-                    }
-                    input {
-                        id: "mission-metric",
-                        class: "{INPUT} font-mono",
-                        placeholder: "price",
-                        value: "{metric}",
-                        oninput: move |e| metric.set(e.value()),
-                    }
-                    p { class: FIELD_HELP, {t!("browser-missions-field-metric-help")} }
                 }
                 div {
                     label { r#for: "mission-interval", class: FIELD_LABEL,

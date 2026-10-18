@@ -530,3 +530,106 @@ async fn viewer_reads_and_other_orgs_see_nothing() {
     })
     .await;
 }
+
+/// Signed page upload: (status, body).
+async fn upload_page(
+    server: &axum_test::TestServer,
+    install: &Install,
+    a: &Paired,
+    body: &Value,
+) -> (u16, Value, String) {
+    use sha2::Digest as _;
+    let raw = serde_json::to_vec(body).unwrap();
+    let sha: String = sha2::Sha256::digest(&raw)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let ts = chrono::Utc::now().timestamp_millis();
+    let mission = body["mission_id"].as_str().unwrap();
+    let signature = install.sign(&ba::upload_message(&a.device_id, ts, mission, &sha));
+    let (status, got) = upload_signed(server, a, &raw, ts, &signature).await;
+    (status, got, signature)
+}
+
+async fn upload_signed(
+    server: &axum_test::TestServer,
+    a: &Paired,
+    raw: &[u8],
+    ts: i64,
+    signature: &str,
+) -> (u16, Value) {
+    let res = server
+        .post("/api/v1/extension/uploads/page")
+        .add_header("Authorization", format!("Bearer {}", a.token))
+        .add_header("X-Pnex-Ts", ts.to_string())
+        .add_header("X-Pnex-Signature", signature.to_string())
+        .bytes(raw.to_vec().into())
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+#[serial]
+async fn page_capture_adds_a_version_only_when_the_text_changes() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, m) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/missions",
+            &env.alice,
+            org,
+            Some(json!({
+                "name": "News front page",
+                "spec": { "kind": "collect_page", "params": { "url": "https://example.org/news" } },
+                "interval_secs": 300,
+            })),
+        )
+        .await;
+        assert_eq!(s, 201, "{m}");
+        let mission_id = m["id"].as_str().unwrap().to_string();
+        let page = |text: &str| {
+            json!({ "mission_id": mission_id, "url": "https://example.org/news", "title": "News", "text": text })
+        };
+
+        let (s, first, signature) = upload_page(&server, &install, &a, &page("Headline one")).await;
+        assert_eq!(s, 201, "{first}");
+        assert_eq!(first["version"], 1);
+        assert_eq!(first["changed"], true);
+        let (s, same, _) = upload_page(&server, &install, &a, &page("Headline one")).await;
+        assert_eq!(s, 201);
+        assert_eq!(same["changed"], false);
+        assert_eq!(same["asset_id"], first["asset_id"]);
+        let (s, next, _) = upload_page(&server, &install, &a, &page("Headline two")).await;
+        assert_eq!(s, 201);
+        assert_eq!(next["version"], 2);
+
+        // A replayed signature, or a body that is not the signed one, is refused.
+        let raw = serde_json::to_vec(&page("Headline one")).unwrap();
+        let ts = chrono::Utc::now().timestamp_millis();
+        let (s, e) = upload_signed(&server, &a, &raw, ts, &signature).await;
+        assert_eq!(s, 401);
+        assert_eq!(e["error"], "extension-upload-refused");
+
+        // The document is a Markdown version of the mission's asset.
+        let asset = first["asset_id"].as_str().unwrap();
+        let (s, media) = call(&server, "GET", &format!("/api/v1/media/{asset}"), &env.alice, org, None).await;
+        assert_eq!(s, 200, "{media}");
+        assert_eq!(media["kind"], "document");
+
+        // Only a page mission takes pages.
+        let (_, value) = call(&server, "POST", "/api/v1/extension/missions", &env.alice, org, Some(mission_body("Price"))).await;
+        let mut other = page("x");
+        other["mission_id"] = value["id"].clone();
+        let (s, e, _) = upload_page(&server, &install, &a, &other).await;
+        assert_eq!(s, 404);
+        assert_eq!(e["error"], "extension-mission-not-found");
+    })
+    .await;
+}

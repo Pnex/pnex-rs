@@ -32,6 +32,7 @@ mod m20261015_000022_label_purge;
 mod m20261016_000023_llm_usages;
 mod m20261016_000024_media_analyses;
 mod m20261018_000025_browser_agents;
+mod m20261018_000026_extension_mission_cursor;
 
 pub struct Migrator;
 
@@ -60,6 +61,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261016_000023_llm_usages::Migration),
             Box::new(m20261016_000024_media_analyses::Migration),
             Box::new(m20261018_000025_browser_agents::Migration),
+            Box::new(m20261018_000026_extension_mission_cursor::Migration),
         ]
     }
 }

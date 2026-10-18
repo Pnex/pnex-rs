@@ -304,11 +304,14 @@ pub async fn rename_agent(
 }
 
 /// Agent of a bearer token, if the request is signed by its install key.
+/// Agent of a bearer token, if `signature` is its install key's signature
+/// of `message(device_id)` made within the clock skew.
 pub async fn authenticate(
     db: &DatabaseConnection,
     token: &str,
     ts_ms: i64,
     signature: &str,
+    message: impl FnOnce(&str) -> String,
 ) -> Result<Option<AgentAuth>, DbErr> {
     let Some(row) = AgentRow::find_by_statement(stmt(
         &format!("{AGENT_SELECT} WHERE a.token_hash = $1"),
@@ -322,12 +325,7 @@ pub async fn authenticate(
     let Some(key) = decode_install_key(&row.install_key) else {
         return Ok(None);
     };
-    if !signed_now(
-        &key,
-        &ba::ticket_message(&row.device_id, ts_ms),
-        ts_ms,
-        signature,
-    ) {
+    if !signed_now(&key, &message(&row.device_id), ts_ms, signature) {
         return Ok(None);
     }
     Ok(auth_of(&row))
@@ -366,17 +364,10 @@ fn ticket_key(ticket: &str) -> String {
 /// One-time ticket of `/ws/extension` for an agent; `None` when Valkey is
 /// unreachable or the signature was already used (replay).
 pub async fn issue_ticket(config: &Config, agent: &AgentAuth, signature: &str) -> Option<String> {
+    if !first_use(config, signature).await? {
+        return None;
+    }
     let mut conn = crate::services::shared_valkey::conn(config).await?;
-    let fresh: Option<String> = redis::cmd("SET")
-        .arg(format!("pnex:ext:sig:{}", sha256_hex(signature.as_bytes())))
-        .arg(1)
-        .arg("NX")
-        .arg("PX")
-        .arg(ba::SIGNED_SKEW_MS * 2)
-        .query_async(&mut conn)
-        .await
-        .ok()?;
-    fresh?;
     let ticket = random_b64(true);
     redis::cmd("SET")
         .arg(ticket_key(&ticket))
@@ -387,6 +378,22 @@ pub async fn issue_ticket(config: &Config, agent: &AgentAuth, signature: &str) -
         .await
         .ok()?;
     Some(ticket)
+}
+
+/// `Some(true)` the first time a signature is seen (kept past its validity
+/// window), `Some(false)` on a replay, `None` when Valkey is unreachable.
+pub async fn first_use(config: &Config, signature: &str) -> Option<bool> {
+    let mut conn = crate::services::shared_valkey::conn(config).await?;
+    let fresh: Option<String> = redis::cmd("SET")
+        .arg(format!("pnex:ext:sig:{}", sha256_hex(signature.as_bytes())))
+        .arg(1)
+        .arg("NX")
+        .arg("PX")
+        .arg(ba::SIGNED_SKEW_MS * 2)
+        .query_async(&mut conn)
+        .await
+        .ok()?;
+    Some(fresh.is_some())
 }
 
 /// Consumes a ticket: the agent's device registry id, once.
@@ -683,6 +690,162 @@ pub async fn report_state(
     ))
     .await?;
     Ok(())
+}
+
+// ───────────────────────── Page captures (D261) ─────────────────────────
+
+/// Markdown document of a page: title, source, readable text.
+pub fn page_markdown(snapshot: &ba::PageSnapshot) -> String {
+    let title: String = snapshot
+        .title
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(300)
+        .collect();
+    let title = if title.is_empty() {
+        snapshot.url.clone()
+    } else {
+        title
+    };
+    format!(
+        "# {title}\n\n<{}>\n\n{}\n",
+        snapshot.url,
+        snapshot.text.trim()
+    )
+}
+
+/// Stores the text of a `collect_page` mission of this agent as a version
+/// of the mission's document (created on the first capture); an unchanged
+/// text adds no version. The document is indexed by the document search.
+pub async fn store_page(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    snapshot: &ba::PageSnapshot,
+) -> Result<ba::PageStored, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    let id = Uuid::parse_str(&snapshot.mission_id).map_err(|_| ExtensionError::MissionNotFound)?;
+    let mission = mission_row(&ctx.db, agent.org_id, id).await?;
+    let pinned_elsewhere = mission
+        .agent_id
+        .is_some_and(|a| a != agent.device_registry_id);
+    let is_page = matches!(
+        serde_json::from_value::<MissionSpec>(mission.spec.clone()),
+        Ok(MissionSpec::CollectPage(_))
+    );
+    if !mission.enabled || pinned_elsewhere || !is_page {
+        return Err(ExtensionError::MissionNotFound);
+    }
+    if snapshot.text.trim().is_empty() {
+        return Err(ExtensionError::Invalid {
+            field: "text".into(),
+            token: err_codes::FIELD_REQUIRED.into(),
+        });
+    }
+    if snapshot.text.len() > ba::PAGE_TEXT_MAX {
+        return Err(ExtensionError::Invalid {
+            field: "text".into(),
+            token: format!("{}:{}", err_codes::FIELD_MAX_LENGTH, ba::PAGE_TEXT_MAX),
+        });
+    }
+    let markdown = page_markdown(snapshot);
+    let digest = sha256_hex(markdown.as_bytes());
+    let cursor: serde_json::Value = mission_cursor(&ctx.db, id).await?;
+    let known = cursor["asset_id"]
+        .as_str()
+        .and_then(|a| Uuid::parse_str(a).ok());
+    let asset = match known {
+        Some(asset_id) => {
+            media_assets::Entity::find_by_id(asset_id)
+                .filter(media_assets::Column::OrgId.eq(agent.org_id))
+                .one(&ctx.db)
+                .await?
+        }
+        None => None,
+    };
+    if let Some(asset) = &asset {
+        if cursor["sha256"].as_str() == Some(digest.as_str()) {
+            let version = cursor["version"].as_i64().unwrap_or(0);
+            return Ok(ba::PageStored {
+                asset_id: asset.id.to_string(),
+                version,
+                changed: false,
+            });
+        }
+    }
+    let asset = match asset {
+        Some(asset) => asset,
+        // shortcut: the asset row is written before its first version, like
+        // the media upload; a failed write leaves an empty document behind.
+        None => {
+            media_assets::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                org_id: Set(agent.org_id),
+                kind: Set("document".into()),
+                name: Set(mission.name.clone()),
+                description: Set(None),
+                metadata: Set(Some(serde_json::json!({
+                    "source": "browser_agent",
+                    "mission_id": id.to_string(),
+                    "source_url": snapshot.url,
+                }))),
+                ..Default::default()
+            }
+            .insert(&ctx.db)
+            .await?
+        }
+    };
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    let version = crate::controllers::media::write_version(
+        ctx,
+        agent.org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: "page.md".into(),
+            content_type: "text/markdown".into(),
+            note: None,
+            bytes: markdown.into_bytes().into(),
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| ExtensionError::Db(DbErr::Custom(format!("page version: {e}"))))?;
+    ctx.db
+        .execute_raw(stmt(
+            "UPDATE extension_missions SET cursor = $2, state = 'running', state_code = NULL
+             WHERE id = $1",
+            vec![
+                id.into(),
+                serde_json::json!({
+                    "asset_id": asset.id.to_string(),
+                    "sha256": digest,
+                    "version": version.version_number,
+                })
+                .into(),
+            ],
+        ))
+        .await?;
+    Ok(ba::PageStored {
+        asset_id: asset.id.to_string(),
+        version: version.version_number,
+        changed: true,
+    })
+}
+
+async fn mission_cursor(db: &DatabaseConnection, id: Uuid) -> Result<serde_json::Value, DbErr> {
+    #[derive(FromQueryResult)]
+    struct Cursor {
+        cursor: Option<serde_json::Value>,
+    }
+    Ok(Cursor::find_by_statement(stmt(
+        "SELECT cursor FROM extension_missions WHERE id = $1",
+        vec![id.into()],
+    ))
+    .one(db)
+    .await?
+    .and_then(|c| c.cursor)
+    .unwrap_or(serde_json::Value::Null))
 }
 
 // ───────────────────────── Leases (D257) ─────────────────────────

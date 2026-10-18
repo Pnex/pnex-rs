@@ -37,7 +37,19 @@ async fn call(
     org: &str,
     body: &str,
 ) -> Result<HttpReply, String> {
-    let raw = host::http(method, url, bearer, org, body)
+    call_with(method, url, bearer, org, body, "").await
+}
+
+/// [`call`] with more headers (`extra`: JSON object).
+async fn call_with(
+    method: &str,
+    url: &str,
+    bearer: &str,
+    org: &str,
+    body: &str,
+    extra: &str,
+) -> Result<HttpReply, String> {
+    let raw = host::http(method, url, bearer, org, body, extra)
         .await
         .map_err(|e| err_text(&e))?;
     serde_json::from_str(&text(&raw)).map_err(|e| e.to_string())
@@ -500,32 +512,39 @@ async fn run_mission(
     platform: &str,
     m: &AssignedMission,
 ) -> String {
-    let MissionSpec::CollectValue(p) = &m.spec;
+    let url = match &m.spec {
+        MissionSpec::CollectValue(p) => p.url.clone(),
+        MissionSpec::CollectPage(p) => p.url.clone(),
+    };
     let state = |state: MissionState, code: &str| AgentMsg::State {
         mission_id: m.id.clone(),
         state,
         code: (!code.is_empty()).then(|| code.to_string()),
     };
-    let allowed = host::has_origin(&p.url)
+    let allowed = host::has_origin(&url)
         .await
         .ok()
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     if !allowed {
-        plan.borrow_mut().missing.insert(origin_of(&p.url));
+        plan.borrow_mut().missing.insert(origin_of(&url));
         session.send(&state(
             MissionState::Blocked,
             err_codes::EXT_PERMISSION_MISSING,
         ));
         return err_codes::EXT_PERMISSION_MISSING.into();
     }
-    plan.borrow_mut().missing.remove(&origin_of(&p.url));
+    plan.borrow_mut().missing.remove(&origin_of(&url));
     let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
-    let tab = match host::agent_tab(tab, &p.url).await {
+    let tab = match host::agent_tab(tab, &url).await {
         Ok(id) => id.as_f64().unwrap_or(-1.0),
         Err(e) => return err_text(&e),
     };
     plan.borrow_mut().tabs.insert(platform.to_string(), tab);
+    let p = match &m.spec {
+        MissionSpec::CollectValue(p) => p,
+        MissionSpec::CollectPage(_) => return capture_page(session, m, tab).await,
+    };
     #[derive(Deserialize)]
     struct Read {
         found: bool,
@@ -550,6 +569,60 @@ async fn run_mission(
             ));
             err_codes::EXT_SELECTOR_NOT_FOUND.into()
         }
+    }
+}
+
+/// `collect_page`: the tab's readable text, uploaded signed (D261, D262).
+async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> String {
+    use sha2::Digest as _;
+    #[derive(Deserialize)]
+    struct Page {
+        url: String,
+        title: String,
+        text: String,
+    }
+    let Some(page) = host::read_page(tab)
+        .await
+        .ok()
+        .and_then(|v| serde_json::from_str::<Page>(&text(&v)).ok())
+    else {
+        return "read-failed".into();
+    };
+    let snapshot = ba::PageSnapshot {
+        mission_id: m.id.clone(),
+        url: page.url,
+        title: page.title,
+        text: page.text,
+    };
+    let Ok(body) = serde_json::to_string(&snapshot) else {
+        return "encode-failed".into();
+    };
+    let sha: String = sha2::Sha256::digest(body.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let creds = &session.creds;
+    let ts = host::now_ms() as i64;
+    let signature = match host::sign(&ba::upload_message(&creds.device_id, ts, &m.id, &sha)).await {
+        Ok(sig) => text(&sig),
+        Err(e) => return err_text(&e),
+    };
+    let headers = serde_json::json!({ "X-Pnex-Ts": ts.to_string(), "X-Pnex-Signature": signature });
+    let reply = call_with(
+        "POST",
+        &format!("{}/api/v1/extension/uploads/page", creds.server),
+        &creds.token,
+        "",
+        &body,
+        &headers.to_string(),
+    )
+    .await;
+    match reply {
+        Ok(r) if r.status == 201 => serde_json::from_str::<ba::PageStored>(&r.body)
+            .map(|s| format!("v{}", s.version))
+            .unwrap_or_default(),
+        Ok(r) => error_of(&r),
+        Err(e) => e,
     }
 }
 
