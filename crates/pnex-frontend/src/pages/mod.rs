@@ -87,7 +87,7 @@ pub use profile::Profile;
 pub use secrets::Secrets;
 pub use share::ShareTour;
 pub use showcase::Showcase;
-pub use streams::Streams;
+pub use streams::{StreamReview, Streams};
 pub use studio::Studio;
 pub use system::System;
 pub use visualisation::Visualisation;

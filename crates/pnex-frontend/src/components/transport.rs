@@ -215,6 +215,15 @@ pub fn seek_media(id: &str, secs: f64) {
     let _ = dioxus::document::eval(&js);
 }
 
+/// Starts the [`MediaPlayer`] of element `id` (chained pieces of audio).
+pub fn play_media(id: &str) {
+    let js = format!(
+        "const el = document.getElementById({}); if (el) el.play();",
+        serde_json::Value::from(id)
+    );
+    let _ = dioxus::document::eval(&js);
+}
+
 /// Playback rates of [`MediaPlayer`], in percent.
 const MEDIA_RATES: [(u32, &str); 4] = [(50, "×0.5"), (100, "×1"), (150, "×1.5"), (200, "×2")];
 

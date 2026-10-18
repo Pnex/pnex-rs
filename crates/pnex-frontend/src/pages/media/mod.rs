@@ -475,7 +475,7 @@ fn DocHitRow(hit: api::media::SearchHit, on_open: Callback<String>) -> Element {
 mod analyses;
 mod detail;
 mod preview;
-mod review;
+pub(crate) mod review;
 mod upload;
 mod util;
 

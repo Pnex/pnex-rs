@@ -676,3 +676,94 @@ async fn detection_needs_a_model_and_starts_empty() {
     })
     .await;
 }
+
+/// Review of a stream window (D271 V2): the segments whose audio is still
+/// kept are listed on the window clock and play; a deleted audio does not;
+/// the window is bounded; another org sees nothing.
+#[tokio::test]
+#[serial]
+async fn a_stream_window_lists_and_plays_its_kept_audio() {
+    use pnex_backend::services::media::MediaSettings;
+    use pnex_backend::services::media_ingest::{segments, streams};
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let media: uuid::Uuid = audio(&server, &env.alice, org).await.parse().unwrap();
+        let stream = streams::batch_stream(&env.ctx.db, org, media, None)
+            .await
+            .unwrap();
+        let store = MediaSettings::from_config(&env.ctx.config).store().unwrap();
+        let t0 = chrono::Utc::now() - chrono::Duration::minutes(30);
+        let seg = segments::write(
+            &env.ctx.db,
+            &store,
+            &stream,
+            segments::NewSegment {
+                seq: 0,
+                started_at: t0,
+                ended_at: t0 + chrono::Duration::seconds(30),
+                clock_source: pnex_core::media_ingest::ClockSource::Host,
+                wav: tone_wav(),
+            },
+        )
+        .await
+        .unwrap();
+        let from = (t0 - chrono::Duration::minutes(5)).to_rfc3339();
+        let to = (t0 + chrono::Duration::minutes(25)).to_rfc3339();
+        let q = |from: &str, to: &str| {
+            format!(
+                "/api/v1/media/streams/{}/review?from={}&to={}",
+                stream.id,
+                urlencoding(from),
+                urlencoding(to)
+            )
+        };
+        let (st, r) = call(&server, "GET", &q(&from, &to), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(r["audio"].as_array().unwrap().len(), 1, "{r}");
+        assert_eq!(r["audio"][0]["segment_id"], seg.id.to_string());
+        assert_eq!(r["audio"][0]["start_ms"], 300_000, "5 min after `from`");
+        assert_eq!(r["unavailable"], true, "no O2 in the tests");
+        let audio_path = format!(
+            "/api/v1/media/streams/{}/segments/{}/audio",
+            stream.id, seg.id
+        );
+        let res = server
+            .get(&audio_path)
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 200);
+        assert!(res.as_bytes().starts_with(b"RIFF"));
+
+        // Bounded window; another org; audio gone with the retention.
+        let far = (t0 + chrono::Duration::hours(7)).to_rfc3339();
+        let (st, e) = call(&server, "GET", &q(&from, &far), &env.alice, org, None).await;
+        assert_eq!(st, 400, "{e}");
+        let bob_org = personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "GET", &q(&from, &to), &env.bob, bob_org, None).await;
+        assert_eq!(st, 404);
+        let (st, _) = call(&server, "GET", &audio_path, &env.bob, bob_org, None).await;
+        assert_eq!(st, 404);
+        use sea_orm::{ConnectionTrait, Statement};
+        env.ctx
+            .db
+            .execute_raw(Statement::from_string(
+                sea_orm::DbBackend::Postgres,
+                format!(
+                    "UPDATE media_segments SET storage_key = NULL WHERE id = '{}'",
+                    seg.id
+                ),
+            ))
+            .await
+            .unwrap();
+        let (st, _) = call(&server, "GET", &audio_path, &env.alice, org, None).await;
+        assert_eq!(st, 404, "audio no longer kept");
+        let (_, r) = call(&server, "GET", &q(&from, &to), &env.alice, org, None).await;
+        assert!(r["audio"].as_array().unwrap().is_empty(), "{r}");
+    })
+    .await;
+}
+
+fn urlencoding(s: &str) -> String {
+    s.replace('+', "%2B").replace(':', "%3A")
+}

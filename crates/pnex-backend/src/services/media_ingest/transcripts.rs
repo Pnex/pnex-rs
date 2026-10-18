@@ -173,6 +173,61 @@ pub async fn run_documents(
     ))
 }
 
+/// The documents of a live stream between `from_us` and `to_us`, oldest
+/// first: `(start_us, end_us, text, words_json, speakers_json)`. `None`
+/// when the text store is not configured or not provisioned.
+pub async fn window_documents(
+    ctx: &AppContext,
+    org_id: i64,
+    slug: &str,
+    from_us: i64,
+    to_us: i64,
+) -> Result<Option<Vec<(i64, i64, String, String, String)>>, String> {
+    let Some(client) = client(ctx) else {
+        return Ok(None);
+    };
+    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+        return Ok(None);
+    };
+    if !is_valid_slug(slug) {
+        return Ok(Some(Vec::new()));
+    }
+    let sql = format!(
+        "SELECT * FROM \"{}\" ORDER BY _timestamp ASC",
+        transcript_stream(slug)
+    );
+    let page = client
+        .search_logs(
+            &creds.o2_org,
+            &sql,
+            from_us,
+            to_us,
+            0,
+            RUN_MAX_DOCS,
+            &creds.email_passcode,
+        )
+        .await;
+    let hits = match page {
+        Ok(r) => r.hits,
+        Err(e) if e.contains("not found") => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    Ok(Some(
+        hits.iter()
+            .map(|h| {
+                let start = h["_timestamp"].as_i64().unwrap_or(0);
+                (
+                    start,
+                    h["ended_at"].as_i64().unwrap_or(start),
+                    h["message"].as_str().unwrap_or_default().to_string(),
+                    h["words"].as_str().unwrap_or("[]").to_string(),
+                    h["speakers"].as_str().unwrap_or("[]").to_string(),
+                )
+            })
+            .collect(),
+    ))
+}
+
 /// Documents read for one run: 4 h of 30 s segments, or a long subtitle.
 const RUN_MAX_DOCS: i64 = 5_000;
 
