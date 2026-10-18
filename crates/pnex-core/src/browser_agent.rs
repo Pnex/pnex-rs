@@ -220,14 +220,66 @@ pub struct CollectPageParams {
     pub url: String,
 }
 
-/// A typed mission (D256). Other kinds (`follow_account`, `watch_live`)
-/// arrive with their lots.
+/// Social platform an agent follows accounts on (D254). TikTok comes with
+/// its adapter (lot L3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SocialPlatform {
+    X,
+}
+
+impl SocialPlatform {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::X => "x",
+        }
+    }
+
+    /// Profile page of an account.
+    pub fn profile_url(self, handle: &str) -> String {
+        match self {
+            Self::X => format!("https://x.com/{handle}"),
+        }
+    }
+}
+
+/// What a `follow_account` mission does with a new video (D267).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum MediaPolicy {
+    /// Download unless the platform gave captions. Until captions are read
+    /// (D281, after D211), behaves as `always`.
+    #[default]
+    IfNoTranscript,
+    Always,
+    /// Registry and metadata only.
+    MetadataOnly,
+}
+
+/// `follow_account` (D256): the new posts of one public account.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FollowAccountParams {
+    pub platform: SocialPlatform,
+    /// Account handle, without `@`.
+    pub handle: String,
+    #[serde(default)]
+    pub media_policy: MediaPolicy,
+}
+
+/// Longest account handle.
+pub const HANDLE_MAX: usize = 50;
+
+/// A typed mission (D256). `watch_live` arrives with its lot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(tag = "kind", content = "params", rename_all = "snake_case")]
 pub enum MissionSpec {
     CollectValue(CollectValueParams),
     CollectPage(CollectPageParams),
+    FollowAccount(FollowAccountParams),
 }
 
 impl MissionSpec {
@@ -235,6 +287,7 @@ impl MissionSpec {
         match self {
             Self::CollectValue(_) => "collect_value",
             Self::CollectPage(_) => "collect_page",
+            Self::FollowAccount(_) => "follow_account",
         }
     }
 }
@@ -411,6 +464,26 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
             let (url, target) = check_page_url(&p.url, "spec.params.url")?;
             Ok((MissionSpec::CollectPage(CollectPageParams { url }), target))
         }
+        MissionSpec::FollowAccount(p) => {
+            let handle = p.handle.trim().trim_start_matches('@');
+            let valid = !handle.is_empty()
+                && handle.len() <= HANDLE_MAX
+                && handle
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+            if !valid {
+                return Err(field("spec.params.handle", err_codes::FIELD_INVALID));
+            }
+            let target = format!("{}:@{}", p.platform.wire(), handle.to_ascii_lowercase());
+            Ok((
+                MissionSpec::FollowAccount(FollowAccountParams {
+                    platform: p.platform,
+                    handle: handle.into(),
+                    media_policy: p.media_policy,
+                }),
+                target,
+            ))
+        }
     }
 }
 
@@ -473,6 +546,12 @@ pub enum ServerMsg {
     Missions {
         missions: Vec<AssignedMission>,
     },
+    /// Answer to [`AgentMsg::Seen`]: the posts whose video the agent should
+    /// download and upload (new in the registry, policy allows it, D259).
+    Capture {
+        mission_id: String,
+        platform_ids: Vec<String>,
+    },
     Pong,
 }
 
@@ -493,7 +572,92 @@ pub enum AgentMsg {
         #[serde(default)]
         code: Option<String>,
     },
+    /// Posts a `follow_account` mission saw on the account (at most
+    /// [`SEEN_MAX`] per message).
+    Seen {
+        mission_id: String,
+        posts: Vec<SeenPost>,
+    },
     Ping,
+}
+
+/// Posts per [`AgentMsg::Seen`].
+pub const SEEN_MAX: usize = 100;
+/// Largest post text kept.
+pub const POST_TEXT_MAX: usize = 4000;
+
+/// A post as an adapter reads it from the platform's own responses.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeenPost {
+    /// Id of the post on the platform.
+    pub platform_id: String,
+    pub url: String,
+    /// Handle of the account that posted it.
+    pub author: String,
+    #[serde(default)]
+    pub text: String,
+    /// RFC 3339.
+    #[serde(default)]
+    pub published_at: Option<String>,
+    /// Best progressive (mp4) variant, when the post carries a video.
+    #[serde(default)]
+    pub video_url: Option<String>,
+    #[serde(default)]
+    pub duration_ms: Option<i64>,
+}
+
+/// Message the install key signs to upload a video (D262): bound to the
+/// mission, the post and the SHA-256 (hex) of the file.
+pub fn video_upload_message(
+    device_id: &str,
+    ts_ms: i64,
+    mission_id: &str,
+    platform_id: &str,
+    body_sha256: &str,
+) -> String {
+    format!("pnex-ext-video\n{device_id}\n{ts_ms}\n{mission_id}\n{platform_id}\n{body_sha256}")
+}
+
+/// Largest captured video (bytes).
+pub const VIDEO_MAX: usize = 200 * 1024 * 1024;
+
+/// State of a video in the registry (D259).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VideoState {
+    /// Known, not downloaded (metadata only, or capture pending/failed).
+    Seen,
+    /// Downloaded into the media library.
+    Captured,
+}
+
+/// A row of the video registry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SocialVideo {
+    pub platform: SocialPlatform,
+    pub platform_id: String,
+    pub url: String,
+    pub author: String,
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub published_at: Option<String>,
+    pub has_video: bool,
+    pub state: VideoState,
+    /// Media of the captured video.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub media_asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub mission_id: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub first_seen_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub captured_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -551,6 +715,31 @@ mod tests {
             "spec.params.metric"
         );
         assert!(check_spec(&value("https://x.org/", ".a", "attr:data-v", "m_1")).is_ok());
+    }
+
+    #[test]
+    fn follow_account_target() {
+        let spec = MissionSpec::FollowAccount(FollowAccountParams {
+            platform: SocialPlatform::X,
+            handle: " @Some_Account ".into(),
+            media_policy: MediaPolicy::Always,
+        });
+        let (spec, target) = check_spec(&spec).unwrap();
+        assert_eq!(target, "x:@some_account");
+        assert_eq!(platform_of(&target), "x");
+        let MissionSpec::FollowAccount(p) = spec else {
+            panic!("follow_account expected");
+        };
+        assert_eq!(p.handle, "Some_Account");
+        let bad = MissionSpec::FollowAccount(FollowAccountParams {
+            platform: SocialPlatform::X,
+            handle: "a/b".into(),
+            media_policy: MediaPolicy::default(),
+        });
+        assert_eq!(check_spec(&bad).unwrap_err().0, "spec.params.handle");
+        let json = serde_json::json!({"kind":"follow_account","params":{"platform":"x","handle":"a"}});
+        let parsed: MissionSpec = serde_json::from_value(json).unwrap();
+        assert!(matches!(parsed, MissionSpec::FollowAccount(FollowAccountParams { media_policy: MediaPolicy::IfNoTranscript, .. })));
     }
 
     #[test]

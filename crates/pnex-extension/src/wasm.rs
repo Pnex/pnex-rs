@@ -425,9 +425,38 @@ impl Session {
             status.connected = this.shared.borrow().link.is_some();
             let inbox = std::mem::take(&mut this.shared.borrow_mut().inbox);
             for msg in inbox {
-                if let ServerMsg::Missions { missions } = msg {
-                    plan.borrow_mut().replace(missions);
+                match msg {
+                    ServerMsg::Missions { missions } => plan.borrow_mut().replace(missions),
+                    ServerMsg::Capture {
+                        mission_id,
+                        platform_ids,
+                    } => {
+                        let mut p = plan.borrow_mut();
+                        for id in platform_ids {
+                            if let Some(url) = p.videos.remove(&id) {
+                                p.downloads.push_back((mission_id.clone(), id, url));
+                            }
+                        }
+                    }
+                    ServerMsg::Pong => {}
                 }
+            }
+            // One download at a time, a pause between two (D258).
+            let next_download = {
+                let mut p = plan.borrow_mut();
+                let ready = !p.downloading && host::now_ms() >= p.next_download_at;
+                ready.then(|| p.downloads.pop_front()).flatten()
+            };
+            if let Some((mission_id, post, url)) = next_download {
+                plan.borrow_mut().downloading = true;
+                let (this, plan) = (this.clone(), plan.clone());
+                spawn_local(async move {
+                    let outcome = capture_video(&this, &mission_id, &post, &url).await;
+                    let mut p = plan.borrow_mut();
+                    p.downloading = false;
+                    p.next_download_at = host::now_ms() + 5_000.0 + js_sys::Math::random() * 5_000.0;
+                    p.outcome.insert(mission_id, outcome);
+                });
             }
             let now = host::now_ms();
             if now - last_ping >= PING_MS {
@@ -493,6 +522,13 @@ struct Plan {
     outcome: BTreeMap<String, String>,
     /// Origins a mission needs and the user has not allowed yet.
     missing: BTreeSet<String>,
+    /// Video URL of the posts last reported as seen, until the server
+    /// answers which to capture.
+    videos: BTreeMap<String, String>,
+    /// Videos to capture: (mission, post, url).
+    downloads: std::collections::VecDeque<(String, String, String)>,
+    downloading: bool,
+    next_download_at: f64,
 }
 
 impl Plan {
@@ -515,27 +551,43 @@ async fn run_mission(
     let url = match &m.spec {
         MissionSpec::CollectValue(p) => p.url.clone(),
         MissionSpec::CollectPage(p) => p.url.clone(),
+        MissionSpec::FollowAccount(p) => p.platform.profile_url(&p.handle),
     };
+    // Sites the mission reads: its page, plus the platform's video host.
+    let mut needed = vec![url.clone()];
+    if let MissionSpec::FollowAccount(_) = &m.spec {
+        needed.push(X_VIDEO_HOST.into());
+    }
     let state = |state: MissionState, code: &str| AgentMsg::State {
         mission_id: m.id.clone(),
         state,
         code: (!code.is_empty()).then(|| code.to_string()),
     };
-    let allowed = host::has_origin(&url)
-        .await
-        .ok()
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !allowed {
-        plan.borrow_mut().missing.insert(origin_of(&url));
+    let mut blocked = false;
+    for site in &needed {
+        let allowed = host::has_origin(site)
+            .await
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let mut p = plan.borrow_mut();
+        if allowed {
+            p.missing.remove(&origin_of(site));
+        } else {
+            p.missing.insert(origin_of(site));
+            blocked = true;
+        }
+    }
+    if blocked {
         session.send(&state(
             MissionState::Blocked,
             err_codes::EXT_PERMISSION_MISSING,
         ));
         return err_codes::EXT_PERMISSION_MISSING.into();
     }
-    plan.borrow_mut().missing.remove(&origin_of(&url));
     let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+    // Responses of the previous visit are stale.
+    take_responses(tab);
     let tab = match host::agent_tab(tab, &url).await {
         Ok(id) => id.as_f64().unwrap_or(-1.0),
         Err(e) => return err_text(&e),
@@ -544,6 +596,7 @@ async fn run_mission(
     let p = match &m.spec {
         MissionSpec::CollectValue(p) => p,
         MissionSpec::CollectPage(_) => return capture_page(session, m, tab).await,
+        MissionSpec::FollowAccount(f) => return follow_account(session, plan, m, f, tab).await,
     };
     #[derive(Deserialize)]
     struct Read {
@@ -623,6 +676,130 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
             .unwrap_or_default(),
         Ok(r) => error_of(&r),
         Err(e) => e,
+    }
+}
+
+/// Host of X's video files (its own permission, asked with x.com).
+const X_VIDEO_HOST: &str = "https://video.twimg.com/";
+/// Scrolls of a profile per visit (3–6 s apart).
+const PROFILE_SCROLLS: u32 = 3;
+
+thread_local! {
+    /// Platform JSON relayed by the page hook, per tab (bounded).
+    static RESPONSES: RefCell<BTreeMap<i64, Vec<(String, String)>>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+/// Called by the service worker for each response the page hook relays.
+#[wasm_bindgen]
+pub fn on_response(tab: f64, url: String, body: String) {
+    RESPONSES.with(|r| {
+        let mut all = r.borrow_mut();
+        let list = all.entry(tab as i64).or_default();
+        if list.len() < 30 {
+            list.push((url, body));
+        }
+    });
+}
+
+fn take_responses(tab: f64) -> Vec<(String, String)> {
+    RESPONSES.with(|r| r.borrow_mut().remove(&(tab as i64)).unwrap_or_default())
+}
+
+/// `follow_account`: reads the profile like a person (a few slow scrolls),
+/// reports the account's posts, keeps their video URLs for the capture.
+async fn follow_account(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    m: &AssignedMission,
+    params: &ba::FollowAccountParams,
+    tab: f64,
+) -> String {
+    for _ in 0..PROFILE_SCROLLS {
+        host::sleep(3_000.0 + js_sys::Math::random() * 3_000.0).await;
+        if host::scroll(tab).await.is_err() {
+            break;
+        }
+    }
+    host::sleep(3_000.0).await;
+    let mut posts: BTreeMap<String, ba::SeenPost> = BTreeMap::new();
+    for (url, body) in take_responses(tab) {
+        if crate::adapters::x::is_timeline_url(&url) {
+            for post in crate::adapters::x::posts_of(&body, &params.handle) {
+                posts.entry(post.platform_id.clone()).or_insert(post);
+            }
+        }
+    }
+    if posts.is_empty() {
+        // Nothing relayed: a sign-in wall, or the account's page changed.
+        let page = host::read_page(tab).await.ok().map(|v| text(&v)).unwrap_or_default();
+        let code = if page.contains("/login") || page.contains("/i/flow/") {
+            err_codes::EXT_LOGIN_REQUIRED
+        } else {
+            err_codes::EXT_SELECTOR_NOT_FOUND
+        };
+        session.send(&AgentMsg::State {
+            mission_id: m.id.clone(),
+            state: MissionState::Blocked,
+            code: Some(code.into()),
+        });
+        return code.into();
+    }
+    let posts: Vec<ba::SeenPost> = posts.into_values().take(ba::SEEN_MAX).collect();
+    {
+        let mut p = plan.borrow_mut();
+        for post in &posts {
+            if let Some(url) = &post.video_url {
+                p.videos.insert(post.platform_id.clone(), url.clone());
+            }
+        }
+    }
+    let count = posts.len();
+    session.send(&AgentMsg::Seen {
+        mission_id: m.id.clone(),
+        posts,
+    });
+    format!("{count} posts")
+}
+
+/// Downloads one video and uploads it signed (D260, D262).
+async fn capture_video(session: &Session, mission_id: &str, post: &str, url: &str) -> String {
+    #[derive(Deserialize)]
+    struct Blob {
+        id: f64,
+        sha256: String,
+    }
+    let blob = match host::fetch_blob(url, ba::VIDEO_MAX as f64).await {
+        Ok(v) => match serde_json::from_str::<Blob>(&text(&v)) {
+            Ok(b) => b,
+            Err(e) => return e.to_string(),
+        },
+        Err(e) => return err_text(&e),
+    };
+    let creds = &session.creds;
+    let ts = host::now_ms() as i64;
+    let message = ba::video_upload_message(&creds.device_id, ts, mission_id, post, &blob.sha256);
+    let signature = match host::sign(&message).await {
+        Ok(sig) => text(&sig),
+        Err(e) => return err_text(&e),
+    };
+    let headers = serde_json::json!({
+        "X-Pnex-Ts": ts.to_string(),
+        "X-Pnex-Signature": signature,
+        "X-Pnex-Mission": mission_id,
+        "X-Pnex-Post": post,
+    });
+    let reply = host::upload_blob(
+        blob.id,
+        &format!("{}/api/v1/extension/uploads/video", creds.server),
+        &creds.token,
+        &headers.to_string(),
+    )
+    .await;
+    match reply.map(|v| serde_json::from_str::<HttpReply>(&text(&v))) {
+        Ok(Ok(r)) if r.status == 201 => format!("video {post}"),
+        Ok(Ok(r)) => error_of(&r),
+        Ok(Err(e)) => e.to_string(),
+        Err(e) => err_text(&e),
     }
 }
 

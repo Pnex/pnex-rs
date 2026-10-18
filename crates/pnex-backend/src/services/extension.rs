@@ -43,6 +43,8 @@ pub enum ExtensionError {
     AgentNotFound,
     #[error("mission not found")]
     MissionNotFound,
+    #[error("video not found")]
+    VideoNotFound,
     #[error("stale version")]
     VersionConflict { current: i32 },
     #[error("pairing refused")]
@@ -725,16 +727,8 @@ pub async fn store_page(
     snapshot: &ba::PageSnapshot,
 ) -> Result<ba::PageStored, ExtensionError> {
     use crate::models::_entities::media_assets;
-    let id = Uuid::parse_str(&snapshot.mission_id).map_err(|_| ExtensionError::MissionNotFound)?;
-    let mission = mission_row(&ctx.db, agent.org_id, id).await?;
-    let pinned_elsewhere = mission
-        .agent_id
-        .is_some_and(|a| a != agent.device_registry_id);
-    let is_page = matches!(
-        serde_json::from_value::<MissionSpec>(mission.spec.clone()),
-        Ok(MissionSpec::CollectPage(_))
-    );
-    if !mission.enabled || pinned_elsewhere || !is_page {
+    let (id, mission, spec) = own_mission(&ctx.db, agent, &snapshot.mission_id).await?;
+    if !matches!(spec, MissionSpec::CollectPage(_)) {
         return Err(ExtensionError::MissionNotFound);
     }
     if snapshot.text.trim().is_empty() {
@@ -831,6 +825,268 @@ pub async fn store_page(
         version: version.version_number,
         changed: true,
     })
+}
+
+/// An enabled mission this agent may run, with its spec; anything else is
+/// "not found" (an agent never learns about other missions).
+async fn own_mission(
+    db: &DatabaseConnection,
+    agent: &AgentAuth,
+    mission_id: &str,
+) -> Result<(Uuid, MissionRow, MissionSpec), ExtensionError> {
+    let id = Uuid::parse_str(mission_id).map_err(|_| ExtensionError::MissionNotFound)?;
+    let mission = mission_row(db, agent.org_id, id).await?;
+    let pinned_elsewhere = mission
+        .agent_id
+        .is_some_and(|a| a != agent.device_registry_id);
+    let spec = serde_json::from_value::<MissionSpec>(mission.spec.clone())
+        .map_err(|_| ExtensionError::MissionNotFound)?;
+    if !mission.enabled || pinned_elsewhere {
+        return Err(ExtensionError::MissionNotFound);
+    }
+    Ok((id, mission, spec))
+}
+
+// ───────────────────────── Video registry (D259) ─────────────────────────
+
+fn http_url(raw: &str) -> bool {
+    raw.len() <= ba::URL_MAX && (raw.starts_with("https://") || raw.starts_with("http://"))
+}
+
+/// A post as stored: bounded, typed, never trusted.
+fn clean_post(p: &ba::SeenPost) -> Option<ba::SeenPost> {
+    let id_ok = !p.platform_id.is_empty()
+        && p.platform_id.len() <= 64
+        && p.platform_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    if !id_ok || !http_url(&p.url) {
+        return None;
+    }
+    let published_at = p
+        .published_at
+        .as_deref()
+        .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+        .map(|t| t.to_rfc3339());
+    Some(ba::SeenPost {
+        platform_id: p.platform_id.clone(),
+        url: p.url.clone(),
+        author: p.author.chars().take(64).collect(),
+        text: p.text.chars().take(ba::POST_TEXT_MAX).collect(),
+        published_at,
+        video_url: p.video_url.clone().filter(|u| http_url(u)),
+        duration_ms: p.duration_ms.filter(|d| *d >= 0),
+    })
+}
+
+/// Records what a `follow_account` mission saw; returns the posts whose
+/// video the agent should capture: new in the registry, with a video, and
+/// a policy that keeps files. A post already known (by any agent) is never
+/// captured twice.
+pub async fn record_seen(
+    db: &DatabaseConnection,
+    agent: &AgentAuth,
+    mission_id: &str,
+    posts: &[ba::SeenPost],
+) -> Result<Vec<String>, ExtensionError> {
+    let (id, _, spec) = own_mission(db, agent, mission_id).await?;
+    let MissionSpec::FollowAccount(params) = spec else {
+        return Err(ExtensionError::MissionNotFound);
+    };
+    #[derive(FromQueryResult)]
+    struct Inserted {
+        platform_id: String,
+        video_url: Option<String>,
+    }
+    let mut capture = Vec::new();
+    for post in posts.iter().take(ba::SEEN_MAX).filter_map(clean_post) {
+        let inserted = Inserted::find_by_statement(stmt(
+            "INSERT INTO social_videos (id, org_id, platform, platform_id, url, author, text,
+                published_at, video_url, duration_ms, mission_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9, $10, $11)
+             ON CONFLICT (org_id, platform, platform_id) DO NOTHING
+             RETURNING platform_id, video_url",
+            vec![
+                Uuid::new_v4().into(),
+                agent.org_id.into(),
+                params.platform.wire().into(),
+                post.platform_id.clone().into(),
+                post.url.clone().into(),
+                post.author.clone().into(),
+                post.text.clone().into(),
+                post.published_at.clone().into(),
+                post.video_url.clone().into(),
+                post.duration_ms.into(),
+                id.into(),
+            ],
+        ))
+        .one(db)
+        .await?;
+        if let Some(row) = inserted {
+            if row.video_url.is_some() && params.media_policy != ba::MediaPolicy::MetadataOnly {
+                capture.push(row.platform_id);
+            }
+        }
+    }
+    report_state(db, agent, id, MissionState::Running, None).await?;
+    Ok(capture)
+}
+
+#[derive(Debug, FromQueryResult)]
+struct VideoRow {
+    id: Uuid,
+    platform: String,
+    platform_id: String,
+    url: String,
+    author: String,
+    text: String,
+    published_at: Option<DateTime<FixedOffset>>,
+    video_url: Option<String>,
+    state: String,
+    media_asset_id: Option<Uuid>,
+    mission_id: Option<Uuid>,
+    first_seen_at: DateTime<FixedOffset>,
+    captured_at: Option<DateTime<FixedOffset>>,
+}
+
+const VIDEO_COLUMNS: &str = "id, platform, platform_id, url, author, text, published_at, video_url,
+    state, media_asset_id, mission_id, first_seen_at, captured_at";
+
+impl VideoRow {
+    fn view(&self) -> ba::SocialVideo {
+        ba::SocialVideo {
+            platform: ba::SocialPlatform::X,
+            platform_id: self.platform_id.clone(),
+            url: self.url.clone(),
+            author: self.author.clone(),
+            text: self.text.clone(),
+            published_at: self.published_at.map(|t| t.to_rfc3339()),
+            has_video: self.video_url.is_some(),
+            state: if self.state == "captured" {
+                ba::VideoState::Captured
+            } else {
+                ba::VideoState::Seen
+            },
+            media_asset_id: self.media_asset_id.map(|u| u.to_string()),
+            mission_id: self.mission_id.map(|u| u.to_string()),
+            first_seen_at: self.first_seen_at.to_rfc3339(),
+            captured_at: self.captured_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
+/// Stores the video of a seen post as a `video` media of the library
+/// (D281: reviewed like any media), with the post's provenance.
+pub async fn store_video(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    mission_id: &str,
+    platform_id: &str,
+    bytes: axum::body::Bytes,
+) -> Result<ba::SocialVideo, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    let (id, _, spec) = own_mission(&ctx.db, agent, mission_id).await?;
+    let MissionSpec::FollowAccount(params) = spec else {
+        return Err(ExtensionError::MissionNotFound);
+    };
+    let row = VideoRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {VIDEO_COLUMNS} FROM social_videos
+             WHERE org_id = $1 AND platform = $2 AND platform_id = $3"
+        ),
+        vec![
+            agent.org_id.into(),
+            params.platform.wire().into(),
+            platform_id.into(),
+        ],
+    ))
+    .one(&ctx.db)
+    .await?
+    .filter(|r| r.state == "seen" && r.video_url.is_some())
+    .ok_or(ExtensionError::VideoNotFound)?;
+    if bytes.is_empty() || bytes.len() > ba::VIDEO_MAX {
+        return Err(ExtensionError::Invalid {
+            field: "body".into(),
+            token: format!("{}:{}", err_codes::FIELD_MAX_LENGTH, ba::VIDEO_MAX),
+        });
+    }
+    let captured_at = chrono::Utc::now().to_rfc3339();
+    // shortcut: the asset row is written before its version, like the media
+    // upload; a refused file (not an mp4) leaves an empty media behind.
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(agent.org_id),
+        kind: Set("video".into()),
+        name: Set(format!("@{} · {}", row.author, row.platform_id)),
+        description: Set((!row.text.is_empty()).then(|| row.text.chars().take(2000).collect())),
+        metadata: Set(Some(serde_json::json!({
+            "source": "browser_agent",
+            "mission_id": id.to_string(),
+            "source_url": row.url,
+            "platform": row.platform,
+            "platform_id": row.platform_id,
+            "author_handle": row.author,
+            "published_at": row.published_at.map(|t| t.to_rfc3339()),
+            "captured_at": captured_at,
+        }))),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?;
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    crate::controllers::media::write_version(
+        ctx,
+        agent.org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: format!("{}.mp4", row.platform_id),
+            content_type: "video/mp4".into(),
+            note: None,
+            bytes,
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| ExtensionError::Db(DbErr::Custom(format!("video version: {e}"))))?;
+    let updated = VideoRow::find_by_statement(stmt(
+        &format!(
+            "UPDATE social_videos SET state = 'captured', media_asset_id = $2, captured_at = now()
+             WHERE id = $1 RETURNING {VIDEO_COLUMNS}"
+        ),
+        vec![row.id.into(), asset.id.into()],
+    ))
+    .one(&ctx.db)
+    .await?
+    .ok_or(ExtensionError::VideoNotFound)?;
+    Ok(updated.view())
+}
+
+/// Registry of the org, newest first (SQL pagination: it grows).
+pub async fn list_videos(
+    db: &DatabaseConnection,
+    org_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<(i64, Vec<ba::SocialVideo>), ExtensionError> {
+    #[derive(FromQueryResult)]
+    struct Count {
+        n: i64,
+    }
+    let count = Count::find_by_statement(stmt(
+        "SELECT count(*) AS n FROM social_videos WHERE org_id = $1",
+        vec![org_id.into()],
+    ))
+    .one(db)
+    .await?
+    .map_or(0, |c| c.n);
+    let rows = VideoRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {VIDEO_COLUMNS} FROM social_videos WHERE org_id = $1
+             ORDER BY first_seen_at DESC, id LIMIT $2 OFFSET $3"
+        ),
+        vec![org_id.into(), limit.into(), offset.into()],
+    ))
+    .all(db)
+    .await?;
+    Ok((count, rows.iter().map(VideoRow::view).collect()))
 }
 
 async fn mission_cursor(db: &DatabaseConnection, id: Uuid) -> Result<serde_json::Value, DbErr> {

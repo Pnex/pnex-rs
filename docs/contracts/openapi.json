@@ -5946,6 +5946,26 @@
         },
         "type": "object"
       },
+      "FollowAccountParams": {
+        "description": "`follow_account` (D256): the new posts of one public account.",
+        "properties": {
+          "handle": {
+            "description": "Account handle, without `@`.",
+            "type": "string"
+          },
+          "media_policy": {
+            "$ref": "#/components/schemas/MediaPolicy"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/SocialPlatform"
+          }
+        },
+        "required": [
+          "platform",
+          "handle"
+        ],
+        "type": "object"
+      },
       "FrameAnnotation": {
         "description": "Detections of one analysed frame, drawn over the recording at playback.",
         "properties": {
@@ -8526,6 +8546,15 @@
         ],
         "type": "string"
       },
+      "MediaPolicy": {
+        "description": "What a `follow_account` mission does with a new video (D267).",
+        "enum": [
+          "if_no_transcript",
+          "always",
+          "metadata_only"
+        ],
+        "type": "string"
+      },
       "MediaSearchHits": {
         "description": "Ranked search hits.",
         "properties": {
@@ -9236,7 +9265,7 @@
         "type": "object"
       },
       "MissionSpec": {
-        "description": "A typed mission (D256). Other kinds (`follow_account`, `watch_live`)\narrive with their lots.",
+        "description": "A typed mission (D256). `watch_live` arrives with its lot.",
         "oneOf": [
           {
             "properties": {
@@ -9266,6 +9295,24 @@
               },
               "params": {
                 "$ref": "#/components/schemas/CollectPageParams"
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "follow_account"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/FollowAccountParams"
               }
             },
             "required": [
@@ -13450,6 +13497,42 @@
         ],
         "type": "object"
       },
+      "Paginated_SocialVideo": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/SocialVideo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_String": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -16416,6 +16499,83 @@
         ],
         "type": "object"
       },
+      "SocialPlatform": {
+        "description": "Social platform an agent follows accounts on (D254). TikTok comes with\nits adapter (lot L3).",
+        "enum": [
+          "x"
+        ],
+        "type": "string"
+      },
+      "SocialVideo": {
+        "description": "A row of the video registry.",
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "has_video": {
+            "type": "boolean"
+          },
+          "media_asset_id": {
+            "description": "Media of the captured video.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mission_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platform": {
+            "$ref": "#/components/schemas/SocialPlatform"
+          },
+          "platform_id": {
+            "type": "string"
+          },
+          "published_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/VideoState"
+          },
+          "text": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "platform_id",
+          "url",
+          "author",
+          "text",
+          "has_video",
+          "state",
+          "first_seen_at"
+        ],
+        "type": "object"
+      },
       "SourceRef": {
         "description": "Reference to a telemetry series by role (`source` is a list: a chart\nmay overlay several, a gauge reads `primary`).",
         "properties": {
@@ -18817,6 +18977,14 @@
           "height"
         ],
         "type": "object"
+      },
+      "VideoState": {
+        "description": "State of a video in the registry (D259).",
+        "enum": [
+          "seen",
+          "captured"
+        ],
+        "type": "string"
       },
       "VisionFamily": {
         "description": "Pre/post-processing family of a detector — fixes the input layout, the\noutput decoding and the default input size.",
@@ -34120,6 +34288,169 @@
           {}
         ],
         "summary": "Upload a page capture of a browser agent",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/video": {
+      "post": {
+        "description": "Called by a browser agent for a post its `follow_account` mission saw and the server asked to capture, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Post` (post id on the platform), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post and SHA-256 of the file, usable once). Body: the mp4 file. Stores it as a `video` media of the library with the post's provenance and marks the registry row captured. Rate-limited per agent.",
+        "operationId": "extension_upload_video",
+        "requestBody": {
+          "content": {
+            "video/mp4": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SocialVideo"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: empty or larger than the cap (`max_length:N`), or not an mp4 (`media-format-unsupported`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found` or `extension-video-not-found` (not in the registry, or already captured)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`: too many captures"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`: Valkey unreachable"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Upload a video captured by a browser agent",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/videos": {
+      "get": {
+        "description": "Posts the browser agents saw on followed accounts, newest first: state (`seen`, `captured`) and the captured media. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_videos_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_SocialVideo"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the video registry",
         "tags": [
           "extension"
         ]

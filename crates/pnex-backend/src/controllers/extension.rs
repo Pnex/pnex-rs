@@ -30,6 +30,17 @@ pub fn routes() -> Routes {
         .add("/ws-ticket", post(ws_ticket))
         .add("/download", get(download))
         .add("/uploads/page", post(upload_page))
+        .add(
+            "/uploads/video",
+            post(upload_video)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    pnex_core::browser_agent::VIDEO_MAX + 1024 * 1024,
+                ))
+                .layer(axum::middleware::from_fn(
+                    crate::services::compute_limits::upload_gate,
+                )),
+        )
+        .add("/videos", get(videos))
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -47,6 +58,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         ws_ticket,
         download,
         upload_page,
+        upload_video,
+        videos,
         missions,
         mission,
         create_mission,
@@ -85,6 +98,11 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             StatusCode::NOT_FOUND,
             err_codes::EXTENSION_MISSION_NOT_FOUND,
             "Mission not found.",
+        ),
+        ExtensionError::VideoNotFound => coded(
+            StatusCode::NOT_FOUND,
+            err_codes::EXTENSION_VIDEO_NOT_FOUND,
+            "Video not in the registry of this mission, or already captured.",
         ),
         ExtensionError::VersionConflict { current } => Err(super::coded_error(
             StatusCode::CONFLICT,
@@ -413,6 +431,81 @@ async fn download(headers: axum::http::HeaderMap) -> Result<Response> {
 /// Captures per agent and minute (a page every 20 s per site, a few sites).
 const UPLOADS_PER_MINUTE: u32 = 30;
 
+fn upload_refused() -> Error {
+    Error::CustomError(
+        StatusCode::UNAUTHORIZED,
+        ErrorDetail::new(
+            err_codes::EXTENSION_UPLOAD_REFUSED,
+            "Unknown agent token or bad signature.",
+        ),
+    )
+}
+
+/// Agent of a signed upload (`Authorization`, `X-Pnex-Ts`,
+/// `X-Pnex-Signature` over `message(device_id, ts)`), signature used once,
+/// within the per-agent capture rate.
+async fn signed_upload(
+    ctx: &AppContext,
+    headers: &axum::http::HeaderMap,
+    message: impl FnOnce(&str, i64) -> String,
+) -> Result<extension::AgentAuth> {
+    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+    let (Some(token), Some(ts), Some(signature)) = (
+        super::device_link::device_token(headers),
+        header("x-pnex-ts").and_then(|v| v.trim().parse::<i64>().ok()),
+        header("x-pnex-signature"),
+    ) else {
+        return Err(upload_refused());
+    };
+    let agent = match extension::authenticate(&ctx.db, token, ts, signature, |device_id| {
+        message(device_id, ts)
+    })
+    .await
+    {
+        Ok(Some(agent)) => agent,
+        Ok(None) => return Err(upload_refused()),
+        Err(e) => {
+            tracing::error!(error = %e, "browser agent lookup failed");
+            return Err(Error::InternalServerError);
+        }
+    };
+    match extension::first_use(&ctx.config, signature).await {
+        Some(true) => {}
+        Some(false) => return Err(upload_refused()),
+        None => {
+            return Err(Error::CustomError(
+                StatusCode::SERVICE_UNAVAILABLE,
+                ErrorDetail::new(
+                    err_codes::EXTENSION_TICKET_UNAVAILABLE,
+                    "Browser agent captures are unavailable.",
+                ),
+            ))
+        }
+    }
+    let limiter = crate::services::rate_limit::RateLimiter::new(
+        crate::services::shared_valkey::conn(&ctx.config).await,
+    );
+    let bucket = format!("extension-upload:{}", agent.device_registry_id);
+    if let crate::services::rate_limit::Decision::Deny { .. } = limiter
+        .hit(&bucket, UPLOADS_PER_MINUTE, std::time::Duration::from_secs(60))
+        .await
+    {
+        return Err(Error::CustomError(
+            StatusCode::TOO_MANY_REQUESTS,
+            ErrorDetail::new(err_codes::RATE_LIMITED, "Too many captures."),
+        ));
+    }
+    Ok(agent)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// `POST /api/v1/extension/uploads/page` — agent credentials, no user.
 #[utoipa::path(
     post,
@@ -437,76 +530,89 @@ async fn upload_page(
     headers: axum::http::HeaderMap,
     raw: axum::body::Bytes,
 ) -> Result<Response> {
-    use sha2::Digest as _;
-    let refused = || {
-        Err(Error::CustomError(
-            StatusCode::UNAUTHORIZED,
-            ErrorDetail::new(
-                err_codes::EXTENSION_UPLOAD_REFUSED,
-                "Unknown agent token or bad signature.",
-            ),
-        ))
-    };
-    let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
-    let (Some(token), Some(ts), Some(signature)) = (
-        super::device_link::device_token(&headers),
-        header("x-pnex-ts").and_then(|v| v.trim().parse::<i64>().ok()),
-        header("x-pnex-signature"),
-    ) else {
-        return refused();
-    };
-    let Ok(snapshot) = serde_json::from_slice::<pnex_core::browser_agent::PageSnapshot>(&raw)
-    else {
+    let Ok(snapshot) = serde_json::from_slice::<pnex_core::browser_agent::PageSnapshot>(&raw) else {
         return Ok(super::field_error("body", err_codes::FIELD_INVALID));
     };
-    let body_sha: String = sha2::Sha256::digest(&raw)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    let agent = match extension::authenticate(&ctx.db, token, ts, signature, |device_id| {
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
         pnex_core::browser_agent::upload_message(device_id, ts, &snapshot.mission_id, &body_sha)
     })
-    .await
-    {
-        Ok(Some(agent)) => agent,
-        Ok(None) => return refused(),
-        Err(e) => {
-            tracing::error!(error = %e, "browser agent lookup failed");
-            return Err(Error::InternalServerError);
-        }
-    };
-    match extension::first_use(&ctx.config, signature).await {
-        Some(true) => {}
-        Some(false) => return refused(),
-        None => {
-            return Err(Error::CustomError(
-                StatusCode::SERVICE_UNAVAILABLE,
-                ErrorDetail::new(
-                    err_codes::EXTENSION_TICKET_UNAVAILABLE,
-                    "Browser agent captures are unavailable.",
-                ),
-            ))
-        }
-    }
-    let limiter = crate::services::rate_limit::RateLimiter::new(
-        crate::services::shared_valkey::conn(&ctx.config).await,
-    );
-    let bucket = format!("extension-upload:{}", agent.device_registry_id);
-    if let crate::services::rate_limit::Decision::Deny { .. } = limiter
-        .hit(
-            &bucket,
-            UPLOADS_PER_MINUTE,
-            std::time::Duration::from_secs(60),
-        )
-        .await
-    {
-        return Err(Error::CustomError(
-            StatusCode::TOO_MANY_REQUESTS,
-            ErrorDetail::new(err_codes::RATE_LIMITED, "Too many captures."),
-        ));
-    }
+    .await?;
     match extension::store_page(&ctx, &agent, &snapshot).await {
         Ok(stored) => Ok((StatusCode::CREATED, format::json(stored)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/uploads/video` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/video",
+    tag = "extension",
+    operation_id = "extension_upload_video",
+    summary = "Upload a video captured by a browser agent",
+    description = "Called by a browser agent for a post its `follow_account` mission saw and the server asked to capture, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Post` (post id on the platform), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post and SHA-256 of the file, usable once). Body: the mp4 file. Stores it as a `video` media of the library with the post's provenance and marks the registry row captured. Rate-limited per agent.",
+    request_body(content = Vec<u8>, content_type = "video/mp4"),
+    responses(
+        (status = 201, body = pnex_core::browser_agent::SocialVideo),
+        (status = 400, description = "`field-invalid`: empty or larger than the cap (`max_length:N`), or not an mp4 (`media-format-unsupported`)", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found` or `extension-video-not-found` (not in the registry, or already captured)", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_video(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
+    let (mission_id, post) = (header("x-pnex-mission"), header("x-pnex-post"));
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::video_upload_message(device_id, ts, &mission_id, &post, &body_sha)
+    })
+    .await?;
+    match extension::store_video(&ctx, &agent, &mission_id, &post, raw).await {
+        Ok(video) => Ok((StatusCode::CREATED, format::json(video)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/videos` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/videos",
+    tag = "extension",
+    operation_id = "extension_videos_list",
+    summary = "List the video registry",
+    description = "Posts the browser agents saw on followed accounts, newest first: state (`seen`, `captured`) and the captured media. Paginated (`limit`/`offset`). Any member.",
+    params(PageQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::SocialVideo>)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn videos(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let page = PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    match extension::list_videos(&ctx.db, org.org.id, page.limit, page.offset).await {
+        Ok((count, rows)) => format::json(pagination::envelope(
+            "/api/v1/extension/videos",
+            &[],
+            page,
+            count,
+            rows,
+        )),
         Err(e) => extension_error(e),
     }
 }

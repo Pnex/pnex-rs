@@ -112,6 +112,8 @@ pub fn due_missions<'a>(
         .collect()
 }
 
+pub mod adapters;
+
 #[cfg(target_arch = "wasm32")]
 mod host;
 #[cfg(target_arch = "wasm32")]
