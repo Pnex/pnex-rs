@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox) — spécification v2 (C1b)
 
-> Statut : **proposition v2 (2026-10-18)**, décisions D254–D270 à valider.
+> Statut : **proposition v2 (2026-10-18)**, décisions D254–D270 et D281 à valider.
 > **Zéro code tant que la v2 n'est pas validée** ; l'implémentation reste le
 > jalon C3 (`edge-model.md` §11) et P2.1 de la roadmap.
 >
@@ -277,6 +277,36 @@ changement de texte, pas par refresh), indexé par `doc-search`. Le HTML
 n'est jamais servi sur l'origine de l'app (R11–R13) : téléchargement ou
 texte seulement.
 
+**D281 — Vidéos capturées = médias relus (articulation avec
+`media-review.md`, D271–D280, accord du 2026-10-18).**
+
+- Une vidéo capturée est un média `video` de la médiathèque, donc une
+  source D271 V1 sans travail en plus ; la capture lance D213
+  `transcribe` selon la `media_policy` de la mission (D267).
+- Sous-titres de la plateforme = une **passe** de transcription (D211
+  Q-B) d'origine `platform` (`run.origin` : `pnex` | `platform`) :
+  horodatée par sous-titre, ni diarisation ni `S#`, texte non fiable
+  (D208). Conséquences côté relecture : pas de couloir Locuteurs,
+  « Réidentifier les voix » grisé (« retranscrire d'abord »),
+  attribution manuelle par plage possible (D273). « Retranscrire » crée
+  une passe `pnex` à côté, montrée par défaut.
+- Un live est un flux `browser` (D159), source D271 V2 : la relecture et
+  « Réidentifier » demandent une rétention ≠ `none` (D268), le formulaire
+  de mission le dit.
+- Provenance commune dans `media_assets.metadata` : `source`
+  (`browser_agent`), `mission_id`, `source_url`, `platform`,
+  `platform_id`, `author_handle`, `published_at`, `captured_at` (L1 écrit
+  déjà les trois premières).
+- Compte suivi ↔ ontologie : une mission `follow_account` peut pointer la
+  personne ou l'organisation du compte ; le média capturé la porte comme
+  **éditeur** (« publié par »), distinct de « qui parle dedans » (un
+  compte qui reposte un extrait n'est pas l'intervenant). Elle alimente
+  les « intervenants attendus » (D274). Forme à trancher (question 5) :
+  lien neuf `published_by` (pièce ou média → personne/organisation) ou,
+  tant que le média n'est pas un objet d'ontologie
+  (`media-import-pipeline.md` Q6), propriété `published_by_object` de la
+  provenance.
+
 ## 8. Adaptateurs
 
 Un adaptateur par plateforme, en Rust, compilé dans le wasm :
@@ -504,6 +534,8 @@ Firefox : question 4.
 3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
    du §16.1, plateforme par plateforme.
 
+5. **Éditeur d'un média capturé** (D281) : lien d'ontologie
+   `published_by` ou propriété de provenance `published_by_object` ?
 4. **Publication** : Chrome Web Store (installation en un clic, mises à
    jour automatiques) et signature AMO pour Firefox (obligatoire hors
    mode développeur), ou chargement non empaqueté seulement ?
@@ -572,6 +604,7 @@ chaque version d'adaptateur (les plateformes changent) :
 | D265 | Compte | session du profil, profil dédié recommandé, aucun identifiant stocké |
 | D266 | Identité | paire de clés WebCrypto non extractible + empreinte auto, tickets signés |
 | D267 | Transcription | sous-titres de la plateforme d'abord, `media_policy`, live toujours enregistré |
+| D281 | Vidéos capturées | média `video` relu (D271), sous-titres = passe `platform`, live = flux à audio conservé, provenance commune, éditeur ↔ ontologie |
 | D270 | Distribution | construite avec l'image, `GET /api/v1/extension/download` (zip + `server.json`), chargement non empaqueté en v1 |
 | D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
 | D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |
