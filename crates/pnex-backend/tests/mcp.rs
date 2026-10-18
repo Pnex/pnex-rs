@@ -179,6 +179,16 @@ async fn mcp_serves_tools_with_the_callers_rights() {
         let res = server.post("/api/v1/mcp").json(&json!({"jsonrpc": "2.0", "id": 1, "method": "ping"})).await;
         assert_eq!(res.status_code(), 401);
 
+        // OAuth discovery probes these before the issuer's own URL: a 404,
+        // never the SPA's index.html (a 200 that is not JSON aborts the client).
+        for probe in [
+            "/.well-known/oauth-authorization-server/auth/v1",
+            "/.well-known/openid-configuration/auth/v1",
+            "/.well-known/oauth-protected-resource",
+        ] {
+            assert_eq!(server.get(probe).await.status_code(), 404, "{probe}");
+        }
+
         let init = rpc(&server, &env.alice, None, json!({"jsonrpc": "2.0", "id": 0, "method": "initialize",
             "params": {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}})).await;
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");

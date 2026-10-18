@@ -129,16 +129,36 @@ async fn resource_metadata(State(ctx): State<AppContext>) -> Result<Response> {
     }))
 }
 
+/// Any other `/.well-known/*`: a plain 404, never the SPA `index.html`.
+/// OAuth clients probe several discovery URLs in turn (RFC 8414 path
+/// insertion first) and abort on a 200 that is not JSON.
+#[utoipa::path(
+    get,
+    path = "/.well-known/{rest}",
+    tag = "mcp",
+    operation_id = "well_known_not_found",
+    security(()),
+    params(("rest" = String, Path, description = "Unknown well-known path")),
+    summary = "Unknown well-known path (public)",
+    description = "Always 404, so OAuth discovery clients fall through to the next metadata URL instead of parsing the web app's HTML. Public.",
+    responses((status = 404, description = "Not a served well-known document"))
+)]
+#[debug_handler]
+async fn well_known_not_found() -> StatusCode {
+    StatusCode::NOT_FOUND
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .add("/api/v1/mcp", post(rpc))
         .add(METADATA, get(resource_metadata))
+        .add("/.well-known/{*rest}", get(well_known_not_found))
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(rpc, resource_metadata))]
+    #[openapi(paths(rpc, resource_metadata, well_known_not_found))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }

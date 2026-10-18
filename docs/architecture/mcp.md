@@ -85,6 +85,10 @@ dans le commit, jamais pour faire taire une garde.
   backend). `deploy/edge/apply-edge.sh` pose l'URI de retour et la
   ressource à chaque `task app:up` ; **les installations `pnex-deploy`
   doivent recevoir les deux mêmes réglages.**
+- Tout autre `/.well-known/*` répond 404 (jamais l'`index.html` de la
+  SPA) : un client sonde d'abord l'insertion de chemin RFC 8414
+  (`/.well-known/oauth-authorization-server/auth/v1`) et abandonne sur un
+  200 non JSON (constaté sur dev.pnex.io, 2026-10-18).
 - Validé par l'e2e `mcp oauth` (découverte, connexion navigateur, échange
   du code, fenêtre de rafraîchissement).
 

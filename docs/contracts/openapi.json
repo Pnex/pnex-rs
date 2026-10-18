@@ -19271,6 +19271,35 @@
         ]
       }
     },
+    "/.well-known/{rest}": {
+      "get": {
+        "description": "Always 404, so OAuth discovery clients fall through to the next metadata URL instead of parsing the web app's HTML. Public.",
+        "operationId": "well_known_not_found",
+        "parameters": [
+          {
+            "description": "Unknown well-known path",
+            "in": "path",
+            "name": "rest",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not a served well-known document"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Unknown well-known path (public)",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
     "/api/v1/agent/download/{target}": {
       "get": {
         "description": "Streams the agent binary shipped with this server for a whitelisted target id, or `SHA256SUMS` (text checksums). No authentication.",

@@ -67,6 +67,14 @@ test.describe('mcp oauth', { tag: ['@mcp'] }, () => {
     const metadata = await (await request.get(metadataUrl)).json();
     expect(metadata.resource).toBe(`${BASE_URL}/api/v1/mcp`);
     const issuer: string = metadata.authorization_servers[0];
+    // A real client probes RFC 8414 path insertion first: those must 404,
+    // not answer the SPA's HTML (200 non-JSON aborts the client).
+    const issuerUrl = new URL(issuer);
+    const issuerPath = issuerUrl.pathname.replace(/\/$/, '');
+    for (const doc of ['oauth-authorization-server', 'openid-configuration']) {
+      const probe = await request.get(`${issuerUrl.origin}/.well-known/${doc}${issuerPath}`);
+      expect(probe.status() === 404 || (probe.ok() && probe.headers()['content-type']?.includes('json')), probe.url()).toBe(true);
+    }
     const oidc = await (await request.get(`${issuer}.well-known/openid-configuration`)).json();
 
     const verifier = randomBytes(32).toString('base64url');
