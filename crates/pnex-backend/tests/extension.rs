@@ -660,7 +660,13 @@ async fn upload_video(
         .map(|b| format!("{b:02x}"))
         .collect();
     let ts = chrono::Utc::now().timestamp_millis();
-    let signature = install.sign(&ba::video_upload_message(&a.device_id, ts, mission, post_id, &sha));
+    let signature = install.sign(&ba::video_upload_message(
+        &a.device_id,
+        ts,
+        mission,
+        post_id,
+        &sha,
+    ));
     let res = server
         .post("/api/v1/extension/uploads/video")
         .add_header("Authorization", format!("Bearer {}", a.token))
@@ -671,7 +677,10 @@ async fn upload_video(
         .bytes(raw.to_vec().into())
         .await;
     let status = res.status_code().as_u16();
-    (status, serde_json::from_str(&res.text()).unwrap_or(Value::Null))
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
 }
 
 #[tokio::test]

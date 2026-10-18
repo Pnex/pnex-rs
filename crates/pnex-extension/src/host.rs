@@ -51,7 +51,12 @@ extern "C" {
     #[wasm_bindgen(catch)]
     pub async fn fetch_blob(url: &str, max_bytes: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
-    pub async fn upload_blob(id: f64, url: &str, bearer: &str, extra: &str) -> Result<JsValue, JsValue>;
+    pub async fn upload_blob(
+        id: f64,
+        url: &str,
+        bearer: &str,
+        extra: &str,
+    ) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch)]
     pub async fn ws_open(

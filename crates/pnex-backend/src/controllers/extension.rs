@@ -487,7 +487,11 @@ async fn signed_upload(
     );
     let bucket = format!("extension-upload:{}", agent.device_registry_id);
     if let crate::services::rate_limit::Decision::Deny { .. } = limiter
-        .hit(&bucket, UPLOADS_PER_MINUTE, std::time::Duration::from_secs(60))
+        .hit(
+            &bucket,
+            UPLOADS_PER_MINUTE,
+            std::time::Duration::from_secs(60),
+        )
         .await
     {
         return Err(Error::CustomError(
@@ -530,7 +534,8 @@ async fn upload_page(
     headers: axum::http::HeaderMap,
     raw: axum::body::Bytes,
 ) -> Result<Response> {
-    let Ok(snapshot) = serde_json::from_slice::<pnex_core::browser_agent::PageSnapshot>(&raw) else {
+    let Ok(snapshot) = serde_json::from_slice::<pnex_core::browser_agent::PageSnapshot>(&raw)
+    else {
         return Ok(super::field_error("body", err_codes::FIELD_INVALID));
     };
     let body_sha = sha256_hex(&raw);
