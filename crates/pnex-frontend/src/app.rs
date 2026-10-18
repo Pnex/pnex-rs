@@ -8,6 +8,7 @@
 //! `Router` nu bénéficie des deep links et du back/forward navigateur sans
 //! configuration.
 
+use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
@@ -139,6 +140,10 @@ pub enum Route {
         // device et la file de build firmware.
         #[route("/edges/refs")]
         EdgeRefs {},
+
+        // Browser agents and their missions (extension-collector.md D255).
+        #[route("/edges/browser-agents")]
+        BrowserAgents {},
 
         #[route("/orgs")]
         Orgs {},

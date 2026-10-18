@@ -276,6 +276,8 @@ les règles plus anciennes qui les contredisent.
 | Angles des articulations d'un modèle 3D, enregistrés sous un nom | Pose | Pose | — |
 | Os d'un modèle 3D qu'on fait tourner | Articulation | Joint | pas « os », pas « bone » |
 | Média produit par un fournisseur de génération (D235) | Généré | Generated | — |
+| Extension de navigateur appairée qui exécute des missions, une par ordinateur (D255) | Agent navigateur | Browser agent | pas « collecteur », pas « extension » seule (= le logiciel à installer) |
+| Ce qu'un agent navigateur exécute : une page, un compte, un live (D256) | Mission | Mission | pas « règle », pas « tâche » |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :
