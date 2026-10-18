@@ -6,7 +6,7 @@ pages: /media/:id/review
 nodes: 
 err_codes: media-attribution-conflict, media-write-forbidden, media-analysis-no-asr
 tools: 
-tags: review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
+tags: statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
 ---
 The review screen of an audio or video file (Media › open a file › Analyses card › **Review with the transcript**) shows the media in the centre, its transcript on the right and the speakers on the timeline below, with one cursor across the three.
 
@@ -15,6 +15,7 @@ The review screen of an audio or video file (Media › open a file › Analyses 
 - **Click a word**, a time in the transcript or a place on the timeline: the media jumps there.
 - **Choose the run** when there are several: a PNeX transcription of a version of the file, or the subtitles the platform gave with a post captured by a browser agent.
 - **Say who speaks** (owners and admins): attribute a span of the media to a person of the ontology, without any voice recognition ("from 12:30 to 14:10, this is Alice"). Spans of the same person that overlap join into one. The person then **appears in** the media in the ontology (link *appears in*, kind *speaking*).
+- **Create a statement** from a passage of the transcript: a *Statement* object of the ontology with the quote word for word, the two neighbour passages as context and where it sits in the media; it is *said by* the person attributed to that passage, if any.
 - Proposals (from a voice profile, the transcript or the programme grid) are shown apart: **confirm** or **reject** them; a rejected proposal is not made again.
 
 ## Good to know

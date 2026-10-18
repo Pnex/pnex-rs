@@ -65,9 +65,23 @@ fn blocks(segments: &[ReviewSegment]) -> Vec<Block> {
 }
 
 /// Person speaking in the middle of a block (confirmed attributions only).
-fn block_person(b: &Block, attributions: &[SpeechAttribution]) -> Option<String> {
+fn block_person(b: &Block, attributions: &[SpeechAttribution]) -> Option<(uuid::Uuid, String)> {
     let end = b.words.last().map_or(b.start_ms, |w| w.2);
-    person_at((b.start_ms + end) / 2, attributions).map(|a| a.person.clone())
+    person_at((b.start_ms + end) / 2, attributions).map(|a| (a.object_id, a.person.clone()))
+}
+
+/// Text of a block, words joined.
+fn block_text(b: &Block) -> String {
+    b.words
+        .iter()
+        .map(|w| w.0.trim())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// At most `max` characters, cut on a char boundary.
+fn clip(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
 }
 
 /// Speaker labels in order of first appearance.
@@ -365,6 +379,8 @@ pub fn MediaReview(id: String) -> Element {
                     }
                 }
                 TranscriptPanel {
+                    asset_id: id.clone(),
+                    can_write,
                     data: data.clone(),
                     failed,
                     speakers: all.clone(),
@@ -669,6 +685,8 @@ fn RunPicker(
 
 #[component]
 fn TranscriptPanel(
+    asset_id: String,
+    can_write: bool,
     data: Option<MediaTranscript>,
     failed: bool,
     speakers: Vec<String>,
@@ -691,11 +709,16 @@ fn TranscriptPanel(
         },
         Some(t) => {
             let list = blocks(&t.segments);
+            let texts: Vec<String> = list.iter().map(block_text).collect();
             rsx! {
                 for (i, b) in list.into_iter().enumerate() {
                     BlockView {
                         key: "{i}",
                         person: block_person(&b, &attributions),
+                        before: i.checked_sub(1).map(|k| texts[k].clone()).unwrap_or_default(),
+                        after: texts.get(i + 1).cloned().unwrap_or_default(),
+                        asset_id: asset_id.clone(),
+                        can_write,
                         block: b,
                         speakers: speakers.clone(),
                         pos,
@@ -718,11 +741,60 @@ fn TranscriptPanel(
 #[component]
 fn BlockView(
     block: Block,
-    person: Option<String>,
+    person: Option<(uuid::Uuid, String)>,
+    /// Texts of the neighbour blocks: the context of a statement (K43).
+    before: String,
+    after: String,
+    asset_id: String,
+    can_write: bool,
     speakers: Vec<String>,
     pos: i64,
     on_seek: EventHandler<i64>,
 ) -> Element {
+    let mut created = use_signal(|| None::<String>);
+    let quote = block_text(&block);
+    let make_statement = {
+        let (person, start) = (person.clone(), block.start_ms);
+        move |_| {
+            let (quote, before, after, asset_id, person) = (
+                quote.clone(),
+                before.clone(),
+                after.clone(),
+                asset_id.clone(),
+                person.clone(),
+            );
+            spawn(async move {
+                let mut props = serde_json::Map::new();
+                props.insert("quote".into(), clip(&quote, 2_000).into());
+                props.insert("locator".into(), format!("media:{asset_id}@{start}").into());
+                props.insert("context_before".into(), clip(&before, 1_000).into());
+                props.insert("context_after".into(), clip(&after, 1_000).into());
+                let input = pnex_core::ontology::api::ObjectInput {
+                    type_key: "statement".into(),
+                    title: clip(&quote, 120),
+                    properties: props,
+                    ..Default::default()
+                };
+                let Ok(obj) = api::ontology::create_object(&input).await else {
+                    return;
+                };
+                if let Some((pid, _)) = person {
+                    let mut attributes = serde_json::Map::new();
+                    attributes.insert("origin".into(), "manual".into());
+                    let link = pnex_core::ontology::api::LinkInput {
+                        link_type: "said_by".into(),
+                        source_id: obj.id.clone(),
+                        target_id: pid.to_string(),
+                        attributes,
+                        valid_from: None,
+                        valid_to: None,
+                    };
+                    let _ = api::ontology::create_link(&link).await;
+                }
+                created.set(Some(obj.id));
+            });
+        }
+    };
     let color = block
         .speaker
         .as_deref()
@@ -740,7 +812,7 @@ fn BlockView(
                         "{label}"
                     }
                 }
-                if let Some(name) = person {
+                if let Some((_, name)) = person.clone() {
                     span {
                         class: "font-medium text-gray-900",
                         "data-testid": "media-review-person-name",
@@ -752,6 +824,22 @@ fn BlockView(
                     r#type: "button",
                     onclick: move |_| on_seek.call(start),
                     "{clock}"
+                }
+                if can_write && created().is_none() {
+                    button {
+                        class: "ml-auto text-gray-500 hover:text-signal-600",
+                        r#type: "button",
+                        "data-testid": "media-review-statement",
+                        onclick: make_statement,
+                        {t!("media-review-statement")}
+                    }
+                }
+                if let Some(oid) = created() {
+                    Link {
+                        class: "ml-auto text-signal-600 hover:underline",
+                        to: Route::OntologyObject { id: oid },
+                        {t!("media-review-statement-open")}
+                    }
                 }
             }
             p { class: "text-sm leading-relaxed text-gray-900",
