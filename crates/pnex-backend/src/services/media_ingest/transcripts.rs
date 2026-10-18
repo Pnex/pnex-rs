@@ -45,6 +45,9 @@ pub struct Doc<'a> {
 pub struct FilePos {
     pub offset_ms: i64,
     pub run: uuid::Uuid,
+    pub origin: pnex_core::media_review::RunOrigin,
+    /// Version transcribed; `None` for platform subtitles.
+    pub version: Option<uuid::Uuid>,
 }
 
 pub fn document_of(d: &Doc<'_>) -> serde_json::Value {
@@ -66,6 +69,10 @@ pub fn document_of(d: &Doc<'_>) -> serde_json::Value {
     if let Some(f) = &d.file {
         doc["offset_ms"] = f.offset_ms.into();
         doc["run"] = f.run.to_string().into();
+        doc["origin"] = f.origin.wire().into();
+        if let Some(v) = f.version {
+            doc["version"] = v.to_string().into();
+        }
     }
     doc
 }
@@ -89,6 +96,85 @@ pub async fn write(ctx: &AppContext, org_id: i64, doc: &Doc<'_>) -> Result<(), S
     )
     .await
 }
+
+/// Writes several documents of one stream in one request (platform
+/// subtitles, D276).
+pub async fn write_many(
+    ctx: &AppContext,
+    org_id: i64,
+    slug: &str,
+    docs: &[Doc<'_>],
+) -> Result<(), String> {
+    if !is_valid_slug(slug) {
+        return Err("invalid stream slug".into());
+    }
+    let body: Vec<serde_json::Value> = docs.iter().map(document_of).collect();
+    for chunk in body.chunks(500) {
+        ingest_retried(ctx, org_id, &transcript_stream(slug), chunk).await?;
+    }
+    Ok(())
+}
+
+/// The documents of one run of an analysed file, in media order (D276):
+/// `(offset_ms, duration_ms, text, words_json, speakers_json)`. `None`
+/// when the text store is not configured or not provisioned.
+pub async fn run_documents(
+    ctx: &AppContext,
+    org_id: i64,
+    slug: &str,
+    run: uuid::Uuid,
+    from_us: i64,
+    to_us: i64,
+) -> Result<Option<Vec<(i64, i64, String, String, String)>>, String> {
+    let Some(client) = client(ctx) else {
+        return Ok(None);
+    };
+    let Some(creds) = provisioned_credentials(&ctx.db, org_id).await? else {
+        return Ok(None);
+    };
+    if !is_valid_slug(slug) {
+        return Ok(Some(Vec::new()));
+    }
+    // `run` is a parsed UUID: no quoting issue.
+    let sql = format!(
+        "SELECT * FROM \"{}\" WHERE run = '{run}' ORDER BY offset_ms ASC",
+        transcript_stream(slug)
+    );
+    let page = client
+        .search_logs(
+            &creds.o2_org,
+            &sql,
+            from_us,
+            to_us,
+            0,
+            RUN_MAX_DOCS,
+            &creds.email_passcode,
+        )
+        .await;
+    let hits = match page {
+        Ok(r) => r.hits,
+        Err(e) if e.contains("not found") => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    Ok(Some(
+        hits.iter()
+            .map(|h| {
+                let start = h["_timestamp"].as_i64().unwrap_or(0);
+                let end = h["ended_at"].as_i64().unwrap_or(start);
+                (
+                    h["offset_ms"].as_i64().unwrap_or(0),
+                    (end - start) / 1000,
+                    h["message"].as_str().unwrap_or_default().to_string(),
+                    h["words"].as_str().unwrap_or("[]").to_string(),
+                    h["speakers"].as_str().unwrap_or("[]").to_string(),
+                )
+            })
+            .collect(),
+    ))
+}
+
+/// Documents read for one run: 4 h of 30 s segments, or a long subtitle.
+const RUN_MAX_DOCS: i64 = 5_000;
 
 /// Ingests documents in an O2 logs stream of the org (stream name built by
 /// the caller from a checked slug), retried on transient failures.
@@ -279,8 +365,12 @@ mod tests {
         let file = document_of(&doc(Some(FilePos {
             offset_ms: 29_000,
             run,
+            origin: pnex_core::media_review::RunOrigin::Platform,
+            version: None,
         })));
         assert_eq!(file["offset_ms"], 29_000);
         assert_eq!(file["run"], run.to_string());
+        assert_eq!(file["origin"], "platform");
+        assert!(file.get("version").is_none());
     }
 }

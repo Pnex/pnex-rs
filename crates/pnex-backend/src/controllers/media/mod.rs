@@ -47,6 +47,7 @@ mod content;
 mod crud;
 mod dto;
 mod helpers;
+mod review;
 mod search;
 mod store;
 mod versions;
@@ -59,6 +60,7 @@ use content::*;
 use crud::*;
 use dto::*;
 use helpers::*;
+use review::*;
 use search::*;
 use versions::*;
 
@@ -93,6 +95,7 @@ pub fn routes() -> Routes {
         .add("/chunks/{chunk_id}", get(chunk))
         .add("/{id}/index", get(index_state).post(reindex))
         .add("/{id}/analyses", get(analyses).post(start_analyses))
+        .add("/{id}/transcript", get(transcript))
         .add("/{id}", get(detail).patch(update).delete(delete))
         .add("/{id}/content", get(content))
         .add(
@@ -119,6 +122,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         reindex,
         analyses,
         start_analyses,
+        transcript,
         detail,
         update,
         delete,

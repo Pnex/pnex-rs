@@ -478,6 +478,24 @@ async fn start_transcribe(ctx: &AppContext, row: &Row) -> Result<serde_json::Val
         tracing::warn!(analysis = %row.id, error = %e, "batch stream not started");
         err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED
     })?;
+    let lang = crate::models::_entities::asr_profiles::Entity::find_by_id(profile)
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.language);
+    crate::services::media_runs::record(
+        &ctx.db,
+        run,
+        row.org_id,
+        version.asset_id,
+        Some(version.id),
+        pnex_core::media_review::RunOrigin::Pnex,
+        lang.as_deref(),
+        None,
+    )
+    .await
+    .map_err(|_| err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED)?;
     Ok(serde_json::json!({
         "stream_id": stream.id.to_string(),
         "slug": stream.slug,

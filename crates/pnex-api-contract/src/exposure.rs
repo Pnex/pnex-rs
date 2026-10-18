@@ -184,6 +184,7 @@ pub const EXPOSED: &[&str] = &[
     "media_streams_segments_list",
     "media_streams_segments_retry",
     "media_streams_test",
+    "media_transcript_get",
     "media_transcripts_search",
     "media_update",
     "media_versions_get",

@@ -705,6 +705,50 @@ async fn file_analysis_transcribes_in_batch() {
             assert!(stream.slug.starts_with("file_"), "{}", stream.slug);
             let list = get("/api/v1/media/streams".into()).await.json::<Value>();
             assert_eq!(list["count"], 0, "hidden from the stream list: {list}");
+            assert_eq!(stream.media_asset_id, Some(audio_id.parse().unwrap()));
+
+            // The run is listed and shown by default (D276); O2 is not
+            // configured, so its text is unavailable, never an error.
+            let t = get(format!("/api/v1/media/{audio_id}/transcript")).await;
+            assert_eq!(t.status_code(), 200, "{}", t.text());
+            let t = t.json::<Value>();
+            assert_eq!(t["runs"].as_array().unwrap().len(), 1, "{t}");
+            assert_eq!(t["runs"][0]["origin"], "pnex");
+            assert_eq!(t["runs"][0]["version_id"], version_id.to_string());
+            assert!(t["runs"][0]["lang"].is_string(), "{t}");
+            assert_eq!(t["run"], t["runs"][0]["id"]);
+            assert_eq!(t["run"], stream.run_id.unwrap().to_string());
+            assert_eq!(t["unavailable"], true, "{t}");
+            let other = uuid::Uuid::new_v4();
+            let res = get(format!("/api/v1/media/{audio_id}/transcript?run={other}")).await;
+            assert_eq!(res.status_code(), 404);
+            let res = get(format!("/api/v1/media/{other}/transcript")).await;
+            assert_eq!(res.status_code(), 404);
+            // Platform subtitles need the text store: refused, nothing recorded.
+            let cues = [pnex_backend::services::media_runs::PlatformCue {
+                start_ms: 0,
+                end_ms: 2_000,
+                text: "bonjour".into(),
+            }];
+            let stored = pnex_backend::services::media_runs::store_platform_run(
+                &ctx,
+                org,
+                audio_id.parse().unwrap(),
+                "fr",
+                &cues,
+            )
+            .await;
+            assert!(
+                matches!(
+                    stored,
+                    Err(pnex_backend::services::media_runs::RunError::Store(_))
+                ),
+                "{stored:?}"
+            );
+            let t = get(format!("/api/v1/media/{audio_id}/transcript"))
+                .await
+                .json::<Value>();
+            assert_eq!(t["runs"].as_array().unwrap().len(), 1, "{t}");
             // In flight: a relaunch is refused.
             let res = post(
                 format!("/api/v1/media/{audio_id}/analyses"),
