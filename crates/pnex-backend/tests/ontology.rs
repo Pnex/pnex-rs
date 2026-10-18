@@ -1089,6 +1089,57 @@ async fn case_payments_and_ownership_shares() {
     .await;
 }
 
+/// A pack upgrade keeps what the org added to its types (2026-10-18): a
+/// property, a link attribute and a source type added locally survive a
+/// newer version of the pack, which still wins on what it declares.
+#[tokio::test]
+#[serial]
+async fn pack_upgrade_keeps_org_additions() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/investigation/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let (st, t) = call(&server, "GET", "/api/v1/ontology/types/person", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{t}");
+        let mut def = t["def"].clone();
+        def["properties"].as_array_mut().unwrap().push(json!({"key": "wikidata", "name": "Wikidata", "kind": "text", "max_len": 32}));
+        let (st, e) = call(&server, "PUT", "/api/v1/ontology/types/person", &env.alice, org, Some(json!({"def": def, "expected_version": t["version"]}))).await;
+        assert_eq!(st, 200, "{e}");
+        let (st, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{l}");
+        let employs = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "employs").unwrap().clone();
+        let mut def = employs["def"].clone();
+        def["attributes"].as_array_mut().unwrap().push(json!({"key": "source", "name": "Source", "kind": "text", "max_len": 1000}));
+        def["from_types"].as_array_mut().unwrap().push(json!("place"));
+        let (st, e) = call(&server, "PUT", "/api/v1/ontology/link-types/employs", &env.alice, org, Some(json!({"def": def, "expected_version": employs["version"]}))).await;
+        assert_eq!(st, 200, "{e}");
+
+        let yaml: String = include_str!("../packs/investigation.yaml")
+            .lines()
+            .map(|l| if l.starts_with("version: ") { "version: \"99.0.0\"" } else { l })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let res = server
+            .post("/api/v1/ontology/import")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .bytes(yaml.into_bytes().into())
+            .await;
+        assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/person", &env.alice, org, None).await;
+        let props: Vec<&str> = t["def"]["properties"].as_array().unwrap().iter().filter_map(|p| p["key"].as_str()).collect();
+        assert!(props.contains(&"aliases") && props.contains(&"wikidata"), "{t}");
+        let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
+        let employs = &l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "employs").unwrap()["def"];
+        let attrs: Vec<&str> = employs["attributes"].as_array().unwrap().iter().filter_map(|a| a["key"].as_str()).collect();
+        assert_eq!(attrs, ["position", "source"], "{employs}");
+        assert_eq!(employs["from_types"], json!(["organization", "place"]), "{employs}");
+        object(&server, &env.alice, org, "person", "Sourced", json!({"wikidata": "Q1"})).await;
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn gallery_depicts_a_model_and_its_poses() {
