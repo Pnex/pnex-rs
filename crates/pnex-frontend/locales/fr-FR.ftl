@@ -4226,6 +4226,7 @@ err-ext-login-required = Le site demande une connexion : connectez-vous dans le 
 err-ext-challenge = Le site affiche une vérification (captcha) : résolvez-la dans le navigateur de l'agent, puis relancez la mission.
 err-ext-rate-limited = Le site signale un rythme trop élevé : augmentez l'intervalle de la mission, puis relancez-la.
 err-ext-drm-protected = Cette vidéo est protégée (DRM) : l'agent navigateur ne l'enregistre jamais.
+err-ext-registry-full = Le registre des vidéos de cette organisation est plein (500 000 posts) : les nouveaux posts ne sont plus enregistrés.
 err-ext-permission-missing = L'extension n'est pas encore autorisée sur ce site : ouvrez les options de l'extension et cliquez sur Autoriser à côté du site.
 err-ext-tab-hidden = L'onglet de l'agent est caché : remettez sa fenêtre au premier plan et gardez l'écran déverrouillé.
 err-taxonomy-unknown = Le classifieur de sujets épingle la version { $version } d'une taxonomie absente de l'organisation : choisissez-la de nouveau dans le nœud.

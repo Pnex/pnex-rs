@@ -4227,6 +4227,7 @@ err-ext-login-required = The site asks to sign in: sign in within the agent's br
 err-ext-challenge = The site shows a verification (captcha): solve it within the agent's browser, then resume the mission.
 err-ext-rate-limited = The site says the pace is too high: raise the mission interval, then resume it.
 err-ext-drm-protected = This video is protected (DRM): the browser agent never records it.
+err-ext-registry-full = The video registry of this organization is full (500,000 posts): new posts are no longer recorded.
 err-ext-permission-missing = The extension is not allowed on this site yet: open the extension's options and click Allow next to the site.
 err-ext-tab-hidden = The agent's tab is hidden: bring its window to the foreground and keep the screen unlocked.
 err-taxonomy-unknown = The topic classifier pins version { $version } of a taxonomy that does not exist (anymore) in the organization: pick it again in the node.

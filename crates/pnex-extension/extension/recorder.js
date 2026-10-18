@@ -27,8 +27,9 @@
     const capture = video.captureStream ?? video.mozCaptureStream;
     if (!capture) return done("no-capture");
     video.muted = true;
-    // A video is recorded from its start; a live from now on.
-    if (!msg.live) video.currentTime = 0;
+    // A video is recorded from its start (or where its previous part
+    // stopped); a live from now on.
+    if (!msg.live) video.currentTime = (msg.fromMs ?? 0) / 1000;
     video.play().catch(() => {});
     const stream = capture.call(video);
     const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((m) =>

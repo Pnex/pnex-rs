@@ -976,6 +976,27 @@ pub async fn record_seen(
         platform_id: String,
         video_url: Option<String>,
     }
+    // shortcut: one count per batch (index scan), fine at 60 batches a minute.
+    let known = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM social_videos WHERE org_id = $1",
+            vec![agent.org_id.into()],
+        ))
+        .await?
+        .map(|r| r.try_get::<i64>("", "n"))
+        .transpose()?
+        .unwrap_or(0);
+    if known >= ba::VIDEOS_MAX {
+        report_state(
+            db,
+            agent,
+            id,
+            MissionState::Blocked,
+            Some(err_codes::EXT_REGISTRY_FULL),
+        )
+        .await?;
+        return Ok((Vec::new(), Vec::new()));
+    }
     let mut capture = Vec::new();
     let mut captions = Vec::new();
     for post in posts.iter().take(ba::SEEN_MAX).filter_map(clean_post) {
@@ -1080,8 +1101,15 @@ pub async fn store_video(
     agent: &AgentAuth,
     mission_id: &str,
     platform_id: &str,
+    part: u32,
     bytes: axum::body::Bytes,
 ) -> Result<ba::SocialVideo, ExtensionError> {
+    if !(1..=ba::VIDEO_PARTS_MAX).contains(&part) {
+        return Err(ExtensionError::Invalid {
+            field: "part".into(),
+            token: err_codes::FIELD_INVALID.into(),
+        });
+    }
     let (id, _, spec) = own_mission(&ctx.db, agent, mission_id).await?;
     let MissionSpec::FollowAccount(params) = spec else {
         return Err(ExtensionError::MissionNotFound);
@@ -1099,7 +1127,11 @@ pub async fn store_video(
     ))
     .one(&ctx.db)
     .await?
-    .filter(|r| matches!(r.state.as_str(), "seen" | "captioned") && r.video_url.is_some())
+    // Part 1 captures the post; the next ones follow a captured post (O92).
+    .filter(|r| match part {
+        1 => matches!(r.state.as_str(), "seen" | "captioned") && r.video_url.is_some(),
+        _ => r.state == "captured",
+    })
     .ok_or(ExtensionError::VideoNotFound)?;
     // A recording from the browser is WebM (EBML magic), a fetched file mp4.
     let ext = if bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
@@ -1113,14 +1145,21 @@ pub async fn store_video(
             token: format!("{}:{}", err_codes::FIELD_MAX_LENGTH, ba::VIDEO_MAX),
         });
     }
-    let asset = post_asset(ctx, agent, id, &row, params.publisher_id.as_deref()).await?;
+    let asset = if part == 1 {
+        post_asset(ctx, agent, id, &row, params.publisher_id.as_deref()).await?
+    } else {
+        part_asset(ctx, agent, id, &row, part).await?
+    };
     let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
     crate::controllers::media::write_version(
         ctx,
         agent.org_id,
         &asset,
         crate::controllers::media::IncomingVersion {
-            filename: format!("{}.{ext}", row.platform_id),
+            filename: match part {
+                1 => format!("{}.{ext}", row.platform_id),
+                _ => format!("{}-part{part}.{ext}", row.platform_id),
+            },
             content_type: format!("video/{ext}"),
             note: None,
             bytes,
@@ -1129,6 +1168,9 @@ pub async fn store_video(
     )
     .await
     .map_err(|e| ExtensionError::Db(DbErr::Custom(format!("video version: {e}"))))?;
+    if part > 1 {
+        return Ok(row.view());
+    }
     let updated = VideoRow::find_by_statement(stmt(
         &format!(
             "UPDATE social_videos SET state = 'captured', media_asset_id = $2, captured_at = now()
@@ -1195,6 +1237,56 @@ async fn post_asset(
         link_publisher(ctx, agent, asset.id, publisher).await;
     }
     Ok(asset)
+}
+
+/// A new `video` media for part `part` (2 and up) of a captured post: the
+/// post's provenance plus `part` and `part_of` (the first part's media).
+/// A part already stored is refused (an agent retrying a sent part).
+async fn part_asset(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    mission_id: Uuid,
+    row: &VideoRow,
+    part: u32,
+) -> Result<crate::models::_entities::media_assets::Model, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    let first = row.media_asset_id.ok_or(ExtensionError::VideoNotFound)?;
+    let exists = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT 1 AS one FROM media_assets WHERE org_id = $1
+             AND metadata->>'part_of' = $2 AND metadata->>'part' = $3",
+            vec![
+                agent.org_id.into(),
+                first.to_string().into(),
+                part.to_string().into(),
+            ],
+        ))
+        .await?;
+    if exists.is_some() {
+        return Err(ExtensionError::VideoNotFound);
+    }
+    Ok(media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(agent.org_id),
+        kind: Set("video".into()),
+        name: Set(format!("@{} · {} · {part}", row.author, row.platform_id)),
+        metadata: Set(Some(serde_json::json!({
+            "source": "browser_agent",
+            "mission_id": mission_id.to_string(),
+            "source_url": row.url,
+            "platform": row.platform,
+            "platform_id": row.platform_id,
+            "author_handle": row.author,
+            "published_at": row.published_at.map(|t| t.to_rfc3339()),
+            "captured_at": chrono::Utc::now().to_rfc3339(),
+            "part": part.to_string(),
+            "part_of": first.to_string(),
+        }))),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?)
 }
 
 /// `published_by` from the media to the account's person or organization

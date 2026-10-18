@@ -606,13 +606,13 @@ async fn upload_page(
     tag = "extension",
     operation_id = "extension_upload_video",
     summary = "Upload a video captured by a browser agent",
-    description = "Called by a browser agent for a post its `follow_account` mission saw and the server asked to capture, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Post` (post id on the platform), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post and SHA-256 of the file, usable once). Body: the mp4 file. Stores it as a `video` media of the library with the post's provenance and marks the registry row captured. Rate-limited per agent.",
+    description = "Called by a browser agent for a post its `follow_account` mission saw and the server asked to capture, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Post` (post id on the platform), optional `X-Pnex-Part` (1-based, default 1: a long recording is sent in parts of 30 minutes), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post, part and SHA-256 of the file, usable once). Body: the mp4 file or WebM recording. Part 1 is stored as a `video` media of the library with the post's provenance and marks the registry row captured; each next part is a media of its own (`part`, `part_of`). Rate-limited per agent.",
     request_body(content = Vec<u8>, content_type = "video/mp4"),
     responses(
         (status = 201, body = pnex_core::browser_agent::SocialVideo),
         (status = 400, description = "`field-invalid`: empty or larger than the cap (`max_length:N`), or not an mp4 (`media-format-unsupported`)", body = crate::openapi::ErrorDetail),
         (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`extension-mission-not-found` or `extension-video-not-found` (not in the registry, or already captured)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found` or `extension-video-not-found` (not in the registry, already captured, or a part already stored / before part 1)", body = crate::openapi::ErrorDetail),
         (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
     ),
@@ -631,12 +631,24 @@ async fn upload_video(
             .unwrap_or_default()
     };
     let (mission_id, post) = (header("x-pnex-mission"), header("x-pnex-post"));
+    // Absent: the whole file (part 1); a refused value fails the signature.
+    let part = match header("x-pnex-part").as_str() {
+        "" => 1,
+        p => p.parse::<u32>().unwrap_or(0),
+    };
     let body_sha = sha256_hex(&raw);
     let agent = signed_upload(&ctx, &headers, |device_id, ts| {
-        pnex_core::browser_agent::video_upload_message(device_id, ts, &mission_id, &post, &body_sha)
+        pnex_core::browser_agent::video_upload_message(
+            device_id,
+            ts,
+            &mission_id,
+            &post,
+            part,
+            &body_sha,
+        )
     })
     .await?;
-    match extension::store_video(&ctx, &agent, &mission_id, &post, raw).await {
+    match extension::store_video(&ctx, &agent, &mission_id, &post, part, raw).await {
         Ok(video) => Ok((StatusCode::CREATED, format::json(video)).into_response()),
         Err(e) => extension_error(e),
     }

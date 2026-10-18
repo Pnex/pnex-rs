@@ -1054,8 +1054,6 @@ struct Blob {
 /// Bitrate of a browser recording: ~5 MB a minute, 40 minutes under the
 /// upload cap.
 const RECORD_BITRATE: f64 = 600_000.0;
-/// Longest recording of a video (a live is cut in parts instead).
-const RECORD_MAX_MS: f64 = 40.0 * 60_000.0;
 
 /// Records what `page` plays in the platform's tab, in real time (D260).
 async fn record(
@@ -1065,6 +1063,7 @@ async fn record(
     max_ms: f64,
     live: bool,
     navigate: bool,
+    from_ms: f64,
 ) -> Result<(Blob, String), String> {
     let mut tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
     if navigate || tab < 0.0 {
@@ -1082,9 +1081,17 @@ async fn record(
         }
     }
     let id = host::random_b64(12);
-    host::start_recording(tab, &id, max_ms, RECORD_BITRATE, live, ba::VIDEO_MAX as f64)
-        .await
-        .map_err(|e| err_text(&e))?;
+    host::start_recording(
+        tab,
+        &id,
+        max_ms,
+        RECORD_BITRATE,
+        live,
+        ba::VIDEO_MAX as f64,
+        from_ms,
+    )
+    .await
+    .map_err(|e| err_text(&e))?;
     #[derive(Deserialize)]
     struct State {
         done: bool,
@@ -1160,25 +1167,50 @@ async fn capture_video(
             .ok()
             .and_then(|v| serde_json::from_str::<Blob>(&text(&v)).ok())
     };
-    let (blob, content_type) = match fetched {
-        Some(blob) => (blob, "video/mp4"),
-        None => match record(plan, platform, page, RECORD_MAX_MS, false, true).await {
-            Ok((blob, _)) => (blob, "video/webm"),
-            Err(reason) => return reason,
-        },
-    };
+    if let Some(blob) = fetched {
+        return upload_video(session, mission_id, post, 1, &blob, "video/mp4").await;
+    }
+    // No file: recorded in real time, in parts like a live (O92), each part
+    // starting where the previous one stopped.
+    let part_ms = ba::LIVE_PART_MAX_MS as f64;
+    for part in 1..=ba::VIDEO_PARTS_MAX {
+        let from_ms = f64::from(part - 1) * part_ms;
+        let (blob, reason) =
+            match record(plan, platform, page, part_ms, false, part == 1, from_ms).await {
+                Ok(done) => done,
+                Err(reason) => return reason,
+            };
+        let sent = upload_video(session, mission_id, post, part, &blob, "video/webm").await;
+        if !sent.starts_with("video ") || (reason != "max-duration" && reason != "max-size") {
+            return sent;
+        }
+    }
+    format!("video {post}: {} parts, cut", ba::VIDEO_PARTS_MAX)
+}
+
+/// Signs and uploads one file (or part) of a post's video.
+async fn upload_video(
+    session: &Session,
+    mission_id: &str,
+    post: &str,
+    part: u32,
+    blob: &Blob,
+    content_type: &str,
+) -> String {
     let creds = &session.creds;
     let ts = host::now_ms() as i64;
-    let message = ba::video_upload_message(&creds.device_id, ts, mission_id, post, &blob.sha256);
+    let message =
+        ba::video_upload_message(&creds.device_id, ts, mission_id, post, part, &blob.sha256);
     let headers = serde_json::json!({
         "X-Pnex-Ts": ts.to_string(),
         "X-Pnex-Mission": mission_id,
         "X-Pnex-Post": post,
+        "X-Pnex-Part": part.to_string(),
     });
     match upload(
         session,
         "/api/v1/extension/uploads/video",
-        &blob,
+        blob,
         &message,
         headers,
         content_type,
@@ -1212,6 +1244,7 @@ async fn watch_live(
             ba::LIVE_PART_MAX_MS as f64,
             true,
             part == 1,
+            0.0,
         )
         .await
         {
