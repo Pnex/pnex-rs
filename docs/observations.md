@@ -1648,3 +1648,92 @@ pagination, types, verbes, langue) sont traités par les lots H1–H5 de
   fichier, deux voix enrôlées, vraie vidéo + détecteur, flux à rétention,
   sous-titres plateforme).
 - **Statut** : ⏳ à vérifier.
+
+## 2026-10-18 — premier cas d'usage réel : ontologie politique × médias (org 3)
+
+Import de 2 676 fiches Markdown (personnalités, tous les parlementaires,
+médias, émissions, partis, mandats, propriétaires) dans l'org 3 de
+dev.pnex.io, par la CLI et l'API (projet `pnex-france-overview`,
+`ontologies/politique-medias/pack/import.py`). Packs génériques
+`investigation` et `media_coverage`, réutilisables hors de France.
+
+### O82 — Montée de version d'un pack : les ajouts de l'org effacés
+
+- **Constat** : réinstaller `investigation` en version supérieure supprimait
+  les propriétés que l'org avait ajoutées à `person` / `organization`
+  (identifiants AN, Sénat, SIREN) ; les objets qui les portaient devenaient
+  invalides.
+- **Statut** : ✅ résolu (c8e6dff6) — la définition du pack fait foi sur ce
+  qu'elle déclare, les ajouts locaux (propriétés, actions, attributs de
+  lien, types source/cible) sont conservés. Test
+  `pack_upgrade_keeps_org_additions`.
+
+### O83 — Un mandat passé impossible à saisir à côté du mandat en cours
+
+- **Constat** : `POST /ontology/links` refusait (409) un lien historique
+  quand la paire avait déjà un lien ouvert (index
+  `uniq_resource_edges_open_pair`) ; fermer après coup ne marche pas non
+  plus.
+- **Statut** : ✅ résolu (12a23ca8) — `valid_to` à la création écrit le lien
+  clos d'emblée ; seuls les liens ouverts restent uniques par paire.
+
+### O84 — Fiches Markdown : aucune création de page depuis du texte
+
+- **Constat** : l'import/export du navigateur ne permettait pas de créer
+  1 745 pages depuis des fichiers Markdown par l'API.
+- **Statut** : ✅ résolu (854a5128) — `POST /api/v1/docs` accepte
+  `markdown` (256 Kio max). Les pages sont reliées à leur objet par le lien
+  `describes` (pack `media_coverage`).
+
+### O85 — Liens figés, faits concurrents, fins à venir
+
+- **Constat** : 89 faits portaient sur une paire déjà liée (même fait,
+  autre source ou autre date de début) ; 6 financements avaient une fin
+  annoncée en 2026-12, refusée (`valid_to` futur) ; un lien créé ne se
+  corrigeait plus.
+- **Statut** : ✅ résolu (7221ab14) — `PUT /ontology/links/{id}` (attributs,
+  journal `link.update`) ; `about.link` (investigation 1.9.0) : le 2ᵉ fait
+  devient une `claim` (corroborée ou contestée) qui désigne le lien ;
+  `planned_end` (media_coverage 1.1.0). Org 3 réparée : 89 affirmations
+  (62 corroborées, 27 contestées), 6 `planned_end`.
+
+### O86 — Zip de l'extension servi en `http://` derrière Cloudflare
+
+- **Constat** : `server.json` du zip valait `http://dev.pnex.io` : Cloudflare
+  termine le TLS, nginx-ingress réécrit `X-Forwarded-Proto: http`.
+- **Statut** : ✅ résolu (80f8494c) — origine publique configurée, en-têtes
+  en repli ; vérifié sur dev.pnex.io : `https://dev.pnex.io`.
+
+### O87 — Graphe de dossier : 300 nœuds, médias figés en colonne, pas de hiérarchie
+
+- **Constat** : un dossier « Assemblée nationale » (625 membres) masquait
+  la moitié du graphe ; dans « Propriété et financement des médias » tous
+  les médias restaient alignés dans la colonne de droite (les relations
+  arrivent après le premier dessin, la colonne était mémorisée comme
+  placée) ; une chaîne propriétaire → holding → média ne se lisait pas.
+- **Statut** : ✅ code (efd7705b, 60647daf) — Sigma jusqu'à 2 000 nœuds
+  (Barnes-Hut et itérations en 300/n : ~1,2 s, statut « Disposition du
+  graphe… ») ; colonne non mémorisée ; vue **Hiérarchie** (étages selon le
+  sens des liens, groupe au-dessus de ses membres). ⏳ à vérifier dans le
+  navigateur sur l'org 3 après déploiement.
+- **Écart de méthode** : efd7705b et 60647daf ont été commités sans `task
+  fmt` (rsx) ni fiche assistant ; la fiche `assistant-kb/cases.md` est mise
+  à jour avec cette entrée.
+
+### O88 — Ce qui reste (projet politique × médias)
+
+- **Validation humaine** : listes `_liste-phase1.md` (155 politiques) et
+  `_liste-medias-phase1.md` ; rendu des dossiers (Hiérarchie, Assemblée).
+- **Données** : fiches `stub: true` à compléter ; 15–25 personnes médias
+  manquantes ; 27 affirmations contestées à arbitrer ; mise à jour des
+  fiches (rachats, mandats) manuelle, flow PneX à prévoir (open data AN,
+  Sénat, HATVP).
+- **Collecte live (L4)** : choix de la première radio, modèle ASR et profil
+  dans l'org 3 (aucun aujourd'hui), flux sur 24 h et charge mesurée,
+  accès aux flux TV (DRM, géoblocage).
+- **Ensuite** : L5 attribution humaine des locuteurs (pas d'enrôlement de
+  voix sans consentement, PM7) ; L6 dashboards (temps d'antenne,
+  pluralisme), chaque chiffre ouvrable à sa source.
+- **MCP** : l'utilisateur doit s'authentifier (`/mcp`) ; la découverte OAuth
+  répond bien côté serveur.
+- **Statut** : ⏳ ouvert.
