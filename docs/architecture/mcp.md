@@ -30,7 +30,7 @@ D144).
   propre. `X-Org-Id` est un argument ; à défaut, celui de la connexion MCP.
   Erreur du handler → résultat `isError` portant `HTTP <code>: <ErrorDetail>`.
 - **D248 — Table d'exposition explicite, gardée.**
-  `crates/pnex-backend/src/services/mcp/exposure.rs` : chaque opération est
+  `crates/pnex-api-contract/src/exposure.rs` : chaque opération est
   soit dans `EXPOSED`, soit dans `EXCLUDED` sous un motif. Motifs actuels :
   destructif (toute suppression, purge, archivage), physique (commandes
   device, OTA, écriture de contrôle, réglages caméra, actions d'ontologie

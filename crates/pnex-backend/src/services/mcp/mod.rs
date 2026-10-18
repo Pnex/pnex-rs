@@ -4,7 +4,7 @@
 //! in-process on the app router with the caller's own `Authorization`, so
 //! it gets exactly the caller's rights and the handlers' validation.
 
-pub mod exposure;
+pub use pnex_api_contract::exposure;
 
 use std::sync::LazyLock;
 

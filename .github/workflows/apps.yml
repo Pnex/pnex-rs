@@ -1,6 +1,7 @@
 # Native apps: Linux desktop (x86_64, aarch64), Windows desktop (x86_64,
-# cross-compiled from Linux through mingw) and the Android APK (arm64), built
-# with the same Taskfile tasks as a local build.
+# cross-compiled from Linux through mingw), the Android APK (arm64) and the
+# `pnex` admin CLI (Linux musl, Windows, macOS), built with the same Taskfile
+# tasks as a local build.
 #
 # Where to download them:
 #   - every run: the run's artifacts (Actions tab, kept 30 days);
@@ -159,6 +160,58 @@ jobs:
           Write-Host "app still running after 20 s (pid $($p.Id))"
           Stop-Process -Id $p.Id -Force
 
+  # Admin CLI (D251): static musl binaries for Linux, cross-built Windows,
+  # native macOS. No system library: rustls, no webview.
+  cli:
+    name: cli ${{ matrix.target }}
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+            apt: musl-tools
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+            apt: musl-tools
+          - target: x86_64-pc-windows-gnu
+            runner: ubuntu-24.04
+            apt: mingw-w64 zip
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - if: matrix.apt
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ${{ matrix.apt }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
+      - uses: arduino/setup-task@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      # scripts/guarded.sh is GNU-only (df --output): plain cargo on macOS.
+      - run: task build:cli TARGET=${{ matrix.target }} ${{ runner.os == 'macOS' && 'G=env' || '' }}
+        env:
+          # ring's C code: musl-tools ships musl-gcc, not the triple-prefixed name cc-rs tries.
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pnex-cli-${{ matrix.target }}
+          path: target/dist/pnex-cli-${{ matrix.target }}.*
+          if-no-files-found: error
+          retention-days: 30
+
   android:
     name: android apk (arm64)
     if: >-
@@ -247,7 +300,7 @@ jobs:
   # versioned release on tags. Only runs from main or a tag (never a fork).
   release:
     name: publish release assets
-    needs: [linux, windows, windows-smoke, android]
+    needs: [linux, windows, windows-smoke, android, cli]
     if: >-
       github.event_name == 'push' ||
       (github.event_name == 'workflow_run' &&
@@ -292,7 +345,7 @@ jobs:
         if: "!startsWith(github.ref, 'refs/tags/v')"
         run: |
           title="Nightly (main ${SHA::7})"
-          notes="Latest green \`main\` build (${SHA}). Desktop apps for Linux x86_64 / aarch64 and Windows x86_64, Android APK (arm64, debug-signed). Not a stable release."
+          notes="Latest green \`main\` build (${SHA}). Desktop apps for Linux x86_64 / aarch64 and Windows x86_64, Android APK (arm64, debug-signed), pnex admin CLI (Linux, Windows, macOS). Not a stable release."
           # Updated in place, never deleted and recreated: recreating the tag
           # right after deleting it was refused by GitHub (403) and left no
           # nightly at all until the next green main. Asset names are stable,
