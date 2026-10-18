@@ -1072,7 +1072,7 @@ fn changes_unavailable() -> Error {
     tag = "ontology",
     operation_id = "ontology_links_create",
     summary = "Create a link between two objects",
-    description = "Opens a link of `link_type` from `source_id` to `target_id`, starting at `valid_from` (default now; may be in the past). Checks the link type allows these object types and its cardinality. Journaled on both ends. Needs a writer role.",
+    description = "Opens a link of `link_type` from `source_id` to `target_id`, starting at `valid_from` (default now; may be in the past). With `valid_to` (after `valid_from`, not in the future) the link is written closed, as history, even while the same pair has an open link; cardinalities bind open links only. Checks the link type allows these object types and its cardinality. Journaled on both ends. Needs a writer role.",
     request_body = pnex_core::ontology::api::LinkInput,
     responses(
         (status = 201, body = pnex_core::ontology::api::LinkView),

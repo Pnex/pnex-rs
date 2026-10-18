@@ -7816,6 +7816,13 @@
               "string",
               "null"
             ]
+          },
+          "valid_to": {
+            "description": "RFC 3339, after `valid_from` and not in the future: the link is\nwritten closed, as history, even while the same pair has an open\nlink (only open links are unique per pair).",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -46508,7 +46515,7 @@
     },
     "/api/v1/ontology/links": {
       "post": {
-        "description": "Opens a link of `link_type` from `source_id` to `target_id`, starting at `valid_from` (default now; may be in the past). Checks the link type allows these object types and its cardinality. Journaled on both ends. Needs a writer role.",
+        "description": "Opens a link of `link_type` from `source_id` to `target_id`, starting at `valid_from` (default now; may be in the past). With `valid_to` (after `valid_from`, not in the future) the link is written closed, as history, even while the same pair has an open link; cardinalities bind open links only. Checks the link type allows these object types and its cardinality. Journaled on both ends. Needs a writer role.",
         "operationId": "ontology_links_create",
         "parameters": [
           {

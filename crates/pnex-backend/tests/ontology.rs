@@ -1089,6 +1089,113 @@ async fn case_payments_and_ownership_shares() {
     .await;
 }
 
+/// A link may be written closed (`valid_to`, 2026-10-18): a past term sits
+/// beside the open link of the same pair, which stays unique.
+#[tokio::test]
+#[serial]
+async fn closed_link_is_history_beside_the_open_one() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(st < 300, "{p}");
+        let employer = object(&server, &env.alice, org, "organization", "Radio", json!({})).await;
+        let host = object(&server, &env.alice, org, "person", "Host", json!({})).await;
+        let link = |from: &str, to: Option<&str>| {
+            json!({"link_type": "employs", "source_id": employer["id"], "target_id": host["id"],
+                   "valid_from": from, "valid_to": to})
+        };
+        let (st, l) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/links",
+            &env.alice,
+            org,
+            Some(link("2024-09-01T00:00:00Z", None)),
+        )
+        .await;
+        assert!(st < 300, "{l}");
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/links",
+            &env.alice,
+            org,
+            Some(link("2020-09-01T00:00:00Z", None)),
+        )
+        .await;
+        assert_eq!(st, 409, "a second open link of the pair: {e}");
+        let (st, h) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/links",
+            &env.alice,
+            org,
+            Some(link("2014-09-01T00:00:00Z", Some("2019-06-30T00:00:00Z"))),
+        )
+        .await;
+        assert!(st < 300, "{h}");
+        assert_eq!(h["valid_to"], "2019-06-30T00:00:00+00:00", "{h}");
+        for bad in [
+            link("2019-01-01T00:00:00Z", Some("2018-01-01T00:00:00Z")),
+            link("2019-01-01T00:00:00Z", Some("2999-01-01T00:00:00Z")),
+        ] {
+            let (st, e) = call(
+                &server,
+                "POST",
+                "/api/v1/ontology/links",
+                &env.alice,
+                org,
+                Some(bad),
+            )
+            .await;
+            assert_eq!(
+                (st, e["errors"]["fields"]["valid_to"].as_str()),
+                (400, Some("invalid")),
+                "{e}"
+            );
+        }
+        let hid = host["id"].as_str().unwrap();
+        let (st, all) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{hid}/links?history=true"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{all}");
+        let mut terms: Vec<bool> = all["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l["valid_to"].is_null())
+            .collect();
+        terms.sort();
+        assert_eq!(terms, [false, true], "one past term, one open: {all}");
+        // Viewer cannot write (R2).
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/links",
+            &env.bob,
+            org,
+            Some(link("2010-01-01T00:00:00Z", Some("2011-01-01T00:00:00Z"))),
+        )
+        .await;
+        assert!(st == 403 || st == 404, "{st}");
+    })
+    .await;
+}
+
 /// A pack upgrade keeps what the org added to its types (2026-10-18): a
 /// property, a link attribute and a source type added locally survive a
 /// newer version of the pack, which still wins on what it declares.
