@@ -844,9 +844,17 @@ async fn follow_account(
             &mut posts,
             &mut tracks,
         );
-        // D269: some platforms pause a hidden tab.
+        // D269: some platforms pause a hidden tab; never read one blind.
         if params.platform.needs_foreground() {
             let _ = host::focus_tab(tab).await;
+            if !visible(tab).await {
+                session.send(&AgentMsg::State {
+                    mission_id: m.id.clone(),
+                    state: MissionState::Blocked,
+                    code: Some(err_codes::EXT_TAB_HIDDEN.into()),
+                });
+                return err_codes::EXT_TAB_HIDDEN.into();
+            }
         }
         let mut idle = 0;
         let mut scrolls = 0;
@@ -1026,6 +1034,16 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// The tab is shown on screen (window not minimized nor covered, screen
+/// not locked).
+async fn visible(tab: f64) -> bool {
+    host::is_tab_visible(tab)
+        .await
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// A file ready to upload (kept on the JS side, see host.js).
 #[derive(Deserialize)]
 struct Blob {
@@ -1057,8 +1075,11 @@ async fn record(
             .unwrap_or(-1.0);
         plan.borrow_mut().tabs.insert(platform.to_string(), tab);
     }
-    if platform == "tiktok" {
+    if ba::is_exclusive(platform) {
         let _ = host::focus_tab(tab).await;
+        if !visible(tab).await {
+            return Err(err_codes::EXT_TAB_HIDDEN.into());
+        }
     }
     let id = host::random_b64(12);
     host::start_recording(tab, &id, max_ms, RECORD_BITRATE, live, ba::VIDEO_MAX as f64)

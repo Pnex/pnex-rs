@@ -154,6 +154,8 @@ pub struct BrowserAgent {
     pub device_id: String,
     pub name: String,
     pub fingerprint: AgentFingerprint,
+    /// `shared` or `dedicated:<platform>` (D269).
+    pub mode: String,
     pub online: bool,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
@@ -178,6 +180,9 @@ pub struct PairResponse {
 pub struct BrowserAgentPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// `shared` or `dedicated:<platform>` (D269).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 /// Ticket body, sent with the device token.
@@ -292,6 +297,42 @@ pub struct FollowAccountParams {
     /// platform's captions when it has some, no file.
     #[serde(default)]
     pub force_video: bool,
+    /// Ontology object (person or organization) behind the account: each
+    /// captured media is linked to it by `published_by` (D278, D281).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub publisher_id: Option<String>,
+}
+
+/// Mode of an agent (D269): `shared` runs every platform but the
+/// exclusive ones; `dedicated:<platform>` runs that platform only.
+pub const MODE_SHARED: &str = "shared";
+
+/// The platform pauses in a hidden tab: only a dedicated agent runs it.
+pub fn is_exclusive(platform: &str) -> bool {
+    SocialPlatform::parse(platform).is_some_and(SocialPlatform::needs_foreground)
+}
+
+/// Whether an agent in `mode` runs a mission on `platform` (D269).
+pub fn mode_allows(mode: &str, platform: &str) -> bool {
+    match mode.strip_prefix("dedicated:") {
+        Some(dedicated) => platform == dedicated,
+        None => !is_exclusive(platform),
+    }
+}
+
+/// `shared` or `dedicated:<social platform>`.
+pub fn check_mode(raw: &str) -> Result<String, (String, String)> {
+    let mode = raw.trim();
+    let ok = mode == MODE_SHARED
+        || mode
+            .strip_prefix("dedicated:")
+            .is_some_and(|p| SocialPlatform::parse(p).is_some());
+    if ok {
+        Ok(mode.into())
+    } else {
+        Err(("mode".into(), err_codes::FIELD_INVALID.into()))
+    }
 }
 
 /// Longest account handle.
@@ -553,11 +594,22 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
                 return Err(field("spec.params.handle", err_codes::FIELD_INVALID));
             }
             let target = format!("{}:@{}", p.platform.wire(), handle.to_ascii_lowercase());
+            let publisher_id = match p.publisher_id.as_deref().map(str::trim) {
+                None | Some("") => None,
+                Some(id) => Some(
+                    uuid::Uuid::parse_str(id)
+                        .map_err(|_| {
+                            field("spec.params.publisher_id", err_codes::FIELD_INVALID_UUID)
+                        })?
+                        .to_string(),
+                ),
+            };
             Ok((
                 MissionSpec::FollowAccount(FollowAccountParams {
                     platform: p.platform,
                     handle: handle.into(),
                     force_video: p.force_video,
+                    publisher_id,
                 }),
                 target,
             ))
@@ -868,6 +920,7 @@ mod tests {
             platform: SocialPlatform::X,
             handle: " @Some_Account ".into(),
             force_video: true,
+            publisher_id: None,
         });
         let (spec, target) = check_spec(&spec).unwrap();
         assert_eq!(target, "x:@some_account");
@@ -880,6 +933,7 @@ mod tests {
             platform: SocialPlatform::X,
             handle: "a/b".into(),
             force_video: false,
+            publisher_id: None,
         });
         assert_eq!(check_spec(&bad).unwrap_err().0, "spec.params.handle");
         let json =
@@ -892,6 +946,27 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn modes_split_exclusive_platforms() {
+        assert!(mode_allows("shared", "x"));
+        assert!(mode_allows("shared", "web:example.org"));
+        assert!(
+            !mode_allows("shared", "tiktok"),
+            "TikTok needs a dedicated agent"
+        );
+        assert!(mode_allows("dedicated:tiktok", "tiktok"));
+        assert!(!mode_allows("dedicated:tiktok", "x"));
+        assert!(check_mode("dedicated:youtube").is_ok());
+        assert!(check_mode("dedicated:web").is_err());
+        let spec = MissionSpec::FollowAccount(FollowAccountParams {
+            platform: SocialPlatform::X,
+            handle: "a".into(),
+            force_video: false,
+            publisher_id: Some("not-a-uuid".into()),
+        });
+        assert_eq!(check_spec(&spec).unwrap_err().0, "spec.params.publisher_id");
     }
 
     #[test]

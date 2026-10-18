@@ -14,6 +14,7 @@
 
 pub mod audio;
 pub mod journal;
+pub mod media;
 pub mod profiles;
 pub mod samples;
 pub mod testing;

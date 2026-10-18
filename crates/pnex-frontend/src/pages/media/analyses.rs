@@ -46,6 +46,7 @@ fn step_label(step: AnalysisStep) -> String {
         AnalysisStep::Index => t!("media-analysis-step-index"),
         AnalysisStep::Summarize => t!("media-analysis-step-summarize"),
         AnalysisStep::Transcribe => t!("media-analysis-step-transcribe"),
+        AnalysisStep::Identify => t!("media-analysis-step-identify"),
     }
     .to_string()
 }
@@ -123,6 +124,9 @@ pub(super) fn AnalysesCard(asset_id: String, can_write: bool) -> Element {
                 steps,
                 locale: crate::i18n::current_tag(),
                 confirm_large,
+                // shortcut: expected persons only (every profile when none);
+                // add the "every profile" choice when an org asks for it.
+                voice_scope: Default::default(),
             };
             match api::media::start_analyses(&id, &input).await {
                 Ok(next) => {
@@ -231,7 +235,7 @@ fn StepLine(
 ) -> Element {
     let step = offer.step;
     // A transcription is reviewed as soon as it started (text comes in).
-    let review = step == AnalysisStep::Transcribe
+    let review = matches!(step, AnalysisStep::Transcribe | AnalysisStep::Identify)
         && analysis
             .as_ref()
             .is_some_and(|a| matches!(a.state.wire(), "running" | "done"));
@@ -259,7 +263,17 @@ fn StepLine(
         li { class: "py-2 flex items-start justify-between gap-3",
             div { class: "min-w-0",
                 p { class: "text-sm text-gray-900", {step_label(step)} }
-                if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_ASR) {
+                if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_VOICE_PROFILE) {
+                    p { class: "text-xs text-gray-500",
+                        {t!("media-analysis-needs-voice")}
+                        " "
+                        Link {
+                            class: "text-signal-600 hover:underline",
+                            to: Route::VoiceId {},
+                            {t!("media-analysis-open-asr")}
+                        }
+                    }
+                } else if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_ASR) {
                     p { class: "text-xs text-gray-500",
                         {t!("media-analysis-needs-asr")}
                         " "

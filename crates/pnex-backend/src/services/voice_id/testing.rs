@@ -21,7 +21,7 @@ pub enum Target {
     Model(Option<Uuid>),
 }
 
-fn sealed(p: &voice_profiles::Model) -> Option<Sealed> {
+pub(super) fn sealed(p: &voice_profiles::Model) -> Option<Sealed> {
     Some(Sealed {
         ciphertext: p.centroid_ciphertext.clone()?,
         nonce: p.centroid_nonce.clone()?,

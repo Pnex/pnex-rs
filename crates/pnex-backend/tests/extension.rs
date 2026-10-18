@@ -911,3 +911,51 @@ async fn live_parts_land_as_video_media() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn exclusive_platforms_go_to_dedicated_agents_only() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let mission = |name: &str, platform: &str| {
+            json!({
+                "name": name,
+                "spec": { "kind": "follow_account", "params": { "platform": platform, "handle": "acc" } },
+                "interval_secs": 600,
+            })
+        };
+        for (name, platform) in [("tt", "tiktok"), ("xx", "x")] {
+            let (s, m) = call(&server, "POST", "/api/v1/extension/missions", &env.alice, org, Some(mission(name, platform))).await;
+            assert_eq!(s, 201, "{m}");
+        }
+        let held = |ws_missions: Vec<ba::AssignedMission>| {
+            let mut t: Vec<String> = ws_missions.into_iter().map(|m| m.target).collect();
+            t.sort();
+            t
+        };
+        // Shared (default): X, never TikTok.
+        let mut ws = open(&server, &install, &a).await;
+        let ServerMsg::Missions { missions } = recv(&mut ws).await else {
+            panic!("missions expected");
+        };
+        assert_eq!(held(missions), ["x:@acc"]);
+        ws.close().await;
+
+        let path = format!("/api/v1/extension/agents/{}", a.id);
+        let (s, e) = call(&server, "PATCH", &path, &env.alice, org, Some(json!({ "mode": "dedicated:web" }))).await;
+        assert_eq!(s, 400);
+        assert_eq!(e["errors"]["fields"]["mode"], "invalid", "{e}");
+        let (s, agent) = call(&server, "PATCH", &path, &env.alice, org, Some(json!({ "mode": "dedicated:tiktok" }))).await;
+        assert_eq!(s, 200, "{agent}");
+        assert_eq!(agent["mode"], "dedicated:tiktok");
+        let mut ws = open(&server, &install, &a).await;
+        let ServerMsg::Missions { missions } = recv(&mut ws).await else {
+            panic!("missions expected");
+        };
+        assert_eq!(held(missions), ["tiktok:@acc"]);
+        ws.close().await;
+    })
+    .await;
+}

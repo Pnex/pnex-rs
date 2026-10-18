@@ -319,6 +319,15 @@ export async function focus_tab(tabId) {
   if (tab?.windowId != null) await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
 }
 
+/** Whether the page of the tab is visible (`document.visibilityState`). */
+export async function is_tab_visible(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    func: () => document.visibilityState === "visible",
+  });
+  return result?.result === true;
+}
+
 // ── Recording (recorder.js in the tab, chunks gathered by background.js) ──
 
 globalThis.__pnexRecordings ??= new Map();

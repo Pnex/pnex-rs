@@ -269,6 +269,47 @@ pub fn person_at(ms: i64, attributions: &[SpeechAttribution]) -> Option<&SpeechA
         .min_by_key(|a| a.end_ms - a.start_ms)
 }
 
+/// Shortest turn worth a voice print (V5: 3 s of speech per window).
+pub const VOICE_TURN_MIN_MS: i64 = 3_000;
+/// Longest stretch of one turn decoded for a voice print.
+pub const VOICE_TURN_MAX_MS: i64 = 30_000;
+/// Turns of one speaker decoded for its voice print.
+pub const VOICE_TURNS_PER_SPEAKER: usize = 4;
+
+/// Turns of `label` to decode for its voice print (D275): the longest
+/// first, at least [`VOICE_TURN_MIN_MS`], each cut to
+/// [`VOICE_TURN_MAX_MS`], at most [`VOICE_TURNS_PER_SPEAKER`].
+pub fn voice_turns(segments: &[ReviewSegment], label: &str) -> Vec<MediaSpan> {
+    let mut turns: Vec<MediaSpan> = segments
+        .iter()
+        .flat_map(|s| s.turns.iter())
+        .filter(|t| t.label == label && t.end_ms - t.start_ms >= VOICE_TURN_MIN_MS)
+        .map(|t| MediaSpan {
+            start_ms: t.start_ms,
+            end_ms: t.end_ms.min(t.start_ms + VOICE_TURN_MAX_MS),
+        })
+        .collect();
+    turns.sort_by_key(|t| std::cmp::Reverse(t.end_ms - t.start_ms));
+    turns.truncate(VOICE_TURNS_PER_SPEAKER);
+    turns
+}
+
+/// Every turn of `label`, merged, in media order: the spans a voice
+/// proposal covers.
+pub fn label_spans(segments: &[ReviewSegment], label: &str) -> Vec<MediaSpan> {
+    merge_spans(
+        segments
+            .iter()
+            .flat_map(|s| s.turns.iter())
+            .filter(|t| t.label == label)
+            .map(|t| MediaSpan {
+                start_ms: t.start_ms,
+                end_ms: t.end_ms,
+            })
+            .collect(),
+    )
+}
+
 /// Run shown by default: the latest `pnex` run of the current version,
 /// else the latest run of any origin (`runs` newest first).
 pub fn default_run(runs: &[MediaRun], current_version: Option<uuid::Uuid>) -> Option<uuid::Uuid> {
@@ -420,6 +461,36 @@ mod tests {
         let mut rejected = attribution(0, 3_000, "Carol");
         rejected.status = AttributionStatus::Rejected;
         assert!(person_of_label(&turns, "S1", &[rejected]).is_none());
+    }
+
+    #[test]
+    fn voice_turns_take_the_longest_of_a_speaker() {
+        let turn = |label: &str, start_ms, end_ms| ReviewTurn {
+            label: label.into(),
+            start_ms,
+            end_ms,
+        };
+        let seg = ReviewSegment {
+            start_ms: 0,
+            end_ms: 200_000,
+            text: String::new(),
+            words: Vec::new(),
+            turns: vec![
+                turn("S1", 0, 2_000),
+                turn("S1", 10_000, 80_000),
+                turn("S2", 80_000, 90_000),
+                turn("S1", 90_000, 95_000),
+                turn("S1", 95_000, 100_000),
+            ],
+        };
+        let v = voice_turns(std::slice::from_ref(&seg), "S1");
+        // 2 s is too short; 70 s is cut to 30 s and comes first.
+        assert_eq!(v.len(), 3);
+        assert_eq!((v[0].start_ms, v[0].end_ms), (10_000, 40_000));
+        // Touching turns merge into the proposal spans.
+        let spans = label_spans(&[seg], "S1");
+        assert_eq!(spans.len(), 3, "{spans:?}");
+        assert_eq!((spans[2].start_ms, spans[2].end_ms), (90_000, 100_000));
     }
 
     #[test]
