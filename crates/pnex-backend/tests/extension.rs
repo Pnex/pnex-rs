@@ -698,7 +698,7 @@ async fn followed_account_videos_are_captured_once() {
             org,
             Some(json!({
                 "name": "Account",
-                "spec": { "kind": "follow_account", "params": { "platform": "x", "handle": "@Some_Account" } },
+                "spec": { "kind": "follow_account", "params": { "platform": "x", "handle": "@Some_Account", "force_video": true } },
                 "interval_secs": 600,
             })),
         )
@@ -715,6 +715,8 @@ async fn followed_account_videos_are_captured_once() {
         let seen = AgentMsg::Seen {
             mission_id: mission.clone(),
             posts: vec![post("101", true), post("102", false), post("../x", true)],
+            depth: 20,
+            end_reached: false,
         };
         send(&mut ws, &seen).await;
         assert_eq!(
@@ -728,6 +730,32 @@ async fn followed_account_videos_are_captured_once() {
             recv(&mut ws).await,
             ServerMsg::Capture { mission_id: mission.clone(), platform_ids: vec![] }
         );
+
+        // D283: the next visit goes deeper; once the list ended, recent only.
+        ws.close().await;
+        let mut ws = open(&server, &install, &a).await;
+        let ServerMsg::Missions { missions } = recv(&mut ws).await else {
+            panic!("missions expected");
+        };
+        assert_eq!(missions[0].scroll_depth, 2 * ba::HISTORY_STEP);
+        send(
+            &mut ws,
+            &AgentMsg::Seen {
+                mission_id: mission.clone(),
+                posts: vec![],
+                depth: 23,
+                end_reached: true,
+            },
+        )
+        .await;
+        recv(&mut ws).await;
+        ws.close().await;
+        let mut ws = open(&server, &install, &a).await;
+        let ServerMsg::Missions { missions } = recv(&mut ws).await else {
+            panic!("missions expected");
+        };
+        assert_eq!(missions[0].scroll_depth, ba::RECENT_DEPTH);
+        ws.close().await;
 
         let mp4 = b"\0\0\0\x18ftypisom\0\0\x02\0isommp41";
         let (s, v) = upload_video(&server, &install, &a, &mission, "101", mp4).await;

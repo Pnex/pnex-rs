@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox) — spécification v2 (C1b)
 
-> Statut : **proposition v2 (2026-10-18)**, décisions D254–D270 et D281 à valider.
+> Statut : **proposition v2 (2026-10-18)**, décisions D254–D270, D281–D284.
 > **Zéro code tant que la v2 n'est pas validée** ; l'implémentation reste le
 > jalon C3 (`edge-model.md` §11) et P2.1 de la roadmap.
 >
@@ -307,6 +307,36 @@ texte seulement.
   (`media-import-pipeline.md` Q6), propriété `published_by_object` de la
   provenance.
 
+**D282 — Enregistrer les vidéos est possible, YouTube compris (décision
+de l'utilisateur, 2026-10-18).** Remplace l'exclusion de YouTube VOD
+(D254, question 1) : un agent peut récupérer le fichier d'une vidéo (fichier
+direct si la plateforme l'expose, sinon enregistrement en temps réel,
+D260), sur X, YouTube (vidéos et shorts) et ensuite TikTok. Restent
+intangibles : jamais de contenu protégé (DRM → `ext-drm-protected`),
+jamais de contournement (connexion, vérification, limite), rythme humain.
+La position de `media-ingest.md` §13 est mise à jour : l'utilisateur
+répond de ses sources et des conditions des plateformes ; PNEX ne publie
+ni préréglage ni connecteur hors de cette extension.
+
+**D283 — Suivre un compte = toute son histoire, automatiquement.** Une
+mission `follow_account` collecte les publications récentes **et**
+remonte l'historique jusqu'au début du compte, sans réglage. Le serveur
+garde la progression dans `extension_missions.cursor` (`history_depth`,
+`history_done`) et dit à l'agent jusqu'où descendre à chaque visite : la
+profondeur augmente de 20 défilements par visite, au rythme humain
+habituel (3–6 s par défilement), jusqu'à ce que le fil ne charge plus
+rien (`end_reached`). Ensuite, chaque visite ne lit que le haut du fil.
+Le registre (D259) garantit qu'un post déjà connu n'est ni re-téléchargé
+ni retraité, quel que soit l'agent.
+
+**D284 — Une mission = un compte à suivre ; le reste est automatique.**
+L'utilisateur saisit la plateforme et le compte. Par défaut : métadonnées
+du post, texte, et transcription au mieux (sous-titres de la plateforme
+quand ils existent, passe `platform`, D281) ; **aucun fichier vidéo**.
+Une case **« Forcer la collecte vidéo »** télécharge ou enregistre toutes
+les vidéos du compte (puis transcription PNEX, D213). Remplace
+`media_policy` (D267) par ce booléen `force_video`.
+
 ## 8. Adaptateurs
 
 Un adaptateur par plateforme, en Rust, compilé dans le wasm :
@@ -460,7 +490,8 @@ ne remplit jamais de formulaire de connexion.
 | L3 | adaptateur TikTok, mode d'agent `dedicated` (D269), contrôle de visibilité | idem TikTok, sur un PC dédié |
 | L4 | `watch_live`, flux `browser`, upload webm + extraction audio | live transcrit dans la chaîne média |
 | L5 | portage Firefox (fond en page, fenêtre dédiée) | mêmes e2e sous Firefox |
-| L6 | YouTube (selon Q1) | — |
+| L6 | YouTube : vidéos + shorts, historique, sous-titres (D282–D284) | une chaîne suivie, son historique au registre, texte des sous-titres |
+| L7 (plus tard) | Mission `search` : recherche sur une plateforme (mots-clés, hashtag) ; chaque résultat passe par le registre (D259) : déjà connu → ignoré, nouveau seulement relevé, collecté selon la mission. Objectif : ne pas noyer l'org sous ce qu'elle a déjà | une recherche relancée ne relève que les nouveautés |
 
 **Avancement.** L0 se découpe en L0a (serveur), L0b (extension wasm) et
 L0c (page « Agents navigateur »).
@@ -533,6 +564,17 @@ L0c (page « Agents navigateur »).
   une connexion). Les sous-titres de la plateforme et le lien éditeur
   (question 5) attendent D211 et la décision.
 
+- **D282–D284 codés le 2026-10-18 (essais réels X / YouTube à faire)** :
+  plateforme YouTube (vidéos puis shorts de la chaîne, lus dans
+  `ytInitialData` et les réponses `youtubei/v1/browse`, anciens et
+  nouveaux formats de carte) ; crochet unique `hook.js` (X + YouTube) ;
+  historique automatique (profondeur +20 défilements par visite,
+  progression dans `cursor`, fin du fil = 4 défilements sans rien de
+  neuf) ; `force_video` remplace `media_policy` (par défaut aucun fichier).
+  Restent : sous-titres plateforme (`store_platform_run`, côté
+  `media-review`), enregistrement temps réel des vidéos YouTube (webm,
+  avec le lot live L4) — d'ici là une vidéo YouTube forcée reste `seen`.
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip
@@ -544,8 +586,7 @@ Firefox : question 4.
 
 ## 15. Questions ouvertes
 
-1. **YouTube VOD** : capture du fichier, ou live + métadonnées seulement
-   (proposé) ?
+1. ~~**YouTube VOD**~~ : tranché par D282 (enregistrement possible).
 2. ~~**Noise en wasm32**~~ : compile (getrandom 0.2 `js` + 0.3
    `wasm_js`) ; taille du wasm à mesurer au L0b.
 3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
@@ -622,6 +663,9 @@ chaque version d'adaptateur (les plateformes changent) :
 | D266 | Identité | paire de clés WebCrypto non extractible + empreinte auto, tickets signés |
 | D267 | Transcription | sous-titres de la plateforme d'abord, `media_policy`, live toujours enregistré |
 | D281 | Vidéos capturées | média `video` relu (D271), sous-titres = passe `platform`, live = flux à audio conservé, provenance commune, éditeur ↔ ontologie |
+| D282 | Vidéos | enregistrement possible sur toutes les plateformes (YouTube compris), jamais de DRM ni de contournement |
+| D283 | Historique | toute l'histoire du compte, profondeur croissante par visite, automatique |
+| D284 | Mission | un compte à suivre ; texte au mieux par défaut, case « forcer la collecte vidéo » |
 | D270 | Distribution | construite avec l'image, `GET /api/v1/extension/download` (zip + `server.json`), chargement non empaqueté en v1 |
 | D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
 | D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |

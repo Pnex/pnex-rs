@@ -2,3 +2,4 @@
 //! never downloaded, updated with the extension.
 
 pub mod x;
+pub mod youtube;

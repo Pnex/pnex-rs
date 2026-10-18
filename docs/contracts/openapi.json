@@ -5951,12 +5951,13 @@
       "FollowAccountParams": {
         "description": "`follow_account` (D256): the new posts of one public account.",
         "properties": {
+          "force_video": {
+            "description": "Download or record every video (D284). Off: metadata, text and the\nplatform's captions when it has some, no file.",
+            "type": "boolean"
+          },
           "handle": {
             "description": "Account handle, without `@`.",
             "type": "string"
-          },
-          "media_policy": {
-            "$ref": "#/components/schemas/MediaPolicy"
           },
           "platform": {
             "$ref": "#/components/schemas/SocialPlatform"
@@ -8545,15 +8546,6 @@
           "audio",
           "video",
           "mesh"
-        ],
-        "type": "string"
-      },
-      "MediaPolicy": {
-        "description": "What a `follow_account` mission does with a new video (D267).",
-        "enum": [
-          "if_no_transcript",
-          "always",
-          "metadata_only"
         ],
         "type": "string"
       },
@@ -16504,7 +16496,8 @@
       "SocialPlatform": {
         "description": "Social platform an agent follows accounts on (D254). TikTok comes with\nits adapter (lot L3).",
         "enum": [
-          "x"
+          "x",
+          "youtube"
         ],
         "type": "string"
       },

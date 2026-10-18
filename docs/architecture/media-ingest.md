@@ -867,6 +867,11 @@ fournie par l'utilisateur, qui reste responsable de ses sources.
   préréglage de téléchargeur YouTube ou de déverrouillage de flux à
   DRM) : fournir un tel moyen est en soi un délit (CPI L335-3-1 s.,
   DMCA), indépendamment de l'usage.
+  **Mise à jour 2026-10-18 (`extension-collector.md` D282)** : sur
+  décision de l'utilisateur, les agents navigateur peuvent enregistrer
+  les vidéos des comptes qu'il déclare, YouTube compris, à partir de ce
+  que le navigateur lit déjà ; jamais de contenu protégé (DRM) ni de
+  contournement.
 - PNEX **n'encourage** pas ces pratiques : documentation, tutoriels,
   site et démos n'utilisent que des sources propres (radio en clair,
   BFM Business par la TNT, podcasts, RSS, banques centrales, webcasts

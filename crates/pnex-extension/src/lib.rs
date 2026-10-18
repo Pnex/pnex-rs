@@ -137,6 +137,7 @@ mod tests {
             spec,
             target,
             interval_secs: 60,
+            scroll_depth: 0,
         }
     }
 

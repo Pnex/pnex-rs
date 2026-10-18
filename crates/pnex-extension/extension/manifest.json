@@ -31,17 +31,19 @@
   "content_scripts": [
     {
       "matches": [
-        "https://x.com/*"
+        "https://x.com/*",
+        "https://www.youtube.com/*"
       ],
       "js": [
-        "hook_x.js"
+        "hook.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
       "matches": [
-        "https://x.com/*"
+        "https://x.com/*",
+        "https://www.youtube.com/*"
       ],
       "js": [
         "relay.js"
