@@ -661,7 +661,7 @@ impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
 }
 
 /// Position in the analysed file of a batch segment (D211): its start
-/// minus the date of the version, which is the file's position 0.
+/// minus the date of its run, which is the file's position 0.
 async fn file_pos(
     db: &sea_orm::DatabaseConnection,
     seg: &media_segments::Model,
@@ -675,8 +675,11 @@ async fn file_pos(
         .one(db)
         .await
         .ok()??;
+    let base = crate::services::media_runs::run_base(db, stream.run_id?)
+        .await
+        .ok()??;
     Some(transcripts::FilePos {
-        offset_ms: (seg.started_at - version.created_at).num_milliseconds(),
+        offset_ms: (seg.started_at.with_timezone(&chrono::Utc) - base).num_milliseconds(),
         run: stream.run_id?,
         origin: pnex_core::media_review::RunOrigin::Pnex,
         version: Some(version.id),

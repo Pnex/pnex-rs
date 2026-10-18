@@ -19,7 +19,7 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::models::_entities::{media_assets, media_versions};
+use crate::models::_entities::media_assets;
 use crate::services::media_ingest::{streams, transcripts};
 
 /// Most cues of one platform run.
@@ -80,6 +80,27 @@ pub async fn record<C: ConnectionTrait>(
     ))
     .await?;
     Ok(())
+}
+
+/// Clock base of a run: its creation date. The documents of a run sit at
+/// `base + offset_ms` (O2 only takes documents of the last hours, so the
+/// base is the run date, never the version date; the position in the media
+/// is `offset_ms`).
+pub async fn run_base<C: ConnectionTrait>(
+    db: &C,
+    run: Uuid,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, DbErr> {
+    #[derive(FromQueryResult)]
+    struct B {
+        created_at: chrono::DateTime<chrono::FixedOffset>,
+    }
+    Ok(B::find_by_statement(stmt(
+        "SELECT created_at FROM media_runs WHERE id = $1",
+        vec![run.into()],
+    ))
+    .one(db)
+    .await?
+    .map(|b| b.created_at.with_timezone(&chrono::Utc)))
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -152,8 +173,8 @@ fn check_cues(lang: &str, cues: &[PlatformCue]) -> Result<(), RunError> {
 }
 
 /// Stores the subtitles a platform gave with a post as a `platform` run of
-/// the asset (D276): written to O2 like a PNeX run, on the asset clock
-/// (position 0 = the asset's creation date). The asset may have no video
+/// the asset (D276): written to O2 like a PNeX run, on the run clock
+/// (position 0 = the run date, see [`run_base`]). The asset may have no video
 /// file yet. Returns the run.
 pub async fn store_platform_run(
     ctx: &AppContext,
@@ -168,7 +189,21 @@ pub async fn store_platform_run(
         .await
         .map_err(|e| RunError::Store(e.to_string()))?;
     let run = Uuid::new_v4();
-    let base_us = asset.created_at.timestamp_micros();
+    record(
+        &ctx.db,
+        run,
+        org_id,
+        asset.id,
+        None,
+        RunOrigin::Platform,
+        Some(lang),
+        None,
+    )
+    .await?;
+    let base_us = run_base(&ctx.db, run)
+        .await?
+        .unwrap_or_else(chrono::Utc::now)
+        .timestamp_micros();
     let docs: Vec<transcripts::Doc<'_>> = cues
         .iter()
         .filter(|c| !c.text.trim().is_empty())
@@ -192,20 +227,16 @@ pub async fn store_platform_run(
             }),
         })
         .collect();
-    transcripts::write_many(ctx, org_id, &stream.slug, &docs)
-        .await
-        .map_err(RunError::Store)?;
-    record(
-        &ctx.db,
-        run,
-        org_id,
-        asset.id,
-        None,
-        RunOrigin::Platform,
-        Some(lang),
-        None,
-    )
-    .await?;
+    if let Err(e) = transcripts::write_many(ctx, org_id, &stream.slug, &docs).await {
+        // Nothing stored: the run is not kept either.
+        ctx.db
+            .execute_raw(stmt(
+                "DELETE FROM media_runs WHERE id = $1",
+                vec![run.into()],
+            ))
+            .await?;
+        return Err(RunError::Store(e));
+    }
     Ok(run)
 }
 
@@ -242,15 +273,10 @@ pub async fn transcript(
     let Some(stream) = stream else {
         return Ok(out);
     };
-    // The documents sit at `base + offset`: base = the version date for a
-    // PNeX run, the asset date for platform subtitles.
-    let base = match run.version_id {
-        Some(v) => media_versions::Entity::find_by_id(v)
-            .one(&ctx.db)
-            .await?
-            .map_or(asset.created_at, |v| v.created_at),
-        None => asset.created_at,
-    };
+    // The documents sit at `run date + offset` (see `run_base`).
+    let base = run_base(&ctx.db, run.id)
+        .await?
+        .unwrap_or_else(|| asset.created_at.with_timezone(&chrono::Utc));
     let from = base.timestamp_micros() - 60_000_000;
     let to = from + (CUE_END_MAX_MS + 3_600_000) * 1000;
     match transcripts::run_documents(ctx, org_id, &stream.slug, run.id, from, to).await {

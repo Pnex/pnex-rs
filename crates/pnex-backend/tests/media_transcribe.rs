@@ -775,10 +775,20 @@ async fn file_analysis_transcribes_in_batch() {
                 .unwrap();
             segs.sort_by_key(|s| s.seq);
             assert_eq!(segs.len(), 1);
+            // Position 0 = the date of the run (O2 refuses documents dated
+            // days back), however old the version.
+            let run_at =
+                pnex_backend::services::media_runs::run_base(&ctx.db, stream.run_id.unwrap())
+                    .await
+                    .unwrap()
+                    .unwrap();
             assert_eq!(
                 segs[0].started_at.timestamp_millis(),
-                old.timestamp_millis(),
-                "position 0 = version date"
+                run_at.timestamp_millis()
+            );
+            assert!(
+                run_at > old + chrono::Duration::days(2),
+                "not the version date"
             );
             for s in &segs {
                 assert_eq!(s.clock_source, "file", "{s:?}");

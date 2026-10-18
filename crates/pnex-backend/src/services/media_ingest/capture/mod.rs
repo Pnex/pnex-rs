@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use loco_rs::app::AppContext;
 use pnex_core::media_ingest::{
     CaptureOn, CaptureState, MediaStreamKind, MediaTracks, FPS_MAX, FPS_MIN,
@@ -514,13 +514,22 @@ async fn run_once(
     // A library file is read here (org re-checked), never fetched.
     let (url, file) = if kind == MediaStreamKind::MediaAsset {
         let url = reqwest::Url::parse(&stream.url).map_err(|_| CaptureError::Unreachable)?;
-        let (bytes, format, version_at) = media_asset_file(ctx, stream).await?;
+        let (bytes, format) = media_asset_file(ctx, stream).await?;
         let batch = stream.pace == super::streams::PACE_BATCH;
+        // Position 0 of a batch file = the date of its run (O2 takes recent
+        // documents only; the position itself is `offset_ms`).
+        let run_at = match stream.run_id.filter(|_| batch) {
+            Some(run) => crate::services::media_runs::run_base(&ctx.db, run)
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
         let file = pnex_media_capture::FileSource {
             bytes,
             format,
             realtime: !batch && !matches!(sink, Sink::Probe(_)),
-            base: batch.then_some(version_at),
+            base: batch.then(|| run_at.unwrap_or_else(Utc::now)),
         };
         (url, Some(file))
     } else {
@@ -561,21 +570,14 @@ async fn run_once(
 /// Largest library file a stream replays (read in memory).
 const MEDIA_ASSET_MAX_BYTES: i64 = 512 * 1024 * 1024;
 
-/// Bytes, decoder format and date of the version of a stream's library
-/// file (the analysed one for a batch stream, else the current one),
-/// re-checked against the stream's org; an MP4 index at the end of the
-/// file is moved first (pipe input cannot seek).
+/// Bytes and decoder format of the version of a stream's library file
+/// (the analysed one for a batch stream, else the current one), re-checked
+/// against the stream's org; an MP4 index at the end of the file is moved
+/// first (pipe input cannot seek).
 async fn media_asset_file(
     ctx: &AppContext,
     stream: &media_streams::Model,
-) -> Result<
-    (
-        axum::body::Bytes,
-        pnex_media_capture::decoder::InputFormat,
-        DateTime<Utc>,
-    ),
-    CaptureError,
-> {
+) -> Result<(axum::body::Bytes, pnex_media_capture::decoder::InputFormat), CaptureError> {
     use crate::models::_entities::{media_assets, media_versions};
     let id =
         pnex_core::media_ingest::media_asset_id(&stream.url).ok_or(CaptureError::Unreachable)?;
@@ -614,11 +616,7 @@ async fn media_asset_file(
     } else {
         bytes
     };
-    Ok((
-        axum::body::Bytes::from(bytes),
-        format,
-        version.created_at.with_timezone(&Utc),
-    ))
+    Ok((axum::body::Bytes::from(bytes), format))
 }
 
 async fn store_segment(
