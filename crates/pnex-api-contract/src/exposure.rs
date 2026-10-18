@@ -479,6 +479,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "ota_firmware_download",
             "public_tours_asset",
             "public_tours_get",
+            "well_known_not_found",
             "ws_ticket_issue",
         ],
     ),

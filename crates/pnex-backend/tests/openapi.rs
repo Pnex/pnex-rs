@@ -63,7 +63,8 @@ fn every_route_is_documented_or_pending() {
             r.actions
                 .into_iter()
                 .filter(|m| m != axum::http::Method::HEAD)
-                .map(move |m| format!("{m} {}", r.uri))
+                // An axum wildcard `{*rest}` is a plain `{rest}` in OpenAPI.
+                .map(move |m| format!("{m} {}", r.uri.replace("{*", "{")))
         })
         .filter(|r| !excluded(r))
         .collect();

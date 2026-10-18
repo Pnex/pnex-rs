@@ -14,3 +14,5 @@ openapi.json:
   operation-2xx-response:
     # Browser SSO entry: always a 302 to the identity provider.
     - '#/paths/~1api~1v1~1oauth2~1sso/get/responses'
+    # Catch-all of unknown well-known paths: always 404 (OAuth discovery).
+    - '#/paths/~1.well-known~1{rest}/get/responses'
