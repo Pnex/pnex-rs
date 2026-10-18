@@ -872,7 +872,8 @@
         "description": "One analysis step of a media version.",
         "enum": [
           "index",
-          "summarize"
+          "summarize",
+          "transcribe"
         ],
         "type": "string"
       },
@@ -3008,7 +3009,8 @@
         "enum": [
           "pdt",
           "tdt",
-          "host"
+          "host",
+          "file"
         ],
         "type": "string"
       },
@@ -42677,7 +42679,7 @@
                 }
               }
             },
-            "description": "No LLM configured for the organisation (`media-analysis-no-llm`), or a step already running (`media-analysis-busy`)"
+            "description": "No LLM configured for the organisation (`media-analysis-no-llm`), no valid transcription profile (`media-analysis-no-asr`), or a step already running, or another transcription of the organisation (`media-analysis-busy`)"
           }
         },
         "security": [

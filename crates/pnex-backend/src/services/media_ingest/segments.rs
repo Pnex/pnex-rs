@@ -191,6 +191,21 @@ pub async fn enqueue(ctx: &loco_rs::app::AppContext, seg: &media_segments::Model
     }
 }
 
+/// Segments of `stream` handed to the ASR and not done yet (queued or
+/// being transcribed): the backpressure gauge of a batch stream (D211).
+pub async fn waiting(db: &sea_orm::DatabaseConnection, stream: uuid::Uuid) -> u64 {
+    use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter};
+    media_segments::Entity::find()
+        .filter(media_segments::Column::StreamId.eq(stream))
+        .filter(media_segments::Column::State.is_in([
+            SegmentState::Queued.wire(),
+            SegmentState::Transcribing.wire(),
+        ]))
+        .count(db)
+        .await
+        .unwrap_or(0)
+}
+
 /// A failed or never-queued segment keeps its audio this long for an
 /// explicit replay (D161: `asr_retry_window`), then the audio goes.
 pub const RETRY_WINDOW_SECS: i64 = 15 * 60;

@@ -7,6 +7,7 @@
 use super::*;
 use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
+use pnex_core::err_codes;
 use pnex_core::media_analysis::{
     AnalysisStep, MediaAnalysis, StartAnalyses, StepOffer, LARGE_CALLS,
 };
@@ -44,6 +45,7 @@ fn step_label(step: AnalysisStep) -> String {
     match step {
         AnalysisStep::Index => t!("media-analysis-step-index"),
         AnalysisStep::Summarize => t!("media-analysis-step-summarize"),
+        AnalysisStep::Transcribe => t!("media-analysis-step-transcribe"),
     }
     .to_string()
 }
@@ -55,6 +57,8 @@ fn analysis_texts(a: Option<&MediaAnalysis>) -> (String, Option<String>) {
     };
     match a.state.wire() {
         "queued" => (t!("media-analysis-state-queued").to_string(), None),
+        // A transcription reports no percentage (the file length is not known).
+        "running" if a.progress == 0 => (t!("media-analysis-state-busy").to_string(), None),
         "running" => (
             t!("media-analysis-state-running", pct : a.progress).to_string(),
             None,
@@ -248,7 +252,17 @@ fn StepLine(
         li { class: "py-2 flex items-start justify-between gap-3",
             div { class: "min-w-0",
                 p { class: "text-sm text-gray-900", {step_label(step)} }
-                if offer.blocked.is_some() {
+                if offer.blocked.as_deref() == Some(err_codes::MEDIA_ANALYSIS_NO_ASR) {
+                    p { class: "text-xs text-gray-500",
+                        {t!("media-analysis-needs-asr")}
+                        " "
+                        Link {
+                            class: "text-signal-600 hover:underline",
+                            to: Route::Streams {},
+                            {t!("media-analysis-open-asr")}
+                        }
+                    }
+                } else if offer.blocked.is_some() {
                     p { class: "text-xs text-gray-500",
                         {t!("media-analysis-needs-llm")}
                         " "

@@ -566,3 +566,199 @@ async fn model_import_check_and_transcription_chain() {
     .await;
     let _ = std::fs::remove_dir_all(models_dir);
 }
+
+/// Batch analysis of a library file (media-vision-studio.md D211): the
+/// `transcribe` step is blocked without a profile, then starts a hidden
+/// batch stream on the version (outside the stream list), whose segments
+/// sit on the file clock (the version date, even days old: never skipped as
+/// backlog), go to the ASR, and close the analysis once. O2 is not
+/// configured, so every segment fails at the transcript write and the
+/// analysis ends `media-analysis-transcribe-failed`.
+#[tokio::test]
+#[serial]
+async fn file_analysis_transcribes_in_batch() {
+    use pnex_backend::models::_entities::media_versions;
+    use sea_orm::{ActiveModelTrait, Set};
+    let models_dir =
+        std::env::temp_dir().join(format!("pnex-asr-batch-models-{}", std::process::id()));
+    unsafe {
+        std::env::set_var("PNEX_ASR_BIN", fake_runtime());
+        std::env::set_var("PNEX_ASR_MODELS_DIR", &models_dir);
+    }
+    let base = common::spawn_mock_rauthy().await;
+    unsafe { std::env::set_var("RAUTHY_URL", &base) };
+    let alice = common::valid_token(
+        &base,
+        "00000000-0000-0000-0000-00000000000a",
+        "alice",
+        "alice@example.com",
+    );
+    if decoder::resolve(&CaptureSettings::from_env().ffmpeg).is_none() {
+        eprintln!("ffmpeg not installed: skipped");
+        return;
+    }
+    let config: RequestConfig = RequestConfigBuilder::new().build();
+    loco_rs::testing::request::request_with_config::<App, _, _>(
+        config,
+        move |server, ctx| async move {
+            common::seed_catalogue(&ctx.db).await;
+            let org = server
+                .get("/api/v1/user-info")
+                .add_header("Authorization", format!("Bearer {alice}"))
+                .await
+                .json::<Value>()["orgs"][0]["id"]
+                .as_i64()
+                .unwrap();
+            let auth = format!("Bearer {alice}");
+            let get = |path: String| {
+                server
+                    .get(&path)
+                    .add_header("Authorization", auth.clone())
+                    .add_header("X-Org-Id", org.to_string())
+            };
+            let post = |path: String, body: Value| {
+                server
+                    .post(&path)
+                    .add_header("Authorization", auth.clone())
+                    .add_header("X-Org-Id", org.to_string())
+                    .json(&body)
+            };
+            let upload = |name: &str, kind: &str, bytes: Vec<u8>| {
+                server
+                    .post(&format!("/api/v1/media?filename={name}&kind={kind}"))
+                    .add_header("Authorization", auth.clone())
+                    .add_header("X-Org-Id", org.to_string())
+                    .add_header("Content-Type", "application/octet-stream")
+                    .bytes(bytes.into())
+            };
+
+            let res = upload("interview.wav", "audio", tone_server_wav()).await;
+            assert!(res.status_code().is_success(), "{}", res.text());
+            let audio = res.json::<Value>();
+            let audio_id = audio["id"].as_str().unwrap().to_string();
+            let transcribe = json!({ "steps": ["transcribe"], "locale": "fr-FR" });
+
+            // No transcription profile yet: offered but blocked, start = 409.
+            let state = get(format!("/api/v1/media/{audio_id}/analyses"))
+                .await
+                .json::<Value>();
+            assert_eq!(state["offers"][0]["step"], "transcribe", "{state}");
+            assert_eq!(state["offers"][0]["blocked"], "media-analysis-no-asr");
+            let res = post(
+                format!("/api/v1/media/{audio_id}/analyses"),
+                transcribe.clone(),
+            )
+            .await;
+            assert_eq!(res.status_code(), 409, "{}", res.text());
+            assert_eq!(res.json::<Value>()["error"], "media-analysis-no-asr");
+
+            let res = upload("parakeet.tar.bz2", "model", parakeet_archive()).await;
+            let model_asset = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let res = post(
+                "/api/v1/asr/models".into(),
+                json!({ "name": "Parakeet", "asset_id": model_asset, "license": "CC-BY-4.0" }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+            let model_id = res.json::<Value>()["id"].as_str().unwrap().to_string();
+            let res = post(
+                "/api/v1/asr/profiles".into(),
+                json!({ "name": "FR", "asr_model_id": model_id }),
+            )
+            .await;
+            assert_eq!(res.status_code(), 201, "{}", res.text());
+
+            // The file is days old: its segments land days in the past.
+            let version_id = pnex_backend::models::_entities::media_assets::Entity::find_by_id(
+                audio_id.parse::<uuid::Uuid>().unwrap(),
+            )
+            .one(&ctx.db)
+            .await
+            .unwrap()
+            .unwrap()
+            .current_version_id
+            .unwrap();
+            let old = chrono::Utc::now() - chrono::Duration::days(3);
+            let mut v: media_versions::ActiveModel = media_versions::Entity::find_by_id(version_id)
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .unwrap()
+                .into();
+            v.created_at = Set(old.into());
+            v.update(&ctx.db).await.unwrap();
+
+            let res = post(
+                format!("/api/v1/media/{audio_id}/analyses"),
+                transcribe.clone(),
+            )
+            .await;
+            assert_eq!(res.status_code(), 202, "{}", res.text());
+            let stream = media_streams::Entity::find()
+                .filter(media_streams::Column::MediaVersionId.eq(version_id))
+                .one(&ctx.db)
+                .await
+                .unwrap()
+                .expect("batch stream");
+            assert_eq!(stream.pace, "batch");
+            assert!(stream.enabled && stream.run_id.is_some(), "{stream:?}");
+            assert!(stream.slug.starts_with("file_"), "{}", stream.slug);
+            let list = get("/api/v1/media/streams".into()).await.json::<Value>();
+            assert_eq!(list["count"], 0, "hidden from the stream list: {list}");
+            // In flight: a relaunch is refused.
+            let res = post(
+                format!("/api/v1/media/{audio_id}/analyses"),
+                transcribe.clone(),
+            )
+            .await;
+            assert_eq!(res.status_code(), 409, "{}", res.text());
+            assert_eq!(res.json::<Value>()["error"], "media-analysis-busy");
+
+            // The capture: no `-re`, file clock, ASR queue (inline here).
+            let started = std::time::Instant::now();
+            let stored = capture::capture_once(&ctx, &stream, Duration::from_secs(60))
+                .await
+                .expect("capture");
+            assert_eq!(stored, 1, "12 s in one 30 s segment");
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "not paced in real time"
+            );
+            let mut segs = media_segments::Entity::find()
+                .filter(media_segments::Column::StreamId.eq(stream.id))
+                .all(&ctx.db)
+                .await
+                .unwrap();
+            segs.sort_by_key(|s| s.seq);
+            assert_eq!(segs.len(), 1);
+            assert_eq!(
+                segs[0].started_at.timestamp_millis(),
+                old.timestamp_millis(),
+                "position 0 = version date"
+            );
+            for s in &segs {
+                assert_eq!(s.clock_source, "file", "{s:?}");
+                // Transcribed, then stopped at the O2 write: not skipped.
+                assert_eq!(s.state, "failed", "{s:?}");
+                assert_eq!(s.error.as_deref(), Some("o2-failed"), "{s:?}");
+            }
+
+            // End of the file (what the capture supervisor does).
+            let mut am: media_streams::ActiveModel = stream.clone().into();
+            am.enabled = Set(false);
+            let stream = am.update(&ctx.db).await.unwrap();
+            pnex_backend::services::media_analyses::batch_capture_ended(&ctx, &stream, false).await;
+            let state = get(format!("/api/v1/media/{audio_id}/analyses"))
+                .await
+                .json::<Value>();
+            let a = &state["analyses"][0];
+            assert_eq!(a["step"], "transcribe", "{state}");
+            assert_eq!(a["state"], "failed", "{state}");
+            assert_eq!(
+                a["error_code"], "media-analysis-transcribe-failed",
+                "{state}"
+            );
+        },
+    )
+    .await;
+}

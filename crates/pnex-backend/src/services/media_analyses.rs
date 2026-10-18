@@ -22,9 +22,11 @@ use pnex_core::LlmUsage;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, FromQueryResult, Statement};
 use uuid::Uuid;
 
+use crate::models::_entities::media_streams;
 use crate::services::ai::agent::shared_http;
 use crate::services::ai::provider::{AiChatRequest, Msg};
 use crate::services::doc_search;
+use crate::services::media_ingest::{segments, streams};
 use crate::workers::media_analysis::{MediaAnalysisArgs, MediaAnalysisWorker};
 
 /// Characters of file text per LLM call of the summary.
@@ -42,6 +44,8 @@ pub enum AnalysisError {
     StepInvalid,
     #[error("no LLM provider for file analyses")]
     NoLlm,
+    #[error("no valid transcription profile")]
+    NoAsr,
     #[error("step already queued or running")]
     Busy,
     #[error(transparent)]
@@ -53,6 +57,7 @@ impl AnalysisError {
         match self {
             Self::StepInvalid => err_codes::MEDIA_ANALYSIS_STEP_INVALID,
             Self::NoLlm => err_codes::MEDIA_ANALYSIS_NO_LLM,
+            Self::NoAsr => err_codes::MEDIA_ANALYSIS_NO_ASR,
             Self::Busy => err_codes::MEDIA_ANALYSIS_BUSY,
             Self::Db(_) => "internal",
         }
@@ -136,6 +141,11 @@ pub async fn offers(
     } else {
         false
     };
+    let asr = if steps.contains(&AnalysisStep::Transcribe) {
+        streams::runnable_profile(&ctx.db, org_id).await?.is_some()
+    } else {
+        false
+    };
     let chars = match version_id {
         Some(v) if steps.contains(&AnalysisStep::Summarize) => {
             doc_search::version_chars(&ctx.db, org_id, v).await?
@@ -146,8 +156,13 @@ pub async fn offers(
         .iter()
         .map(|&step| StepOffer {
             step,
-            blocked: (step.needs_llm() && !llm)
-                .then(|| err_codes::MEDIA_ANALYSIS_NO_LLM.to_string()),
+            blocked: if step.needs_llm() && !llm {
+                Some(err_codes::MEDIA_ANALYSIS_NO_LLM.to_string())
+            } else if step == AnalysisStep::Transcribe && !asr {
+                Some(err_codes::MEDIA_ANALYSIS_NO_ASR.to_string())
+            } else {
+                None
+            },
             calls: (step == AnalysisStep::Summarize && chars > 0)
                 .then(|| plan_calls((chars as usize).div_ceil(BLOCK_CHARS))),
         })
@@ -240,6 +255,17 @@ pub async fn start(
     if steps.iter().any(|s| s.needs_llm()) && !has_llm(ctx, org_id).await {
         return Err(AnalysisError::NoLlm);
     }
+    let transcribe = steps.contains(&AnalysisStep::Transcribe);
+    if transcribe {
+        if streams::runnable_profile(&ctx.db, org_id).await?.is_none() {
+            return Err(AnalysisError::NoAsr);
+        }
+        // One file transcription at a time per org (D211): the ASR is
+        // shared with the live streams.
+        if transcribing_elsewhere(&ctx.db, org_id, version_id).await? {
+            return Err(AnalysisError::Busy);
+        }
+    }
     let lang = if locale.starts_with("fr") { "fr" } else { "en" };
     let mut queued = Vec::new();
     for &step in steps.iter().filter(|s| **s != AnalysisStep::Index) {
@@ -273,7 +299,15 @@ pub async fn start(
             .await?
             .map(|r| r.try_get("", "id"))
             .transpose()?;
-        queued.push(id.ok_or(AnalysisError::Busy)?);
+        let id = id.ok_or(AnalysisError::Busy)?;
+        if step == AnalysisStep::Transcribe {
+            dispatch(ctx, id).await;
+        } else {
+            queued.push(id);
+        }
+    }
+    if queued.is_empty() && !steps.contains(&AnalysisStep::Index) {
+        return Ok(());
     }
     if steps.contains(&AnalysisStep::Index) {
         // The summary waits for the index: `after_index` releases it.
@@ -294,6 +328,30 @@ pub async fn start(
         _ => doc_search::enqueue(ctx, org_id, version_id).await?,
     }
     Ok(())
+}
+
+/// Whether another version of the org has a file transcription in flight.
+async fn transcribing_elsewhere(
+    db: &DatabaseConnection,
+    org_id: i64,
+    version_id: Uuid,
+) -> Result<bool, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT 1 AS one FROM media_analyses
+             WHERE org_id = $1 AND step = $2 AND media_version_id <> $3
+               AND state IN ('queued', 'running')
+               AND updated_at >= now() - make_interval(secs => $4)
+             LIMIT 1",
+            vec![
+                org_id.into(),
+                AnalysisStep::Transcribe.as_str().into(),
+                version_id.into(),
+                (STALE_SECS as f64).into(),
+            ],
+        ))
+        .await?;
+    Ok(row.is_some())
 }
 
 async fn dispatch(ctx: &AppContext, id: Uuid) {
@@ -355,6 +413,23 @@ pub async fn run(ctx: &AppContext, id: Uuid) -> Result<(), DbErr> {
     set_state(&ctx.db, id, STATE_RUNNING, 0, None).await?;
     let outcome = match AnalysisStep::parse(&row.step) {
         Some(AnalysisStep::Summarize) => summarize(ctx, &row).await,
+        Some(AnalysisStep::Transcribe) => {
+            // Asynchronous: the row stays `running` until the last segment
+            // of the batch stream is transcribed (`batch_segment_done`).
+            return match start_transcribe(ctx, &row).await {
+                Ok(result_ref) => {
+                    ctx.db
+                        .execute_raw(stmt(
+                            "UPDATE media_analyses SET result_ref = $2, updated_at = now()
+                             WHERE id = $1",
+                            vec![id.into(), result_ref.into()],
+                        ))
+                        .await?;
+                    Ok(())
+                }
+                Err(code) => set_state(&ctx.db, id, STATE_FAILED, 0, Some(code)).await,
+            };
+        }
         _ => Err(err_codes::MEDIA_ANALYSIS_STEP_INVALID),
     };
     match outcome {
@@ -370,6 +445,162 @@ pub async fn run(ctx: &AppContext, id: Uuid) -> Result<(), DbErr> {
         Err(code) => set_state(&ctx.db, id, STATE_FAILED, row.progress, Some(code)).await?,
     }
     Ok(())
+}
+
+/// Starts the batch stream of the row's version (D211): `{stream_id,
+/// slug, run, started_at}` locates its transcripts.
+async fn start_transcribe(ctx: &AppContext, row: &Row) -> Result<serde_json::Value, &'static str> {
+    use crate::models::_entities::media_versions;
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let version = media_versions::Entity::find_by_id(row.media_version_id)
+        .filter(media_versions::Column::OrgId.eq(row.org_id))
+        .one(&ctx.db)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED)?;
+    let profile = streams::runnable_profile(&ctx.db, row.org_id)
+        .await
+        .ok()
+        .flatten()
+        .ok_or(err_codes::MEDIA_ANALYSIS_NO_ASR)?;
+    let started_at = chrono::Utc::now();
+    let (stream, run) = streams::start_batch(
+        &ctx.db,
+        row.org_id,
+        version.asset_id,
+        version.id,
+        profile,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!(analysis = %row.id, error = %e, "batch stream not started");
+        err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED
+    })?;
+    Ok(serde_json::json!({
+        "stream_id": stream.id.to_string(),
+        "slug": stream.slug,
+        "run": run.to_string(),
+        "started_at": started_at.to_rfc3339(),
+    }))
+}
+
+/// The capture of a batch stream ended: the analysis fails at once on a
+/// capture error, else finishes when no segment is left for the ASR.
+pub async fn batch_capture_ended(ctx: &AppContext, stream: &media_streams::Model, failed: bool) {
+    if failed {
+        if let Err(e) =
+            finish_transcribe(ctx, stream, Some(err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED)).await
+        {
+            tracing::warn!(stream = %stream.slug, error = %e, "file analysis not closed");
+        }
+        return;
+    }
+    batch_segment_done(ctx, stream.id).await;
+}
+
+/// A segment of a batch stream left the ASR (transcribed, silent or
+/// failed): keeps the analysis alive, and closes it after the last one.
+pub async fn batch_segment_done(ctx: &AppContext, stream_id: Uuid) {
+    use sea_orm::EntityTrait;
+    let Ok(Some(stream)) = media_streams::Entity::find_by_id(stream_id)
+        .one(&ctx.db)
+        .await
+    else {
+        return;
+    };
+    let Some(version_id) = stream.media_version_id else {
+        return;
+    };
+    let _ = ctx
+        .db
+        .execute_raw(stmt(
+            "UPDATE media_analyses SET updated_at = now()
+             WHERE org_id = $1 AND media_version_id = $2 AND step = $3 AND state = $4",
+            vec![
+                stream.org_id.into(),
+                version_id.into(),
+                AnalysisStep::Transcribe.as_str().into(),
+                STATE_RUNNING.into(),
+            ],
+        ))
+        .await;
+    // Still decoding, or segments still with the ASR: not the end yet.
+    if stream.enabled || segments::waiting(&ctx.db, stream.id).await > 0 {
+        return;
+    }
+    if let Err(e) = finish_transcribe(ctx, &stream, None).await {
+        tracing::warn!(stream = %stream.slug, error = %e, "file analysis not closed");
+    }
+}
+
+/// Closes the running transcription of a batch stream once: `done`, or
+/// `failed` with `error` (or when every segment of the run failed).
+async fn finish_transcribe(
+    ctx: &AppContext,
+    stream: &media_streams::Model,
+    error: Option<&'static str>,
+) -> Result<(), DbErr> {
+    let Some(version_id) = stream.media_version_id else {
+        return Ok(());
+    };
+    let error = match error {
+        Some(code) => Some(code),
+        None => run_all_failed(&ctx.db, stream, version_id)
+            .await?
+            .then_some(err_codes::MEDIA_ANALYSIS_TRANSCRIBE_FAILED),
+    };
+    let (state, progress) = match error {
+        Some(_) => (STATE_FAILED, 0i16),
+        None => (STATE_DONE, 100i16),
+    };
+    ctx.db
+        .execute_raw(stmt(
+            "UPDATE media_analyses SET state = $5, progress = $6, error_code = $7,
+                updated_at = now()
+             WHERE org_id = $1 AND media_version_id = $2 AND step = $3 AND state = $4",
+            vec![
+                stream.org_id.into(),
+                version_id.into(),
+                AnalysisStep::Transcribe.as_str().into(),
+                STATE_RUNNING.into(),
+                state.into(),
+                progress.into(),
+                error.map(str::to_string).into(),
+            ],
+        ))
+        .await?;
+    Ok(())
+}
+
+/// Whether the current run of a batch stream produced segments and all of
+/// them failed (an ASR that never worked, not a silent file).
+async fn run_all_failed(
+    db: &DatabaseConnection,
+    stream: &media_streams::Model,
+    version_id: Uuid,
+) -> Result<bool, DbErr> {
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS total,
+                    count(*) FILTER (WHERE s.state = 'failed') AS failed
+             FROM media_segments s, media_analyses a
+             WHERE s.stream_id = $1 AND a.media_version_id = $2 AND a.step = $3
+               AND s.created_at >= (a.result_ref->>'started_at')::timestamptz",
+            vec![
+                stream.id.into(),
+                version_id.into(),
+                AnalysisStep::Transcribe.as_str().into(),
+            ],
+        ))
+        .await?;
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    let total: i64 = row.try_get("", "total")?;
+    let failed: i64 = row.try_get("", "failed")?;
+    Ok(total > 0 && failed == total)
 }
 
 /// Consecutive chunk texts packed into blocks of at most [`BLOCK_CHARS`].
