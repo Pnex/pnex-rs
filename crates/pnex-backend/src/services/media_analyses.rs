@@ -484,25 +484,15 @@ async fn start_transcribe(ctx: &AppContext, row: &Row) -> Result<serde_json::Val
         .flatten()
         .ok_or(err_codes::MEDIA_ANALYSIS_NO_ASR)?;
     let started_at = chrono::Utc::now();
-    let (stream, run) = streams::start_batch(
-        &ctx.db,
-        row.org_id,
-        version.asset_id,
-        version.id,
-        profile,
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::warn!(analysis = %row.id, error = %e, "batch stream not started");
-        err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED
-    })?;
     let lang = crate::models::_entities::asr_profiles::Entity::find_by_id(profile)
         .one(&ctx.db)
         .await
         .ok()
         .flatten()
         .map(|p| p.language);
+    // The run exists before the capture starts: its date is the clock base
+    // of every segment (O2 refuses documents dated far in the past).
+    let run = Uuid::new_v4();
     crate::services::media_runs::record(
         &ctx.db,
         run,
@@ -515,6 +505,20 @@ async fn start_transcribe(ctx: &AppContext, row: &Row) -> Result<serde_json::Val
     )
     .await
     .map_err(|_| err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED)?;
+    let stream = streams::start_batch(
+        &ctx.db,
+        row.org_id,
+        version.asset_id,
+        version.id,
+        profile,
+        run,
+        None,
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!(analysis = %row.id, error = %e, "batch stream not started");
+        err_codes::MEDIA_ANALYSIS_CAPTURE_FAILED
+    })?;
     Ok(serde_json::json!({
         "stream_id": stream.id.to_string(),
         "slug": stream.slug,

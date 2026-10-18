@@ -577,19 +577,19 @@ pub async fn batch_stream(
     }
 }
 
-/// Starts a run of the asset's batch stream on `version_id` (D211): the
-/// capture task picks it up, segments are tagged with `run`. Returns the
-/// stream and its run.
+/// Starts `run` (already recorded) of the asset's batch stream on
+/// `version_id` (D211): the capture task picks it up, segments are tagged
+/// with `run`.
 pub async fn start_batch(
     db: &DatabaseConnection,
     org_id: i64,
     asset_id: Uuid,
     version_id: Uuid,
     profile_id: Uuid,
+    run: Uuid,
     user_id: Option<i64>,
-) -> Result<(media_streams::Model, Uuid), StreamError> {
+) -> Result<media_streams::Model, StreamError> {
     let row = batch_stream(db, org_id, asset_id, user_id).await?;
-    let run = Uuid::new_v4();
     let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
     let mut am: media_streams::ActiveModel = row.into();
     am.enabled = Set(true);
@@ -601,7 +601,7 @@ pub async fn start_batch(
     am.capture_error = Set(None);
     // A new `updated_at` restarts the capture task (fingerprint).
     am.updated_at = Set(now);
-    Ok((am.update(db).await?, run))
+    Ok(am.update(db).await?)
 }
 
 /// First free slug for `name` in the org (`_2`, `_3`… on conflict). A
