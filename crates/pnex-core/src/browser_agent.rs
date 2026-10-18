@@ -226,6 +226,7 @@ pub const AGENT_STATE_CODES: &[&str] = &[
     err_codes::EXT_CHALLENGE,
     err_codes::EXT_RATE_LIMITED,
     err_codes::EXT_TAB_HIDDEN,
+    err_codes::EXT_PERMISSION_MISSING,
 ];
 
 /// A mission of the org.

@@ -451,6 +451,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "cameras_recordings_export",
             "cameras_segments_content",
             "docs_versions_pdf",
+            "extension_download",
             "lab_versions_export",
             "media_content",
             "media_upload",

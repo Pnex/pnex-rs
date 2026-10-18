@@ -33499,6 +33499,42 @@
         ]
       }
     },
+    "/api/v1/extension/download": {
+      "get": {
+        "description": "Zip of the PNeX browser agent extension shipped with this server, with this server's address preset (`server.json`) so the user only signs in. Load it unpacked from the browser's extensions page. No authentication: it holds no secret.",
+        "operationId": "extension_download",
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Zip archive"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-dist-not-found`: this server ships no extension build"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Download the browser extension (public)",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
     "/api/v1/extension/missions": {
       "get": {
         "description": "Missions of the org, newest first, with the state last reported by their agent. Paginated (`limit`/`offset`). Any member.",

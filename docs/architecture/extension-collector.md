@@ -1,6 +1,6 @@
 # Agents navigateur (extension Chrome/Firefox) — spécification v2 (C1b)
 
-> Statut : **proposition v2 (2026-10-18)**, décisions D254–D269 à valider.
+> Statut : **proposition v2 (2026-10-18)**, décisions D254–D270 à valider.
 > **Zéro code tant que la v2 n'est pas validée** ; l'implémentation reste le
 > jalon C3 (`edge-model.md` §11) et P2.1 de la roadmap.
 >
@@ -448,6 +448,31 @@ L0c (page « Agents navigateur »).
   présence D108 et bail par cible D257 ; mission `collect_value` →
   série O2 ; CRUD des missions avec `expected_version`.
 
+- **L0b livré le 2026-10-18** : crate `pnex-extension` (wasm 490 Ko,
+  Noise compris) ; connexion par le pont natif du serveur
+  (`/api/v1/oauth2/sso` → `/oauth2/native/{state}`, PKCE), donc aucune
+  configuration Rauthy propre à l'extension ; appairage signé, clé
+  d'installation WebCrypto non extractible en IndexedDB ; boucle de
+  l'agent dans le service worker (websocket + ping 20 s, alarme d'une
+  minute pour relancer) ; une mission à la fois par plateforme, 20 s entre
+  deux navigations, intervalle ±15 % ; site non autorisé → `blocked`
+  `ext-permission-missing` et bouton « Autoriser » dans la page d'options.
+  Essai réel Chromium : zip téléchargé, appairage, valeur lue et reçue
+  par le serveur, mission bloquée sur un site non autorisé.
+  **Écart à D264** : la page d'options est en HTML simple, ses textes
+  passent par les `_locales` du navigateur (fr/en, parité testée), pas
+  par Dioxus : une page de quatre écrans ne justifie pas un second build
+  dx.
+
+**D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
+(`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
+sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip
+avec `server.json`, l'adresse du serveur telle que le navigateur l'a
+jointe, donc l'utilisateur n'a qu'à se connecter. Installation v1 :
+« charger l'extension non empaquetée » en mode développeur. Publication
+sur le Chrome Web Store et signature Mozilla (AMO, non listée) pour
+Firefox : question 4.
+
 ## 15. Questions ouvertes
 
 1. **YouTube VOD** : capture du fichier, ou live + métadonnées seulement
@@ -456,6 +481,10 @@ L0c (page « Agents navigateur »).
    `wasm_js`) ; taille du wasm à mesurer au L0b.
 3. **Liste des plateformes exclusives** (D269) : réglée par les mesures
    du §16.1, plateforme par plateforme.
+
+4. **Publication** : Chrome Web Store (installation en un clic, mises à
+   jour automatiques) et signature AMO pour Firefox (obligatoire hors
+   mode développeur), ou chargement non empaqueté seulement ?
 
 Tranchées le 2026-10-18 : un agent par PC (D255) ; téléchargement quand
 c'est possible, enregistrement en direct pour les lives (D260) ;
@@ -521,5 +550,6 @@ chaque version d'adaptateur (les plateformes changent) :
 | D265 | Compte | session du profil, profil dédié recommandé, aucun identifiant stocké |
 | D266 | Identité | paire de clés WebCrypto non extractible + empreinte auto, tickets signés |
 | D267 | Transcription | sous-titres de la plateforme d'abord, `media_policy`, live toujours enregistré |
+| D270 | Distribution | construite avec l'image, `GET /api/v1/extension/download` (zip + `server.json`), chargement non empaqueté en v1 |
 | D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
 | D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |

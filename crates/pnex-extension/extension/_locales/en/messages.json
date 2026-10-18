@@ -1,0 +1,94 @@
+{
+  "ext_name": {
+    "message": "PNeX browser agent"
+  },
+  "ext_description": {
+    "message": "Runs the collection missions of your PNeX organization in its own tabs, one tab per site, at a human pace."
+  },
+  "setup_intro": {
+    "message": "Sign in to your PNeX server to pair this browser. One browser agent per computer."
+  },
+  "server_label": {
+    "message": "PNeX server"
+  },
+  "login": {
+    "message": "Sign in"
+  },
+  "org_label": {
+    "message": "Organization"
+  },
+  "pair": {
+    "message": "Pair this browser"
+  },
+  "agent_label": {
+    "message": "Browser agent:"
+  },
+  "link_label": {
+    "message": "Connection:"
+  },
+  "link_up": {
+    "message": "connected"
+  },
+  "link_down": {
+    "message": "not connected"
+  },
+  "one_agent_per_computer": {
+    "message": "Keep a single browser agent on this computer. Its tabs are grouped under \"PNeX\": leave them open."
+  },
+  "permissions_title": {
+    "message": "Sites to allow"
+  },
+  "permissions_hint": {
+    "message": "A mission needs these sites. Allow each one so the agent can read it."
+  },
+  "allow": {
+    "message": "Allow"
+  },
+  "missions_title": {
+    "message": "Missions"
+  },
+  "no_missions": {
+    "message": "No mission yet: create one in PNeX, page Browser agents."
+  },
+  "unpair": {
+    "message": "Unpair this browser"
+  },
+  "error_server_invalid": {
+    "message": "Enter the address of your PNeX server, starting with https://."
+  },
+  "error_permission_denied": {
+    "message": "The extension needs access to your PNeX server: accept the browser prompt."
+  },
+  "error_login_timeout": {
+    "message": "Sign-in took too long: try again."
+  },
+  "error_extension_pair_refused": {
+    "message": "Pairing refused: reinstall the extension and try again."
+  },
+  "error_extension_install_paired_elsewhere": {
+    "message": "This browser is already paired with another organization: remove its browser agent there first."
+  },
+  "error_extension_write_forbidden": {
+    "message": "Viewers cannot pair a browser: ask an owner, admin or member."
+  },
+  "error_generic": {
+    "message": "Error: $CODE$",
+    "placeholders": {
+      "code": {
+        "content": "$1"
+      }
+    }
+  },
+  "server_paired_label": {
+    "message": "PNeX server:"
+  },
+  "state_ext_permission_missing": {
+    "message": "site not allowed yet (see above)"
+  },
+  "state_ext_selector_not_found": {
+    "message": "selector matches nothing on the page"
+  },
+  "state_ext_value_not_numeric": {
+    "message": "value is not a number"
+  }
+}

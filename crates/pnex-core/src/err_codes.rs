@@ -711,6 +711,8 @@ pub const EXTENSION_AGENT_PAIR_ONLY: &str = "extension-agent-pair-only";
 pub const EXTENSION_TICKET_REFUSED: &str = "extension-ticket-refused";
 /// Websocket tickets unavailable (Valkey unreachable).
 pub const EXTENSION_TICKET_UNAVAILABLE: &str = "extension-ticket-unavailable";
+/// This server ships no browser extension build (`PNEX_EXTENSION_DIST_DIR`).
+pub const EXTENSION_DIST_NOT_FOUND: &str = "extension-dist-not-found";
 /// Agent state: the selector matched nothing on the page.
 pub const EXT_SELECTOR_NOT_FOUND: &str = "ext-selector-not-found";
 /// Agent state: the value read is not a number.
@@ -723,6 +725,9 @@ pub const EXT_CHALLENGE: &str = "ext-challenge";
 pub const EXT_RATE_LIMITED: &str = "ext-rate-limited";
 /// Agent state: the agent's tab is hidden, the mission is paused (D269).
 pub const EXT_TAB_HIDDEN: &str = "ext-tab-hidden";
+/// Agent state: the site is not allowed yet in the extension (optional host
+/// permission, granted by a click in its options page).
+pub const EXT_PERMISSION_MISSING: &str = "ext-permission-missing";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -1051,12 +1056,14 @@ pub const ALL: &[&str] = &[
     EXTENSION_AGENT_PAIR_ONLY,
     EXTENSION_TICKET_REFUSED,
     EXTENSION_TICKET_UNAVAILABLE,
+    EXTENSION_DIST_NOT_FOUND,
     EXT_SELECTOR_NOT_FOUND,
     EXT_VALUE_NOT_NUMERIC,
     EXT_LOGIN_REQUIRED,
     EXT_CHALLENGE,
     EXT_RATE_LIMITED,
     EXT_TAB_HIDDEN,
+    EXT_PERMISSION_MISSING,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,

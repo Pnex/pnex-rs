@@ -1,0 +1,561 @@
+//! Browser side: exports for the options page and the service worker, and
+//! the agent loop.
+
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
+
+use pnex_core::browser_agent::{
+    self as ba, AgentFingerprint, AgentMsg, AssignedMission, MissionSpec, MissionState,
+    PairRequest, PairResponse, ServerMsg, TicketRequest,
+};
+use pnex_core::err_codes;
+use pnex_core::frame::{Initiator, Link};
+use serde::Deserialize;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
+
+use crate::host::{self, err_text, text};
+use crate::{
+    due_missions, native_redirect, next_run, normalize_server, sso_url, ws_url, Creds, CREDS_KEY,
+    PING_MS,
+};
+
+/// Longest wait of the user in the sign-in tab.
+const LOGIN_TIMEOUT_MS: f64 = 300_000.0;
+
+#[derive(Deserialize)]
+struct HttpReply {
+    status: u16,
+    body: String,
+}
+
+async fn call(
+    method: &str,
+    url: &str,
+    bearer: &str,
+    org: &str,
+    body: &str,
+) -> Result<HttpReply, String> {
+    let raw = host::http(method, url, bearer, org, body)
+        .await
+        .map_err(|e| err_text(&e))?;
+    serde_json::from_str(&text(&raw)).map_err(|e| e.to_string())
+}
+
+/// Machine code of a PNeX error body, else the HTTP status.
+fn error_of(reply: &HttpReply) -> String {
+    serde_json::from_str::<serde_json::Value>(&reply.body)
+        .ok()
+        .and_then(|v| v["error"].as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("http-{}", reply.status))
+}
+
+fn js_err(msg: impl Into<String>) -> JsValue {
+    JsValue::from_str(&msg.into())
+}
+
+// ───────────────────────── Options page ─────────────────────────
+
+/// Server the zip was downloaded from (`server.json`), if any.
+#[wasm_bindgen]
+pub async fn server_hint() -> Option<String> {
+    host::bundled_server().await.as_string()
+}
+
+/// Signs the user in through the server's native bridge (PKCE). Resolves
+/// with JSON `{"access_token": "...", "orgs": [{"id", "name", "role"}]}`;
+/// the token stays in the options page memory and dies with it.
+#[wasm_bindgen]
+pub async fn login(server: String) -> Result<String, JsValue> {
+    let server = normalize_server(&server).ok_or_else(|| js_err("server-invalid"))?;
+    let verifier = host::random_b64(32);
+    let challenge = text(
+        &host::sha256_b64(&verifier)
+            .await
+            .map_err(|e| js_err(err_text(&e)))?,
+    );
+    let state = host::random_b64(24);
+    let tab = host::open_tab(&sso_url(&server, &challenge, &state))
+        .await
+        .map_err(|e| js_err(err_text(&e)))?
+        .as_f64()
+        .unwrap_or(-1.0);
+    let started = host::now_ms();
+    let code = loop {
+        host::sleep(1500.0).await;
+        if host::now_ms() - started > LOGIN_TIMEOUT_MS {
+            return Err(js_err("login-timeout"));
+        }
+        let reply = call(
+            "GET",
+            &format!("{server}/api/v1/oauth2/native/{state}"),
+            "",
+            "",
+            "",
+        )
+        .await
+        .map_err(js_err)?;
+        let code = serde_json::from_str::<serde_json::Value>(&reply.body)
+            .ok()
+            .and_then(|v| v["code"].as_str().map(str::to_string));
+        if let Some(code) = code {
+            break code;
+        }
+    };
+    host::close_tab(tab).await;
+    let body = serde_json::json!({
+        "grant_type": "authorization_code",
+        "code": code,
+        "code_verifier": verifier,
+        "redirect_uri": native_redirect(&server),
+    });
+    let reply = call(
+        "POST",
+        &format!("{server}/api/v1/oauth2/token"),
+        "",
+        "",
+        &body.to_string(),
+    )
+    .await
+    .map_err(js_err)?;
+    if reply.status != 200 {
+        return Err(js_err(error_of(&reply)));
+    }
+    let tokens: pnex_core::TokenResponse =
+        serde_json::from_str(&reply.body).map_err(|e| js_err(e.to_string()))?;
+    let reply = call(
+        "GET",
+        &format!("{server}/api/v1/user-info"),
+        &tokens.access_token,
+        "",
+        "",
+    )
+    .await
+    .map_err(js_err)?;
+    let info: serde_json::Value =
+        serde_json::from_str(&reply.body).map_err(|e| js_err(e.to_string()))?;
+    let orgs: Vec<serde_json::Value> = info["orgs"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .map(|o| serde_json::json!({ "id": o["id"], "name": o["name"], "role": o["role"] }))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(serde_json::json!({ "access_token": tokens.access_token, "orgs": orgs }).to_string())
+}
+
+/// Pairs this install with `org_id` (D266) and stores the agent
+/// credentials. Resolves with the agent name.
+#[wasm_bindgen]
+pub async fn pair(server: String, access_token: String, org_id: f64) -> Result<String, JsValue> {
+    let server = normalize_server(&server).ok_or_else(|| js_err("server-invalid"))?;
+    let org_id = org_id as i64;
+    let install_key = text(
+        &host::install_key()
+            .await
+            .map_err(|e| js_err(err_text(&e)))?,
+    );
+    let ts = host::now_ms() as i64;
+    let signature = text(
+        &host::sign(&ba::pair_message(org_id, ts))
+            .await
+            .map_err(|e| js_err(err_text(&e)))?,
+    );
+    let fingerprint: AgentFingerprint =
+        serde_json::from_str(&host::fingerprint()).unwrap_or_default();
+    let body = serde_json::to_string(&PairRequest {
+        install_key,
+        fingerprint,
+        ts,
+        signature,
+    })
+    .map_err(|e| js_err(e.to_string()))?;
+    let reply = call(
+        "POST",
+        &format!("{server}/api/v1/extension/agents"),
+        &access_token,
+        &org_id.to_string(),
+        &body,
+    )
+    .await
+    .map_err(js_err)?;
+    if reply.status != 201 {
+        return Err(js_err(error_of(&reply)));
+    }
+    let paired: PairResponse =
+        serde_json::from_str(&reply.body).map_err(|e| js_err(e.to_string()))?;
+    let creds = Creds {
+        server,
+        org_id,
+        agent_id: paired.agent.id,
+        device_id: paired.agent.device_id,
+        name: paired.agent.name.clone(),
+        token: paired.token,
+        encryption_key: paired.encryption_key,
+    };
+    let json = serde_json::to_string(&creds).map_err(|e| js_err(e.to_string()))?;
+    host::store_set(CREDS_KEY, &json)
+        .await
+        .map_err(|e| js_err(err_text(&e)))?;
+    Ok(paired.agent.name)
+}
+
+/// Forgets the credentials (the agent stays listed in PNeX until removed
+/// there).
+#[wasm_bindgen]
+pub async fn unpair() -> Result<(), JsValue> {
+    host::store_remove(CREDS_KEY)
+        .await
+        .map(|_| ())
+        .map_err(|e| js_err(err_text(&e)))
+}
+
+// ───────────────────────── Agent loop ─────────────────────────
+
+thread_local! {
+    static RUNNING: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// Starts the agent loop once per worker life (idempotent: every wake-up
+/// of the service worker calls it).
+#[wasm_bindgen]
+pub fn start() {
+    let first = RUNNING.with(|r| !std::mem::replace(&mut *r.borrow_mut(), true));
+    if first {
+        spawn_local(agent_loop());
+    }
+}
+
+async fn load_creds() -> Option<Creds> {
+    let raw = host::store_get(CREDS_KEY).await.ok()?;
+    serde_json::from_str(&raw.as_string()?).ok()
+}
+
+#[derive(Default)]
+struct Status {
+    paired: bool,
+    connected: bool,
+    name: String,
+    server: String,
+    missions: Vec<serde_json::Value>,
+    missing_origins: BTreeSet<String>,
+}
+
+impl Status {
+    fn publish(&self) {
+        host::set_status(
+            &serde_json::json!({
+                "paired": self.paired,
+                "connected": self.connected,
+                "name": self.name,
+                "server": self.server,
+                "missions": self.missions,
+                "missing_origins": self.missing_origins,
+            })
+            .to_string(),
+        );
+    }
+}
+
+async fn agent_loop() {
+    let mut backoff = 2_000.0;
+    loop {
+        let Some(creds) = load_creds().await else {
+            Status::default().publish();
+            host::sleep(10_000.0).await;
+            continue;
+        };
+        match Session::open(&creds).await {
+            Ok(session) => {
+                backoff = 2_000.0;
+                session.run().await;
+            }
+            Err(e) => {
+                console_log(&format!("PNeX agent: connection failed ({e})"));
+                let status = Status {
+                    paired: true,
+                    name: creds.name.clone(),
+                    server: creds.server.clone(),
+                    ..Default::default()
+                };
+                status.publish();
+            }
+        }
+        host::sleep(backoff).await;
+        backoff = (backoff * 2.0).min(60_000.0);
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console, js_name = log)]
+    fn console_log(s: &str);
+}
+
+/// Link state shared with the websocket callbacks.
+struct Shared {
+    socket: f64,
+    initiator: Option<Initiator>,
+    link: Option<Link>,
+    inbox: Vec<ServerMsg>,
+    closed: bool,
+}
+
+struct Session {
+    creds: Creds,
+    shared: Rc<RefCell<Shared>>,
+    _on_text: Closure<dyn FnMut(String)>,
+    _on_close: Closure<dyn FnMut(u16)>,
+}
+
+impl Session {
+    /// Signed ticket → websocket → Noise handshake (first frame).
+    async fn open(creds: &Creds) -> Result<Self, String> {
+        let ts = host::now_ms() as i64;
+        let signature = text(
+            &host::sign(&ba::ticket_message(&creds.device_id, ts))
+                .await
+                .map_err(|e| err_text(&e))?,
+        );
+        let body =
+            serde_json::to_string(&TicketRequest { ts, signature }).map_err(|e| e.to_string())?;
+        let reply = call(
+            "POST",
+            &format!("{}/api/v1/extension/ws-ticket", creds.server),
+            &creds.token,
+            "",
+            &body,
+        )
+        .await?;
+        if reply.status != 200 {
+            return Err(error_of(&reply));
+        }
+        let ticket = serde_json::from_str::<serde_json::Value>(&reply.body)
+            .ok()
+            .and_then(|v| v["ticket"].as_str().map(str::to_string))
+            .ok_or("ticket missing")?;
+        let key = pnex_core::frame::decode_key(&creds.encryption_key).ok_or("bad key")?;
+        let (initiator, msg1) = Initiator::start(&key, &creds.device_id);
+
+        let shared = Rc::new(RefCell::new(Shared {
+            socket: -1.0,
+            initiator: Some(initiator),
+            link: None,
+            inbox: Vec::new(),
+            closed: false,
+        }));
+        let s = shared.clone();
+        let on_text = Closure::<dyn FnMut(String)>::new(move |raw: String| {
+            let mut sh = s.borrow_mut();
+            if let Some(init) = sh.initiator.take() {
+                let link = pnex_core::frame::decode_handshake(&raw).and_then(|m| init.finish(&m));
+                if link.is_none() {
+                    sh.closed = true;
+                }
+                sh.link = link;
+                return;
+            }
+            let plain = sh.link.as_mut().and_then(|l| l.open_text(&raw));
+            match plain.and_then(|p| serde_json::from_str::<ServerMsg>(&p).ok()) {
+                Some(msg) => sh.inbox.push(msg),
+                // An unauthenticated frame desynchronizes the link: drop it.
+                None => sh.closed = true,
+            }
+        });
+        let s = shared.clone();
+        let on_close = Closure::<dyn FnMut(u16)>::new(move |_code: u16| {
+            s.borrow_mut().closed = true;
+        });
+        let socket = host::ws_open(&ws_url(&creds.server, &ticket), &on_text, &on_close)
+            .await
+            .map_err(|e| err_text(&e))?
+            .as_f64()
+            .ok_or("no socket")?;
+        shared.borrow_mut().socket = socket;
+        host::ws_send(socket, &pnex_core::frame::encode_handshake(&msg1));
+        Ok(Self {
+            creds: creds.clone(),
+            shared,
+            _on_text: on_text,
+            _on_close: on_close,
+        })
+    }
+
+    fn send(&self, msg: &AgentMsg) {
+        let Ok(plain) = serde_json::to_string(msg) else {
+            return;
+        };
+        let mut sh = self.shared.borrow_mut();
+        let socket = sh.socket;
+        if let Some(link) = sh.link.as_mut() {
+            let wire = link.seal_text(&plain);
+            host::ws_send(socket, &wire);
+        }
+    }
+
+    async fn run(self) {
+        let this = Rc::new(self);
+        let plan = Rc::new(RefCell::new(Plan::default()));
+        let mut status = Status {
+            paired: true,
+            name: this.creds.name.clone(),
+            server: this.creds.server.clone(),
+            ..Default::default()
+        };
+        let mut last_ping = host::now_ms();
+        loop {
+            host::sleep(500.0).await;
+            if this.shared.borrow().closed {
+                break;
+            }
+            status.connected = this.shared.borrow().link.is_some();
+            let inbox = std::mem::take(&mut this.shared.borrow_mut().inbox);
+            for msg in inbox {
+                if let ServerMsg::Missions { missions } = msg {
+                    plan.borrow_mut().replace(missions);
+                }
+            }
+            let now = host::now_ms();
+            if now - last_ping >= PING_MS {
+                this.send(&AgentMsg::Ping);
+                last_ping = now;
+            }
+            let due: Vec<AssignedMission> = {
+                let p = plan.borrow();
+                due_missions(&p.missions, &p.next, &p.busy, &p.last_nav, now)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            };
+            for m in due {
+                let platform = ba::platform_of(&m.target).to_string();
+                {
+                    let mut p = plan.borrow_mut();
+                    p.busy.insert(platform.clone());
+                    p.last_nav.insert(platform.clone(), now);
+                    p.next.insert(
+                        m.id.clone(),
+                        next_run(now, m.interval_secs, js_sys::Math::random() * 2.0 - 1.0),
+                    );
+                }
+                let (this, plan) = (this.clone(), plan.clone());
+                spawn_local(async move {
+                    let outcome = run_mission(&this, &plan, &platform, &m).await;
+                    let mut p = plan.borrow_mut();
+                    p.busy.remove(&platform);
+                    p.outcome.insert(m.id.clone(), outcome);
+                });
+            }
+            let p = plan.borrow();
+            status.missions = p
+                .missions
+                .iter()
+                .map(|m| {
+                    serde_json::json!({
+                        "id": m.id,
+                        "target": m.target,
+                        "outcome": p.outcome.get(&m.id),
+                    })
+                })
+                .collect();
+            status.missing_origins = p.missing.clone();
+            status.publish();
+        }
+        let socket = this.shared.borrow().socket;
+        host::ws_close(socket);
+    }
+}
+
+/// Missions held and their schedule.
+#[derive(Default)]
+struct Plan {
+    missions: Vec<AssignedMission>,
+    next: BTreeMap<String, f64>,
+    busy: BTreeSet<String>,
+    last_nav: BTreeMap<String, f64>,
+    /// Platform → the agent's tab (D255).
+    tabs: BTreeMap<String, f64>,
+    /// Last outcome per mission (value or state code), for the options page.
+    outcome: BTreeMap<String, String>,
+    /// Origins a mission needs and the user has not allowed yet.
+    missing: BTreeSet<String>,
+}
+
+impl Plan {
+    fn replace(&mut self, missions: Vec<AssignedMission>) {
+        let ids: BTreeSet<&str> = missions.iter().map(|m| m.id.as_str()).collect();
+        self.next.retain(|id, _| ids.contains(id.as_str()));
+        self.outcome.retain(|id, _| ids.contains(id.as_str()));
+        self.missions = missions;
+    }
+}
+
+/// Runs one mission in its platform tab; returns the outcome shown in the
+/// options page.
+async fn run_mission(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    platform: &str,
+    m: &AssignedMission,
+) -> String {
+    let MissionSpec::CollectValue(p) = &m.spec;
+    let state = |state: MissionState, code: &str| AgentMsg::State {
+        mission_id: m.id.clone(),
+        state,
+        code: (!code.is_empty()).then(|| code.to_string()),
+    };
+    let allowed = host::has_origin(&p.url)
+        .await
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !allowed {
+        plan.borrow_mut().missing.insert(origin_of(&p.url));
+        session.send(&state(
+            MissionState::Blocked,
+            err_codes::EXT_PERMISSION_MISSING,
+        ));
+        return err_codes::EXT_PERMISSION_MISSING.into();
+    }
+    plan.borrow_mut().missing.remove(&origin_of(&p.url));
+    let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+    let tab = match host::agent_tab(tab, &p.url).await {
+        Ok(id) => id.as_f64().unwrap_or(-1.0),
+        Err(e) => return err_text(&e),
+    };
+    plan.borrow_mut().tabs.insert(platform.to_string(), tab);
+    #[derive(Deserialize)]
+    struct Read {
+        found: bool,
+        value: String,
+    }
+    let read = host::read_value(tab, &p.selector, &p.attr)
+        .await
+        .ok()
+        .and_then(|v| serde_json::from_str::<Read>(&text(&v)).ok());
+    match read {
+        Some(r) if r.found => {
+            session.send(&AgentMsg::Report {
+                mission_id: m.id.clone(),
+                value: r.value.clone(),
+            });
+            r.value
+        }
+        _ => {
+            session.send(&state(
+                MissionState::Running,
+                err_codes::EXT_SELECTOR_NOT_FOUND,
+            ));
+            err_codes::EXT_SELECTOR_NOT_FOUND.into()
+        }
+    }
+}
+
+/// `https://host` of a page URL.
+fn origin_of(url: &str) -> String {
+    let (scheme, rest) = url.split_once("://").unwrap_or(("https", url));
+    let host = rest.split(['/', '?', '#']).next().unwrap_or(rest);
+    format!("{scheme}://{host}")
+}
