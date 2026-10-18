@@ -430,8 +430,14 @@ impl Session {
                     ServerMsg::Capture {
                         mission_id,
                         platform_ids,
+                        captions,
                     } => {
                         let mut p = plan.borrow_mut();
+                        for id in captions {
+                            if let Some(url) = p.post_urls.get(&id).cloned() {
+                                p.caption_queue.push_back((mission_id.clone(), id, url));
+                            }
+                        }
                         for id in platform_ids {
                             if let Some(url) = p.videos.remove(&id) {
                                 p.downloads.push_back((mission_id.clone(), id, url));
@@ -440,6 +446,34 @@ impl Session {
                     }
                     ServerMsg::Pong => {}
                 }
+            }
+            // Captions: one page at a time in the platform's tab (D255, D258).
+            let next_caption = {
+                let mut p = plan.borrow_mut();
+                let now = host::now_ms();
+                let ready = p.caption_queue.front().is_some_and(|(_, _, url)| {
+                    let platform = platform_of_url(url);
+                    !p.busy.contains(platform)
+                        && p.last_nav
+                            .get(platform)
+                            .is_none_or(|t| now - t >= crate::NAV_GAP_MS)
+                });
+                ready.then(|| p.caption_queue.pop_front()).flatten()
+            };
+            if let Some((mission_id, post, url)) = next_caption {
+                let platform = platform_of_url(&url).to_string();
+                {
+                    let mut p = plan.borrow_mut();
+                    p.busy.insert(platform.clone());
+                    p.last_nav.insert(platform.clone(), host::now_ms());
+                }
+                let (this, plan) = (this.clone(), plan.clone());
+                spawn_local(async move {
+                    let outcome = fetch_captions(&this, &plan, &platform, &mission_id, &post).await;
+                    let mut p = plan.borrow_mut();
+                    p.busy.remove(&platform);
+                    p.outcome.insert(mission_id, outcome);
+                });
             }
             // One download at a time, a pause between two (D258).
             let next_download = {
@@ -526,6 +560,10 @@ struct Plan {
     /// Video URL of the posts last reported as seen, until the server
     /// answers which to capture.
     videos: BTreeMap<String, String>,
+    /// Page of every post last reported as seen (captions are read there).
+    post_urls: BTreeMap<String, String>,
+    /// Captions to read: (mission, post, url).
+    caption_queue: std::collections::VecDeque<(String, String, String)>,
     /// Videos to capture: (mission, post, url).
     downloads: std::collections::VecDeque<(String, String, String)>,
     downloading: bool,
@@ -630,7 +668,6 @@ async fn run_mission(
 
 /// `collect_page`: the tab's readable text, uploaded signed (D261, D262).
 async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> String {
-    use sha2::Digest as _;
     #[derive(Deserialize)]
     struct Page {
         url: String,
@@ -653,10 +690,7 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
     let Ok(body) = serde_json::to_string(&snapshot) else {
         return "encode-failed".into();
     };
-    let sha: String = sha2::Sha256::digest(body.as_bytes())
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let sha = sha256_hex(body.as_bytes());
     let creds = &session.creds;
     let ts = host::now_ms() as i64;
     let signature = match host::sign(&ba::upload_message(&creds.device_id, ts, &m.id, &sha)).await {
@@ -825,6 +859,8 @@ async fn follow_account(
         for post in &posts {
             if let Some(url) = &post.video_url {
                 p.videos.insert(post.platform_id.clone(), url.clone());
+                p.post_urls
+                    .insert(post.platform_id.clone(), post.url.clone());
             }
         }
     }
@@ -841,6 +877,92 @@ async fn follow_account(
         });
     }
     format!("{count} posts")
+}
+
+/// Platform key of a post page (the tab it is read in).
+fn platform_of_url(url: &str) -> &'static str {
+    if url.starts_with("https://www.youtube.com/") {
+        "youtube"
+    } else {
+        "x"
+    }
+}
+
+/// Reads a post's platform captions on its page and uploads them signed
+/// (D281). YouTube only: X posts rarely carry captions.
+async fn fetch_captions(
+    session: &Session,
+    plan: &Rc<RefCell<Plan>>,
+    platform: &str,
+    mission_id: &str,
+    post: &str,
+) -> String {
+    use crate::adapters::youtube;
+    if platform != "youtube" {
+        return "no-captions".into();
+    }
+    let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
+    let watch = format!("https://www.youtube.com/watch?v={post}");
+    let tab = match host::agent_tab(tab, &watch).await {
+        Ok(id) => id.as_f64().unwrap_or(-1.0),
+        Err(e) => return err_text(&e),
+    };
+    plan.borrow_mut().tabs.insert(platform.to_string(), tab);
+    take_responses(tab);
+    let player = host::read_player_response(tab)
+        .await
+        .map(|v| text(&v))
+        .unwrap_or_default();
+    let Some((lang, url)) = youtube::caption_track(&player) else {
+        return "no-captions".into();
+    };
+    let cues = match host::fetch_text(&url).await {
+        Ok(body) => youtube::cues_of(&text(&body)),
+        Err(e) => return err_text(&e),
+    };
+    if cues.is_empty() {
+        return "no-captions".into();
+    }
+    let upload = ba::CaptionsUpload {
+        mission_id: mission_id.into(),
+        platform_id: post.into(),
+        lang,
+        cues,
+    };
+    let Ok(body) = serde_json::to_string(&upload) else {
+        return "encode-failed".into();
+    };
+    let sha = sha256_hex(body.as_bytes());
+    let creds = &session.creds;
+    let ts = host::now_ms() as i64;
+    let message = ba::captions_upload_message(&creds.device_id, ts, mission_id, post, &sha);
+    let signature = match host::sign(&message).await {
+        Ok(sig) => text(&sig),
+        Err(e) => return err_text(&e),
+    };
+    let headers = serde_json::json!({ "X-Pnex-Ts": ts.to_string(), "X-Pnex-Signature": signature });
+    match call_with(
+        "POST",
+        &format!("{}/api/v1/extension/uploads/captions", creds.server),
+        &creds.token,
+        "",
+        &body,
+        &headers.to_string(),
+    )
+    .await
+    {
+        Ok(r) if r.status == 201 => format!("captions {post}"),
+        Ok(r) => error_of(&r),
+        Err(e) => e,
+    }
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// Downloads one video and uploads it signed (D260, D262).

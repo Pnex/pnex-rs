@@ -233,9 +233,10 @@ impl Link {
                 )
                 .await
                 {
-                    Ok(platform_ids) => Some(ServerMsg::Capture {
+                    Ok((platform_ids, captions)) => Some(ServerMsg::Capture {
                         mission_id,
                         platform_ids,
+                        captions,
                     }),
                     Err(e) => {
                         tracing::warn!(agent = %self.agent.device_id, error = %e, "seen posts not recorded");

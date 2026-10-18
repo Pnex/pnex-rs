@@ -51,6 +51,10 @@ extern "C" {
     #[wasm_bindgen(catch)]
     pub async fn read_initial_data(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
+    pub async fn read_player_response(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn fetch_text(url: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
     pub async fn fetch_blob(url: &str, max_bytes: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn upload_blob(

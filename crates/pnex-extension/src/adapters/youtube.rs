@@ -95,6 +95,60 @@ fn item_of(key: &str, v: &Value, handle: &str) -> Option<SeenPost> {
     })
 }
 
+/// Caption track of a watch page (`ytInitialPlayerResponse`): a track
+/// written by people when there is one, else the automatic one. Returns
+/// its language and the URL of its `json3` form.
+pub fn caption_track(player: &str) -> Option<(String, String)> {
+    let json: Value = serde_json::from_str(player).ok()?;
+    let tracks = json["captions"]["playerCaptionsTracklistRenderer"]["captionTracks"].as_array()?;
+    let track = tracks
+        .iter()
+        .find(|t| t["kind"].as_str() != Some("asr"))
+        .or_else(|| tracks.first())?;
+    let base = track["baseUrl"].as_str()?;
+    if !base.starts_with("https://www.youtube.com/") {
+        return None;
+    }
+    let lang = track["languageCode"].as_str().unwrap_or("und").to_string();
+    let sep = if base.contains('?') { '&' } else { '?' };
+    Some((lang, format!("{base}{sep}fmt=json3")))
+}
+
+/// Cues of a `json3` caption track.
+pub fn cues_of(json3: &str) -> Vec<pnex_core::browser_agent::CaptionCue> {
+    let Ok(json) = serde_json::from_str::<Value>(json3) else {
+        return Vec::new();
+    };
+    json["events"]
+        .as_array()
+        .map(|events| {
+            events
+                .iter()
+                .filter_map(|e| {
+                    let start = e["tStartMs"].as_i64()?;
+                    let text: String = e["segs"]
+                        .as_array()?
+                        .iter()
+                        .filter_map(|s| s["utf8"].as_str())
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if text.is_empty() {
+                        return None;
+                    }
+                    let end = start + e["dDurationMs"].as_i64().unwrap_or(0).max(1);
+                    Some(pnex_core::browser_agent::CaptionCue {
+                        start_ms: start,
+                        end_ms: end,
+                        text: text.chars().take(2000).collect(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// `1:02:03` / `12:34` → milliseconds.
 fn duration_ms(raw: &str) -> Option<i64> {
     raw.split(':')
@@ -132,5 +186,33 @@ mod tests {
             "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false"
         ));
         assert!(!is_list_url("https://www.youtube.com/youtubei/v1/player"));
+    }
+
+    #[test]
+    fn captions_prefer_human_tracks_and_read_json3() {
+        let player = r#"{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[
+            {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=fr&kind=asr","languageCode":"fr","kind":"asr"},
+            {"baseUrl":"https://www.youtube.com/api/timedtext?v=x&lang=en","languageCode":"en"}]}}}"#;
+        let (lang, url) = caption_track(player).unwrap();
+        assert_eq!(lang, "en");
+        assert_eq!(
+            url,
+            "https://www.youtube.com/api/timedtext?v=x&lang=en&fmt=json3"
+        );
+        assert!(caption_track(r#"{"captions":{}}"#).is_none());
+        let evil = r#"{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://evil.example/x","languageCode":"en"}]}}}"#;
+        assert!(
+            caption_track(evil).is_none(),
+            "only YouTube's own caption URLs"
+        );
+
+        let json3 = r#"{"events":[
+            {"tStartMs":0,"dDurationMs":1500,"segs":[{"utf8":"hello"},{"utf8":"  world"}]},
+            {"tStartMs":1500,"dDurationMs":10,"segs":[{"utf8":"\n"}]},
+            {"tStartMs":2000}]}"#;
+        let cues = cues_of(json3);
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].text, "hello world");
+        assert_eq!((cues[0].start_ms, cues[0].end_ms), (0, 1500));
     }
 }

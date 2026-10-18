@@ -30,6 +30,7 @@ pub fn routes() -> Routes {
         .add("/ws-ticket", post(ws_ticket))
         .add("/download", get(download))
         .add("/uploads/page", post(upload_page))
+        .add("/uploads/captions", post(upload_captions))
         .add(
             "/uploads/video",
             post(upload_video)
@@ -59,6 +60,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         download,
         upload_page,
         upload_video,
+        upload_captions,
         videos,
         missions,
         mission,
@@ -98,6 +100,11 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             StatusCode::NOT_FOUND,
             err_codes::EXTENSION_MISSION_NOT_FOUND,
             "Mission not found.",
+        ),
+        ExtensionError::TextStoreUnavailable => coded(
+            StatusCode::SERVICE_UNAVAILABLE,
+            err_codes::MEDIA_TRANSCRIPTS_UNAVAILABLE,
+            "The text store is unreachable: nothing recorded, retry later.",
         ),
         ExtensionError::VideoNotFound => coded(
             StatusCode::NOT_FOUND,
@@ -587,6 +594,51 @@ async fn upload_video(
     })
     .await?;
     match extension::store_video(&ctx, &agent, &mission_id, &post, raw).await {
+        Ok(video) => Ok((StatusCode::CREATED, format::json(video)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/uploads/captions` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/captions",
+    tag = "extension",
+    operation_id = "extension_upload_captions",
+    summary = "Upload the platform captions of a post",
+    description = "Called by a browser agent for a post its `follow_account` mission saw, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post and SHA-256 of the body, usable once). Stores the captions as a transcription run of origin `platform` on the post's video media, created without a file when the video is not downloaded. Rate-limited per agent.",
+    request_body = pnex_core::browser_agent::CaptionsUpload,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::SocialVideo),
+        (status = 400, description = "`field-invalid`: `errors.fields.cues` `invalid:<reason>` (empty, too many, bad times or language, text too long)", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found` or `extension-video-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable` (Valkey) or `media-transcripts-unavailable` (text store): nothing recorded", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_captions(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let Ok(upload) = serde_json::from_slice::<pnex_core::browser_agent::CaptionsUpload>(&raw)
+    else {
+        return Ok(super::field_error("body", err_codes::FIELD_INVALID));
+    };
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::captions_upload_message(
+            device_id,
+            ts,
+            &upload.mission_id,
+            &upload.platform_id,
+            &body_sha,
+        )
+    })
+    .await?;
+    match extension::store_captions(&ctx, &agent, &upload).await {
         Ok(video) => Ok((StatusCode::CREATED, format::json(video)).into_response()),
         Err(e) => extension_error(e),
     }

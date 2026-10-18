@@ -683,6 +683,56 @@ async fn upload_video(
     )
 }
 
+/// Signed JSON upload bound to a post (captions).
+async fn upload_json(
+    server: &axum_test::TestServer,
+    install: &Install,
+    a: &Paired,
+    path: &str,
+    body: &Value,
+    post_id: &str,
+) -> (u16, Value) {
+    use sha2::Digest as _;
+    let raw = serde_json::to_vec(body).unwrap();
+    let sha: String = sha2::Sha256::digest(&raw)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let ts = chrono::Utc::now().timestamp_millis();
+    let mission = body["mission_id"].as_str().unwrap();
+    let signature = install.sign(&ba::captions_upload_message(
+        &a.device_id,
+        ts,
+        mission,
+        post_id,
+        &sha,
+    ));
+    let (status, got) = upload_signed_to(server, path, a, &raw, ts, &signature).await;
+    (status, got)
+}
+
+async fn upload_signed_to(
+    server: &axum_test::TestServer,
+    path: &str,
+    a: &Paired,
+    raw: &[u8],
+    ts: i64,
+    signature: &str,
+) -> (u16, Value) {
+    let res = server
+        .post(path)
+        .add_header("Authorization", format!("Bearer {}", a.token))
+        .add_header("X-Pnex-Ts", ts.to_string())
+        .add_header("X-Pnex-Signature", signature.to_string())
+        .bytes(raw.to_vec().into())
+        .await;
+    let status = res.status_code().as_u16();
+    (
+        status,
+        serde_json::from_str(&res.text()).unwrap_or(Value::Null),
+    )
+}
+
 #[tokio::test]
 #[serial]
 async fn followed_account_videos_are_captured_once() {
@@ -721,14 +771,22 @@ async fn followed_account_videos_are_captured_once() {
         send(&mut ws, &seen).await;
         assert_eq!(
             recv(&mut ws).await,
-            ServerMsg::Capture { mission_id: mission.clone(), platform_ids: vec!["101".into()] },
+            ServerMsg::Capture {
+                mission_id: mission.clone(),
+                platform_ids: vec!["101".into()],
+                captions: vec!["101".into()],
+            },
             "only the new video, never the malformed id"
         );
         // Seen again (by any agent): nothing to capture twice.
         send(&mut ws, &seen).await;
         assert_eq!(
             recv(&mut ws).await,
-            ServerMsg::Capture { mission_id: mission.clone(), platform_ids: vec![] }
+            ServerMsg::Capture {
+                mission_id: mission.clone(),
+                platform_ids: vec![],
+                captions: vec![],
+            }
         );
 
         // D283: the next visit goes deeper; once the list ended, recent only.
@@ -756,6 +814,18 @@ async fn followed_account_videos_are_captured_once() {
         };
         assert_eq!(missions[0].scroll_depth, ba::RECENT_DEPTH);
         ws.close().await;
+
+        // Captions of a post: no text store in tests, so a coded 503 and
+        // nothing recorded; a post without video has no captions to take.
+        let captions = |id: &str| {
+            json!({ "mission_id": mission, "platform_id": id, "lang": "fr",
+                    "cues": [{ "start_ms": 0, "end_ms": 1500, "text": "bonjour" }] })
+        };
+        let (s, e) = upload_json(&server, &install, &a, "/api/v1/extension/uploads/captions", &captions("101"), "101").await;
+        assert_eq!(s, 503, "{e}");
+        assert_eq!(e["error"], "media-transcripts-unavailable");
+        let (s, _) = upload_json(&server, &install, &a, "/api/v1/extension/uploads/captions", &captions("102"), "102").await;
+        assert_eq!(s, 404);
 
         let mp4 = b"\0\0\0\x18ftypisom\0\0\x02\0isommp41";
         let (s, v) = upload_video(&server, &install, &a, &mission, "101", mp4).await;

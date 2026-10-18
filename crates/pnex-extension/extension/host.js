@@ -252,6 +252,29 @@ export async function read_initial_data(tabId) {
   return result?.result ?? "null";
 }
 
+/** Player data of a watch page (`ytInitialPlayerResponse`), JSON or "null". */
+export async function read_player_response(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: () => {
+      try {
+        return JSON.stringify(window.ytInitialPlayerResponse ?? null);
+      } catch {
+        return "null";
+      }
+    },
+  });
+  return result?.result ?? "null";
+}
+
+/** Text of a URL the extension may read (a caption track); throws on HTTP errors. */
+export async function fetch_text(url) {
+  const res = await fetch(url, { credentials: "omit" });
+  if (!res.ok) throw new Error(`fetch ${res.status}`);
+  return res.text();
+}
+
 // Downloaded files stay on this side: wasm only signs their digest.
 const blobs = new Map();
 let nextBlob = 1;

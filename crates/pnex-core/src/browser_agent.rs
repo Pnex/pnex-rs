@@ -584,6 +584,10 @@ pub enum ServerMsg {
     Capture {
         mission_id: String,
         platform_ids: Vec<String>,
+        /// New videos whose platform captions the agent should read (D284:
+        /// text by default, with or without the file).
+        #[serde(default)]
+        captions: Vec<String>,
     },
     Pong,
 }
@@ -658,6 +662,39 @@ pub fn video_upload_message(
     format!("pnex-ext-video\n{device_id}\n{ts_ms}\n{mission_id}\n{platform_id}\n{body_sha256}")
 }
 
+/// Message the install key signs to upload a post's captions (D281).
+pub fn captions_upload_message(
+    device_id: &str,
+    ts_ms: i64,
+    mission_id: &str,
+    platform_id: &str,
+    body_sha256: &str,
+) -> String {
+    format!("pnex-ext-captions\n{device_id}\n{ts_ms}\n{mission_id}\n{platform_id}\n{body_sha256}")
+}
+
+/// One caption of a post, on the video's clock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaptionCue {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+}
+
+/// Captions of a post read on the platform (stored as a run of origin
+/// `platform`, D281).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaptionsUpload {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub mission_id: String,
+    pub platform_id: String,
+    /// BCP 47 language of the track (`fr`, `en-US`).
+    pub lang: String,
+    pub cues: Vec<CaptionCue>,
+}
+
 /// Largest captured video (bytes).
 pub const VIDEO_MAX: usize = 200 * 1024 * 1024;
 
@@ -668,6 +705,8 @@ pub const VIDEO_MAX: usize = 200 * 1024 * 1024;
 pub enum VideoState {
     /// Known, not downloaded (metadata only, or capture pending/failed).
     Seen,
+    /// Its platform captions are in the media library, not its file.
+    Captioned,
     /// Downloaded into the media library.
     Captured,
 }
