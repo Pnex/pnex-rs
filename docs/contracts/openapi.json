@@ -873,7 +873,8 @@
         "enum": [
           "index",
           "summarize",
-          "transcribe"
+          "transcribe",
+          "identify"
         ],
         "type": "string"
       },
@@ -17129,6 +17130,10 @@
               "$ref": "#/components/schemas/AnalysisStep"
             },
             "type": "array"
+          },
+          "voice_scope": {
+            "$ref": "#/components/schemas/VoiceScope",
+            "description": "Voices compared by `identify` (D274)."
           }
         },
         "required": [
@@ -19957,6 +19962,14 @@
           "created_at"
         ],
         "type": "object"
+      },
+      "VoiceScope": {
+        "description": "Profiles a voice identification compares with (media-review.md D274).",
+        "enum": [
+          "expected",
+          "all"
+        ],
+        "type": "string"
       },
       "VoiceTestResult": {
         "description": "Result of a test (verification 1:1 or identification 1:N). A match is\na proposal for a human, never a fact written anywhere (K19).",
@@ -43343,7 +43356,7 @@
                 }
               }
             },
-            "description": "No LLM configured for the organisation (`media-analysis-no-llm`), no valid transcription profile (`media-analysis-no-asr`), or a step already running, or another transcription of the organisation (`media-analysis-busy`)"
+            "description": "No LLM configured for the organisation (`media-analysis-no-llm`), no valid transcription profile (`media-analysis-no-asr`), no ready voice profile (`media-analysis-no-voice-profile`), or a step already running, or another transcription of the organisation (`media-analysis-busy`)"
           }
         },
         "security": [
