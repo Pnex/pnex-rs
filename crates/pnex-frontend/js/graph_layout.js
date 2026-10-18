@@ -154,4 +154,81 @@ export function chronoLayout(nodes, edges) {
   return out;
 }
 
+// Link types read upward in the hierarchy view (member -> group).
+const GROUPS = new Set(['member_of', 'party_member']);
+
+// Layers of the hierarchy view: each relation points down, from its source
+// (owner, funder, group) to its target, so a chain of control reads top to
+// bottom. Rank = longest path from a root (a cycle is cut where it closes);
+// each layer is ordered by the mean position of its parents, wide layers
+// wrap into sub-rows. What has no relation sits in rows under the drawing.
+export function hierarchyLayout(nodes, edges) {
+  const ids = new Set(nodes.map((n) => n.id));
+  const down = new Map();
+  const up = new Map();
+  for (const e of edges) {
+    if (e.kind !== 'relation' || e.a === e.b || !ids.has(e.a) || !ids.has(e.b)) continue;
+    // A membership points to its group: the group goes above its members.
+    const [a, b] = GROUPS.has(e.link) ? [e.b, e.a] : [e.a, e.b];
+    (down.get(a) || down.set(a, []).get(a)).push(b);
+    (up.get(b) || up.set(b, []).get(b)).push(a);
+  }
+  const linked = nodes.filter((n) => down.has(n.id) || up.has(n.id));
+  const loose = nodes.filter((n) => !down.has(n.id) && !up.has(n.id));
+  // Cut each cycle where a walk from the roots closes it (a back edge).
+  const back = new Set();
+  const state = new Map(); // 1 on the walk, 2 done
+  const walk = (n) => {
+    state.set(n, 1);
+    for (const c of down.get(n) || []) {
+      if (state.get(c) === 1) back.add(`${n}\u0000${c}`);
+      else if (!state.has(c)) walk(c);
+    }
+    state.set(n, 2);
+  };
+  const roots = linked.filter((n) => !up.has(n.id));
+  for (const n of [...roots, ...linked]) if (!state.has(n.id)) walk(n.id);
+  const rank = new Map();
+  const depth = (n) => {
+    if (rank.has(n)) return rank.get(n);
+    let r = 0;
+    for (const p of up.get(n) || []) if (!back.has(`${p}\u0000${n}`)) r = Math.max(r, depth(p) + 1);
+    rank.set(n, r);
+    return r;
+  };
+  linked.forEach((n) => depth(n.id));
+  const layers = [];
+  for (const n of linked) (layers[rank.get(n.id)] ||= []).push(n);
+  const out = {};
+  const [gapX, gapY, sub, wrap] = [150, 190, 45, 24];
+  let y = 0;
+  const title = (n) => String(n.title || n.id);
+  const row = (items, top) => {
+    const lines = Math.ceil(items.length / wrap);
+    items.forEach((n, i) => {
+      const line = i % lines;
+      const col = Math.floor(i / lines);
+      const width = Math.ceil(items.length / lines);
+      out[n.id] = { x: (col - (width - 1) / 2) * gapX + (line % 2) * (gapX / 2), y: top + line * sub };
+    });
+    return top + (lines - 1) * sub;
+  };
+  layers.forEach((layer, r) => {
+    if (r > 0) {
+      const mean = (n) => {
+        const xs = (up.get(n.id) || []).map((p) => out[p]?.x).filter(Number.isFinite);
+        return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : Infinity;
+      };
+      layer.sort((p, q) => mean(p) - mean(q) || title(p).localeCompare(title(q)));
+    } else {
+      layer.sort((p, q) => (down.get(q.id)?.length || 0) - (down.get(p.id)?.length || 0)
+        || title(p).localeCompare(title(q)));
+    }
+    y = row(layer, y) + gapY;
+  });
+  loose.sort((p, q) => title(p).localeCompare(title(q)));
+  row(loose, y);
+  return out;
+}
+
 export const LANE_OF = LANES;

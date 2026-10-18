@@ -312,11 +312,13 @@ pub(super) fn sigma_data(
     let edges: Vec<Value> = edges
         .iter()
         .map(|e| {
-            let (kind, label) = match &e.kind {
-                EdgeKind::Role { role, .. } => ("role", role_label(role)),
-                EdgeKind::Relation { link_type, .. } => ("relation", link_type.replace('_', " ")),
+            let (kind, label, link) = match &e.kind {
+                EdgeKind::Role { role, .. } => ("role", role_label(role), None),
+                EdgeKind::Relation { link_type, .. } => {
+                    ("relation", link_type.replace('_', " "), Some(link_type))
+                }
             };
-            json!({ "a": nodes[e.a]["id"], "b": nodes[e.b]["id"], "kind": kind, "label": label })
+            json!({ "a": nodes[e.a]["id"], "b": nodes[e.b]["id"], "kind": kind, "label": label, "link": link })
         })
         .collect();
     json!({ "nodes": nodes, "edges": edges, "aspect": aspect })
@@ -481,6 +483,8 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
     let mut seeded = use_signal(|| false);
     // Sigma renderer: None while it mounts, then whether it took (else SVG).
     let mut sigma = use_signal(|| None::<bool>);
+    // Hierarchy view (Sigma only): relations point down, owner above owned.
+    let mut hier = use_signal(|| false);
     let cap = move || {
         if *sigma.peek() == Some(true) {
             SIGMA_CAP
@@ -600,6 +604,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             Sel::None => None,
         };
         let mut state = sigma_state(&nodes, &edges, (ws.cursor)(), selected.as_deref());
+        state["mode"] = json!(if hier() { "hierarchy" } else { "force" });
         let path = (ws.path)();
         if !path.is_empty() {
             // Off the path: faded like what lies after the cursor.
@@ -952,6 +957,17 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                             }
                         },
                         "+"
+                    }
+                    if on_sigma {
+                        button {
+                            class: if hier() { format!("{BTN_GHOST} bg-signal-soft") } else { BTN_GHOST.to_string() },
+                            r#type: "button",
+                            title: t!("cw-graph-hierarchy-help"),
+                            "aria-pressed": hier(),
+                            "data-testid": "cw-graph-hierarchy",
+                            onclick: move |_| hier.toggle(),
+                            {t!("cw-graph-hierarchy")}
+                        }
                     }
                     button {
                         class: BTN_GHOST,
@@ -1383,7 +1399,7 @@ mod tests {
         );
         assert_eq!(
             data["edges"][0],
-            json!({"a": "ann", "b": "carl", "kind": "relation", "label": "member of"})
+            json!({"a": "ann", "b": "carl", "kind": "relation", "label": "member of", "link": "member_of"})
         );
         // At 10:30: e2 and Carl ahead, the relation not yet valid.
         let t = model::ms("2025-01-01T10:30:00Z").unwrap();

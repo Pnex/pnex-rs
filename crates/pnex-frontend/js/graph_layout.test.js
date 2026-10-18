@@ -1,7 +1,7 @@
 // Run with `bun test js/`.
 import { expect, test } from 'bun:test';
 import Graph from 'graphology';
-import { chronoLayout, forceLayout, hashed, LANE_OF } from './graph_layout.js';
+import { chronoLayout, forceLayout, hashed, hierarchyLayout, LANE_OF } from './graph_layout.js';
 
 // Same vectors as `hashed_matches_the_js_port` in pnex-core's layout.rs.
 test('hashed is the exact port of layout.rs', () => {
@@ -98,3 +98,19 @@ test('a parliament-sized case lays out in about a second (Barnes-Hut, scaled ite
   expect(ms).toBeLessThan(4000);
   console.log(`2000 nodes: ${Math.round(ms)} ms`);
 }, 10000);
+
+test('hierarchy: owners above what they own, cycles cut, loose nodes below', () => {
+  const nodes = ['state', 'holding', 'tv', 'radio', 'show', 'alone'].map((id) => ({ id, title: id }));
+  const rel = (a, b) => ({ a, b, kind: 'relation' });
+  const edges = [rel('state', 'holding'), rel('holding', 'tv'), rel('holding', 'radio'), rel('tv', 'show'),
+    rel('show', 'holding'), { a: 'tv', b: 'alone', kind: 'role' }];
+  const out = hierarchyLayout(nodes, edges);
+  expect(out.state.y).toBeLessThan(out.holding.y);
+  expect(out.holding.y).toBeLessThan(out.tv.y);
+  expect(out.tv.y).toBe(out.radio.y);
+  expect(out.tv.y).toBeLessThan(out.show.y);
+  expect(out.alone.y).toBeGreaterThan(out.show.y);
+  for (const p of Object.values(out)) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);  // A member sits under its party.
+  const party = hierarchyLayout([{ id: 'mp' }, { id: 'party' }], [{ a: 'mp', b: 'party', kind: 'relation', link: 'party_member' }]);
+  expect(party.party.y).toBeLessThan(party.mp.y);
+});

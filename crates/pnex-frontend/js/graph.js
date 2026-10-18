@@ -5,6 +5,7 @@
 //   mount(hostId, opts) → bool      opts {caseId, canWrite, canDrag}
 //   setData(hostId, data)           {nodes, edges, aspect}
 //   setState(hostId, state)         {selected, faded, edges, hiddenFamilies, mode}
+//                                   mode: force | chrono | hierarchy
 //   relayout, fit, zoomIn, zoomOut, unmount, error(hostId)
 //   positions(hostId) → JSON        force-view positions {id: [x, y]}
 //   screenPos(hostId, id) → JSON    {x, y} in viewport pixels (e2e)
@@ -17,7 +18,7 @@ import Sigma from 'sigma';
 import { animateNodes } from 'sigma/utils';
 import EdgeCurveProgram from '@sigma/edge-curve';
 import { createNodeBorderProgram } from '@sigma/node-border';
-import { chronoLayout, forceLayout } from './graph_layout.js';
+import { chronoLayout, forceLayout, hierarchyLayout } from './graph_layout.js';
 
 const hosts = {};
 let seq = 0;
@@ -359,14 +360,20 @@ function forcePositions(h, work) {
     work.mergeNodeAttributes(n, p ? { x: p[0], y: p[1] } : { x: undefined, y: undefined });
   });
   forceLayout(work, h.opts.caseId || '', h.data.aspect);
-  work.forEachNode((n, attr) => h.force.set(n, [attr.x, attr.y]));
+  // A node without links sits in the side column for now: not remembered,
+  // so it joins the simulation once its relations arrive.
+  h.side = new Map();
+  work.forEachNode((n, attr) => {
+    (work.degree(n) > 0 ? h.force : h.side).set(n, [attr.x, attr.y]);
+  });
 }
 
 // Positions of the current view: the force one, or the derived timeline.
 function viewTarget(h) {
   if (h.state.mode === 'chrono') return chronoLayout(h.data.nodes, h.data.edges);
+  if (h.state.mode === 'hierarchy') return hierarchyLayout(h.data.nodes, h.data.edges);
   const out = {};
-  h.force.forEach((p, n) => (out[n] = { x: p[0], y: p[1] }));
+  for (const m of [h.side || new Map(), h.force]) m.forEach((p, n) => (out[n] = { x: p[0], y: p[1] }));
   return out;
 }
 
@@ -449,7 +456,7 @@ function place(h, work, known) {
   const g = h.graph;
   forcePositions(h, work);
   const target = viewTarget(h);
-  work.forEachNode((n) => work.mergeNodeAttributes(n, target[n]));
+  work.forEachNode((n) => target[n] && work.mergeNodeAttributes(n, target[n]));
   // A newcomer may need room: only then does the drawing re-fit.
   if (work.nodes().some((n) => !known.has(n))) h.renderer.setCustomBBox(null);
   g.clear();
