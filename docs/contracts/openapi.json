@@ -2905,7 +2905,7 @@
         "description": "One change of an object or a link (D184), from the O2 `object_changes`\nstream.",
         "properties": {
           "action": {
-            "description": "`object.create` | `object.update` | `object.archive` | `link.open` |\n`link.close`.",
+            "description": "`object.create` | `object.update` | `object.archive` | `link.open` |\n`link.update` | `link.close`.",
             "type": "string"
           },
           "after": {},
@@ -7964,6 +7964,19 @@
           "def",
           "version"
         ],
+        "type": "object"
+      },
+      "LinkUpdate": {
+        "description": "Updating a link: its attributes, replaced whole (open or closed link).",
+        "properties": {
+          "attributes": {
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
         "type": "object"
       },
       "LinkView": {
@@ -47106,6 +47119,105 @@
           }
         ],
         "summary": "Create a link between two objects",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/links/{id}": {
+      "put": {
+        "description": "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Journaled as `link.update` with the previous version. Needs a writer role.",
+        "operationId": "ontology_links_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Link id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid attribute (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update a link's attributes",
         "tags": [
           "ontology"
         ]

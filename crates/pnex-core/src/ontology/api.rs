@@ -143,6 +143,14 @@ pub struct LinkInput {
     pub valid_to: Option<String>,
 }
 
+/// Updating a link: its attributes, replaced whole (open or closed link).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct LinkUpdate {
+    #[serde(default)]
+    pub attributes: Map<String, Value>,
+}
+
 /// Closing a link: `valid_to` RFC 3339, default now.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -300,7 +308,7 @@ pub struct SeriesView {
 pub struct ChangeView {
     pub at: String,
     /// `object.create` | `object.update` | `object.archive` | `link.open` |
-    /// `link.close`.
+    /// `link.update` | `link.close`.
     pub action: String,
     pub source_ref: String,
     #[serde(default)]

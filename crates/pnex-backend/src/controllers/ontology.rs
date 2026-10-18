@@ -12,7 +12,7 @@ use loco_rs::controller::format;
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
 use pnex_core::ontology::api::{
-    LinkClose, LinkInput, LinkTypeInput, ObjectInput, ObjectTypeInput, OntologyQuery,
+    LinkClose, LinkInput, LinkTypeInput, LinkUpdate, ObjectInput, ObjectTypeInput, OntologyQuery,
 };
 use pnex_core::ontology::LinkTypeDef;
 use serde::Deserialize;
@@ -56,6 +56,7 @@ pub fn routes() -> Routes {
         .add("/resolve/{kind}/{native_key}", get(resolve))
         .add("/path", get(path))
         .add("/links", post(create_link))
+        .add("/links/{id}", axum::routing::put(update_link))
         .add("/links/{id}/close", post(close_link))
         .add("/query", post(run_query))
         .add("/packs", get(list_packs))
@@ -97,6 +98,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         object_bindings,
         object_changes,
         create_link,
+        update_link,
         close_link,
         run_query,
         list_packs,
@@ -1090,6 +1092,33 @@ async fn create_link(
 ) -> Result<Response> {
     require_write(&org)?;
     created(links::create(&ctx.db, org.org.id, &actor(&org), &input).await)
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/v1/ontology/links/{id}",
+    tag = "ontology",
+    operation_id = "ontology_links_update",
+    summary = "Update a link's attributes",
+    description = "Replaces the attributes of a link, open or closed, validated against its link type (a source added, a note corrected). Ends, type and validity do not change: close the link and create another. Not for `measures` or `depicts` bindings. Journaled as `link.update` with the previous version. Needs a writer role.",
+    params(("id" = i64, Path, description = "Link id")),
+    request_body = pnex_core::ontology::api::LinkUpdate,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::LinkView),
+        (status = 400, description = "Invalid attribute (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn update_link(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+    Json(input): Json<LinkUpdate>,
+) -> Result<Response> {
+    require_write(&org)?;
+    reply(links::update(&ctx.db, org.org.id, &actor(&org), id, &input.attributes).await)
 }
 
 #[utoipa::path(

@@ -1232,6 +1232,77 @@ async fn closed_link_is_history_beside_the_open_one() {
     .await;
 }
 
+/// A link's attributes can be corrected after the fact, history included
+/// (2026-10-18): a second source added; ends and validity stay.
+#[tokio::test]
+#[serial]
+async fn link_attributes_update_in_place() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/packs/investigation/install",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(st < 300, "{p}");
+        let employer = object(&server, &env.alice, org, "organization", "Radio", json!({})).await;
+        let host = object(&server, &env.alice, org, "person", "Host", json!({})).await;
+        let (st, l) = call(
+            &server,
+            "POST",
+            "/api/v1/ontology/links",
+            &env.alice,
+            org,
+            Some(
+                json!({"link_type": "employs", "source_id": employer["id"], "target_id": host["id"],
+                        "attributes": {"position": "host"},
+                        "valid_from": "2014-09-01T00:00:00Z", "valid_to": "2019-06-30T00:00:00Z"}),
+            ),
+        )
+        .await;
+        assert!(st < 300, "{l}");
+        let url = format!("/api/v1/ontology/links/{}", l["id"]);
+        let attrs = json!({"position": "host", "note": "also https://example.org/2"});
+        let (st, u) = call(
+            &server,
+            "PUT",
+            &url,
+            &env.alice,
+            org,
+            Some(json!({"attributes": attrs})),
+        )
+        .await;
+        assert_eq!(st, 200, "{u}");
+        assert_eq!(u["attributes"], attrs, "{u}");
+        assert_eq!(u["valid_to"], l["valid_to"], "validity stays: {u}");
+        let (st, e) = call(
+            &server,
+            "PUT",
+            &url,
+            &env.alice,
+            org,
+            Some(json!({"attributes": {"nope": 1}})),
+        )
+        .await;
+        assert_eq!(st, 400, "unknown attribute: {e}");
+        let (st, _) = call(
+            &server,
+            "PUT",
+            &url,
+            &env.bob,
+            org,
+            Some(json!({"attributes": {}})),
+        )
+        .await;
+        assert!(st == 403 || st == 404, "{st}");
+    })
+    .await;
+}
+
 /// A pack upgrade keeps what the org added to its types (2026-10-18): a
 /// property, a link attribute and a source type added locally survive a
 /// newer version of the pack, which still wins on what it declares.

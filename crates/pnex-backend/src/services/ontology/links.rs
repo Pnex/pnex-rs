@@ -17,7 +17,7 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
     QueryFilter, QueryOrder, Set,
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use super::changes::{self, Change};
@@ -301,6 +301,62 @@ pub async fn create<C: ConnectionTrait>(
         for c in Change::link(org_id, kind, &actor.source_ref, &v) {
             changes::submit(c);
         }
+    }
+    Ok(v)
+}
+
+/// Replaces the attributes of a link, open or closed (a source added, a note
+/// corrected). The ends, the type and the validity stay: those are a new link.
+pub async fn update<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    id: i64,
+    attributes: &Map<String, Value>,
+) -> Result<LinkView> {
+    let s = schema(db, org_id).await?;
+    let row = resource_edges::Entity::find_by_id(id)
+        .filter(resource_edges::Column::OrgId.eq(org_id))
+        .one(db)
+        .await?
+        .ok_or(OntologyError::NotFound)?;
+    for t in [&row.source_kind, &row.target_kind] {
+        if let Some(def) = s.object_type(t) {
+            if !role_allows(&actor.role, def.write_role) {
+                return Err(OntologyError::WriteForbidden);
+            }
+        }
+    }
+    let Some(lt) = s.link_type(&row.relation) else {
+        return Err(OntologyError::NotFound);
+    };
+    // A binding's attributes carry its uniqueness (measures) or a checked
+    // pose (depicts): rebind instead.
+    if lt.key == REL_MEASURES || lt.key == REL_DEPICTS {
+        return Err(super::invalid("attributes", FIELD_INVALID));
+    }
+    let attrs = check_values(&lt.attributes, attributes)
+        .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+    let before =
+        serde_json::to_value(views(db, org_id, &[row]).await?.remove(0)).unwrap_or_default();
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    resource_edges::Entity::update_many()
+        .col_expr(
+            resource_edges::Column::Attributes,
+            Expr::value(Value::Object(attrs)),
+        )
+        .col_expr(resource_edges::Column::UpdatedAt, Expr::value(now))
+        .filter(resource_edges::Column::Id.eq(id))
+        .exec(db)
+        .await?;
+    let row = resource_edges::Entity::find_by_id(id)
+        .one(db)
+        .await?
+        .ok_or(OntologyError::NotFound)?;
+    let v = views(db, org_id, &[row]).await?.remove(0);
+    for mut c in Change::link(org_id, "link.update", &actor.source_ref, &v) {
+        c.before = before.clone();
+        changes::submit(c);
     }
     Ok(v)
 }

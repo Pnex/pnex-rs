@@ -15,12 +15,14 @@
 # Since 1.8.0 `published_by` says who published a piece or a media file
 # (media-review.md D278): any publisher type, so the `media` type of the
 # media coverage pack fits without this pack knowing it.
+# Since 1.9.0 `about` may name the very link a claim bears on (`link`, the
+# link id): a second source or a diverging date for a fact already linked.
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.8.0"
+version: "1.9.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -221,6 +223,8 @@ link_types:
     inverse_names: {fr: "est le sujet de"}
     from_types: [claim]
     to_types: "*"
+    attributes:
+      - { key: link, name: Link, names: {fr: "Lien"}, kind: number }
   - key: sourced_by
     name: is sourced by
     names: {fr: "a pour source"}
