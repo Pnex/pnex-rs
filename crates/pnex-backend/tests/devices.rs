@@ -660,8 +660,8 @@ async fn catalogue_global_partage() {
         let pds = pds["results"].as_array().expect("enveloppe");
         assert_eq!(
             pds.len(),
-            6,
-            "4 predefined + generic_esp8266 (Brick 0) + edge_agent (D95)"
+            7,
+            "4 predefined + generic_esp8266 (Brick 0) + edge_agent (D95) + browser_agent (D255)"
         );
         let relay_pd = pds
             .iter()
@@ -709,8 +709,8 @@ async fn catalogue_global_partage() {
             .await
             .json();
         assert_eq!(
-            by_board["count"], 5,
-            "esp32 board only (edge_agent included) — generic_esp8266 is on esp8266, filtered out"
+            by_board["count"], 6,
+            "esp32 board only (edge_agent and browser_agent included) — generic_esp8266 is on esp8266, filtered out"
         );
         let by_cap_search: serde_json::Value = server
             .get("/api/v1/predefined-devices?search=RELAY")
@@ -734,7 +734,7 @@ async fn catalogue_global_partage() {
             .add_header("Authorization", bearer(&env.bob))
             .await
             .json();
-        assert_eq!(bob_pds["results"].as_array().unwrap().len(), 6);
+        assert_eq!(bob_pds["results"].as_array().unwrap().len(), 7);
     })
     .await;
 }
@@ -800,8 +800,8 @@ async fn pagination_des_listes() {
             .await
             .json();
         assert_eq!(
-            cat1["count"], 6,
-            "4 + generic_esp8266 (Brick 0) + edge_agent (D95)"
+            cat1["count"], 7,
+            "4 + generic_esp8266 (Brick 0) + edge_agent (D95) + browser_agent (D255)"
         );
         assert_eq!(cat1["results"].as_array().unwrap().len(), 2);
         assert_eq!(
@@ -814,7 +814,7 @@ async fn pagination_des_listes() {
             .await
             .json();
         assert_eq!(cat3["results"].as_array().unwrap().len(), 2);
-        // 5th and 6th predefined (generic_esp8266, edge_agent) → a last full page of 2.
+        // 5th, 6th and 7th predefined (generic_esp8266, edge_agent, browser_agent) → 2 + 1.
         assert_eq!(
             cat3["next"].as_str().unwrap(),
             "/api/v1/predefined-devices?limit=2&offset=4"
@@ -825,7 +825,17 @@ async fn pagination_des_listes() {
             .await
             .json();
         assert_eq!(cat4["results"].as_array().unwrap().len(), 2);
-        assert!(cat4["next"].is_null(), "fin de catalogue");
+        assert_eq!(
+            cat4["next"].as_str().unwrap(),
+            "/api/v1/predefined-devices?limit=2&offset=6"
+        );
+        let cat5: serde_json::Value = server
+            .get("/api/v1/predefined-devices?limit=2&offset=6")
+            .add_header("Authorization", bearer(&env.alice))
+            .await
+            .json();
+        assert_eq!(cat5["results"].as_array().unwrap().len(), 1);
+        assert!(cat5["next"].is_null(), "fin de catalogue");
 
         // Capabilities : même enveloppe.
         let caps: serde_json::Value = server
