@@ -1737,3 +1737,98 @@ dev.pnex.io, par la CLI et l'API (projet `pnex-france-overview`,
 - **MCP** : l'utilisateur doit s'authentifier (`/mcp`) ; la découverte OAuth
   répond bien côté serveur.
 - **Statut** : ⏳ ouvert.
+
+## 2026-10-18 — agents navigateur : fin du lot, points à trancher
+
+Revue de sécurité du lot faite le même jour (SEC-44 à SEC-46 dans
+`security.md` §7). Corrigés dans le code : anti-rejeu des signatures (sur
+`r`), débit des trames `seen` (60/min par lien), plafonds d'org (20 agents,
+200 missions, `extension-limit-reached`), scénario Chromium réel versionné
+(`e2e/tests/browser-agent.spec.ts`, tag `@extension`). Restent les
+décisions ci-dessous.
+
+### O89 — Registre des vidéos sans plafond par org
+
+- **Constat** : le débit des lots `seen` est borné, pas le volume :
+  `social_videos` grandit sans limite (historique de 400 posts × 200
+  missions ≈ 80 000 lignes, normal ; un agent forgé peut aller au-delà, à
+  60 lots de 100 posts par minute).
+- **Aussi relevé** (sous le seuil de la revue) : `store_video` et
+  `store_captions` ne vérifient ni `force_video` ni le bail de l'agent (même
+  org, agent semi-fiable) ; un upload refusé au contrôle de type laisse un
+  média vide (borné à 30 uploads/min par agent).
+- **À trancher** : plafond de lignes du registre par org (proposé 500 000,
+  ou par tier avec les quotas SEC-40), et si l'on resserre `store_video`
+  (refus hors `force_video` / hors bail, média créé après le contrôle).
+- **Statut** : ⏳ ouvert.
+
+### O90 — `collect_page` sur x.com et youtube.com (SEC-46)
+
+- **Constat** : ces deux hôtes sont accordés à l'installation (scripts de
+  contenu), sans le bouton « Autoriser » par site. Un membre peut créer
+  « Garder la page » sur `https://x.com/messages` ou l'historique YouTube :
+  les pages privées du compte connecté sur l'agent deviennent un document
+  lisible par toute l'org.
+- **Tension** : la collecte HTML de X fait partie du besoin initial.
+- **Options** : A) refuser ces hôtes pour `collect_page` / `collect_value`
+  (X et YouTube seulement par « Suivre un compte ») ; B) liste de chemins
+  refusés (`/messages`, `/i/`, `/settings`, `/feed/history`…) ; C) accepter
+  (même org, l'agent est le compte de l'org) et le dire dans le formulaire.
+- **Statut** : ⏳ à trancher.
+
+### O91 — Rétention des captures (D268) non codée
+
+- **Constat** : décidée (par mission, `none` / `days:N` / `keep`), pas
+  codée : vidéos et parties de live sont gardées sans limite.
+- **Cause** : `media_versions.storage_key` est `NOT NULL` ; supprimer le
+  fichier en gardant la transcription demande une version « sans fichier »,
+  lue à 19 endroits (lecteur, relecture D271, téléchargement,
+  retranscription, réidentification). Ce code appartient au chantier
+  relecture média.
+- **Options** : A) `storage_key` nullable + état « fichier purgé » partout
+  (lecteur et relecture affichent le texte seul, « Retranscrire » grisé) ;
+  B) le pruner supprime l'asset entier et la transcription survit ailleurs
+  (pas de support aujourd'hui) ; C) `keep` seul en v1, le formulaire le dit.
+- **À trancher avec** l'agent de la relecture média, avant toute campagne
+  longue (disque).
+- **Statut** : ⏳ ouvert.
+
+### O92 — Vidéo de plus de 40 minutes tronquée
+
+- **Constat** : sans fichier téléchargeable (YouTube), une vidéo forcée est
+  enregistrée en temps réel jusqu'à 40 min (plafond de 200 Mo à 600 kbit/s),
+  puis envoyée comme vidéo complète : la fin est perdue sans le dire.
+- **Options** : A) découper en parties de 30 min comme un live (une vidéo =
+  N médias, reprise à `currentTime`) ; B) baisser le débit au-delà de 40 min
+  (qualité) ; C) marquer `truncated` dans la provenance et l'afficher au
+  registre.
+- **Statut** : ⏳ à trancher.
+
+### O93 — Reste du périmètre, à planifier
+
+- **L7 recherche** sur les plateformes, filtrée par le registre (demande du
+  2026-10-18).
+- **Facebook** cité dans le besoin, aucun adaptateur (X, YouTube, TikTok).
+- **Déduplication par contenu** : la même vidéo republiée par un autre
+  compte est traitée deux fois (empreinte perceptuelle, plus tard).
+- **Publication** Chrome Web Store et signature AMO (question 4 de la
+  spec) ; d'ici là, chargement non empaqueté / temporaire.
+- **Statut** : ⏳ ouvert.
+
+### O94 — Campagne de test des agents navigateur : quoi observer
+
+- Formats réels de X (`UserTweets`), YouTube (`ytInitialData`, Shorts) et
+  TikTok (`item_list`) face aux fixtures.
+- Sous-titres YouTube lisibles depuis l'extension (json3).
+- Son présent dans un enregistrement d'une vidéo coupée (`muted`).
+- Onglets en arrière-plan par plateforme (tableau §16.1 de
+  `extension-collector.md`, régler `needs_foreground`).
+- TikTok : téléchargement direct de `playAddr` ou bascule en
+  enregistrement ; mode dédié sur un vrai PC.
+- Firefox : chargement temporaire et lien.
+- Valeurs à régler sur mesure : 20 agents / 200 missions par org, 60 lots
+  `seen`/min, `NAV_GAP_MS` 20 s, profondeur +20 par visite.
+- `e2e/tests/browser-agent.spec.ts` n'a tourné qu'en local : premier
+  passage CI à surveiller (`PNEX_DEVICE_REQUIRE_TLS=false` dans
+  `compose.ci.yaml`).
+- **Statut** : ⏳ en attente de la campagne.
