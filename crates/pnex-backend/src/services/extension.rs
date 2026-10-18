@@ -54,6 +54,9 @@ pub enum ExtensionError {
     PairRefused,
     #[error("install paired with another org")]
     PairedElsewhere,
+    /// Org cap on agents or missions reached.
+    #[error("limit reached")]
+    LimitReached { max: i64 },
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -200,6 +203,20 @@ pub async fn pair(
                 row.device_registry_id
             }
             None => {
+                let count = txn
+                    .query_one_raw(stmt(
+                        "SELECT count(*) AS n FROM extension_agents WHERE org_id = $1",
+                        vec![org_id.into()],
+                    ))
+                    .await?
+                    .map(|r| r.try_get::<i64>("", "n"))
+                    .transpose()?
+                    .unwrap_or(0);
+                if count >= ba::AGENTS_MAX {
+                    return Err(ExtensionError::LimitReached {
+                        max: ba::AGENTS_MAX,
+                    });
+                }
                 let model = predefined_devices::Entity::find()
                     .filter(predefined_devices::Column::Name.eq(pnex_core::BROWSER_AGENT_PREDEF))
                     .one(&txn)
@@ -395,9 +412,18 @@ pub async fn issue_ticket(config: &Config, agent: &AgentAuth, signature: &str) -
 /// `Some(true)` the first time a signature is seen (kept past its validity
 /// window), `Some(false)` on a replay, `None` when Valkey is unreachable.
 pub async fn first_use(config: &Config, signature: &str) -> Option<bool> {
+    // Keyed on `r`: the text may differ (padding, spaces) and `(r, n−s)`
+    // verifies too, but `r` is the same for every form of one signature.
+    let Some(r) = URL_SAFE_NO_PAD
+        .decode(signature.trim())
+        .ok()
+        .filter(|sig| sig.len() == 64)
+    else {
+        return Some(false);
+    };
     let mut conn = crate::services::shared_valkey::conn(config).await?;
     let fresh: Option<String> = redis::cmd("SET")
-        .arg(format!("pnex:ext:sig:{}", sha256_hex(signature.as_bytes())))
+        .arg(format!("pnex:ext:sig:{}", sha256_hex(&r[..32])))
         .arg(1)
         .arg("NX")
         .arg("PX")
@@ -555,6 +581,21 @@ pub async fn create_mission(
     let (spec, target) = ba::check_spec(&input.spec)?;
     let interval = ba::check_interval(input.interval_secs)?;
     check_agent(db, org_id, input.agent_id).await?;
+    // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
+    let count = db
+        .query_one_raw(stmt(
+            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?
+        .map(|r| r.try_get::<i64>("", "n"))
+        .transpose()?
+        .unwrap_or(0);
+    if count >= ba::MISSIONS_MAX {
+        return Err(ExtensionError::LimitReached {
+            max: ba::MISSIONS_MAX,
+        });
+    }
     let id = Uuid::new_v4();
     db.execute_raw(stmt(
         "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs,

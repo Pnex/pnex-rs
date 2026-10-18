@@ -734,6 +734,9 @@ pub const EXTENSION_VIDEO_NOT_FOUND: &str = "extension-video-not-found";
 /// Capture upload refused: unknown agent token, bad or reused signature,
 /// body not matching its signature.
 pub const EXTENSION_UPLOAD_REFUSED: &str = "extension-upload-refused";
+/// The org holds as many browser agents (pairing) or missions (creation)
+/// as allowed; args: `max`.
+pub const EXTENSION_LIMIT_REACHED: &str = "extension-limit-reached";
 /// This server ships no browser extension build (`PNEX_EXTENSION_DIST_DIR`).
 pub const EXTENSION_DIST_NOT_FOUND: &str = "extension-dist-not-found";
 /// Agent state: the selector matched nothing on the page.
@@ -1091,6 +1094,7 @@ pub const ALL: &[&str] = &[
     EXTENSION_TICKET_REFUSED,
     EXTENSION_TICKET_UNAVAILABLE,
     EXTENSION_DIST_NOT_FOUND,
+    EXTENSION_LIMIT_REACHED,
     EXTENSION_UPLOAD_REFUSED,
     EXTENSION_VIDEO_NOT_FOUND,
     EXT_SELECTOR_NOT_FOUND,

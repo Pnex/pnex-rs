@@ -34245,7 +34245,7 @@
                 }
               }
             },
-            "description": "`extension-install-paired-elsewhere`: the install is paired with another org"
+            "description": "`extension-install-paired-elsewhere`: the install is paired with another org; `extension-limit-reached` (`args.max`): the org holds as many agents as allowed"
           }
         },
         "security": [
@@ -34546,6 +34546,16 @@
               }
             },
             "description": "`extension-write-forbidden`: viewer role"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-limit-reached` (`args.max`): the org holds as many missions as allowed"
           }
         },
         "security": [

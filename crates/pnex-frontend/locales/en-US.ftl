@@ -4220,6 +4220,7 @@ err-extension-ticket-unavailable = Browser agent connections are unavailable for
 err-extension-video-not-found = This video is not in the registry of the mission, or it was already captured.
 err-extension-upload-refused = A browser agent capture was refused: pair the extension again.
 err-extension-dist-not-found = This server does not ship the browser extension: ask your administrator to install a complete PNeX image.
+err-extension-limit-reached = This organization reached its limit ({ $max }): delete a browser agent or a mission first.
 err-ext-selector-not-found = The selector matches nothing on the page: check it on the page in your browser.
 err-ext-value-not-numeric = The value read is not a number: pick an element that shows a number.
 err-ext-login-required = The site asks to sign in: sign in within the agent's browser, then resume the mission.
