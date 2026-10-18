@@ -695,6 +695,20 @@ clés, lisible en YAML.
   ouverts sont uniques par paire) ; les cardinalités ne lient que les liens
   ouverts. Avant, un mandat passé ne pouvait pas être saisi à côté du mandat
   en cours. Test `closed_link_is_history_beside_the_open_one`.
+- Pack **`media_coverage`** livré (2026-10-18, la « Couverture médiatique »
+  de D190, sans pays) : `media`, `program`, `party`, `mandate` ; liens
+  `controls`, `finances` (montant + devise), `broadcasts`, `staffs`,
+  `presents`, `columnist_of`, `party_member`, `holds_mandate`,
+  `appears_on`, `describes` (page → objet) ; chaque lien porte sa source,
+  sa date de consultation et son début tel que collecté. Les identifiants
+  nationaux (parlement, registre des sociétés) restent des propriétés de
+  l'org. Un pack déclare les packs dont il utilise les types
+  (`requires: [investigation]`) : ils sont installés avant lui s'ils
+  manquent. `investigation` 1.7.0 : `wikidata` sur personne et
+  organisation, provenance (`source`, `retrieved_on`, `note`) sur `owns`,
+  `employs`, `member_of`. Premier usage : ontologie politique × médias
+  France (dépôt `pnex-france-overview`). Test
+  `media_coverage_pack_requires_investigation`.
 - Assistant : schéma de l'org injecté dans le prompt système et outil
   `describe_ontology` ; `query_ontology`, `get_object`, `create_object`,
   `update_object`, `open_link`, `close_link`, `save_object_type` via les

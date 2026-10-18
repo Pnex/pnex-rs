@@ -1089,6 +1089,42 @@ async fn case_payments_and_ownership_shares() {
     .await;
 }
 
+/// Media coverage pack (D190, 2026-10-18): installing it installs the
+/// Investigation pack it builds on; outlets, staff and sourced funding.
+#[tokio::test]
+#[serial]
+async fn media_coverage_pack_requires_investigation() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/media_coverage/install", &env.alice, org, None).await;
+        assert!(st < 300, "{p}");
+        let (_, packs) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
+        let installed: Vec<&str> = packs["results"].as_array().unwrap().iter()
+            .filter(|p| !p["installed_version"].is_null())
+            .filter_map(|p| p["key"].as_str())
+            .collect();
+        assert!(installed.contains(&"investigation") && installed.contains(&"media_coverage"), "{packs}");
+        let outlet = object(&server, &env.alice, org, "media", "Radio One", json!({"medium": "radio"})).await;
+        let host = object(&server, &env.alice, org, "person", "Host", json!({"wikidata": "Q42"})).await;
+        let state = object(&server, &env.alice, org, "organization", "Treasury", json!({"kind": "public_body"})).await;
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({
+            "link_type": "staffs", "source_id": outlet["id"], "target_id": host["id"],
+            "attributes": {"position": "morning host", "source": "https://example.org", "retrieved_on": "2026-10-18"}
+        }))).await;
+        assert!(st < 300, "{l}");
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({
+            "link_type": "finances", "source_id": state["id"], "target_id": outlet["id"],
+            "attributes": {"amount": 1000000, "currency": "GBP", "year": 2025, "source": "https://example.org"}
+        }))).await;
+        assert!(st < 300, "{l}");
+        let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org, Some(json!({
+            "type_key": "media", "title": "Bad", "properties": {"medium": "carrier pigeon"}
+        }))).await;
+        assert_eq!(st, 400, "{e}");
+    })
+    .await;
+}
+
 /// A link may be written closed (`valid_to`, 2026-10-18): a past term sits
 /// beside the open link of the same pair, which stays unique.
 #[tokio::test]
@@ -1228,7 +1264,7 @@ async fn pack_upgrade_keeps_org_additions() {
         def["properties"]
             .as_array_mut()
             .unwrap()
-            .push(json!({"key": "wikidata", "name": "Wikidata", "kind": "text", "max_len": 32}));
+            .push(json!({"key": "local_id", "name": "Local id", "kind": "text", "max_len": 32}));
         let (st, e) = call(
             &server,
             "PUT",
@@ -1260,7 +1296,7 @@ async fn pack_upgrade_keeps_org_additions() {
         def["attributes"]
             .as_array_mut()
             .unwrap()
-            .push(json!({"key": "source", "name": "Source", "kind": "text", "max_len": 1000}));
+            .push(json!({"key": "local_ref", "name": "Local ref", "kind": "text", "max_len": 255}));
         def["from_types"]
             .as_array_mut()
             .unwrap()
@@ -1311,7 +1347,7 @@ async fn pack_upgrade_keeps_org_additions() {
             .filter_map(|p| p["key"].as_str())
             .collect();
         assert!(
-            props.contains(&"aliases") && props.contains(&"wikidata"),
+            props.contains(&"aliases") && props.contains(&"local_id"),
             "{t}"
         );
         let (_, l) = call(
@@ -1335,7 +1371,10 @@ async fn pack_upgrade_keeps_org_additions() {
             .iter()
             .filter_map(|a| a["key"].as_str())
             .collect();
-        assert_eq!(attrs, ["position", "source"], "{employs}");
+        assert!(
+            attrs.contains(&"position") && attrs.contains(&"local_ref"),
+            "{employs}"
+        );
         assert_eq!(
             employs["from_types"],
             json!(["organization", "place"]),
@@ -1347,7 +1386,7 @@ async fn pack_upgrade_keeps_org_additions() {
             org,
             "person",
             "Sourced",
-            json!({"wikidata": "Q1"}),
+            json!({"local_id": "Q1"}),
         )
         .await;
     })

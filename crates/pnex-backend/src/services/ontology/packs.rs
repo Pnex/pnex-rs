@@ -23,6 +23,7 @@ pub const YAML_MAX_BYTES: usize = 256 * 1024;
 const SHIPPED: &[&str] = &[
     include_str!("../../../packs/maintenance.yaml"),
     include_str!("../../../packs/investigation.yaml"),
+    include_str!("../../../packs/media_coverage.yaml"),
 ];
 
 pub fn shipped() -> Vec<Pack> {
@@ -152,6 +153,20 @@ async fn install_locked(
             description: pack.description.clone(),
             installed_version: Some(pack.version.clone()),
         });
+    }
+    for key in &pack.requires {
+        let present = packs::Entity::find()
+            .filter(packs::Column::OrgId.eq(org_id))
+            .filter(packs::Column::Key.eq(key))
+            .one(db)
+            .await?
+            .is_some();
+        if !present {
+            let Some(dep) = shipped().into_iter().find(|p| &p.key == key) else {
+                return Err(invalid("requires", pnex_core::err_codes::FIELD_INVALID));
+            };
+            Box::pin(install_locked(db, org_id, user_id, &dep)).await?;
+        }
     }
     let s = schema(db, org_id).await?;
     check(&s, pack)?;
@@ -326,6 +341,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         key: "org".into(),
         name: "Organization schema".into(),
         version: chrono::Utc::now().format("%Y%m%d%H%M%S").to_string(),
+        requires: Vec::new(),
         description: String::new(),
         types: s.org_types(),
         link_types: s.org_links(),
@@ -341,12 +357,22 @@ mod tests {
 
     #[test]
     fn shipped_packs_are_valid() {
-        for p in shipped() {
+        let all = shipped();
+        for p in &all {
+            // A pack sees its own types and those of the packs it requires.
+            let deps: Vec<&Pack> = all.iter().filter(|d| p.requires.contains(&d.key)).collect();
+            assert_eq!(
+                deps.len(),
+                p.requires.len(),
+                "{}: unknown required pack",
+                p.key
+            );
             let known = |k: &str| {
                 pnex_core::ontology::system_object_types()
                     .iter()
                     .any(|t| t.key == k)
                     || p.types.iter().any(|t| t.key == k)
+                    || deps.iter().any(|d| d.types.iter().any(|t| t.key == k))
             };
             for t in &p.types {
                 t.check(&known)

@@ -318,6 +318,10 @@ pub struct Pack {
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub names: super::Names,
     pub version: String,
+    /// Shipped packs this one builds on (their types in its links):
+    /// installed first when missing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<String>,
     #[serde(default)]
     pub description: String,
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
