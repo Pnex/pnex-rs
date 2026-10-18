@@ -60,6 +60,8 @@ pub enum Format {
     M4a,
     /// MP4 / QuickTime video (Vision Lab: frames of a video).
     Mp4,
+    /// WebM (Matroska), recorded by a browser (lives, extension-collector.md).
+    Webm,
     /// Binary glTF 2.0: 3D model of an object's gallery (D231).
     Glb,
 }
@@ -89,6 +91,7 @@ impl Format {
             Self::Flac => &["flac"],
             Self::M4a => &["m4a"],
             Self::Mp4 => &["mp4", "m4v", "mov"],
+            Self::Webm => &["webm", "weba"],
             Self::Glb => &["glb"],
             // `format_of` already matched the extension.
             Self::Doc(_) => &[],
@@ -109,6 +112,7 @@ impl Format {
             Self::Doc(_) => &["document"],
             Self::Wav | Self::Mp3 | Self::Ogg | Self::Flac | Self::M4a => &["audio"],
             Self::Mp4 => &["video"],
+            Self::Webm => &["video", "audio"],
             Self::Glb => &["mesh"],
         }
     }
@@ -129,6 +133,8 @@ impl Format {
             Self::M4a => "audio/mp4",
             Self::Mp4 if extension(filename) == "mov" => "video/quicktime",
             Self::Mp4 => "video/mp4",
+            Self::Webm if extension(filename) == "weba" => "audio/webm",
+            Self::Webm => "video/webm",
             Self::Glb => "model/gltf-binary",
             _ => return None,
         })
@@ -174,6 +180,12 @@ fn by_magic(b: &[u8]) -> Option<Format> {
         _ if matches!(ftyp_brand, Some(b"heic" | b"heix" | b"mif1" | b"msf1")) => Format::Heic,
         // Any other ISO base media brand (isom, mp41, mp42, avc1, qt…).
         _ if ftyp_brand.is_some() => Format::Mp4,
+        // EBML header with the `webm` doctype (Matroska alone is refused).
+        _ if b.starts_with(b"\x1A\x45\xDF\xA3")
+            && b[..b.len().min(64)].windows(4).any(|w| w == b"webm") =>
+        {
+            Format::Webm
+        }
         // glTF binary container, version 2 only.
         _ if b.starts_with(b"glTF") && b.get(4..8) == Some(&[2, 0, 0, 0]) => Format::Glb,
         _ if b.starts_with(b"ply\n") || b.starts_with(b"ply\r\n") => Format::Ply,
@@ -321,6 +333,17 @@ mod tests {
             Some("video")
         );
         assert_eq!(kind("clip.png", b"\0\0\0\x18ftypisom\0\0\x02\0"), None);
+    }
+
+    #[test]
+    fn webm_of_a_browser_recording() {
+        let webm = b"\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\x82\x84webm\x42\x87";
+        assert_eq!(kind("live.webm", webm), Some("video"));
+        assert_eq!(detect("live.webm", webm).unwrap().mime, Some("video/webm"));
+        assert_eq!(detect("talk.weba", webm).unwrap().mime, Some("audio/webm"));
+        // Matroska without the webm doctype stays refused.
+        let mkv = b"\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\x82\x88matroska";
+        assert_eq!(kind("film.webm", mkv), None);
     }
 
     #[test]

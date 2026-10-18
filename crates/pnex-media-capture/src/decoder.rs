@@ -69,6 +69,14 @@ const MP4: InputFormat = InputFormat {
     video: VIDEO_DECODERS,
 };
 
+/// WebM (Matroska): what a browser's MediaRecorder writes (lives captured by
+/// the browser agents, extension-collector.md).
+const WEBM: InputFormat = InputFormat {
+    demuxer: "matroska",
+    decoders: "opus,libopus,vorbis",
+    video: "vp8,vp9",
+};
+
 /// Raw H.264 Annex B (RTSP video track).
 pub const H264: InputFormat = InputFormat {
     demuxer: "h264",
@@ -118,6 +126,7 @@ pub fn input_format(content_type: Option<&str>, path: &str) -> Option<InputForma
         "audio/mp4" | "audio/x-m4a" | "video/mp4" | "video/quicktime" | "video/iso.segment" => {
             Some(MP4)
         }
+        "video/webm" | "audio/webm" => Some(WEBM),
         _ => None,
     };
     by_type.or_else(|| {
@@ -134,6 +143,7 @@ pub fn input_format(content_type: Option<&str>, path: &str) -> Option<InputForma
             "wav" => Some(WAV),
             "ts" => Some(MPEGTS),
             "m4a" | "mp4" | "m4s" | "cmfa" | "m4v" | "mov" => Some(MP4),
+            "webm" | "weba" => Some(WEBM),
             _ => None,
         }
     })
@@ -281,6 +291,8 @@ mod tests {
     #[test]
     fn formats_from_type_then_extension() {
         assert_eq!(input_format(Some("audio/mpeg"), "/live"), Some(MP3));
+        assert_eq!(input_format(Some("video/webm"), "x"), Some(WEBM));
+        assert_eq!(input_format(None, "live.webm"), Some(WEBM));
         assert_eq!(
             input_format(Some("audio/aacp; charset=x"), "/live"),
             Some(AAC)
