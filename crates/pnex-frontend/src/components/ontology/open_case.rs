@@ -35,6 +35,7 @@ pub fn OpenCaseButton(kind: String, at_us: i64, flow_id: Option<i64>, title: Str
                 at: at.clone(),
                 flow_id,
             }),
+            parent_id: None,
         };
         busy.set(true);
         spawn(async move {

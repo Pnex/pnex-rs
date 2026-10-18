@@ -212,3 +212,43 @@ Reste à faire :
 - **Défaut connu** : quand il y a peu de nœuds reliés, la colonne des isolés se cale au bord droit et son libellé peut être coupé (`stagePadding` ne compte pas les libellés).
 - Licences npm à consigner dans `docs/inventory.md` ; vérification visuelle sur le vrai dossier de référence et en Android/desktop.
 
+
+## 10. Vues Amas et Orbite, dossiers imbriqués (2026-10-18)
+
+Référence de lecture : bl00d.money (graphe d3 + canvas, 294 entités). Ce qu'on reprend, c'est la navigation : un clic sur un nœud **réarrange** le graphe autour de lui, avec un zoom animé et un retour. On reprend aussi la lecture « un disque par type ». Notre vue Argent (Sankey, `cases-money.md`) et notre Histoire / frise (K23, vue Histoire) restent les nôtres : leur vue « flow » en colonnes n'apporte rien de plus.
+
+### GS14 — Barre de vues : Réseau, Amas, Hiérarchie
+
+- La bascule Hiérarchie devient un groupe de trois boutons (`cw-graph-view-force|clusters|hierarchy`). La vue Chronologie (GS5) reste accessible par la frise, pas par ce groupe.
+- **Amas** (`clusterLayout`, dérivée, jamais enregistrée) : un disque par type d'objet (`type_key` ; les événements à part), placé sur un cercle, le plus gros d'abord ; dans un disque, spirale de l'angle d'or, le nœud le plus relié au centre. Le nom du type (`type_label_of`) et le compte s'écrivent au-dessus du disque, sur le canvas (R11).
+- `GNode` transmet désormais son `type_key` (GS3 étendu : `type` dans `setData`).
+
+### GS15 — Orbite au clic
+
+- Un clic sur un nœud du canvas Sigma le sélectionne (comportement inchangé : inspecteur, frise) **et** le met au centre de son orbite (`orbitLayout`) : ses voisins sur un premier anneau, rangés par type puis par titre, avec sous leur nom le libellé du lien qui les relie au centre ; les voisins de ceux-ci sur un second anneau, dans l'ordre angulaire de leurs parents ; le reste est masqué, replié au centre. La transition est celle des autres vues (`animateNodes`, 400 ms, coupée par `prefers-reduced-motion`), puis la caméra recadre.
+- Chaque clic empile le centre ; **← Retour** dépile, puis rend la vue de départ. Choisir une vue dans la barre vide la pile.
+- Le glisser ne s'enregistre qu'en vue Réseau (inchangé) : une orbite est dérivée.
+
+### GS16 — Dossiers imbriqués : affichage seulement
+
+- Le modèle les permet déjà : `case` peut contenir `case` (`may_contain`, containment D42, anti-cycle de `set_parent`). Les liens ne changent pas : un sous-dossier est une **lecture** plus étroite, pas une copie.
+- **Choix tranchés** (2026-10-18, Shan : « je n'ai aucune idée de comment répondre », donc recommandations retenues) : un sous-dossier ne contient en principe que des objets de son parent, mais ce n'est pas imposé (un import automatique ne doit pas échouer pour un objet de plus) ; la base légale (`legal_basis`) du parent est **recopiée** à la création du sous-dossier (une valeur, modifiable ensuite ; pas de lecture récursive à chaque rattachement).
+- Dans le graphe du parent, chaque sous-dossier est un nœud `case`, relié (`in_case`) aux membres du parent qu'il contient aussi. Un clic l'orbite comme les autres nœuds ; un **double-clic** ouvre le sous-dossier. Un bandeau au-dessus de la vue porte le fil d'Ariane (ancêtres, `path_of`), les sous-dossiers avec leur nombre de membres et **+ Sous-dossier** ; *Retour* de l'en-tête remonte au parent.
+- L'espace de travail est remonté à chaque changement de dossier (composant à clé = id) : passer d'un dossier à son sous-dossier par la même route ne garde aucun état du précédent.
+
+### GS17 — API et MCP d'abord
+
+Personne ne remplira ces dossiers à la main : le chemin principal est l'API, donc le MCP (D245). Contrat :
+
+- `POST /api/v1/cases` (`cases_open`, déjà exposé) accepte `parent_id` : parent vérifié dans l'org du principal (R1), de type `case`, sinon `case-parent-invalid` ; le rattachement passe par le service de containment existant.
+- `GET /api/v1/cases/{id}/workspace` renvoie en plus `parents` (ancêtres, du plus proche à la racine) et `children` (`id`, `title`, `members` : nombre de membres).
+- Réorganiser l'arbre : `resources_containment_set` (déjà exposé), aucune route nouvelle.
+- Côté UI, créer un sous-dossier se fait depuis le fil d'Ariane du parent, sans modale (D218–D224).
+
+### Lots
+
+| Lot | Contenu | État |
+|---|---|---|
+| **GS-L5** | GS14, GS15 (front seul : `graph_layout.js`, `graph.js`, `workspace/graph.rs`, 6 clés) | Fait, testé (`bun test js/`, tests du front, contrôle visuel sur le dossier « Propriété et financement des médias » de dev.pnex.io) |
+| **GS-L6** | GS16, GS17 : `parent_id`, `parents` / `children` du workspace, bandeau, nœuds sous-dossier, openapi, fiche assistant | Fait, testé (`sub_cases_nest_under_their_parent`, test unitaire du graphe, gardes openapi / mcp / lexique / KB, `openapi:lint`) ; non déployé : contrôle visuel sur réponse simulée seulement |
+| **GS-L7** | Découper les 7 dossiers de `pnex-france-overview` (politique-medias) en sous-dossiers par l'API | À faire |

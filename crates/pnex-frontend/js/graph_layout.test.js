@@ -1,7 +1,7 @@
 // Run with `bun test js/`.
 import { expect, test } from 'bun:test';
 import Graph from 'graphology';
-import { chronoLayout, forceLayout, hashed, hierarchyLayout, LANE_OF } from './graph_layout.js';
+import { chronoLayout, clusterLayout, forceLayout, hashed, hierarchyLayout, LANE_OF, orbitLayout } from './graph_layout.js';
 
 // Same vectors as `hashed_matches_the_js_port` in pnex-core's layout.rs.
 test('hashed is the exact port of layout.rs', () => {
@@ -113,4 +113,35 @@ test('hierarchy: owners above what they own, cycles cut, loose nodes below', () 
   for (const p of Object.values(out)) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);  // A member sits under its party.
   const party = hierarchyLayout([{ id: 'mp' }, { id: 'party' }], [{ a: 'mp', b: 'party', kind: 'relation', link: 'party_member' }]);
   expect(party.party.y).toBeLessThan(party.mp.y);
+});
+
+test('clusters: one disc per type, largest first, busiest node at its centre', () => {
+  const nodes = [
+    { id: 'p1', type: 'person', title: 'A' }, { id: 'p2', type: 'person', title: 'B' },
+    { id: 'p3', type: 'person', title: 'C' }, { id: 'm1', type: 'media', title: 'M' },
+    { id: 'e1', event: true, type: 'event', title: 'E' },
+  ];
+  const edges = [{ a: 'p2', b: 'm1' }, { a: 'p2', b: 'e1' }];
+  const { positions, clusters } = clusterLayout(nodes, edges);
+  expect(clusters.map((c) => [c.key, c.count])).toEqual([['person', 3], ['event', 1], ['media', 1]]);
+  const person = clusters[0];
+  expect(positions.p2).toEqual({ x: person.x, y: person.y });
+  for (const n of nodes) expect(Number.isFinite(positions[n.id].x)).toBe(true);
+});
+
+test('orbit: neighbours on ring 1 with the link label, theirs on ring 2, the rest hidden', () => {
+  const nodes = ['c', 'a', 'b', 'x', 'far'].map((id) => ({ id, type: 'person', title: id }));
+  const edges = [
+    { a: 'c', b: 'a', label: 'owns' }, { a: 'b', b: 'c', label: 'funds' },
+    { a: 'a', b: 'x', label: 'knows' },
+  ];
+  const { positions, ring, via } = orbitLayout(nodes, edges, 'c');
+  expect(ring).toEqual({ c: 0, a: 1, b: 1, x: 2 });
+  expect(via).toEqual({ a: 'owns', b: 'funds' });
+  expect(positions.c).toEqual({ x: 0, y: 0 });
+  expect(positions.far).toEqual({ x: 0, y: 0 });
+  const d = (id) => Math.hypot(positions[id].x, positions[id].y);
+  expect(d('a')).toBeCloseTo(d('b'));
+  expect(d('x')).toBeGreaterThan(d('a'));
+  expect(orbitLayout(nodes, edges, 'gone').positions).toEqual({});
 });

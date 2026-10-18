@@ -232,3 +232,114 @@ export function hierarchyLayout(nodes, edges) {
 }
 
 export const LANE_OF = LANES;
+
+// Degree of every node over `edges`, by id.
+function degrees(edges) {
+  const deg = {};
+  for (const e of edges) {
+    deg[e.a] = (deg[e.a] || 0) + 1;
+    deg[e.b] = (deg[e.b] || 0) + 1;
+  }
+  return deg;
+}
+
+// Golden-angle spiral: the i-th of a group, the busiest at the centre.
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const STEP = 16;
+
+// Positions of the cluster view: one disc per object type (events apart),
+// the busiest nodes in the middle of their disc, the discs on a circle,
+// largest first. Also returns each disc's centre, radius and count, for
+// its label. Derived, never saved.
+export function clusterLayout(nodes, edges) {
+  const deg = degrees(edges);
+  const groups = new Map();
+  for (const n of nodes) {
+    const k = n.event ? 'event' : n.type || n.family || 'other';
+    (groups.get(k) || groups.set(k, []).get(k)).push(n);
+  }
+  const list = [...groups.entries()]
+    .map(([key, items]) => ({ key, items, r: STEP * Math.sqrt(items.length) + 24 }))
+    .sort((p, q) => q.items.length - p.items.length || (p.key < q.key ? -1 : 1));
+  const gap = 90;
+  const around = list.reduce((s, g) => s + 2 * g.r + gap, 0);
+  const radius = list.length > 1 ? around / (2 * Math.PI) : 0;
+  const out = {};
+  const clusters = [];
+  let walked = 0;
+  for (const g of list) {
+    const a = ((walked + g.r + gap / 2) / around) * 2 * Math.PI - Math.PI / 2;
+    walked += 2 * g.r + gap;
+    const [cx, cy] = [radius * Math.cos(a), radius * Math.sin(a)];
+    g.items.sort((p, q) => (deg[q.id] || 0) - (deg[p.id] || 0) || String(p.title).localeCompare(String(q.title)));
+    g.items.forEach((n, i) => {
+      const r = STEP * Math.sqrt(i);
+      out[n.id] = { x: cx + r * Math.cos(i * GOLDEN), y: cy + r * Math.sin(i * GOLDEN) };
+    });
+    clusters.push({ key: g.key, x: cx, y: cy, r: g.r, count: g.items.length });
+  }
+  return { positions: out, clusters };
+}
+
+// Positions of the orbit view around `center`: its neighbours on a first
+// ring (grouped by type, then by title), their own neighbours on a second
+// ring next to them, everything else gathered on the centre, hidden.
+// `ring` tells each node's ring (0, 1, 2; absent = hidden), `via` the
+// labels of the links that tie a first-ring node to the centre.
+export function orbitLayout(nodes, edges, center) {
+  const out = {};
+  const ring = {};
+  const via = {};
+  if (!nodes.some((n) => n.id === center)) return { positions: out, ring, via };
+  const near = new Map();
+  const add = (p, q) => (near.get(p) || near.set(p, new Set()).get(p)).add(q);
+  for (const e of edges) {
+    if (e.a === e.b) continue;
+    add(e.a, e.b);
+    add(e.b, e.a);
+    const other = e.a === center ? e.b : e.b === center ? e.a : null;
+    if (other && e.label) (via[other] ||= new Set()).add(e.label);
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const kind = (id) => (byId.get(id)?.event ? 'event' : byId.get(id)?.type || '');
+  const title = (id) => String(byId.get(id)?.title || id);
+  const first = [...(near.get(center) || [])].filter((id) => byId.has(id))
+    .sort((p, q) => kind(p).localeCompare(kind(q)) || title(p).localeCompare(title(q)));
+  ring[center] = 0;
+  out[center] = { x: 0, y: 0 };
+  // Rings sized so neighbours sit ~70 apart.
+  const r1 = Math.max(220, (first.length * 70) / (2 * Math.PI));
+  const angle = {};
+  first.forEach((id, i) => {
+    const a = (i / first.length) * 2 * Math.PI - Math.PI / 2;
+    angle[id] = a;
+    ring[id] = 1;
+    out[id] = { x: r1 * Math.cos(a), y: r1 * Math.sin(a) };
+  });
+  // Second ring: in the order of the mean angle of their first-ring
+  // neighbours, then spread evenly so labels do not pile up.
+  const second = [];
+  for (const id of first) {
+    for (const q of near.get(id) || []) {
+      if (ring[q] !== undefined || !byId.has(q)) continue;
+      ring[q] = 2;
+      second.push(q);
+    }
+  }
+  const mean = (id) => {
+    const as = [...(near.get(id) || [])].filter((q) => ring[q] === 1).map((q) => angle[q]);
+    const [s, c] = as.reduce(([s, c], a) => [s + Math.sin(a), c + Math.cos(a)], [0, 0]);
+    return Math.atan2(s, c);
+  };
+  const keyed = second.map((id) => ({ id, a: mean(id) })).sort((p, q) => p.a - q.a);
+  const r2 = Math.max(r1 + 200, (keyed.length * 26) / (2 * Math.PI));
+  const shift = keyed.length ? keyed[0].a : 0;
+  keyed.forEach(({ id }, i) => {
+    const a = shift + (i / keyed.length) * 2 * Math.PI;
+    out[id] = { x: r2 * Math.cos(a), y: r2 * Math.sin(a) };
+  });
+  for (const n of nodes) if (!out[n.id]) out[n.id] = { x: 0, y: 0 };
+  const labels = {};
+  for (const [id, set] of Object.entries(via)) if (ring[id] === 1) labels[id] = [...set].slice(0, 2).join(' · ');
+  return { positions: out, ring, via: labels };
+}

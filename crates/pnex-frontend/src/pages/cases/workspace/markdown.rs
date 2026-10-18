@@ -214,6 +214,8 @@ mod tests {
                 undated: Vec::new(),
                 zones: Vec::new(),
                 places: Vec::new(),
+                parents: Vec::new(),
+                children: Vec::new(),
             },
             board: CaseBoard::default(),
             pieces: vec![PieceEntry {

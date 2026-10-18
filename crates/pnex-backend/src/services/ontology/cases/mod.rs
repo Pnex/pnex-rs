@@ -37,8 +37,9 @@ pub use tracks::tracks;
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_INVALID_UUID, FIELD_REQUIRED};
 use pnex_core::geo_area::GeoArea;
 use pnex_core::ontology::api::{
-    CaseAttachInput, CaseAttachment, CaseDetachInput, CaseEvent, CaseEventInput, CaseOpenInput,
-    CasePlace, CaseWorkspace, CaseZone, LinkInput, ObjectInput, ObjectView,
+    CaseAttachInput, CaseAttachment, CaseChild, CaseDetachInput, CaseEvent, CaseEventInput,
+    CaseOpenInput, CasePlace, CaseWorkspace, CaseZone, LinkInput, ObjectInput, ObjectRef,
+    ObjectView,
 };
 use pnex_core::ontology::{
     CASE_LEGAL_BASIS, CASE_STATUS, EVENT_OCCURRED, EVENT_ORIGIN, INVOLVES_DETAIL, INVOLVES_ROLE,
@@ -46,13 +47,15 @@ use pnex_core::ontology::{
 };
 use pnex_core::resources::{KIND_FLOW, KIND_MAP_PIN};
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait,
+    ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter,
+    TransactionTrait,
 };
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use super::{invalid, links, objects, parse_instant, schema, Actor, OntologyError, Result};
 use crate::models::_entities::{map_pins, objects as object_rows, resource_edges};
+use crate::services::resources::containment;
 
 /// Pack types the case logic knows by key (packs/investigation.yaml); an org
 /// without the pack simply never meets them.
@@ -274,6 +277,7 @@ pub async fn workspace(
         .collect();
     zones.sort_by(|a, b| a.object.title.cmp(&b.object.title));
     let places = places_of(db, org_id, &members).await?;
+    let (parents, children) = family_of(db, org_id, case_id, &m).await?;
     Ok(CaseWorkspace {
         case: objects::view(&m.case, &s),
         events,
@@ -284,7 +288,62 @@ pub async fn workspace(
             .collect(),
         zones,
         places,
+        parents,
+        children,
     })
+}
+
+/// The enclosing cases, nearest first, and the sub-cases with what they
+/// share with this one (GS16), through the containment tree. A folder ends
+/// the chain of parents.
+async fn family_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    case_id: Uuid,
+    m: &Membership,
+) -> Result<(Vec<ObjectRef>, Vec<CaseChild>)> {
+    let id = case_id.to_string();
+    let mut parents = Vec::new();
+    for (kind, pid) in containment::path_of(db, org_id, KIND_CASE, &id).await? {
+        let Some(uid) = (kind == KIND_CASE)
+            .then(|| Uuid::parse_str(&pid).ok())
+            .flatten()
+        else {
+            break;
+        };
+        match case_of(db, org_id, uid).await {
+            Ok(c) => parents.push(links::object_ref(&c)),
+            Err(OntologyError::NotFound) => break,
+            Err(e) => return Err(e),
+        }
+    }
+    let mine: HashSet<Uuid> = m.member_ids().into_iter().collect();
+    let mut children = Vec::new();
+    for (kind, cid, _) in containment::children_of(db, org_id, KIND_CASE, &id).await? {
+        let Some(uid) = (kind == KIND_CASE)
+            .then(|| Uuid::parse_str(&cid).ok())
+            .flatten()
+        else {
+            continue;
+        };
+        let sub = match membership(db, org_id, uid).await {
+            Ok(sub) => sub,
+            Err(OntologyError::NotFound) => continue,
+            Err(e) => return Err(e),
+        };
+        let ids = sub.member_ids();
+        children.push(CaseChild {
+            case: links::object_ref(&sub.case),
+            members: ids.len(),
+            shared: ids
+                .iter()
+                .filter(|i| mine.contains(i))
+                .map(Uuid::to_string)
+                .collect(),
+        });
+    }
+    children.sort_by(|a, b| a.case.title.cmp(&b.case.title));
+    Ok((parents, children))
 }
 
 /// Where each member stands: its first `geo_point` value, else the centre of
@@ -605,6 +664,22 @@ pub async fn open(
     };
     let mut props = Map::new();
     props.insert(CASE_STATUS.into(), "open".into());
+    // Sub-case (GS16): the parent is a live case of the org (R1); its legal
+    // basis is copied, so persons can join at once (K38).
+    let parent = match input.parent_id.as_deref() {
+        Some(raw) => match case_of(db, org_id, parse_id("parent_id", raw)?).await {
+            Ok(p) => Some(p),
+            Err(OntologyError::NotFound) => return Err(invalid("parent_id", FIELD_INVALID)),
+            Err(e) => return Err(e),
+        },
+        None => None,
+    };
+    if let Some(basis) = parent
+        .as_ref()
+        .and_then(|p| p.properties.get(CASE_LEGAL_BASIS))
+    {
+        props.insert(CASE_LEGAL_BASIS.into(), basis.clone());
+    }
     let txn = db.begin().await?;
     let case = objects::create(
         &txn,
@@ -667,6 +742,20 @@ pub async fn open(
         create_event_in(&txn, org_id, actor, case_id, &event, Map::new()).await?;
     }
     txn.commit().await?;
+    if let Some(p) = parent {
+        let parent_id = p.id.to_string();
+        containment::set_parent(
+            db,
+            org_id,
+            KIND_CASE,
+            &case.id,
+            Some((KIND_CASE, &parent_id)),
+            None,
+        )
+        .await
+        // A fresh case under a live case: only the database can fail here.
+        .map_err(|e| OntologyError::Db(DbErr::Custom(format!("case containment: {e:?}"))))?;
+    }
     Ok(case)
 }
 

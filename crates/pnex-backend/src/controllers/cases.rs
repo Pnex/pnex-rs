@@ -117,11 +117,11 @@ fn created<T: serde::Serialize>(r: crate::services::ontology::Result<T>) -> Resu
     tag = "cases",
     operation_id = "cases_open",
     summary = "Open a case",
-    description = "Creates a case (an ontology object of type `case`). With `from` (a dated notification or event), its first event is that alert, with the flow that raised it and the flow's neighbours attached as context. Needs a writer role.",
+    description = "Creates a case (an ontology object of type `case`). With `from` (a dated notification or event), its first event is that alert, with the flow that raised it and the flow's neighbours attached as context. With `parent_id` (a case of the org), it is opened as a sub-case of that case and takes its legal basis. Needs a writer role.",
     request_body = pnex_core::ontology::api::CaseOpenInput,
     responses(
         (status = 201, body = pnex_core::ontology::api::ObjectView),
-        (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Invalid field (field → token; `parent_id`: not a case of the org)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (flow of `from`)", body = crate::openapi::ErrorDetail)
     ),
@@ -170,7 +170,7 @@ async fn import_case(
     tag = "cases",
     operation_id = "cases_workspace",
     summary = "Get the workspace of a case",
-    description = "The case with its events (oldest first) and their attached objects with roles, its undated pieces, and the areas and places of its members for the map. Any org member.",
+    description = "The case with its events (oldest first) and their attached objects with roles, its undated pieces, the areas and places of its members for the map, its enclosing cases (nearest first) and its sub-cases with the members they share with it. Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Case object id (UUID)")),
     responses(
         (status = 200, body = pnex_core::ontology::api::CaseWorkspace),

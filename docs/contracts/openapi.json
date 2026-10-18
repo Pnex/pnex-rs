@@ -2416,6 +2416,32 @@
         ],
         "type": "object"
       },
+      "CaseChild": {
+        "description": "A sub-case, as its parent's workspace lists it (GS16).",
+        "properties": {
+          "case": {
+            "$ref": "#/components/schemas/ObjectRef"
+          },
+          "members": {
+            "description": "Members of the sub-case (its events and what they involve, its\nundated pieces).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "shared": {
+            "description": "Those members that are members of the parent too.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "case",
+          "members",
+          "shared"
+        ],
+        "type": "object"
+      },
       "CaseDetachInput": {
         "description": "Detach an object from an event (`event_id`: it stays in the case, undated\nif nothing else dates it), or remove it from the case (no `event_id`; for\nan event, its pieces stay in the case).",
         "properties": {
@@ -2631,6 +2657,14 @@
         "properties": {
           "from": {
             "$ref": "#/components/schemas/CaseFrom"
+          },
+          "parent_id": {
+            "description": "Opens it as a sub-case of this case (cases-graph-sigma.md GS16).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title": {
             "type": "string"
@@ -3008,9 +3042,23 @@
           "case": {
             "$ref": "#/components/schemas/ObjectView"
           },
+          "children": {
+            "description": "Sub-cases (GS16).",
+            "items": {
+              "$ref": "#/components/schemas/CaseChild"
+            },
+            "type": "array"
+          },
           "events": {
             "items": {
               "$ref": "#/components/schemas/CaseEvent"
+            },
+            "type": "array"
+          },
+          "parents": {
+            "description": "Enclosing cases, nearest first (GS16).",
+            "items": {
+              "$ref": "#/components/schemas/ObjectRef"
             },
             "type": "array"
           },
@@ -25438,7 +25486,7 @@
     },
     "/api/v1/cases": {
       "post": {
-        "description": "Creates a case (an ontology object of type `case`). With `from` (a dated notification or event), its first event is that alert, with the flow that raised it and the flow's neighbours attached as context. Needs a writer role.",
+        "description": "Creates a case (an ontology object of type `case`). With `from` (a dated notification or event), its first event is that alert, with the flow that raised it and the flow's neighbours attached as context. With `parent_id` (a case of the org), it is opened as a sub-case of that case and takes its legal basis. Needs a writer role.",
         "operationId": "cases_open",
         "parameters": [
           {
@@ -25481,7 +25529,7 @@
                 }
               }
             },
-            "description": "Invalid field (field → token)"
+            "description": "Invalid field (field → token; `parent_id`: not a case of the org)"
           },
           "401": {
             "content": {
@@ -28176,7 +28224,7 @@
     },
     "/api/v1/cases/{id}/workspace": {
       "get": {
-        "description": "The case with its events (oldest first) and their attached objects with roles, its undated pieces, and the areas and places of its members for the map. Any org member.",
+        "description": "The case with its events (oldest first) and their attached objects with roles, its undated pieces, the areas and places of its members for the map, its enclosing cases (nearest first) and its sub-cases with the members they share with it. Any org member.",
         "operationId": "cases_workspace",
         "parameters": [
           {

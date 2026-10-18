@@ -20,12 +20,15 @@ use pnex_core::ontology::api::{
     ObjectRef,
 };
 use pnex_core::ontology::layout::{force_layout, LayoutNode};
+use pnex_core::ontology::REL_IN_CASE;
 
 use serde_json::{json, Value};
 
 use super::{model, Sel, Ws};
 use crate::api;
+use crate::app::Route;
 use crate::components::ontology::add_to_case::role_label;
+use crate::components::ontology::type_label_of;
 use crate::components::ui::{BTN_GHOST, BTN_PRIMARY_SM, BTN_SECONDARY_SM};
 use crate::graph_viewer;
 use crate::state::toasts;
@@ -49,6 +52,8 @@ pub(super) struct GNode {
     pub extra: bool,
     /// `event`, or the colour family of the object's type (`family`).
     pub family: &'static str,
+    /// The object's type key (`event` for an event): the cluster view's group.
+    pub type_key: String,
     /// Pieces and claims folded into this node (cases-money.md K49).
     pub evidence: usize,
 }
@@ -112,6 +117,11 @@ pub(super) fn build(
                 event_from: at,
                 extra,
                 family: if event { "event" } else { family(&o.type_key) },
+                type_key: if event {
+                    "event".into()
+                } else {
+                    o.type_key.clone()
+                },
                 evidence: 0,
             });
             Some(nodes.len() - 1)
@@ -153,6 +163,28 @@ pub(super) fn build(
     for x in extra {
         for n in &x.nodes {
             add(&mut nodes, n, None, true, false);
+        }
+    }
+    // Sub-cases (GS16): a node each, tied below to the members they share.
+    let subs: Vec<(usize, &Vec<String>)> = if follow.is_none() {
+        w.children
+            .iter()
+            .filter_map(|c| Some((add(&mut nodes, &c.case, None, false, false)?, &c.shared)))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    for (ci, shared) in subs {
+        for oi in shared.iter().filter_map(|id| index.get(id)) {
+            edges.push(GEdge {
+                a: ci,
+                b: *oi,
+                kind: EdgeKind::Relation {
+                    link_type: REL_IN_CASE.into(),
+                    from: None,
+                    to: None,
+                },
+            });
         }
     }
     let ms = |s: &str| model::ms(s);
@@ -298,7 +330,7 @@ pub(super) fn sigma_data(
         .iter()
         .map(|n| {
             let mut v = json!({
-                "id": n.id, "title": n.title, "family": n.family,
+                "id": n.id, "title": n.title, "family": n.family, "type": n.type_key,
                 "event": n.family == "event", "at": n.event_from, "extra": n.extra,
                 "evidence": n.evidence,
             });
@@ -483,8 +515,14 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
     let mut seeded = use_signal(|| false);
     // Sigma renderer: None while it mounts, then whether it took (else SVG).
     let mut sigma = use_signal(|| None::<bool>);
-    // Hierarchy view (Sigma only): relations point down, owner above owned.
-    let mut hier = use_signal(|| false);
+    // Sigma view: `force`, `clusters` (a disc per type) or `hierarchy`
+    // (relations point down, owner above owned).
+    let mut view = use_signal(|| "force");
+    // Nodes clicked in turn: the last one is the orbit's centre; empty =
+    // the view above. "Back" walks it back.
+    let mut orbit = use_signal(Vec::<String>::new);
+    let navigator = use_navigator();
+    let types = use_resource(|| async { api::ontology::types().await.unwrap_or_default() });
     let cap = move || {
         if *sigma.peek() == Some(true) {
             SIGMA_CAP
@@ -604,7 +642,20 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             Sel::None => None,
         };
         let mut state = sigma_state(&nodes, &edges, (ws.cursor)(), selected.as_deref());
-        state["mode"] = json!(if hier() { "hierarchy" } else { "force" });
+        let trail = orbit();
+        state["mode"] = json!(if trail.is_empty() { view() } else { "orbit" });
+        state["center"] = json!(trail.last());
+        let types = types.read().clone().unwrap_or_default();
+        let names: serde_json::Map<String, Value> = nodes
+            .iter()
+            .map(|n| {
+                (
+                    n.type_key.clone(),
+                    json!(type_label_of(&types, &n.type_key)),
+                )
+            })
+            .collect();
+        state["clusterNames"] = Value::Object(names);
         let path = (ws.path)();
         if !path.is_empty() {
             // Off the path: faded like what lies after the cursor.
@@ -644,10 +695,21 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             };
             let is_event = |id: &str| w.events.iter().any(|e| e.event.id == id);
             let mut sel = ws.sel;
+            if let ("click", Some(id)) = (ev.kind.as_str(), &ev.id) {
+                // A click brings the node to the centre of its orbit.
+                orbit.with_mut(|t| {
+                    if t.last() != Some(id) {
+                        t.push(id.clone());
+                    }
+                });
+            }
             match (ev.kind.as_str(), ev.id) {
                 ("click", Some(id)) if is_event(&id) => ws.select_event(id),
                 ("click", Some(id)) => sel.set(Sel::Object(id)),
                 ("stage", _) => sel.set(Sel::None),
+                ("dblclick", Some(id)) if w.children.iter().any(|c| c.case.id == id) => {
+                    navigator.push(Route::CaseWorkspace { id });
+                }
                 ("dblclick", Some(id)) if !is_event(&id) => {
                     let rel = relations.peek().clone().unwrap_or_default();
                     let follow = ws.follow.peek().clone();
@@ -958,15 +1020,43 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                         },
                         "+"
                     }
-                    if on_sigma {
+                    if on_sigma && !orbit().is_empty() {
                         button {
-                            class: if hier() { format!("{BTN_GHOST} bg-signal-soft") } else { BTN_GHOST.to_string() },
+                            class: BTN_GHOST,
                             r#type: "button",
-                            title: t!("cw-graph-hierarchy-help"),
-                            "aria-pressed": hier(),
-                            "data-testid": "cw-graph-hierarchy",
-                            onclick: move |_| hier.toggle(),
-                            {t!("cw-graph-hierarchy")}
+                            title: t!("cw-graph-back-help"),
+                            "data-testid": "cw-graph-back",
+                            onclick: move |_| {
+                                orbit.with_mut(|t| t.pop());
+                            },
+                            {t!("cw-graph-back")}
+                        }
+                    }
+                    if on_sigma {
+                        div {
+                            class: "flex",
+                            role: "group",
+                            "aria-label": t!("cw-graph-view"),
+                            for (key, label, help) in [
+                                ("force", t!("cw-graph-network"), t!("cw-graph-network-help")),
+                                ("clusters", t!("cw-graph-clusters"), t!("cw-graph-clusters-help")),
+                                ("hierarchy", t!("cw-graph-hierarchy"), t!("cw-graph-hierarchy-help")),
+                            ]
+                            {
+                                button {
+                                    key: "{key}",
+                                    class: if view() == key && orbit().is_empty() { format!("{BTN_GHOST} bg-signal-soft") } else { BTN_GHOST.to_string() },
+                                    r#type: "button",
+                                    title: help,
+                                    "aria-pressed": view() == key && orbit().is_empty(),
+                                    "data-testid": "cw-graph-view-{key}",
+                                    onclick: move |_| {
+                                        view.set(key);
+                                        orbit.set(Vec::new());
+                                    },
+                                    {label}
+                                }
+                            }
                         }
                     }
                     button {
@@ -1241,7 +1331,30 @@ mod tests {
             undated: undated.iter().map(|u| obj(u)).collect(),
             zones: Vec::new(),
             places: Vec::new(),
+            parents: Vec::new(),
+            children: Vec::new(),
         }
+    }
+
+    #[test]
+    fn sub_cases_are_nodes_tied_to_what_they_share() {
+        let mut w = workspace(vec![], &["a", "b"]);
+        w.children = vec![pnex_core::ontology::api::CaseChild {
+            case: ObjectRef {
+                type_key: "case".into(),
+                ..obj("sub")
+            },
+            members: 3,
+            shared: vec!["b".into(), "gone".into()],
+        }];
+        let (nodes, edges, _) = build(&w, None, &[], &[], CAP);
+        let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "sub"]);
+        assert_eq!(nodes[2].type_key, "case");
+        assert_eq!(edges.len(), 1);
+        assert_eq!((edges[0].a, edges[0].b), (2, 1));
+        // Following one actor narrows to its events: no sub-case then.
+        assert!(build(&w, Some("a"), &[], &[], CAP).0.is_empty());
     }
 
     #[test]

@@ -1034,6 +1034,143 @@ async fn case_opened_from_an_alert() {
     .await;
 }
 
+/// Sub-cases (cases-graph-sigma.md GS16, GS17): opened under a case of the
+/// org, they take its legal basis; the parent lists them with the members
+/// they share, the sub-case lists its parents; a parent from another org
+/// or that is not a case is refused (R1); a viewer cannot open one (R2).
+#[tokio::test]
+#[serial]
+async fn sub_cases_nest_under_their_parent() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let root = object(
+            &server,
+            &env.alice,
+            org,
+            "case",
+            "Media",
+            json!({"status": "open", "legal_basis": "public interest"}),
+        )
+        .await;
+        let rid = root["id"].as_str().unwrap().to_string();
+        let (st, mid) = call(
+            &server,
+            "POST",
+            "/api/v1/cases",
+            &env.alice,
+            org,
+            Some(json!({"title": "Ownership", "parent_id": rid})),
+        )
+        .await;
+        assert_eq!(st, 201, "{mid}");
+        assert_eq!(mid["properties"]["legal_basis"], "public interest", "{mid}");
+        let mid_id = mid["id"].as_str().unwrap().to_string();
+        let (st, leaf) = call(
+            &server,
+            "POST",
+            "/api/v1/cases",
+            &env.alice,
+            org,
+            Some(json!({"title": "Group B", "parent_id": mid_id})),
+        )
+        .await;
+        assert_eq!(st, 201, "{leaf}");
+        let leaf_id = leaf["id"].as_str().unwrap().to_string();
+
+        let shared = device(&server, &env, org, "shared-one").await;
+        let own = device(&server, &env, org, "own-one").await;
+        for (cid, o) in [(&mid_id, &shared), (&leaf_id, &shared), (&leaf_id, &own)] {
+            let (st, w) = call(
+                &server,
+                "POST",
+                &format!("/api/v1/cases/{cid}/attach"),
+                &env.alice,
+                org,
+                Some(json!({"object_id": o})),
+            )
+            .await;
+            assert_eq!(st, 200, "{w}");
+        }
+        let (st, w) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{mid_id}/workspace"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{w}");
+        assert_eq!(w["parents"][0]["id"], rid.as_str(), "{w}");
+        assert_eq!(w["children"].as_array().unwrap().len(), 1, "{w}");
+        assert_eq!(w["children"][0]["case"]["id"], leaf_id.as_str());
+        assert_eq!(w["children"][0]["members"], 2);
+        assert_eq!(w["children"][0]["shared"], json!([shared]));
+        let (_, w) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/cases/{leaf_id}/workspace"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let parents: Vec<&str> = w["parents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["title"].as_str().unwrap())
+            .collect();
+        assert_eq!(parents, vec!["Ownership", "Media"], "{w}");
+
+        // Not a case, not a uuid, another org's case: refused on `parent_id`.
+        let org_b = personal_org(&server, &env.bob).await;
+        let foreign = object(
+            &server,
+            &env.bob,
+            org_b,
+            "case",
+            "Elsewhere",
+            json!({"status": "open"}),
+        )
+        .await;
+        for bad in [json!(shared), json!("nope"), foreign["id"].clone()] {
+            let (st, e) = call(
+                &server,
+                "POST",
+                "/api/v1/cases",
+                &env.alice,
+                org,
+                Some(json!({"title": "x", "parent_id": bad})),
+            )
+            .await;
+            assert_eq!(st, 400, "{e}");
+            assert!(e.to_string().contains("parent_id"), "{e}");
+        }
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/orgs/{org}/members"),
+            &env.alice,
+            org,
+            Some(json!({"email": "bob@example.com", "role": "viewer"})),
+        )
+        .await;
+        assert!(st < 300);
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/cases",
+            &env.bob,
+            org,
+            Some(json!({"title": "nope", "parent_id": rid})),
+        )
+        .await;
+        assert_eq!(st, 403);
+    })
+    .await;
+}
+
 /// Investigation pack (cases.md K5, K7, cases-workspace.md K38): approximate
 /// dates are validated; a person joins a case only once its processing
 /// basis is declared; a claim becomes corroborated only with two pieces of
