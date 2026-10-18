@@ -333,10 +333,10 @@ export async function is_tab_visible(tabId) {
 globalThis.__pnexRecordings ??= new Map();
 
 /** Starts recording the tab's video; resolves once the recorder is asked. */
-export async function start_recording(tabId, id, maxMs, bitrate, live, maxBytes) {
+export async function start_recording(tabId, id, maxMs, bitrate, live, maxBytes, fromMs) {
   globalThis.__pnexRecordings.set(id, { chunks: [], size: 0, max: maxBytes, done: false, reason: null });
   await api.scripting.executeScript({ target: { tabId }, files: ["recorder.js"] });
-  await api.tabs.sendMessage(tabId, { t: "pnex-record", id, maxMs, bitrate, live });
+  await api.tabs.sendMessage(tabId, { t: "pnex-record", id, maxMs, bitrate, live, fromMs });
 }
 
 /** JSON `{"done", "reason", "size"}` of a recording. */

@@ -33,6 +33,7 @@ impl TelemetrySink for RecSink {
 struct Env {
     alice: String,
     bob: String,
+    db: sea_orm::DatabaseConnection,
 }
 
 async fn with_app<F, Fut>(f: F)
@@ -43,26 +44,27 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
-    let env = Env {
-        alice: common::valid_token(
+    let (alice, bob) = (
+        common::valid_token(
             &base,
             "00000000-0000-0000-0000-00000000000a",
             "alice",
             "alice@example.com",
         ),
-        bob: common::valid_token(
+        common::valid_token(
             &base,
             "00000000-0000-0000-0000-00000000000b",
             "bob",
             "bob@example.com",
         ),
-    };
+    );
     let config: RequestConfig = RequestConfigBuilder::new().build();
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            f(server, env).await;
+            let db = ctx.db.clone();
+            f(server, Env { alice, bob, db }).await;
         },
     )
     .await;
@@ -596,6 +598,70 @@ fn negated_s(sig: &str) -> String {
     URL_SAFE_NO_PAD.encode(raw)
 }
 
+#[tokio::test]
+#[serial]
+async fn a_full_registry_blocks_account_missions() {
+    use sea_orm::ConnectionTrait as _;
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (_, m) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/missions",
+            &env.alice,
+            org,
+            Some(json!({
+                "name": "Account",
+                "spec": { "kind": "follow_account", "params": { "platform": "x", "handle": "@registry_full" } },
+                "interval_secs": 600,
+            })),
+        )
+        .await;
+        let mission = m["id"].as_str().unwrap().to_string();
+        env.db
+            .execute_unprepared(&format!(
+                "INSERT INTO social_videos (id, org_id, platform, platform_id, url, author, text)
+                 SELECT gen_random_uuid(), {org}, 'x', g::text, 'https://x.com/a', 'a', ''
+                 FROM generate_series(1, {}) g",
+                ba::VIDEOS_MAX
+            ))
+            .await
+            .unwrap();
+
+        let mut ws = open(&server, &install, &a).await;
+        recv(&mut ws).await;
+        send(
+            &mut ws,
+            &AgentMsg::Seen {
+                mission_id: mission.clone(),
+                posts: vec![post("999999999", true)],
+                depth: 20,
+                end_reached: false,
+            },
+        )
+        .await;
+        assert_eq!(
+            recv(&mut ws).await,
+            ServerMsg::Capture {
+                mission_id: mission.clone(),
+                platform_ids: vec![],
+                captions: vec![],
+            }
+        );
+        let (_, got) = call(&server, "GET", &format!("/api/v1/extension/missions/{mission}"), &env.alice, org, None).await;
+        assert_eq!(got["state"], "blocked");
+        assert_eq!(got["state_code"], "ext-registry-full");
+        // The database outlives the test: leave the registry empty.
+        env.db
+            .execute_unprepared(&format!("DELETE FROM social_videos WHERE org_id = {org}"))
+            .await
+            .unwrap();
+    })
+    .await;
+}
+
 /// Signed page upload: (status, body).
 async fn upload_page(
     server: &axum_test::TestServer,
@@ -733,6 +799,19 @@ async fn upload_video(
     post_id: &str,
     raw: &[u8],
 ) -> (u16, Value) {
+    upload_video_part(server, install, a, mission, post_id, None, raw).await
+}
+
+/// Video upload with `X-Pnex-Part` when `part` is set (signed as 1 when not).
+async fn upload_video_part(
+    server: &axum_test::TestServer,
+    install: &Install,
+    a: &Paired,
+    mission: &str,
+    post_id: &str,
+    part: Option<u32>,
+    raw: &[u8],
+) -> (u16, Value) {
     use sha2::Digest as _;
     let sha: String = sha2::Sha256::digest(raw)
         .iter()
@@ -744,10 +823,14 @@ async fn upload_video(
         ts,
         mission,
         post_id,
+        part.unwrap_or(1),
         &sha,
     ));
-    let res = server
-        .post("/api/v1/extension/uploads/video")
+    let mut req = server.post("/api/v1/extension/uploads/video");
+    if let Some(part) = part {
+        req = req.add_header("X-Pnex-Part", part.to_string());
+    }
+    let res = req
         .add_header("Authorization", format!("Bearer {}", a.token))
         .add_header("X-Pnex-Ts", ts.to_string())
         .add_header("X-Pnex-Signature", signature)
@@ -920,6 +1003,26 @@ async fn followed_account_videos_are_captured_once() {
         assert_eq!(e["error"], "extension-video-not-found");
         let (s, _) = upload_video(&server, &install, &a, &mission, "102", mp4).await;
         assert_eq!(s, 404);
+
+        // O92: a long recording goes on in parts, each its own media.
+        let webm = b"\x1A\x45\xDF\xA3\x9F\x42\x86\x81\x01\x42\x82\x84webm\x42\x87";
+        let (s, v2) = upload_video_part(&server, &install, &a, &mission, "101", Some(2), webm).await;
+        assert_eq!(s, 201, "{v2}");
+        assert_eq!(v2["media_asset_id"], v["media_asset_id"], "the registry keeps part 1");
+        let (_, media) = call(&server, "GET", "/api/v1/media?kind=video&limit=100", &env.alice, org, None).await;
+        let part2 = media["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["metadata"]["part"] == "2")
+            .expect("part 2 media");
+        assert_eq!(part2["metadata"]["part_of"], asset.as_str());
+        let (s, _) = upload_video_part(&server, &install, &a, &mission, "101", Some(2), webm).await;
+        assert_eq!(s, 404, "a part is stored once");
+        let (s, _) = upload_video_part(&server, &install, &a, &mission, "102", Some(2), webm).await;
+        assert_eq!(s, 404, "no part before part 1");
+        let (s, _) = upload_video_part(&server, &install, &a, &mission, "101", Some(17), webm).await;
+        assert_eq!(s, 400);
 
         let (_, list) = call(&server, "GET", "/api/v1/extension/videos", &env.alice, org, None).await;
         assert_eq!(list["count"], 2, "{list}");

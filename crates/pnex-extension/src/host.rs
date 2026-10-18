@@ -76,6 +76,7 @@ extern "C" {
         bitrate: f64,
         live: bool,
         max_bytes: f64,
+        from_ms: f64,
     ) -> Result<JsValue, JsValue>;
     pub fn recording_state(id: &str) -> String;
     #[wasm_bindgen(catch)]

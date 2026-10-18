@@ -430,6 +430,7 @@ pub const AGENT_STATE_CODES: &[&str] = &[
     err_codes::EXT_TAB_HIDDEN,
     err_codes::EXT_PERMISSION_MISSING,
     err_codes::EXT_DRM_PROTECTED,
+    err_codes::EXT_REGISTRY_FULL,
 ];
 
 /// A mission of the org.
@@ -769,15 +770,19 @@ pub struct SeenPost {
 }
 
 /// Message the install key signs to upload a video (D262): bound to the
-/// mission, the post and the SHA-256 (hex) of the file.
+/// mission, the post, the part (1-based, O92) and the SHA-256 (hex) of
+/// the file.
 pub fn video_upload_message(
     device_id: &str,
     ts_ms: i64,
     mission_id: &str,
     platform_id: &str,
+    part: u32,
     body_sha256: &str,
 ) -> String {
-    format!("pnex-ext-video\n{device_id}\n{ts_ms}\n{mission_id}\n{platform_id}\n{body_sha256}")
+    format!(
+        "pnex-ext-video\n{device_id}\n{ts_ms}\n{mission_id}\n{platform_id}\n{part}\n{body_sha256}"
+    )
 }
 
 /// Message the install key signs to upload a post's captions (D281).
@@ -817,6 +822,10 @@ pub struct CaptionsUpload {
 pub const AGENTS_MAX: i64 = 20;
 /// Most missions an org may hold (extension-collector.md §13).
 pub const MISSIONS_MAX: i64 = 200;
+/// Most parts of one post's video (16 × 30 min, O92).
+pub const VIDEO_PARTS_MAX: u32 = 16;
+/// Most posts an org's video registry keeps (observations.md O89).
+pub const VIDEOS_MAX: i64 = 500_000;
 
 /// Largest captured video (bytes).
 pub const VIDEO_MAX: usize = 200 * 1024 * 1024;

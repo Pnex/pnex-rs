@@ -4,7 +4,7 @@ title: Browser agents
 kind: feature
 pages: /edges/browser-agents
 nodes: 
-err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, extension-limit-reached, media-transcripts-unavailable
+err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, ext-registry-full, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, extension-limit-reached, media-transcripts-unavailable
 tools: 
 tags: browser, extension, chrome, firefox, agent, mission, collect, web page, value, selector, follow, account, x, twitter, youtube, tiktok, shorts, live, video, captions, subtitles, history, registry, onglet, navigateur, agent navigateur, compte, sous-titres, registre
 ---
@@ -28,8 +28,8 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - State **Blocked — the site is not allowed yet**: open the extension options and click **Allow** next to the site (X needs x.com and video.twimg.com; TikTok needs tiktok.com and its subdomains).
 - **The site asks to sign in** or **shows a verification**: sign in or solve it in the agent's browser, then resume the mission. The agent never bypasses a verification.
 - TikTok pauses its videos in a hidden tab: keep the agent's window in front, screen unlocked, while it reads TikTok.
-- A video without a downloadable file (YouTube) is recorded in real time: it takes as long as the video. A protected video (DRM) is never recorded.
+- A video without a downloadable file (YouTube) is recorded in real time: it takes as long as the video. A long video is recorded in parts of 30 minutes (8 hours at most); the first part is the post's media, each next part a media of its own. A protected video (DRM) is never recorded.
 - Platform captions are kept as a transcript of origin "platform"; **Retranscribe** on the review screen adds a PNeX transcript.
 - One browser agent runs a target at a time; a site runs one mission at a time, at least 20 seconds apart.
-- An organization pairs at most 20 browser agents and holds at most 200 missions: past that, delete one first.
+- An organization pairs at most 20 browser agents and holds at most 200 missions: past that, delete one first. The video registry keeps at most 500,000 posts per organization: when full, account missions are blocked with **The video registry is full**.
 - Viewers see the page read-only.
