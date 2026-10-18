@@ -3702,6 +3702,13 @@
       "CreateDoc": {
         "description": "`POST /api/v1/docs`.",
         "properties": {
+          "markdown": {
+            "description": "Markdown the page starts with (titles, lists, tables, code), as the\neditor's import does; exclusive with `template`. Up to 256 KiB.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "template": {
             "description": "Key of a page template of an installed pack (O43); absent = blank.",
             "type": [
@@ -30892,7 +30899,7 @@
         ]
       },
       "post": {
-        "description": "Creates a page, blank or seeded from a page template of an installed pack (`template` key). Owner, admin or member.",
+        "description": "Creates a page, blank, seeded from a page template of an installed pack (`template` key) or from Markdown (`markdown`, up to 256 KiB, as the editor's import; exclusive with `template`). Owner, admin or member.",
         "operationId": "docs_create",
         "parameters": [
           {
@@ -30935,7 +30942,7 @@
                 }
               }
             },
-            "description": "`field-invalid`: `title` (`required`, `max_length:<n>`) or `template` (`invalid`)"
+            "description": "`field-invalid`: `title` (`required`, `max_length:<n>`), `template` (`invalid`) or `markdown` (`invalid` with a template, `max_length:<n>`)"
           },
           "401": {
             "content": {

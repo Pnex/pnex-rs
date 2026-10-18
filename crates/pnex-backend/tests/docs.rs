@@ -109,6 +109,98 @@ async fn add_viewer(server: &axum_test::TestServer, owner: &str, org: i64) {
     assert!(st == 200 || st == 201, "{st}");
 }
 
+/// A page may start from Markdown (2026-10-18), as the editor's import
+/// does: a profile sheet imported from files lands as rich text.
+#[tokio::test]
+#[serial]
+async fn create_from_markdown() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let md = "# Fiche\n\nRésumé **factuel**.\n\n## Parcours\n- 2014 : matinale\n";
+        let (st, d) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org,
+            Some(json!({ "title": "Fiche", "markdown": md })),
+        )
+        .await;
+        assert_eq!(st, 201, "{d}");
+        let path = format!("/api/v1/docs/{}", d["id"].as_str().unwrap());
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("{path}/versions"),
+            &env.alice,
+            org,
+            Some(json!({ "label": "import" })),
+        )
+        .await;
+        assert_eq!(st, 201);
+        let (_, state) = call(
+            &server,
+            "GET",
+            &format!("{path}/versions/1"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(state["state_b64"].as_str().unwrap())
+            .unwrap();
+        assert!(Update::decode_v1(&bytes).is_ok());
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(
+            text.contains("Parcours") && text.contains("matinale"),
+            "{text}"
+        );
+
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org,
+            Some(json!({ "title": "X", "markdown": md, "template": "five_whys" })),
+        )
+        .await;
+        assert_eq!(
+            (st, e["errors"]["fields"]["markdown"].as_str()),
+            (400, Some("invalid")),
+            "{e}"
+        );
+        let big = "a".repeat(256 * 1024 + 1);
+        let (st, e) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.alice,
+            org,
+            Some(json!({ "title": "X", "markdown": big })),
+        )
+        .await;
+        assert_eq!(
+            (st, e["errors"]["fields"]["markdown"].as_str()),
+            (400, Some("max_length:262144")),
+            "{e}"
+        );
+        // Viewer cannot write (R2).
+        let (st, _) = call(
+            &server,
+            "POST",
+            "/api/v1/docs",
+            &env.bob,
+            org,
+            Some(json!({ "title": "X", "markdown": md })),
+        )
+        .await;
+        assert!(st == 403 || st == 404, "{st}");
+    })
+    .await;
+}
+
 #[tokio::test]
 #[serial]
 async fn crud_versions_isolation_and_viewer() {

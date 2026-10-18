@@ -27,7 +27,14 @@ pub async fn create(title: String, template: Option<String>) -> Result<DocSummar
     client::request(
         reqwest::Method::POST,
         "/api/v1/docs",
-        Some(serde_json::to_value(CreateDoc { title, template }).unwrap_or_default()),
+        Some(
+            serde_json::to_value(CreateDoc {
+                title,
+                template,
+                markdown: None,
+            })
+            .unwrap_or_default(),
+        ),
     )
     .await
 }
