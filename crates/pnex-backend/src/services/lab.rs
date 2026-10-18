@@ -826,7 +826,7 @@ async fn store_frame(
 pub const VIDEO_MAX_BYTES: i64 = 512 * 1024 * 1024;
 /// One video import at a time per process: a 512 MB file peaks near 1 GB
 /// (bytes + the fast-start copy), never several at once.
-static VIDEO_IMPORTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+pub(crate) static VIDEO_IMPORTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 /// Frames of a video of the media library (MP4 / MOV) added as pictures.
 /// Every import of the same video shares one source (`video-<asset>`), so

@@ -585,3 +585,94 @@ async fn confirmed_passages_enrol_a_consented_profile() {
     })
     .await;
 }
+
+/// Object detection on a video (D215): offered on a video only, blocked
+/// and refused without a valid detection model; before any detection the
+/// review reads no box.
+#[tokio::test]
+#[serial]
+async fn detection_needs_a_model_and_starts_empty() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let audio_id = audio(&server, &env.alice, org).await;
+        let (_, state) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{audio_id}/analyses"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert!(
+            state["offers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|o| o["step"] != "detect"),
+            "{state}"
+        );
+        let mp4 = b"\0\0\0\x18ftypisom\0\0\x02\0isomiso2mp41".to_vec();
+        let res = server
+            .post("/api/v1/media?filename=clip.mp4&kind=video")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(mp4.into())
+            .await;
+        assert!(res.status_code().is_success(), "{}", res.text());
+        let video = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let (_, state) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{video}/analyses"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let detect = state["offers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|o| o["step"] == "detect")
+            .expect("offered on a video");
+        assert_eq!(detect["blocked"], "media-analysis-no-detector");
+        let (st, e) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/media/{video}/analyses"),
+            &env.alice,
+            org,
+            Some(json!({"steps": ["detect"]})),
+        )
+        .await;
+        assert_eq!(st, 409, "{e}");
+        assert_eq!(e["error"], "media-analysis-no-detector");
+        let (st, d) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{video}/detections"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{d}");
+        assert!(
+            d["model"].is_null() && d["frames"].as_array().unwrap().is_empty(),
+            "{d}"
+        );
+        let (st, _) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/media/{}/detections", uuid::Uuid::new_v4()),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 404);
+    })
+    .await;
+}

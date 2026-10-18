@@ -19,6 +19,9 @@ pub enum AnalysisStep {
     /// Speakers of the transcription matched against the consented voice
     /// profiles (media-review.md D275): proposals only, a person confirms.
     Identify,
+    /// Objects detected on the pictures of a video, one every 2 s, by a
+    /// detection model of the org (D215): boxes only, never pixels.
+    Detect,
 }
 
 impl AnalysisStep {
@@ -35,6 +38,7 @@ impl AnalysisStep {
             Self::Summarize => "summarize",
             Self::Transcribe => "transcribe",
             Self::Identify => "identify",
+            Self::Detect => "detect",
         }
     }
 
@@ -52,7 +56,12 @@ impl AnalysisStep {
 pub fn steps_for_kind(kind: &str) -> &'static [AnalysisStep] {
     match kind {
         "document" | "table" => &[AnalysisStep::Index, AnalysisStep::Summarize],
-        "audio" | "video" => &[AnalysisStep::Transcribe, AnalysisStep::Identify],
+        "audio" => &[AnalysisStep::Transcribe, AnalysisStep::Identify],
+        "video" => &[
+            AnalysisStep::Transcribe,
+            AnalysisStep::Identify,
+            AnalysisStep::Detect,
+        ],
         _ => &[],
     }
 }
@@ -173,10 +182,8 @@ mod tests {
         }
         assert!(steps_for_kind("document").contains(&AnalysisStep::Summarize));
         assert!(steps_for_kind("splat").is_empty());
-        assert_eq!(
-            steps_for_kind("video"),
-            &[AnalysisStep::Transcribe, AnalysisStep::Identify]
-        );
+        assert!(steps_for_kind("video").contains(&AnalysisStep::Detect));
+        assert!(!steps_for_kind("audio").contains(&AnalysisStep::Detect));
         assert!(!AnalysisStep::Transcribe.needs_llm());
     }
 }

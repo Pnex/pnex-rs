@@ -137,6 +137,10 @@ pub const MEDIA_ANALYSIS_NO_VOICE_PROFILE: &str = "media-analysis-no-voice-profi
 pub const MEDIA_ANALYSIS_NO_SPEAKERS: &str = "media-analysis-no-speakers";
 /// The voice identification could not run (model, audio) (D275).
 pub const MEDIA_ANALYSIS_IDENTIFY_FAILED: &str = "media-analysis-identify-failed";
+/// No valid object detection model in the org (D215).
+pub const MEDIA_ANALYSIS_NO_DETECTOR: &str = "media-analysis-no-detector";
+/// The pictures of the video could not be decoded or analysed (D215).
+pub const MEDIA_ANALYSIS_DETECT_FAILED: &str = "media-analysis-detect-failed";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 /// Delete refused: deployed flows use the function (`args.flows`).
@@ -871,6 +875,8 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_NO_VOICE_PROFILE,
     MEDIA_ANALYSIS_NO_SPEAKERS,
     MEDIA_ANALYSIS_IDENTIFY_FAILED,
+    MEDIA_ANALYSIS_NO_DETECTOR,
+    MEDIA_ANALYSIS_DETECT_FAILED,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     FUNCTION_IN_USE,
