@@ -6185,6 +6185,19 @@
         },
         "type": "object"
       },
+      "FromMediaInput": {
+        "properties": {
+          "asset_id": {
+            "description": "Media asset whose confirmed passages of the person are enrolled.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id"
+        ],
+        "type": "object"
+      },
       "FunctionDetail": {
         "description": "A function with its current version (code and interface).",
         "properties": {
@@ -59712,6 +59725,115 @@
           }
         ],
         "summary": "Add an enrolment clip to a voice profile",
+        "tags": [
+          "voice-id"
+        ]
+      }
+    },
+    "/api/v1/voice-id/profiles/{id}/samples/from-media": {
+      "post": {
+        "description": "Adds to the voice profile the passages of a media file attributed to the profile's person and confirmed (media review), the longest first, 180 s in all, decoded from the original file. The profile must exist (consent recorded at its creation). The clips are embedded at the next generation. Owner/admin only.",
+        "operationId": "voice_id_samples_from_media",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Voice profile UUID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FromMediaInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceProfileView"
+                }
+              }
+            },
+            "description": "The updated profile"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unreadable audio (`voice-id-audio-unsupported`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not owner/admin (`voice-id-write-forbidden`)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unknown voice profile or media (`voice-id-profile-not-found`, `voice-id-sample-not-found`)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No confirmed passage of the person in the media (`voice-id-not-enough-speech`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enrol the attributed passages of a media file",
         "tags": [
           "voice-id"
         ]

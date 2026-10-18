@@ -33,6 +33,7 @@ anonyme), `secrets.md` D112 (scellement), `security.md` R1–R20.
 | `GET /api/v1/voice-id/by-object/{object_id}` (`null` si aucun) | membres |
 | `POST /api/v1/voice-id/profiles/{id}/samples?name=&content_type=` (corps = audio, 50 Mo) | admin |
 | `DELETE /api/v1/voice-id/profiles/{id}/samples/{sample_id}` | admin |
+| `POST /api/v1/voice-id/profiles/{id}/samples/from-media` (`{asset_id}`) : passages confirmés de la personne dans un média (media-review.md D277) | admin |
 | `POST /api/v1/voice-id/profiles/{id}/generate` | admin |
 | `POST /api/v1/voice-id/test?name=&object_id=|model_id=` (corps = audio) | écriture |
 

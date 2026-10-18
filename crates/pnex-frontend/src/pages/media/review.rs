@@ -642,6 +642,60 @@ fn PickedBar(
                     {t!("media-review-remove")}
                 }
             }
+            if can_write && a.status == AttributionStatus::Confirmed {
+                EnrolButton {
+                    asset_id: asset_id.clone(),
+                    object_id: a.object_id.to_string(),
+                }
+            }
+        }
+    }
+}
+
+/// Enrols the confirmed passages of a person into their voice profile
+/// (D277). No profile yet: consent is recorded on the person's page first.
+#[component]
+fn EnrolButton(asset_id: String, object_id: String) -> Element {
+    let mut outcome = use_signal(|| None::<Result<String, String>>);
+    let enrol = {
+        let (asset_id, object_id) = (asset_id.clone(), object_id.clone());
+        move |_| {
+            let (asset_id, object_id) = (asset_id.clone(), object_id.clone());
+            spawn(async move {
+                let r = match api::voice_id::by_object(&object_id).await {
+                    Ok(Some(p)) => api::voice_id::add_from_media(&p.id, &asset_id)
+                        .await
+                        .map(|p| t!("media-review-enrolled", n : p.samples.len()).to_string())
+                        .map_err(|e| {
+                            crate::api::error_i18n::localize_code(&e.message, None, &e.message)
+                        }),
+                    Ok(None) => Err(t!("media-review-enrol-consent").to_string()),
+                    Err(e) => Err(e.message),
+                };
+                outcome.set(Some(r));
+            });
+        }
+    };
+    rsx! {
+        button {
+            class: BTN_SECONDARY_SM,
+            r#type: "button",
+            "data-testid": "media-review-enrol",
+            onclick: enrol,
+            {t!("media-review-enrol")}
+        }
+        match outcome() {
+            Some(Ok(text)) | Some(Err(text)) => rsx! {
+                span { class: "text-xs text-gray-600", "{text}" }
+                Link {
+                    class: "text-xs text-signal-600 hover:underline",
+                    to: Route::OntologyObject {
+                        id: object_id.clone(),
+                    },
+                    {t!("media-review-enrol-open")}
+                }
+            },
+            None => rsx! {},
         }
     }
 }
