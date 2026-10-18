@@ -2598,6 +2598,22 @@ media-review-failed = The transcript could not be loaded.
 media-review-loading = Loading…
 media-analysis-state-none = Not launched yet
 media-analysis-state-queued = Queued
+media-review-pick-speaker = Take every passage of this voice
+media-review-selection = Selection { $span } ({ $n ->
+    [one] 1 span
+   *[other] { $n } spans
+}): who speaks?
+media-review-other-person = Another person…
+media-review-new-person = New person
+media-review-create-person = Create and attribute
+media-review-cancel = Cancel
+media-review-confirm = Confirm
+media-review-reject = Reject
+media-review-remove = Remove
+media-review-origin-manual = Attributed by hand
+media-review-origin-voice = Proposed by the voice
+media-review-origin-transcript = Proposed by the transcript
+media-review-origin-grid = Proposed by the grid
 media-analysis-state-running = Running ({ $pct } %)
 media-analysis-state-busy = Running
 media-analysis-state-done = Done

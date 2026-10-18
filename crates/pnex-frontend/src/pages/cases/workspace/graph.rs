@@ -57,7 +57,7 @@ pub(super) fn family(type_key: &str) -> &'static str {
         "organization" => "organization",
         "place" => "place",
         "piece" => "piece",
-        "claim" | "hypothesis" => "claim",
+        "claim" | "hypothesis" | "statement" => "claim",
         "identifier" => "identifier",
         _ => "other",
     }

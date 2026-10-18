@@ -17,12 +17,17 @@
 # media coverage pack fits without this pack knowing it.
 # Since 1.9.0 `about` may name the very link a claim bears on (`link`, the
 # link id): a second source or a diverging date for a fact already linked.
+# Since 1.10.0 a statement is quoted word for word from a media, said by a
+# person (cases-workspace.md K43), and a person appears in a media file
+# (`appears_in`, cases.md K17, media-review.md D278): present, speaking or
+# mentioned, with the origin of the finding. The programme grain stays
+# `appears_on` of the media coverage pack.
 # No "suspect" or "guilty" field (K16): an actor has roles in events, legal
 # qualification is not an object attribute.
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.9.0"
+version: "1.10.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -108,6 +113,22 @@ types:
         values: [open, supported, refuted, retained]
         required: true
         indexed: true
+  - key: statement
+    name: Statement
+    names: {fr: "Déclaration"}
+    icon: radio
+    may_be_contained_in: [folder]
+    properties:
+      - { key: quote, name: Quote, names: {fr: "Citation"}, kind: text, max_len: 2000, required: true }
+      - { key: aired, name: Aired, names: {fr: "Diffusé le"}, kind: fuzzy_time }
+      - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
+      - { key: context_before, name: Context before, names: {fr: "Contexte avant"}, kind: text, max_len: 1000 }
+      - { key: context_after, name: Context after, names: {fr: "Contexte après"}, kind: text, max_len: 1000 }
+      - key: stance
+        name: Stance
+        names: {fr: "Position"}
+        kind: enum
+        values: [for, against, nuanced, none]
   - key: identifier
     name: Identifier
     names: {fr: "Identifiant"}
@@ -209,6 +230,28 @@ link_types:
     from_types: [piece]
     to_types: "*"
     one_target: true
+  - key: said_by
+    name: is said by
+    names: {fr: "dite par"}
+    inverse_name: said
+    inverse_names: {fr: "a dit"}
+    from_types: [statement]
+    to_types: [person]
+    one_target: true
+    attributes:
+      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid] }
+      - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
+  - key: appears_in
+    name: appears in
+    names: {fr: "apparaît dans"}
+    inverse_name: shows
+    inverse_names: {fr: "montre"}
+    from_types: [person]
+    to_types: [media_asset]
+    attributes:
+      - { key: kind, name: Kind, names: {fr: "Nature"}, kind: enum, values: [present, speaking, mentioned] }
+      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid] }
+      - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
   - key: published_by
     name: is published by
     names: {fr: "publié par"}

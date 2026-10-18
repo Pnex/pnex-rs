@@ -229,6 +229,33 @@ async fn spans_are_attributed_to_persons_without_voice() {
             (Some(750_000), Some(900_000))
         );
 
+        // The ontology knows who speaks in the media (D278): one open
+        // `appears_in` per person, never one per span.
+        let open_appearances = |person: String| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let (st, links) = call(
+                    server,
+                    "GET",
+                    &format!("/api/v1/ontology/objects/{person}/links"),
+                    &token,
+                    org,
+                    None,
+                )
+                .await;
+                assert_eq!(st, 200, "{links}");
+                links["results"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|l| l["link_type"] == "appears_in" && l["valid_to"].is_null())
+                    .count()
+            }
+        };
+        assert_eq!(open_appearances(alice_p.clone()).await, 1);
+        assert_eq!(open_appearances(bob_p.clone()).await, 1);
+
         // The transcript read carries them (no run yet: no text).
         let (st, t) = call(
             &server,
@@ -278,6 +305,11 @@ async fn spans_are_attributed_to_persons_without_voice() {
         )
         .await;
         assert_eq!((st, a["status"].as_str()), (200, Some("rejected")), "{a}");
+        assert_eq!(
+            open_appearances(alice_p.clone()).await,
+            0,
+            "no confirmed span left"
+        );
 
         // A viewer reads, never writes (R2); another org sees nothing (R1).
         let bob_org = personal_org(&server, &env.bob).await;

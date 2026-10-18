@@ -6,15 +6,18 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::media_review::{MediaRun, MediaTranscript, ReviewSegment, RunOrigin};
+use pnex_core::media_review::{
+    person_at, AttributionInput, AttributionPatch, AttributionStatus, MediaRun, MediaSpan,
+    MediaTranscript, ReviewSegment, RunOrigin, SpeechAttribution,
+};
 
 use crate::api;
 use crate::app::Route;
 use crate::components::crud::layout::ListLayout;
 use crate::components::timeline::axis::Scale;
-use crate::components::timeline::{Body, Lane, TimeBase, Timeline};
+use crate::components::timeline::{Body, Item, ItemKind, Lane, TimeBase, Timeline};
 use crate::components::transport::{seek_media, MediaPlayer};
-use crate::components::ui::{INPUT, PANEL};
+use crate::components::ui::{BTN_SECONDARY_SM, INPUT, PANEL};
 
 const PLAYER: &str = "media-review-player";
 const CANVAS: &str = "media-review-frise";
@@ -61,6 +64,12 @@ fn blocks(segments: &[ReviewSegment]) -> Vec<Block> {
     out
 }
 
+/// Person speaking in the middle of a block (confirmed attributions only).
+fn block_person(b: &Block, attributions: &[SpeechAttribution]) -> Option<String> {
+    let end = b.words.last().map_or(b.start_ms, |w| w.2);
+    person_at((b.start_ms + end) / 2, attributions).map(|a| a.person.clone())
+}
+
 /// Speaker labels in order of first appearance.
 fn speakers(segments: &[ReviewSegment]) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -85,57 +94,135 @@ fn run_label(r: &MediaRun) -> String {
     }
 }
 
-/// Lanes of the timeline: one per speaker, or the text spans of a run
-/// without speakers.
-fn lanes(t: &MediaTranscript, all: &[String]) -> Vec<Lane> {
-    if all.is_empty() {
-        let spans: Vec<(i64, i64)> = t.segments.iter().map(|s| (s.start_ms, s.end_ms)).collect();
-        if spans.is_empty() {
-            return Vec::new();
+/// Persons with a span of the media (rejected proposals left out), in
+/// order of first appearance: `(object id, name)`.
+fn persons(t: &MediaTranscript) -> Vec<(uuid::Uuid, String)> {
+    let mut out: Vec<(uuid::Uuid, String)> = Vec::new();
+    for a in t
+        .attributions
+        .iter()
+        .filter(|a| a.status != AttributionStatus::Rejected)
+    {
+        if !out.iter().any(|(id, _)| *id == a.object_id) {
+            out.push((a.object_id, a.person.clone()));
         }
-        let mut lane = Lane::new(
-            "text",
-            t!("media-review-text-lane").to_string(),
-            Body::Spans {
-                spans,
-                gaps: false,
-                marks: Vec::new(),
-            },
-        );
-        lane.color = Some(SPEAKER_COLORS[0].to_string());
-        return vec![lane];
     }
-    all.iter()
-        .map(|label| {
-            let spans: Vec<(i64, i64)> = t
-                .segments
+    out
+}
+
+/// Lanes of the timeline: one per person (their spans, proposals drawn
+/// apart), then one per speaker, or the text spans of a run without
+/// speakers. A speaker lane is a selection tool: drag a span, or click its
+/// title to take every turn of the voice.
+fn lanes(
+    t: &MediaTranscript,
+    all: &[String],
+    picked: Option<uuid::Uuid>,
+    can_write: bool,
+) -> Vec<Lane> {
+    let mut out: Vec<Lane> = persons(t)
+        .into_iter()
+        .enumerate()
+        .map(|(i, (id, name))| {
+            let items: Vec<Item> = t
+                .attributions
                 .iter()
-                .flat_map(|s| s.turns.iter())
-                .filter(|turn| &turn.label == label)
-                .map(|turn| (turn.start_ms, turn.end_ms))
+                .filter(|a| a.object_id == id && a.status != AttributionStatus::Rejected)
+                .map(|a| Item {
+                    id: a.id.to_string(),
+                    from: a.start_ms,
+                    to: a.end_ms,
+                    kind: if a.status == AttributionStatus::Proposed {
+                        ItemKind::Proposal
+                    } else {
+                        ItemKind::Mark
+                    },
+                    selected: picked == Some(a.id),
+                    ..Default::default()
+                })
                 .collect();
             let mut lane = Lane::new(
-                label.clone(),
-                label.clone(),
+                format!("p:{id}"),
+                name,
+                Body::Items {
+                    items,
+                    max_rows: 1,
+                    stack: false,
+                    empty: None,
+                },
+            );
+            lane.color = Some(PERSON_COLORS[i % PERSON_COLORS.len()].to_string());
+            lane.item_testid = "media-review-attribution";
+            lane
+        })
+        .collect();
+    if all.is_empty() {
+        let spans: Vec<(i64, i64)> = t.segments.iter().map(|s| (s.start_ms, s.end_ms)).collect();
+        if !spans.is_empty() {
+            let mut lane = Lane::new(
+                "text",
+                t!("media-review-text-lane").to_string(),
                 Body::Spans {
                     spans,
                     gaps: false,
                     marks: Vec::new(),
                 },
             );
-            lane.color = Some(speaker_color(all, label).to_string());
-            lane
-        })
+            lane.color = Some(SPEAKER_COLORS[0].to_string());
+            lane.editable = can_write;
+            out.push(lane);
+        }
+        return out;
+    }
+    out.extend(all.iter().map(|label| {
+        let spans: Vec<(i64, i64)> = turns_of(t, label);
+        let mut lane = Lane::new(
+            format!("s:{label}"),
+            label.clone(),
+            Body::Spans {
+                spans,
+                gaps: false,
+                marks: Vec::new(),
+            },
+        );
+        lane.color = Some(speaker_color(all, label).to_string());
+        lane.tinted = true;
+        lane.editable = can_write;
+        lane.clickable = can_write;
+        lane.title_tip = can_write.then(|| t!("media-review-pick-speaker").to_string());
+        lane
+    }));
+    out
+}
+
+/// Turns of a speaker label, in media order.
+fn turns_of(t: &MediaTranscript, label: &str) -> Vec<(i64, i64)> {
+    t.segments
+        .iter()
+        .flat_map(|s| s.turns.iter())
+        .filter(|turn| turn.label == label)
+        .map(|turn| (turn.start_ms, turn.end_ms))
         .collect()
 }
+
+/// Colours of the persons (their lanes), apart from the speaker colours.
+const PERSON_COLORS: [&str; 6] = [
+    "#0f766e", "#b45309", "#7c3aed", "#be123c", "#1d4ed8", "#4d7c0f",
+];
 
 #[component]
 pub fn MediaReview(id: String) -> Element {
     let navigator = use_navigator();
+    let can_write = crate::state::org::current_can_write();
     let mut run = use_signal(|| None::<String>);
+    let mut reload = use_signal(|| 0u32);
     let mut pos_ms = use_signal(|| 0i64);
     let mut dur_ms = use_signal(|| 0i64);
     let mut blob = use_signal(|| None::<String>);
+    // Spans chosen on the timeline, waiting for a person (D273).
+    let mut selection = use_signal(Vec::<MediaSpan>::new);
+    let mut picked = use_signal(|| None::<uuid::Uuid>);
+    let mut error = use_signal(|| None::<String>);
     let aid = id.clone();
     let asset = use_resource(move || {
         let id = aid.clone();
@@ -145,6 +232,7 @@ pub fn MediaReview(id: String) -> Element {
     let transcript = use_resource(move || {
         let id = tid.clone();
         let r = run();
+        let _ = reload();
         async move { api::media::transcript(&id, r.as_deref()).await }
     });
     let bid = id.clone();
@@ -190,6 +278,59 @@ pub fn MediaReview(id: String) -> Element {
         pos_ms.set(ms);
         seek_media(PLAYER, ms as f64 / 1000.0);
     };
+    let attributions = data
+        .as_ref()
+        .map(|t| t.attributions.clone())
+        .unwrap_or_default();
+    let palette = data.as_ref().map(persons).unwrap_or_default();
+    let picked_one = picked().and_then(|p| attributions.iter().find(|a| a.id == p).cloned());
+
+    let attribute = {
+        let id = id.clone();
+        move |person: uuid::Uuid| {
+            let spans = selection();
+            if spans.is_empty() {
+                return;
+            }
+            let id = id.clone();
+            spawn(async move {
+                let input = AttributionInput {
+                    object_id: person,
+                    spans,
+                };
+                match api::media::attribute(&id, &input).await {
+                    Ok(_) => {
+                        selection.set(Vec::new());
+                        error.set(None);
+                        reload += 1;
+                    }
+                    Err(e) => error.set(Some(e.message)),
+                }
+            });
+        }
+    };
+    let on_key = {
+        let attribute = attribute.clone();
+        let palette = palette.clone();
+        move |e: KeyboardEvent| {
+            if let Key::Character(c) = e.key() {
+                if let Some(n) = c.parse::<usize>().ok().filter(|n| (1..=9).contains(n)) {
+                    if let Some((person, _)) = palette.get(n - 1) {
+                        attribute.clone()(*person);
+                    }
+                }
+            }
+            if e.key() == Key::Escape {
+                selection.set(Vec::new());
+                picked.set(None);
+            }
+        }
+    };
+    let lanes_now = data
+        .as_ref()
+        .map(|t| lanes(t, &all, picked(), can_write))
+        .unwrap_or_default();
+    let speaker_turns = data.clone();
 
     rsx! {
         ListLayout {
@@ -197,7 +338,7 @@ pub fn MediaReview(id: String) -> Element {
             on_back: move |_| {
                 navigator.push(Route::Media {});
             },
-            can_write: false,
+            can_write,
             if let Some(t) = data.as_ref().filter(|t| t.runs.len() > 1) {
                 RunPicker {
                     runs: t.runs.clone(),
@@ -227,25 +368,277 @@ pub fn MediaReview(id: String) -> Element {
                     data: data.clone(),
                     failed,
                     speakers: all.clone(),
+                    attributions: attributions.clone(),
                     pos,
                     on_seek: seek,
                 }
             }
-            if let Some(t) = data.as_ref().filter(|t| !t.segments.is_empty()) {
-                div { class: "mt-4 {PANEL}",
+            if data.as_ref().is_some_and(|t| !t.segments.is_empty()) {
+                div {
+                    class: "mt-4 {PANEL} outline-none",
+                    tabindex: "0",
+                    onkeydown: on_key,
                     Timeline {
                         canvas: CANVAS,
                         scale: Scale::linear((0, end)),
                         base: TimeBase::Media,
                         cursor: pos,
-                        lanes: lanes(t, &all),
+                        lanes: lanes_now,
                         header: t!("media-review-speakers").to_string(),
                         on_seek: seek,
+                        on_create: move |(_, from, to): (String, i64, i64)| {
+                            if to > from {
+                                picked.set(None);
+                                selection
+                                    .set(
+                                        vec![
+                                            MediaSpan {
+                                                start_ms: from,
+                                                end_ms: to,
+                                            },
+                                        ],
+                                    );
+                            }
+                        },
+                        on_title: move |lane: String| {
+                            let Some(label) = lane.strip_prefix("s:") else {
+                                return;
+                            };
+                            let Some(t) = speaker_turns.as_ref() else {
+                                return;
+                            };
+                            picked.set(None);
+                            selection
+                                .set(
+                                    turns_of(t, label)
+                                        .into_iter()
+                                        .map(|(start_ms, end_ms)| MediaSpan { start_ms, end_ms })
+                                        .collect(),
+                                );
+                        },
+                        on_item: move |(_, item): (String, String)| {
+                            selection.set(Vec::new());
+                            picked.set(item.parse().ok());
+                        },
+                    }
+                    if can_write && !selection().is_empty() {
+                        SelectionBar {
+                            spans: selection(),
+                            palette: palette.clone(),
+                            on_pick: attribute.clone(),
+                            on_cancel: move |_| selection.set(Vec::new()),
+                        }
+                    }
+                    if let Some(a) = picked_one {
+                        PickedBar {
+                            asset_id: id.clone(),
+                            attribution: a,
+                            can_write,
+                            on_done: move |e: Option<String>| {
+                                picked.set(None);
+                                error.set(e);
+                                reload += 1;
+                            },
+                        }
+                    }
+                    if let Some(e) = error() {
+                        p { class: "border-t border-line px-3 py-2 text-sm text-red-700",
+                            {crate::api::error_i18n::localize_code(&e, None, &e)}
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/// The spans chosen on the timeline and who they are: a person of the
+/// palette (keys 1–9), another person of the ontology, or a new one.
+#[component]
+fn SelectionBar(
+    spans: Vec<MediaSpan>,
+    palette: Vec<(uuid::Uuid, String)>,
+    on_pick: EventHandler<uuid::Uuid>,
+    on_cancel: EventHandler<()>,
+) -> Element {
+    let mut new_name = use_signal(String::new);
+    let all = use_resource(move || async move {
+        let q = pnex_core::ontology::api::OntologyQuery {
+            type_key: Some("person".into()),
+            limit: Some(500),
+            ..Default::default()
+        };
+        api::ontology::query(&q)
+            .await
+            .map(|r| r.rows)
+            .unwrap_or_default()
+    });
+    let rows = all.read().clone().unwrap_or_default();
+    let first = spans.first().map_or(0, |s| s.start_ms);
+    let last = spans.last().map_or(0, |s| s.end_ms);
+    let span_text = format!(
+        "{} → {}",
+        TimeBase::Media.clock(first),
+        TimeBase::Media.clock(last)
+    );
+    let create = move |_| {
+        let title = new_name().trim().to_string();
+        if title.is_empty() {
+            return;
+        }
+        spawn(async move {
+            let input = pnex_core::ontology::api::ObjectInput {
+                type_key: "person".into(),
+                title,
+                ..Default::default()
+            };
+            if let Ok(o) = api::ontology::create_object(&input).await {
+                if let Ok(id) = o.id.parse() {
+                    new_name.set(String::new());
+                    on_pick.call(id);
+                }
+            }
+        });
+    };
+    rsx! {
+        div {
+            class: "flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 text-sm",
+            "data-testid": "media-review-selection",
+            span { class: "font-medium text-gray-800",
+                {t!("media-review-selection", span : span_text, n : spans.len())}
+            }
+            for (i, (person, name)) in palette.into_iter().enumerate().take(9) {
+                button {
+                    key: "{person}",
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    onclick: move |_| on_pick.call(person),
+                    span { class: "font-mono text-xs text-gray-500", "{i + 1}" }
+                    "{name}"
+                }
+            }
+            select {
+                class: "{INPUT} max-w-xs",
+                "data-testid": "media-review-person",
+                onchange: move |e| {
+                    if let Ok(id) = e.value().parse() {
+                        on_pick.call(id);
+                    }
+                },
+                option { value: "", {t!("media-review-other-person")} }
+                for r in rows {
+                    option { key: "{r.object.id}", value: "{r.object.id}", "{r.object.title}" }
+                }
+            }
+            input {
+                class: "{INPUT} max-w-xs",
+                placeholder: t!("media-review-new-person").to_string(),
+                value: "{new_name}",
+                oninput: move |e| new_name.set(e.value()),
+            }
+            button {
+                class: BTN_SECONDARY_SM,
+                r#type: "button",
+                disabled: new_name().trim().is_empty(),
+                onclick: create,
+                {t!("media-review-create-person")}
+            }
+            button {
+                class: BTN_SECONDARY_SM,
+                r#type: "button",
+                onclick: move |_| on_cancel.call(()),
+                {t!("media-review-cancel")}
+            }
+        }
+    }
+}
+
+/// The attribution clicked on a person's lane: confirm or reject a
+/// proposal, remove a span.
+#[component]
+fn PickedBar(
+    asset_id: String,
+    attribution: SpeechAttribution,
+    can_write: bool,
+    on_done: EventHandler<Option<String>>,
+) -> Element {
+    let a = attribution.clone();
+    let span = format!(
+        "{} → {}",
+        TimeBase::Media.clock(a.start_ms),
+        TimeBase::Media.clock(a.end_ms)
+    );
+    let set_status = {
+        let asset_id = asset_id.clone();
+        let a = a.clone();
+        move |status: AttributionStatus| {
+            let (asset_id, aid, version) = (asset_id.clone(), a.id.to_string(), a.version);
+            spawn(async move {
+                let patch = AttributionPatch {
+                    expected_version: version,
+                    status: Some(status),
+                    start_ms: None,
+                    end_ms: None,
+                };
+                let r = api::media::update_attribution(&asset_id, &aid, &patch).await;
+                on_done.call(r.err().map(|e| e.message));
+            });
+        }
+    };
+    let (confirm, reject) = (set_status.clone(), set_status);
+    let remove = {
+        let (asset_id, aid) = (asset_id.clone(), a.id.to_string());
+        move |_| {
+            let (asset_id, aid) = (asset_id.clone(), aid.clone());
+            spawn(async move {
+                let r = api::media::delete_attribution(&asset_id, &aid).await;
+                on_done.call(r.err().map(|e| e.message));
+            });
+        }
+    };
+    let origin = origin_label(a.origin);
+    rsx! {
+        div {
+            class: "flex flex-wrap items-center gap-2 border-t border-line px-3 py-2 text-sm",
+            "data-testid": "media-review-picked",
+            span { class: "font-medium text-gray-800", "{a.person}" }
+            span { class: "font-mono text-xs text-gray-500", "{span}" }
+            span { class: "text-xs text-gray-500", "{origin}" }
+            if can_write && a.status == AttributionStatus::Proposed {
+                button {
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    onclick: move |_| confirm.clone()(AttributionStatus::Confirmed),
+                    {t!("media-review-confirm")}
+                }
+                button {
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    onclick: move |_| reject.clone()(AttributionStatus::Rejected),
+                    {t!("media-review-reject")}
+                }
+            }
+            if can_write {
+                button {
+                    class: BTN_SECONDARY_SM,
+                    r#type: "button",
+                    onclick: remove,
+                    {t!("media-review-remove")}
+                }
+            }
+        }
+    }
+}
+
+fn origin_label(o: pnex_core::media_review::AttributionOrigin) -> String {
+    use pnex_core::media_review::AttributionOrigin as O;
+    match o {
+        O::Manual => t!("media-review-origin-manual"),
+        O::Voice => t!("media-review-origin-voice"),
+        O::Transcript => t!("media-review-origin-transcript"),
+        O::Grid => t!("media-review-origin-grid"),
+    }
+    .to_string()
 }
 
 #[component]
@@ -279,6 +672,7 @@ fn TranscriptPanel(
     data: Option<MediaTranscript>,
     failed: bool,
     speakers: Vec<String>,
+    attributions: Vec<SpeechAttribution>,
     pos: i64,
     on_seek: EventHandler<i64>,
 ) -> Element {
@@ -301,6 +695,7 @@ fn TranscriptPanel(
                 for (i, b) in list.into_iter().enumerate() {
                     BlockView {
                         key: "{i}",
+                        person: block_person(&b, &attributions),
                         block: b,
                         speakers: speakers.clone(),
                         pos,
@@ -321,7 +716,13 @@ fn TranscriptPanel(
 }
 
 #[component]
-fn BlockView(block: Block, speakers: Vec<String>, pos: i64, on_seek: EventHandler<i64>) -> Element {
+fn BlockView(
+    block: Block,
+    person: Option<String>,
+    speakers: Vec<String>,
+    pos: i64,
+    on_seek: EventHandler<i64>,
+) -> Element {
     let color = block
         .speaker
         .as_deref()
@@ -337,6 +738,13 @@ fn BlockView(block: Block, speakers: Vec<String>, pos: i64, on_seek: EventHandle
                         class: "rounded px-1.5 py-0.5 font-medium text-white",
                         style: "background: {color}",
                         "{label}"
+                    }
+                }
+                if let Some(name) = person {
+                    span {
+                        class: "font-medium text-gray-900",
+                        "data-testid": "media-review-person-name",
+                        "{name}"
                     }
                 }
                 button {

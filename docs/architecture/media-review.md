@@ -120,9 +120,11 @@ seule.
   supprimable. Le continu des flux reste dans O2 `appearances` (K17).
 - **Résolution d'un mot** : le mot appartient à la plage qui contient son
   milieu. Priorité : confirmé manuel > confirmé autre > proposé > `S#`.
-  Deux confirmées qui se recouvrent sur la même plage = refus 409
-  `attribution-overlap` (sauf personnes différentes : deux personnes
-  peuvent parler en même temps, les deux couloirs le montrent).
+  Deux plages confirmées **d'une même personne** qui se recouvrent ou se
+  touchent **fusionnent** en une seule (codé ainsi : plus simple qu'un
+  refus pour qui glisse sur une zone déjà attribuée). Deux personnes
+  différentes peuvent se recouvrir : on peut parler en même temps, les
+  deux couloirs le montrent.
 - Une attribution `rejected` reste en base pour ne pas reproposer la
   même chose à la passe suivante.
 
@@ -305,8 +307,8 @@ d'attribution à trancher (Q5) ; `identify` = `EXCLUDED` (biométrie).
 | Lot | Contenu | Prérequis | Sortie vérifiable |
 |---|---|---|---|
 | **R0** | D211 batch + D216 contrat (lots I3, I4 de `media-import-pipeline.md`) | — | un fichier analysé, transcription au mot avec `S#` et `offset_ms`. **D211 codé le 2026-10-18** (`tests/media_transcribe.rs` `file_analysis_transcribes_in_batch`) ; D216 part avec R1 |
-| **R1** | Écran D271 (centre, texte, frise, lecture synchronisée), couloir Locuteurs | R0 | clic sur un mot → la vidéo saute ; curseur commun texte / frise |
-| **R2** | D272 + D273 + D278 : attributions manuelles, couloirs d'intervenants, apparitions, déclarations | R1 | « 12:30 → 14:10, c'est X » sans profil vocal ; X a une apparition `speaking` |
+| **R1** | Écran D271 (centre, texte, frise, lecture synchronisée), couloir Locuteurs | R0 | clic sur un mot → la vidéo saute ; curseur commun texte / frise. **Codé le 2026-10-18** : `/media/:id/review`, `GET /media/{id}/transcript`, passes `media_runs` (D276), sous-titres plateforme (`store_platform_run`) |
+| **R2** | D272 + D273 + D278 : attributions manuelles, couloirs d'intervenants, apparitions, déclarations | R1 | « 12:30 → 14:10, c'est X » sans profil vocal ; X a une apparition `speaking`. **Codé le 2026-10-18** (`tests/media_review.rs`) : `/media/{id}/attributions`, palette 1–9, sélection d'un locuteur entier, `appears_in` ouvert / fermé, pack `investigation` 1.10.0 (`statement`, `said_by`, `appears_in`). Reste : bouton « Créer une déclaration » depuis le texte |
 | **R3** | D274 + D275 + D276 « Réidentifier » | R2, activation Q1 | deux voix enrôlées dans un débat : deux propositions justes, rien d'écrit avant confirmation |
 | **R4** | D276 « Retranscrire » (runs) + D277 enrôlement depuis le média | R3 | une retranscription garde les attributions manuelles |
 | **R5** | Source flux (D271 V2) ; détections en surimpression (D215) | R1, D215 | même écran sur une heure d'un flux à audio conservé |
