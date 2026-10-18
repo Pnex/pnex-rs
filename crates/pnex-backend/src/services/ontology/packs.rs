@@ -5,10 +5,12 @@
 //!
 //! Installed types are the org's: editable locally (decision on question 4,
 //! 2026-10-11); an upgrade appends the pack definition as a new version,
-//! the local history staying readable.
+//! the local history staying readable. What the org added (properties,
+//! actions, link attributes, source/target types) survives the upgrade
+//! (2026-10-18): the pack wins on what it declares, the org keeps the rest.
 
 use pnex_core::ontology::api::{LinkTypeInput, ObjectTypeInput, Pack, PackView, PageTemplate};
-use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef};
+use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, TypeSet};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use uuid::Uuid;
 
@@ -182,13 +184,17 @@ async fn install_locked(
     }
     for t in &pack.types {
         let current = types::get(db, org_id, &t.key).await?.version;
+        let def = match s.object_type(&t.key) {
+            Some(local) => keep_org_additions(t, local),
+            None => t.clone(),
+        };
         types::update(
             db,
             org_id,
             &t.key,
             user_id,
             &ObjectTypeInput {
-                def: t.clone(),
+                def,
                 expected_version: Some(current),
             },
         )
@@ -245,13 +251,13 @@ async fn install_link(
         None => {
             link_types::create(db, org_id, l, Some(pack_key)).await?;
         }
-        Some((_, v, Some(pk))) if pk == pack_key => {
+        Some((local, v, Some(pk))) if pk == pack_key => {
             link_types::update(
                 db,
                 org_id,
                 &l.key,
                 &LinkTypeInput {
-                    def: l.clone(),
+                    def: keep_org_link_additions(l, local),
                     expected_version: Some(*v),
                 },
             )
@@ -260,6 +266,54 @@ async fn install_link(
         Some(_) => return Err(OntologyError::KeyTaken),
     }
     Ok(())
+}
+
+/// The pack definition plus the properties and actions the org added
+/// locally (keys the pack does not declare).
+fn keep_org_additions(pack: &ObjectTypeDef, local: &ObjectTypeDef) -> ObjectTypeDef {
+    let mut def = pack.clone();
+    def.properties.extend(
+        local
+            .properties
+            .iter()
+            .filter(|p| !pack.properties.iter().any(|q| q.key == p.key))
+            .cloned(),
+    );
+    def.actions.extend(
+        local
+            .actions
+            .iter()
+            .filter(|a| !pack.actions.iter().any(|b| b.key == a.key))
+            .cloned(),
+    );
+    def
+}
+
+/// The pack link type plus the attributes and source/target types the org
+/// added locally.
+fn keep_org_link_additions(pack: &LinkTypeDef, local: &LinkTypeDef) -> LinkTypeDef {
+    let mut def = pack.clone();
+    def.attributes.extend(
+        local
+            .attributes
+            .iter()
+            .filter(|a| !pack.attributes.iter().any(|b| b.key == a.key))
+            .cloned(),
+    );
+    def.from_types = union(&pack.from_types, &local.from_types);
+    def.to_types = union(&pack.to_types, &local.to_types);
+    def
+}
+
+fn union(pack: &TypeSet, local: &TypeSet) -> TypeSet {
+    match (pack, local) {
+        (TypeSet::Only(p), TypeSet::Only(l)) => {
+            let mut keys = p.clone();
+            keys.extend(l.iter().filter(|k| !p.contains(k)).cloned());
+            TypeSet::Only(keys)
+        }
+        _ => TypeSet::Any,
+    }
 }
 
 /// The org's own schema as a pack (types and link types, system ones and

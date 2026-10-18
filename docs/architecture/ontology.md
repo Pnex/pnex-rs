@@ -684,6 +684,11 @@ clés, lisible en YAML.
 - Packs : YAML embarqués (`crates/pnex-backend/packs/`, pack
   `maintenance`) ; installation = types créés puis versionnés, refus si une
   clé appartient à l'org hors pack ; export / import YAML du schéma d'org.
+- Montée de version d'un pack (2026-10-18) : la définition du pack fait foi
+  sur ce qu'elle déclare, mais les **ajouts locaux de l'org** (propriétés,
+  actions, attributs de lien, types source/cible) sont conservés ; avant,
+  la nouvelle version les effaçait et rendait invalides les données qui
+  les portaient. Test `pack_upgrade_keeps_org_additions`.
 - Assistant : schéma de l'org injecté dans le prompt système et outil
   `describe_ontology` ; `query_ontology`, `get_object`, `create_object`,
   `update_object`, `open_link`, `close_link`, `save_object_type` via les
