@@ -138,6 +138,12 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             err_codes::EXTENSION_INSTALL_PAIRED_ELSEWHERE,
             "This browser install is paired with another organization.",
         ),
+        ExtensionError::LimitReached { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXTENSION_LIMIT_REACHED,
+            "The organization reached its limit of browser agents or missions.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
         ExtensionError::Db(e) => {
             tracing::error!(error = %e, "browser agent database error");
             Err(Error::InternalServerError)
@@ -200,7 +206,7 @@ async fn agents(
         (status = 201, body = pnex_core::browser_agent::PairResponse),
         (status = 400, description = "`extension-pair-refused`: malformed install key or bad signature", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`extension-install-paired-elsewhere`: the install is paired with another org", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`extension-install-paired-elsewhere`: the install is paired with another org; `extension-limit-reached` (`args.max`): the org holds as many agents as allowed", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -820,7 +826,8 @@ async fn mission(
     responses(
         (status = 201, body = pnex_core::browser_agent::Mission),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`); spec fields as `spec.params.<name>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`extension-limit-reached` (`args.max`): the org holds as many missions as allowed", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

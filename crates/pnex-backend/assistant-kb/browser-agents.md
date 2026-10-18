@@ -4,7 +4,7 @@ title: Browser agents
 kind: feature
 pages: /edges/browser-agents
 nodes: 
-err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, media-transcripts-unavailable
+err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, extension-limit-reached, media-transcripts-unavailable
 tools: 
 tags: browser, extension, chrome, firefox, agent, mission, collect, web page, value, selector, follow, account, x, twitter, youtube, tiktok, shorts, live, video, captions, subtitles, history, registry, onglet, navigateur, agent navigateur, compte, sous-titres, registre
 ---
@@ -31,4 +31,5 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - A video without a downloadable file (YouTube) is recorded in real time: it takes as long as the video. A protected video (DRM) is never recorded.
 - Platform captions are kept as a transcript of origin "platform"; **Retranscribe** on the review screen adds a PNeX transcript.
 - One browser agent runs a target at a time; a site runs one mission at a time, at least 20 seconds apart.
+- An organization pairs at most 20 browser agents and holds at most 200 missions: past that, delete one first.
 - Viewers see the page read-only.

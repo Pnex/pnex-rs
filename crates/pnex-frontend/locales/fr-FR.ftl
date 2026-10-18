@@ -4219,6 +4219,7 @@ err-extension-ticket-unavailable = Les connexions des agents navigateur sont ind
 err-extension-video-not-found = Cette vidéo n'est pas dans le registre de la mission, ou elle a déjà été capturée.
 err-extension-upload-refused = Une capture d'agent navigateur a été refusée : appairez de nouveau l'extension.
 err-extension-dist-not-found = Ce serveur ne fournit pas l'extension navigateur : demandez à votre administrateur d'installer une image PNeX complète.
+err-extension-limit-reached = Cette organisation a atteint sa limite ({ $max }) : supprimez d'abord un agent navigateur ou une mission.
 err-ext-selector-not-found = Le sélecteur ne trouve rien sur la page : vérifiez-le sur la page dans votre navigateur.
 err-ext-value-not-numeric = La valeur lue n'est pas un nombre : choisissez un élément qui affiche un nombre.
 err-ext-login-required = Le site demande une connexion : connectez-vous dans le navigateur de l'agent, puis relancez la mission.

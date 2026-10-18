@@ -813,6 +813,11 @@ pub struct CaptionsUpload {
     pub cues: Vec<CaptionCue>,
 }
 
+/// Most browser agents an org may pair (extension-collector.md §13).
+pub const AGENTS_MAX: i64 = 20;
+/// Most missions an org may hold (extension-collector.md §13).
+pub const MISSIONS_MAX: i64 = 200;
+
 /// Largest captured video (bytes).
 pub const VIDEO_MAX: usize = 200 * 1024 * 1024;
 

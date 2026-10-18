@@ -531,6 +531,71 @@ async fn viewer_reads_and_other_orgs_see_nothing() {
     .await;
 }
 
+#[tokio::test]
+#[serial]
+async fn org_caps_on_agents_and_missions() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        for _ in 0..pnex_core::browser_agent::AGENTS_MAX {
+            pair(&server, &env.alice, org, &Install::new()).await;
+        }
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/agents",
+            &env.alice,
+            org,
+            Some(Install::new().pair_body(org)),
+        )
+        .await;
+        assert_eq!(s, 409);
+        assert_eq!(e["error"], "extension-limit-reached");
+        assert_eq!(e["errors"]["args"]["max"], "20");
+
+        for i in 0..pnex_core::browser_agent::MISSIONS_MAX {
+            let (s, _) = call(
+                &server,
+                "POST",
+                "/api/v1/extension/missions",
+                &env.alice,
+                org,
+                Some(mission_body(&format!("M{i}"))),
+            )
+            .await;
+            assert_eq!(s, 201);
+        }
+        let (s, e) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/missions",
+            &env.alice,
+            org,
+            Some(mission_body("One too many")),
+        )
+        .await;
+        assert_eq!(s, 409);
+        assert_eq!(e["error"], "extension-limit-reached");
+    })
+    .await;
+}
+
+/// The other valid encoding `(r, n−s)` of a P-256 signature `r‖s`.
+fn negated_s(sig: &str) -> String {
+    const N: [u8; 32] = [
+        0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63,
+        0x25, 0x51,
+    ];
+    let mut raw = URL_SAFE_NO_PAD.decode(sig).unwrap();
+    let mut borrow = 0i16;
+    for i in (0..32).rev() {
+        let d = i16::from(N[i]) - i16::from(raw[32 + i]) - borrow;
+        borrow = i16::from(d < 0);
+        raw[32 + i] = (d + 256 * borrow) as u8;
+    }
+    URL_SAFE_NO_PAD.encode(raw)
+}
+
 /// Signed page upload: (status, body).
 async fn upload_page(
     server: &axum_test::TestServer,
@@ -616,6 +681,20 @@ async fn page_capture_adds_a_version_only_when_the_text_changes() {
         let (s, e) = upload_signed(&server, &a, &raw, ts, &signature).await;
         assert_eq!(s, 401);
         assert_eq!(e["error"], "extension-upload-refused");
+
+        // Same request again, as sent then with its signature in the other
+        // valid form (r, n−s): the second use is refused either way.
+        use sha2::Digest as _;
+        let raw = serde_json::to_vec(&page("Headline three")).unwrap();
+        let sha: String = sha2::Sha256::digest(&raw).iter().map(|b| format!("{b:02x}")).collect();
+        let ts = chrono::Utc::now().timestamp_millis();
+        let sig = install.sign(&ba::upload_message(&a.device_id, ts, &mission_id, &sha));
+        let (s, _) = upload_signed(&server, &a, &raw, ts, &sig).await;
+        assert_eq!(s, 201);
+        for replay in [sig.clone(), format!("{sig} "), negated_s(&sig)] {
+            let (s, _) = upload_signed(&server, &a, &raw, ts, &replay).await;
+            assert_eq!(s, 401, "{replay}");
+        }
 
         // The document is a Markdown version of the mission's asset.
         let asset = first["asset_id"].as_str().unwrap();

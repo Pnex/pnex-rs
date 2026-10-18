@@ -34,6 +34,9 @@ const REFRESH: Duration = Duration::from_secs(15);
 const WATCHDOG: Duration = Duration::from_secs(90);
 /// Largest sealed frame an agent may send (a `seen` batch of posts).
 const MAX_WIRE: usize = 1024 * 1024;
+/// Most `seen` batches a link records per minute; more are dropped. An
+/// agent scrolls a platform every 4.5 s at best, three platforms at once.
+const SEEN_PER_MINUTE: u32 = 60;
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -92,6 +95,7 @@ async fn ws_extension(
                 silence_ttl_secs: settings.silence_ttl_secs,
                 held: BTreeMap::new(),
                 announced: false,
+                seen_window: (tokio::time::Instant::now(), 0),
             };
             link.run(socket, codec).await;
             link.close().await;
@@ -108,6 +112,8 @@ struct Link {
     held: BTreeMap<String, AssignedMission>,
     /// The held set was sent at least once.
     announced: bool,
+    /// Start of the current minute and `seen` batches recorded in it.
+    seen_window: (tokio::time::Instant, u32),
 }
 
 impl Link {
@@ -223,6 +229,10 @@ impl Link {
                 end_reached,
             } => {
                 self.held_id(&mission_id)?;
+                if !self.seen_allowed() {
+                    tracing::warn!(agent = %self.agent.device_id, "seen batch over the rate, dropped");
+                    return None;
+                }
                 match extension::record_seen(
                     &self.ctx.db,
                     &self.agent,
@@ -295,6 +305,16 @@ impl Link {
                 None
             }
         }
+    }
+
+    fn seen_allowed(&mut self) -> bool {
+        let (start, count) = &mut self.seen_window;
+        if start.elapsed() >= Duration::from_secs(60) {
+            *start = tokio::time::Instant::now();
+            *count = 0;
+        }
+        *count += 1;
+        *count <= SEEN_PER_MINUTE
     }
 
     /// Mission id, only when this session holds it.
