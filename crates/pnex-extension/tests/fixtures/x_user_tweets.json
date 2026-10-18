@@ -1,0 +1,104 @@
+{
+  "data": {
+    "user": {
+      "result": {
+        "__typename": "User",
+        "timeline": {
+          "timeline": {
+            "instructions": [
+              { "type": "TimelineClearCache" },
+              {
+                "type": "TimelineAddEntries",
+                "entries": [
+                  {
+                    "entryId": "tweet-1850000000000000001",
+                    "content": {
+                      "entryType": "TimelineTimelineItem",
+                      "itemContent": {
+                        "itemType": "TimelineTweet",
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "Tweet",
+                            "rest_id": "1850000000000000001",
+                            "core": { "user_results": { "result": { "__typename": "User", "core": { "screen_name": "Example_Account", "name": "Example" }, "legacy": {} } } },
+                            "legacy": {
+                              "created_at": "Fri Oct 17 18:04:05 +0000 2026",
+                              "full_text": "A short clip https://t.co/abc",
+                              "extended_entities": {
+                                "media": [
+                                  {
+                                    "type": "video",
+                                    "video_info": {
+                                      "duration_millis": 31500,
+                                      "variants": [
+                                        { "content_type": "application/x-mpegURL", "url": "https://video.twimg.com/ext_tw_video/1/pu/pl/a.m3u8" },
+                                        { "bitrate": 256000, "content_type": "video/mp4", "url": "https://video.twimg.com/ext_tw_video/1/pu/vid/480x270/low.mp4" },
+                                        { "bitrate": 2176000, "content_type": "video/mp4", "url": "https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/high.mp4" }
+                                      ]
+                                    }
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "tweet-1850000000000000002",
+                    "content": {
+                      "itemContent": {
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "TweetWithVisibilityResults",
+                            "tweet": {
+                              "rest_id": "1850000000000000002",
+                              "core": { "user_results": { "result": { "legacy": { "screen_name": "Example_Account" } } } },
+                              "legacy": { "created_at": "Thu Oct 16 07:00:00 +0000 2026", "full_text": "Text only" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "entryId": "tweet-1850000000000000003",
+                    "content": {
+                      "itemContent": {
+                        "tweet_results": {
+                          "result": {
+                            "__typename": "Tweet",
+                            "rest_id": "1850000000000000003",
+                            "core": { "user_results": { "result": { "core": { "screen_name": "Example_Account" } } } },
+                            "legacy": {
+                              "created_at": "Wed Oct 15 10:00:00 +0000 2026",
+                              "full_text": "RT @other: their clip",
+                              "retweeted_status_result": {
+                                "result": {
+                                  "__typename": "Tweet",
+                                  "rest_id": "1850000000000000099",
+                                  "core": { "user_results": { "result": { "core": { "screen_name": "other" } } } },
+                                  "legacy": {
+                                    "created_at": "Tue Oct 14 10:00:00 +0000 2026",
+                                    "full_text": "their clip",
+                                    "extended_entities": { "media": [ { "type": "video", "video_info": { "variants": [ { "bitrate": 832000, "content_type": "video/mp4", "url": "https://video.twimg.com/x/other.mp4" } ] } } ] }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  { "entryId": "cursor-bottom-1", "content": { "entryType": "TimelineTimelineCursor", "value": "DAABCgAB", "cursorType": "Bottom" } }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -46,6 +46,12 @@ extern "C" {
     pub async fn read_page(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn has_origin(url: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn scroll(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn fetch_blob(url: &str, max_bytes: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn upload_blob(id: f64, url: &str, bearer: &str, extra: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch)]
     pub async fn ws_open(

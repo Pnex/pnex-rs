@@ -10,8 +10,9 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::browser_agent::{
-    BrowserAgent, CollectPageParams, CollectValueParams, Mission, MissionCreate, MissionPatch,
-    MissionSpec, MissionState, ATTR_TEXT, MIN_INTERVAL_SECS,
+    BrowserAgent, CollectPageParams, CollectValueParams, FollowAccountParams, MediaPolicy, Mission,
+    MissionCreate, MissionPatch, MissionSpec, MissionState, SocialPlatform, SocialVideo,
+    VideoState, ATTR_TEXT, MIN_INTERVAL_SECS,
 };
 
 use crate::api;
@@ -42,6 +43,7 @@ fn can_write() -> bool {
 enum Tab {
     Agents,
     Missions,
+    Videos,
 }
 
 #[component]
@@ -65,6 +67,7 @@ pub fn BrowserAgents() -> Element {
                     for (value, key) in [
                         (Tab::Agents, "browser-agents-tab-agents"),
                         (Tab::Missions, "browser-agents-tab-missions"),
+                        (Tab::Videos, "browser-agents-tab-videos"),
                     ]
                     {
                         button {
@@ -95,6 +98,8 @@ pub fn BrowserAgents() -> Element {
                 p { class: "text-gray-500 text-center py-12", {t!("orgs-empty")} }
             } else if tab() == Tab::Agents {
                 AgentsTab { agents, can_write: write, reload }
+            } else if tab() == Tab::Videos {
+                VideosTab { reload }
             } else {
                 MissionsTab {
                     agents,
@@ -478,10 +483,29 @@ fn MissionsTab(
 }
 
 /// Mission kinds offered by the form (D256), with their label key.
-const KINDS: [(&str, &str); 2] = [
+const KINDS: [(&str, &str); 3] = [
     ("collect_value", "browser-missions-kind-value"),
     ("collect_page", "browser-missions-kind-page"),
+    ("follow_account", "browser-missions-kind-account"),
 ];
+
+/// Video policies of a followed account (D267), with their label key.
+const POLICIES: [(&str, &str); 3] = [
+    (
+        "if_no_transcript",
+        "browser-missions-policy-if-no-transcript",
+    ),
+    ("always", "browser-missions-policy-always"),
+    ("metadata_only", "browser-missions-policy-metadata-only"),
+];
+
+fn policy_of(wire: &str) -> MediaPolicy {
+    match wire {
+        "always" => MediaPolicy::Always,
+        "metadata_only" => MediaPolicy::MetadataOnly,
+        _ => MediaPolicy::IfNoTranscript,
+    }
+}
 
 /// Create (`mission: None`) or edit form of a mission.
 #[component]
@@ -498,8 +522,24 @@ fn MissionForm(
     let initial_url = match mission.as_ref().map(|m| &m.spec) {
         Some(MissionSpec::CollectValue(p)) => p.url.clone(),
         Some(MissionSpec::CollectPage(p)) => p.url.clone(),
-        None => String::new(),
+        Some(MissionSpec::FollowAccount(_)) | None => String::new(),
     };
+    let account = match mission.as_ref().map(|m| &m.spec) {
+        Some(MissionSpec::FollowAccount(p)) => Some(p.clone()),
+        _ => None,
+    };
+    let initial_policy = match account.as_ref().map(|a| a.media_policy) {
+        Some(MediaPolicy::Always) => "always",
+        Some(MediaPolicy::MetadataOnly) => "metadata_only",
+        _ => "if_no_transcript",
+    };
+    let mut handle = use_signal(|| {
+        account
+            .as_ref()
+            .map(|a| a.handle.clone())
+            .unwrap_or_default()
+    });
+    let mut policy = use_signal(|| initial_policy.to_string());
     let initial_kind = mission.as_ref().map_or("collect_value", |m| m.spec.kind());
     let mut kind = use_signal(|| initial_kind.to_string());
     let mut name = use_signal(|| mission.as_ref().map(|m| m.name.clone()).unwrap_or_default());
@@ -532,15 +572,19 @@ fn MissionForm(
     let mut busy = use_signal(|| false);
     let editing = mission.clone();
     let save = move |_| {
-        let spec = if kind() == "collect_page" {
-            MissionSpec::CollectPage(CollectPageParams { url: url() })
-        } else {
-            MissionSpec::CollectValue(CollectValueParams {
+        let spec = match kind().as_str() {
+            "collect_page" => MissionSpec::CollectPage(CollectPageParams { url: url() }),
+            "follow_account" => MissionSpec::FollowAccount(FollowAccountParams {
+                platform: SocialPlatform::X,
+                handle: handle(),
+                media_policy: policy_of(&policy()),
+            }),
+            _ => MissionSpec::CollectValue(CollectValueParams {
                 url: url(),
                 selector: selector(),
                 attr: attr(),
                 metric: metric(),
-            })
+            }),
         };
         let interval_secs = interval().trim().parse::<i32>().unwrap_or(0);
         let agent_id = agent().parse::<i64>().ok();
@@ -583,8 +627,14 @@ fn MissionForm(
         t!("browser-missions-create-title")
     };
     let is_value = kind() == "collect_value";
+    let is_account = kind() == "follow_account";
+    let target_ok = if is_account {
+        !handle().trim().is_empty()
+    } else {
+        !url().trim().is_empty()
+    };
     let valid = !name().trim().is_empty()
-        && !url().trim().is_empty()
+        && target_ok
         && (!is_value || (!selector().trim().is_empty() && !metric().trim().is_empty()));
     let min = MIN_INTERVAL_SECS.to_string();
     rsx! {
@@ -627,17 +677,52 @@ fn MissionForm(
                         oninput: move |e| name.set(e.value()),
                     }
                 }
-                div {
-                    label { r#for: "mission-url", class: FIELD_LABEL,
-                        {t!("browser-missions-field-url")}
+                if is_account {
+                    div {
+                        label { r#for: "mission-handle", class: FIELD_LABEL,
+                            {t!("browser-missions-field-handle")}
+                        }
+                        input {
+                            id: "mission-handle",
+                            class: "{INPUT} font-mono",
+                            placeholder: "account",
+                            value: "{handle}",
+                            oninput: move |e| handle.set(e.value()),
+                        }
+                        p { class: FIELD_HELP, {t!("browser-missions-field-handle-help")} }
                     }
-                    input {
-                        id: "mission-url",
-                        class: INPUT,
-                        r#type: "url",
-                        placeholder: "https://",
-                        value: "{url}",
-                        oninput: move |e| url.set(e.value()),
+                    div {
+                        label { r#for: "mission-policy", class: FIELD_LABEL,
+                            {t!("browser-missions-field-policy")}
+                        }
+                        select {
+                            id: "mission-policy",
+                            class: INPUT,
+                            value: "{policy}",
+                            onchange: move |e| policy.set(e.value()),
+                            for (value, key) in POLICIES {
+                                option {
+                                    key: "{value}",
+                                    value: "{value}",
+                                    selected: policy() == value,
+                                    {t!(key)}
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    div {
+                        label { r#for: "mission-url", class: FIELD_LABEL,
+                            {t!("browser-missions-field-url")}
+                        }
+                        input {
+                            id: "mission-url",
+                            class: INPUT,
+                            r#type: "url",
+                            placeholder: "https://",
+                            value: "{url}",
+                            oninput: move |e| url.set(e.value()),
+                        }
                     }
                 }
                 if is_value {
@@ -718,6 +803,82 @@ fn MissionForm(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The video registry (D259): what the agents saw on followed accounts,
+/// paginated by the server (it grows).
+#[component]
+fn VideosTab(reload: Signal<u32>) -> Element {
+    let page = use_signal(|| 0i64);
+    let videos = use_resource(move || async move {
+        let _ = reload();
+        let size = crate::components::crud::pager::PAGE_SIZE;
+        api::extension::videos(size, page() * size).await
+    });
+    let (state, count, rows) = match &*videos.value().read() {
+        None => (None, 0, Vec::new()),
+        Some(Ok(p)) => (Some(Ok(())), p.count, p.results.clone()),
+        Some(Err(err)) => (Some(Err(err.clone())), 0, Vec::new()),
+    };
+    let columns = vec![
+        Column::new(
+            t!("browser-videos-col-post").to_string(),
+            |v: &SocialVideo| {
+                let text: String = v.text.chars().take(140).collect();
+                rsx! {
+                    a {
+                        class: "font-medium text-gray-900 hover:underline",
+                        href: "{v.url}",
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        "@{v.author}"
+                    }
+                    p { class: "text-xs text-gray-500 break-words", "{text}" }
+                }
+            },
+        ),
+        Column::new(
+            t!("browser-videos-col-published").to_string(),
+            |v: &SocialVideo| {
+                let date = v
+                    .published_at
+                    .as_deref()
+                    .map(date_label)
+                    .unwrap_or_default();
+                rsx! { "{date}" }
+            },
+        )
+        .with_td_class("text-gray-600")
+        .secondary(),
+        Column::new(
+            t!("browser-videos-col-state").to_string(),
+            |v: &SocialVideo| {
+                let label = match (v.state, v.has_video) {
+                    (VideoState::Captured, _) => t!("browser-videos-captured"),
+                    (VideoState::Seen, true) => t!("browser-videos-seen-video"),
+                    (VideoState::Seen, false) => t!("browser-videos-seen-text"),
+                };
+                rsx! { "{label}" }
+            },
+        )
+        .with_td_class("text-gray-600"),
+    ];
+    rsx! {
+        div { class: "space-y-2",
+            p { class: "text-xs text-gray-500", {t!("browser-videos-help")} }
+            ListStates {
+                state,
+                is_empty: count == 0,
+                empty_message: t!("browser-videos-empty").to_string(),
+                DataTable {
+                    columns,
+                    rows,
+                    row_key: RowKey::new(|v: &SocialVideo| v.platform_id.clone()),
+                }
+                ListPager { count, page }
             }
         }
     }

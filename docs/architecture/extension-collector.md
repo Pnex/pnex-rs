@@ -516,6 +516,23 @@ L0c (page « Agents navigateur »).
   instantané HTML nettoyé reviendra si un besoin de preuve visuelle
   l'exige.
 
+- **L2 (X) codé le 2026-10-18, essai réel X à faire** : mission
+  `follow_account` (X, nom du compte, politique vidéo) ; registre
+  `social_videos` (migration 000027, unique par org × plateforme × post) ;
+  sur le lien, `seen` (posts relevés) → `capture` (les vidéos nouvelles à
+  télécharger) : un post n'est capturé qu'une fois pour toute l'org ;
+  `POST /api/v1/extension/uploads/video` (mp4 signé avec la mission, le
+  post et l'empreinte du fichier) → média `video` avec la provenance de
+  D281 ; `GET /api/v1/extension/videos` ; onglet « Registre des vidéos ».
+  Adaptateur X : crochet `hook_x.js` (monde MAIN, aucune requête propre)
+  qui relaie les réponses `UserTweets` / `UserMedia`, lecture structurelle
+  en Rust (`adapters/x.rs`, testée sur une réponse enregistrée), trois
+  défilements lents par visite, une vidéo téléchargée à la fois (5–10 s
+  d'écart), les octets restent côté JS, seul leur SHA-256 est signé ;
+  aucune réponse relayée → `blocked` (`ext-login-required` si X demande
+  une connexion). Les sous-titres de la plateforme et le lien éditeur
+  (question 5) attendent D211 et la décision.
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip

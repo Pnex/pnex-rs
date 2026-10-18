@@ -8,8 +8,9 @@
 //!   (4003);
 //! - every [`REFRESH`]: re-reads the missions, claims or renews the lease
 //!   of their targets (D257) and sends the held set when it changed;
-//! - agent → server: `report` (value of a `collect_value`), `state`,
-//!   `ping`; only for missions this session holds.
+//! - agent → server: `report` (value of a `collect_value`), `seen` (posts
+//!   of a `follow_account`, answered by `capture`), `state`, `ping`; only
+//!   for missions this session holds.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
@@ -31,8 +32,8 @@ use crate::services::telemetry::{self, TelemetryPoint};
 const REFRESH: Duration = Duration::from_secs(15);
 /// A silent agent is dropped (it pings every 30 s).
 const WATCHDOG: Duration = Duration::from_secs(90);
-/// Largest sealed frame an agent may send.
-const MAX_WIRE: usize = 16 * 1024;
+/// Largest sealed frame an agent may send (a `seen` batch of posts).
+const MAX_WIRE: usize = 1024 * 1024;
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -215,6 +216,20 @@ impl Link {
     async fn handle(&mut self, msg: AgentMsg) -> Option<ServerMsg> {
         match msg {
             AgentMsg::Ping => Some(ServerMsg::Pong),
+            AgentMsg::Seen { mission_id, posts } => {
+                self.held_id(&mission_id)?;
+                match extension::record_seen(&self.ctx.db, &self.agent, &mission_id, &posts).await
+                {
+                    Ok(platform_ids) => Some(ServerMsg::Capture {
+                        mission_id,
+                        platform_ids,
+                    }),
+                    Err(e) => {
+                        tracing::warn!(agent = %self.agent.device_id, error = %e, "seen posts not recorded");
+                        None
+                    }
+                }
+            }
             AgentMsg::State {
                 mission_id,
                 state,

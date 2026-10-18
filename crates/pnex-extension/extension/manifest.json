@@ -4,12 +4,49 @@
   "description": "__MSG_ext_description__",
   "version": "0.2.0",
   "default_locale": "en",
-  "background": { "service_worker": "background.js", "type": "module" },
-  "options_ui": { "page": "options.html", "open_in_tab": true },
-  "action": { "default_title": "__MSG_ext_name__" },
-  "permissions": ["storage", "alarms", "scripting", "tabGroups"],
-  "optional_host_permissions": ["https://*/*", "http://*/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "__MSG_ext_name__"
+  },
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "tabGroups"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*"
+      ],
+      "js": [
+        "hook_x.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://x.com/*"
+      ],
+      "js": [
+        "relay.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }

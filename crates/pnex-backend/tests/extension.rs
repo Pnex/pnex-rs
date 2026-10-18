@@ -633,3 +633,114 @@ async fn page_capture_adds_a_version_only_when_the_text_changes() {
     })
     .await;
 }
+
+fn post(id: &str, video: bool) -> ba::SeenPost {
+    ba::SeenPost {
+        platform_id: id.into(),
+        url: format!("https://x.com/some_account/status/{id}"),
+        author: "some_account".into(),
+        text: format!("post {id}"),
+        published_at: Some("2026-10-18T08:00:00Z".into()),
+        video_url: video.then(|| format!("https://video.example/{id}.mp4")),
+        duration_ms: video.then_some(12_000),
+    }
+}
+
+async fn upload_video(
+    server: &axum_test::TestServer,
+    install: &Install,
+    a: &Paired,
+    mission: &str,
+    post_id: &str,
+    raw: &[u8],
+) -> (u16, Value) {
+    use sha2::Digest as _;
+    let sha: String = sha2::Sha256::digest(raw)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let ts = chrono::Utc::now().timestamp_millis();
+    let signature = install.sign(&ba::video_upload_message(&a.device_id, ts, mission, post_id, &sha));
+    let res = server
+        .post("/api/v1/extension/uploads/video")
+        .add_header("Authorization", format!("Bearer {}", a.token))
+        .add_header("X-Pnex-Ts", ts.to_string())
+        .add_header("X-Pnex-Signature", signature)
+        .add_header("X-Pnex-Mission", mission.to_string())
+        .add_header("X-Pnex-Post", post_id.to_string())
+        .bytes(raw.to_vec().into())
+        .await;
+    let status = res.status_code().as_u16();
+    (status, serde_json::from_str(&res.text()).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+#[serial]
+async fn followed_account_videos_are_captured_once() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        let install = Install::new();
+        let a = pair(&server, &env.alice, org, &install).await;
+        let (s, m) = call(
+            &server,
+            "POST",
+            "/api/v1/extension/missions",
+            &env.alice,
+            org,
+            Some(json!({
+                "name": "Account",
+                "spec": { "kind": "follow_account", "params": { "platform": "x", "handle": "@Some_Account" } },
+                "interval_secs": 600,
+            })),
+        )
+        .await;
+        assert_eq!(s, 201, "{m}");
+        assert_eq!(m["target"], "x:@some_account");
+        let mission = m["id"].as_str().unwrap().to_string();
+
+        let mut ws = open(&server, &install, &a).await;
+        let ServerMsg::Missions { missions } = recv(&mut ws).await else {
+            panic!("missions expected");
+        };
+        assert_eq!(missions.len(), 1);
+        let seen = AgentMsg::Seen {
+            mission_id: mission.clone(),
+            posts: vec![post("101", true), post("102", false), post("../x", true)],
+        };
+        send(&mut ws, &seen).await;
+        assert_eq!(
+            recv(&mut ws).await,
+            ServerMsg::Capture { mission_id: mission.clone(), platform_ids: vec!["101".into()] },
+            "only the new video, never the malformed id"
+        );
+        // Seen again (by any agent): nothing to capture twice.
+        send(&mut ws, &seen).await;
+        assert_eq!(
+            recv(&mut ws).await,
+            ServerMsg::Capture { mission_id: mission.clone(), platform_ids: vec![] }
+        );
+
+        let mp4 = b"\0\0\0\x18ftypisom\0\0\x02\0isommp41";
+        let (s, v) = upload_video(&server, &install, &a, &mission, "101", mp4).await;
+        assert_eq!(s, 201, "{v}");
+        assert_eq!(v["state"], "captured");
+        let asset = v["media_asset_id"].as_str().unwrap().to_string();
+        let (s, media) = call(&server, "GET", &format!("/api/v1/media/{asset}"), &env.alice, org, None).await;
+        assert_eq!(s, 200, "{media}");
+        assert_eq!(media["kind"], "video");
+        // Captured once: a second upload, or a post without video, is refused.
+        let (s, e) = upload_video(&server, &install, &a, &mission, "101", mp4).await;
+        assert_eq!(s, 404);
+        assert_eq!(e["error"], "extension-video-not-found");
+        let (s, _) = upload_video(&server, &install, &a, &mission, "102", mp4).await;
+        assert_eq!(s, 404);
+
+        let (_, list) = call(&server, "GET", "/api/v1/extension/videos", &env.alice, org, None).await;
+        assert_eq!(list["count"], 2, "{list}");
+        // Another org sees no registry.
+        let bob_org = personal_org(&server, &env.bob).await;
+        let (_, other) = call(&server, "GET", "/api/v1/extension/videos", &env.bob, bob_org, None).await;
+        assert_eq!(other["count"], 0);
+    })
+    .await;
+}

@@ -717,6 +717,8 @@ pub const EXTENSION_UPLOAD_REFUSED: &str = "extension-upload-refused";
 /// This server ships no browser extension build (`PNEX_EXTENSION_DIST_DIR`).
 pub const EXTENSION_DIST_NOT_FOUND: &str = "extension-dist-not-found";
 /// Agent state: the selector matched nothing on the page.
+/// Video not in the registry of this mission, or already captured.
+pub const EXTENSION_VIDEO_NOT_FOUND: &str = "extension-video-not-found";
 pub const EXT_SELECTOR_NOT_FOUND: &str = "ext-selector-not-found";
 /// Agent state: the value read is not a number.
 pub const EXT_VALUE_NOT_NUMERIC: &str = "ext-value-not-numeric";
@@ -1070,6 +1072,7 @@ pub const ALL: &[&str] = &[
     EXT_PERMISSION_MISSING,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
+    EXTENSION_VIDEO_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,
     LAB_WRITE_FORBIDDEN,
     LAB_PROJECT_NOT_FOUND,

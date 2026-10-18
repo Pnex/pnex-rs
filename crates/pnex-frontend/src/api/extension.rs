@@ -64,6 +64,19 @@ pub async fn delete_mission(id: &str) -> Result<Option<()>, ApiError> {
     .await
 }
 
+/// `GET /api/v1/extension/videos` — one page of the video registry.
+pub async fn videos(
+    limit: i64,
+    offset: i64,
+) -> Result<pnex_core::Paginated<pnex_core::browser_agent::SocialVideo>, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/extension/videos?limit={limit}&offset={offset}"),
+        None,
+    )
+    .await
+}
+
 /// Public download of the extension zip (server address preset).
 pub fn download_url() -> String {
     format!(

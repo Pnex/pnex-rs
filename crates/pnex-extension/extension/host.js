@@ -228,6 +228,41 @@ export async function read_page(tabId) {
   return JSON.stringify(result?.result ?? { url: "", title: "", text: "" });
 }
 
+/** Scrolls the tab by most of a screen, like a reader would. */
+export async function scroll(tabId) {
+  await api.scripting.executeScript({
+    target: { tabId },
+    func: () => window.scrollBy({ top: Math.round(window.innerHeight * 0.8), behavior: "smooth" }),
+  });
+}
+
+// Downloaded files stay on this side: wasm only signs their digest.
+const blobs = new Map();
+let nextBlob = 1;
+
+/** Downloads `url`: JSON `{"id", "sha256", "size"}` (hex digest); throws on HTTP errors. */
+export async function fetch_blob(url, maxBytes) {
+  const res = await fetch(url, { credentials: "omit" });
+  if (!res.ok) throw new Error(`download ${res.status}`);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > maxBytes) throw new Error(`size ${bytes.length}`);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const id = nextBlob++;
+  blobs.set(id, bytes);
+  const sha256 = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  return JSON.stringify({ id, sha256, size: bytes.length });
+}
+
+/** POSTs a downloaded file, then forgets it: JSON `{"status", "body"}`. */
+export async function upload_blob(id, url, bearer, extra) {
+  const bytes = blobs.get(id);
+  blobs.delete(id);
+  if (!bytes) throw new Error("no such download");
+  const headers = { ...JSON.parse(extra), Authorization: `Bearer ${bearer}`, "Content-Type": "video/mp4" };
+  const res = await fetch(url, { method: "POST", headers, body: bytes, credentials: "omit" });
+  return JSON.stringify({ status: res.status, body: await res.text() });
+}
+
 /** Origin pattern of a page (`https://host/*`). */
 function originOf(url) {
   return `${new URL(url).origin}/*`;
