@@ -406,6 +406,22 @@ pub struct CaseOpenInput {
     pub title: String,
     #[serde(default)]
     pub from: Option<CaseFrom>,
+    /// Opens it as a sub-case of this case (cases-graph-sigma.md GS16).
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub parent_id: Option<String>,
+}
+
+/// A sub-case, as its parent's workspace lists it (GS16).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaseChild {
+    pub case: ObjectRef,
+    /// Members of the sub-case (its events and what they involve, its
+    /// undated pieces).
+    pub members: usize,
+    /// Those members that are members of the parent too.
+    pub shared: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -455,6 +471,12 @@ pub struct CaseWorkspace {
     /// of their area, else the POI's coordinates.
     #[serde(default)]
     pub places: Vec<CasePlace>,
+    /// Enclosing cases, nearest first (GS16).
+    #[serde(default)]
+    pub parents: Vec<ObjectRef>,
+    /// Sub-cases (GS16).
+    #[serde(default)]
+    pub children: Vec<CaseChild>,
 }
 
 /// A located member of a case.

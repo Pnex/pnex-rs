@@ -4,8 +4,9 @@
 // window.pnexGraph:
 //   mount(hostId, opts) → bool      opts {caseId, canWrite, canDrag}
 //   setData(hostId, data)           {nodes, edges, aspect}
-//   setState(hostId, state)         {selected, faded, edges, hiddenFamilies, mode}
-//                                   mode: force | chrono | hierarchy
+//   setState(hostId, state)         {selected, faded, edges, hiddenFamilies, mode,
+//                                    center, clusterNames}
+//                                   mode: force | chrono | hierarchy | clusters | orbit
 //   relayout, fit, zoomIn, zoomOut, unmount, error(hostId)
 //   positions(hostId) → JSON        force-view positions {id: [x, y]}
 //   screenPos(hostId, id) → JSON    {x, y} in viewport pixels (e2e)
@@ -18,7 +19,7 @@ import Sigma from 'sigma';
 import { animateNodes } from 'sigma/utils';
 import EdgeCurveProgram from '@sigma/edge-curve';
 import { createNodeBorderProgram } from '@sigma/node-border';
-import { chronoLayout, forceLayout, hierarchyLayout } from './graph_layout.js';
+import { chronoLayout, clusterLayout, forceLayout, hierarchyLayout, orbitLayout } from './graph_layout.js';
 
 const hosts = {};
 let seq = 0;
@@ -101,6 +102,13 @@ function drawLabel(ctx, data, settings) {
   ctx.strokeText(data.label, x, y);
   ctx.fillStyle = data.ink;
   ctx.fillText(data.label, x, y);
+  // Orbit view: how the node ties to the centre, under its name.
+  if (data.sub) {
+    ctx.font = `400 ${size - 2}px ${settings.labelFont}`;
+    ctx.strokeText(data.sub, x, y + size);
+    ctx.fillStyle = data.slate;
+    ctx.fillText(data.sub, x, y + size);
+  }
   if (badge) {
     const bx = x + textW + 6;
     ctx.beginPath();
@@ -172,7 +180,7 @@ function mount(hostId, optsRaw) {
   const graph = new Graph({ multi: true, type: 'undirected' });
   const h = {
     el, graph, opts, colors: readColors(), force: new Map(), data: { nodes: [], edges: [] },
-    state: { selected: null, faded: new Set(), edges: {}, hidden: new Set(), mode: 'force' },
+    state: { selected: null, faded: new Set(), edges: {}, hidden: new Set(), mode: 'force', center: null, names: {} },
     hover: null, hoverEdge: null, drag: null, moved: false, justDropped: false, error: null,
   };
   try {
@@ -215,6 +223,7 @@ function mount(hostId, optsRaw) {
 function wire(hostId, h) {
   const r = h.renderer;
   r.on('beforeRender', () => (labelBoxes = []));
+  r.on('afterRender', () => drawClusters(h));
   r.on('enterNode', ({ node }) => {
     h.hover = node;
     refresh(h, true);
@@ -285,13 +294,24 @@ function focusOf(h) {
 
 function nodeReducer(h, node, d) {
   const c = h.colors;
-  const out = { ...d, halo: c.ground, ink: c.ink, surface: c.surface, line: c['line-strong'], mark: c.mark };
+  const out = {
+    ...d, halo: c.ground, ink: c.ink, slate: c.slate, surface: c.surface, line: c['line-strong'], mark: c.mark,
+  };
   if (h.state.hidden.has(d.family)) return { ...out, hidden: true };
+  if (h.orbit) {
+    const ring = h.orbit.ring[node];
+    if (ring === undefined) return { ...out, hidden: true };
+    if (ring === 1) {
+      out.forceLabel = true;
+      out.sub = h.orbit.via[node];
+    }
+  }
   const focus = h.focus;
   const selected = h.state.selected === node;
   let fade = h.state.faded.has(node) ? 0.6 : 0;
   if (focus && focus.node !== node && !focus.near.has(node)) {
-    fade = 0.78;
+    // In an orbit the second ring stays readable: it is the context.
+    fade = h.orbit ? 0.45 : 0.78;
     out.label = null;
   } else if (focus) {
     out.forceLabel = true;
@@ -317,6 +337,9 @@ function edgeReducer(h, edge, d) {
   const shown = h.state.edges[edge];
   if (shown === 'gone') return { ...d, hidden: true };
   const [s, t] = h.graph.extremities(edge);
+  if (h.orbit && (h.orbit.ring[s] === undefined || h.orbit.ring[t] === undefined)) {
+    return { ...d, hidden: true };
+  }
   if (h.state.hidden.has(h.graph.getNodeAttribute(s, 'family')) ||
       h.state.hidden.has(h.graph.getNodeAttribute(t, 'family'))) {
     return { ...d, hidden: true };
@@ -330,7 +353,7 @@ function edgeReducer(h, edge, d) {
     out.zIndex = 1;
     if (focus.degree <= 6) out.label = d.label;
   } else if (focus) {
-    out.color = mix(c['line-strong'], c.ground, 0.88);
+    out.color = mix(c['line-strong'], c.ground, h.orbit ? 0.6 : 0.88);
   }
   if (h.hoverEdge === edge) out.label = d.label;
   if (shown === 'ahead' || h.state.faded.has(s) || h.state.faded.has(t)) {
@@ -370,6 +393,20 @@ function forcePositions(h, work) {
 
 // Positions of the current view: the force one, or the derived timeline.
 function viewTarget(h) {
+  h.clusters = null;
+  h.orbit = null;
+  if (h.state.mode === 'clusters') {
+    const { positions, clusters } = clusterLayout(h.data.nodes, h.data.edges);
+    h.clusters = clusters;
+    return positions;
+  }
+  if (h.state.mode === 'orbit') {
+    const { positions, ring, via } = orbitLayout(h.data.nodes, h.data.edges, h.state.center);
+    if (ring[h.state.center] === 0) {
+      h.orbit = { ring, via };
+      return positions;
+    }
+  }
   if (h.state.mode === 'chrono') return chronoLayout(h.data.nodes, h.data.edges);
   if (h.state.mode === 'hierarchy') return hierarchyLayout(h.data.nodes, h.data.edges);
   const out = {};
@@ -468,13 +505,16 @@ function setState(hostId, raw) {
   const h = hosts[hostId];
   if (!h?.renderer) return false;
   const s = parse(raw);
-  const modeChanged = (s.mode || 'force') !== h.state.mode;
+  const modeChanged = (s.mode || 'force') !== h.state.mode
+    || (s.mode === 'orbit' && (s.center || null) !== h.state.center);
   h.state = {
     selected: s.selected || null,
     faded: new Set(s.faded || []),
     edges: s.edges || {},
     hidden: new Set(s.hiddenFamilies || []),
     mode: s.mode || 'force',
+    center: s.center || null,
+    names: s.clusterNames || {},
   };
   if (modeChanged) {
     h.renderer.setCustomBBox(null);
@@ -483,6 +523,29 @@ function setState(hostId, raw) {
   }
   refresh(h);
   return true;
+}
+
+// Cluster view: each disc's type and count above it (canvas, R11).
+function drawClusters(h) {
+  if (!h.clusters) return;
+  const ctx = h.renderer.getCanvases().labels.getContext('2d');
+  const size = 11;
+  ctx.font = `600 ${size}px "IBM Plex Mono", ui-monospace, monospace`;
+  ctx.textAlign = 'center';
+  for (const c of h.clusters) {
+    // Sigma flips the Y axis: the disc's top is whichever edge is higher.
+    const [p, q] = [-1, 1].map((k) => h.renderer.graphToViewport({ x: c.x, y: c.y + k * c.r }));
+    const top = p.y < q.y ? p : q;
+    const name = String(h.state.names[c.key] || c.key).toUpperCase();
+    const text = `${name} · ${c.count}`;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = h.colors.ground;
+    ctx.strokeText(text, top.x, top.y - 8);
+    ctx.fillStyle = h.colors.slate;
+    ctx.fillText(text, top.x, top.y - 8);
+  }
+  ctx.textAlign = 'start';
 }
 
 function relayout(hostId) {

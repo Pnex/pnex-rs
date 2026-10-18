@@ -11,6 +11,7 @@ mod map;
 mod markdown;
 mod model;
 mod money;
+mod nest;
 mod pages;
 mod palette;
 mod purge;
@@ -349,8 +350,17 @@ fn now_ms() -> i64 {
     (crate::util::now_secs() * 1000.0) as i64
 }
 
+/// Keyed by the case: moving to a parent or a sub-case (GS16) mounts a
+/// fresh workspace instead of keeping the previous case's state.
 #[component]
 pub fn CaseWorkspace(id: String) -> Element {
+    rsx! {
+        CaseWorkspaceOf { key: "{id}", id: id.clone() }
+    }
+}
+
+#[component]
+fn CaseWorkspaceOf(id: String) -> Element {
     let ws = Ws {
         case_id: use_signal(|| id.clone()),
         data: use_signal(|| None),
@@ -603,8 +613,15 @@ pub fn CaseWorkspace(id: String) -> Element {
     let inspector_open = (ws.sel)() != Sel::None || (ws.at_cursor)();
     rsx! {
         EditorShell {
-            on_back: move |_| {
-                navigator.push(Route::Cases {});
+            on_back: {
+                let parent = w.parents.first().map(|p| p.id.clone());
+                move |_| {
+                    let to = match parent.clone() {
+                        Some(id) => Route::CaseWorkspace { id },
+                        None => Route::Cases {},
+                    };
+                    navigator.push(to);
+                }
             },
             title: case.title.clone(),
             status: summary,
@@ -637,6 +654,7 @@ pub fn CaseWorkspace(id: String) -> Element {
                         drag.set(None);
                         target.set(None);
                     },
+                    nest::Nest { workspace: w.clone() }
                     // The main view, the inspector drawn over it on demand.
                     div { class: "relative min-h-0 flex-1 overflow-hidden",
                         match (ws.view)() {
