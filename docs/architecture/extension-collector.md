@@ -601,6 +601,18 @@ L0c (page « Agents navigateur »).
     temporaire par about:debugging tant que la signature AMO
     (question 4) n'est pas faite.
 
+- **D269 codée le 2026-10-18** : `extension_agents.mode` (migration
+  000031) : `shared` (tout sauf les plateformes exclusives) ou
+  `dedicated:<x|youtube|tiktok>` ; le serveur ne confie une plateforme
+  exclusive (TikTok aujourd'hui, liste à régler par §16.1) qu'à un agent
+  dédié ; l'agent met l'onglet au premier plan et met la mission en pause
+  (`ext-tab-hidden`) s'il reste caché. Mode réglé dans la page (Modifier).
+- **Éditeur d'un compte (question 5 tranchée, D278)** : une mission
+  `follow_account` peut nommer la personne ou l'organisation du compte ;
+  chaque média capturé reçoit le lien d'ontologie `published_by` (pack
+  `investigation` ≥ 1.8.0 ; sans le pack, pas de lien), plus
+  `metadata.published_by_object`.
+
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
 sert à `GET /api/v1/extension/download` (public, aucun secret) : un zip
@@ -621,8 +633,8 @@ Firefox : question 4.
 4. **Publication** : Chrome Web Store (installation en un clic, mises à
    jour automatiques) et signature AMO pour Firefox (obligatoire hors
    mode développeur), ou chargement non empaqueté seulement ?
-5. **Éditeur d'un média capturé** (D281) : lien d'ontologie
-   `published_by` ou propriété de provenance `published_by_object` ?
+5. ~~**Éditeur d'un média capturé**~~ : lien `published_by` (D278),
+   codé.
 
 Tranchées le 2026-10-18 : un agent par PC (D255) ; téléchargement quand
 c'est possible, enregistrement en direct pour les lives (D260) ;
