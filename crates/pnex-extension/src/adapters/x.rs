@@ -120,7 +120,11 @@ mod tests {
         let ids: Vec<&str> = posts.iter().map(|p| p.platform_id.as_str()).collect();
         assert_eq!(
             ids,
-            ["1850000000000000001", "1850000000000000002", "1850000000000000003"],
+            [
+                "1850000000000000001",
+                "1850000000000000002",
+                "1850000000000000003"
+            ],
             "the repost's original (another author) is skipped"
         );
         let clip = &posts[0];
@@ -129,21 +133,34 @@ mod tests {
             Some("https://video.twimg.com/ext_tw_video/1/pu/vid/1280x720/high.mp4")
         );
         assert_eq!(clip.duration_ms, Some(31_500));
-        assert_eq!(clip.published_at.as_deref(), Some("2026-10-17T18:04:05+00:00"));
+        assert_eq!(
+            clip.published_at.as_deref(),
+            Some("2026-10-17T18:04:05+00:00")
+        );
         assert_eq!(
             clip.url,
             "https://x.com/Example_Account/status/1850000000000000001"
         );
         assert!(posts[1].video_url.is_none(), "text only");
-        assert!(posts[2].video_url.is_none(), "the repost wrapper has no media");
+        assert!(
+            posts[2].video_url.is_none(),
+            "the repost wrapper has no media"
+        );
     }
 
     #[test]
     fn timeline_operations_only_and_garbage_tolerated() {
-        assert!(is_timeline_url("https://x.com/i/api/graphql/abc/UserTweets?variables=1"));
-        assert!(!is_timeline_url("https://x.com/i/api/graphql/abc/HomeTimeline"));
+        assert!(is_timeline_url(
+            "https://x.com/i/api/graphql/abc/UserTweets?variables=1"
+        ));
+        assert!(!is_timeline_url(
+            "https://x.com/i/api/graphql/abc/HomeTimeline"
+        ));
         assert!(posts_of("not json", "a").is_empty());
-        assert_eq!(rfc3339("Mon Jan 05 01:02:03 -0130 2026").as_deref(), Some("2026-01-05T01:02:03-01:30"));
+        assert_eq!(
+            rfc3339("Mon Jan 05 01:02:03 -0130 2026").as_deref(),
+            Some("2026-01-05T01:02:03-01:30")
+        );
         assert!(rfc3339("garbage").is_none());
     }
 }

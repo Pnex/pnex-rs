@@ -454,7 +454,8 @@ impl Session {
                     let outcome = capture_video(&this, &mission_id, &post, &url).await;
                     let mut p = plan.borrow_mut();
                     p.downloading = false;
-                    p.next_download_at = host::now_ms() + 5_000.0 + js_sys::Math::random() * 5_000.0;
+                    p.next_download_at =
+                        host::now_ms() + 5_000.0 + js_sys::Math::random() * 5_000.0;
                     p.outcome.insert(mission_id, outcome);
                 });
             }
@@ -731,7 +732,11 @@ async fn follow_account(
     }
     if posts.is_empty() {
         // Nothing relayed: a sign-in wall, or the account's page changed.
-        let page = host::read_page(tab).await.ok().map(|v| text(&v)).unwrap_or_default();
+        let page = host::read_page(tab)
+            .await
+            .ok()
+            .map(|v| text(&v))
+            .unwrap_or_default();
         let code = if page.contains("/login") || page.contains("/i/flow/") {
             err_codes::EXT_LOGIN_REQUIRED
         } else {

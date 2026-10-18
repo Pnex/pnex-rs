@@ -857,7 +857,9 @@ fn http_url(raw: &str) -> bool {
 fn clean_post(p: &ba::SeenPost) -> Option<ba::SeenPost> {
     let id_ok = !p.platform_id.is_empty()
         && p.platform_id.len() <= 64
-        && p.platform_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        && p.platform_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     if !id_ok || !http_url(&p.url) {
         return None;
     }

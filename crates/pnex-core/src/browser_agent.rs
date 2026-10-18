@@ -737,9 +737,16 @@ mod tests {
             media_policy: MediaPolicy::default(),
         });
         assert_eq!(check_spec(&bad).unwrap_err().0, "spec.params.handle");
-        let json = serde_json::json!({"kind":"follow_account","params":{"platform":"x","handle":"a"}});
+        let json =
+            serde_json::json!({"kind":"follow_account","params":{"platform":"x","handle":"a"}});
         let parsed: MissionSpec = serde_json::from_value(json).unwrap();
-        assert!(matches!(parsed, MissionSpec::FollowAccount(FollowAccountParams { media_policy: MediaPolicy::IfNoTranscript, .. })));
+        assert!(matches!(
+            parsed,
+            MissionSpec::FollowAccount(FollowAccountParams {
+                media_policy: MediaPolicy::IfNoTranscript,
+                ..
+            })
+        ));
     }
 
     #[test]

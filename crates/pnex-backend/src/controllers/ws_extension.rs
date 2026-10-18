@@ -218,8 +218,7 @@ impl Link {
             AgentMsg::Ping => Some(ServerMsg::Pong),
             AgentMsg::Seen { mission_id, posts } => {
                 self.held_id(&mission_id)?;
-                match extension::record_seen(&self.ctx.db, &self.agent, &mission_id, &posts).await
-                {
+                match extension::record_seen(&self.ctx.db, &self.agent, &mission_id, &posts).await {
                     Ok(platform_ids) => Some(ServerMsg::Capture {
                         mission_id,
                         platform_ids,
