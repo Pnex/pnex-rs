@@ -45,6 +45,9 @@ pub enum ExtensionError {
     MissionNotFound,
     #[error("video not found")]
     VideoNotFound,
+    /// The text store (O2) refused the captions: nothing recorded, retry.
+    #[error("text store unavailable")]
+    TextStoreUnavailable,
     #[error("stale version")]
     VersionConflict { current: i32 },
     #[error("pairing refused")]
@@ -911,7 +914,7 @@ pub async fn record_seen(
     posts: &[ba::SeenPost],
     depth: u32,
     end_reached: bool,
-) -> Result<Vec<String>, ExtensionError> {
+) -> Result<(Vec<String>, Vec<String>), ExtensionError> {
     let (id, mission, spec) = own_mission(db, agent, mission_id).await?;
     let MissionSpec::FollowAccount(params) = spec else {
         return Err(ExtensionError::MissionNotFound);
@@ -922,6 +925,7 @@ pub async fn record_seen(
         video_url: Option<String>,
     }
     let mut capture = Vec::new();
+    let mut captions = Vec::new();
     for post in posts.iter().take(ba::SEEN_MAX).filter_map(clean_post) {
         let inserted = Inserted::find_by_statement(stmt(
             "INSERT INTO social_videos (id, org_id, platform, platform_id, url, author, text,
@@ -946,9 +950,12 @@ pub async fn record_seen(
         .one(db)
         .await?;
         if let Some(row) = inserted {
-            // D284: files only when the mission forces the video collection.
-            if row.video_url.is_some() && params.force_video {
-                capture.push(row.platform_id);
+            if row.video_url.is_some() {
+                // D284: text first (captions), the file only when forced.
+                captions.push(row.platform_id.clone());
+                if params.force_video {
+                    capture.push(row.platform_id);
+                }
             }
         }
     }
@@ -968,7 +975,7 @@ pub async fn record_seen(
     ))
     .await?;
     report_state(db, agent, id, MissionState::Running, None).await?;
-    Ok(capture)
+    Ok((capture, captions))
 }
 
 #[derive(Debug, FromQueryResult)]
@@ -994,17 +1001,17 @@ const VIDEO_COLUMNS: &str = "id, platform, platform_id, url, author, text, publi
 impl VideoRow {
     fn view(&self) -> ba::SocialVideo {
         ba::SocialVideo {
-            platform: ba::SocialPlatform::X,
+            platform: ba::SocialPlatform::parse(&self.platform).unwrap_or(ba::SocialPlatform::X),
             platform_id: self.platform_id.clone(),
             url: self.url.clone(),
             author: self.author.clone(),
             text: self.text.clone(),
             published_at: self.published_at.map(|t| t.to_rfc3339()),
             has_video: self.video_url.is_some(),
-            state: if self.state == "captured" {
-                ba::VideoState::Captured
-            } else {
-                ba::VideoState::Seen
+            state: match self.state.as_str() {
+                "captured" => ba::VideoState::Captured,
+                "captioned" => ba::VideoState::Captioned,
+                _ => ba::VideoState::Seen,
             },
             media_asset_id: self.media_asset_id.map(|u| u.to_string()),
             mission_id: self.mission_id.map(|u| u.to_string()),
@@ -1023,7 +1030,6 @@ pub async fn store_video(
     platform_id: &str,
     bytes: axum::body::Bytes,
 ) -> Result<ba::SocialVideo, ExtensionError> {
-    use crate::models::_entities::media_assets;
     let (id, _, spec) = own_mission(&ctx.db, agent, mission_id).await?;
     let MissionSpec::FollowAccount(params) = spec else {
         return Err(ExtensionError::MissionNotFound);
@@ -1041,45 +1047,29 @@ pub async fn store_video(
     ))
     .one(&ctx.db)
     .await?
-    .filter(|r| r.state == "seen" && r.video_url.is_some())
+    .filter(|r| matches!(r.state.as_str(), "seen" | "captioned") && r.video_url.is_some())
     .ok_or(ExtensionError::VideoNotFound)?;
+    // A recording from the browser is WebM (EBML magic), a fetched file mp4.
+    let ext = if bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        "webm"
+    } else {
+        "mp4"
+    };
     if bytes.is_empty() || bytes.len() > ba::VIDEO_MAX {
         return Err(ExtensionError::Invalid {
             field: "body".into(),
             token: format!("{}:{}", err_codes::FIELD_MAX_LENGTH, ba::VIDEO_MAX),
         });
     }
-    let captured_at = chrono::Utc::now().to_rfc3339();
-    // shortcut: the asset row is written before its version, like the media
-    // upload; a refused file (not an mp4) leaves an empty media behind.
-    let asset = media_assets::ActiveModel {
-        id: Set(Uuid::new_v4()),
-        org_id: Set(agent.org_id),
-        kind: Set("video".into()),
-        name: Set(format!("@{} · {}", row.author, row.platform_id)),
-        description: Set((!row.text.is_empty()).then(|| row.text.chars().take(2000).collect())),
-        metadata: Set(Some(serde_json::json!({
-            "source": "browser_agent",
-            "mission_id": id.to_string(),
-            "source_url": row.url,
-            "platform": row.platform,
-            "platform_id": row.platform_id,
-            "author_handle": row.author,
-            "published_at": row.published_at.map(|t| t.to_rfc3339()),
-            "captured_at": captured_at,
-        }))),
-        ..Default::default()
-    }
-    .insert(&ctx.db)
-    .await?;
+    let asset = post_asset(ctx, agent, id, &row).await?;
     let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
     crate::controllers::media::write_version(
         ctx,
         agent.org_id,
         &asset,
         crate::controllers::media::IncomingVersion {
-            filename: format!("{}.mp4", row.platform_id),
-            content_type: "video/mp4".into(),
+            filename: format!("{}.{ext}", row.platform_id),
+            content_type: format!("video/{ext}"),
             note: None,
             bytes,
         },
@@ -1093,6 +1083,122 @@ pub async fn store_video(
              WHERE id = $1 RETURNING {VIDEO_COLUMNS}"
         ),
         vec![row.id.into(), asset.id.into()],
+    ))
+    .one(&ctx.db)
+    .await?
+    .ok_or(ExtensionError::VideoNotFound)?;
+    Ok(updated.view())
+}
+
+/// The media of a post: the one its captions created, else a new `video`
+/// media with the post's provenance (D281), file to come or never.
+async fn post_asset(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    mission_id: Uuid,
+    row: &VideoRow,
+) -> Result<crate::models::_entities::media_assets::Model, ExtensionError> {
+    use crate::models::_entities::media_assets;
+    if let Some(existing) = row.media_asset_id {
+        if let Some(asset) = media_assets::Entity::find_by_id(existing)
+            .filter(media_assets::Column::OrgId.eq(agent.org_id))
+            .one(&ctx.db)
+            .await?
+        {
+            return Ok(asset);
+        }
+    }
+    // shortcut: the asset row is written before its version, like the media
+    // upload; a refused file leaves a media with no file behind (the same
+    // state as a captions-only post, D281).
+    let asset = media_assets::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(agent.org_id),
+        kind: Set("video".into()),
+        name: Set(format!("@{} · {}", row.author, row.platform_id)),
+        description: Set((!row.text.is_empty()).then(|| row.text.chars().take(2000).collect())),
+        metadata: Set(Some(serde_json::json!({
+            "source": "browser_agent",
+            "mission_id": mission_id.to_string(),
+            "source_url": row.url,
+            "platform": row.platform,
+            "platform_id": row.platform_id,
+            "author_handle": row.author,
+            "published_at": row.published_at.map(|t| t.to_rfc3339()),
+            "captured_at": chrono::Utc::now().to_rfc3339(),
+        }))),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await?;
+    ctx.db
+        .execute_raw(stmt(
+            "UPDATE social_videos SET media_asset_id = $2 WHERE id = $1",
+            vec![row.id.into(), asset.id.into()],
+        ))
+        .await?;
+    Ok(asset)
+}
+
+/// Stores a post's platform captions as a transcription run of origin
+/// `platform` on its media (D281), created without a file when needed.
+pub async fn store_captions(
+    ctx: &loco_rs::app::AppContext,
+    agent: &AgentAuth,
+    upload: &ba::CaptionsUpload,
+) -> Result<ba::SocialVideo, ExtensionError> {
+    use crate::services::media_runs::{self, PlatformCue, RunError};
+    let (id, _, spec) = own_mission(&ctx.db, agent, &upload.mission_id).await?;
+    let MissionSpec::FollowAccount(params) = spec else {
+        return Err(ExtensionError::MissionNotFound);
+    };
+    let row = VideoRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {VIDEO_COLUMNS} FROM social_videos
+             WHERE org_id = $1 AND platform = $2 AND platform_id = $3"
+        ),
+        vec![
+            agent.org_id.into(),
+            params.platform.wire().into(),
+            upload.platform_id.clone().into(),
+        ],
+    ))
+    .one(&ctx.db)
+    .await?
+    .filter(|r| r.video_url.is_some())
+    .ok_or(ExtensionError::VideoNotFound)?;
+    let cues: Vec<PlatformCue> = upload
+        .cues
+        .iter()
+        .map(|c| PlatformCue {
+            start_ms: c.start_ms,
+            end_ms: c.end_ms,
+            text: c.text.clone(),
+        })
+        .collect();
+    let asset = post_asset(ctx, agent, id, &row).await?;
+    match media_runs::store_platform_run(ctx, agent.org_id, asset.id, &upload.lang, &cues).await {
+        Ok(_) => {}
+        Err(RunError::Invalid(why)) => {
+            return Err(ExtensionError::Invalid {
+                field: "cues".into(),
+                token: format!("{}:{why}", err_codes::FIELD_INVALID),
+            })
+        }
+        Err(RunError::NotFound) => return Err(ExtensionError::VideoNotFound),
+        Err(RunError::Store(e)) => {
+            tracing::warn!(error = %e, "platform captions not stored");
+            return Err(ExtensionError::TextStoreUnavailable);
+        }
+        Err(RunError::Db(e)) => return Err(e.into()),
+    }
+    let updated = VideoRow::find_by_statement(stmt(
+        &format!(
+            "UPDATE social_videos
+             SET state = CASE WHEN state = 'seen' THEN 'captioned' ELSE state END
+             WHERE id = $1 RETURNING {VIDEO_COLUMNS}"
+        ),
+        vec![row.id.into()],
     ))
     .one(&ctx.db)
     .await?

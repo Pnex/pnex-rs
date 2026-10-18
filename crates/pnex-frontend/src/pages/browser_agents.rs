@@ -855,10 +855,23 @@ fn VideosTab(reload: Signal<u32>) -> Element {
             |v: &SocialVideo| {
                 let label = match (v.state, v.has_video) {
                     (VideoState::Captured, _) => t!("browser-videos-captured"),
+                    (VideoState::Captioned, _) => t!("browser-videos-captioned"),
                     (VideoState::Seen, true) => t!("browser-videos-seen-video"),
                     (VideoState::Seen, false) => t!("browser-videos-seen-text"),
                 };
-                rsx! { "{label}" }
+                let review = v.media_asset_id.clone();
+                rsx! {
+                    span { "{label}" }
+                    if let Some(id) = review {
+                        p { class: "text-xs",
+                            Link {
+                                to: crate::app::Route::MediaReview { id },
+                                class: "text-signal hover:underline",
+                                {t!("browser-videos-open-review")}
+                            }
+                        }
+                    }
+                }
             },
         )
         .with_td_class("text-gray-600"),
