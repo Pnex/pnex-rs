@@ -7,10 +7,12 @@
 # start as collected when it is fuzzier than an instant ("2014-09").
 # Builds on the Investigation pack (person, organization, owns, employs,
 # member_of): installing this pack installs it first.
+# Since 1.1.0 links carry `planned_end`: an end announced but still to
+# come (a term, a budget year) — `valid_to` is only ever a past instant.
 key: media_coverage
 name: Media coverage
 names: {fr: "Couverture médiatique"}
-version: "1.0.0"
+version: "1.1.0"
 requires: [investigation]
 description: Media outlets, programmes, parties and mandates — ownership, funding, hosts and office holders, every link sourced.
 descriptions: {fr: "Médias, émissions, partis et mandats — propriété, financement, présentateurs et élus, chaque lien sourcé."}
@@ -76,6 +78,7 @@ link_types:
     attributes:
       - { key: mode, name: Mode, names: {fr: "Mode"}, kind: text, max_len: 500 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -92,6 +95,7 @@ link_types:
       - { key: year, name: Year, names: {fr: "Année"}, kind: number }
       - { key: nature, name: Nature, names: {fr: "Nature"}, kind: text, max_len: 255 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -104,6 +108,7 @@ link_types:
     to_types: [program]
     attributes:
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -117,6 +122,7 @@ link_types:
     attributes:
       - { key: position, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -130,6 +136,7 @@ link_types:
     attributes:
       - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -143,6 +150,7 @@ link_types:
     attributes:
       - { key: section, name: Section, names: {fr: "Rubrique"}, kind: text, max_len: 255 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -156,6 +164,7 @@ link_types:
     attributes:
       - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 500 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
@@ -169,6 +178,7 @@ link_types:
     attributes:
       - { key: office, name: Office, names: {fr: "Fonction"}, kind: text, max_len: 500 }
       - { key: start_raw, name: Start as collected, names: {fr: "Début (collecté)"}, kind: text, max_len: 64 }
+      - { key: planned_end, name: Planned end, names: {fr: "Fin prévue"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }

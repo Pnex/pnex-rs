@@ -695,6 +695,15 @@ clés, lisible en YAML.
   ouverts sont uniques par paire) ; les cardinalités ne lient que les liens
   ouverts. Avant, un mandat passé ne pouvait pas être saisi à côté du mandat
   en cours. Test `closed_link_is_history_beside_the_open_one`.
+- Attributs d'un lien modifiables (2026-10-18) : `PUT
+  /api/v1/ontology/links/{id}` remplace les attributs d'un lien, ouvert ou
+  clos, validés contre son type (une source ajoutée, une note corrigée) ;
+  extrémités, type et validité ne changent pas (fermer et recréer). Pas pour
+  les liaisons `measures` / `depicts`. Journal `link.update` avec la version
+  précédente. Avec : `investigation` 1.9.0, `about.link` (une affirmation
+  désigne le lien qu'elle corrobore ou conteste) ; `media_coverage` 1.1.0,
+  `planned_end` (fin annoncée à venir : `valid_to` n'est jamais futur).
+  Test `link_attributes_update_in_place`.
 - Pack **`media_coverage`** livré (2026-10-18, la « Couverture médiatique »
   de D190, sans pays) : `media`, `program`, `party`, `mandate` ; liens
   `controls`, `finances` (montant + devise), `broadcasts`, `staffs`,

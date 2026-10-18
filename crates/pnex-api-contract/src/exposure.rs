@@ -209,6 +209,7 @@ pub const EXPOSED: &[&str] = &[
     "notify_templates_update",
     "ontology_links_close",
     "ontology_links_create",
+    "ontology_links_update",
     "ontology_link_types_create",
     "ontology_link_types_list",
     "ontology_link_types_update",
