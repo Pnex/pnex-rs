@@ -222,7 +222,9 @@ seule.
 - Retirer une attribution confirmée retire son apparition ; le lien
   `appears_in` tombe quand il n'en reste plus.
 - Lien **`published_by`** (pack `investigation`, « publié par ») :
-  `piece` ou `media_asset` (type système) → `person` ou `organization`.
+  `piece` ou `media_asset` (type système) → tout type (`person`,
+  `organization`, ou `media` du pack `media_coverage`, que le pack
+  `investigation` ne connaît pas).
   Il dit **qui a publié** le contenu, jamais qui parle dedans : un compte
   qui reprend l'extrait d'une émission n'est pas un intervenant. Posé par
   l'agent navigateur quand la mission suit un compte rattaché à un objet
@@ -302,7 +304,7 @@ d'attribution à trancher (Q5) ; `identify` = `EXCLUDED` (biométrie).
 
 | Lot | Contenu | Prérequis | Sortie vérifiable |
 |---|---|---|---|
-| **R0** | D211 batch + D216 contrat (lots I3, I4 de `media-import-pipeline.md`) | — | un fichier analysé, transcription au mot avec `S#` et `offset_ms` |
+| **R0** | D211 batch + D216 contrat (lots I3, I4 de `media-import-pipeline.md`) | — | un fichier analysé, transcription au mot avec `S#` et `offset_ms`. **D211 codé le 2026-10-18** (`tests/media_transcribe.rs` `file_analysis_transcribes_in_batch`) ; D216 part avec R1 |
 | **R1** | Écran D271 (centre, texte, frise, lecture synchronisée), couloir Locuteurs | R0 | clic sur un mot → la vidéo saute ; curseur commun texte / frise |
 | **R2** | D272 + D273 + D278 : attributions manuelles, couloirs d'intervenants, apparitions, déclarations | R1 | « 12:30 → 14:10, c'est X » sans profil vocal ; X a une apparition `speaking` |
 | **R3** | D274 + D275 + D276 « Réidentifier » | R2, activation Q1 | deux voix enrôlées dans un débat : deux propositions justes, rien d'écrit avant confirmation |

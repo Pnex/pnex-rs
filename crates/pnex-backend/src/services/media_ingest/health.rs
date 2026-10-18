@@ -372,6 +372,9 @@ mod tests {
             created_by: None,
             created_at: at,
             updated_at: at,
+            pace: "realtime".into(),
+            media_version_id: None,
+            run_id: None,
         }
     }
 

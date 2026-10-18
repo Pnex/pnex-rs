@@ -272,6 +272,9 @@ pub enum ClockSource {
     Tdt,
     /// NTP clock of the carrier when the segment started.
     Host,
+    /// Position in an analysed file, on the date of its version (D211):
+    /// the same version always lands on the same instants.
+    File,
 }
 
 impl ClockSource {
@@ -280,11 +283,12 @@ impl ClockSource {
             Self::Pdt => "pdt",
             Self::Tdt => "tdt",
             Self::Host => "host",
+            Self::File => "file",
         }
     }
 
     pub fn from_wire(s: &str) -> Option<Self> {
-        [Self::Pdt, Self::Tdt, Self::Host]
+        [Self::Pdt, Self::Tdt, Self::Host, Self::File]
             .into_iter()
             .find(|k| k.wire() == s)
     }

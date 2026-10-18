@@ -391,7 +391,8 @@ async fn stream_list(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
-    let mut select = streams::select(org.org.id);
+    let mut select = streams::select(org.org.id)
+        .filter(crate::models::_entities::media_streams::Column::Pace.ne(streams::PACE_BATCH));
     if let Some(pat) = pagination::sql_search_pattern(q.search.as_deref()) {
         select = select.filter(pagination::sql_contains(
             (

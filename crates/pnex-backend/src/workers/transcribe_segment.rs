@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use loco_rs::app::AppContext;
 use loco_rs::bgworker::BackgroundWorker;
 use loco_rs::prelude::*;
-use pnex_core::media_ingest::{transcript_channel, AudioRetention, SegmentState};
+use pnex_core::media_ingest::{transcript_channel, AudioRetention, ClockSource, SegmentState};
 use pnex_core::vision::ModelCheckStatus;
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
@@ -282,6 +282,7 @@ impl TranscribeSegmentWorker {
                 lang: &profile.language,
                 asr_model: &model.name,
                 asr_model_version: model.asset_version,
+                file: file_pos(db, seg, &stream).await,
             };
             transcripts::write(&self.ctx, seg.org_id, &doc)
                 .await
@@ -298,7 +299,10 @@ impl TranscribeSegmentWorker {
             resp.speech_ms,
             &speakers,
         );
-        health::ingest_points(&self.ctx, seg.org_id, &points).await;
+        // A batch file lies in the past: its speech is no live health series.
+        if !batch_of(seg) {
+            health::ingest_points(&self.ctx, seg.org_id, &points).await;
+        }
 
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         media_segments::Entity::update_many()
@@ -620,7 +624,7 @@ impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
         let Some(_slot) = org_slot(args.org_id, max_per_org()) else {
             // Back to the queue: the worker slot goes to another org's job.
             tokio::time::sleep(REQUEUE_AFTER).await;
-            let live = seg.state == SegmentState::Queued.wire();
+            let live = seg.state == SegmentState::Queued.wire() && !batch_of(&seg);
             Self::perform_later_with_priority(
                 &self.ctx,
                 args,
@@ -634,7 +638,8 @@ impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
             return Ok(());
         }
         let lag = chrono::Utc::now().signed_duration_since(seg.ended_at);
-        if lag.num_seconds() > max_lag_secs() {
+        // A file analysed in batch is late by nature (D211): never skipped.
+        if !batch_of(&seg) && lag.num_seconds() > max_lag_secs() {
             set_state(&self.ctx.db, seg.id, SegmentState::SkippedBacklog, None).await?;
             if let Some(stream) = media_streams::Entity::find_by_id(seg.stream_id)
                 .one(&self.ctx.db)
@@ -648,6 +653,35 @@ impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
             // The blob stays for an explicit replay (D161).
             set_state(&self.ctx.db, seg.id, SegmentState::Failed, Some(f.code())).await?;
         }
+        if batch_of(&seg) {
+            crate::services::media_analyses::batch_segment_done(&self.ctx, seg.stream_id).await;
+        }
         Ok(())
     }
+}
+
+/// Position in the analysed file of a batch segment (D211): its start
+/// minus the date of the version, which is the file's position 0.
+async fn file_pos(
+    db: &sea_orm::DatabaseConnection,
+    seg: &media_segments::Model,
+    stream: &media_streams::Model,
+) -> Option<transcripts::FilePos> {
+    use crate::models::_entities::media_versions;
+    if !batch_of(seg) {
+        return None;
+    }
+    let version = media_versions::Entity::find_by_id(stream.media_version_id?)
+        .one(db)
+        .await
+        .ok()??;
+    Some(transcripts::FilePos {
+        offset_ms: (seg.started_at - version.created_at).num_milliseconds(),
+        run: stream.run_id?,
+    })
+}
+
+/// A segment of a file analysed in batch (D211): stamped on the file clock.
+fn batch_of(seg: &media_segments::Model) -> bool {
+    seg.clock_source == ClockSource::File.wire()
 }

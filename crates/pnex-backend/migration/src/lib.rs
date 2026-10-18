@@ -34,6 +34,7 @@ mod m20261016_000024_media_analyses;
 mod m20261018_000025_browser_agents;
 mod m20261018_000026_extension_mission_cursor;
 mod m20261018_000027_social_videos;
+mod m20261018_000028_media_stream_pace;
 
 pub struct Migrator;
 
@@ -63,7 +64,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261016_000024_media_analyses::Migration),
             Box::new(m20261018_000025_browser_agents::Migration),
             Box::new(m20261018_000026_extension_mission_cursor::Migration),
-        ]
             Box::new(m20261018_000027_social_videos::Migration),
+            Box::new(m20261018_000028_media_stream_pace::Migration),
+        ]
     }
 }

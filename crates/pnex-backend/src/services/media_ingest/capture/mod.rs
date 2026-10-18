@@ -25,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use loco_rs::app::AppContext;
 use pnex_core::media_ingest::{
     CaptureOn, CaptureState, MediaStreamKind, MediaTracks, FPS_MAX, FPS_MIN,
@@ -313,6 +313,10 @@ async fn run_stream(
                         .exec(&ctx.db)
                         .await;
                     set_state(&ctx.db, stream.id, CaptureState::Stopped, None).await;
+                    if stream.pace == super::streams::PACE_BATCH {
+                        crate::services::media_analyses::batch_capture_ended(&ctx, &stream, false)
+                            .await;
+                    }
                     return;
                 }
                 set_state(
@@ -322,6 +326,19 @@ async fn run_stream(
                     Some(CaptureError::Stalled),
                 )
                 .await;
+            }
+            Err(e) if stream.pace == super::streams::PACE_BATCH => {
+                // A batch run is never retried from the start (its segments
+                // would land twice on the same instants): the analysis fails.
+                tracing::info!(stream = %stream.slug, org = stream.org_id, error = e.code(), "media batch capture failed");
+                let _ = media_streams::Entity::update_many()
+                    .col_expr(media_streams::Column::Enabled, Expr::value(false))
+                    .filter(media_streams::Column::Id.eq(stream.id))
+                    .exec(&ctx.db)
+                    .await;
+                set_state(&ctx.db, stream.id, CaptureState::Stopped, Some(e)).await;
+                crate::services::media_analyses::batch_capture_ended(&ctx, &stream, true).await;
+                return;
             }
             Err(e) => {
                 tracing::info!(stream = %stream.slug, org = stream.org_id, error = e.code(), "media capture run ended");
@@ -497,11 +514,13 @@ async fn run_once(
     // A library file is read here (org re-checked), never fetched.
     let (url, file) = if kind == MediaStreamKind::MediaAsset {
         let url = reqwest::Url::parse(&stream.url).map_err(|_| CaptureError::Unreachable)?;
-        let (bytes, format) = media_asset_file(ctx, stream).await?;
+        let (bytes, format, version_at) = media_asset_file(ctx, stream).await?;
+        let batch = stream.pace == super::streams::PACE_BATCH;
         let file = pnex_media_capture::FileSource {
             bytes,
             format,
-            realtime: !matches!(sink, Sink::Probe(_)),
+            realtime: !batch && !matches!(sink, Sink::Probe(_)),
+            base: batch.then_some(version_at),
         };
         (url, Some(file))
     } else {
@@ -542,13 +561,21 @@ async fn run_once(
 /// Largest library file a stream replays (read in memory).
 const MEDIA_ASSET_MAX_BYTES: i64 = 512 * 1024 * 1024;
 
-/// Bytes and decoder format of the current version of a stream's library
-/// file, re-checked against the stream's org; an MP4 index at the end of
-/// the file is moved first (pipe input cannot seek).
+/// Bytes, decoder format and date of the version of a stream's library
+/// file (the analysed one for a batch stream, else the current one),
+/// re-checked against the stream's org; an MP4 index at the end of the
+/// file is moved first (pipe input cannot seek).
 async fn media_asset_file(
     ctx: &AppContext,
     stream: &media_streams::Model,
-) -> Result<(axum::body::Bytes, pnex_media_capture::decoder::InputFormat), CaptureError> {
+) -> Result<
+    (
+        axum::body::Bytes,
+        pnex_media_capture::decoder::InputFormat,
+        DateTime<Utc>,
+    ),
+    CaptureError,
+> {
     use crate::models::_entities::{media_assets, media_versions};
     let id =
         pnex_core::media_ingest::media_asset_id(&stream.url).ok_or(CaptureError::Unreachable)?;
@@ -559,8 +586,9 @@ async fn media_asset_file(
         .ok()
         .flatten()
         .ok_or(CaptureError::Unreachable)?;
-    let version = match asset.current_version_id {
+    let version = match stream.media_version_id.or(asset.current_version_id) {
         Some(v) => media_versions::Entity::find_by_id(v)
+            .filter(media_versions::Column::AssetId.eq(asset.id))
             .one(&ctx.db)
             .await
             .ok()
@@ -586,7 +614,11 @@ async fn media_asset_file(
     } else {
         bytes
     };
-    Ok((axum::body::Bytes::from(bytes), format))
+    Ok((
+        axum::body::Bytes::from(bytes),
+        format,
+        version.created_at.with_timezone(&Utc),
+    ))
 }
 
 async fn store_segment(
@@ -610,10 +642,29 @@ async fn store_segment(
             CaptureError::StoreFailed
         })?;
     if stream.asr_profile_id.is_some() {
-        segments::enqueue(ctx, &row, true).await;
+        let batch = stream.pace == super::streams::PACE_BATCH;
+        segments::enqueue(ctx, &row, !batch).await;
+        if batch {
+            // Backpressure: the decoder waits while the ASR is behind, so a
+            // long file never piles up stored segments.
+            let deadline = Instant::now() + BATCH_MAX_WAIT;
+            while segments::waiting(&ctx.db, stream.id).await >= BATCH_MAX_WAITING {
+                if Instant::now() >= deadline {
+                    // No ASR worker draining the queue: fail the run.
+                    return Err(CaptureError::Stalled);
+                }
+                tokio::time::sleep(BATCH_POLL).await;
+            }
+        }
     }
     Ok(())
 }
+
+/// Segments of a batch stream waiting for the ASR before the decoder pauses
+/// (D211).
+const BATCH_MAX_WAITING: u64 = 4;
+const BATCH_POLL: Duration = Duration::from_secs(1);
+const BATCH_MAX_WAIT: Duration = Duration::from_secs(30 * 60);
 /// Posts a segment to the control plane (`POST /internal/media/segment`).
 async fn post_segment(
     remote: &RemoteSink,

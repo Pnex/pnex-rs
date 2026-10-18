@@ -23,6 +23,12 @@ use crate::services::db_lock;
 use crate::services::secrets::store::{self, StoreError, Writer};
 use crate::services::secrets::{media as media_secret, Keyring};
 
+/// Pace of a stream (D211): live sources and replayed files.
+pub const PACE_REALTIME: &str = "realtime";
+/// Pace of a file analysed as fast as the ASR keeps up (D211): hidden from
+/// the stream list and outside the stream quota.
+pub const PACE_BATCH: &str = "batch";
+
 const NAME_MAX: usize = 200;
 const TIMEZONE_MAX: usize = 64;
 const TDM_NOTE_MAX: usize = 2000;
@@ -453,6 +459,19 @@ async fn check_runnable<C: ConnectionTrait>(
     else {
         return Err(StreamError::AsrModelInvalid);
     };
+    if profile_valid(db, org_id, &p).await? {
+        Ok(())
+    } else {
+        Err(StreamError::AsrModelInvalid)
+    }
+}
+
+/// Whether every model of an ASR profile passed its check.
+async fn profile_valid<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    p: &asr_profiles::Model,
+) -> Result<bool, DbErr> {
     let ids: Vec<Uuid> = std::iter::once(p.asr_model_id)
         .chain(p.vad_model_id)
         .chain(p.diarization_model_id)
@@ -468,11 +487,98 @@ async fn check_runnable<C: ConnectionTrait>(
         .await?
         .len()
         == ids.len();
-    if valid {
-        Ok(())
-    } else {
-        Err(StreamError::AsrModelInvalid)
+    Ok(valid)
+}
+
+/// First ASR profile of the org (by name) whose models are all valid: the
+/// profile of a file analysis (D211).
+// shortcut: no profile picker on the analysis, the first valid one is
+// taken; add a choice when an org runs several profiles.
+pub async fn runnable_profile<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+) -> Result<Option<Uuid>, DbErr> {
+    let profiles = asr_profiles::Entity::find()
+        .filter(asr_profiles::Column::OrgId.eq(org_id))
+        .order_by_asc(asr_profiles::Column::Name)
+        .all(db)
+        .await?;
+    for p in profiles {
+        if profile_valid(db, org_id, &p).await? {
+            return Ok(Some(p.id));
+        }
     }
+    Ok(None)
+}
+
+/// Starts a run of the hidden batch stream of a media version (D211):
+/// created on the first analysis (slug `file_<asset>`), switched back on
+/// with a new run id on a relaunch. Returns the stream and its run.
+pub async fn start_batch(
+    db: &DatabaseConnection,
+    org_id: i64,
+    asset_id: Uuid,
+    version_id: Uuid,
+    profile_id: Uuid,
+    user_id: Option<i64>,
+) -> Result<(media_streams::Model, Uuid), StreamError> {
+    let run = Uuid::new_v4();
+    let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
+    let existing = media_streams::Entity::find()
+        .filter(media_streams::Column::OrgId.eq(org_id))
+        .filter(media_streams::Column::MediaVersionId.eq(version_id))
+        .one(db)
+        .await?;
+    if let Some(row) = existing {
+        let mut am: media_streams::ActiveModel = row.into();
+        am.enabled = Set(true);
+        am.asr_profile_id = Set(Some(profile_id));
+        am.run_id = Set(Some(run));
+        am.deleted_at = Set(None);
+        am.capture_state = Set(CaptureState::Stopped.wire().into());
+        am.capture_error = Set(None);
+        // A new `updated_at` restarts the capture task (fingerprint).
+        am.updated_at = Set(now);
+        return Ok((am.update(db).await?, run));
+    }
+    let short: String = asset_id.simple().to_string().chars().take(8).collect();
+    let name = format!("file_{short}");
+    let txn = db.begin().await?;
+    let slug = free_slug(&txn, org_id, &name).await?;
+    let am = media_streams::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        name: Set(name),
+        slug: Set(slug),
+        kind: Set(MediaStreamKind::MediaAsset.wire().to_string()),
+        url: Set(pnex_core::media_ingest::media_asset_url(asset_id)),
+        secret_id: Set(None),
+        enabled: Set(true),
+        capture_on: Set(CaptureOn::Server.wire()),
+        asr_profile_id: Set(Some(profile_id)),
+        tracks: Set(MediaTracks::Audio.wire().into()),
+        fps: Set(FPS_DEFAULT),
+        segment_secs: Set(SEGMENT_SECS_DEFAULT),
+        overlap_secs: Set(OVERLAP_SECS_DEFAULT),
+        audio_retention: Set(AudioRetention::None.wire()),
+        notify_channel_id: Set(None),
+        timezone: Set("UTC".into()),
+        tdm_checked_at: Set(None),
+        tdm_note: Set(None),
+        capture_state: Set(CaptureState::Stopped.wire().into()),
+        capture_error: Set(None),
+        capture_changed_at: Set(None),
+        deleted_at: Set(None),
+        created_by: Set(user_id),
+        created_at: Set(now),
+        updated_at: Set(now),
+        pace: Set(PACE_BATCH.into()),
+        media_version_id: Set(Some(version_id)),
+        run_id: Set(Some(run)),
+    };
+    let row = am.insert(&txn).await?;
+    txn.commit().await?;
+    Ok((row, run))
 }
 
 /// First free slug for `name` in the org (`_2`, `_3`… on conflict). A
@@ -535,6 +641,7 @@ pub async fn create(
     let count = media_streams::Entity::find()
         .filter(media_streams::Column::OrgId.eq(org_id))
         .filter(media_streams::Column::DeletedAt.is_null())
+        .filter(media_streams::Column::Pace.ne(PACE_BATCH))
         .count(&txn)
         .await?;
     if count >= max_per_org {
@@ -570,6 +677,9 @@ pub async fn create(
         created_by: Set(by.user_id),
         created_at: Set(now),
         updated_at: Set(now),
+        pace: Set(PACE_REALTIME.into()),
+        media_version_id: Set(None),
+        run_id: Set(None),
     };
     apply(&txn, org_id, &mut am, input).await?;
     check_kind_url(&am)?;

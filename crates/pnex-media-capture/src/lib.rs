@@ -187,6 +187,9 @@ pub struct FileSource {
     /// Read at the natural speed (`-re`) like a live source; off for a
     /// quick test extract.
     pub realtime: bool,
+    /// Date the file's position 0 stands for (D211 batch analysis): the
+    /// segments are stamped `base + offset` with [`ClockSource::File`].
+    pub base: Option<DateTime<Utc>>,
 }
 
 /// `-re` before the input: read at the native rate (replayed file).
@@ -447,9 +450,11 @@ pub async fn run_once<H: Host>(
     }
     drop(tx);
 
-    let (t0, clock) = match first_pdt {
-        Some(pdt) => (pdt, ClockSource::Pdt),
-        None => (Utc::now(), ClockSource::Host),
+    let base = spec.file.as_ref().and_then(|f| f.base);
+    let (t0, clock) = match (first_pdt, base) {
+        (Some(pdt), _) => (pdt, ClockSource::Pdt),
+        (None, Some(base)) => (base, ClockSource::File),
+        (None, None) => (Utc::now(), ClockSource::Host),
     };
     let mut cutter = Segmenter::new(t0, spec.segment_secs.max(1), spec.overlap_secs);
     let (mut got_audio, mut got_video) = (false, false);

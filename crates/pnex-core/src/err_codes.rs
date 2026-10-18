@@ -123,6 +123,12 @@ pub const MEDIA_ANALYSIS_QUOTA: &str = "media-analysis-quota";
 pub const MEDIA_ANALYSIS_INTERRUPTED: &str = "media-analysis-interrupted";
 /// A large file analysis was launched without its confirmation.
 pub const MEDIA_ANALYSIS_LARGE: &str = "media-analysis-large";
+/// No ASR profile with valid models: a file cannot be transcribed (D211).
+pub const MEDIA_ANALYSIS_NO_ASR: &str = "media-analysis-no-asr";
+/// The audio of the file could not be read or decoded (D211).
+pub const MEDIA_ANALYSIS_CAPTURE_FAILED: &str = "media-analysis-capture-failed";
+/// Every segment of the file failed its transcription (D211).
+pub const MEDIA_ANALYSIS_TRANSCRIBE_FAILED: &str = "media-analysis-transcribe-failed";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 /// Delete refused: deployed flows use the function (`args.flows`).
@@ -711,14 +717,14 @@ pub const EXTENSION_AGENT_PAIR_ONLY: &str = "extension-agent-pair-only";
 pub const EXTENSION_TICKET_REFUSED: &str = "extension-ticket-refused";
 /// Websocket tickets unavailable (Valkey unreachable).
 pub const EXTENSION_TICKET_UNAVAILABLE: &str = "extension-ticket-unavailable";
+/// Video not in the registry of this mission, or already captured.
+pub const EXTENSION_VIDEO_NOT_FOUND: &str = "extension-video-not-found";
 /// Capture upload refused: unknown agent token, bad or reused signature,
 /// body not matching its signature.
 pub const EXTENSION_UPLOAD_REFUSED: &str = "extension-upload-refused";
 /// This server ships no browser extension build (`PNEX_EXTENSION_DIST_DIR`).
 pub const EXTENSION_DIST_NOT_FOUND: &str = "extension-dist-not-found";
 /// Agent state: the selector matched nothing on the page.
-/// Video not in the registry of this mission, or already captured.
-pub const EXTENSION_VIDEO_NOT_FOUND: &str = "extension-video-not-found";
 pub const EXT_SELECTOR_NOT_FOUND: &str = "ext-selector-not-found";
 /// Agent state: the value read is not a number.
 pub const EXT_VALUE_NOT_NUMERIC: &str = "ext-value-not-numeric";
@@ -848,6 +854,9 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_QUOTA,
     MEDIA_ANALYSIS_INTERRUPTED,
     MEDIA_ANALYSIS_LARGE,
+    MEDIA_ANALYSIS_NO_ASR,
+    MEDIA_ANALYSIS_CAPTURE_FAILED,
+    MEDIA_ANALYSIS_TRANSCRIBE_FAILED,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     FUNCTION_IN_USE,
@@ -1063,6 +1072,7 @@ pub const ALL: &[&str] = &[
     EXTENSION_TICKET_UNAVAILABLE,
     EXTENSION_DIST_NOT_FOUND,
     EXTENSION_UPLOAD_REFUSED,
+    EXTENSION_VIDEO_NOT_FOUND,
     EXT_SELECTOR_NOT_FOUND,
     EXT_VALUE_NOT_NUMERIC,
     EXT_LOGIN_REQUIRED,
@@ -1072,7 +1082,6 @@ pub const ALL: &[&str] = &[
     EXT_PERMISSION_MISSING,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
-    EXTENSION_VIDEO_NOT_FOUND,
     TIME_RANGE_WRITE_FORBIDDEN,
     LAB_WRITE_FORBIDDEN,
     LAB_PROJECT_NOT_FOUND,

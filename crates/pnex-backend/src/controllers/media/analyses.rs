@@ -83,7 +83,7 @@ pub(super) async fn analyses(
         (status = 400, description = "Step not offered for this kind, or large step not confirmed (`media-analysis-step-invalid`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or no current version", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "No LLM configured for the organisation (`media-analysis-no-llm`), or a step already running (`media-analysis-busy`)", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "No LLM configured for the organisation (`media-analysis-no-llm`), no valid transcription profile (`media-analysis-no-asr`), or a step already running, or another transcription of the organisation (`media-analysis-busy`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -119,9 +119,9 @@ pub(super) async fn start_analyses(
     {
         let status = match e {
             media_analyses::AnalysisError::StepInvalid => StatusCode::BAD_REQUEST,
-            media_analyses::AnalysisError::NoLlm | media_analyses::AnalysisError::Busy => {
-                StatusCode::CONFLICT
-            }
+            media_analyses::AnalysisError::NoLlm
+            | media_analyses::AnalysisError::NoAsr
+            | media_analyses::AnalysisError::Busy => StatusCode::CONFLICT,
             media_analyses::AnalysisError::Db(e) => return Err(db_error(e)),
         };
         return Err(Error::CustomError(

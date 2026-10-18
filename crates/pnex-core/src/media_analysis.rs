@@ -13,15 +13,19 @@ pub enum AnalysisStep {
     Index,
     /// Summary and key points written to a page (D214), LLM `extraction`.
     Summarize,
+    /// Speech of an audio or video file transcribed with speakers (D211):
+    /// a hidden batch stream on the version, transcripts in O2.
+    Transcribe,
 }
 
 impl AnalysisStep {
-    pub const ALL: [Self; 2] = [Self::Index, Self::Summarize];
+    pub const ALL: [Self; 3] = [Self::Index, Self::Summarize, Self::Transcribe];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Index => "index",
             Self::Summarize => "summarize",
+            Self::Transcribe => "transcribe",
         }
     }
 
@@ -39,6 +43,7 @@ impl AnalysisStep {
 pub fn steps_for_kind(kind: &str) -> &'static [AnalysisStep] {
     match kind {
         "document" | "table" => &[AnalysisStep::Index, AnalysisStep::Summarize],
+        "audio" | "video" => &[AnalysisStep::Transcribe],
         _ => &[],
     }
 }
@@ -142,5 +147,7 @@ mod tests {
         }
         assert!(steps_for_kind("document").contains(&AnalysisStep::Summarize));
         assert!(steps_for_kind("splat").is_empty());
+        assert_eq!(steps_for_kind("video"), &[AnalysisStep::Transcribe]);
+        assert!(!AnalysisStep::Transcribe.needs_llm());
     }
 }

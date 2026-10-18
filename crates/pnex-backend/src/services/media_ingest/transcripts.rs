@@ -36,10 +36,19 @@ pub struct Doc<'a> {
     pub lang: &'a str,
     pub asr_model: &'a str,
     pub asr_model_version: Option<i64>,
+    /// Batch analysis of a file (D211): position of the segment in the
+    /// file (ms) and the run it belongs to (D276); `None` for a live stream.
+    pub file: Option<FilePos>,
+}
+
+/// Where a segment of an analysed file sits (D211, D276).
+pub struct FilePos {
+    pub offset_ms: i64,
+    pub run: uuid::Uuid,
 }
 
 pub fn document_of(d: &Doc<'_>) -> serde_json::Value {
-    serde_json::json!({
+    let mut doc = serde_json::json!({
         "_timestamp": d.started_at_us,
         "ended_at": d.ended_at_us,
         "stream": d.slug,
@@ -53,7 +62,12 @@ pub fn document_of(d: &Doc<'_>) -> serde_json::Value {
         "lang": d.lang,
         "asr_model": d.asr_model,
         "asr_model_version": d.asr_model_version,
-    })
+    });
+    if let Some(f) = &d.file {
+        doc["offset_ms"] = f.offset_ms.into();
+        doc["run"] = f.run.to_string().into();
+    }
+    doc
 }
 
 /// Delays between write attempts: a passcode just reset by provisioning
@@ -241,5 +255,32 @@ mod tests {
             sql("inter", Some("  "), false),
             "SELECT * FROM \"tx_inter\" ORDER BY _timestamp DESC"
         );
+    }
+
+    #[test]
+    fn file_segments_carry_their_offset_and_run() {
+        let doc = |file| Doc {
+            started_at_us: 1,
+            ended_at_us: 2,
+            slug: "file_ab12cd34",
+            segment_id: uuid::Uuid::nil(),
+            text: "bonjour",
+            words_json: "[]".into(),
+            speakers_json: "[]".into(),
+            speech_ms: None,
+            lang: "fr",
+            asr_model: "parakeet",
+            asr_model_version: None,
+            file,
+        };
+        let live = document_of(&doc(None));
+        assert!(live.get("offset_ms").is_none() && live.get("run").is_none());
+        let run = uuid::Uuid::new_v4();
+        let file = document_of(&doc(Some(FilePos {
+            offset_ms: 29_000,
+            run,
+        })));
+        assert_eq!(file["offset_ms"], 29_000);
+        assert_eq!(file["run"], run.to_string());
     }
 }
