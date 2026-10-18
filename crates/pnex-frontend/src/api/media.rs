@@ -279,6 +279,53 @@ pub async fn transcript(
     .await
 }
 
+/// `POST /api/v1/media/{id}/attributions` — spans to a person (D273).
+pub async fn attribute(
+    id: &str,
+    input: &pnex_core::media_review::AttributionInput,
+) -> Result<serde_json::Value, ApiError> {
+    let body = serde_json::to_value(input).map_err(|e| ApiError::new(e.to_string()))?;
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/media/{}/attributions", urlencode(id)),
+        Some(body),
+    )
+    .await
+}
+
+/// `PATCH /api/v1/media/{id}/attributions/{aid}` — confirm, reject, move.
+pub async fn update_attribution(
+    id: &str,
+    aid: &str,
+    patch: &pnex_core::media_review::AttributionPatch,
+) -> Result<pnex_core::media_review::SpeechAttribution, ApiError> {
+    let body = serde_json::to_value(patch).map_err(|e| ApiError::new(e.to_string()))?;
+    client::request(
+        reqwest::Method::PATCH,
+        &format!(
+            "/api/v1/media/{}/attributions/{}",
+            urlencode(id),
+            urlencode(aid)
+        ),
+        Some(body),
+    )
+    .await
+}
+
+/// `DELETE /api/v1/media/{id}/attributions/{aid}`.
+pub async fn delete_attribution(id: &str, aid: &str) -> Result<Option<()>, ApiError> {
+    client::request_opt(
+        reqwest::Method::DELETE,
+        &format!(
+            "/api/v1/media/{}/attributions/{}",
+            urlencode(id),
+            urlencode(aid)
+        ),
+        None,
+    )
+    .await
+}
+
 /// `POST /api/v1/media/{id}/analyses` — (re)launch steps (202 + state).
 pub async fn start_analyses(
     id: &str,

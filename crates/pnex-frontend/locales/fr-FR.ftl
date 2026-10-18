@@ -2597,6 +2597,22 @@ media-review-failed = La transcription n’a pas pu être chargée.
 media-review-loading = Chargement…
 media-analysis-state-none = Pas encore lancé
 media-analysis-state-queued = En attente
+media-review-pick-speaker = Prendre tous les passages de cette voix
+media-review-selection = Sélection { $span } ({ $n ->
+    [one] 1 plage
+   *[other] { $n } plages
+}) : qui parle ?
+media-review-other-person = Autre personne…
+media-review-new-person = Nouvelle personne
+media-review-create-person = Créer et attribuer
+media-review-cancel = Annuler
+media-review-confirm = Confirmer
+media-review-reject = Écarter
+media-review-remove = Retirer
+media-review-origin-manual = Attribuée à la main
+media-review-origin-voice = Proposée par la voix
+media-review-origin-transcript = Proposée par la transcription
+media-review-origin-grid = Proposée par la grille
 media-analysis-state-running = En cours ({ $pct } %)
 media-analysis-state-busy = En cours
 media-analysis-state-done = Terminé

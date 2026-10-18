@@ -17,6 +17,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
+use crate::services::ontology::{self, Actor};
+
 #[derive(Debug, thiserror::Error)]
 pub enum AttributionError {
     #[error("unknown media asset or attribution")]
@@ -143,7 +145,7 @@ fn span_ok(s: &MediaSpan) -> bool {
 pub async fn create(
     db: &DatabaseConnection,
     org_id: i64,
-    user_id: i64,
+    actor: &Actor,
     asset_id: Uuid,
     input: &AttributionInput,
 ) -> Result<Vec<SpeechAttribution>, AttributionError> {
@@ -202,11 +204,12 @@ pub async fn create(
                 s.end_ms.into(),
                 AttributionOrigin::Manual.wire().into(),
                 AttributionStatus::Confirmed.wire().into(),
-                user_id.into(),
+                actor.user_id.into(),
             ],
         ))
         .await?;
     }
+    sync_appearance(&txn, org_id, actor, asset_id, input.object_id).await?;
     let out = list(&txn, org_id, asset_id).await?;
     txn.commit().await?;
     Ok(out)
@@ -216,6 +219,7 @@ pub async fn create(
 pub async fn patch(
     db: &DatabaseConnection,
     org_id: i64,
+    actor: &Actor,
     asset_id: Uuid,
     id: Uuid,
     p: &AttributionPatch,
@@ -248,6 +252,7 @@ pub async fn patch(
     if done.rows_affected() == 0 {
         return Err(AttributionError::Conflict);
     }
+    sync_appearance(db, org_id, actor, asset_id, cur.object_id).await?;
     find(db, org_id, asset_id, id).await
 }
 
@@ -255,9 +260,11 @@ pub async fn patch(
 pub async fn delete(
     db: &DatabaseConnection,
     org_id: i64,
+    actor: &Actor,
     asset_id: Uuid,
     id: Uuid,
 ) -> Result<(), AttributionError> {
+    let cur = find(db, org_id, asset_id, id).await?;
     let done = db
         .execute_raw(stmt(
             "DELETE FROM speech_attributions WHERE id = $1 AND org_id = $2 AND media_asset_id = $3",
@@ -267,5 +274,86 @@ pub async fn delete(
     if done.rows_affected() == 0 {
         return Err(AttributionError::NotFound);
     }
-    Ok(())
+    sync_appearance(db, org_id, actor, asset_id, cur.object_id).await
 }
+
+/// Keeps the ontology in step (D278, cases.md K17): a person with a
+/// confirmed span of the media has one open `appears_in` link to it
+/// (`kind = speaking`), closed when no confirmed span is left. Without the
+/// link type (investigation pack absent or older) nothing is written.
+async fn sync_appearance<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    asset_id: Uuid,
+    person: Uuid,
+) -> Result<(), AttributionError> {
+    let confirmed = db
+        .query_one_raw(stmt(
+            "SELECT 1 AS one FROM speech_attributions
+             WHERE org_id = $1 AND media_asset_id = $2 AND object_id = $3 AND status = 'confirmed'
+             LIMIT 1",
+            vec![org_id.into(), asset_id.into(), person.into()],
+        ))
+        .await?
+        .is_some();
+    let Some(media) = db
+        .query_one_raw(stmt(
+            "SELECT object_id FROM media_assets WHERE id = $1 AND org_id = $2",
+            vec![asset_id.into(), org_id.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<Option<Uuid>>("", "object_id").ok().flatten())
+    else {
+        return Ok(());
+    };
+    let open: Option<i64> = db
+        .query_one_raw(stmt(
+            "SELECT id FROM resource_edges
+             WHERE org_id = $1 AND relation = $2 AND source_object_id = $3
+               AND target_object_id = $4 AND valid_to IS NULL",
+            vec![
+                org_id.into(),
+                APPEARS_IN.into(),
+                person.into(),
+                media.into(),
+            ],
+        ))
+        .await?
+        .and_then(|r| r.try_get("", "id").ok());
+    let outcome = match (confirmed, open) {
+        (true, None) => {
+            let mut attributes = serde_json::Map::new();
+            attributes.insert("kind".into(), "speaking".into());
+            attributes.insert("origin".into(), AttributionOrigin::Manual.wire().into());
+            let input = pnex_core::ontology::api::LinkInput {
+                link_type: APPEARS_IN.into(),
+                source_id: person.to_string(),
+                target_id: media.to_string(),
+                attributes,
+                valid_from: None,
+                valid_to: None,
+            };
+            ontology::links::create(db, org_id, actor, &input)
+                .await
+                .map(|_| ())
+        }
+        (false, Some(id)) => ontology::links::close(db, org_id, actor, id, None)
+            .await
+            .map(|_| ()),
+        _ => Ok(()),
+    };
+    match outcome {
+        Ok(()) => Ok(()),
+        // No such link type in the org (pack absent or older): the spans stay.
+        Err(ontology::OntologyError::Invalid { .. }) => Ok(()),
+        Err(ontology::OntologyError::Db(e)) => Err(AttributionError::Db(e)),
+        Err(e) => {
+            tracing::warn!(error = %e, "appearance not written");
+            Ok(())
+        }
+    }
+}
+
+/// Link type of a person appearing in a media file (investigation pack).
+const APPEARS_IN: &str = "appears_in";

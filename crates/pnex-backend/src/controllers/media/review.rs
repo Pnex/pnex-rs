@@ -142,7 +142,15 @@ pub(super) async fn create_attribution(
     if !org.can_write() {
         return Err(write_forbidden());
     }
-    match media_attributions::create(&ctx.db, org.org.id, org.auth.user.id, id, &input).await {
+    match media_attributions::create(
+        &ctx.db,
+        org.org.id,
+        &crate::controllers::ontology::actor(&org),
+        id,
+        &input,
+    )
+    .await
+    {
         Ok(all) => {
             let count = all.len() as i64;
             let body = pagination::envelope(
@@ -189,7 +197,16 @@ pub(super) async fn update_attribution(
     if !org.can_write() {
         return Err(write_forbidden());
     }
-    match media_attributions::patch(&ctx.db, org.org.id, id, aid, &input).await {
+    match media_attributions::patch(
+        &ctx.db,
+        org.org.id,
+        &crate::controllers::ontology::actor(&org),
+        id,
+        aid,
+        &input,
+    )
+    .await
+    {
         Ok(a) => format::json(a),
         Err(e) => attribution_error(e),
     }
@@ -222,7 +239,15 @@ pub(super) async fn delete_attribution(
     if !org.can_write() {
         return Err(write_forbidden());
     }
-    match media_attributions::delete(&ctx.db, org.org.id, id, aid).await {
+    match media_attributions::delete(
+        &ctx.db,
+        org.org.id,
+        &crate::controllers::ontology::actor(&org),
+        id,
+        aid,
+    )
+    .await
+    {
         Ok(()) => Ok(axum::http::StatusCode::NO_CONTENT.into_response()),
         Err(e) => attribution_error(e),
     }
