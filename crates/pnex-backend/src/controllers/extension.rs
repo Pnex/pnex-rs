@@ -332,6 +332,7 @@ fn dist_dir() -> std::path::PathBuf {
 
 /// Base URL the browser reached this server on (`X-Forwarded-*` from the
 /// edge, else `Host`); `None` when the host is not a plain host[:port].
+/// Fallback only: behind a proxy that ends TLS the scheme may be wrong.
 fn public_base(headers: &axum::http::HeaderMap) -> Option<String> {
     let header = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
     let host = header("x-forwarded-host")
@@ -423,6 +424,7 @@ struct DownloadQuery {
     security(())
 )]
 async fn download(
+    State(ctx): State<AppContext>,
     headers: axum::http::HeaderMap,
     Query(q): Query<DownloadQuery>,
 ) -> Result<Response> {
@@ -437,7 +439,13 @@ async fn download(
             ),
         ));
     }
-    let server = public_base(&headers);
+    // The configured public origin (issuer, like /meta/version) first: a
+    // proxy in front (TLS ended upstream) rewrites X-Forwarded-Proto to
+    // http. Request headers only without a public HTTPS issuer (dev).
+    let issuer = crate::auth::settings::RauthySettings::from_config(&ctx.config)
+        .ok()
+        .and_then(|s| s.issuer_url);
+    let server = super::meta::public_origin(issuer.as_deref()).or_else(|| public_base(&headers));
     let bytes =
         tokio::task::spawn_blocking(move || zip_extension(&dir, server.as_deref(), firefox))
             .await
