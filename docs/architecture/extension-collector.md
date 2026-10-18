@@ -1,8 +1,8 @@
 # Agents navigateur (extension Chrome/Firefox) — spécification v2 (C1b)
 
 > Statut : **proposition v2 (2026-10-18)**, décisions D254–D270, D281–D284.
-> **Zéro code tant que la v2 n'est pas validée** ; l'implémentation reste le
-> jalon C3 (`edge-model.md` §11) et P2.1 de la roadmap.
+> **v2 validée et codée** (L0–L5, avancement en §14) ; reste les campagnes
+> de test et les points à trancher O89–O94 (`observations.md`).
 >
 > La v1 (2026-09-15, 10 décisions) visait une collecte basique : un
 > sélecteur CSS rafraîchi, une valeur vers une série O2. La directive du
@@ -612,6 +612,12 @@ L0c (page « Agents navigateur »).
   chaque média capturé reçoit le lien d'ontologie `published_by` (pack
   `investigation` ≥ 1.8.0 ; sans le pack, pas de lien), plus
   `metadata.published_by_object`.
+- **Fin du lot, 2026-10-18** : revue de sécurité (SEC-44 à SEC-46 :
+  anti-rejeu sur `r`, 60 lots `seen`/min par lien), plafonds §13 (20
+  agents, 200 missions par org, `extension-limit-reached`), scénario
+  Chromium réel dans `e2e/tests/browser-agent.spec.ts` (`@extension`).
+  Non codés, à trancher : rétention D268 (O91), vidéos > 40 min (O92),
+  `collect_page` sur X/YouTube (O90), plafond du registre (O89).
 
 **D270 — L'extension est livrée avec PNEX.** L'image serveur la construit
 (`crates/pnex-extension/build-dist.sh`, étape `web` du Dockerfile) et la
