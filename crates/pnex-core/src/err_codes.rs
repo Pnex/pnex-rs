@@ -129,6 +129,8 @@ pub const MEDIA_ANALYSIS_NO_ASR: &str = "media-analysis-no-asr";
 pub const MEDIA_ANALYSIS_CAPTURE_FAILED: &str = "media-analysis-capture-failed";
 /// Every segment of the file failed its transcription (D211).
 pub const MEDIA_ANALYSIS_TRANSCRIBE_FAILED: &str = "media-analysis-transcribe-failed";
+/// A speech attribution changed since the version the client read (D272).
+pub const MEDIA_ATTRIBUTION_CONFLICT: &str = "media-attribution-conflict";
 pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 /// Delete refused: deployed flows use the function (`args.flows`).
@@ -857,6 +859,7 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_NO_ASR,
     MEDIA_ANALYSIS_CAPTURE_FAILED,
     MEDIA_ANALYSIS_TRANSCRIBE_FAILED,
+    MEDIA_ATTRIBUTION_CONFLICT,
     FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     FUNCTION_IN_USE,

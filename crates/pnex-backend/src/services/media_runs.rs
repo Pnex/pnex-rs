@@ -229,6 +229,7 @@ pub async fn transcript(
         run: chosen,
         segments: Vec::new(),
         unavailable: false,
+        attributions: crate::services::media_attributions::list(&ctx.db, org_id, asset.id).await?,
     };
     let Some(run) = chosen.and_then(|id| runs.iter().find(|r| r.id == id)) else {
         return Ok(out);

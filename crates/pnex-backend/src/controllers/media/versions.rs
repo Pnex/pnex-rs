@@ -99,9 +99,9 @@ pub(super) struct VersionPath {
 #[into_params(parameter_in = Query)]
 pub(super) struct VersionsPage {
     #[param(value_type = Option<i64>)]
-    limit: Option<String>,
+    pub(super) limit: Option<String>,
     #[param(value_type = Option<i64>)]
-    offset: Option<String>,
+    pub(super) offset: Option<String>,
 }
 
 /// `GET /api/v1/media/{id}/versions`: paginated versions, oldest first.

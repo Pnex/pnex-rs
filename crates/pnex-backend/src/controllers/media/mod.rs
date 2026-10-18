@@ -24,7 +24,7 @@
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::Json;
 use loco_rs::prelude::*;
 use sea_orm::{
@@ -96,6 +96,14 @@ pub fn routes() -> Routes {
         .add("/{id}/index", get(index_state).post(reindex))
         .add("/{id}/analyses", get(analyses).post(start_analyses))
         .add("/{id}/transcript", get(transcript))
+        .add(
+            "/{id}/attributions",
+            get(attributions).post(create_attribution),
+        )
+        .add(
+            "/{id}/attributions/{aid}",
+            patch(update_attribution).delete(delete_attribution),
+        )
         .add("/{id}", get(detail).patch(update).delete(delete))
         .add("/{id}/content", get(content))
         .add(
@@ -123,6 +131,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         analyses,
         start_analyses,
         transcript,
+        attributions,
+        create_attribution,
+        update_attribution,
+        delete_attribution,
         detail,
         update,
         delete,
