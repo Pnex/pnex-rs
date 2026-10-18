@@ -552,13 +552,13 @@ async fn run_mission(
     let url = match &m.spec {
         MissionSpec::CollectValue(p) => p.url.clone(),
         MissionSpec::CollectPage(p) => p.url.clone(),
-        MissionSpec::FollowAccount(p) => p.platform.profile_url(&p.handle),
+        MissionSpec::FollowAccount(p) => p.platform.list_urls(&p.handle)[0].clone(),
     };
-    // Sites the mission reads: its page, plus the platform's video host.
-    let mut needed = vec![url.clone()];
-    if let MissionSpec::FollowAccount(_) = &m.spec {
-        needed.push(X_VIDEO_HOST.into());
-    }
+    // Sites the mission reads: its page, or the platform's sites.
+    let needed: Vec<String> = match &m.spec {
+        MissionSpec::FollowAccount(p) => p.platform.sites().iter().map(|s| s.to_string()).collect(),
+        _ => vec![url.clone()],
+    };
     let state = |state: MissionState, code: &str| AgentMsg::State {
         mission_id: m.id.clone(),
         state,
@@ -597,7 +597,9 @@ async fn run_mission(
     let p = match &m.spec {
         MissionSpec::CollectValue(p) => p,
         MissionSpec::CollectPage(_) => return capture_page(session, m, tab).await,
-        MissionSpec::FollowAccount(f) => return follow_account(session, plan, m, f, tab).await,
+        MissionSpec::FollowAccount(f) => {
+            return follow_account(session, plan, m, f, tab, platform).await
+        }
     };
     #[derive(Deserialize)]
     struct Read {
@@ -680,10 +682,8 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
     }
 }
 
-/// Host of X's video files (its own permission, asked with x.com).
-const X_VIDEO_HOST: &str = "https://video.twimg.com/";
-/// Scrolls of a profile per visit (3–6 s apart).
-const PROFILE_SCROLLS: u32 = 3;
+/// A list that loads nothing for this many scrolls in a row has ended.
+const END_AFTER_IDLE_SCROLLS: u32 = 4;
 
 thread_local! {
     /// Platform JSON relayed by the page hook, per tab (bounded).
@@ -696,6 +696,7 @@ pub fn on_response(tab: f64, url: String, body: String) {
     RESPONSES.with(|r| {
         let mut all = r.borrow_mut();
         let list = all.entry(tab as i64).or_default();
+        // Drained after every scroll; the cap only guards a runaway page.
         if list.len() < 30 {
             list.push((url, body));
         }
@@ -706,42 +707,111 @@ fn take_responses(tab: f64) -> Vec<(String, String)> {
     RESPONSES.with(|r| r.borrow_mut().remove(&(tab as i64)).unwrap_or_default())
 }
 
-/// `follow_account`: reads the profile like a person (a few slow scrolls),
-/// reports the account's posts, keeps their video URLs for the capture.
+/// Posts of the platform's JSON documents, keyed by id.
+fn read_posts(
+    platform: ba::SocialPlatform,
+    handle: &str,
+    docs: &[(String, String)],
+    posts: &mut BTreeMap<String, ba::SeenPost>,
+) {
+    use crate::adapters::{x, youtube};
+    for (url, body) in docs {
+        let found = match platform {
+            ba::SocialPlatform::X if x::is_timeline_url(url) => x::posts_of(body, handle),
+            ba::SocialPlatform::YouTube if url.is_empty() || youtube::is_list_url(url) => {
+                youtube::posts_of(body, handle)
+            }
+            _ => continue,
+        };
+        for post in found {
+            posts.entry(post.platform_id.clone()).or_insert(post);
+        }
+    }
+}
+
+/// `follow_account` (D283, D284): reads each list of the account like a
+/// person, as deep as the server says (the history grows visit after
+/// visit), reports the posts with how deep it went and whether the list
+/// ended; keeps their video URLs for the capture.
 async fn follow_account(
     session: &Session,
     plan: &Rc<RefCell<Plan>>,
     m: &AssignedMission,
     params: &ba::FollowAccountParams,
-    tab: f64,
+    first_tab: f64,
+    platform: &str,
 ) -> String {
-    for _ in 0..PROFILE_SCROLLS {
-        host::sleep(3_000.0 + js_sys::Math::random() * 3_000.0).await;
-        if host::scroll(tab).await.is_err() {
-            break;
-        }
-    }
-    host::sleep(3_000.0).await;
+    let depth = m.scroll_depth.max(ba::RECENT_DEPTH);
     let mut posts: BTreeMap<String, ba::SeenPost> = BTreeMap::new();
-    for (url, body) in take_responses(tab) {
-        if crate::adapters::x::is_timeline_url(&url) {
-            for post in crate::adapters::x::posts_of(&body, &params.handle) {
-                posts.entry(post.platform_id.clone()).or_insert(post);
+    let mut end_reached = true;
+    let mut deepest = 0;
+    let mut tab = first_tab;
+    for (i, list) in params.platform.list_urls(&params.handle).iter().enumerate() {
+        if i > 0 {
+            // Next list of the same account: same tab, human gap (D258).
+            host::sleep(crate::NAV_GAP_MS).await;
+            take_responses(tab);
+            tab = match host::agent_tab(tab, list).await {
+                Ok(id) => id.as_f64().unwrap_or(-1.0),
+                Err(e) => return err_text(&e),
+            };
+            plan.borrow_mut().tabs.insert(platform.to_string(), tab);
+        }
+        // What the page loaded before any scroll (YouTube keeps it in the page).
+        if let Ok(initial) = host::read_initial_data(tab).await {
+            let initial = text(&initial);
+            if initial != "null" && !initial.is_empty() {
+                read_posts(
+                    params.platform,
+                    &params.handle,
+                    &[(String::new(), initial)],
+                    &mut posts,
+                );
             }
         }
+        read_posts(
+            params.platform,
+            &params.handle,
+            &take_responses(tab),
+            &mut posts,
+        );
+        let mut idle = 0;
+        let mut scrolls = 0;
+        while scrolls < depth {
+            host::sleep(3_000.0 + js_sys::Math::random() * 3_000.0).await;
+            if host::scroll(tab).await.is_err() {
+                break;
+            }
+            scrolls += 1;
+            host::sleep(1_500.0).await;
+            let docs = take_responses(tab);
+            if docs.is_empty() {
+                idle += 1;
+                if idle >= END_AFTER_IDLE_SCROLLS {
+                    break;
+                }
+            } else {
+                idle = 0;
+                read_posts(params.platform, &params.handle, &docs, &mut posts);
+            }
+        }
+        deepest = deepest.max(scrolls);
+        // A list ends when it stopped loading before the depth asked.
+        end_reached &= scrolls < depth;
     }
     if posts.is_empty() {
-        // Nothing relayed: a sign-in wall, or the account's page changed.
+        // Nothing read: a sign-in or consent wall, or the page changed.
         let page = host::read_page(tab)
             .await
             .ok()
             .map(|v| text(&v))
             .unwrap_or_default();
-        let code = if page.contains("/login") || page.contains("/i/flow/") {
-            err_codes::EXT_LOGIN_REQUIRED
-        } else {
-            err_codes::EXT_SELECTOR_NOT_FOUND
-        };
+        let code =
+            if page.contains("/login") || page.contains("/i/flow/") || page.contains("consent.") {
+                err_codes::EXT_LOGIN_REQUIRED
+            } else {
+                err_codes::EXT_SELECTOR_NOT_FOUND
+            };
         session.send(&AgentMsg::State {
             mission_id: m.id.clone(),
             state: MissionState::Blocked,
@@ -749,7 +819,7 @@ async fn follow_account(
         });
         return code.into();
     }
-    let posts: Vec<ba::SeenPost> = posts.into_values().take(ba::SEEN_MAX).collect();
+    let posts: Vec<ba::SeenPost> = posts.into_values().collect();
     {
         let mut p = plan.borrow_mut();
         for post in &posts {
@@ -759,15 +829,27 @@ async fn follow_account(
         }
     }
     let count = posts.len();
-    session.send(&AgentMsg::Seen {
-        mission_id: m.id.clone(),
-        posts,
-    });
+    // Batches within the server's bound; only the last one carries the end.
+    let batches: Vec<Vec<ba::SeenPost>> = posts.chunks(ba::SEEN_MAX).map(<[_]>::to_vec).collect();
+    let last = batches.len().saturating_sub(1);
+    for (i, batch) in batches.into_iter().enumerate() {
+        session.send(&AgentMsg::Seen {
+            mission_id: m.id.clone(),
+            posts: batch,
+            depth: deepest,
+            end_reached: end_reached && i == last,
+        });
+    }
     format!("{count} posts")
 }
 
 /// Downloads one video and uploads it signed (D260, D262).
 async fn capture_video(session: &Session, mission_id: &str, post: &str, url: &str) -> String {
+    // shortcut: a watch page (YouTube) has no file to fetch; it is recorded
+    // in real time with the live lot (L4, webm), skipped until then.
+    if url.starts_with("https://www.youtube.com/") {
+        return "recording-pending".into();
+    }
     #[derive(Deserialize)]
     struct Blob {
         id: f64,

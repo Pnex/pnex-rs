@@ -227,35 +227,45 @@ pub struct CollectPageParams {
 #[serde(rename_all = "snake_case")]
 pub enum SocialPlatform {
     X,
+    #[serde(rename = "youtube")]
+    YouTube,
 }
 
 impl SocialPlatform {
     pub fn wire(self) -> &'static str {
         match self {
             Self::X => "x",
+            Self::YouTube => "youtube",
         }
     }
 
-    /// Profile page of an account.
-    pub fn profile_url(self, handle: &str) -> String {
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "x" => Some(Self::X),
+            "youtube" => Some(Self::YouTube),
+            _ => None,
+        }
+    }
+
+    /// Pages of an account the agent reads, in order (D283).
+    pub fn list_urls(self, handle: &str) -> Vec<String> {
         match self {
-            Self::X => format!("https://x.com/{handle}"),
+            Self::X => vec![format!("https://x.com/{handle}")],
+            Self::YouTube => vec![
+                format!("https://www.youtube.com/@{handle}/videos"),
+                format!("https://www.youtube.com/@{handle}/shorts"),
+            ],
         }
     }
-}
 
-/// What a `follow_account` mission does with a new video (D267).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum MediaPolicy {
-    /// Download unless the platform gave captions. Until captions are read
-    /// (D281, after D211), behaves as `always`.
-    #[default]
-    IfNoTranscript,
-    Always,
-    /// Registry and metadata only.
-    MetadataOnly,
+    /// Sites the agent must be allowed on: the pages, plus where the files
+    /// come from.
+    pub fn sites(self) -> &'static [&'static str] {
+        match self {
+            Self::X => &["https://x.com/", "https://video.twimg.com/"],
+            Self::YouTube => &["https://www.youtube.com/"],
+        }
+    }
 }
 
 /// `follow_account` (D256): the new posts of one public account.
@@ -265,8 +275,10 @@ pub struct FollowAccountParams {
     pub platform: SocialPlatform,
     /// Account handle, without `@`.
     pub handle: String,
+    /// Download or record every video (D284). Off: metadata, text and the
+    /// platform's captions when it has some, no file.
     #[serde(default)]
-    pub media_policy: MediaPolicy,
+    pub force_video: bool,
 }
 
 /// Longest account handle.
@@ -479,7 +491,7 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
                 MissionSpec::FollowAccount(FollowAccountParams {
                     platform: p.platform,
                     handle: handle.into(),
-                    media_policy: p.media_policy,
+                    force_video: p.force_video,
                 }),
                 target,
             ))
@@ -535,6 +547,27 @@ pub struct AssignedMission {
     pub spec: MissionSpec,
     pub target: String,
     pub interval_secs: i32,
+    /// `follow_account`: scrolls to do on each list page this visit (D283):
+    /// growing while the account's history is being collected, then
+    /// [`RECENT_DEPTH`].
+    #[serde(default)]
+    pub scroll_depth: u32,
+}
+
+/// Scrolls of a visit once the history is collected (recent posts only).
+pub const RECENT_DEPTH: u32 = 3;
+/// How much deeper each visit goes while collecting the history.
+pub const HISTORY_STEP: u32 = 20;
+/// Deepest visit (a few hundred scrolls cover any account's history).
+pub const HISTORY_MAX_DEPTH: u32 = 400;
+
+/// Depth of the next visit from the progress kept by the server.
+pub fn next_depth(history_depth: u32, history_done: bool) -> u32 {
+    if history_done {
+        RECENT_DEPTH
+    } else {
+        (history_depth + HISTORY_STEP).min(HISTORY_MAX_DEPTH)
+    }
 }
 
 /// Server → agent (desired state, D262).
@@ -577,6 +610,12 @@ pub enum AgentMsg {
     Seen {
         mission_id: String,
         posts: Vec<SeenPost>,
+        /// Scrolls actually done this visit.
+        #[serde(default)]
+        depth: u32,
+        /// The list stopped loading: the start of the account is reached.
+        #[serde(default)]
+        end_reached: bool,
     },
     Ping,
 }
@@ -599,7 +638,8 @@ pub struct SeenPost {
     /// RFC 3339.
     #[serde(default)]
     pub published_at: Option<String>,
-    /// Best progressive (mp4) variant, when the post carries a video.
+    /// When the post is a video: its file (best progressive mp4) when the
+    /// platform exposes one, else its watch page (recorded in real time).
     #[serde(default)]
     pub video_url: Option<String>,
     #[serde(default)]
@@ -722,7 +762,7 @@ mod tests {
         let spec = MissionSpec::FollowAccount(FollowAccountParams {
             platform: SocialPlatform::X,
             handle: " @Some_Account ".into(),
-            media_policy: MediaPolicy::Always,
+            force_video: true,
         });
         let (spec, target) = check_spec(&spec).unwrap();
         assert_eq!(target, "x:@some_account");
@@ -734,7 +774,7 @@ mod tests {
         let bad = MissionSpec::FollowAccount(FollowAccountParams {
             platform: SocialPlatform::X,
             handle: "a/b".into(),
-            media_policy: MediaPolicy::default(),
+            force_video: false,
         });
         assert_eq!(check_spec(&bad).unwrap_err().0, "spec.params.handle");
         let json =
@@ -743,10 +783,25 @@ mod tests {
         assert!(matches!(
             parsed,
             MissionSpec::FollowAccount(FollowAccountParams {
-                media_policy: MediaPolicy::IfNoTranscript,
+                force_video: false,
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn history_depth_grows_then_stays_recent() {
+        assert_eq!(next_depth(0, false), HISTORY_STEP);
+        assert_eq!(next_depth(HISTORY_STEP, false), 2 * HISTORY_STEP);
+        assert_eq!(next_depth(HISTORY_MAX_DEPTH, false), HISTORY_MAX_DEPTH);
+        assert_eq!(next_depth(120, true), RECENT_DEPTH);
+        assert_eq!(SocialPlatform::YouTube.list_urls("chan").len(), 2);
+        assert_eq!(
+            SocialPlatform::parse("youtube"),
+            Some(SocialPlatform::YouTube)
+        );
+        let yt: SocialPlatform = serde_json::from_value(serde_json::json!("youtube")).unwrap();
+        assert_eq!(yt, SocialPlatform::YouTube);
     }
 
     #[test]

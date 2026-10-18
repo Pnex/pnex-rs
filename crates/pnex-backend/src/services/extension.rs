@@ -441,10 +441,21 @@ struct MissionRow {
     version: i32,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
+    /// Server-side progress (page digest, history depth), never sent as is.
+    cursor: Option<serde_json::Value>,
 }
 
 const MISSION_COLUMNS: &str = "id, name, spec, target, interval_secs, agent_id, enabled, state,
-    state_code, version, created_at, updated_at";
+    state_code, version, created_at, updated_at, cursor";
+
+/// History progress of a `follow_account` (D283), kept in the cursor.
+fn history_of(cursor: Option<&serde_json::Value>) -> (u32, bool) {
+    let c = cursor.cloned().unwrap_or_default();
+    (
+        c["history_depth"].as_u64().unwrap_or(0) as u32,
+        c["history_done"].as_bool().unwrap_or(false),
+    )
+}
 
 impl MissionRow {
     /// `None` for a spec this server no longer reads (kind removed).
@@ -660,12 +671,22 @@ pub async fn candidates(
     .await?;
     Ok(rows
         .iter()
-        .filter_map(MissionRow::view)
-        .map(|m| ba::AssignedMission {
-            id: m.id,
-            spec: m.spec,
-            target: m.target,
-            interval_secs: m.interval_secs,
+        .filter_map(|row| {
+            let m = row.view()?;
+            let scroll_depth = match &m.spec {
+                MissionSpec::FollowAccount(_) => {
+                    let (depth, done) = history_of(row.cursor.as_ref());
+                    ba::next_depth(depth, done)
+                }
+                _ => 0,
+            };
+            Some(ba::AssignedMission {
+                id: m.id,
+                spec: m.spec,
+                target: m.target,
+                interval_secs: m.interval_secs,
+                scroll_depth,
+            })
         })
         .collect())
 }
@@ -888,8 +909,10 @@ pub async fn record_seen(
     agent: &AgentAuth,
     mission_id: &str,
     posts: &[ba::SeenPost],
+    depth: u32,
+    end_reached: bool,
 ) -> Result<Vec<String>, ExtensionError> {
-    let (id, _, spec) = own_mission(db, agent, mission_id).await?;
+    let (id, mission, spec) = own_mission(db, agent, mission_id).await?;
     let MissionSpec::FollowAccount(params) = spec else {
         return Err(ExtensionError::MissionNotFound);
     };
@@ -923,11 +946,27 @@ pub async fn record_seen(
         .one(db)
         .await?;
         if let Some(row) = inserted {
-            if row.video_url.is_some() && params.media_policy != ba::MediaPolicy::MetadataOnly {
+            // D284: files only when the mission forces the video collection.
+            if row.video_url.is_some() && params.force_video {
                 capture.push(row.platform_id);
             }
         }
     }
+    // D283: the history goes deeper each visit until the list ends.
+    let (known_depth, done) = history_of(mission.cursor.as_ref());
+    let history_depth = known_depth.max(depth.min(ba::HISTORY_MAX_DEPTH));
+    let history_done = done || end_reached || history_depth >= ba::HISTORY_MAX_DEPTH;
+    db.execute_raw(stmt(
+        "UPDATE extension_missions
+         SET cursor = coalesce(cursor, '{}'::jsonb) || $2::jsonb
+         WHERE id = $1",
+        vec![
+            id.into(),
+            serde_json::json!({ "history_depth": history_depth, "history_done": history_done })
+                .into(),
+        ],
+    ))
+    .await?;
     report_state(db, agent, id, MissionState::Running, None).await?;
     Ok(capture)
 }

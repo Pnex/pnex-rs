@@ -216,9 +216,23 @@ impl Link {
     async fn handle(&mut self, msg: AgentMsg) -> Option<ServerMsg> {
         match msg {
             AgentMsg::Ping => Some(ServerMsg::Pong),
-            AgentMsg::Seen { mission_id, posts } => {
+            AgentMsg::Seen {
+                mission_id,
+                posts,
+                depth,
+                end_reached,
+            } => {
                 self.held_id(&mission_id)?;
-                match extension::record_seen(&self.ctx.db, &self.agent, &mission_id, &posts).await {
+                match extension::record_seen(
+                    &self.ctx.db,
+                    &self.agent,
+                    &mission_id,
+                    &posts,
+                    depth,
+                    end_reached,
+                )
+                .await
+                {
                     Ok(platform_ids) => Some(ServerMsg::Capture {
                         mission_id,
                         platform_ids,

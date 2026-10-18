@@ -1,11 +1,15 @@
-// Runs in the page of x.com (MAIN world, before its scripts). Copies the
-// JSON the X web app receives for an account's timeline to the extension
-// (via window.postMessage → relay.js). It makes no request of its own and
-// changes nothing on the page. Data is untrusted: the agent parses it, the
-// server validates it.
+// Runs in the pages of the followed platforms (MAIN world, before their
+// scripts). Copies the JSON the web app itself receives for an account's
+// lists to the extension (window.postMessage → relay.js). It makes no
+// request of its own and changes nothing on the page. Data is untrusted:
+// the agent parses it, the server validates it.
 (() => {
-  const WANTED = /\/graphql\/[^/]+\/(UserTweets|UserMedia|UserTweetsAndReplies)\b/;
-  const MAX = 4 * 1024 * 1024;
+  const WANTED = {
+    "x.com": /\/graphql\/[^/]+\/(UserTweets|UserMedia|UserTweetsAndReplies)\b/,
+    "www.youtube.com": /\/youtubei\/v1\/browse\b/,
+  }[location.hostname];
+  if (!WANTED) return;
+  const MAX = 8 * 1024 * 1024;
   const relay = (url, body) => {
     if (typeof body === "string" && body.length <= MAX) {
       window.postMessage({ pnexResponse: true, url: String(url), body }, location.origin);

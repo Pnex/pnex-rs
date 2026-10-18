@@ -10,7 +10,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::browser_agent::{
-    BrowserAgent, CollectPageParams, CollectValueParams, FollowAccountParams, MediaPolicy, Mission,
+    BrowserAgent, CollectPageParams, CollectValueParams, FollowAccountParams, Mission,
     MissionCreate, MissionPatch, MissionSpec, MissionState, SocialPlatform, SocialVideo,
     VideoState, ATTR_TEXT, MIN_INTERVAL_SECS,
 };
@@ -489,23 +489,11 @@ const KINDS: [(&str, &str); 3] = [
     ("follow_account", "browser-missions-kind-account"),
 ];
 
-/// Video policies of a followed account (D267), with their label key.
-const POLICIES: [(&str, &str); 3] = [
-    (
-        "if_no_transcript",
-        "browser-missions-policy-if-no-transcript",
-    ),
-    ("always", "browser-missions-policy-always"),
-    ("metadata_only", "browser-missions-policy-metadata-only"),
+/// Platforms an account can be followed on (D282), with their label.
+const PLATFORMS: [(SocialPlatform, &str); 2] = [
+    (SocialPlatform::X, "X"),
+    (SocialPlatform::YouTube, "YouTube"),
 ];
-
-fn policy_of(wire: &str) -> MediaPolicy {
-    match wire {
-        "always" => MediaPolicy::Always,
-        "metadata_only" => MediaPolicy::MetadataOnly,
-        _ => MediaPolicy::IfNoTranscript,
-    }
-}
 
 /// Create (`mission: None`) or edit form of a mission.
 #[component]
@@ -528,18 +516,16 @@ fn MissionForm(
         Some(MissionSpec::FollowAccount(p)) => Some(p.clone()),
         _ => None,
     };
-    let initial_policy = match account.as_ref().map(|a| a.media_policy) {
-        Some(MediaPolicy::Always) => "always",
-        Some(MediaPolicy::MetadataOnly) => "metadata_only",
-        _ => "if_no_transcript",
-    };
+    let initial_platform = account.as_ref().map_or(SocialPlatform::X, |a| a.platform);
+    let initial_force = account.as_ref().is_some_and(|a| a.force_video);
     let mut handle = use_signal(|| {
         account
             .as_ref()
             .map(|a| a.handle.clone())
             .unwrap_or_default()
     });
-    let mut policy = use_signal(|| initial_policy.to_string());
+    let mut platform = use_signal(|| initial_platform.wire().to_string());
+    let mut force_video = use_signal(|| initial_force);
     let initial_kind = mission.as_ref().map_or("collect_value", |m| m.spec.kind());
     let mut kind = use_signal(|| initial_kind.to_string());
     let mut name = use_signal(|| mission.as_ref().map(|m| m.name.clone()).unwrap_or_default());
@@ -575,9 +561,9 @@ fn MissionForm(
         let spec = match kind().as_str() {
             "collect_page" => MissionSpec::CollectPage(CollectPageParams { url: url() }),
             "follow_account" => MissionSpec::FollowAccount(FollowAccountParams {
-                platform: SocialPlatform::X,
+                platform: SocialPlatform::parse(&platform()).unwrap_or(SocialPlatform::X),
                 handle: handle(),
-                media_policy: policy_of(&policy()),
+                force_video: force_video(),
             }),
             _ => MissionSpec::CollectValue(CollectValueParams {
                 url: url(),
@@ -679,6 +665,25 @@ fn MissionForm(
                 }
                 if is_account {
                     div {
+                        label { r#for: "mission-platform", class: FIELD_LABEL,
+                            {t!("browser-missions-field-platform")}
+                        }
+                        select {
+                            id: "mission-platform",
+                            class: INPUT,
+                            value: "{platform}",
+                            onchange: move |e| platform.set(e.value()),
+                            for (value, label) in PLATFORMS {
+                                option {
+                                    key: "{value.wire()}",
+                                    value: "{value.wire()}",
+                                    selected: platform() == value.wire(),
+                                    "{label}"
+                                }
+                            }
+                        }
+                    }
+                    div {
                         label { r#for: "mission-handle", class: FIELD_LABEL,
                             {t!("browser-missions-field-handle")}
                         }
@@ -692,23 +697,15 @@ fn MissionForm(
                         p { class: FIELD_HELP, {t!("browser-missions-field-handle-help")} }
                     }
                     div {
-                        label { r#for: "mission-policy", class: FIELD_LABEL,
-                            {t!("browser-missions-field-policy")}
-                        }
-                        select {
-                            id: "mission-policy",
-                            class: INPUT,
-                            value: "{policy}",
-                            onchange: move |e| policy.set(e.value()),
-                            for (value, key) in POLICIES {
-                                option {
-                                    key: "{value}",
-                                    value: "{value}",
-                                    selected: policy() == value,
-                                    {t!(key)}
-                                }
+                        label { class: "flex items-center gap-2 text-sm text-ink",
+                            input {
+                                r#type: "checkbox",
+                                checked: force_video(),
+                                onchange: move |e| force_video.set(e.checked()),
                             }
+                            {t!("browser-missions-field-force-video")}
                         }
+                        p { class: FIELD_HELP, {t!("browser-missions-field-force-video-help")} }
                     }
                 } else {
                     div {

@@ -236,6 +236,22 @@ export async function scroll(tabId) {
   });
 }
 
+/** Data a page embeds before any request (YouTube's `ytInitialData`), JSON or "null". */
+export async function read_initial_data(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    world: "MAIN",
+    func: () => {
+      try {
+        return JSON.stringify(window.ytInitialData ?? null);
+      } catch {
+        return "null";
+      }
+    },
+  });
+  return result?.result ?? "null";
+}
+
 // Downloaded files stay on this side: wasm only signs their digest.
 const blobs = new Map();
 let nextBlob = 1;

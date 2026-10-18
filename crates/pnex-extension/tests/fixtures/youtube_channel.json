@@ -1,0 +1,79 @@
+{
+  "contents": {
+    "twoColumnBrowseResultsRenderer": {
+      "tabs": [
+        {
+          "tabRenderer": {
+            "title": "Videos",
+            "content": {
+              "richGridRenderer": {
+                "contents": [
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "videoRenderer": {
+                          "videoId": "AbCdEfGhIj1",
+                          "title": { "runs": [ { "text": "Episode 12: the long talk" } ] },
+                          "publishedTimeText": { "simpleText": "3 days ago" },
+                          "lengthText": { "simpleText": "1:02:03" }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "lockupViewModel": {
+                          "contentId": "KlMnOpQrSt2",
+                          "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+                          "metadata": { "lockupMetadataViewModel": { "title": { "content": "New layout clip" } } }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "lockupViewModel": {
+                          "contentId": "PLplaylist0",
+                          "contentType": "LOCKUP_CONTENT_TYPE_PLAYLIST",
+                          "metadata": { "lockupMetadataViewModel": { "title": { "content": "A playlist" } } }
+                        }
+                      }
+                    }
+                  },
+                  { "continuationItemRenderer": { "continuationEndpoint": { "continuationCommand": { "token": "4qmFsgK" } } } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "onResponseReceivedActions": [
+    {
+      "appendContinuationItemsAction": {
+        "continuationItems": [
+          {
+            "richItemRenderer": {
+              "content": {
+                "shortsLockupViewModel": {
+                  "onTap": { "innertubeCommand": { "reelWatchEndpoint": { "videoId": "UvWxYz01234" } } },
+                  "overlayMetadata": { "primaryText": { "content": "A short" } }
+                }
+              }
+            }
+          },
+          {
+            "richItemRenderer": {
+              "content": {
+                "reelItemRenderer": { "videoId": "Short_Old-5", "headline": { "simpleText": "Older short" } }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
