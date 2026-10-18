@@ -54,6 +54,9 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
+/// Markdown a page may be created with (`CreateDoc::markdown`).
+const MAX_SEED_MARKDOWN_BYTES: usize = 256 * 1024;
+
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
@@ -211,11 +214,11 @@ async fn list(
     tag = "docs",
     operation_id = "docs_create",
     summary = "Create a page",
-    description = "Creates a page, blank or seeded from a page template of an installed pack (`template` key). Owner, admin or member.",
+    description = "Creates a page, blank, seeded from a page template of an installed pack (`template` key) or from Markdown (`markdown`, up to 256 KiB, as the editor's import; exclusive with `template`). Owner, admin or member.",
     request_body = pnex_core::pages::CreateDoc,
     responses(
         (status = 201, body = pnex_core::pages::DocSummary),
-        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`) or `template` (`invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`), `template` (`invalid`) or `markdown` (`invalid` with a template, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -232,9 +235,20 @@ async fn create(
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
     };
+    let markdown = input.markdown.filter(|m| !m.trim().is_empty());
+    if markdown
+        .as_ref()
+        .is_some_and(|m| m.len() > MAX_SEED_MARKDOWN_BYTES)
+    {
+        let max = format!("max_length:{MAX_SEED_MARKDOWN_BYTES}");
+        return Ok(field_status("markdown", &max));
+    }
     // Same templates as the pages of a case (installed packs, O43).
     let body = match input.template.as_deref().filter(|k| !k.is_empty()) {
-        None => None,
+        None => markdown,
+        Some(_) if markdown.is_some() => {
+            return Ok(field_status("markdown", err_codes::FIELD_INVALID))
+        }
         Some(key) => {
             let templates = crate::services::ontology::packs::page_templates(&ctx.db, org.org.id)
                 .await

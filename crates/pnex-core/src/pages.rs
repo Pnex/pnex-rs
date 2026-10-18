@@ -90,6 +90,10 @@ pub struct CreateDoc {
     /// Key of a page template of an installed pack (O43); absent = blank.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+    /// Markdown the page starts with (titles, lists, tables, code), as the
+    /// editor's import does; exclusive with `template`. Up to 256 KiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
 }
 
 /// `PATCH /api/v1/docs/{id}` (rename; the content goes through the
