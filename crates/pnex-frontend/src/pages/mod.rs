@@ -77,7 +77,7 @@ pub use fluid_mixtures::FluidMixtures;
 pub use functions::Functions;
 pub use lab::{Lab, LabProjectPage};
 pub use map::{Map, Sites};
-pub use media::Media;
+pub use media::{Media, MediaReview};
 pub use models::Models;
 pub use not_found::NotFound;
 pub use notifications::Notifications;

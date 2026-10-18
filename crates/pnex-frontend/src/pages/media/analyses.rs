@@ -190,6 +190,7 @@ pub(super) fn AnalysesCard(asset_id: String, can_write: bool) -> Element {
                         offer: offer.clone(),
                         analysis: analyses.iter().find(|a| a.step == offer.step).cloned(),
                         index: index.clone(),
+                        asset_id: asset_id.clone(),
                         can_write,
                         disabled: busy(),
                         on_start: {
@@ -223,11 +224,17 @@ fn StepLine(
     offer: StepOffer,
     analysis: Option<MediaAnalysis>,
     index: Option<api::media::IndexState>,
+    asset_id: String,
     can_write: bool,
     disabled: bool,
     on_start: EventHandler<AnalysisStep>,
 ) -> Element {
     let step = offer.step;
+    // A transcription is reviewed as soon as it started (text comes in).
+    let review = step == AnalysisStep::Transcribe
+        && analysis
+            .as_ref()
+            .is_some_and(|a| matches!(a.state.wire(), "running" | "done"));
     let (status, detail) = match step {
         AnalysisStep::Index => match &index {
             Some(i) => index_texts(i),
@@ -287,6 +294,16 @@ fn StepLine(
                             class: "text-xs text-signal-600 hover:underline",
                             to: Route::Docs { id: pid.to_string() },
                             {t!("media-analysis-open-page")}
+                        }
+                    }
+                    if review {
+                        Link {
+                            class: "text-xs text-signal-600 hover:underline",
+                            "data-testid": "media-analysis-review",
+                            to: Route::MediaReview {
+                                id: asset_id.clone(),
+                            },
+                            {t!("media-review-open")}
                         }
                     }
                 }

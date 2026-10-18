@@ -99,6 +99,173 @@ pub struct MediaTranscript {
     pub unavailable: bool,
 }
 
+/// How a span of a media got its person (D272): every technique is an
+/// origin, none is privileged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionOrigin {
+    /// A person chose the span and the person (D273).
+    Manual,
+    /// A consented voice profile matched (D275): always proposed first.
+    Voice,
+    /// The transcript names the speaker ("je reçois X").
+    Transcript,
+    /// The programme grid announces the guest.
+    Grid,
+}
+
+impl AttributionOrigin {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::Voice => "voice",
+            Self::Transcript => "transcript",
+            Self::Grid => "grid",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        [Self::Manual, Self::Voice, Self::Transcript, Self::Grid]
+            .into_iter()
+            .find(|o| o.wire() == s)
+    }
+}
+
+/// A machine proposes, a person confirms (D272).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AttributionStatus {
+    Proposed,
+    Confirmed,
+    /// Kept so the same proposal is not made again.
+    Rejected,
+}
+
+impl AttributionStatus {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Proposed => "proposed",
+            Self::Confirmed => "confirmed",
+            Self::Rejected => "rejected",
+        }
+    }
+
+    pub fn from_wire(s: &str) -> Option<Self> {
+        [Self::Proposed, Self::Confirmed, Self::Rejected]
+            .into_iter()
+            .find(|o| o.wire() == s)
+    }
+}
+
+/// A span of a media attributed to a person of the ontology (D272).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SpeechAttribution {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub id: uuid::Uuid,
+    /// The person (ontology object).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub object_id: uuid::Uuid,
+    /// Title of the person.
+    pub person: String,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub origin: AttributionOrigin,
+    /// Score of a machine origin (0–1); `None` when manual.
+    #[serde(default)]
+    pub confidence: Option<f32>,
+    pub status: AttributionStatus,
+    /// Optimistic concurrency: sent back as `expected_version`.
+    pub version: i32,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub updated_at: String,
+}
+
+/// A span on the media clock, ms.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MediaSpan {
+    pub start_ms: i64,
+    pub end_ms: i64,
+}
+
+/// `POST /api/v1/media/{id}/attributions`: one person on one or several
+/// spans (a whole speaker = one span per turn, D273). Confirmed at once.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AttributionInput {
+    #[cfg_attr(feature = "openapi", schema(value_type = String, format = "uuid"))]
+    pub object_id: uuid::Uuid,
+    pub spans: Vec<MediaSpan>,
+}
+
+/// `PATCH /api/v1/media/{id}/attributions/{aid}`: confirm, reject, move.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct AttributionPatch {
+    pub expected_version: i32,
+    #[serde(default)]
+    pub status: Option<AttributionStatus>,
+    #[serde(default)]
+    pub start_ms: Option<i64>,
+    #[serde(default)]
+    pub end_ms: Option<i64>,
+}
+
+/// Most spans of one attribution request.
+pub const ATTRIBUTION_SPANS_MAX: usize = 500;
+/// Latest position on a media clock: a day.
+pub const MEDIA_CLOCK_MAX_MS: i64 = 24 * 3600 * 1000;
+
+/// Spans sorted, overlapping or touching ones merged (`start < end` kept).
+pub fn merge_spans(mut spans: Vec<MediaSpan>) -> Vec<MediaSpan> {
+    spans.retain(|s| s.start_ms < s.end_ms);
+    spans.sort_by_key(|s| s.start_ms);
+    let mut out: Vec<MediaSpan> = Vec::new();
+    for s in spans {
+        match out.last_mut() {
+            Some(last) if s.start_ms <= last.end_ms => last.end_ms = last.end_ms.max(s.end_ms),
+            _ => out.push(s),
+        }
+    }
+    out
+}
+
+/// Person of each speaker label of a run: the confirmed attribution that
+/// covers most of the label's turns (D272 resolution, at the label grain
+/// the transcript needs).
+pub fn person_of_label<'a>(
+    turns: &[ReviewTurn],
+    label: &str,
+    attributions: &'a [SpeechAttribution],
+) -> Option<&'a SpeechAttribution> {
+    let overlap = |a: &SpeechAttribution| -> i64 {
+        turns
+            .iter()
+            .filter(|t| t.label == label)
+            .map(|t| (t.end_ms.min(a.end_ms) - t.start_ms.max(a.start_ms)).max(0))
+            .sum()
+    };
+    attributions
+        .iter()
+        .filter(|a| a.status == AttributionStatus::Confirmed)
+        .map(|a| (overlap(a), a))
+        .filter(|(o, _)| *o > 0)
+        .max_by_key(|(o, _)| *o)
+        .map(|(_, a)| a)
+}
+
+/// Person speaking at `ms`: the confirmed attribution containing the
+/// instant (the shortest wins, being the most precise), else none.
+pub fn person_at(ms: i64, attributions: &[SpeechAttribution]) -> Option<&SpeechAttribution> {
+    attributions
+        .iter()
+        .filter(|a| a.status == AttributionStatus::Confirmed && a.start_ms <= ms && ms < a.end_ms)
+        .min_by_key(|a| a.end_ms - a.start_ms)
+}
+
 /// Run shown by default: the latest `pnex` run of the current version,
 /// else the latest run of any origin (`runs` newest first).
 pub fn default_run(runs: &[MediaRun], current_version: Option<uuid::Uuid>) -> Option<uuid::Uuid> {
@@ -192,6 +359,64 @@ mod tests {
             Some(platform.id)
         );
         assert_eq!(default_run(&[], v2), None);
+    }
+
+    fn attribution(start_ms: i64, end_ms: i64, person: &str) -> SpeechAttribution {
+        SpeechAttribution {
+            id: uuid::Uuid::nil(),
+            object_id: uuid::Uuid::nil(),
+            person: person.into(),
+            start_ms,
+            end_ms,
+            origin: AttributionOrigin::Manual,
+            confidence: None,
+            status: AttributionStatus::Confirmed,
+            version: 1,
+            updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn spans_merge_and_persons_resolve() {
+        let span = |start_ms, end_ms| MediaSpan { start_ms, end_ms };
+        assert_eq!(
+            merge_spans(vec![
+                span(5, 9),
+                span(0, 3),
+                span(3, 4),
+                span(8, 12),
+                span(7, 7)
+            ]),
+            [span(0, 4), span(5, 12)]
+        );
+        let all = [
+            attribution(0, 10_000, "Alice"),
+            attribution(4_000, 6_000, "Bob"),
+        ];
+        assert_eq!(
+            person_at(5_000, &all).unwrap().person,
+            "Bob",
+            "the shortest wins"
+        );
+        assert_eq!(person_at(1_000, &all).unwrap().person, "Alice");
+        assert!(person_at(10_000, &all).is_none(), "end excluded");
+        let turns = [
+            ReviewTurn {
+                label: "S1".into(),
+                start_ms: 0,
+                end_ms: 3_000,
+            },
+            ReviewTurn {
+                label: "S2".into(),
+                start_ms: 3_000,
+                end_ms: 6_000,
+            },
+        ];
+        // S2 overlaps Alice 3 s, Bob 2 s.
+        assert_eq!(person_of_label(&turns, "S2", &all).unwrap().person, "Alice");
+        let mut rejected = attribution(0, 3_000, "Carol");
+        rejected.status = AttributionStatus::Rejected;
+        assert!(person_of_label(&turns, "S1", &[rejected]).is_none());
     }
 
     #[test]

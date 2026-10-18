@@ -13,7 +13,7 @@ use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
     Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
-    Functions, Lab, LabProjectPage, Map, Media, Models, NotFound, Notifications, Ontology,
+    Functions, Lab, LabProjectPage, Map, Media, MediaReview, Models, NotFound, Notifications, Ontology,
     OntologyObject, OntologyType, Orgs, OrgsCurrent, Profile, Secrets, ShareTour, Showcase, Sites,
     Streams, Studio, System, Visualisation, VoiceId,
 };
@@ -51,6 +51,10 @@ pub enum Route {
 
         #[route("/media")]
         Media {},
+
+        // Review of an audio or video file: media, transcript, speakers (media-review.md D271).
+        #[route("/media/:id/review")]
+        MediaReview { id: String },
 
         // Collaborative pages (pages.md #21); `?id=` opens the live editor.
         #[route("/pages?:id")]
