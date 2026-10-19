@@ -68,10 +68,20 @@ export class DocEditor {
 
   /** Types at the end of the page. */
   async typeAtEnd(text: string): Promise<void> {
-    // Click the last block, not the editor: in a freshly opened tab the
-    // shortcut alone sometimes fired before focus and typed at the start.
-    await this.content.locator(':scope > *').last().click();
-    await this.page.keyboard.press('ControlOrMeta+End');
+    // Click the last block, then check the caret really sits in it: in a
+    // freshly opened tab the keys sometimes landed before the editor had the
+    // focus, and the text went to the start of the page.
+    const last = this.content.locator(':scope > *').last();
+    await expect(async () => {
+      await last.click();
+      await this.page.keyboard.press('ControlOrMeta+End');
+      const inLast = await this.content.evaluate((el) => {
+        const sel = el.ownerDocument.getSelection();
+        const node = sel && sel.rangeCount > 0 ? sel.focusNode : null;
+        return !!node && !!el.lastElementChild?.contains(node);
+      });
+      expect(inLast).toBe(true);
+    }).toPass({ timeout: 10_000 });
     await this.page.keyboard.type(text);
   }
 
