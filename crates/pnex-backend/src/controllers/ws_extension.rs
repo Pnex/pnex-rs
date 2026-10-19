@@ -1,9 +1,11 @@
 //! `GET /ws/extension?ticket=` — link of a browser agent
 //! (extension-collector.md D262).
 //!
-//! - admission: TLS edge (4013), one-time ticket from
-//!   `POST /api/v1/extension/ws-ticket` (4001), then the Noise NNpsk0
-//!   handshake with the agent's key (4011), as every device link;
+//! - admission: one-time ticket from `POST /api/v1/extension/ws-ticket`
+//!   (4001, obtained over HTTPS with the agent's token), then the Noise
+//!   NNpsk0 handshake with the agent's key (4011). No device-edge check
+//!   (4013): a browser reaches the app address, never the mTLS device edge
+//!   that stamps `X-Pnex-Edge` (SEC-50);
 //! - presence: the device liveness lease (D108), one session per agent
 //!   (4003);
 //! - every [`REFRESH`]: re-reads the missions, claims or renews the lease
@@ -51,14 +53,10 @@ struct TicketQuery {
 
 async fn ws_extension(
     State(ctx): State<AppContext>,
-    headers: axum::http::HeaderMap,
     Query(q): Query<TicketQuery>,
     ws: WebSocketUpgrade,
 ) -> Response {
     let settings = IngestSettings::from_config(&ctx.config);
-    if !super::device_link::arrived_over_tls(&headers, &settings) {
-        return reject(ws, super::device_link::CLOSE_TLS_REQUIRED, "TLS required");
-    }
     let Some(id) = extension::redeem_ticket(&ctx.config, q.ticket.as_deref().unwrap_or("")).await
     else {
         return reject(ws, 4001, "Authentication failed");
