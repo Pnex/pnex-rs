@@ -418,8 +418,12 @@ function viewTarget(h) {
 function show(h, animate) {
   const target = viewTarget(h);
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  h.stopGlide?.();
   if (animate && !reduced) {
-    animateNodes(h.graph, target, { duration: 400 });
+    // Only drawn nodes: the force map still remembers removed ones.
+    const live = {};
+    for (const n in target) if (h.graph.hasNode(n)) live[n] = target[n];
+    h.stopGlide = animateNodes(h.graph, live, { duration: 400 });
   } else {
     h.graph.forEachNode((n) => target[n] && h.graph.mergeNodeAttributes(n, target[n]));
   }
@@ -496,6 +500,8 @@ function place(h, work, known) {
   work.forEachNode((n) => target[n] && work.mergeNodeAttributes(n, target[n]));
   // A newcomer may need room: only then does the drawing re-fit.
   if (work.nodes().some((n) => !known.has(n))) h.renderer.setCustomBBox(null);
+  // A glide still running would write to nodes the import removes.
+  h.stopGlide?.();
   g.clear();
   g.import(work);
   repaint(h);
@@ -589,6 +595,7 @@ function screenPos(hostId, id) {
 function unmount(hostId) {
   const h = hosts[hostId];
   if (h?.renderer) {
+    h.stopGlide?.();
     h.observer?.disconnect();
     h.renderer.kill();
   }
