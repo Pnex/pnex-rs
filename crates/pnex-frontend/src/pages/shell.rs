@@ -43,6 +43,8 @@ fn ShellContent() -> Element {
     use_effect(move || {
         ui::restore();
     });
+    // Rights of the current org, reloaded on every org change (iam.md §9).
+    crate::state::access::use_permissions();
     #[cfg(feature = "e2e")]
     use_e2e_navigation();
     // Signal global réactif : le contenu et la sidebar se re-render au toggle.
@@ -325,6 +327,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || at(Route::Models {})
         || at(Route::FluidMixtures {});
     let settings = matches!(route, Route::Orgs {} | Route::OrgsCurrent {})
+        || at(Route::Access {})
         || at(Route::Secrets {})
         || at(Route::System {})
         || at(Route::AdminStatus {});
@@ -568,6 +571,14 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     label: t!("nav-orgs"),
                     active: matches!(route, Route::Orgs {} | Route::OrgsCurrent {}),
                     on_navigate,
+                }
+                if crate::state::access::can("iam:read") {
+                    NavItem {
+                        to: Route::Access {},
+                        label: t!("nav-access"),
+                        active: at(Route::Access {}),
+                        on_navigate,
+                    }
                 }
                 NavItem {
                     to: Route::Secrets {},

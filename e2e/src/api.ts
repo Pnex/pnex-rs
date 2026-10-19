@@ -124,6 +124,10 @@ export const SWEPT_COLLECTIONS = [
   '/annotation-layers',
   '/media',
   '/firmware-projects',
+  // Access management (iam.md): their assignments go with them.
+  '/iam/service-accounts',
+  '/iam/teams',
+  '/iam/roles',
 ] as const;
 
 /** Collections without a name field, emptied whole by the global setup. */

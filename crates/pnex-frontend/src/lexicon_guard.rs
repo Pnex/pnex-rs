@@ -30,6 +30,27 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // iam.md §3: members grouped for access are a « team » (« Groupe »
+    // already names cold groups, company groups, node groups), and a role
+    // given to a member or a team is an « attribution ».
+    Rule {
+        scope: Scope::Fr,
+        term: "groupe d'utilisateurs",
+        use_instead: "équipe (iam.md §3)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "user group",
+        use_instead: "team (iam.md §3)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "affectation",
+        use_instead: "attribution (iam.md §3)",
+        allowed_keys: &[],
+    },
     // D255: the extension that runs collection missions is an « agent
     // navigateur », never a « collecteur » (no collector domain, D254).
     Rule {

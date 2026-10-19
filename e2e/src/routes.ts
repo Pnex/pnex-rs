@@ -32,6 +32,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/orgs', title: 'orgs-title' },
   { path: '/orgs/current', title: null },
   { path: '/secrets', title: 'secrets-title' },
+  { path: '/access', title: 'access-title' },
   { path: '/profile', title: 'nav-profile' },
   { path: '/system', title: 'system-title' },
   { path: '/admin/status', title: 'admin-status-title' },
