@@ -172,6 +172,18 @@ pub fn TypeIcon(icon: String, class: Option<String>) -> Element {
         "globe" => rsx! {
             icons::Globe { class: c }
         },
+        "flag" => rsx! {
+            icons::Flag { class: c }
+        },
+        "landmark" => rsx! {
+            icons::Landmark { class: c }
+        },
+        "newspaper" => rsx! {
+            icons::Newspaper { class: c }
+        },
+        "file-text" => rsx! {
+            icons::FileText { class: c }
+        },
         _ => rsx! {
             icons::Cube { class: c }
         },
@@ -180,8 +192,27 @@ pub fn TypeIcon(icon: String, class: Option<String>) -> Element {
 
 /// Icon names offered by the type editor.
 pub const ICON_NAMES: &[&str] = &[
-    "cube", "map-pin", "building", "workflow", "cog", "droplet", "cpu", "user", "folder", "image",
-    "layers", "tag", "radio", "camera", "server", "globe", "book",
+    "cube",
+    "map-pin",
+    "building",
+    "workflow",
+    "cog",
+    "droplet",
+    "cpu",
+    "user",
+    "folder",
+    "image",
+    "layers",
+    "tag",
+    "radio",
+    "camera",
+    "server",
+    "globe",
+    "book",
+    "flag",
+    "landmark",
+    "newspaper",
+    "file-text",
 ];
 
 /// Icon of a system type key.
@@ -213,6 +244,17 @@ pub fn short_time(rfc3339: &str) -> String {
         .get(..16)
         .map(|s| s.replace('T', " "))
         .unwrap_or_default()
+}
+
+/// Display form of an enum value: its key is user data (`non_conforme`),
+/// shown as words (`Non conforme`); the stored value is unchanged.
+pub fn enum_label(value: &str) -> String {
+    let words = value.replace(['_', '-'], " ");
+    let mut chars = words.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 /// Field errors of a `field-invalid` body.
@@ -269,5 +311,43 @@ pub fn ObjectPicker(type_key: String, selected: Signal<String>) -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn enum_label_turns_keys_into_words() {
+        assert_eq!(enum_label("non_conforme"), "Non conforme");
+        assert_eq!(enum_label("3x8"), "3x8");
+        assert_eq!(enum_label("élevé-critique"), "Élevé critique");
+        assert_eq!(enum_label(""), "");
+    }
+
+    #[test]
+    fn every_pack_icon_is_drawn() {
+        let packs = [
+            include_str!("../../../../pnex-backend/packs/investigation.yaml"),
+            include_str!("../../../../pnex-backend/packs/maintenance.yaml"),
+            include_str!("../../../../pnex-backend/packs/media_coverage.yaml"),
+            include_str!("../../../../pnex-backend/packs/entreprises_fr.yaml"),
+            include_str!("../../../../pnex-backend/packs/quali_watch.yaml"),
+        ];
+        for line in packs.iter().flat_map(|p| p.lines()) {
+            if let Some(icon) = line.trim().strip_prefix("icon:") {
+                let icon = icon.trim();
+                assert!(
+                    ICON_NAMES.contains(&icon),
+                    "pack icon `{icon}` falls back to the cube"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn short_time_drops_seconds_and_zone() {
+        assert_eq!(short_time("2026-10-18T06:00:00Z"), "2026-10-18 06:00");
     }
 }

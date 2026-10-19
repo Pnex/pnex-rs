@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
-use pnex_core::ontology::api::{LinkTypeView, Neighborhood};
+use pnex_core::ontology::api::{LinkTypeView, Neighborhood, ObjectTypeView};
 
 use crate::app::Route;
 
@@ -75,6 +75,10 @@ pub fn GraphView(
     center: String,
     link_types: Vec<LinkTypeView>,
     #[props(default)] on_select: Option<EventHandler<String>>,
+    /// Object types of the org: their display names label the nodes
+    /// (empty = system types translated, others by key).
+    #[props(default)]
+    types: Vec<ObjectTypeView>,
 ) -> Element {
     let pos = layout(&neighborhood, &center);
     let edges: Vec<(String, (f64, f64), (f64, f64), String)> = neighborhood
@@ -103,7 +107,7 @@ pub fn GraphView(
             Some((
                 n.id.clone(),
                 n.title.clone(),
-                super::key_label(&n.type_key),
+                super::type_label_of(&types, &n.type_key),
                 p,
                 n.id == center,
             ))
