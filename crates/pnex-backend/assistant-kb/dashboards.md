@@ -4,7 +4,7 @@ title: Dashboards
 kind: feature
 pages: /dashboards
 nodes: control_source, device_write, memory_write, metric, weather
-err_codes: dashboard-write-forbidden, dashboard-version-conflict, viz-write-forbidden, control-rate-limited, control-value-invalid
+err_codes: access-denied, dashboard-version-conflict, control-rate-limited, control-value-invalid
 tools: 
 tags: dashboard, range bars, barres, per range, par plage, time slice, tranche horaire, aggregation, agrégation, tableau de bord, scada, synoptic, widget, gauge, jauge, mobile, home, maison, domotique, card, carte, template, modèle, room, pièce, weather, météo, switch, interrupteur
 ---

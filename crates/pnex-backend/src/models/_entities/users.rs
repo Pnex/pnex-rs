@@ -16,6 +16,8 @@ pub struct Model {
     pub email: String,
     pub full_name: Option<String>,
     pub platform_admin: bool,
+    /// A service account's identity (iam.md §7): never signs in, never a member.
+    pub is_service: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

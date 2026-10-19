@@ -328,11 +328,7 @@ async fn viewer_cannot_manage_providers() {
         ] {
             let resp = send_json(&server, method, &path, &env.bob, org, Some(body.clone())).await;
             assert_eq!(resp.status_code(), 403, "{method} {path}: {}", resp.text());
-            assert!(
-                resp.text().contains("geo-provider-forbidden"),
-                "{}",
-                resp.text()
-            );
+            assert!(resp.text().contains("access-denied"), "{}", resp.text());
         }
 
         // Another org's provider does not exist for bob's own org (R1).

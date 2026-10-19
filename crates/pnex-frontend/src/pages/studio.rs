@@ -23,14 +23,6 @@ use crate::components::ui::BTN_DANGER;
 use crate::state::tours::OPEN_TOUR;
 use crate::state::{org, session, toasts};
 
-/// Rôle de l'utilisateur dans l'org courante — même helper que `flows.rs`
-/// (privé par page, convention projet).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
-
 #[component]
 pub fn Studio() -> Element {
     let mut reload = use_signal(|| 0u32);
@@ -56,7 +48,7 @@ pub fn Studio() -> Element {
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(String, String)>);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("tours:write");
 
     let list = use_resource(move || {
         let filters = api::tours::TourFilters {

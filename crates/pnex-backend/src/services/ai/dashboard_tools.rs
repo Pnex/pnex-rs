@@ -19,7 +19,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, ToolDeps, ToolError, ToolOutcome};
 use crate::models::_entities::{dashboard_versions, dashboards};
 use crate::services::dashboards::DashboardWriteError;
 
@@ -307,7 +307,6 @@ pub async fn validate_dashboard_layout(
 }
 
 pub async fn create_dashboard(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let name = args
         .get("name")
         .and_then(Value::as_str)
@@ -338,7 +337,6 @@ pub async fn create_dashboard(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolO
 }
 
 pub async fn update_dashboard(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let d = find(deps, uuid_arg(args, "dashboard_id")?).await?;
     let expected = args
         .get("expected_version")

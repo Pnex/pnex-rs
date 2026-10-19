@@ -109,23 +109,10 @@ fn db_error(e: sea_orm::DbErr) -> Error {
     Error::InternalServerError
 }
 
-fn require_manage(org: &OrgContext) -> Result<()> {
-    if org.can_administer() {
-        Ok(())
-    } else {
-        Err(custom(
-            StatusCode::FORBIDDEN,
-            err_codes::GEO_PROVIDER_FORBIDDEN,
-            "Owner or admin role required to manage geo providers.",
-            None,
-        ))
-    }
-}
-
 fn author(org: &OrgContext) -> Author {
     Author {
         user_id: Some(org.auth.user.id),
-        can_write_secrets: org.can_manage_secrets(),
+        can_write_secrets: org.can("secrets:write"),
     }
 }
 
@@ -201,7 +188,6 @@ fn paged<T: serde::Serialize>(path: &str, q: &PageQuery, items: Vec<T>) -> Resul
     responses(
         (status = 201, body = pnex_core::geo::GeoProvider),
         (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`geo-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`geo-provider-name-taken`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -211,7 +197,6 @@ async fn create(
     State(ctx): State<AppContext>,
     Json(input): Json<GeoProviderInput>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     let ring = match crate::controllers::secrets::keyring(&ctx) {
         Ok(ring) => ring,
         Err(e) => return crate::controllers::secrets::store_error(e),
@@ -235,7 +220,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::geo::GeoProvider),
         (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`geo-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`geo-provider-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`geo-provider-name-taken`", body = crate::openapi::ErrorDetail)
     ),
@@ -247,7 +231,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<GeoProviderInput>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     let ring = match crate::controllers::secrets::keyring(&ctx) {
         Ok(ring) => ring,
         Err(e) => return crate::controllers::secrets::store_error(e),
@@ -269,7 +252,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Geo provider id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`geo-provider-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`geo-provider-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -279,7 +261,6 @@ async fn delete(
     State(ctx): State<AppContext>,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     match providers::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => provider_error(e),
@@ -297,7 +278,6 @@ async fn delete(
     params(("id" = String, Path, format = "uuid", description = "Geo provider id")),
     responses(
         (status = 200, body = GeoTestResult),
-        (status = 403, description = "`geo-provider-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`geo-provider-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`geo-not-configured`: no default provider for this capability (args.capability)", body = crate::openapi::ErrorDetail),
         (status = 429, description = "`geo-rate-limited`: provider rate limit reached; `Retry-After` header and args.retry_after_s", body = crate::openapi::ErrorDetail),
@@ -310,7 +290,6 @@ async fn test(
     State(ctx): State<AppContext>,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     let row = match providers::find(&ctx.db, org.org.id, id).await {
         Ok(row) => row,
         Err(e) => return provider_error(e),

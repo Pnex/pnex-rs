@@ -4,7 +4,7 @@ title: Geo providers (basemap, geocoding, routing)
 kind: feature
 pages: /orgs/current, /map
 nodes: 
-err_codes: geo-provider-forbidden, geo-provider-not-found, geo-provider-name-taken, geo-not-configured, geo-rate-limited, geo-provider-failed
+err_codes: access-denied, geo-provider-not-found, geo-provider-name-taken, geo-not-configured, geo-rate-limited, geo-provider-failed
 tools: 
 tags: photon, graphhopper, api key, clé, maptiler, google, mapbox, map, carte, basemap, fond de carte, tiles, tuiles, style, maplibre, geocoding, géocodage, address, adresse, nominatim, valhalla, route, itinéraire, routing, provider, fournisseur
 ---

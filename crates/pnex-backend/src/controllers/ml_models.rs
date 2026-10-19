@@ -1,5 +1,5 @@
 //! Vision model registry API (camera-video.md D81) — org-scoped, writes
-//! gated by `can_write()`.
+//! gated by their IAM permission.
 //!
 //! - `GET    /api/v1/ml/models` — D14 envelope (`search`)
 //! - `POST   /api/v1/ml/models` — `{name, description?, asset_id, asset_version?, spec?}`
@@ -40,16 +40,6 @@ use pnex_core::vision::{
 
 /// Test images are small (camera frames, photos) — 16 MB cap.
 const TEST_IMAGE_MAX_BYTES: usize = 16 * 1024 * 1024;
-
-fn forbidden() -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(
-            "ml-model-write-forbidden",
-            "Managing models requires the owner, admin or member role",
-        ),
-    )
-}
 
 fn not_found() -> Error {
     Error::CustomError(
@@ -302,7 +292,6 @@ fn validate_name(name: &str) -> Option<(&'static str, String)> {
     responses(
         (status = 201, body = pnex_core::vision::MlModel),
         (status = 400, description = "Field errors (`name`: `required`/`max_length:200`/`unique`, `asset_id`: `invalid`, spec fields)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`ml-model-invalid` (args.detail = loader diagnostic) or `ml-model-missing-bytes`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
     ),
@@ -313,9 +302,6 @@ async fn create(
     org: OrgContext,
     axum::Json(input): axum::Json<CreateInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let spec = input.spec.unwrap_or_default();
     let mut errs = Vec::new();
     if let Some(e) = validate_name(&input.name) {
@@ -397,7 +383,6 @@ where
     responses(
         (status = 200, body = pnex_core::vision::MlModel),
         (status = 400, description = "Field errors", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`ml-model-invalid` (args.detail = loader diagnostic) or `ml-model-missing-bytes`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
@@ -410,9 +395,6 @@ async fn update(
     Path(id): Path<Uuid>,
     axum::Json(input): axum::Json<UpdateInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let Some(m) = find(&ctx.db, &org, id).await? else {
         return Err(not_found());
     };
@@ -488,7 +470,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Model id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -498,9 +479,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let Some(m) = find(&ctx.db, &org, id).await? else {
         return Err(not_found());
     };
@@ -582,7 +560,6 @@ async fn test_image(
     params(("id" = String, Path, format = "uuid", description = "Model id")),
     responses(
         (status = 200, body = pnex_core::vision::MlModel),
-        (status = 403, description = "`ml-model-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ml-model-not-found`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`server-busy`: inference pool saturated", body = crate::openapi::ErrorDetail)
     ),
@@ -593,9 +570,6 @@ async fn check(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let Some(m) = find(&ctx.db, &org, id).await? else {
         return Err(not_found());
     };

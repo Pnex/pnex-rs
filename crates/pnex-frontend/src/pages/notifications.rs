@@ -23,13 +23,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
-use crate::state::{org, session, toasts};
-
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
+use crate::state::{org, toasts};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -91,7 +85,7 @@ pub fn Notifications() -> Element {
     // switches to it pre-filtered).
     let journal_channel = use_signal(String::new);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("notify:write");
 
     // Valeurs des signaux-modals lues AVANT le rsx (pas de `let` dans rsx).
     let channel_modal = edit_channel.read().clone();

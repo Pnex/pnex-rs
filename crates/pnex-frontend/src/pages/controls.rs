@@ -38,7 +38,7 @@ pub fn Controls() -> Element {
     // None = closed, Some(None) = creation, Some(Some(c)) = edition.
     let mut editing = use_signal(|| None::<Option<UiControl>>);
     let mut delete_target = use_signal(|| None::<UiControl>);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("controls:write");
     // D218: own label filter ("name" or "name:value"), applied server-side.
     let filter_label = use_signal(String::new);
     let filter_search = use_signal(String::new);

@@ -271,6 +271,26 @@ mod tests {
         }
     }
 
+    /// Every service and verb of the IAM registry has its label in BOTH
+    /// locales (`access-denied` names them, iam.md §8).
+    #[test]
+    fn iam_permission_labels_en_fr() {
+        let en = keys(include_str!("../locales/en-US.ftl"));
+        let fr = keys(include_str!("../locales/fr-FR.ftl"));
+        for (permission, _) in pnex_api_contract::iam::PERMISSIONS {
+            let (service, verb) = permission.split_once(':').unwrap();
+            for key in [
+                format!("iam-service-{}", service.replace('.', "-")),
+                format!("iam-verb-{verb}"),
+            ] {
+                assert!(
+                    en.contains(&key) && fr.contains(&key),
+                    "`{permission}`: key `{key}` missing from a locale — add it to BOTH .ftl files"
+                );
+            }
+        }
+    }
+
     /// Every catalog library of the firmware IDE has its description key
     /// (`fw-lib-<id>`, rendered with a dynamic `t!` — a missing key panics).
     #[test]

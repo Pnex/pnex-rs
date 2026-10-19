@@ -117,8 +117,9 @@ pub fn Things() -> Element {
    reste dans la page (une clé manquante = panic, garde registry↔locales).
 2. **Garde org hors socle** : `org::current().is_none()` → message
    « orgs-empty », en tête du `children` de `ListLayout`.
-3. **`can_write` calculé par la page** (helper `current_role()` privé par
-   page — convention projet) ; le socle ne fait que masquer les actions.
+3. **`can_write` calculé par la page** via `state::access::can("service:verb")`
+   (permission du registre IAM, iam.md §9) ; le socle ne fait que masquer
+   les actions.
 4. **`derive PartialEq` sur les types payload** passés aux props du socle
    (`DataTable<T>`, colonnes…) : la macro `#[component]` de dioxus 0.7
    génère un `PartialEq` par champ sur les props. Précédents : `ApiError`,

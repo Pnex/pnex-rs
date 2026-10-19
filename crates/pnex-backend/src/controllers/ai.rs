@@ -4,8 +4,8 @@
 //! The platform provides no LLM (D119): each org brings its own.
 //!
 //! Garde-fous : kill-switch (`settings.ai.enabled`) coupé → chat 403 sans
-//! requête DB ni requête LLM ; les outils d'écriture re-vérifient
-//! `can_write` dans `services::ai::tools` ; **aucun** chemin de ce module
+//! requête DB ni requête LLM ; every tool needs its IAM permission
+//! (`services::ai::tools::execute`) ; **aucun** chemin de ce module
 //! vers deploy/delete/commandes.
 
 use axum::extract::{Path, Query, State};
@@ -23,15 +23,6 @@ use crate::services::ai::providers::{self, Author, ProviderError};
 use crate::services::ai::{agent, tools};
 use crate::services::openobserve::{self, OpenobserveSettings};
 use pnex_core::err_codes;
-
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        axum::http::StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 pub fn routes() -> Routes {
     Routes::new()
@@ -151,17 +142,6 @@ fn db_error(e: sea_orm::DbErr) -> Error {
     Error::InternalServerError
 }
 
-fn require_manage(org: &OrgContext) -> Result<()> {
-    if org.can_administer() {
-        Ok(())
-    } else {
-        Err(forbidden(
-            err_codes::LLM_PROVIDER_FORBIDDEN,
-            "Owner or admin role required to manage LLM providers.",
-        ))
-    }
-}
-
 /// Providers of the org, one page (D240).
 async fn list_response(ctx: &AppContext, org_id: i64, q: &ListQuery) -> Result<Response> {
     let rows = providers::list(&ctx.db, org_id).await.map_err(db_error)?;
@@ -252,7 +232,7 @@ async fn test_response(ctx: &AppContext, org_id: i64, id: Uuid) -> Result<Respon
 fn org_author(org: &OrgContext) -> Author {
     Author {
         user_id: Some(org.auth.user.id),
-        can_write_secrets: org.can_manage_secrets(),
+        can_write_secrets: org.can("secrets:write"),
     }
 }
 
@@ -290,7 +270,6 @@ async fn org_list(
     responses(
         (status = 201, body = pnex_core::LlmProvider),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`llm-provider-name-taken`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -300,7 +279,6 @@ async fn org_create(
     State(ctx): State<AppContext>,
     Json(input): Json<pnex_core::LlmProviderInput>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     create_response(&ctx, org.org.id, org_author(&org), input).await
 }
 
@@ -317,7 +295,6 @@ async fn org_create(
     responses(
         (status = 200, body = pnex_core::LlmProvider),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`llm-provider-name-taken`", body = crate::openapi::ErrorDetail)
     ),
@@ -329,7 +306,6 @@ async fn org_update(
     Path(id): Path<Uuid>,
     Json(input): Json<pnex_core::LlmProviderInput>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     update_response(&ctx, org.org.id, org_author(&org), id, input).await
 }
 
@@ -344,7 +320,6 @@ async fn org_update(
     params(("id" = String, Path, format = "uuid", description = "LLM provider id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -354,7 +329,6 @@ async fn org_delete(
     State(ctx): State<AppContext>,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     delete_response(&ctx, org.org.id, id).await
 }
 
@@ -369,7 +343,6 @@ async fn org_delete(
     params(("id" = String, Path, format = "uuid", description = "LLM provider id")),
     responses(
         (status = 200, body = pnex_core::LlmProviderTest),
-        (status = 403, description = "`llm-provider-forbidden` or a vault write refusal", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`llm-provider-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -379,7 +352,6 @@ async fn org_test(
     State(ctx): State<AppContext>,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_manage(&org)?;
     test_response(&ctx, org.org.id, id).await
 }
 
@@ -642,8 +614,8 @@ async fn conversation_export(org: OrgContext, State(ctx): State<AppContext>) -> 
 }
 
 /// `POST /api/v1/ai/conversations/{id}/messages` — one agent turn. Every
-/// member may converse (viewers included); write tools re-check
-/// `can_write`. Kill-switch off → 403 without any LLM request. One turn
+/// member may converse (viewers included); every tool needs its IAM
+/// permission. Kill-switch off → 403 without any LLM request. One turn
 /// at a time per conversation → 409 `ai-conversation-busy`.
 #[utoipa::path(
     post,
@@ -789,7 +761,7 @@ async fn run_conversation_turn(
     let deps = tools::ToolDeps {
         db: &ctx.db,
         org_id: org.org.id,
-        can_write: org.can_write(),
+        grants: org.grants.clone(),
         author: Some(org.auth.user.email.clone()).filter(|e| !e.trim().is_empty()),
         o2: o2_client.as_ref(),
         config: Some(&ctx.config),
@@ -833,7 +805,7 @@ async fn retention_dto(ctx: &AppContext, org: &OrgContext) -> Result<pnex_core::
             .org
             .ai_retention_days
             .and_then(|d| u32::try_from(d).ok()),
-        editable: org.can_administer(),
+        editable: org.can("ai.settings:write"),
         platform_editable: org.auth.user.platform_admin,
     })
 }
@@ -867,7 +839,6 @@ async fn retention_get(org: OrgContext, State(ctx): State<AppContext>) -> Result
     request_body = pnex_core::RetentionUpdate,
     responses(
         (status = 200, body = pnex_core::AiRetention),
-        (status = 403, description = "`ai-retention-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`ai-retention-above-platform` (args.max)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -877,12 +848,6 @@ async fn retention_put(
     State(ctx): State<AppContext>,
     Json(body): Json<pnex_core::RetentionUpdate>,
 ) -> Result<Response> {
-    if !org.can_administer() {
-        return Err(forbidden(
-            err_codes::AI_RETENTION_FORBIDDEN,
-            "Owner or admin role required to change the conversation retention",
-        ));
-    }
     let platform = conversations::retention_days(&ctx.db).await;
     if let Some(days) = body.days {
         if days < 1 || days > platform {

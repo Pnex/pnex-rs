@@ -4,7 +4,7 @@ title: Streams
 kind: feature
 pages: /streams
 nodes: media_source, range_upsert, camera_source, video_record
-err_codes: asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, media-stream-write-forbidden, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, asr-runtime-unavailable, media-transcripts-unavailable, media-stream-unknown, camera-stream-unknown
+err_codes: access-denied, asr-test-audio-unsupported, asr-test-failed, media-stream-not-found, media-stream-limit, media-url-has-credentials, media-stream-unreachable, media-asr-model-invalid, media-capture-unsupported, asr-profile-not-found, asr-profile-name-taken, asr-model-not-found, asr-model-name-taken, asr-model-unsupported, asr-runtime-unavailable, media-transcripts-unavailable, media-stream-unknown, camera-stream-unknown
 tools: 
 tags: replay, rejouer, fichier, file, mp4, streams, flux, radio, audio, icecast, hls, podcast, transcription, transcriptions, asr, speech to text, parole, capture, retention, tdm, parakeet, canary, whisper, sherpa, profile, profil, search, recherche, vad, voice detection, silence, diarization, diarisation, speaker, locuteur, temps de parole, speaking time, rtsp, ip camera, caméra ip, video, vidéo, tracks, pistes, fps, capture box, boîtier de capture, tuner, tnt, tvheadend, raspberry pi
 ---

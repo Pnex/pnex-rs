@@ -1,7 +1,7 @@
 //! Custom firmware projects (custom-firmware.md D89–D92) — org-scoped CRUD,
 //! append-only revisions, library catalog, compile-only « Verify » checks
 //! (devices pick a project at provisioning — `CreateDevice.firmware_project_id`). School `controllers/functions.rs`: cross-org 404,
-//! writes gated by `can_write()`, 400 field by field with machine tokens.
+//! writes gated by their IAM permission, 400 field by field with machine tokens.
 //!
 //! Compiling (check or device build) requires `settings.firmware.custom.
 //! enabled` (off by default, D91): editing and history work regardless.
@@ -47,14 +47,6 @@ fn error(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(
         status,
         loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
-
-fn forbidden() -> Error {
-    error(
-        StatusCode::FORBIDDEN,
-        "firmware-write-forbidden",
-        "Owner, admin or member role required to manage firmware projects.",
     )
 }
 
@@ -277,8 +269,7 @@ async fn lib_catalog(
     request_body = pnex_core::firmware::CreateFirmwareProject,
     responses(
         (status = 201, body = pnex_core::firmware::FirmwareProjectDetail),
-        (status = 400, description = "Invalid input: a field token (`field-invalid`, `errors.fields`), refused sketch constructs (`firmware-source-refused`, `errors.violations`: [SourceViolation]), or an unavailable library (`firmware-lib-*`, `errors.args.value`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "Invalid input: a field token (`field-invalid`, `errors.fields`), refused sketch constructs (`firmware-source-refused`, `errors.violations`: [SourceViolation]), or an unavailable library (`firmware-lib-*`, `errors.args.value`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -287,9 +278,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<CreateFirmwareProject>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     match create_project(&ctx.db, org.org.id, &input).await {
         Ok((p, rev)) => {
             Ok((StatusCode::CREATED, format::json(detail_dto(&p, &rev))).into_response())
@@ -336,7 +324,6 @@ async fn detail(
     responses(
         (status = 200, body = pnex_core::firmware::FirmwareProjectDetail),
         (status = 400, description = "Invalid input: a field token (`field-invalid`, `errors.fields`), refused sketch constructs (`firmware-source-refused`, `errors.violations`: [SourceViolation]), or an unavailable library (`firmware-lib-*`, `errors.args.value`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Stale `expected_revision_number` (`firmware-version-conflict`)", body = crate::openapi::ErrorDetail)
     ),
@@ -348,9 +335,6 @@ async fn save(
     Path(id): Path<i64>,
     Json(input): Json<SaveFirmwareRevision>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let (p, rev) = find_project(&ctx.db, &org, id).await?;
     if input.expected_revision_number != rev.revision_number {
         return Err(error(
@@ -429,7 +413,6 @@ async fn revisions(
     params(("id" = i64, Path, description = "Firmware project id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer (`firmware-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown project (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Devices attached (`firmware-project-in-use`, args.count)", body = crate::openapi::ErrorDetail)
     ),
@@ -440,9 +423,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let (p, _) = find_project(&ctx.db, &org, id).await?;
     let n = device_count(&ctx.db, p.id)
         .await

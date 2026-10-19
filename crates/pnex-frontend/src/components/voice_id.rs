@@ -18,7 +18,7 @@ use crate::components::transport::MediaPlayer;
 use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL,
 };
-use crate::state::{org, toasts};
+use crate::state::toasts;
 use crate::util;
 
 const SECTION: &str = "rounded-lg border border-line bg-surface p-4 space-y-3";
@@ -77,7 +77,7 @@ pub fn VoiceProfilePanel(object_id: String) -> Element {
             api::voice_id::by_object(&id).await
         }
     });
-    let can_admin = org::current_can_administer();
+    let can_admin = crate::state::access::can("voice-id:write");
     let on_change = move |_| reload.with_mut(|r| *r += 1);
     let state = profile.read().clone();
     match &state {
@@ -597,7 +597,7 @@ pub fn VoiceTestBox(object_id: Option<String>, model_id: Option<String>) -> Elem
     let mut file = use_signal(|| None::<(String, String, Vec<u8>)>);
     let mut busy = use_signal(|| false);
     let mut result = use_signal(|| None::<VoiceTestResult>);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("voice-id:test");
     let run = move |_| {
         let Some((name, ct, bytes)) = file.peek().clone() else {
             return;

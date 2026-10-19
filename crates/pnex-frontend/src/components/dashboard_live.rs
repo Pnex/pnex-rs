@@ -106,7 +106,7 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
         },
         reload,
         via,
-        crate::state::org::current_can_write(),
+        crate::state::access::can("controls:operate"),
     );
 
     // Polling auto-entretenu tant que la page est montée (école

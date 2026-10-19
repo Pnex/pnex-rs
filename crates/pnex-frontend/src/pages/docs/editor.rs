@@ -54,7 +54,7 @@ fn user_color(id: i64) -> &'static str {
 #[component]
 pub fn DocEditor(id: Uuid) -> Element {
     let host = format!("pnex-doc-{id}");
-    let can_write = crate::state::org::current_can_write();
+    let can_write = crate::state::access::can("docs:write");
     let mut state = use_signal(DocState::default);
     let mut mounted = use_signal(|| Option::<bool>::None);
     let mut title = use_signal(String::new);

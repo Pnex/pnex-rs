@@ -35,16 +35,6 @@ impl OrgRole {
     pub fn parse(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|r| r.as_str() == value)
     }
-
-    /// Content writes (flows, devices, dashboards...): owner, admin, member.
-    pub fn can_write(self) -> bool {
-        !matches!(self, Self::Viewer)
-    }
-
-    /// Org governance (members, vault, telemetry deletion): owner or admin.
-    pub fn can_administer(self) -> bool {
-        matches!(self, Self::Owner | Self::Admin)
-    }
 }
 
 /// UI theme of a user profile. Lowercase on the wire.

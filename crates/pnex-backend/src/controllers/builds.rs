@@ -48,15 +48,6 @@ fn field_status(status: StatusCode, field: &str, msg: &str) -> Response {
     crate::controllers::fields_error(status, fields)
 }
 
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
-
 /// Record → DTO `pnex_core::BuildRecord`.
 fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
     pnex_core::BuildRecord {
@@ -121,7 +112,7 @@ async fn count_devices_of_type(db: &DatabaseConnection, org_id: i64, type_id: i6
     responses(
         (status = 201, body = pnex_core::CreateBuildResponse),
         (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`: unknown WiFi entry, host...) or edge agent device (`agent-unsupported-action`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`build-create-forbidden`) or tier quota reached (`device-quota-reached`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Tier quota reached (`device-quota-reached`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (`device-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "A build is already in progress (`build-in-progress`)", body = crate::openapi::ErrorDetail),
         (status = 429, description = "Minimum interval between builds not met (`build-interval-not-met`)", body = crate::openapi::ErrorDetail),
@@ -134,13 +125,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateBuild>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "build-create-forbidden",
-            "Owner, admin or member role required to launch builds.",
-        ));
-    }
-
     // An imposed production host (`PNEX_PROD_HOST`) wins over the request:
     // the client may send it, another host or nothing at all.
     let prod_host = crate::app::prod_host();
@@ -534,7 +518,6 @@ async fn list(
     params(("id" = i64, Path, description = "Device registry id")),
     responses(
         (status = 200, content_type = "application/octet-stream", body = Vec<u8>),
-        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (`device-not-found`), no successful build or artifact missing", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -546,12 +529,6 @@ async fn download(
 ) -> Result<Response> {
     // The image embeds the device token, its key and the WiFi credentials
     // (SEC-8): same roles as the build itself, never a viewer.
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::DEVICE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage devices.",
-        ));
-    }
     let Some(device) = device_registries::Entity::find_by_id(id)
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .one(&ctx.db)

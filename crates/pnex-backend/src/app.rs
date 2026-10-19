@@ -82,6 +82,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::oauth2::routes())
         .add_route(controllers::user_info::routes())
         .add_route(controllers::orgs::routes())
+        .add_route(controllers::iam::routes())
         .add_route(controllers::devices::routes())
         .add_route(controllers::devices::catalogue_routes())
         .add_route(controllers::builds::routes())
@@ -226,6 +227,8 @@ impl Hooks for App {
         // Notify delivery journal → O2 (D86): background writer.
         crate::services::notify_journal::spawn_writer(ctx);
         crate::services::ontology::changes::spawn_writer(ctx);
+        // Access audit → O2 (iam.md D294).
+        crate::services::iam::audit::spawn_writer(ctx);
         crate::services::ontology::cases::spawn_reads_writer(ctx);
         crate::services::pois::position_log::spawn_writer(ctx);
         crate::services::notify::warn_missing_token(ctx);
@@ -264,6 +267,10 @@ impl Hooks for App {
         let router = router.layer(axum::middleware::from_fn_with_state(
             rate_limit,
             crate::services::rate_limit::middleware,
+        ));
+        // Engine decision compared with the R2 guards (iam.md lot I1).
+        let router = router.layer(axum::middleware::from_fn(
+            crate::services::iam::observe::middleware,
         ));
         // Extractor rejections answer the contract's ErrorDetail (D239).
         let router = router.layer(axum::middleware::from_fn(

@@ -248,18 +248,6 @@ async fn o2_target(ctx: &AppContext, org_id: i64) -> Result<Option<(Client, Stri
     Ok(creds.map(|c| (Client::new(&settings), c.o2_org)))
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_administer() {
-        Ok(())
-    } else {
-        Err(coded(
-            axum::http::StatusCode::FORBIDDEN,
-            err_codes::SYSTEM_DATA_FORBIDDEN,
-            "Owner or admin role required to delete telemetry data.",
-        ))
-    }
-}
-
 fn delete_failed(err: String) -> Error {
     tracing::warn!(%err, "system: O2 deletion failed");
     coded(
@@ -355,7 +343,6 @@ async fn o2_streams(org: OrgContext, State(ctx): State<AppContext>) -> Result<Re
     params(("name" = String, Path, description = "O2 metrics stream name")),
     responses(
         (status = 200, body = pnex_core::O2DeleteResult),
-        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
         (status = 404, description = "The org has no telemetry space yet", body = crate::openapi::ErrorDetail),
         (status = 502, description = "`o2-delete-failed`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`o2-not-configured`: OpenObserve is not configured on this server", body = crate::openapi::ErrorDetail)
@@ -367,7 +354,6 @@ async fn o2_stream_delete(
     State(ctx): State<AppContext>,
     Path(name): Path<String>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let Some((client, o2_org)) = o2_target(&ctx, org.org.id).await? else {
         return Err(Error::NotFound);
     };
@@ -393,7 +379,6 @@ async fn o2_stream_delete(
     request_body = pnex_core::O2PurgeRequest,
     responses(
         (status = 200, body = pnex_core::O2DeleteResult),
-        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`confirmation-mismatch`", body = crate::openapi::ErrorDetail),
         (status = 502, description = "`o2-delete-failed`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`o2-not-configured`: OpenObserve is not configured on this server", body = crate::openapi::ErrorDetail)
@@ -405,7 +390,6 @@ async fn o2_purge(
     State(ctx): State<AppContext>,
     Json(body): Json<O2PurgeRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     if body.confirm.trim() != org.org.name {
         return Err(coded(
             axum::http::StatusCode::UNPROCESSABLE_ENTITY,
@@ -470,7 +454,6 @@ fn parse_rfc3339(raw: &str) -> Option<DateTime<Utc>> {
     request_body = pnex_core::O2DeleteRangeRequest,
     responses(
         (status = 200, body = pnex_core::O2DeleteResult),
-        (status = 403, description = "`system-data-forbidden`: owner or admin role required", body = crate::openapi::ErrorDetail),
         (status = 404, description = "The org has no telemetry space yet", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`o2-time-range-invalid`", body = crate::openapi::ErrorDetail),
         (status = 502, description = "`o2-time-range-unsupported` or `o2-delete-failed`", body = crate::openapi::ErrorDetail),
@@ -484,7 +467,6 @@ async fn o2_stream_delete_range(
     Path(name): Path<String>,
     Json(body): Json<O2DeleteRangeRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let (Some(start), Some(end)) = (parse_rfc3339(&body.start), parse_rfc3339(&body.end)) else {
         return Err(coded(
             axum::http::StatusCode::UNPROCESSABLE_ENTITY,

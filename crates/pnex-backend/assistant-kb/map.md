@@ -4,7 +4,7 @@ title: Map and POIs
 kind: feature
 pages: /map
 nodes: 
-err_codes: poi-write-forbidden, poi-link-write-forbidden, poi-position-write-forbidden, poi-device-already-placed, poi-link-duplicate
+err_codes: access-denied, poi-device-already-placed, poi-link-duplicate
 tools: 
 tags: map, carte, poi, point of interest, location, gps, emplacement, site, attach, cluster, géolocalisation
 ---

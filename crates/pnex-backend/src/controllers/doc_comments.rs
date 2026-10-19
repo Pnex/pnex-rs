@@ -51,14 +51,6 @@ fn coded(status: StatusCode, code: &str, msg: &str) -> Error {
     crate::controllers::coded_error(status, code, msg, None)
 }
 
-fn forbidden() -> Error {
-    coded(
-        StatusCode::FORBIDDEN,
-        err_codes::DOCS_WRITE_FORBIDDEN,
-        "Owner, admin or member role required to comment pages.",
-    )
-}
-
 fn not_author() -> Error {
     coded(
         StatusCode::FORBIDDEN,
@@ -170,7 +162,6 @@ async fn list(
     responses(
         (status = 201, body = DocCommentCreated),
         (status = 400, description = "`field-invalid`: `body` (`required`, `max_length:<n>`), `parent_id` (`invalid`), `anchor` (`max_length:<n>`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -183,9 +174,6 @@ async fn create(
     Path(id): Path<Uuid>,
     Json(input): Json<CreateDocComment>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let body = match checked_body(&input.body) {
         Ok(b) => b,
@@ -257,7 +245,7 @@ async fn create(
     responses(
         (status = 204, description = "Updated"),
         (status = 400, description = "`field-invalid`: `body`, or `resolved` on a reply (`invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`docs-write-forbidden` (viewer) or `doc-comment-not-author`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`doc-comment-not-author`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -270,9 +258,6 @@ async fn update(
     Path((id, cid)): Path<(Uuid, i64)>,
     Json(input): Json<PatchDocComment>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let c = find_comment(&ctx.db, d.id, cid).await?;
     let mut active: doc_comments::ActiveModel = c.clone().into();
@@ -311,7 +296,7 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Page id"), ("cid" = i64, Path, description = "Comment id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`docs-write-forbidden` (viewer) or `doc-comment-not-author`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`doc-comment-not-author`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Page or comment not found", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -323,12 +308,9 @@ async fn remove(
     org: OrgContext,
     Path((id, cid)): Path<(Uuid, i64)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let c = find_comment(&ctx.db, d.id, cid).await?;
-    if c.author_id != Some(org.auth.user.id) && !org.can_administer() {
+    if c.author_id != Some(org.auth.user.id) && !org.can("docs:moderate") {
         return Err(not_author());
     }
     doc_comments::Entity::delete_by_id(c.id)

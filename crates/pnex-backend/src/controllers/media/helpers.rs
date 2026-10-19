@@ -24,13 +24,6 @@ pub(crate) fn format_unsupported() -> Error {
     )
 }
 
-pub(super) fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
-
 pub(super) fn field_status(field: &str, msg: &str) -> Response {
     crate::controllers::field_error(field, msg)
 }

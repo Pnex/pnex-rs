@@ -367,7 +367,7 @@ async fn org_isolation_and_viewer_read_only() {
         for (m, path, body) in writes {
             let (st, e) = call(&server, m, &path, &env.bob, org_a, body).await;
             assert_eq!(st, 403, "{m} {path}");
-            assert_eq!(e["error"], "lab-write-forbidden");
+            assert_eq!(e["error"], "access-denied");
         }
     })
     .await;

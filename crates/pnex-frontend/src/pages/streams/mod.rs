@@ -17,7 +17,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{ACTIONS_TD_CLASS, ACTIONS_TH_CLASS};
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
-use crate::state::{org, session, toasts};
+use crate::state::{org, toasts};
 
 mod form;
 mod models;
@@ -53,13 +53,6 @@ enum Tab {
 
 use crate::components::ui::{TAB, TAB_ACTIVE, TAB_BAR};
 
-/// User role in the current org.
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
-
 /// Which modal is open.
 #[derive(Clone, PartialEq)]
 enum Dialog {
@@ -83,7 +76,7 @@ pub fn Streams() -> Element {
     let mut importing = use_signal(|| false);
     let mut creating_taxonomy = use_signal(|| false);
     let mut creating_range = use_signal(|| false);
-    let can_write = current_role().is_some_and(org::role_can_write);
+    let can_write = crate::state::access::can("media:write");
 
     let streams = use_resource(move || {
         let offset = page() * PAGE_SIZE;

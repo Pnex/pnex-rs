@@ -4,7 +4,7 @@ title: Voice profiles — recognize a consenting person by their voice
 kind: feature
 pages: /voice-id, /ontology/object/:id, /media
 nodes:
-err_codes: voice-id-write-forbidden, voice-id-not-person, voice-id-profile-exists, voice-id-profile-not-found, voice-id-sample-not-found, voice-id-no-model, voice-id-audio-unsupported, voice-id-not-enough-speech, voice-id-not-ready, voice-id-failed
+err_codes: access-denied, voice-id-not-person, voice-id-profile-exists, voice-id-profile-not-found, voice-id-sample-not-found, voice-id-no-model, voice-id-audio-unsupported, voice-id-not-enough-speech, voice-id-not-ready, voice-id-failed
 tools:
 tags: voice, voix, voice profile, empreinte vocale, speaker recognition, reconnaissance vocale, reconnaissance du locuteur, speaker verification, identification, person, personne, enrolment, enrôlement, consent, consentement, biometric, biométrie, rgpd, gdpr, speaker embedding, empreinte de locuteur
 ---

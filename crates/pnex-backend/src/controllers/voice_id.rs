@@ -67,22 +67,6 @@ fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(status, ErrorDetail::new(code, msg.to_string()))
 }
 
-fn forbidden() -> Error {
-    detail(
-        StatusCode::FORBIDDEN,
-        err_codes::VOICE_ID_WRITE_FORBIDDEN,
-        "Voice profiles are written by owners and admins only; tests need write access.",
-    )
-}
-
-fn require_admin(org: &OrgContext) -> Result<()> {
-    if org.can_administer() {
-        Ok(())
-    } else {
-        Err(forbidden())
-    }
-}
-
 fn fail(e: VoiceIdError) -> Result<Response> {
     use VoiceIdError as E;
     Err(match e {
@@ -270,7 +254,6 @@ async fn by_object(
     responses(
         (status = 201, body = pnex_core::voice_id::VoiceProfileView),
         (status = 400, description = "`field-invalid` (consent, model), or object not a Person (`voice-id-not-person`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "The person already has a voice profile (`voice-id-profile-exists`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -280,7 +263,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<VoiceProfileInput>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match profiles::create(&ctx.db, org.org.id, &org.auth.user.email, &input).await {
         Ok(row) => respond(&ctx, &org, StatusCode::CREATED, row).await,
         Err(e) => fail(e),
@@ -299,7 +281,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::voice_id::VoiceProfileView),
         (status = 400, description = "`field-invalid` on `model_id`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -310,7 +291,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(patch): Json<VoiceProfilePatch>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match profiles::set_model(&ctx.db, org.org.id, id, &patch.model_id).await {
         Ok(row) => respond(&ctx, &org, StatusCode::OK, row).await,
         Err(e) => fail(e),
@@ -328,7 +308,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -338,7 +317,6 @@ async fn revoke(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match profiles::delete(&ctx, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => fail(e),
@@ -380,7 +358,6 @@ struct FromMediaInput {
     responses(
         (status = 201, description = "The updated profile", body = pnex_core::voice_id::VoiceProfileView),
         (status = 400, description = "Unreadable audio (`voice-id-audio-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown voice profile or media (`voice-id-profile-not-found`, `voice-id-sample-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "No confirmed passage of the person in the media (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail)
     ),
@@ -392,7 +369,6 @@ async fn add_samples_from_media(
     Path(id): Path<Uuid>,
     Json(input): Json<FromMediaInput>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match samples::add_from_media(&ctx, org.org.id, id, input.asset_id).await {
         Ok(_) => match profiles::find(&ctx.db, org.org.id, id).await {
             Ok(p) => respond(&ctx, &org, StatusCode::CREATED, p).await,
@@ -414,7 +390,6 @@ async fn add_samples_from_media(
     responses(
         (status = 201, description = "The updated profile", body = pnex_core::voice_id::VoiceProfileView),
         (status = 400, description = "Per-field error, or unreadable audio (`voice-id-audio-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Not enough speech in the clip (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail)
     ),
@@ -427,7 +402,6 @@ async fn add_sample(
     Query(q): Query<ClipQuery>,
     body: axum::body::Bytes,
 ) -> Result<Response> {
-    require_admin(&org)?;
     let name = pnex_firmware_builder::sanitize_segment(q.name.trim());
     let ct = q.content_type.unwrap_or_default();
     let secs = q.duration.unwrap_or(CLIP_MAX_SECS).clamp(1, CLIP_MAX_SECS);
@@ -450,7 +424,6 @@ async fn add_sample(
     params(("id" = String, Path, format = "uuid", description = "Voice profile UUID"), ("sample_id" = String, Path, format = "uuid", description = "Voice sample UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown profile (`voice-id-profile-not-found`) or clip (`voice-id-sample-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -460,7 +433,6 @@ async fn remove_sample(
     org: OrgContext,
     Path((id, sample_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match samples::remove(&ctx, org.org.id, id, sample_id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => fail(e),
@@ -477,7 +449,6 @@ async fn remove_sample(
     params(("id" = String, Path, format = "uuid", description = "Voice profile UUID")),
     responses(
         (status = 200, body = pnex_core::voice_id::VoiceProfileView),
-        (status = 403, description = "Not owner/admin (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "No valid speaker embedding model (`voice-id-no-model`) or not enough speech (`voice-id-not-enough-speech`, `errors.args.found`/`min_windows`)", body = crate::openapi::ErrorDetail),
         (status = 502, description = "Embedding computation failed (`voice-id-failed`)", body = crate::openapi::ErrorDetail)
@@ -489,7 +460,6 @@ async fn generate(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match training::generate(&ctx, org.org.id, id).await {
         Ok(row) => respond(&ctx, &org, StatusCode::OK, row).await,
         Err(e) => fail(e),
@@ -526,7 +496,6 @@ struct TestQuery {
     responses(
         (status = 200, body = pnex_core::voice_id::VoiceTestResult),
         (status = 400, description = "Unreadable audio (`voice-id-audio-unsupported`) or per-field error", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`voice-id-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Person has no voice profile (`voice-id-profile-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "No valid model (`voice-id-no-model`), no generated profile to compare (`voice-id-not-ready`) or not enough speech (`voice-id-not-enough-speech`)", body = crate::openapi::ErrorDetail),
         (status = 502, description = "Embedding computation failed (`voice-id-failed`)", body = crate::openapi::ErrorDetail)
@@ -539,9 +508,6 @@ async fn test(
     Query(q): Query<TestQuery>,
     body: axum::body::Bytes,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let target = match q.object_id {
         Some(id) => testing::Target::Person(id),
         None => testing::Target::Model(q.model_id),

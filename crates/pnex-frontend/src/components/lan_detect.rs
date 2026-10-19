@@ -46,7 +46,7 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
     };
 
     // The server refuses the scan to viewers (SEC-43): no button for them.
-    if !crate::state::org::current_can_write() {
+    if !crate::state::access::can("edge:test") {
         return rsx! {};
     }
     rsx! {

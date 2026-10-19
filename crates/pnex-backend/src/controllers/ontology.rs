@@ -267,30 +267,6 @@ pub(crate) fn paged<T: serde::Serialize>(
     format::json(envelope(path, filters, page, count, rows))
 }
 
-fn require_admin(org: &OrgContext) -> Result<()> {
-    if org.can_administer() {
-        return Ok(());
-    }
-    Err(coded_error(
-        StatusCode::FORBIDDEN,
-        err_codes::ONTOLOGY_ADMIN_REQUIRED,
-        "Only an org owner or admin edits the ontology schema.",
-        None,
-    ))
-}
-
-pub(crate) fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        return Ok(());
-    }
-    Err(coded_error(
-        StatusCode::FORBIDDEN,
-        err_codes::ONTOLOGY_WRITE_FORBIDDEN,
-        "Viewer role: the ontology is read-only.",
-        None,
-    ))
-}
-
 pub(crate) fn actor(org: &OrgContext) -> Actor {
     Actor::manual(org.auth.user.id, org.role.clone())
 }
@@ -367,7 +343,6 @@ async fn get_type(
     responses(
         (status = 201, body = pnex_core::ontology::api::ObjectTypeView),
         (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-already-exists` (key taken, system keys included)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -377,7 +352,6 @@ async fn create_type(
     org: OrgContext,
     Json(input): Json<ObjectTypeInput>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     created(
         types::create(
             &ctx.db,
@@ -402,7 +376,6 @@ async fn create_type(
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectTypeView),
         (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-version-conflict` (args.current = current version), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -414,7 +387,6 @@ async fn update_type(
     Path(key): Path<String>,
     Json(input): Json<ObjectTypeInput>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     reply(types::update(&ctx.db, org.org.id, &key, Some(org.auth.user.id), &input).await)
 }
 
@@ -428,7 +400,6 @@ async fn update_type(
     params(("key" = String, Path, description = "Type key")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-type-in-use`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -439,7 +410,6 @@ async fn delete_type(
     org: OrgContext,
     Path(key): Path<String>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match types::delete(&ctx.db, org.org.id, &key).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => onto_error(e),
@@ -510,7 +480,6 @@ async fn list_link_types(
     responses(
         (status = 201, body = pnex_core::ontology::api::LinkTypeView),
         (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-already-exists`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -520,7 +489,6 @@ async fn create_link_type(
     org: OrgContext,
     Json(def): Json<LinkTypeDef>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     created(link_types::create(&ctx.db, org.org.id, &def, None).await)
 }
 
@@ -536,7 +504,6 @@ async fn create_link_type(
     responses(
         (status = 200, body = pnex_core::ontology::api::LinkTypeView),
         (status = 400, description = "Invalid definition (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -548,7 +515,6 @@ async fn update_link_type(
     Path(key): Path<String>,
     Json(input): Json<LinkTypeInput>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     reply(link_types::update(&ctx.db, org.org.id, &key, &input).await)
 }
 
@@ -562,7 +528,6 @@ async fn update_link_type(
     params(("key" = String, Path, description = "Link type key")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-type-in-use`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -573,7 +538,6 @@ async fn delete_link_type(
     org: OrgContext,
     Path(key): Path<String>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     match link_types::delete(&ctx.db, org.org.id, &key).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => onto_error(e),
@@ -604,7 +568,6 @@ async fn create_object(
     org: OrgContext,
     Json(input): Json<ObjectInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(objects::create(&ctx.db, org.org.id, &actor(&org), &input).await)
 }
 
@@ -646,7 +609,6 @@ async fn invoke_action(
     Path((id, key)): Path<(String, String)>,
     Json(body): Json<InvokeBody>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let user = &org.auth.user;
     let by = user
         .full_name
@@ -717,7 +679,6 @@ async fn update_object(
     Path(id): Path<String>,
     Json(input): Json<ObjectInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(objects::update(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -742,7 +703,6 @@ async fn archive_object(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match objects::archive(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => onto_error(e),
@@ -1146,7 +1106,6 @@ async fn create_link(
     org: OrgContext,
     Json(input): Json<LinkInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(links::create(&ctx.db, org.org.id, &actor(&org), &input).await)
 }
 
@@ -1173,7 +1132,6 @@ async fn update_link(
     Path(id): Path<i64>,
     Json(input): Json<LinkUpdate>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(links::update(&ctx.db, org.org.id, &actor(&org), id, &input.attributes).await)
 }
 
@@ -1200,7 +1158,6 @@ async fn close_link(
     Path(id): Path<i64>,
     raw: axum::body::Bytes,
 ) -> Result<Response> {
-    require_write(&org)?;
     // Optional body: read raw (an empty body may still carry a JSON type).
     let body: LinkClose = if raw.is_empty() {
         LinkClose::default()
@@ -1274,7 +1231,6 @@ async fn list_packs(
     responses(
         (status = 200, body = pnex_core::ontology::api::PackView),
         (status = 400, description = "Invalid pack content (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (unknown pack)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-already-exists`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
     ),
@@ -1285,7 +1241,6 @@ async fn install_pack(
     org: OrgContext,
     Path(key): Path<String>,
 ) -> Result<Response> {
-    require_admin(&org)?;
     let Some(pack) = packs::shipped().into_iter().find(|p| p.key == key) else {
         return onto_error(OntologyError::NotFound);
     };
@@ -1327,7 +1282,6 @@ async fn export(State(ctx): State<AppContext>, org: OrgContext) -> Result<Respon
     responses(
         (status = 200, body = pnex_core::ontology::api::PackView),
         (status = 400, description = "Not UTF-8, unreadable YAML or invalid content (field → token)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`ontology-admin-required`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`ontology-already-exists`, `ontology-system-read-only`", body = crate::openapi::ErrorDetail),
         (status = 413, description = "Body over the limit")
     ),
@@ -1338,7 +1292,6 @@ async fn import(
     org: OrgContext,
     raw: axum::body::Bytes,
 ) -> Result<Response> {
-    require_admin(&org)?;
     let Ok(body) = std::str::from_utf8(&raw) else {
         return onto_error(onto::invalid("yaml", err_codes::FIELD_INVALID));
     };

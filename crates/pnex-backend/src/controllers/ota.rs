@@ -202,7 +202,6 @@ async fn resolve_target(
     responses(
         (status = 201, body = OtaDeployed),
         (status = 400, description = "Invalid body (`field-invalid`), device not OTA-ready (`ota-not-ready`), no deployable artifact (`ota-no-artifact`), image too large (`ota-too-large`), edge agent device (`agent-unsupported-action`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device or version (`device-not-found`, `ota-version-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Deployment already in progress (`ota-in-progress`) or same version without force (`ota-same-version`)", body = crate::openapi::ErrorDetail)
     ),
@@ -215,9 +214,6 @@ async fn deploy(
     body: String,
 ) -> Result<Response> {
     // Reflashing a device is a write (SEC-7): viewers are read-only.
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let body: DeployBody = if body.trim().is_empty() {
         DeployBody {
             version: None,
@@ -401,17 +397,6 @@ async fn assignment_status(
     Ok(format::json(OtaStatus { current, history }).into_response())
 }
 
-/// 403 of the OTA write routes (same code as the other device writes).
-fn write_forbidden() -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(
-            pnex_core::err_codes::DEVICE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage devices.".to_string(),
-        ),
-    )
-}
-
 // ─────────────────── DELETE /devices/{id}/ota ───────────────────
 
 /// Cancel the active assignment (→ failed "cancelled" + journal).
@@ -425,7 +410,6 @@ fn write_forbidden() -> Error {
     params(("id" = i64, Path, description = "Device registry id")),
     responses(
         (status = 200, body = OtaAssignmentDto),
-        (status = 403, description = "Viewer (`device-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (`device-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "No active deployment (`ota-no-active`)", body = crate::openapi::ErrorDetail)
     ),
@@ -436,9 +420,6 @@ async fn cancel(
     State(ctx): State<AppContext>,
     org: OrgContext,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let device = device_registries::Entity::find_by_id(id)
         .filter(device_registries::Column::OrgId.eq(org.org.id))
         .one(&ctx.db)

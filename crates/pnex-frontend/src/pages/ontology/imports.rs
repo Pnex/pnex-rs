@@ -21,7 +21,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::modal::Modal;
 use crate::components::ontology::short_time;
 use crate::components::ui::{BTN_SECONDARY_SM, FIELD_LABEL, INPUT};
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 /// Schedules offered in the form (a `recurrence` from today).
 const SCHEDULES: [&str; 4] = ["", "day", "week", "month"];
@@ -69,7 +69,7 @@ fn state_label(r: &ImportRunView) -> String {
 #[component]
 pub fn ImportsTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("ontology:write");
     let list = use_resource(move || async move {
         let _ = reload();
         api::ontology::imports().await.unwrap_or_default()

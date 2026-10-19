@@ -4,7 +4,7 @@ title: Notifications
 kind: feature
 pages: /notifications
 nodes: pnex_notify
-err_codes: notify-write-forbidden, notify-channel-name-conflict, notify-template-name-conflict, notify-template-render, notify-journal-unavailable, notify-channel-config-invalid, notify-channel-field-required, notify-test-failed, notify-dynamic-recipients-admin, notify-dynamic-recipients-off
+err_codes: access-denied, notify-channel-name-conflict, notify-template-name-conflict, notify-template-render, notify-journal-unavailable, notify-channel-config-invalid, notify-channel-field-required, notify-test-failed, notify-dynamic-recipients-admin, notify-dynamic-recipients-off
 tools: 
 tags: notification, alert, alarm, ntfy, telegram, slack, discord, email, smtp, webhook, template, alerte, courriel
 ---

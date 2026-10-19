@@ -301,7 +301,7 @@ async fn consented_profile_generation_test_and_revocation() {
             .await;
             assert_eq!(
                 (st, e["error"].as_str()),
-                (403, Some("voice-id-write-forbidden"))
+                (403, Some("access-denied"))
             );
             let (st, _) = upload(
                 &bob,

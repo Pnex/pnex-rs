@@ -2,7 +2,7 @@
 //! aperçu de rendu, tests d'envoi et journal des livraisons.
 //!
 //! École `viz_widgets.rs` : scoping org (404 masqué cross-org), écriture
-//! gated `can_write()`, 400 champ-par-champ. **Divergence assumée** : le
+//! gated by its IAM permission, 400 field by field. **Divergence assumée** : le
 //! conflit de nom unique répond **409** (`conflict()`, école `flows.rs`)
 //! et non 400-champ — le nom est une clé naturelle et l'UI peut proposer
 //! « renommer » ; cf. tests.

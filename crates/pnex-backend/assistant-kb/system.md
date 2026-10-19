@@ -4,7 +4,7 @@ title: System (telemetry data)
 kind: feature
 pages: /system
 nodes: metric
-err_codes: system-data-forbidden, o2-not-configured, o2-delete-failed, o2-time-range-unsupported, o2-time-range-invalid, confirmation-mismatch
+err_codes: access-denied, o2-not-configured, o2-delete-failed, o2-time-range-unsupported, o2-time-range-invalid, confirmation-mismatch
 tools: 
 tags: retention, telemetry, storage, disk, purge, delete data, cleanup, openobserve, quota, measurements, rétention, nettoyage
 ---

@@ -18,7 +18,7 @@
 //! complexité pour un client qui contrôle son flux (plan B2).
 //!
 //! Errors (D239, all `ErrorDetail`): 400 `field-invalid` with machine
-//! tokens, 403 via `can_write()`, 404 masking other orgs, 409 on a wrong
+//! tokens, 403 `access-denied`, 404 masking other orgs, 409 on a wrong
 //! state, 503 `stitch-disabled` when server stitching is off.
 
 use axum::body::Bytes;
@@ -52,15 +52,6 @@ pub const FRAME_MAX_BYTES: usize = 8 * 1024 * 1024;
 const MAX_FRAMES: u32 = 64;
 
 // ─────────────────────────── Aides ───────────────────────────
-
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// 400 `field-invalid` with one machine token.
 fn field_status(field: &str, msg: &str) -> Response {
@@ -194,7 +185,6 @@ struct CreateJob {
     responses(
         (status = 201, body = StitchJobDto),
         (status = 400, description = "`field-invalid`: `frames_total` `range:2..64`, `poses` `invalid` (one pose per frame), `hfov_deg` `range:1..179`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`stitch-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown media asset", body = crate::openapi::ErrorDetail),
         (status = 503, description = "Server-side stitching disabled (`stitch-disabled`)", body = crate::openapi::ErrorDetail)
     ),
@@ -205,12 +195,6 @@ async fn create(
     org: OrgContext,
     Json(body): Json<CreateJob>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "stitch-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     let stitch_settings = StitchSettings::from_config(&ctx.config);
     if !stitch_settings.enabled {
         return Ok(disabled());
@@ -275,7 +259,6 @@ struct FramePath {
     responses(
         (status = 200, body = StitchJobDto),
         (status = 400, description = "`field-invalid` on `k`: `invalid` (index out of bounds) or `required` (empty body)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`stitch-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown job", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Job already finished (`stitch-job-terminal`) or in an unknown state (`stitch-state-unknown`)", body = crate::openapi::ErrorDetail),
         (status = 413, description = "Frame too large (`stitch-frame-too-large`, `errors.args.limit`)", body = crate::openapi::ErrorDetail)
@@ -288,12 +271,6 @@ async fn upload_frame(
     Path(path): Path<FramePath>,
     body: Bytes,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "stitch-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     let Some(job) = find_job(&ctx.db, &org, path.id).await? else {
         return Err(Error::NotFound);
     };

@@ -310,7 +310,7 @@ async fn other_orgs_and_viewers_cannot_write_or_read_details() {
             let (s, body) = call(&server, method, &path, &bob, alice_org, body).await;
             assert_eq!(
                 (s, body["error"].as_str()),
-                (403, Some("secret-write-forbidden")),
+                (403, Some("access-denied")),
                 "{method} {path}"
             );
         }
@@ -1340,10 +1340,7 @@ async fn members_never_wire_secrets_nor_administer() {
             Some(json!({ "name": "mine", "value": "v" })),
         )
         .await;
-        assert_eq!(
-            (s, body["error"].as_str()),
-            (403, Some("secret-write-forbidden"))
-        );
+        assert_eq!((s, body["error"].as_str()), (403, Some("access-denied")));
 
         // A member edits channels but cannot type a value...
         let (s, body) = call(
@@ -1424,10 +1421,7 @@ async fn members_never_wire_secrets_nor_administer() {
             Some(json!({ "name": "p", "kind": "anthropic", "model": "m1" })),
         )
         .await;
-        assert_eq!(
-            (s, body["error"].as_str()),
-            (403, Some("llm-provider-forbidden"))
-        );
+        assert_eq!((s, body["error"].as_str()), (403, Some("access-denied")));
         let (s, body) = call(
             &server,
             "PATCH",

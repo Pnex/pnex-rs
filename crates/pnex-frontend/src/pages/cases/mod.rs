@@ -26,7 +26,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::labels_editor::{use_row_labels, LabelChips};
 use crate::components::ontology::short_time;
 use crate::components::ui::{FIELD_LABEL, INPUT};
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 pub use workspace::CaseWorkspace;
 
@@ -65,7 +65,7 @@ pub fn Cases() -> Element {
     // D218: own label filter ("name" or "name:value").
     let filter_label = use_signal(String::new);
     let filter_search = use_signal(String::new);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("cases:write");
     let navigator = use_navigator();
 
     let list = use_resource(move || {

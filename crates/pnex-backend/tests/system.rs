@@ -248,7 +248,7 @@ async fn o2_cleanup_requires_write_role_and_typed_confirmation() {
             .await;
         assert_eq!(res.status_code(), 403);
         let body: serde_json::Value = res.json();
-        assert_eq!(body["error"], "system-data-forbidden");
+        assert_eq!(body["error"], "access-denied");
 
         let res = server
             .delete("/api/v1/system/o2/streams/soil_moisture")

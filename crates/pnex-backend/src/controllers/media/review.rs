@@ -66,13 +66,6 @@ fn attribution_error(e: media_attributions::AttributionError) -> Result<Response
     }
 }
 
-fn write_forbidden() -> Error {
-    forbidden(
-        "media-write-forbidden",
-        "Media writes are restricted to owner and admin roles",
-    )
-}
-
 /// `GET /api/v1/media/{id}/attributions` — every member.
 #[utoipa::path(
     get,
@@ -122,13 +115,12 @@ pub(super) async fn attributions(
     tag = "media",
     operation_id = "media_attributions_create",
     summary = "Attribute spans of a media asset to a person",
-    description = "Attributes one or several spans of the media (ms on the media clock, at most 500) to a person of the ontology, confirmed at once, without any voice recognition. Confirmed spans of the same person that overlap are merged. Returns every attribution of the asset. Owner/admin only.",
+    description = "Attributes one or several spans of the media (ms on the media clock, at most 500) to a person of the ontology, confirmed at once, without any voice recognition. Confirmed spans of the same person that overlap are merged. Returns every attribution of the asset. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     request_body = AttributionInput,
     responses(
         (status = 201, body = pnex_core::Paginated<SpeechAttribution>),
         (status = 400, description = "Not a person of the organisation (`object_id`), or invalid spans (`spans`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -139,9 +131,6 @@ pub(super) async fn create_attribution(
     Path(id): Path<Uuid>,
     Json(input): Json<AttributionInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     match media_attributions::create(
         &ctx.db,
         org.org.id,
@@ -173,7 +162,7 @@ pub(super) async fn create_attribution(
     tag = "media",
     operation_id = "media_attributions_update",
     summary = "Confirm, reject or move a speech attribution",
-    description = "Changes the status (a proposal is confirmed or rejected; a rejected proposal is kept so it is not made again) or the span of an attribution, written at `expected_version`. Owner/admin only.",
+    description = "Changes the status (a proposal is confirmed or rejected; a rejected proposal is kept so it is not made again) or the span of an attribution, written at `expected_version`. Owner, admin or member.",
     params(
         ("id" = String, Path, format = "uuid", description = "Media asset UUID"),
         ("aid" = String, Path, format = "uuid", description = "Attribution UUID")
@@ -182,7 +171,6 @@ pub(super) async fn create_attribution(
     responses(
         (status = 200, body = SpeechAttribution),
         (status = 400, description = "Invalid span (`spans`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or attribution", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Changed since `expected_version` (`media-attribution-conflict`)", body = crate::openapi::ErrorDetail)
     ),
@@ -194,9 +182,6 @@ pub(super) async fn update_attribution(
     Path((id, aid)): Path<(Uuid, Uuid)>,
     Json(input): Json<AttributionPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     match media_attributions::patch(
         &ctx.db,
         org.org.id,
@@ -219,14 +204,13 @@ pub(super) async fn update_attribution(
     tag = "media",
     operation_id = "media_attributions_delete",
     summary = "Remove a speech attribution",
-    description = "Removes an attribution of the media. Owner/admin only.",
+    description = "Removes an attribution of the media. Owner, admin or member.",
     params(
         ("id" = String, Path, format = "uuid", description = "Media asset UUID"),
         ("aid" = String, Path, format = "uuid", description = "Attribution UUID")
     ),
     responses(
         (status = 204, description = "Removed"),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or attribution", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -236,9 +220,6 @@ pub(super) async fn delete_attribution(
     org: OrgContext,
     Path((id, aid)): Path<(Uuid, Uuid)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     match media_attributions::delete(
         &ctx.db,
         org.org.id,

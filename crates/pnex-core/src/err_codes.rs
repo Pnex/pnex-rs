@@ -63,6 +63,35 @@ pub const PIN_NOT_SUBSCRIBED: &str = "pin_not_subscribed";
 pub const ORG_NAME_DUPLICATE: &str = "org-name-duplicate";
 /// The caller is not a member of the `X-Org-Id` organisation (403).
 pub const ORG_NOT_MEMBER: &str = "org-not-member";
+/// The caller's role does not hold the permission of the operation (403,
+/// iam.md §8); `args.permission` names it (`service:verb`).
+pub const ACCESS_DENIED: &str = "access-denied";
+/// An access key called an operation outside the org ones (profile, org list, MCP, platform) or a socket (403, iam.md §7).
+pub const ACCESS_KEY_NOT_ALLOWED: &str = "access-key-not-allowed";
+/// Service account not found in the org (404).
+pub const IAM_SERVICE_ACCOUNT_NOT_FOUND: &str = "iam-service-account-not-found";
+/// A service account of the org already has this name (409).
+pub const IAM_SERVICE_ACCOUNT_NAME_TAKEN: &str = "iam-service-account-name-taken";
+/// Access key not found, or already revoked (404).
+pub const IAM_ACCESS_KEY_NOT_FOUND: &str = "iam-access-key-not-found";
+/// Two keys of the service account are active already (409): revoke one first.
+pub const IAM_ACCESS_KEY_LIMIT: &str = "iam-access-key-limit";
+/// Custom role not found in the org (404).
+pub const IAM_ROLE_NOT_FOUND: &str = "iam-role-not-found";
+/// Team not found in the org (404).
+pub const IAM_TEAM_NOT_FOUND: &str = "iam-team-not-found";
+/// Assignment not found in the org (404).
+pub const IAM_ASSIGNMENT_NOT_FOUND: &str = "iam-assignment-not-found";
+/// A custom role of the org already has this key (409).
+pub const IAM_ROLE_KEY_TAKEN: &str = "iam-role-key-taken";
+/// A team of the org already has this name (409).
+pub const IAM_TEAM_NAME_TAKEN: &str = "iam-team-name-taken";
+/// The holder already has this role (409).
+pub const IAM_ASSIGNMENT_DUPLICATE: &str = "iam-assignment-duplicate";
+/// The custom role changed since it was read (409, `args.current`).
+pub const IAM_VERSION_CONFLICT: &str = "iam-version-conflict";
+/// The caller does not hold a permission the role would give (403, `args.permission`, D293).
+pub const IAM_ESCALATION: &str = "iam-escalation";
 /// An org-scoped route was called without a valid `X-Org-Id` header (400).
 pub const ORG_HEADER_REQUIRED: &str = "org-header-required";
 pub const ORG_RENAME_FORBIDDEN: &str = "org-rename-forbidden";
@@ -79,19 +108,11 @@ pub const ORG_MEMBER_REMOVE_FORBIDDEN: &str = "org-member-remove-forbidden";
 pub const ORG_OWNER_REMOVE_FORBIDDEN: &str = "org-owner-remove-forbidden";
 /// `PATCH /api/v1/profile` without any field.
 pub const PROFILE_PATCH_EMPTY: &str = "profile-patch-empty";
-pub const POI_WRITE_FORBIDDEN: &str = "poi-write-forbidden";
-pub const POI_LINK_WRITE_FORBIDDEN: &str = "poi-link-write-forbidden";
-pub const POI_POSITION_WRITE_FORBIDDEN: &str = "poi-position-write-forbidden";
 pub const POI_DEVICE_ALREADY_PLACED: &str = "poi-device-already-placed";
 pub const POI_LINK_DUPLICATE: &str = "poi-link-duplicate";
-pub const TOUR_WRITE_FORBIDDEN: &str = "tour-write-forbidden";
-pub const TOUR_PUBLISH_FORBIDDEN: &str = "tour-publish-forbidden";
-pub const TOUR_SHARE_FORBIDDEN: &str = "tour-share-forbidden";
 pub const TOUR_VERSION_CONFLICT: &str = "tour-version-conflict";
 pub const TOUR_NOT_PUBLISHED: &str = "tour-not-published";
-pub const DASHBOARD_WRITE_FORBIDDEN: &str = "dashboard-write-forbidden";
 pub const DASHBOARD_VERSION_CONFLICT: &str = "dashboard-version-conflict";
-pub const MEDIA_WRITE_FORBIDDEN: &str = "media-write-forbidden";
 pub const MEDIA_LAST_VERSION: &str = "media-last-version";
 pub const MEDIA_FILE_TOO_LARGE: &str = "media-file-too-large";
 /// Upload refused: content not an allowed format, extension not matching
@@ -141,24 +162,19 @@ pub const MEDIA_ANALYSIS_IDENTIFY_FAILED: &str = "media-analysis-identify-failed
 pub const MEDIA_ANALYSIS_NO_DETECTOR: &str = "media-analysis-no-detector";
 /// The pictures of the video could not be decoded or analysed (D215).
 pub const MEDIA_ANALYSIS_DETECT_FAILED: &str = "media-analysis-detect-failed";
-pub const FUNCTIONS_WRITE_FORBIDDEN: &str = "functions-write-forbidden";
 pub const FUNCTIONS_RUNTIME_DISABLED: &str = "functions-runtime-disabled";
 /// Delete refused: deployed flows use the function (`args.flows`).
 pub const FUNCTION_IN_USE: &str = "function-in-use";
 /// Malformed `@input`/`@output` directive (`args.line`, `args.detail`).
 pub const FUNCTION_DIRECTIVE_INVALID: &str = "function-directive-invalid";
-pub const ANNOT_WRITE_FORBIDDEN: &str = "annot-write-forbidden";
-pub const ANNOT_PUBLISH_FORBIDDEN: &str = "annot-publish-forbidden";
 pub const ANNOT_VERSION_CONFLICT: &str = "annot-version-conflict";
 
 // ── Controller codes (batch devices/pins/flows/resources/edge_refs/builds/stitch/fluid/viz/ai/notify) + board/caps display codes ──
 
-pub const DEVICE_WRITE_FORBIDDEN: &str = "device-write-forbidden";
 /// Board change (O39): the board does not exist.
 pub const DEVICE_BOARD_UNKNOWN: &str = "device-board-unknown";
 /// Board change (O39): the board carries another chip than the device.
 pub const DEVICE_BOARD_SOC_MISMATCH: &str = "device-board-soc-mismatch";
-pub const PIN_COMMANDS_FORBIDDEN: &str = "pin-commands-forbidden";
 pub const PIN_INVALID_BODY: &str = "pin-invalid-body";
 pub const PIN_GPIO_NOT_ADMITTED: &str = "pin-gpio-not-admitted";
 pub const PIN_FLOW_CONFLICT: &str = "pin-flow-conflict";
@@ -177,9 +193,6 @@ pub const PIN_OP_UNKNOWN: &str = "pin-op-unknown";
 pub const PIN_ALREADY_ASSIGNED: &str = "pin-already-assigned";
 /// Manual write refused: the pin is written by a deployed flow.
 pub const PIN_RESERVED_BY_FLOW: &str = "pin-reserved-by-flow";
-pub const FLOW_WRITE_FORBIDDEN: &str = "flow-write-forbidden";
-pub const FLOW_DEPLOY_FORBIDDEN: &str = "flow-deploy-forbidden";
-pub const FLOW_EXEC_FORBIDDEN: &str = "flow-exec-forbidden";
 pub const FLOW_DEBUG_DISABLED: &str = "flow-debug-disabled";
 pub const FLOW_STALE_VERSION: &str = "flow-stale-version";
 pub const FLOW_STOP_NOT_DEPLOYED: &str = "flow-stop-not-deployed";
@@ -189,13 +202,11 @@ pub const FLOW_DEVICE_WRITE_VALUES_EMPTY: &str = "flow-device-write-values-empty
 /// The flow runtime is unavailable or did not acknowledge; `args.detail`
 /// carries the engine diagnostic verbatim.
 pub const FLOW_RUNTIME: &str = "flow-runtime";
-pub const RESOURCE_WRITE_FORBIDDEN: &str = "resource-write-forbidden";
 pub const RESOURCE_EDGE_DUPLICATE: &str = "resource-edge-duplicate";
 /// Kind outside the organisation layer registry (`args.kind`).
 pub const RESOURCE_KIND_UNKNOWN: &str = "resource-kind-unknown";
 /// A move would make a resource its own ancestor.
 pub const RESOURCE_CYCLE: &str = "resource-cycle";
-pub const EDGE_WRITE_FORBIDDEN: &str = "edge-write-forbidden";
 /// Server host referential is frozen by the deployment (`PNEX_PROD_HOST`).
 pub const EDGE_HOST_LOCKED: &str = "edge-host-locked";
 /// Another WiFi entry of the org already uses this SSID (409).
@@ -229,22 +240,17 @@ pub const SECRET_WRITE_FORBIDDEN: &str = "secret-write-forbidden";
 /// Strict R9: only owner/admin attach a vault secret to a field or change
 /// its destination; others keep it as is. Args: `field`.
 pub const SECRET_DESTINATION_LOCKED: &str = "secret-destination-locked";
-pub const BUILD_CREATE_FORBIDDEN: &str = "build-create-forbidden";
 /// A build of this device is already queued or running.
 pub const BUILD_IN_PROGRESS: &str = "build-in-progress";
-pub const STITCH_WRITE_FORBIDDEN: &str = "stitch-write-forbidden";
 pub const STITCH_JOB_TERMINAL: &str = "stitch-job-terminal";
 pub const STITCH_STATE_UNKNOWN: &str = "stitch-state-unknown";
 pub const STITCH_DISABLED: &str = "stitch-disabled";
 pub const STITCH_FRAME_TOO_LARGE: &str = "stitch-frame-too-large";
-pub const FLUID_WRITE_FORBIDDEN: &str = "fluid-write-forbidden";
 /// CoolProp rejected a fluid, a mixture or a computation; the engine
 /// message travels verbatim in `args.detail`.
 pub const COOLPROP_ERROR: &str = "coolprop-error";
 /// More cycle points than one request accepts (`args.max`).
 pub const THERMO_TOO_MANY_POINTS: &str = "thermo-too-many-points";
-pub const VIZ_WRITE_FORBIDDEN: &str = "viz-write-forbidden";
-pub const LLM_PROVIDER_FORBIDDEN: &str = "llm-provider-forbidden";
 pub const LLM_PROVIDER_NOT_FOUND: &str = "llm-provider-not-found";
 pub const LLM_PROVIDER_NAME_TAKEN: &str = "llm-provider-name-taken";
 /// Provider test: the provider has no API key set.
@@ -252,7 +258,6 @@ pub const LLM_PROVIDER_NO_KEY: &str = "llm-provider-no-key";
 /// Provider test: its API key could not be read from the vault.
 pub const LLM_PROVIDER_KEY_UNREADABLE: &str = "llm-provider-key-unreadable";
 // Geo providers (geo-layers.md §8, phase F).
-pub const GEO_PROVIDER_FORBIDDEN: &str = "geo-provider-forbidden";
 pub const GEO_PROVIDER_NOT_FOUND: &str = "geo-provider-not-found";
 pub const GEO_PROVIDER_NAME_TAKEN: &str = "geo-provider-name-taken";
 /// No default provider for the capability (args: `capability`).
@@ -261,7 +266,6 @@ pub const GEO_NOT_CONFIGURED: &str = "geo-not-configured";
 pub const GEO_RATE_LIMITED: &str = "geo-rate-limited";
 /// The provider failed or answered unexpectedly (detail verbatim).
 pub const GEO_PROVIDER_FAILED: &str = "geo-provider-failed";
-pub const NOTIFY_WRITE_FORBIDDEN: &str = "notify-write-forbidden";
 pub const NOTIFY_CHANNEL_NAME_CONFLICT: &str = "notify-channel-name-conflict";
 pub const NOTIFY_TEMPLATE_NAME_CONFLICT: &str = "notify-template-name-conflict";
 pub const NOTIFY_TEST_BODY_INVALID: &str = "notify-test-body-invalid";
@@ -309,16 +313,11 @@ pub const O2_DELETE_FAILED: &str = "o2-delete-failed";
 pub const O2_TIME_RANGE_UNSUPPORTED: &str = "o2-time-range-unsupported";
 /// Invalid time range (start must be before end).
 pub const O2_TIME_RANGE_INVALID: &str = "o2-time-range-invalid";
-/// Deleting telemetry data requires the owner or admin role.
-pub const SYSTEM_DATA_FORBIDDEN: &str = "system-data-forbidden";
 /// The typed confirmation does not match the organization name.
 pub const CONFIRMATION_MISMATCH: &str = "confirmation-mismatch";
 
 // ── Camera & video (camera-video.md D73–D80) ─────────────────────────────
 
-/// Changing camera settings or deleting recordings requires the owner or
-/// admin role.
-pub const CAMERA_WRITE_FORBIDDEN: &str = "camera-write-forbidden";
 /// The device is not a camera (no `camera` cap announced yet).
 pub const CAMERA_UNKNOWN: &str = "camera-unknown";
 /// No frame received yet for this camera (snapshot).
@@ -347,8 +346,6 @@ pub const MEMORY_UNAVAILABLE: &str = "memory-unavailable";
 pub const NOTIFY_JOURNAL_UNAVAILABLE: &str = "notify-journal-unavailable";
 /// An event stream name is invalid (`ev_[a-z0-9_]+`).
 pub const EVENT_STREAM_INVALID: &str = "event-stream-invalid";
-/// Managing vision models requires the owner, admin or member role.
-pub const ML_MODEL_WRITE_FORBIDDEN: &str = "ml-model-write-forbidden";
 /// No vision model with this id in the org.
 pub const ML_MODEL_NOT_FOUND: &str = "ml-model-not-found";
 /// The model's ONNX file (media version) is missing.
@@ -362,8 +359,6 @@ pub const ML_MODEL_INVALID: &str = "ml-model-invalid";
 
 // ── Custom firmware (custom-firmware.md D87–D94) ─────────────────────────
 
-/// Managing firmware projects requires the owner, admin or member role.
-pub const FIRMWARE_WRITE_FORBIDDEN: &str = "firmware-write-forbidden";
 /// Custom firmware compiling is off on this server (settings.firmware.custom.enabled).
 pub const FIRMWARE_CUSTOM_DISABLED: &str = "firmware-custom-disabled";
 /// The device SoC differs from the project chip family.
@@ -410,8 +405,6 @@ pub const AGENT_ENROLL_CODE_INVALID: &str = "agent-enroll-code-invalid";
 pub const AGENT_ENROLL_RATE_LIMITED: &str = "agent-enroll-rate-limited";
 /// Agent binary for the requested platform not shipped with this server.
 pub const AGENT_BINARY_NOT_FOUND: &str = "agent-binary-not-found";
-/// Agent management reserved to owners/admins.
-pub const AGENT_WRITE_FORBIDDEN: &str = "agent-write-forbidden";
 /// A per-pod compute pool (CoolProp, vision inference, runtime checks,
 /// large uploads) is saturated; the client should retry shortly.
 pub const SERVER_BUSY: &str = "server-busy";
@@ -424,8 +417,6 @@ pub const RATE_LIMITED: &str = "rate-limited";
 
 // ── Org controls (D125–D127, surfaces-controls.md) ──────────────────────
 
-/// Viewer trying to create/edit/delete a control or to operate one.
-pub const CONTROL_WRITE_FORBIDDEN: &str = "control-write-forbidden";
 /// Another control of the org already uses this key.
 pub const CONTROL_KEY_TAKEN: &str = "control-key-taken";
 /// Value refused by the control spec; `args.reason` = machine token of
@@ -452,8 +443,6 @@ pub const AI_FLOW_RUNNING: &str = "ai-flow-running";
 pub const AI_CONVERSATION_BUSY: &str = "ai-conversation-busy";
 /// Not one of the caller's assistant conversations in this org.
 pub const AI_CONVERSATION_NOT_FOUND: &str = "ai-conversation-not-found";
-/// Changing the org's assistant retention needs the owner or admin role.
-pub const AI_RETENTION_FORBIDDEN: &str = "ai-retention-forbidden";
 /// The org's assistant retention may only be shorter than the platform
 /// value; `args.max` = the platform value in days.
 pub const AI_RETENTION_ABOVE_PLATFORM: &str = "ai-retention-above-platform";
@@ -477,9 +466,6 @@ pub const AI_BAD_RESPONSE: &str = "ai-bad-response";
 /// Internal failure while an assistant tool ran (details logged server
 /// side, never shown: they may carry SQL or identifiers).
 pub const AI_TOOL_INTERNAL: &str = "ai-tool-internal";
-/// A viewer asked the assistant for a change (writes need owner, admin or
-/// member, R2).
-pub const AI_WRITE_FORBIDDEN: &str = "ai-write-forbidden";
 /// A one-time websocket ticket could not be issued (Valkey unreachable).
 pub const WS_TICKET_UNAVAILABLE: &str = "ws-ticket-unavailable";
 /// No device with this identifier in the org (`args.device_id`).
@@ -509,8 +495,6 @@ pub const FUNCTION_VERSION_CONFLICT: &str = "function-version-conflict";
 
 /// Media stream not found (or not in the org).
 pub const MEDIA_STREAM_NOT_FOUND: &str = "media-stream-not-found";
-/// Viewer role: media streams and ASR profiles are read-only.
-pub const MEDIA_STREAM_WRITE_FORBIDDEN: &str = "media-stream-write-forbidden";
 /// Org already has the maximum number of media streams.
 pub const MEDIA_STREAM_LIMIT: &str = "media-stream-limit";
 /// Stream URL carries a credential; use the stream secret instead.
@@ -548,8 +532,6 @@ pub const ASR_RUNTIME_UNAVAILABLE: &str = "asr-runtime-unavailable";
 pub const ASR_TEST_AUDIO_UNSUPPORTED: &str = "asr-test-audio-unsupported";
 /// The model test could not transcribe (runtime missing or crashed).
 pub const ASR_TEST_FAILED: &str = "asr-test-failed";
-/// Voice profiles are written by owners and admins only; tests need write access.
-pub const VOICE_ID_WRITE_FORBIDDEN: &str = "voice-id-write-forbidden";
 /// A voice profile attaches to a Person object only.
 pub const VOICE_ID_NOT_PERSON: &str = "voice-id-not-person";
 /// This person already has a voice profile.
@@ -577,15 +559,11 @@ pub const TAXONOMY_NAME_TAKEN: &str = "taxonomy-name-taken";
 /// New version written on a stale `expected_version`; `args.current` = the
 /// current version.
 pub const TAXONOMY_VERSION_CONFLICT: &str = "taxonomy-version-conflict";
-/// Viewer role: taxonomies are read-only.
-pub const TAXONOMY_WRITE_FORBIDDEN: &str = "taxonomy-write-forbidden";
 /// Deploy refused: a `topic_classify` pins a taxonomy version that is not
 /// one of the org; `args.version` = the pinned version.
 pub const TAXONOMY_UNKNOWN: &str = "taxonomy-unknown";
 /// Time range not found (or not in the org).
 pub const TIME_RANGE_NOT_FOUND: &str = "time-range-not-found";
-/// Viewer role: time ranges are read-only.
-pub const TIME_RANGE_WRITE_FORBIDDEN: &str = "time-range-write-forbidden";
 /// Import body over 1 MiB or over 5000 rows; `args.max_kib`, `args.max_rows`.
 pub const TIME_RANGE_IMPORT_TOO_LARGE: &str = "time-range-import-too-large";
 /// Import body is not a readable CSV (header with `label`) or iCalendar file.
@@ -606,8 +584,6 @@ pub const ONTOLOGY_VERSION_CONFLICT: &str = "ontology-version-conflict";
 pub const ONTOLOGY_TYPE_IN_USE: &str = "ontology-type-in-use";
 /// The caller's role cannot write objects of this type (D188) or is a viewer.
 pub const ONTOLOGY_WRITE_FORBIDDEN: &str = "ontology-write-forbidden";
-/// Schema writes (types, link types, packs) need an org owner or admin.
-pub const ONTOLOGY_ADMIN_REQUIRED: &str = "ontology-admin-required";
 /// System types and objects are edited from their own pages.
 pub const ONTOLOGY_SYSTEM_READ_ONLY: &str = "ontology-system-read-only";
 /// The link type does not connect objects of these types.
@@ -674,14 +650,11 @@ pub const TRACK_IMPORT_UNREADABLE: &str = "track-import-unreadable";
 
 // ── Pages (pages.md #21) ─────────────────────────────────────────────────
 
-/// Viewer role: pages are read-only.
-pub const DOCS_WRITE_FORBIDDEN: &str = "docs-write-forbidden";
 /// Only the author edits a comment; the author or an admin deletes it.
 pub const DOC_COMMENT_NOT_AUTHOR: &str = "doc-comment-not-author";
 
 // ── Vision Lab (media-vision-studio.md D198–D200) ─────────────────────
 
-pub const LAB_WRITE_FORBIDDEN: &str = "lab-write-forbidden";
 pub const LAB_PROJECT_NOT_FOUND: &str = "lab-project-not-found";
 pub const LAB_IMAGE_NOT_FOUND: &str = "lab-image-not-found";
 pub const LAB_VERSION_NOT_FOUND: &str = "lab-version-not-found";
@@ -739,8 +712,6 @@ pub const MIXTURE_INVALID: &str = "mixture-invalid";
 
 // ── Browser agents (extension-collector.md D254–D269) ───────────────────
 
-/// Viewer role: browser agents and missions are read-only.
-pub const EXTENSION_WRITE_FORBIDDEN: &str = "extension-write-forbidden";
 /// Browser agent not found (or not in the org).
 pub const EXTENSION_AGENT_NOT_FOUND: &str = "extension-agent-not-found";
 /// Browser agent mission not found (or not in the org).
@@ -809,7 +780,6 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_VERSION_CONFLICT,
     ONTOLOGY_TYPE_IN_USE,
     ONTOLOGY_WRITE_FORBIDDEN,
-    ONTOLOGY_ADMIN_REQUIRED,
     ONTOLOGY_SYSTEM_READ_ONLY,
     ONTOLOGY_LINK_NOT_ALLOWED,
     ONTOLOGY_LINK_CARDINALITY,
@@ -858,7 +828,6 @@ pub const ALL: &[&str] = &[
     AGENT_ENROLL_CODE_INVALID,
     AGENT_ENROLL_RATE_LIMITED,
     AGENT_BINARY_NOT_FOUND,
-    AGENT_WRITE_FORBIDDEN,
     RATE_LIMITED,
     SERVER_BUSY,
     CLIENT_NETWORK,
@@ -878,6 +847,20 @@ pub const ALL: &[&str] = &[
     PIN_NOT_SUBSCRIBED,
     ORG_NAME_DUPLICATE,
     ORG_NOT_MEMBER,
+    ACCESS_DENIED,
+    ACCESS_KEY_NOT_ALLOWED,
+    IAM_SERVICE_ACCOUNT_NOT_FOUND,
+    IAM_SERVICE_ACCOUNT_NAME_TAKEN,
+    IAM_ACCESS_KEY_NOT_FOUND,
+    IAM_ACCESS_KEY_LIMIT,
+    IAM_ROLE_NOT_FOUND,
+    IAM_TEAM_NOT_FOUND,
+    IAM_ASSIGNMENT_NOT_FOUND,
+    IAM_ROLE_KEY_TAKEN,
+    IAM_TEAM_NAME_TAKEN,
+    IAM_ASSIGNMENT_DUPLICATE,
+    IAM_VERSION_CONFLICT,
+    IAM_ESCALATION,
     ORG_HEADER_REQUIRED,
     ORG_RENAME_FORBIDDEN,
     ORG_DELETE_FORBIDDEN,
@@ -892,19 +875,11 @@ pub const ALL: &[&str] = &[
     ORG_MEMBER_REMOVE_FORBIDDEN,
     ORG_OWNER_REMOVE_FORBIDDEN,
     PROFILE_PATCH_EMPTY,
-    POI_WRITE_FORBIDDEN,
-    POI_LINK_WRITE_FORBIDDEN,
-    POI_POSITION_WRITE_FORBIDDEN,
     POI_DEVICE_ALREADY_PLACED,
     POI_LINK_DUPLICATE,
-    TOUR_WRITE_FORBIDDEN,
-    TOUR_PUBLISH_FORBIDDEN,
-    TOUR_SHARE_FORBIDDEN,
     TOUR_VERSION_CONFLICT,
     TOUR_NOT_PUBLISHED,
-    DASHBOARD_WRITE_FORBIDDEN,
     DASHBOARD_VERSION_CONFLICT,
-    MEDIA_WRITE_FORBIDDEN,
     MEDIA_LAST_VERSION,
     MEDIA_FILE_TOO_LARGE,
     MEDIA_FORMAT_UNSUPPORTED,
@@ -930,17 +905,12 @@ pub const ALL: &[&str] = &[
     MEDIA_ANALYSIS_IDENTIFY_FAILED,
     MEDIA_ANALYSIS_NO_DETECTOR,
     MEDIA_ANALYSIS_DETECT_FAILED,
-    FUNCTIONS_WRITE_FORBIDDEN,
     FUNCTIONS_RUNTIME_DISABLED,
     FUNCTION_IN_USE,
     FUNCTION_DIRECTIVE_INVALID,
-    ANNOT_WRITE_FORBIDDEN,
-    ANNOT_PUBLISH_FORBIDDEN,
     ANNOT_VERSION_CONFLICT,
-    DEVICE_WRITE_FORBIDDEN,
     DEVICE_BOARD_UNKNOWN,
     DEVICE_BOARD_SOC_MISMATCH,
-    PIN_COMMANDS_FORBIDDEN,
     PIN_INVALID_BODY,
     PIN_GPIO_NOT_ADMITTED,
     PIN_FLOW_CONFLICT,
@@ -956,9 +926,6 @@ pub const ALL: &[&str] = &[
     PIN_OP_UNKNOWN,
     PIN_ALREADY_ASSIGNED,
     PIN_RESERVED_BY_FLOW,
-    FLOW_WRITE_FORBIDDEN,
-    FLOW_DEPLOY_FORBIDDEN,
-    FLOW_EXEC_FORBIDDEN,
     FLOW_DEBUG_DISABLED,
     FLOW_STALE_VERSION,
     FLOW_STOP_NOT_DEPLOYED,
@@ -966,11 +933,9 @@ pub const ALL: &[&str] = &[
     FLOW_NO_DEPLOYED_VERSION,
     FLOW_DEVICE_WRITE_VALUES_EMPTY,
     FLOW_RUNTIME,
-    RESOURCE_WRITE_FORBIDDEN,
     RESOURCE_EDGE_DUPLICATE,
     RESOURCE_KIND_UNKNOWN,
     RESOURCE_CYCLE,
-    EDGE_WRITE_FORBIDDEN,
     EDGE_HOST_LOCKED,
     EDGE_SSID_TAKEN,
     EDGE_HOST_TAKEN,
@@ -989,29 +954,22 @@ pub const ALL: &[&str] = &[
     SECRET_NAME_TAKEN,
     SECRET_WRITE_FORBIDDEN,
     SECRET_DESTINATION_LOCKED,
-    BUILD_CREATE_FORBIDDEN,
     BUILD_IN_PROGRESS,
-    STITCH_WRITE_FORBIDDEN,
     STITCH_JOB_TERMINAL,
     STITCH_STATE_UNKNOWN,
     STITCH_DISABLED,
     STITCH_FRAME_TOO_LARGE,
-    FLUID_WRITE_FORBIDDEN,
     COOLPROP_ERROR,
     THERMO_TOO_MANY_POINTS,
-    VIZ_WRITE_FORBIDDEN,
-    LLM_PROVIDER_FORBIDDEN,
     LLM_PROVIDER_NOT_FOUND,
     LLM_PROVIDER_NAME_TAKEN,
     LLM_PROVIDER_NO_KEY,
     LLM_PROVIDER_KEY_UNREADABLE,
-    GEO_PROVIDER_FORBIDDEN,
     GEO_PROVIDER_NOT_FOUND,
     GEO_PROVIDER_NAME_TAKEN,
     GEO_NOT_CONFIGURED,
     GEO_RATE_LIMITED,
     GEO_PROVIDER_FAILED,
-    NOTIFY_WRITE_FORBIDDEN,
     NOTIFY_CHANNEL_NAME_CONFLICT,
     NOTIFY_TEMPLATE_NAME_CONFLICT,
     NOTIFY_TEST_BODY_INVALID,
@@ -1041,9 +999,7 @@ pub const ALL: &[&str] = &[
     O2_DELETE_FAILED,
     O2_TIME_RANGE_UNSUPPORTED,
     O2_TIME_RANGE_INVALID,
-    SYSTEM_DATA_FORBIDDEN,
     CONFIRMATION_MISMATCH,
-    CAMERA_WRITE_FORBIDDEN,
     CAMERA_UNKNOWN,
     CAMERA_NO_FRAME,
     CAMERA_OFFLINE,
@@ -1057,13 +1013,11 @@ pub const ALL: &[&str] = &[
     MEMORY_UNAVAILABLE,
     NOTIFY_JOURNAL_UNAVAILABLE,
     EVENT_STREAM_INVALID,
-    ML_MODEL_WRITE_FORBIDDEN,
     ML_MODEL_NOT_FOUND,
     ML_MODEL_MISSING_BYTES,
     ML_MODEL_LOAD_FAILED,
     ML_MODEL_INFERENCE_FAILED,
     ML_MODEL_INVALID,
-    FIRMWARE_WRITE_FORBIDDEN,
     FIRMWARE_CUSTOM_DISABLED,
     FIRMWARE_CHIP_MISMATCH,
     FIRMWARE_FAMILY_LOCKED,
@@ -1079,7 +1033,6 @@ pub const ALL: &[&str] = &[
     FIRMWARE_SOURCE_TOO_LARGE,
     DEVICE_COMMAND_UNKNOWN,
     FIRMWARE_VERSION_CONFLICT,
-    CONTROL_WRITE_FORBIDDEN,
     CONTROL_KEY_TAKEN,
     CONTROL_VALUE_INVALID,
     CONTROL_RATE_LIMITED,
@@ -1087,7 +1040,6 @@ pub const ALL: &[&str] = &[
     AI_FLOW_RUNNING,
     AI_CONVERSATION_BUSY,
     AI_CONVERSATION_NOT_FOUND,
-    AI_RETENTION_FORBIDDEN,
     AI_RETENTION_ABOVE_PLATFORM,
     AI_DISABLED,
     AI_NOT_CONFIGURED,
@@ -1098,11 +1050,9 @@ pub const ALL: &[&str] = &[
     AI_NETWORK,
     AI_BAD_RESPONSE,
     AI_TOOL_INTERNAL,
-    AI_WRITE_FORBIDDEN,
     CONTROL_UNKNOWN,
     CONTROL_STORE_UNAVAILABLE,
     MEDIA_STREAM_NOT_FOUND,
-    MEDIA_STREAM_WRITE_FORBIDDEN,
     MEDIA_STREAM_LIMIT,
     MEDIA_URL_HAS_CREDENTIALS,
     MEDIA_STREAM_UNREACHABLE,
@@ -1119,7 +1069,6 @@ pub const ALL: &[&str] = &[
     ASR_RUNTIME_UNAVAILABLE,
     ASR_TEST_AUDIO_UNSUPPORTED,
     ASR_TEST_FAILED,
-    VOICE_ID_WRITE_FORBIDDEN,
     VOICE_ID_NOT_PERSON,
     VOICE_ID_PROFILE_EXISTS,
     VOICE_ID_PROFILE_NOT_FOUND,
@@ -1133,8 +1082,6 @@ pub const ALL: &[&str] = &[
     TAXONOMY_NOT_FOUND,
     TAXONOMY_NAME_TAKEN,
     TAXONOMY_VERSION_CONFLICT,
-    TAXONOMY_WRITE_FORBIDDEN,
-    EXTENSION_WRITE_FORBIDDEN,
     EXTENSION_AGENT_NOT_FOUND,
     EXTENSION_MISSION_NOT_FOUND,
     EXTENSION_MISSION_VERSION_CONFLICT,
@@ -1158,8 +1105,6 @@ pub const ALL: &[&str] = &[
     EXT_REGISTRY_FULL,
     TAXONOMY_UNKNOWN,
     TIME_RANGE_NOT_FOUND,
-    TIME_RANGE_WRITE_FORBIDDEN,
-    LAB_WRITE_FORBIDDEN,
     LAB_PROJECT_NOT_FOUND,
     LAB_IMAGE_NOT_FOUND,
     LAB_VERSION_NOT_FOUND,
@@ -1187,7 +1132,6 @@ pub const ALL: &[&str] = &[
     TIME_RANGE_IMPORT_INVALID,
     TIME_RANGE_SCOPE_UNKNOWN,
     // Pages
-    DOCS_WRITE_FORBIDDEN,
     DOC_COMMENT_NOT_AUTHOR,
 ];
 

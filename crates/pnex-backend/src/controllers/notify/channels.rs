@@ -243,7 +243,7 @@ pub(super) struct ChannelInput {
     responses(
         (status = 201, body = pnex_core::NotifyChannel),
         (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:200`; `kind`: `invalid`), `notify-channel-config-invalid` (`args.detail`), `notify-channel-field-required` (`args.field`) or a vault error", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`notify-write-forbidden` (viewer) or a secret the caller may not use", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "A vault secret the caller may not use", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`notify-channel-name-conflict`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -253,14 +253,8 @@ pub(super) async fn create_channel(
     org: OrgContext,
     Json(params): Json<ChannelInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     // D313: recipients from flow messages are an admin decision.
-    if crate::services::notify_recipients::dynamic(&params.config) && !org.can_administer() {
+    if crate::services::notify_recipients::dynamic(&params.config) && !org.can("notify:broadcast") {
         return Err(forbidden(
             pnex_core::err_codes::NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
             "Only owners and admins let a channel send to recipients read from flow messages.",
@@ -277,7 +271,7 @@ pub(super) async fn create_channel(
         org.org.id,
         &params.kind,
         &params.config,
-        (!org.can_manage_secrets()).then_some(&[][..]),
+        (!org.can("secrets:write")).then_some(&[][..]),
     )
     .await
     {
@@ -298,7 +292,7 @@ pub(super) async fn create_channel(
         &txn,
         &ring,
         crate::controllers::secrets::writer(&org),
-        org.can_manage_secrets(),
+        org.can("secrets:write"),
         id,
         &name,
         None,
@@ -345,7 +339,7 @@ pub(super) async fn create_channel(
     responses(
         (status = 200, body = pnex_core::NotifyChannel),
         (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:200`; `kind`: `invalid`), `notify-channel-config-invalid` (`args.detail`), `notify-channel-field-required` (`args.field`) or a vault error", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`notify-write-forbidden` (viewer) or a secret the caller may not use", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "A vault secret the caller may not use", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail),
         (status = 409, description = "`notify-channel-name-conflict`", body = crate::openapi::ErrorDetail)
     ),
@@ -357,18 +351,12 @@ pub(super) async fn update_channel(
     Path(id): Path<Uuid>,
     Json(params): Json<ChannelInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let Some(m) = find_channel(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
     // D313: turning recipients from flow messages on is an admin decision.
     use crate::services::notify_recipients::dynamic;
-    if dynamic(&params.config) && !dynamic(&m.config) && !org.can_administer() {
+    if dynamic(&params.config) && !dynamic(&m.config) && !org.can("notify:broadcast") {
         return Err(forbidden(
             pnex_core::err_codes::NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
             "Only owners and admins let a channel send to recipients read from flow messages.",
@@ -393,7 +381,7 @@ pub(super) async fn update_channel(
         org.org.id,
         &params.kind,
         &merged,
-        (!org.can_manage_secrets()).then_some(held.as_slice()),
+        (!org.can("secrets:write")).then_some(held.as_slice()),
     )
     .await
     {
@@ -415,7 +403,7 @@ pub(super) async fn update_channel(
         &txn,
         &ring,
         crate::controllers::secrets::writer(&org),
-        org.can_manage_secrets(),
+        org.can("secrets:write"),
         m.id,
         &name,
         Some((&m.kind, &m.name, &m.config)),
@@ -463,12 +451,6 @@ pub(super) async fn delete_channel(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let Some(m) = find_channel(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

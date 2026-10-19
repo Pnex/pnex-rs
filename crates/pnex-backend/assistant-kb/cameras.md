@@ -4,7 +4,7 @@ title: Cameras
 kind: feature
 pages: /cameras
 nodes: camera_source, video_record, vision_detect, vision_track, vision_zone, vision_caption, media_fuse, text_decide, media_source, event_log, pnex_notify
-err_codes: camera-write-forbidden, camera-unknown, camera-no-frame, camera-offline, camera-range-invalid, camera-export-too-large, camera-export-empty, camera-already-recorded, camera-stream-unknown, video-segment-invalid, video-store-unavailable
+err_codes: access-denied, camera-unknown, camera-no-frame, camera-offline, camera-range-invalid, camera-export-too-large, camera-export-empty, camera-already-recorded, camera-stream-unknown, video-segment-invalid, video-store-unavailable
 tools: 
 tags: camera, caméra, esp32-cam, video, vidéo, live, stream, recording, enregistrement, playback, detection, détection, surveillance, rtsp, ip camera, caméra ip, tracking, suivi, zone, comptage, counting, présence, presence, description, caption, légende, vlm, what happens, ce qui se passe, résumé vidéo, video summary, decision, décision, laya, incident, classification, probability, probabilité
 ---

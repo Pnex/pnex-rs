@@ -3,7 +3,7 @@
 //! ressaisie à chaque ajout de device ; cf. `pnex_core::edge`).
 //!
 //! École `controllers/notify.rs` : scoping org (404 masqué cross-org),
-//! écriture gated `can_write()`, 400 champ-par-champ. **Divergence assumée**
+//! writes gated by their IAM permission, 400 field by field. **Divergence assumée**
 //! vs notify : le POST est un **upsert** (200/201, jamais 409) — le (org,
 //! ssid) / (org, host) est la clé naturelle et l'ajout inline depuis le
 //! wizard ne doit jamais confler : re-sauver = mettre à jour le mot de
@@ -51,16 +51,6 @@ const SCAN_CONCURRENCY: usize = 96;
 /// 400 champ-par-champ (école notify).
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
-}
-
-/// Writes: owner/admin/member (`OrgContext::can_write`). Carries the machine code +
-/// canonical English description (frontend resolves `err-<code>`, verbatim
-/// fallback otherwise).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
 }
 
 /// 409 when the deployment imposes the server host (`PNEX_PROD_HOST`): the
@@ -227,7 +217,6 @@ async fn list_wifi(
         (status = 200, description = "Existing SSID updated", body = pnex_core::WifiCredential),
         (status = 201, description = "Created", body = pnex_core::WifiCredential),
         (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Picked secret not found (`secret-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Concurrent creation of the same SSID (`edge-ssid-taken`)", body = crate::openapi::ErrorDetail)
     ),
@@ -238,12 +227,6 @@ async fn create_wifi(
     org: OrgContext,
     Json(input): Json<WifiCredentialInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     if let Some(err) = validate_ssid(&input) {
         return Ok(err);
     }
@@ -293,7 +276,7 @@ async fn create_wifi(
         &txn,
         &ring,
         writer,
-        org.can_manage_secrets(),
+        org.can("secrets:write"),
         row.id,
         &ssid,
         None,
@@ -332,7 +315,6 @@ async fn create_wifi(
     responses(
         (status = 200, body = pnex_core::WifiCredential),
         (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown credential (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "SSID used by another entry (`edge-ssid-taken`)", body = crate::openapi::ErrorDetail)
     ),
@@ -344,12 +326,6 @@ async fn update_wifi(
     Path(id): Path<i64>,
     Json(input): Json<WifiCredentialInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     if let Some(err) = validate_ssid(&input) {
         return Ok(err);
     }
@@ -392,7 +368,7 @@ async fn update_wifi(
         &txn,
         &ring,
         crate::controllers::secrets::writer(&org),
-        org.can_manage_secrets(),
+        org.can("secrets:write"),
         m.id,
         &ssid,
         Some(&m.ssid),
@@ -434,7 +410,6 @@ async fn update_wifi(
     params(("id" = i64, Path, description = "WiFi credential id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown credential (or other org)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -444,12 +419,6 @@ async fn delete_wifi(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     let Some(m) = WifiCredentials::find()
         .filter(wifi_credentials::Column::OrgId.eq(org.org.id))
         .filter(wifi_credentials::Column::Id.eq(id))
@@ -582,7 +551,6 @@ async fn locked_host(_org: OrgContext) -> Result<Response> {
         (status = 200, description = "Already saved", body = pnex_core::PnexHost),
         (status = 201, description = "Created", body = pnex_core::PnexHost),
         (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Host imposed by the deployment (`edge-host-locked`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -592,12 +560,6 @@ async fn create_host(
     org: OrgContext,
     Json(input): Json<PnexHostInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     if let Some(err) = host_locked() {
         return Err(err);
     }
@@ -651,7 +613,6 @@ async fn create_host(
     responses(
         (status = 200, body = pnex_core::PnexHost),
         (status = 400, description = "Invalid field (`field-invalid`, `errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown host (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Host imposed by the deployment (`edge-host-locked`) or used by another entry (`edge-host-taken`)", body = crate::openapi::ErrorDetail)
     ),
@@ -663,12 +624,6 @@ async fn update_host(
     Path(id): Path<i64>,
     Json(input): Json<PnexHostInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     if let Some(err) = host_locked() {
         return Err(err);
     }
@@ -719,7 +674,6 @@ async fn update_host(
     params(("id" = i64, Path, description = "Host id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown host (or other org)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -729,12 +683,6 @@ async fn delete_host(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     let Some(m) = PnexHosts::find()
         .filter(pnex_hosts::Column::OrgId.eq(org.org.id))
         .filter(pnex_hosts::Column::Id.eq(id))
@@ -798,24 +746,18 @@ struct LanScanQuery {
     params(LanScanQuery),
     responses(
         (status = 200, body = pnex_core::LanScanResult),
-        (status = 400, description = "`prefix` is not an RFC 1918 `a.b.c.` prefix (`field-invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`edge-write-forbidden`)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`prefix` is not an RFC 1918 `a.b.c.` prefix (`field-invalid`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
 async fn lan_scan(
-    org: OrgContext,
+    // `edge:test`, checked by the extractor (SEC-43).
+    _org: OrgContext,
     headers: HeaderMap,
     Query(q): Query<LanScanQuery>,
 ) -> Result<Response> {
     // SEC-43: probing the server network is user-driven reconnaissance,
     // kept to the roles that manage the edge referentials (R2).
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::EDGE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage edge references.",
-        ));
-    }
     let explicit = q.prefix.map(|p| p.trim().to_string());
     if explicit.as_deref().is_some_and(|p| !valid_prefix(p)) {
         return Ok(field_status("prefix", err_codes::FIELD_INVALID));

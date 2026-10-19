@@ -527,7 +527,7 @@ async fn viewer_reads_and_other_orgs_see_nothing() {
         ] {
             let (s, e) = call(&server, method, &p, &env.bob, org, body).await;
             assert_eq!(s, 403, "{method} {p}");
-            assert_eq!(e["error"], "extension-write-forbidden");
+            assert_eq!(e["error"], "access-denied");
         }
     })
     .await;

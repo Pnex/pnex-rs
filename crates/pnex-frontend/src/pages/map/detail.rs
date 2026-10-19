@@ -267,7 +267,7 @@ pub(super) fn PoiDetail(
                                     key: "{p.id}",
                                     kind: pnex_core::resources::KIND_MAP_PIN.to_string(),
                                     id: p.id.clone(),
-                                    can_write: crate::state::org::current_can_write(),
+                                    can_write: crate::state::access::can("pois:write"),
                                 }
                                 crate::components::ontology::object_link::ObjectPageLink {
                                     kind: pnex_core::resources::KIND_MAP_PIN.to_string(),

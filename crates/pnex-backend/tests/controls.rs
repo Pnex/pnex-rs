@@ -446,7 +446,7 @@ async fn viewer_reads_but_never_operates_and_orgs_are_isolated() {
         )
         .await;
         assert_eq!(operate.status_code(), 403);
-        assert_eq!(error_code(&operate), "control-write-forbidden");
+        assert_eq!(error_code(&operate), "access-denied");
         let create = post(
             &server,
             &env.bob,

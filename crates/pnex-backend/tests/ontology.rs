@@ -404,11 +404,11 @@ async fn isolation_roles_and_yaml_round_trip() {
         let (st, _) = call(&server, "GET", &format!("/api/v1/ontology/objects/{pid}"), &env.bob, org_a, None).await;
         assert_eq!(st, 200);
         let (st, e) = call(&server, "POST", "/api/v1/ontology/objects", &env.bob, org_a, Some(json!({"type_key": "pump", "title": "x", "properties": {"serial": "1"}}))).await;
-        assert_eq!((st, e["error"].as_str()), (403, Some("ontology-write-forbidden")));
+        assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")));
         let (st, _) = call(&server, "POST", "/api/v1/ontology/links", &env.bob, org_a, Some(json!({"link_type": "feeds", "source_id": pid, "target_id": pid}))).await;
         assert_eq!(st, 403);
         let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.bob, org_a, None).await;
-        assert_eq!((st, e["error"].as_str()), (403, Some("ontology-admin-required")));
+        assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")));
 
         // A type locked to admins refuses a member.
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site", &env.alice, org_a, None).await;
@@ -2396,7 +2396,7 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
             let deps = |role: OrgMemberRole| ToolDeps {
                 db: &env.db,
                 org_id: org,
-                can_write: true,
+                grants: pnex_backend::services::iam::Grants::managed(&role),
                 author: None,
                 o2: None,
                 config: None,

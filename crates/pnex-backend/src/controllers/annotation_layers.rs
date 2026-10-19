@@ -30,12 +30,6 @@ use pnex_core::err_codes;
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is
 // the verbatim fallback for unregistered codes.
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// 400 per-field error shape.
 fn field_status(field: &str, msg: &str) -> Response {
@@ -221,8 +215,7 @@ fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
     request_body = pnex_core::CreateAnnotationLayer,
     responses(
         (status = 201, body = pnex_core::AnnotationLayerDetail),
-        (status = 400, description = "`field-invalid` (`name`, `media_asset_id`, `tour_id`) or `annotation-layer-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`name`, `media_asset_id`, `tour_id`) or `annotation-layer-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -231,12 +224,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateAnnotationLayer>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "annot-write-forbidden",
-            "Owner, admin or member role required to manage annotation layers",
-        ));
-    }
     let media_asset_id = match params
         .media_asset_id
         .as_deref()
@@ -533,7 +520,6 @@ async fn detail(
     responses(
         (status = 200, body = pnex_core::AnnotationLayerDetail),
         (status = 400, description = "`field-invalid` (`name`, `media_asset_id`, `tour_id`) or `annotation-layer-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`annot-version-conflict` (`errors.args.expected` / `errors.args.current`)", body = crate::openapi::ErrorDetail)
     ),
@@ -545,12 +531,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(params): Json<pnex_core::UpdateAnnotationLayer>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "annot-write-forbidden",
-            "Owner, admin or member role required to manage annotation layers",
-        ));
-    }
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -587,7 +567,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`annot-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -597,12 +576,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "annot-write-forbidden",
-            "Owner, admin or member role required to manage annotation layers",
-        ));
-    }
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -763,7 +736,6 @@ async fn version_detail(
     request_body = Option<pnex_core::PublishAnnotationLayer>,
     responses(
         (status = 200, body = pnex_core::AnnotationLayerDetail),
-        (status = 403, description = "`annot-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown layer or version", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -774,12 +746,6 @@ async fn publish(
     Path(id): Path<Uuid>,
     body: Option<Json<pnex_core::PublishAnnotationLayer>>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "annot-publish-forbidden",
-            "Owner, admin or member role required to publish annotation layers",
-        ));
-    }
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -840,7 +806,6 @@ async fn publish(
     params(("id" = String, Path, format = "uuid", description = "Annotation layer id (UUID)")),
     responses(
         (status = 200, body = pnex_core::AnnotationLayerDetail),
-        (status = 403, description = "`annot-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown layer or layer of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -850,12 +815,6 @@ async fn unpublish(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "annot-publish-forbidden",
-            "Owner, admin or member role required to publish annotation layers",
-        ));
-    }
     let Some(layer) = find_layer(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

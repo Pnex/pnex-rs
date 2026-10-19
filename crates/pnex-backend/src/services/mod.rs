@@ -35,6 +35,8 @@ pub mod flow_cluster;
 pub mod flow_supervisor;
 pub mod functions;
 pub mod geo;
+/// Authorization engine and action registry checks (iam.md D285–D299).
+pub mod iam;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
 pub mod lab;

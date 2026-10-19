@@ -19,7 +19,7 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::{
     field_errors, icon_of, link_label, type_label, type_label_of, TypeIcon,
 };
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = crate::components::ui::FIELD_LABEL;
@@ -49,7 +49,7 @@ fn schema_rank(v: &ObjectTypeView) -> u8 {
 pub fn SchemaTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
     let navigator = use_navigator();
-    let admin = org::current_can_administer();
+    let admin = crate::state::access::can("ontology.schema:write");
     let types = use_resource(move || async move {
         let _ = reload();
         api::ontology::types().await
@@ -142,7 +142,7 @@ pub fn SchemaTab(tabs: Element) -> Element {
 #[component]
 pub fn LinkTypesTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
-    let admin = org::current_can_administer();
+    let admin = crate::state::access::can("ontology.schema:write");
     let links = use_resource(move || async move {
         let _ = reload();
         api::ontology::link_types().await

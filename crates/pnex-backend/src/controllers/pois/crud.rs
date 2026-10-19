@@ -83,8 +83,7 @@ pub(super) async fn list(
     request_body = PoiPayload,
     responses(
         (status = 201, body = PoiDto),
-        (status = 400, description = "`field-invalid`: `errors.fields` maps `label`, `coordinates`, `latitude`, `longitude`, `emoji`, `location_detail`, `preview_kind` to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid`: `errors.fields` maps `label`, `coordinates`, `latitude`, `longitude`, `emoji`, `location_detail`, `preview_kind` to a token", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -93,12 +92,6 @@ pub(super) async fn create(
     org: OrgContext,
     Json(p): Json<PoiPayload>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     let Some(label) = p.label.as_deref() else {
         return Ok(field_status("label", err_codes::FIELD_REQUIRED));
     };
@@ -242,7 +235,6 @@ pub(super) async fn detail(
     responses(
         (status = 200, body = PoiDto),
         (status = 400, description = "`field-invalid`: `errors.fields` maps `label`, `coordinates`, `latitude`, `longitude`, `emoji`, `location_detail`, `preview_kind` to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -253,12 +245,6 @@ pub(super) async fn update(
     Path(id): Path<Uuid>,
     Json(p): Json<PoiPatchPayload>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     let pin = svc::find_pin(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -305,7 +291,6 @@ pub(super) async fn update(
     params(("id" = String, Path, format = "uuid", description = "POI id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -315,12 +300,6 @@ pub(super) async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     let pin = svc::find_pin(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?;

@@ -119,7 +119,6 @@ pub(super) async fn template_detail(
     responses(
         (status = 201, body = pnex_core::NotifyTemplate),
         (status = 400, description = "`field-invalid` or `notify-template-render` (template does not render, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`notify-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`notify-template-name-conflict`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -129,12 +128,6 @@ pub(super) async fn create_template(
     org: OrgContext,
     Json(params): Json<TemplateInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let m = match tpl_service::create(&ctx.db, org.org.id, &params).await {
         Ok(m) => m,
         Err(e) => return template_write_response(e),
@@ -155,7 +148,6 @@ pub(super) async fn create_template(
     responses(
         (status = 200, body = pnex_core::NotifyTemplate),
         (status = 400, description = "`field-invalid` or `notify-template-render` (template does not render, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`notify-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail),
         (status = 409, description = "`notify-template-name-conflict`", body = crate::openapi::ErrorDetail)
     ),
@@ -167,12 +159,6 @@ pub(super) async fn update_template(
     Path(id): Path<Uuid>,
     Json(params): Json<TemplateInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let Some(m) = find_template(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -206,12 +192,6 @@ pub(super) async fn delete_template(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let Some(m) = find_template(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

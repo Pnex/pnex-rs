@@ -8,7 +8,7 @@
 //!   `resource-cycle`, `resource-edge-duplicate`);
 //! - cross-org masked as 404 (unknown kind: 400, resource of another org:
 //!   404);
-//! - writes gated by `can_write()` (owner|admin|member);
+//! - writes gated by `resources:write` (owner|admin|member);
 //! - static routes before parametric ones: `labels/query`, `edges`,
 //!   `folders` before `{kind}/{id}/…`.
 
@@ -25,15 +25,6 @@ use crate::services::resources as svc;
 use pnex_core::{err_codes, resources::parse_label_filter};
 
 // ─────────────────────────── errors ───────────────────────────
-
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
@@ -182,7 +173,6 @@ async fn get_labels(
     responses(
         (status = 200, body = LabelsDto),
         (status = 400, description = "`field-invalid` on `labels` (`required`, `invalid`: not an object, bad name or value, too many) or `resource-kind-unknown`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown resource or resource of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -193,12 +183,6 @@ async fn put_labels(
     Path((kind, id)): Path<(String, String)>,
     Json(body): Json<Value>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     require_label_target(&ctx, &org, &kind, &id).await?;
     let Some(doc) = body.get("labels") else {
         return Ok(field_status("labels", err_codes::FIELD_REQUIRED));
@@ -592,7 +576,6 @@ fn ref_name(
     responses(
         (status = 200, body = ContainmentDto),
         (status = 400, description = "`resource-kind-unknown`, or `resource-cycle` (the move would make the resource its own ancestor)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown resource or resource of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -603,12 +586,6 @@ async fn put_containment(
     Path((kind, id)): Path<(String, String)>,
     Json(p): Json<ContainmentPut>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     require_resource(&ctx, &org, &kind, &id).await?;
     let parent = p.parent.map(|r| (r.kind, r.id));
     let parent = parent.as_ref().map(|(k, i)| (k.as_str(), i.as_str()));
@@ -639,7 +616,6 @@ async fn put_containment(
     responses(
         (status = 204, description = "Detached"),
         (status = 400, description = "Unknown kind", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown resource, resource of another org, or resource without parent", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -649,12 +625,6 @@ async fn delete_containment(
     org: OrgContext,
     Path((kind, id)): Path<(String, String)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     require_resource(&ctx, &org, &kind, &id).await?;
     let detached = svc::containment::detach(&ctx.db, org.org.id, &kind, &id)
         .await
@@ -785,7 +755,6 @@ struct EdgeCreate {
     responses(
         (status = 201, body = EdgeDto),
         (status = 400, description = "`resource-kind-unknown`, or `field-invalid` on `relation`, `target` or `placement` (`invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown source resource", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`resource-edge-duplicate`", body = crate::openapi::ErrorDetail)
     ),
@@ -796,12 +765,6 @@ async fn create_edge(
     org: OrgContext,
     Json(p): Json<EdgeCreate>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     match svc::edges::create_edge(
         &ctx.db,
         org.org.id,
@@ -841,7 +804,6 @@ struct EdgePlacementPatch {
     responses(
         (status = 200, body = EdgeDto),
         (status = 400, description = "`field-invalid`: `placement` (`invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown edge or edge of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -852,12 +814,6 @@ async fn patch_edge(
     Path(id): Path<i64>,
     Json(p): Json<EdgePlacementPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     match svc::edges::update_placement(&ctx.db, org.org.id, id, &p.placement).await {
         Ok(Some(edge)) => format::json(edge_dto(&edge)),
         Ok(None) => Err(Error::NotFound),
@@ -876,7 +832,6 @@ async fn patch_edge(
     params(("id" = i64, Path, description = "Edge id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown edge or edge of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -886,12 +841,6 @@ async fn delete_edge(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     let deleted = svc::edges::delete_edge(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -941,8 +890,7 @@ struct FolderCreate {
     request_body = FolderCreate,
     responses(
         (status = 201, body = FolderDto),
-        (status = 400, description = "`field-invalid`: `name` (`required`, `max_length:255`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid`: `name` (`required`, `max_length:255`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -951,12 +899,6 @@ async fn create_folder(
     org: OrgContext,
     Json(p): Json<FolderCreate>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     match svc::folders::create_folder(
         &ctx.db,
         org.org.id,
@@ -1035,7 +977,6 @@ where
     responses(
         (status = 200, body = FolderDto),
         (status = 400, description = "`field-invalid`: `name` (`required`, `max_length:255`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown folder or folder of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1046,12 +987,6 @@ async fn patch_folder(
     Path(id): Path<i64>,
     Json(p): Json<FolderPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     match svc::folders::update_folder(
         &ctx.db,
         org.org.id,
@@ -1081,7 +1016,6 @@ async fn patch_folder(
     params(("id" = i64, Path, description = "Folder id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`resource-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown folder or folder of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1091,12 +1025,6 @@ async fn delete_folder(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "resource-write-forbidden",
-            "Write access restricted to owner/admin/member roles.",
-        ));
-    }
     let deleted = svc::folders::delete_folder(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?;

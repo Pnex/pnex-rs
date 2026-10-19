@@ -4,7 +4,7 @@ title: Functions
 kind: feature
 pages: /functions
 nodes: pnex_function
-err_codes: functions-write-forbidden, functions-runtime-disabled
+err_codes: access-denied, functions-runtime-disabled
 tools: 
 tags: function, functions, javascript, js, starlark, python, code, script, quickjs, fonction, code utilisateur
 ---

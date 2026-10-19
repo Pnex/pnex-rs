@@ -4,8 +4,8 @@
 //! modification/suppression d'un template n'affecte jamais les
 //! dashboards existants.
 //!
-//! École `flows.rs` : scoping org (404 masqué), `can_write()` en
-//! écriture, 400 champ-par-champ, violations de config en 400
+//! École `flows.rs` : scoping org (404 masqué), IAM permission on
+//! writes, 400 champ-par-champ, violations de config en 400
 //! `{"violations": [...]}`.
 
 use axum::extract::{Path, Query, State};
@@ -23,15 +23,6 @@ use crate::controllers::pagination;
 use crate::models::_entities::viz_widget_library;
 use crate::models::viz_widget_library::VizWidgetLibraries;
 use pnex_core::{err_codes, VizViolation};
-
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// Template de l'org, sinon None (→ 404 masqué cross-org).
 async fn find_template(
@@ -238,8 +229,7 @@ async fn detail(
     request_body = pnex_core::CreateVizWidget,
     responses(
         (status = 201, body = pnex_core::VizWidget),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name` `required`/`max_length:255`/`unique`, `kind` `invalid`) or `widget-invalid` (`errors.violations`: config violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name` `required`/`max_length:255`/`unique`, `kind` `invalid`) or `widget-invalid` (`errors.violations`: config violations)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -248,12 +238,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateVizWidget>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::VIZ_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage the widget library.",
-        ));
-    }
     if let Some(resp) = validate_template(&params.name, &params.kind, &params.config) {
         return Ok(resp);
     }
@@ -287,7 +271,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::VizWidget),
         (status = 400, description = "`field-invalid` (`errors.fields`: `name` `required`/`max_length:255`/`unique`, `kind` `invalid`) or `widget-invalid` (`errors.violations`: config violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown template (or another org's)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -298,12 +281,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(params): Json<pnex_core::UpdateVizWidget>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::VIZ_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage the widget library.",
-        ));
-    }
     let Some(m) = find_template(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -340,7 +317,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Widget template id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`viz-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown template (or another org's)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -350,12 +326,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::VIZ_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage the widget library.",
-        ));
-    }
     let Some(m) = find_template(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

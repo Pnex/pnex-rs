@@ -42,12 +42,6 @@ fn short_utc(ts: &Option<String>) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
-
 fn current_org_name() -> String {
     let org_id = org::current();
     session::user()
@@ -70,7 +64,7 @@ enum Pending {
 pub fn System() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut pending = use_signal(|| None::<Pending>);
-    let can_write = current_role().is_some_and(crate::state::org::role_can_administer);
+    let can_write = crate::state::access::can("system:delete");
 
     let retention = use_resource(move || async move {
         let _ = reload();

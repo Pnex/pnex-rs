@@ -4,7 +4,7 @@ title: Annotations
 kind: feature
 pages: /annotations
 nodes: control_source
-err_codes: annot-write-forbidden, annot-publish-forbidden, annot-version-conflict
+err_codes: access-denied, annot-version-conflict
 tools: 
 tags: annotations, annotation set, layer, couche, panorama, 360, photo, floor plan, splat, 3D, tour, overlay, label, pastille, card, mini chart, gauge, reading, live value
 ---

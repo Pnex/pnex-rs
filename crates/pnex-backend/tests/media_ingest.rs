@@ -503,7 +503,7 @@ async fn org_isolation_and_viewer_read_only() {
         ] {
             let (s, e) = call(&server, m, &p, &env.bob, org_a, body).await;
             assert_eq!(s, 403, "{m} {p}");
-            assert_eq!(e["error"], "media-stream-write-forbidden");
+            assert_eq!(e["error"], "access-denied");
         }
     })
     .await;

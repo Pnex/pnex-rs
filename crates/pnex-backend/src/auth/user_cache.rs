@@ -102,6 +102,7 @@ mod tests {
             email: "a@example.com".into(),
             full_name: Some("A".into()),
             platform_admin: false,
+            is_service: false,
         }
     }
 

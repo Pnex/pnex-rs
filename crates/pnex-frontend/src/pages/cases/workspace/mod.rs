@@ -38,7 +38,7 @@ use crate::app::Route;
 use crate::components::editor_shell::{EditorShell, EditorStatus, StatusTone};
 use crate::components::modal::Modal;
 use crate::components::ui::BTN_SECONDARY_SM;
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 /// What the inspector shows.
 #[derive(Clone, PartialEq, Debug)]
@@ -390,7 +390,7 @@ fn CaseWorkspaceOf(id: String) -> Element {
         show_signals: use_signal(|| false),
         add_open: use_signal(|| false),
         map_list: use_signal(|| true),
-        can_write: org::current_can_write(),
+        can_write: crate::state::access::can("cases:write"),
     };
     use_context_provider(|| ws);
     let mut load_error = use_signal(|| None::<String>);

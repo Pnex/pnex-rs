@@ -4,7 +4,7 @@ title: Controls
 kind: feature
 pages: /controls
 nodes: control_source, device_write
-err_codes: control-write-forbidden, control-key-taken, control-value-invalid, control-rate-limited, control-in-use, control-unknown, control-store-unavailable
+err_codes: access-denied, control-key-taken, control-value-invalid, control-rate-limited, control-in-use, control-unknown, control-store-unavailable
 tools: 
 tags: controls, contrôles, switch, interrupteur, slider, curseur, button, bouton, command, commande, setpoint, consigne, operate, piloter, actuator
 ---

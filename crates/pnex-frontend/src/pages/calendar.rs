@@ -15,7 +15,7 @@ use crate::api;
 use crate::app::Route;
 use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, GHOST_BTN, PRIMARY_BTN};
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 fn parse(s: &Option<String>) -> Option<DateTime<FixedOffset>> {
     s.as_deref()
@@ -57,7 +57,7 @@ pub fn Calendar() -> Element {
     let mut month = use_signal(|| today.with_day(1).unwrap_or(today));
     let mut reload = use_signal(|| 0u32);
     let mut open = use_signal(|| None::<TimeRange>);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("ontology:write");
     let ranges = use_resource(move || async move {
         let _ = reload();
         let first = grid_start(month());

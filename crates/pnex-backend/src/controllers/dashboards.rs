@@ -40,12 +40,6 @@ use pnex_core::{DashboardLayout, VizDashboard, VizDashboardSummary, VizDashboard
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is
 // the verbatim fallback for unregistered codes.
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// Dashboard de l'org courante, sinon None (→ 404 masqué cross-org).
 async fn find_dashboard(
@@ -297,8 +291,7 @@ async fn list(
     request_body = pnex_core::CreateDashboard,
     responses(
         (status = 201, body = pnex_core::VizDashboard),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `dashboard-invalid` (`errors.violations`: layout violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `dashboard-invalid` (`errors.violations`: layout violations)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -307,12 +300,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateDashboard>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DASHBOARD_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage dashboards",
-        ));
-    }
     match crate::services::dashboards::create_dashboard(
         &ctx.db,
         org.org.id,
@@ -377,7 +364,6 @@ async fn detail(
     responses(
         (status = 200, body = pnex_core::VizDashboard),
         (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `dashboard-invalid` (`errors.violations`: layout violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`dashboard-version-conflict` (args `expected`, `current`): another save happened, reload first", body = crate::openapi::ErrorDetail)
     ),
@@ -389,12 +375,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(params): Json<pnex_core::UpdateDashboard>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DASHBOARD_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage dashboards",
-        ));
-    }
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -434,7 +414,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown dashboard (or another org's)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -444,12 +423,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DASHBOARD_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage dashboards",
-        ));
-    }
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -618,7 +591,6 @@ async fn version_detail(
     params(("id" = String, Path, format = "uuid", description = "Dashboard id (UUID)"), ("version_number" = i64, Path, description = "Version number")),
     responses(
         (status = 200, body = pnex_core::VizDashboard),
-        (status = 403, description = "`dashboard-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown dashboard or version", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -628,12 +600,6 @@ async fn restore(
     org: OrgContext,
     Path((id, version_number)): Path<(Uuid, i64)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DASHBOARD_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage dashboards",
-        ));
-    }
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

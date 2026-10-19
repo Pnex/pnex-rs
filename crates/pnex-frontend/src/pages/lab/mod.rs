@@ -44,7 +44,7 @@ pub fn Lab() -> Element {
     // None = closed, Some(None) = creation, Some(Some(p)) = edition.
     let mut editing = use_signal(|| None::<Option<LabProject>>);
     let mut delete_target = use_signal(|| None::<LabProject>);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("lab:write");
 
     let list = use_resource(move || {
         let _ = reload();

@@ -23,7 +23,6 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::models::_entities::organization_members;
-use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
 use crate::services::pages::room::{self, Outcome};
 
 const HEARTBEAT_SECS: u64 = 30;
@@ -90,7 +89,8 @@ async fn ws_doc(
     .into_response()
 }
 
-/// Write right of a member (`Ok(None)` = not a member).
+/// `docs:write` of a member, assigned roles included (`Ok(None)` = not a
+/// member).
 async fn member_can_write(
     db: &DatabaseConnection,
     user_id: i64,
@@ -101,7 +101,11 @@ async fn member_can_write(
         .filter(organization_members::Column::OrgId.eq(org_id))
         .one(db)
         .await?;
-    Ok(member.map(|m| !matches!(m.role, OrgMemberRole::Viewer)))
+    let Some(m) = member else {
+        return Ok(None);
+    };
+    let grants = crate::services::iam::store::grants(db, org_id, user_id, Some(&m.role)).await?;
+    Ok(Some(grants.can("docs:write")))
 }
 
 struct LeaveGuard {
@@ -144,7 +148,9 @@ async fn session_loop(
     // Last inbound frame (Pong included): the heartbeat tick closes a
     // session silent for longer than the watchdog (half-open socket).
     let mut last_rx = tokio::time::Instant::now();
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(HEARTBEAT_SECS));
+    // First tick one period away: the right was just read at the upgrade.
+    let period = Duration::from_secs(HEARTBEAT_SECS);
+    let mut heartbeat = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {

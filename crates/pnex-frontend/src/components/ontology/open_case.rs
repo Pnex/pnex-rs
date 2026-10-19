@@ -9,7 +9,7 @@ use pnex_core::ontology::api::{CaseFrom, CaseOpenInput};
 use crate::api;
 use crate::app::Route;
 use crate::components::ui::BTN_SECONDARY_SM;
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 /// `kind`: `notification` | `event`; `title`: the event's text, or empty
 /// for the generic case title.
@@ -17,7 +17,7 @@ use crate::state::{org, toasts};
 pub fn OpenCaseButton(kind: String, at_us: i64, flow_id: Option<i64>, title: String) -> Element {
     let mut busy = use_signal(|| false);
     let navigator = use_navigator();
-    if !org::current_can_write() {
+    if !crate::state::access::can("cases:write") {
         return rsx! {};
     }
     let at = chrono::DateTime::from_timestamp_micros(at_us)

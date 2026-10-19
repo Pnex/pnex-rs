@@ -186,7 +186,6 @@ pub struct TestQuery {
     responses(
         (status = 200, body = pnex_core::media_ingest::AsrTestResult),
         (status = 400, description = "Not a speech-to-text model (`asr-model-unsupported`), unreadable audio (`asr-test-audio-unsupported`) or invalid `language` (`field-invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Model has not passed its check (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail),
         (status = 502, description = "Transcription failed (`asr-test-failed`)", body = crate::openapi::ErrorDetail),
@@ -205,7 +204,6 @@ async fn model_test(
     use crate::services::media_ingest::{asr, capture};
     use pnex_core::media_ingest::{is_valid_language, TEST_CLIP_MAX_SECS};
     use pnex_core::vision::ModelCheckStatus;
-    require_write(&org)?;
     let row = match models::find(&ctx.db, org.org.id, id).await {
         Ok(row) => row,
         Err(e) => return model_error(e),
@@ -267,18 +265,6 @@ async fn model_test(
 
 fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(status, ErrorDetail::new(code, msg.to_string()))
-}
-
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        Ok(())
-    } else {
-        Err(detail(
-            StatusCode::FORBIDDEN,
-            err_codes::MEDIA_STREAM_WRITE_FORBIDDEN,
-            "Viewer role: media streams and ASR profiles are read-only.",
-        ))
-    }
 }
 
 fn field(field: &str, token: &str) -> Result<Response> {
@@ -360,7 +346,7 @@ async fn one(
 fn author(org: &OrgContext) -> Author {
     Author {
         user_id: Some(org.auth.user.id),
-        can_manage_secrets: org.can_manage_secrets(),
+        can_manage_secrets: org.can("secrets:write"),
     }
 }
 
@@ -648,7 +634,7 @@ async fn segment_audio(
     responses(
         (status = 201, body = pnex_core::media_ingest::MediaStream),
         (status = 400, description = "Per-field error `{\"<field>\": token}`, URL carrying a credential (`media-url-has-credentials`), unreachable stream (`media-stream-unreachable`) or capture location not supported (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`), or secret binding reserved to owner/admin", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Binding a vault secret needs the `secrets:write` permission", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Referenced vault secret not found", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Stream limit reached (`media-stream-limit`) or profile model not a valid audio model (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
     ),
@@ -659,7 +645,6 @@ async fn stream_create(
     org: OrgContext,
     Json(input): Json<MediaStreamInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let ring = match crate::controllers::secrets::keyring(&ctx) {
         Ok(ring) => ring,
         Err(e) => return crate::controllers::secrets::store_error(e),
@@ -686,7 +671,7 @@ async fn stream_create(
     responses(
         (status = 200, body = pnex_core::media_ingest::MediaStream),
         (status = 400, description = "Per-field error `{\"<field>\": token}`, URL carrying a credential (`media-url-has-credentials`), unreachable stream (`media-stream-unreachable`) or capture location not supported (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`), or secret change reserved to owner/admin", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "Changing a vault secret needs the `secrets:write` permission", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown stream (`media-stream-not-found`) or referenced vault secret", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Profile model not a valid audio model (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
     ),
@@ -698,7 +683,6 @@ async fn stream_update(
     Path(id): Path<Uuid>,
     Json(input): Json<MediaStreamInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let ring = match crate::controllers::secrets::keyring(&ctx) {
         Ok(ring) => ring,
         Err(e) => return crate::controllers::secrets::store_error(e),
@@ -721,7 +705,6 @@ async fn stream_update(
     params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -731,7 +714,6 @@ async fn stream_delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let keys: Vec<String> = media_segments::Entity::find()
         .filter(media_segments::Column::OrgId.eq(org.org.id))
         .filter(media_segments::Column::StreamId.eq(id))
@@ -775,7 +757,6 @@ const STREAM_TEST_LIMIT: std::time::Duration = std::time::Duration::from_secs(45
     responses(
         (status = 200, body = pnex_core::media_ingest::StreamTestResult),
         (status = 400, description = "Stream captured by a capture box (`media-capture-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -789,7 +770,6 @@ async fn stream_test(
     use crate::services::media_ingest::{asr, capture};
     use pnex_core::media_ingest::StreamTestResult;
     use pnex_core::vision::ModelCheckStatus;
-    require_write(&org)?;
     let stream = match streams::find(&ctx.db, org.org.id, id).await {
         Ok(s) => s,
         Err(e) => return stream_error(e),
@@ -911,7 +891,6 @@ async fn segment_list(
     params(("id" = String, Path, format = "uuid", description = "Media stream UUID")),
     responses(
         (status = 200, body = MediaSegmentsRequeued),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown stream or stream of another organisation (`media-stream-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Stream has no ASR profile (`media-asr-model-invalid`)", body = crate::openapi::ErrorDetail)
     ),
@@ -922,7 +901,6 @@ async fn segment_retry(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let stream = match streams::find(&ctx.db, org.org.id, id).await {
         Ok(s) => s,
         Err(e) => return stream_error(e),
@@ -1040,7 +1018,6 @@ async fn profile_get(
     responses(
         (status = 201, body = pnex_core::media_ingest::AsrProfile),
         (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Name already used (`asr-profile-name-taken`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1050,7 +1027,6 @@ async fn profile_create(
     org: OrgContext,
     Json(input): Json<AsrProfileInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match profiles::create(&ctx.db, org.org.id, &input).await {
         Ok(row) => Ok((StatusCode::CREATED, format::json(profiles::view(&row))).into_response()),
         Err(e) => profile_error(e),
@@ -1070,7 +1046,6 @@ async fn profile_create(
     responses(
         (status = 200, body = pnex_core::media_ingest::AsrProfile),
         (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown ASR profile (`asr-profile-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Name already used (`asr-profile-name-taken`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1082,7 +1057,6 @@ async fn profile_update(
     Path(id): Path<Uuid>,
     Json(input): Json<AsrProfileInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match profiles::update(&ctx.db, org.org.id, id, &input).await {
         Ok(row) => format::json(profiles::view(&row)),
         Err(e) => profile_error(e),
@@ -1100,7 +1074,6 @@ async fn profile_update(
     params(("id" = String, Path, format = "uuid", description = "ASR profile UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown ASR profile (`asr-profile-not-found`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1110,7 +1083,6 @@ async fn profile_delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match profiles::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => profile_error(e),
@@ -1235,7 +1207,6 @@ async fn model_get(
     responses(
         (status = 201, body = pnex_core::media_ingest::AsrModel),
         (status = 400, description = "Per-field error `{\"<field>\": token}`, or not a supported audio model (`asr-model-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Name already used (`asr-model-name-taken`)", body = crate::openapi::ErrorDetail),
         (status = 422, description = "No runtime of this server runs this model family (`asr-runtime-unavailable`, `errors.args.family`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1246,7 +1217,6 @@ async fn model_create(
     org: OrgContext,
     Json(input): Json<AsrModelInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match models::create(&ctx, org.org.id, &input).await {
         Ok(row) => model_view(&ctx, &row, StatusCode::CREATED).await,
         Err(e) => model_error(e),
@@ -1267,7 +1237,6 @@ async fn model_create(
     responses(
         (status = 200, body = pnex_core::media_ingest::AsrModel),
         (status = 400, description = "`field-invalid` with machine tokens in `errors.fields`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Name already used (`asr-model-name-taken`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1279,7 +1248,6 @@ async fn model_update(
     Path(id): Path<Uuid>,
     Json(input): Json<AsrModelInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match models::update(&ctx, org.org.id, id, &input).await {
         Ok(row) => model_view(&ctx, &row, StatusCode::OK).await,
         Err(e) => model_error(e),
@@ -1305,7 +1273,6 @@ struct DeleteModelQuery {
     params(("id" = String, Path, format = "uuid", description = "Audio model UUID"), DeleteModelQuery),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Profiles use the model (`asr-model-in-use`, `errors.args.profiles`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1317,7 +1284,6 @@ async fn model_delete(
     Path(id): Path<Uuid>,
     Query(q): Query<DeleteModelQuery>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match models::delete(&ctx, org.org.id, id, q.force).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => model_error(e),
@@ -1337,7 +1303,6 @@ async fn model_delete(
     responses(
         (status = 200, body = pnex_core::media_ingest::AsrModel),
         (status = 400, description = "Not a supported audio model (`asr-model-unsupported`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-stream-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown audio model (`asr-model-not-found`)", body = crate::openapi::ErrorDetail),
         (status = 422, description = "No runtime for this model family (`asr-runtime-unavailable`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1348,7 +1313,6 @@ async fn model_check(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let row = match models::find(&ctx.db, org.org.id, id).await {
         Ok(row) => row,
         Err(e) => return model_error(e),

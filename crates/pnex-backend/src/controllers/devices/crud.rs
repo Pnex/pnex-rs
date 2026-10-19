@@ -234,7 +234,7 @@ pub(super) async fn list(
     let caps = capabilities_of(&ctx.db, &pd_ids).await?;
     // Device credentials only go to roles that provision devices (SEC-8):
     // a viewer gets no token / key.
-    let tokens: HashMap<i64, device_tokens::Model> = if org.can_write() {
+    let tokens: HashMap<i64, device_tokens::Model> = if org.can("devices:write") {
         device_tokens::Entity::find()
             .filter(device_tokens::Column::DeviceRegistryId.is_in(device_pks.clone()))
             .all(&ctx.db)
@@ -366,12 +366,6 @@ pub(super) async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateDevice>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DEVICE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage devices.",
-        ));
-    }
     let device_id = params.device_id.trim().to_string();
     if device_id.is_empty() {
         return Ok(field_error("device_id", err_codes::FIELD_REQUIRED));
@@ -654,7 +648,7 @@ pub(super) async fn detail(
     };
     let mut dto = device_full(&ctx.db, device).await?;
     // Same credential rule as the list (SEC-8).
-    if !org.can_write() {
+    if !org.can("devices:write") {
         dto.device_token = None;
     }
     format::json(dto)
@@ -681,12 +675,6 @@ pub(super) async fn delete(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DEVICE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage devices.",
-        ));
-    }
     let Some(device) = find_device(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

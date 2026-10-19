@@ -4,7 +4,7 @@ title: Time ranges (shows, segments, shifts)
 kind: feature
 pages: 
 nodes: range_upsert
-err_codes: time-range-not-found, time-range-write-forbidden, time-range-import-too-large, time-range-import-invalid, time-range-scope-unknown
+err_codes: access-denied, time-range-not-found, time-range-import-too-large, time-range-import-invalid, time-range-scope-unknown
 tools: 
 tags: ranges, timeline, frise, plages, time range, plage horaire, show, émission, programme, schedule, grille, epg, ics, icalendar, csv, import, planned, actual, prévu, réel, recalage, shift, poste, icy, stream title, metadata, métadonnées
 ---
@@ -22,7 +22,7 @@ A time range is a named interval of a stream (or of the whole organization): a w
 - A file over 1 MiB or 5000 rows is refused (*time-range-import-too-large*); a file that is neither a CSV with a `label` column nor an iCalendar file is refused (*time-range-import-invalid*).
 - The source link must start with `http://` or `https://`, otherwise the range is refused.
 - Deploying a flow whose Time range writer targets a deleted stream, or a stream of another organization, is refused (*time-range-scope-unknown*): pick the stream again in the node.
-- Viewers see the ranges but cannot change them (*time-range-write-forbidden*).
+- Viewers see the ranges but cannot change them (*access-denied*).
 - Radio streams (icecast) that announce the current song or show title in the stream itself are recorded too: each title change is kept as an event of the stream. It is not a range by itself: a flow decides what becomes one.
 - Statistics per range: add a **Bars per range / slice** widget to a dashboard (Charts group), pick the series and **Time ranges of a stream** (see the dashboards card).
 - Not available yet: TV program guides (EPG from a tuner) and XMLTV schedules.

@@ -228,7 +228,7 @@ const PERSON_COLORS: [&str; 6] = [
 #[component]
 pub fn MediaReview(id: String) -> Element {
     let navigator = use_navigator();
-    let can_write = crate::state::org::current_can_write();
+    let can_write = crate::state::access::can("media:write");
     let mut run = use_signal(|| None::<String>);
     let mut reload = use_signal(|| 0u32);
     let mut pos_ms = use_signal(|| 0i64);

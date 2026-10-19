@@ -23,7 +23,7 @@ pub fn Sites() -> Element {
     let mut pinned = use_signal(|| None::<PreviewTarget>);
     let mut creating = use_signal(|| false);
     let navigator = use_navigator();
-    let can_write = crate::state::org::current_can_write();
+    let can_write = crate::state::access::can("pois:write");
 
     // Deep link (location breadcrumb, global search): consume the requested
     // site once (the guard keeps the effect from re-arming).

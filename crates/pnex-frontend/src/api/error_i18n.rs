@@ -35,6 +35,27 @@ fn json_to_args(args: Option<&serde_json::Value>) -> Option<fluent::FluentArgs<'
     Some(out)
 }
 
+/// `access-denied` names a permission (`service:verb`, iam.md §8): add its
+/// localized `service` and `action` (`iam-service-*`, `iam-verb-*`; the raw
+/// parts when a key is missing). Other codes keep their args.
+fn with_access_labels(code: &str, args: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+    let mut args = args.cloned();
+    if code != err_codes::ACCESS_DENIED {
+        return args;
+    }
+    let obj = args.as_mut()?.as_object_mut()?;
+    let (service, verb) = obj.get("permission")?.as_str()?.split_once(':')?;
+    let (service, verb) = (service.replace('.', "-"), verb.to_string());
+    let i18n = i18n();
+    let label =
+        |key: String, raw: &str| i18n.try_translate(&key).unwrap_or_else(|_| raw.to_string());
+    let service_label = label(format!("iam-service-{service}"), &service);
+    let action_label = label(format!("iam-verb-{verb}"), &verb);
+    obj.insert("service".into(), service_label.into());
+    obj.insert("action".into(), action_label.into());
+    args
+}
+
 /// Non-panicking translation with optional JSON args; degrades to the raw
 /// key when the translation fails (missing key, missing arg, …). Render
 /// scope required (uses the i18n context).
@@ -95,9 +116,10 @@ pub fn localize(err: &ApiError) -> String {
         return localize_field(&field, &value);
     }
     match err.code.as_deref() {
-        Some(code) if err_codes::exists(code) => {
-            resolve(&err_codes::fluent_key(code), err.args.as_ref())
-        }
+        Some(code) if err_codes::exists(code) => resolve(
+            &err_codes::fluent_key(code),
+            with_access_labels(code, err.args.as_ref()).as_ref(),
+        ),
         _ => err.message.clone(),
     }
 }
@@ -133,7 +155,8 @@ pub fn localize_code(code: &str, args: Option<&serde_json::Value>, fallback: &st
     if !err_codes::exists(code) {
         return fallback.to_owned();
     }
-    let fluent_args = json_to_args(args);
+    let args = with_access_labels(code, args);
+    let fluent_args = json_to_args(args.as_ref());
     i18n()
         .try_translate_with_args(&err_codes::fluent_key(code), fluent_args.as_ref())
         .unwrap_or_else(|_| fallback.to_owned())
@@ -156,7 +179,8 @@ pub fn localize_tool_summary(
         (_, Some(key)) if key.starts_with("ai-trace-") => key.to_owned(),
         _ => return summary.to_owned(),
     };
-    let fluent_args = json_to_args(args);
+    let args = code.map_or_else(|| args.cloned(), |c| with_access_labels(c, args));
+    let fluent_args = json_to_args(args.as_ref());
     i18n()
         .try_translate_with_args(&key, fluent_args.as_ref())
         .unwrap_or_else(|_| summary.to_owned())

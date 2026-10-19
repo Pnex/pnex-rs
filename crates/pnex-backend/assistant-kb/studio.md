@@ -4,7 +4,7 @@ title: Studio (3D tours)
 kind: feature
 pages: /studio
 nodes: 
-err_codes: tour-write-forbidden, tour-publish-forbidden, tour-share-forbidden, tour-version-conflict, tour-not-published
+err_codes: access-denied, tour-version-conflict, tour-not-published
 tools: 
 tags: studio, tour, visite virtuelle, virtual tour, 360, panorama, floor plan, plan, hotspot, scene, share, public link, lien public
 ---

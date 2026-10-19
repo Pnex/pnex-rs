@@ -8,7 +8,8 @@
 //! renvoyée au modèle (qui s'excuse et se corrige).
 //!
 //! Chaque outil est scoping org via `ToolDeps.org_id` (jamais de paramètre
-//! org côté modèle) et les outils d'écriture re-vérifient `can_write`.
+//! org côté modèle); every tool first needs its permission of the IAM
+//! registry (`pnex_api_contract::iam::TOOLS`), checked by the engine.
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
@@ -25,8 +26,9 @@ pub struct ToolDeps<'a> {
     pub db: &'a DatabaseConnection,
     /// Org du membre qui parle à l'assistant (scoping systématique).
     pub org_id: i64,
-    /// `OrgContext::can_write()` — requis par les outils d'écriture.
-    pub can_write: bool,
+    /// What the member holds in the org: the engine checks each tool's
+    /// registry permission against it before running the tool (iam.md D291).
+    pub grants: crate::services::iam::Grants,
     /// Auteur tracé dans `flow_versions.author`.
     pub author: Option<String>,
     /// Client O2 résolu (`None` = télémétrie dégradée).
@@ -72,17 +74,34 @@ impl From<&str> for ToolError {
     }
 }
 
-/// Role guard of every writing tool, re-checked server side (R2): a viewer
-/// gets a coded refusal the UI renders in the user's language.
-pub(super) fn require_write(deps: &ToolDeps<'_>) -> Result<(), ToolError> {
-    if deps.can_write {
+/// Engine decision for a tool (iam.md D291): the permission the registry
+/// gives it, against the member's role. A refusal is coded so the UI
+/// renders it in the user's language.
+fn authorize_tool(deps: &ToolDeps<'_>, name: &str) -> Result<(), ToolError> {
+    let Some(Some(permission)) = pnex_api_contract::iam::tool(name) else {
+        return Ok(());
+    };
+    if deps.grants.can(permission) {
         return Ok(());
     }
+    if let Some(user_id) = deps.actor.as_ref().and_then(|a| a.user_id) {
+        crate::services::iam::audit::submit(crate::services::iam::audit::Entry {
+            org_id: deps.org_id,
+            user_id,
+            service_account_id: None,
+            operation: format!("tool:{name}"),
+            permission: permission.to_string(),
+            allowed: false,
+            status: 0,
+            origin: "assistant",
+        });
+    }
     Err(ToolError {
-        message: "owner, admin or member role required: the assistant cannot change this for you"
-            .to_string(),
-        code: Some(pnex_core::err_codes::AI_WRITE_FORBIDDEN),
-        args: None,
+        message: format!(
+            "the user's role does not grant the {permission} permission: the assistant cannot do this for them"
+        ),
+        code: Some(pnex_core::err_codes::ACCESS_DENIED),
+        args: Some(json!({ "permission": permission })),
     })
 }
 
@@ -561,6 +580,7 @@ pub async fn execute(
     name: &str,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
+    authorize_tool(deps, name)?;
     match name {
         "list_devices" => list_devices(deps).await,
         "get_device_pins" => get_device_pins(deps, args).await,
@@ -1494,7 +1514,6 @@ fn validate_calc_expression(args: &Value) -> Result<ToolOutcome, ToolError> {
 // ─────────────────── Outils d'écriture (drafts uniquement) ───────────────────
 
 async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let name = arg_str(args, "name")?;
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
         .map_err(|e| format!("unreadable graph (FlowGraph expected): {e}"))?;
@@ -1523,7 +1542,6 @@ async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, T
 }
 
 async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let flow_id = arg_i64(args, "flow_id")?;
     let expected_version = arg_i64(args, "expected_version")?;
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
@@ -1718,7 +1736,9 @@ mod tests {
         let deps = ToolDeps {
             db: &db,
             org_id: 1,
-            can_write: true,
+            grants: crate::services::iam::Grants::managed(
+                &crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Owner,
+            ),
             author: None,
             o2: None,
             config: None,

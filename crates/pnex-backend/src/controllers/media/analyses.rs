@@ -75,13 +75,12 @@ pub(super) async fn analyses(
     tag = "media",
     operation_id = "media_analyses_start",
     summary = "Start analyses on a media asset",
-    description = "(Re)launches the given steps on the current version, asynchronously: `index` (text search) or `summarize` (summary written to a page by the organisation's LLM, which consumes LLM quota). Steps over the large-call threshold need `confirm_large`. Owner/admin only.",
+    description = "(Re)launches the given steps on the current version, asynchronously: `index` (text search) or `summarize` (summary written to a page by the organisation's LLM, which consumes LLM quota). Steps over the large-call threshold need `confirm_large`. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     request_body = pnex_core::media_analysis::StartAnalyses,
     responses(
         (status = 202, description = "Steps queued; returns the new state", body = MediaAnalysesState),
         (status = 400, description = "Step not offered for this kind, or large step not confirmed (`media-analysis-step-invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or no current version", body = crate::openapi::ErrorDetail),
         (status = 409, description = "No LLM configured for the organisation (`media-analysis-no-llm`), no valid transcription profile (`media-analysis-no-asr`), no ready voice profile (`media-analysis-no-voice-profile`), no valid detection model (`media-analysis-no-detector`), or a step already running, or another transcription of the organisation (`media-analysis-busy`)", body = crate::openapi::ErrorDetail)
     ),
@@ -93,12 +92,6 @@ pub(super) async fn start_analyses(
     Path(id): Path<Uuid>,
     Json(input): Json<pnex_core::media_analysis::StartAnalyses>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

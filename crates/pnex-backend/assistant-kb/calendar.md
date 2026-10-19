@@ -4,7 +4,7 @@ title: Calendar — maintenance plans and their occurrences
 kind: feature
 pages: /calendar
 nodes: range_upsert
-err_codes: time-range-not-found, time-range-write-forbidden
+err_codes: access-denied, time-range-not-found
 tools: list_calendar, propose_occurrence_change, create_object, update_object
 tags: calendar, calendrier, agenda, planning, planification, maintenance plan, plan de maintenance, préventif, preventive, gmao, cmms, recurrence, récurrence, periodicity, périodicité, every, tous les, floating, flottant, fixed, fixe, occurrence, late, en retard, overdue, done, réalisé, cancel, annuler, move, déplacer, reschedule, replanifier, work order, ordre de travail, intervention
 ---
@@ -39,6 +39,6 @@ Colours: blue planned, amber **to prepare**, red **late** (its end has passed an
 Ask for example "what maintenance is late?" or "plan a greasing of pump P12 every 3 months". The assistant reads the calendar, creates or updates plans, and **proposes** a change to an occurrence (done, move, cancel): a *Review* button under its answer opens the same dialog, and you apply it.
 
 ## Good to know
-- Viewers read the calendar but change nothing (*time-range-write-forbidden*).
+- Viewers read the calendar but change nothing (*access-denied*).
 - Flows can add ranges too (node *Time range writer*), for example a corrective job opened by an anomaly; they show in the same calendar.
 - The calendar never starts or stops a machine. To act at the start of a job, run the type's action (for example *Start maintenance* on a pump): a deployed flow decides what happens.

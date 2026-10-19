@@ -30,7 +30,7 @@ use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_LABEL, INPUT,
     PANEL,
 };
-use crate::state::{org, toasts};
+use crate::state::toasts;
 use crate::util::sleep;
 
 use super::picker::PhotoPicker;
@@ -92,7 +92,7 @@ struct SaveState {
 #[component]
 pub fn LabProjectPage(id: String) -> Element {
     let pid = id.clone();
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("lab:write");
     let mut reload = use_signal(|| 0u32);
     let mut images = use_signal(Vec::<LabImage>::new);
     let mut loaded = use_signal(|| false);

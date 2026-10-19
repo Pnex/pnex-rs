@@ -135,12 +135,11 @@ pub(super) async fn index_state(
     tag = "media",
     operation_id = "media_index_rebuild",
     summary = "Re-index a document for search",
-    description = "Queues text extraction and indexing of the current version (documents and tables only). Asynchronous: poll `GET /api/v1/media/{id}/index`. Owner/admin only.",
+    description = "Queues text extraction and indexing of the current version (documents and tables only). Asynchronous: poll `GET /api/v1/media/{id}/index`. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     responses(
         (status = 202, description = "Indexing queued"),
         (status = 400, description = "Not a document or table, or no version (`media-index-not-a-document`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -150,12 +149,6 @@ pub(super) async fn reindex(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

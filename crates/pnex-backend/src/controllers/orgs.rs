@@ -650,8 +650,10 @@ async fn add_member(
         ));
     }
 
+    // A service account is never a member (iam.md §7): unknown here.
     let Some(target) = users::Entity::find()
         .filter(users::Column::Email.eq(params.email.trim()))
+        .filter(users::Column::IsService.eq(false))
         .one(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?
@@ -878,6 +880,10 @@ async fn remove_member(
         .await
         .map_err(|_| Error::InternalServerError)?;
     crate::services::ai::conversations::delete_all(&txn, user_id, org_id)
+        .await
+        .map_err(|_| Error::InternalServerError)?;
+    // Their teams and roles in this org go too (iam.md D286).
+    crate::services::iam::store::forget_member(&txn, org_id, user_id)
         .await
         .map_err(|_| Error::InternalServerError)?;
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
