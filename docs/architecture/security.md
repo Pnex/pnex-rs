@@ -51,10 +51,14 @@ attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
   (JWT + `X-Org-Id` + appartenance vérifiée) ou le jeton device sont les
   seules sources de `org_id` / `device_id`. Toute requête par id filtre
   `OrgId = org.org.id` ; cross-org = **404 uniforme**.
-- **R2 — Chaque handler d'écriture commence par sa garde de rôle**
-  (`can_write`, `can_administer`, `can_manage_secrets`, `PlatformAdmin`).
-  Un nouvel endpoint mutateur sans garde = refus de revue. Un test de
-  régression viewer → 403 accompagne toute route d'écriture nouvelle.
+- **R2 — Chaque opération déclare sa permission au registre IAM**
+  (`pnex-api-contract/src/iam.rs`, garde `tests/iam.rs`) ; l'extracteur
+  `OrgContext` l'applique avant le handler (403 `access-denied`,
+  `iam.md` D291). Les gardes de rôle des handlers (`can_write`,
+  `can_administer`, `can_manage_secrets`, `PlatformAdmin`) restent en
+  défense en profondeur jusqu'à leur retrait. Un nouvel endpoint sans
+  entrée au registre = test rouge ; un test de régression « principal
+  sans la permission → 403 » accompagne toute route d'écriture nouvelle.
 - **R3 — Les champs de locataire sont tamponnés par le serveur en dernier.**
   Aucune config fournie par l'utilisateur (nœud, graphe, payload) ne peut
   porter `pnex_org_id`, `pnex_o2_org`, `pnex_flow_id` ou un type `pnex-*`
@@ -143,6 +147,15 @@ attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
   build Debian ne sont jamais livrés. Un binaire tiers compilé hors cargo
   et copié dans une image (ffmpeg, archives sherpa-onnx) a sa source
   épinglée en sha256 dans le Dockerfile (`ADD --checksum`).
+- **R22 — Aucune permission `iam:*` ni plateforme pour un compte de
+  service** (`iam.md` D293) : un rôle personnalisé n'accorde ni ne retire
+  jamais `iam:*`, le rôle géré admin n'est jamais attribué à un compte de
+  service, et l'extracteur refuse `iam` à une clé d'accès ; les
+  extracteurs humains (`AuthUser`, `PlatformAdmin`) refusent toute clé.
+- **R23 — Secret de clé d'accès** : 32 octets d'un CSPRNG, préfixe
+  `pnex_sk_`, montré une seule fois, stocké en sha256 seulement (jamais
+  relu), expiration obligatoire (366 jours au plus), révocation effective
+  à l'appel suivant (`services/iam/service.rs`).
 
 ## 4. Bons motifs existants (à imiter)
 
@@ -176,8 +189,9 @@ attaquant anonyme qui s'inscrit le peut aussi. La frontière qui compte est
 Avant chaque commit touchant du code, parcourir le diff avec cette grille
 (et lancer `/security-review` avant merge d'une branche) :
 
-1. **Nouvelle route ?** Garde d'auth + rôle (R2), org depuis le principal
-   (R1), test viewer → 403 / cross-org → 404.
+1. **Nouvelle route ?** Garde d'auth, permission inscrite au registre IAM
+   (R2), org depuis le principal (R1), test sans la permission → 403 /
+   cross-org → 404.
 2. **Nouvelle donnée renvoyée ?** Pas d'identifiant d'accès ni de secret
    (R4, R16).
 3. **Nouveau nœud / type de flow / champ de config ?** Liste blanche

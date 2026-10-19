@@ -1001,7 +1001,7 @@ ArtCraft, Zennotes, **Reticulum** (licence non OSI ; le transport M2M
 reste celui de `m2m-resilient.md` : zenoh-pico + OpenThread, tout open
 source — pas de discussion).
 
-### P2.25 — Gestion des accès (IAM) et comptes de service (ajout 2026-10-18) — **PRD en étude**
+### P2.25 — Gestion des accès (IAM) et comptes de service (ajout 2026-10-18) — **en cours : I0–I3, I6 (lecture seule) et I7 (première version) livrés 2026-10-19**
 
 `iam.md`, D285–D299 : moteur d'autorisation unique (rôles gérés = rôles
 actuels, rôles personnalisés, équipes, attributions à portée), registre
@@ -1010,7 +1010,10 @@ l'ontologie (rouvre D188), puis comptes de service et clés d'accès pour
 les applications externes (usage serveur). Lots I0 → I7 ; chemin court
 vers les comptes de service : I0, I1, I3, I4 restreint, I6, géré par la
 CLI `pnex` ; page Accès ensuite (I7). Jamais par le MCP (2026-10-19).
-Toutes les questions tranchées le 2026-10-19 (§14) ; reste la validation finale.
+Toutes les questions tranchées le 2026-10-19 (§14). Avancement : `iam.md` §16
+(registre gardé, moteur basculé, gardes R2 retirées, rôles personnalisés,
+équipes, attributions, comptes de service et clés d'accès en lecture seule ;
+gestion par la CLI `pnex` et la page Réglages › Accès). Restent I4, I5.
 
 ### P2.26 — Veille de réseaux de partenaires : briques pour un SaaS tiers (ajout 2026-10-19) — **proposition, rien d'implémenté**
 
