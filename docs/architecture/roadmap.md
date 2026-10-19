@@ -1012,6 +1012,20 @@ vers les comptes de service : I0, I1, I3, I4 restreint, I6, géré par la
 CLI `pnex` ; page Accès ensuite (I7). Jamais par le MCP (2026-10-19).
 Toutes les questions tranchées le 2026-10-19 (§14) ; reste la validation finale.
 
+### P2.26 — Veille de réseaux de partenaires : briques pour un SaaS tiers (ajout 2026-10-19) — **proposition, rien d'implémenté**
+
+`partner-watch.md`, D300–D316. Déclencheur : Quali-Watch (dépôt
+`pnex-quali-watch`), SaaS pour organismes certificateurs, dont PNEX est le
+moteur sans en être l'interface. Briques génériques : imports déclaratifs
+et synchros planifiées vers l'ontologie (Excel, open data, API), propriété
+unique, extension de type par pack, pack `entreprises_fr` (établissement =
+`map_pin`, dirigeants par lien temporel) et vue Hiérarchie sur liens,
+mission `crawl_site` et registre `site_pages`, preuve horodatée (capture
+pleine page + HTML + chaîne d'empreintes), diff de versions, nœuds de flow
+ontologie, e-mail à destinataire dynamique, webhook HMAC, compte de service
+en écriture bornée. Lots PW0 → PW8 ; PW0–PW3 sans attendre l'IAM, PW7
+après les comptes de service (P2.25).
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1351,3 +1365,10 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (CycloneDX, SPDX), VEX, SARIF, scans et qualité du code ingérés et reliés
   à l'ontologie, SBOM par build firmware, état des pipelines CI/CD, builds,
   couverture et rapports de tests ; rien d'implémenté.
+- **2026-10-19 (veille de réseaux)** — Ajout de P2.26 (`partner-watch.md`,
+  D300–D316) pour porter Quali-Watch : imports et synchros vers
+  l'ontologie, crawl de site et preuves horodatées, nœuds ontologie,
+  relances par e-mail, SaaS tiers sur compte de service. Amende D254 et
+  l'amendement L1 de D261 (`extension-collector.md`), D190 (`ontology.md`) ;
+  question ouverte à `iam.md` §14 (compte de service qui écrit). Rien
+  d'implémenté.
