@@ -354,8 +354,12 @@ fn now_ms() -> i64 {
 /// fresh workspace instead of keeping the previous case's state.
 #[component]
 pub fn CaseWorkspace(id: String) -> Element {
+    // A key on a lone root node does not remount it (Dioxus 0.7): only a
+    // keyed list does, so going to another case starts afresh.
     rsx! {
-        CaseWorkspaceOf { key: "{id}", id: id.clone() }
+        for id in std::iter::once(id) {
+            CaseWorkspaceOf { key: "{id}", id: id.clone() }
+        }
     }
 }
 
