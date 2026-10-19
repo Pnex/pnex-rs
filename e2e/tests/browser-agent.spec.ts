@@ -19,12 +19,14 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'pnex-ext-'));
     writeFileSync(path.join(dir, 'ext.zip'), await api.download('/extension/download'));
     execFileSync('unzip', ['-q', path.join(dir, 'ext.zip'), '-d', path.join(dir, 'ext')]);
-    // Headless Chromium denies every permission prompt: localhost (server and
-    // test page) is granted up front, as the operator's "Allow" click would.
+    // Headless Chromium denies every permission prompt: the server's origin
+    // and localhost (the test page) are granted up front, as the operator's
+    // "Allow" click would.
     const manifest = path.join(dir, 'ext', 'manifest.json');
+    const granted = ['http://localhost/*', `${new URL(BASE_URL).origin}/*`];
     writeFileSync(
       manifest,
-      JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), host_permissions: ['http://localhost/*'] }),
+      JSON.stringify({ ...JSON.parse(readFileSync(manifest, 'utf8')), host_permissions: granted }),
     );
 
     // The page the missions read, on localhost (the server's host, allowed at
@@ -41,7 +43,9 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
       // The headless shell loads no extension: full Chromium, new headless.
       channel: 'chromium',
       headless: true,
-      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`],
+      // Behind the local TLS edge the certificate is self-signed.
+      ignoreHTTPSErrors: true,
+      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--ignore-certificate-errors'],
     });
     const created: string[] = [];
     const before = new Set((await api.get('/extension/agents?limit=100')).results.map((a: { id: number }) => a.id));
