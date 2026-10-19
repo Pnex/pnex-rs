@@ -363,9 +363,10 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
     await api.post(`/cases/${c.id}/attach`, { object_id: gate.id });
     await app.goto(`/cases/${c.id}`);
     const host = 'cw-graph-sigma';
-    const placed = () =>
-      page.evaluate((h) => JSON.parse((window as any).pnexGraph?.positions(h) ?? '{}'), host);
-    await expect.poll(async () => Object.keys(await placed()).length).toBe(3);
+    // Drawn, not saved: a node without links sits in the side column, out of positions().
+    const drawn = (id: string) =>
+      page.evaluate(([h, i]) => JSON.parse((window as any).pnexGraph?.screenPos(h, i) ?? 'null') !== null, [host, id]);
+    for (const o of [yard, gate]) await expect.poll(() => drawn(o.id)).toBe(true);
     const members = async () => {
       const w = await api.get(`/cases/${c.id}/workspace`);
       return [
@@ -384,7 +385,7 @@ test.describe('cases', { tag: ['@cases', '@i18n'] }, () => {
       }).toPass();
       await remove.click();
       await expect.poll(members).not.toContain(o.id);
-      await expect.poll(async () => Object.keys(await placed())).not.toContain(o.id);
+      await expect.poll(() => drawn(o.id)).toBe(false);
     }
   });
 

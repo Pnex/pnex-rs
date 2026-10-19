@@ -61,6 +61,9 @@ test.describe('mcp oauth', { tag: ['@mcp'] }, () => {
         data: { jsonrpc: '2.0', id: 1, method: 'ping' },
       });
 
+    // The 401 challenge and the metadata need the https edge (one public origin for app and issuer).
+    const info = await (await request.get(`${BASE_URL}/api/v1/meta/version`)).json();
+    test.skip(!info.origin, 'no public https origin (plain http stack): no MCP sign-in to discover');
     const anonymous = await request.post(`${BASE_URL}/api/v1/mcp`, { data: { jsonrpc: '2.0', id: 1, method: 'ping' } });
     expect(anonymous.status()).toBe(401);
     const metadataUrl = anonymous.headers()['www-authenticate'].match(/resource_metadata="([^"]+)"/)![1];
