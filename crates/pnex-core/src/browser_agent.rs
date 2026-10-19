@@ -347,6 +347,322 @@ pub enum MissionSpec {
     CollectPage(CollectPageParams),
     FollowAccount(FollowAccountParams),
     WatchLive(WatchLiveParams),
+    CrawlSite(CrawlSiteParams),
+    /// Created by the server only (D308): one proof of one page.
+    CaptureProof(CaptureProofParams),
+}
+
+/// `capture_proof` (D308, D310): capture one page as a proof.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaptureProofParams {
+    pub url: String,
+    /// Registry page the proof is for.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub page_id: String,
+}
+
+/// The parts of a proof (D310), uploaded one by one, signed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum ProofPart {
+    /// Full-page PNG (scroll + visible-tab captures, stitched).
+    Screenshot,
+    /// Rendered DOM, scripts, frames and handlers removed: download only.
+    Html,
+    /// A [`PageSnapshot`] (url after redirects, title, readable text).
+    Text,
+}
+
+impl ProofPart {
+    pub fn wire(self) -> &'static str {
+        match self {
+            Self::Screenshot => "screenshot",
+            Self::Html => "html",
+            Self::Text => "text",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        serde_json::from_value(serde_json::Value::String(raw.into())).ok()
+    }
+
+    pub const ALL: [ProofPart; 3] = [Self::Screenshot, Self::Html, Self::Text];
+}
+
+/// Tallest full-page capture, CSS pixels (D310).
+pub const PROOF_HEIGHT_MAX: u32 = 20_000;
+/// Largest screenshot part, bytes.
+pub const PROOF_SCREENSHOT_MAX: usize = 25 * 1024 * 1024;
+/// Largest HTML part, bytes.
+pub const PROOF_HTML_MAX: usize = 5 * 1024 * 1024;
+
+/// Message the install key signs to upload a part of a proof.
+pub fn proof_upload_message(
+    device_id: &str,
+    ts_ms: i64,
+    mission_id: &str,
+    part: ProofPart,
+    body_sha256: &str,
+) -> String {
+    format!(
+        "pnex-ext-proof\n{device_id}\n{ts_ms}\n{mission_id}\n{}\n{body_sha256}",
+        part.wire()
+    )
+}
+
+/// Answer of a proof part upload: the proof, sealed once its parts are in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProofPartStored {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub proof_id: String,
+    pub sealed: bool,
+}
+
+/// A web proof (D310): its parts and, once sealed, its manifest and the
+/// place it holds in the org's chain of manifests.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct WebProof {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    #[cfg_attr(feature = "openapi", schema(format = Int64))]
+    pub seq: i64,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub site_page_id: Option<String>,
+    /// `open` (parts arriving) or `sealed`.
+    pub state: String,
+    /// `{part: {media_id, sha256, bytes}}`.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub parts: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub manifest: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub captured_at: Option<String>,
+}
+
+/// `GET …/proofs/verify`: the org's chain of manifests recomputed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProofChainCheck {
+    pub ok: bool,
+    /// Sealed proofs checked.
+    #[cfg_attr(feature = "openapi", schema(format = Int64))]
+    pub count: i64,
+    /// First proof whose manifest, parts or link to the previous one does
+    /// not hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = Int64))]
+    pub broken_at: Option<i64>,
+}
+
+/// A page a browser agent read while crawling a site (D307, agent
+/// executor), sent signed like a page capture.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SitePageReport {
+    pub mission_id: String,
+    pub url: String,
+    #[serde(default)]
+    pub title: String,
+    pub text: String,
+    #[serde(default)]
+    pub depth: u32,
+}
+
+/// End of an agent crawl: the pages it read; a complete walk counts the
+/// missing ones (`gone` after two).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CrawlDone {
+    pub mission_id: String,
+    pub urls: Vec<String>,
+    pub complete: bool,
+}
+
+/// A page of the site registry (D309).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SitePage {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub mission_id: Option<String>,
+    pub site: String,
+    pub url: String,
+    pub title: String,
+    pub depth: u32,
+    /// `listed` | `relevant` | `captured` | `gone` | `blocked`.
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_code: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub first_seen_at: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub last_seen_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_hash: Option<String>,
+    /// Crawls in a row without the page.
+    pub misses: i32,
+    /// Document holding the versions of its text (relevant pages).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub doc_asset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub last_proof_id: Option<String>,
+    /// Object written by the mission's `record`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub object_id: Option<String>,
+}
+
+/// Who walks a site (D307): the server (public pages, no script run) or a
+/// browser agent (pages rendered by JavaScript, the D258 pace).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CrawlExecutor {
+    #[default]
+    Server,
+    Agent,
+}
+
+/// How a relevance rule reads the page text (closed list, D307).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum MatchKind {
+    /// A word, case and accents ignored.
+    Word,
+    /// A phrase, case and accents ignored.
+    Phrase,
+    /// A bounded regular expression (size-limited, no backreference).
+    Regex,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Matcher {
+    pub kind: MatchKind,
+    pub value: String,
+}
+
+/// Registry fields a crawl may write on objects (D309).
+pub const RECORD_FIELDS: [&str; 7] = [
+    "url",
+    "title",
+    "first_seen",
+    "last_seen",
+    "text_hash",
+    "relevant",
+    "state",
+];
+
+/// Relevant pages written as objects of an org type: registry field →
+/// property key (`url` → the type's unique property). Optional link of
+/// each page object to one object (its site).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PageRecord {
+    #[serde(rename = "type")]
+    pub type_key: String,
+    pub properties: std::collections::BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub link_to: Option<String>,
+    /// Link type from the page object to each part of its proofs (D310),
+    /// with `captured_at`, `sha256_manifest` and `kind` (`capture`, `html`,
+    /// `text`) when the link type declares them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_link: Option<String>,
+}
+
+/// `crawl_site` (D307): walk one declared site, list its pages, keep the
+/// relevant ones (and their proofs, D308).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CrawlSiteParams {
+    /// Any address of the site: its origin bounds the walk.
+    pub url: String,
+    #[serde(default)]
+    pub executor: CrawlExecutor,
+    /// Pages per crawl (default 200, at most 2,000).
+    #[serde(default = "crawl_pages_default")]
+    pub max_pages: u32,
+    /// Link depth from the entry points (default and at most 5).
+    #[serde(default = "crawl_depth_default")]
+    pub max_depth: u32,
+    /// Path prefixes never visited (`/blog/`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exclude: Vec<String>,
+    /// A page matching any rule is relevant; none = every page is.
+    #[serde(default, rename = "match", skip_serializing_if = "Vec::is_empty")]
+    pub matchers: Vec<Matcher>,
+    /// Relevant pages new or changed get a proof by an agent (D308).
+    #[serde(default = "yes")]
+    pub proofs: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record: Option<PageRecord>,
+}
+
+pub const CRAWL_PAGES_DEFAULT: u32 = 200;
+pub const CRAWL_PAGES_MAX: u32 = 2_000;
+pub const CRAWL_DEPTH_MAX: u32 = 5;
+/// Server crawl floor between two requests to one host (compiled, D307).
+pub const CRAWL_DELAY_MS: u64 = 2_000;
+pub const MATCHERS_MAX: usize = 50;
+pub const MATCH_VALUE_MAX: usize = 200;
+
+fn crawl_pages_default() -> u32 {
+    CRAWL_PAGES_DEFAULT
+}
+
+fn crawl_depth_default() -> u32 {
+    CRAWL_DEPTH_MAX
+}
+
+/// Lower case, accents dropped (relevance reads "Éligible" as "eligible").
+pub fn fold(text: &str) -> String {
+    text.chars()
+        .flat_map(char::to_lowercase)
+        .map(|c| match c {
+            'à' | 'â' | 'ä' | 'á' | 'ã' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' | 'í' => 'i',
+            'ô' | 'ö' | 'ó' | 'õ' => 'o',
+            'ù' | 'û' | 'ü' | 'ú' => 'u',
+            'ç' => 'c',
+            'ÿ' => 'y',
+            '\u{2019}' => '\'',
+            c => c,
+        })
+        .collect()
+}
+
+/// `https://host[:port]` of a site address.
+pub fn site_origin(raw: &str) -> Option<String> {
+    let u = url::Url::parse(raw.trim()).ok()?;
+    let host = u.host_str()?.to_ascii_lowercase();
+    if !matches!(u.scheme(), "http" | "https") || !u.username().is_empty() || u.password().is_some()
+    {
+        return None;
+    }
+    Some(match u.port() {
+        Some(p) => format!("{}://{host}:{p}", u.scheme()),
+        None => format!("{}://{host}", u.scheme()),
+    })
 }
 
 /// `watch_live` (D260): record a live page while it is on air, in parts
@@ -388,6 +704,8 @@ impl MissionSpec {
             Self::CollectPage(_) => "collect_page",
             Self::FollowAccount(_) => "follow_account",
             Self::WatchLive(_) => "watch_live",
+            Self::CrawlSite(_) => "crawl_site",
+            Self::CaptureProof(_) => "capture_proof",
         }
     }
 }
@@ -584,6 +902,56 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
             };
             Ok((MissionSpec::WatchLive(WatchLiveParams { url }), target))
         }
+        // Proofs are asked by the server (D308), never created by hand.
+        MissionSpec::CaptureProof(_) => Err(field("spec.kind", err_codes::FIELD_INVALID)),
+        MissionSpec::CrawlSite(p) => {
+            let f = |k: &str| format!("spec.params.{k}");
+            let origin =
+                site_origin(&p.url).ok_or_else(|| field(&f("url"), err_codes::FIELD_INVALID))?;
+            if p.max_pages == 0 || p.max_pages > CRAWL_PAGES_MAX {
+                return Err(field(&f("max_pages"), err_codes::FIELD_INVALID));
+            }
+            if p.max_depth == 0 || p.max_depth > CRAWL_DEPTH_MAX {
+                return Err(field(&f("max_depth"), err_codes::FIELD_INVALID));
+            }
+            if p.exclude.len() > 20
+                || p.exclude
+                    .iter()
+                    .any(|x| !x.starts_with('/') || x.len() > 255)
+            {
+                return Err(field(&f("exclude"), err_codes::FIELD_INVALID));
+            }
+            if p.matchers.len() > MATCHERS_MAX
+                || p.matchers
+                    .iter()
+                    .any(|m| m.value.trim().is_empty() || m.value.chars().count() > MATCH_VALUE_MAX)
+            {
+                return Err(field(&f("match"), err_codes::FIELD_INVALID));
+            }
+            if let Some(r) = &p.record {
+                let known = |k: &str| RECORD_FIELDS.contains(&k);
+                if !crate::ontology::schema::valid_key(&r.type_key)
+                    || !r.properties.contains_key("url")
+                    || r.properties.keys().any(|k| !known(k))
+                    || r.properties
+                        .values()
+                        .any(|v| !crate::ontology::schema::valid_key(v))
+                    || r.link_type.is_some() != r.link_to.is_some()
+                    || r.proof_link
+                        .as_deref()
+                        .is_some_and(|l| !crate::ontology::schema::valid_key(l))
+                    || r.link_to
+                        .as_deref()
+                        .is_some_and(|i| uuid::Uuid::parse_str(i).is_err())
+                {
+                    return Err(field(&f("record"), err_codes::FIELD_INVALID));
+                }
+            }
+            let mut out = p.clone();
+            out.url = origin.clone();
+            out.exclude = p.exclude.iter().map(|x| x.trim().to_string()).collect();
+            Ok((MissionSpec::CrawlSite(out), format!("web:site:{origin}")))
+        }
         MissionSpec::FollowAccount(p) => {
             let handle = p.handle.trim().trim_start_matches('@');
             let valid = !handle.is_empty()
@@ -628,7 +996,7 @@ pub fn is_metric_name(s: &str) -> bool {
 
 /// http(s) URL without credentials, fragment dropped; target
 /// `web:<host><path>` (one lease per page).
-fn check_page_url(raw: &str, f: &str) -> Result<(String, String), FieldError> {
+pub fn check_page_url(raw: &str, f: &str) -> Result<(String, String), FieldError> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Err(field(f, err_codes::FIELD_REQUIRED));

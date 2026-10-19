@@ -67,6 +67,10 @@ pub fn document_of(e: &NotifyDeliveryEntry, ts_us: i64) -> serde_json::Value {
     if let Some(d) = e.delivered {
         obj.insert("delivered".into(), d.into());
     }
+    // D313: a recipient read from a message is journaled hashed only.
+    if let Some(r) = &e.recipient_hash {
+        obj.insert("recipient_hash".into(), r.clone().into());
+    }
     doc
 }
 
@@ -403,8 +407,10 @@ mod tests {
             flow_id: Some(4),
             node_id: Some("n1".into()),
             delivered: None,
+            recipient_hash: Some("ab".repeat(32)),
         };
         let doc = document_of(&entry, 1_790_000_000_000_000);
+        assert_eq!(doc["recipient_hash"], "ab".repeat(32));
         assert!(doc.get("delivered").is_none());
         let back = delivery_of(&doc);
         assert_eq!(back.channel_id, entry.channel_id);

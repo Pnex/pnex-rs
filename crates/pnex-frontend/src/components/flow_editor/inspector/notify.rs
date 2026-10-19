@@ -15,6 +15,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
     // Copiés avant le move d'`initial` dans les signaux (école DebugForm).
     let strict = initial.strict;
     let attach_field = initial.attach_field.clone();
+    let to_field = initial.to_field.clone();
+    let cc_field = initial.cc_field.clone();
     let anti = initial.anti_spam;
     let mut channel_ids =
         use_signal::<Vec<String>>(|| initial.channel_ids.iter().map(|u| u.to_string()).collect());
@@ -282,6 +284,50 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                     },
                 }
                 p { class: "text-xs text-gray-500", {t!("flows-notify-attach-hint")} }
+            }
+
+            // ── recipient read from the message (D313) ──
+            label { class: "block space-y-1",
+                span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-to-field")} }
+                input {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    r#type: "text",
+                    value: "{to_field}",
+                    placeholder: "contact_email",
+                    disabled: !can_write,
+                    oninput: move |event| {
+                        let next = event.value();
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                    config.to_field = next;
+                                }
+                            },
+                        );
+                    },
+                }
+                p { class: "text-xs text-gray-500", {t!("flows-notify-to-field-hint")} }
+            }
+            label { class: "block space-y-1",
+                span { class: "text-xs font-medium text-gray-500", {t!("flows-notify-cc-field")} }
+                input {
+                    class: "w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm",
+                    r#type: "text",
+                    value: "{cc_field}",
+                    disabled: !can_write,
+                    oninput: move |event| {
+                        let next = event.value();
+                        patch_selected(
+                            &mut cx,
+                            move |node: &mut FlowNode| {
+                                if let FlowNodeKind::PnexNotify { config } = &mut node.kind {
+                                    config.cc_field = next;
+                                }
+                            },
+                        );
+                    },
+                }
             }
 
             // ── strict — plain checkbox + plain-language hint ──

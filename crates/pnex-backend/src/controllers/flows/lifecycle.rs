@@ -291,6 +291,43 @@ pub(crate) async fn unknown_actions_for_deploy(
     Ok(violations)
 }
 
+/// Recipients from messages gate (D313): a notify node with `to_field`
+/// only sends through SMTP channels an admin marked `dynamic_recipients`.
+pub(crate) async fn dynamic_recipients_for_deploy(
+    ctx: &AppContext,
+    org_id: i64,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    use crate::models::_entities::notify_channels;
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::PnexNotify { config } = &n.kind else {
+            continue;
+        };
+        if config.to_field.trim().is_empty() {
+            continue;
+        }
+        let channels = notify_channels::Entity::find()
+            .filter(notify_channels::Column::OrgId.eq(org_id))
+            .filter(notify_channels::Column::Id.is_in(config.channel_ids.clone()))
+            .all(&ctx.db)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+        let all_dynamic = channels.len() == config.channel_ids.len()
+            && channels.iter().all(|c| {
+                c.kind == "smtp" && crate::services::notify_recipients::dynamic(&c.config)
+            });
+        if !all_dynamic {
+            violations.push(pnex_core::FlowViolation::new(
+                Some(n.id.as_str()),
+                pnex_core::err_codes::NOTIFY_DYNAMIC_RECIPIENTS_OFF,
+                "a notify node reading its recipient from the message sends only through e-mail channels allowing it",
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Org controls gate (D127, D133): a `control-source` listens to at least
 /// one control (an empty node saves as a draft, never deploys), and every
 /// listed control must exist in the org, otherwise the node would wait
@@ -660,6 +697,16 @@ async fn deploy_version(
         );
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(unknown_actions_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(dynamic_recipients_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(
+            crate::services::ontology::flow_nodes::deploy_violations(
+                &ctx.db,
+                org.org.id,
+                &candidate_graph,
+            )
+            .await
+            .map_err(|_| Error::InternalServerError)?,
+        );
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts

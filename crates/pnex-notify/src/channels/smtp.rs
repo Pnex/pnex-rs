@@ -115,6 +115,17 @@ impl Channel for SmtpChannel {
                 Some("notify-field-to-help"),
                 &[],
             ),
+            // D313: flows may send to an address taken from the message
+            // (one recipient, template only, capped per day). Admin only.
+            field(
+                "dynamic_recipients",
+                "notify-field-dynamic-recipients",
+                pnex_core::FieldType::Bool,
+                false,
+                None,
+                Some("notify-field-dynamic-recipients-help"),
+                &[],
+            ),
         ]
     }
 
@@ -226,6 +237,13 @@ fn build_email(
             .parse()
             .map_err(|_| NotifyError::Config(format!("invalid to address: {dest}")))?;
         builder = builder.to(dest);
+    }
+    // `cc` is set by a node sending to a recipient of the message (D313).
+    if let Some(cc) = str_field(config, "cc") {
+        let cc: Mailbox = cc
+            .parse()
+            .map_err(|_| NotifyError::Config("invalid cc address".into()))?;
+        builder = builder.cc(cc);
     }
     if let Some(subject) = msg.subject.as_deref().filter(|s| !s.is_empty()) {
         builder = builder.subject(subject);

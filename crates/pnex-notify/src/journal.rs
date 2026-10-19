@@ -33,6 +33,34 @@ pub async fn post(
     Ok(())
 }
 
+/// Asks the server whether this send may go to a recipient taken from the
+/// message (D313); the server counts it on "yes". `Err` = the refusal code.
+pub async fn check_recipient(
+    url: &str,
+    token: &str,
+    req: &pnex_core::RecipientCheck,
+) -> Result<(), String> {
+    let resp = CLIENT
+        .post(url)
+        .bearer_auth(token)
+        .header(
+            pnex_core::FLOW_WORKER_HEADER,
+            pnex_core::flow_worker_fence().unwrap_or_default(),
+        )
+        .json(req)
+        .send()
+        .await
+        .map_err(|_| "notify-recipient-check-unreachable".to_string())?;
+    if resp.status().is_success() {
+        return Ok(());
+    }
+    let body: serde_json::Value = resp.json().await.unwrap_or_default();
+    Err(body["code"]
+        .as_str()
+        .unwrap_or("notify-recipient-refused")
+        .to_string())
+}
+
 /// HTTP status carried by an error, when the upstream answered.
 pub fn http_status(e: &NotifyError) -> Option<u16> {
     match e {

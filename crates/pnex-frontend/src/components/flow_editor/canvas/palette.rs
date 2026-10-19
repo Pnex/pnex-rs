@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 39] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 42] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -33,6 +33,9 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 39] = [
     PaletteKind::LlmText,
     PaletteKind::TextDecide,
     PaletteKind::RangeUpsert,
+    PaletteKind::OntologyQuery,
+    PaletteKind::ObjectUpsert,
+    PaletteKind::LinkUpsert,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
     PaletteKind::EventLog,
@@ -82,6 +85,9 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MemoryRead => "memory-read",
         PaletteKind::ControlSource => "control-source",
         PaletteKind::ActionTrigger => "action-trigger",
+        PaletteKind::OntologyQuery => "ontology-query",
+        PaletteKind::ObjectUpsert => "object-upsert",
+        PaletteKind::LinkUpsert => "link-upsert",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -137,6 +143,9 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
+        PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
+        PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
+        PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -185,6 +194,9 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
+        FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
+        FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
+        FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -201,6 +213,7 @@ pub(crate) enum PaletteCategory {
     Data,
     Code,
     Storage,
+    Ontology,
     Ai,
     Integrations,
     Debug,
@@ -208,13 +221,14 @@ pub(crate) enum PaletteCategory {
 
 /// Section order in the palette: the path of a flow (source → processing →
 /// output), debug last.
-pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 9] = [
+pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 10] = [
     PaletteCategory::Triggers,
     PaletteCategory::Devices,
     PaletteCategory::Control,
     PaletteCategory::Data,
     PaletteCategory::Code,
     PaletteCategory::Storage,
+    PaletteCategory::Ontology,
     PaletteCategory::Ai,
     PaletteCategory::Integrations,
     PaletteCategory::Debug,
@@ -249,6 +263,9 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::PageWrite
         | PaletteKind::PagePdf
         | PaletteKind::EventLog => PaletteCategory::Storage,
+        PaletteKind::OntologyQuery | PaletteKind::ObjectUpsert | PaletteKind::LinkUpsert => {
+            PaletteCategory::Ontology
+        }
         PaletteKind::VisionDetect
         | PaletteKind::VisionTrack
         | PaletteKind::VisionZone
@@ -273,6 +290,7 @@ pub(crate) fn category_label(category: PaletteCategory) -> String {
         PaletteCategory::Data => t!("flows-category-data").to_string(),
         PaletteCategory::Code => t!("flows-category-code").to_string(),
         PaletteCategory::Storage => t!("flows-category-storage").to_string(),
+        PaletteCategory::Ontology => t!("flows-category-ontology").to_string(),
         PaletteCategory::Ai => t!("flows-category-ai").to_string(),
         PaletteCategory::Integrations => t!("flows-category-integrations").to_string(),
         PaletteCategory::Debug => t!("flows-category-debug").to_string(),
@@ -439,6 +457,18 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ActionTrigger => (
             t!("flows-palette-action-trigger").to_string(),
             t!("flows-palette-action-trigger-help").to_string(),
+        ),
+        PaletteKind::OntologyQuery => (
+            t!("flows-palette-ontology-query").to_string(),
+            t!("flows-palette-ontology-query-help").to_string(),
+        ),
+        PaletteKind::ObjectUpsert => (
+            t!("flows-palette-object-upsert").to_string(),
+            t!("flows-palette-object-upsert-help").to_string(),
+        ),
+        PaletteKind::LinkUpsert => (
+            t!("flows-palette-link-upsert").to_string(),
+            t!("flows-palette-link-upsert-help").to_string(),
         ),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),

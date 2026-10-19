@@ -12,7 +12,10 @@
 pub mod actions;
 pub mod cases;
 pub mod changes;
+pub mod flow_nodes;
 pub mod graph;
+pub mod hierarchy;
+pub mod imports;
 pub mod link_types;
 pub mod links;
 pub mod objects;
@@ -70,6 +73,18 @@ pub enum OntologyError {
     /// No deployed flow holds a trigger for the invoked action (D183).
     #[error("action has no flow")]
     ActionNoFlow,
+    /// A property made unique is already shared by live objects (D302).
+    #[error("unique duplicates")]
+    UniqueDuplicates {
+        property: String,
+        values: Vec<String>,
+    },
+    /// An import refused or failed (`err_codes::IMPORT_*`), with its args.
+    #[error("import: {code}")]
+    Import {
+        code: &'static str,
+        args: Option<serde_json::Value>,
+    },
     /// The action bus (Valkey) is down: nothing was sent.
     #[error("action bus unavailable")]
     ActionUnavailable,

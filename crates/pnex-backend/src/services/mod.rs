@@ -12,6 +12,7 @@ pub mod cmd_acks;
 /// Per-pod concurrency caps (CoolProp, vision, runtime checks, uploads).
 pub mod compute_limits;
 pub mod controls;
+pub mod crawl;
 pub mod dashboard;
 pub mod dashboards;
 /// Cross-pod serialization helpers (advisory locks, unique violations).
@@ -51,6 +52,7 @@ pub mod memory;
 /// Notifications (D49–D54) — broker WS, journal, pruner, livraison.
 pub mod notify;
 pub mod notify_journal;
+pub mod notify_recipients;
 pub mod notify_templates;
 pub mod ontology;
 pub mod openobserve;
@@ -58,6 +60,7 @@ pub mod ota;
 pub mod ota_signing;
 pub mod pages;
 pub mod pois;
+pub mod proofs;
 pub mod provisioning;
 /// Cross-pod rate limiting of unauthenticated / sensitive routes.
 pub mod rate_limit;

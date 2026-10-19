@@ -46,6 +46,7 @@ pub mod ml_models;
 pub mod notify;
 pub mod oauth2;
 pub mod ontology;
+pub mod ontology_imports;
 pub mod orgs;
 pub mod ota;
 pub mod pagination;

@@ -190,6 +190,8 @@ pub enum FilterOp {
     /// Case-insensitive substring of a text property.
     Contains,
     Exists,
+    /// One of the values of a list (texts as stored).
+    In,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -232,6 +234,12 @@ pub struct OntologyQuery {
     pub latest: Vec<String>,
     #[serde(default)]
     pub include_archived: bool,
+    /// Property to sort on (as text; ISO dates sort right); title when
+    /// absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub order_by: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub descending: bool,
     #[serde(default)]
     pub limit: Option<u64>,
     #[serde(default)]
@@ -341,6 +349,107 @@ pub struct Pack {
     /// Page models (pages.md P13, cases.md K8).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub page_templates: Vec<PageTemplate>,
+    /// Optional properties added to a type of a required pack or to a
+    /// system type (D306).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extends: Vec<TypeExtension>,
+    /// Named trees computed on links (D305).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hierarchies: Vec<Hierarchy>,
+    /// Imports created in the org at install (D301), never overwritten.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub imports: Vec<super::import::PackImport>,
+    /// Registry functions created at install when the org has none of
+    /// that name (D316): the pack's rules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub functions: Vec<PackFunction>,
+    /// Flow models created as drafts at install when the org has none of
+    /// that name (D316); never deployed by the install (D123). A function
+    /// node names its function by `function_name` (resolved at install).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flows: Vec<PackFlow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackFunction {
+    pub name: String,
+    pub language: crate::functions::FunctionLanguage,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackFlow {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
+    /// A flow graph (`{"nodes": [...]}`).
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub graph: serde_json::Value,
+}
+
+/// A tree read on links (D305): at each node, its children are the objects
+/// reached by each step in turn. A node with several parents appears under
+/// each of them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct Hierarchy {
+    pub key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
+    pub steps: Vec<HierarchyStep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HierarchyStep {
+    /// Link type key.
+    pub link: String,
+    /// Follow the link from its target to its source.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inverse: bool,
+}
+
+/// A node of a computed hierarchy, flat in depth-first order.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HierarchyNode {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    pub type_key: String,
+    pub title: String,
+    pub depth: u32,
+    /// Link type that leads here from the parent (empty for the root).
+    pub link: String,
+    /// Titles of the other parents this node also appears under.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub also_under: Vec<String>,
+}
+
+/// `GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed
+/// packs, and the tree of the one asked (the first by default).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HierarchyView {
+    pub hierarchies: Vec<Hierarchy>,
+    /// Key of the hierarchy computed; empty when none is installed.
+    pub key: String,
+    pub nodes: Vec<HierarchyNode>,
+    /// The depth or node cap cut the tree.
+    pub truncated: bool,
+}
+
+/// Properties a pack adds to a type it does not own (D306).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct TypeExtension {
+    #[serde(rename = "type")]
+    pub type_key: String,
+    pub properties: Vec<super::PropertyDef>,
 }
 
 /// A page model shipped by a pack. `body` is a Markdown subset: `#`–`###`

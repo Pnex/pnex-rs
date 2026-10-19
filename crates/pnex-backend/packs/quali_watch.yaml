@@ -1,0 +1,592 @@
+# Business pack "Partner network watch" (partner-watch.md D300–D316, product
+# Quali-Watch): a certifier watches the training organizations it accredits.
+# Nothing of it enters the core (D190): certifications, observed pages, CPF
+# offers, rules, findings, procedures and reminders are pack types.
+# The certifier itself is an `organization` of the org, linked to its
+# certifications by `porte`.
+# A finding produced by an LLM rule is never confirmed on its own (D316):
+# it is `a_valider`, quotes its excerpt word for word and keeps where it
+# was found (`constate_dans.locator`) and the rule version.
+# Reminders follow the D314 pattern: a procedure carries its level and next
+# due date, a daily flow sends the next reminder and moves the procedure on;
+# levels needing a human create an `a_valider` reminder that the
+# `valider_envoi` action sends.
+# The partner network import reads the certifier's sheet (one row per
+# partner × certification, pnex-quali-watch/import-excel.md) as a snapshot:
+# a row gone closes its accreditation, nothing is deleted. Open data syncs
+# (France Compétences, CPF catalogue, DGEFP list) wait for their data
+# dictionaries to be checked (PRD Q1).
+# Rules and reminders ship as functions and flow models (D316): created at
+# install when the org has none of that name, as drafts, never deployed by
+# the install (D123). A deterministic rule writes its finding `propose`
+# (create only: a reviewed finding is never reset); an LLM rule must write
+# `a_valider` with its word-for-word excerpt and locator.
+key: quali_watch
+name: Partner network watch
+names: {fr: "Veille du réseau de partenaires"}
+version: "1.0.0"
+requires: [entreprises_fr]
+extends:
+  - type: organization
+    properties:
+      - { key: contact_conformite_email, name: Compliance contact e-mail, names: {fr: "E-mail du contact conformité"}, kind: text, max_len: 254 }
+      - { key: contact_conformite_nom, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 255 }
+      - { key: contact_telephone, name: Phone, names: {fr: "Téléphone"}, kind: text, max_len: 64 }
+      - { key: charge_reseau_email, name: Network officer e-mail, names: {fr: "E-mail du chargé de réseau"}, kind: text, max_len: 254 }
+description: Certifications, partner websites, observed pages with dated proofs, CPF offers, rules, findings and graduated reminders.
+descriptions: {fr: "Certifications, sites des partenaires, pages observées avec preuves datées, offres CPF, règles, écarts et relances graduées."}
+types:
+  - key: certification
+    name: Certification
+    names: {fr: "Certification"}
+    icon: book
+    may_be_contained_in: [folder]
+    properties:
+      - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
+      - { key: repertoire, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], indexed: true }
+      - { key: intitule, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 500 }
+      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: text, max_len: 32 }
+      - { key: date_enregistrement, name: Registered on, names: {fr: "Enregistrée le"}, kind: date }
+      - { key: date_echeance, name: Expires on, names: {fr: "Échéance"}, kind: date }
+      - { key: statut, name: Status, names: {fr: "Statut"}, kind: enum, values: [actif, inactif, echu], indexed: true }
+      - { key: url_fiche, name: Register page, names: {fr: "Fiche du répertoire"}, kind: url }
+  - key: site_web
+    name: Website
+    names: {fr: "Site web"}
+    icon: globe
+    may_be_contained_in: [folder]
+    properties:
+      - { key: url_racine, name: Root URL, names: {fr: "URL racine"}, kind: url, required: true }
+      - { key: domaine, name: Domain, names: {fr: "Domaine"}, kind: text, max_len: 255, unique: true }
+      - { key: dernier_crawl, name: Last crawl, names: {fr: "Dernier parcours"}, kind: date_time }
+      - { key: pages_listees, name: Listed pages, names: {fr: "Pages listées"}, kind: number, min: 0 }
+      - { key: pages_pertinentes, name: Relevant pages, names: {fr: "Pages pertinentes"}, kind: number, min: 0 }
+      - { key: etat_collecte, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, bloque, inaccessible, vide], indexed: true }
+  - key: page_observee
+    name: Observed page
+    names: {fr: "Page observée"}
+    icon: file-text
+    may_be_contained_in: [folder]
+    properties:
+      - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 2048, required: true, unique: true }
+      - { key: titre, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
+      - { key: premiere_vue, name: First seen, names: {fr: "Vue la première fois"}, kind: date_time }
+      - { key: derniere_vue, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
+      - { key: empreinte_texte, name: Text fingerprint, names: {fr: "Empreinte du texte"}, kind: text, max_len: 64 }
+      - { key: pertinente, name: Relevant, names: {fr: "Pertinente"}, kind: bool }
+      - { key: codes_cites, name: Codes quoted, names: {fr: "Codes cités"}, kind: text, max_len: 1000 }
+      # The registry states (D309), written by the crawl's `record`.
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [listed, relevant, captured, gone], indexed: true }
+  - key: offre_cpf
+    name: CPF offer
+    names: {fr: "Offre CPF"}
+    icon: tag
+    may_be_contained_in: [folder]
+    properties:
+      - { key: id_action, name: Action id, names: {fr: "Identifiant de l'action"}, kind: text, max_len: 64, required: true, unique: true }
+      - { key: intitule, name: Title, names: {fr: "Intitulé"}, kind: text, max_len: 500 }
+      - { key: prix, name: Price, names: {fr: "Prix"}, kind: money }
+      - { key: duree_heures, name: Duration, names: {fr: "Durée"}, kind: number, unit: h, min: 0 }
+      - { key: ville, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
+      - { key: modalite, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte] }
+      - { key: vue_le, name: Seen on, names: {fr: "Vue le"}, kind: date }
+  - key: regle
+    name: Rule
+    names: {fr: "Règle"}
+    icon: landmark
+    may_be_contained_in: [folder]
+    write_role: admin
+    properties:
+      - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
+      - { key: libelle, name: Label, names: {fr: "Libellé"}, kind: text, max_len: 500 }
+      - { key: type, name: Kind, names: {fr: "Nature"}, kind: enum, values: [deterministe, llm] }
+      - { key: gravite_defaut, name: Default severity, names: {fr: "Gravité par défaut"}, kind: enum, values: [info, mineur, majeur, critique] }
+      - { key: reference, name: Legal or contractual reference, names: {fr: "Référence légale ou contractuelle"}, kind: text, max_len: 2000 }
+      - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
+      - { key: active, name: Active, names: {fr: "Active"}, kind: bool }
+  - key: ecart
+    name: Finding
+    names: {fr: "Écart"}
+    icon: flag
+    may_be_contained_in: [folder]
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+      - { key: attendu, name: Expected, names: {fr: "Attendu"}, kind: text, max_len: 2000 }
+      - { key: constate, name: Observed, names: {fr: "Constaté"}, kind: text, max_len: 2000 }
+      - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
+      - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], indexed: true }
+      - key: etat
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [propose, a_valider, confirme, en_relance, corrige, clos, rejete]
+        required: true
+        indexed: true
+      - { key: detecte_le, name: Detected on, names: {fr: "Détecté le"}, kind: date_time }
+      - { key: regle_version, name: Rule version, names: {fr: "Version de la règle"}, kind: number, min: 1 }
+      - { key: confiance, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
+    actions:
+      - key: valider
+        name: Confirm
+        names: {fr: "Valider"}
+        params:
+          - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique] }
+          - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
+      - key: rejeter
+        name: Reject
+        names: {fr: "Rejeter"}
+        confirm: true
+        params:
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [faux_positif, hors_perimetre, accepte_par_le_client], required: true }
+          - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
+      - key: reverifier
+        name: Check again
+        names: {fr: "Revérifier"}
+  - key: procedure
+    name: Procedure
+    names: {fr: "Procédure"}
+    icon: workflow
+    may_be_contained_in: [folder]
+    properties:
+      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [aucun, r1, r2, r3, r4, retrait_propose], indexed: true }
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [ouverte, en_attente_validation, suspendue, close], required: true, indexed: true }
+      - { key: prochaine_echeance, name: Next due date, names: {fr: "Prochaine échéance"}, kind: date, indexed: true }
+      - { key: ouverte_le, name: Opened on, names: {fr: "Ouverte le"}, kind: date }
+      - { key: close_le, name: Closed on, names: {fr: "Close le"}, kind: date }
+      - { key: motif_cloture, name: Closing reason, names: {fr: "Motif de clôture"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat] }
+      - { key: contact_email, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 254 }
+      - { key: copie_email, name: Copy to, names: {fr: "Copie à"}, kind: text, max_len: 254 }
+    actions:
+      - key: valider_envoi
+        name: Approve sending
+        names: {fr: "Valider l'envoi"}
+        confirm: true
+        params:
+          - { key: relance_id, name: Reminder, names: {fr: "Relance"}, kind: ref, to_type: relance, required: true }
+          - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
+      - key: envoyer_maintenant
+        name: Send now
+        names: {fr: "Envoyer maintenant"}
+        confirm: true
+        params:
+          - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4], required: true }
+      - key: suspendre
+        name: Suspend
+        names: {fr: "Suspendre"}
+        params:
+          - { key: jusqu_au, name: Until, names: {fr: "Jusqu'au"}, kind: date }
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
+      - key: reprendre
+        name: Resume
+        names: {fr: "Reprendre"}
+        params:
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500 }
+      - key: marquer_corrige
+        name: Mark as fixed
+        names: {fr: "Marquer corrigé"}
+        params:
+          - { key: source, name: Reported by, names: {fr: "Signalé par"}, kind: enum, values: [partenaire, client], required: true }
+      - key: clore
+        name: Close
+        names: {fr: "Clore"}
+        confirm: true
+        params:
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], required: true }
+  - key: relance
+    name: Reminder
+    names: {fr: "Relance"}
+    icon: newspaper
+    may_be_contained_in: [folder]
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4, retrait_propose], required: true }
+      - { key: envoyee_le, name: Sent on, names: {fr: "Envoyée le"}, kind: date_time }
+      - { key: destinataire, name: Recipient, names: {fr: "Destinataire"}, kind: text, max_len: 254 }
+      - { key: modele, name: Template, names: {fr: "Modèle"}, kind: text, max_len: 255 }
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [a_valider, envoyee, echec], required: true, indexed: true }
+      - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
+      - { key: lien_corrige_ouvert_le, name: Fix link opened on, names: {fr: "Lien « corrigé » ouvert le"}, kind: date_time }
+link_types:
+  - key: porte
+    name: holds
+    names: {fr: "porte"}
+    inverse_name: is held by
+    inverse_names: {fr: "est portée par"}
+    from_types: [organization]
+    to_types: [certification]
+  - key: habilite_pour
+    name: is accredited for
+    names: {fr: "est habilité pour"}
+    inverse_name: accredits
+    inverse_names: {fr: "habilite"}
+    from_types: [organization]
+    to_types: [certification]
+    attributes:
+      - { key: perimetre, name: Scope, names: {fr: "Périmètre"}, kind: enum, values: [preparation, evaluation, les_deux] }
+      - { key: declaree_fc, name: Declared to France Compétences, names: {fr: "Déclarée à France Compétences"}, kind: bool }
+      - { key: reference_convention, name: Agreement reference, names: {fr: "Référence de la convention"}, kind: text, max_len: 255 }
+      - { key: date_fin, name: Accredited until, names: {fr: "Habilité jusqu'au"}, kind: date }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 255 }
+  - key: a_pour_site
+    name: has as website
+    names: {fr: "a pour site"}
+    inverse_name: is the website of
+    inverse_names: {fr: "est le site de"}
+    from_types: [organization]
+    to_types: [site_web]
+  - key: page_de
+    name: is a page of
+    names: {fr: "est une page de"}
+    inverse_name: has as page
+    inverse_names: {fr: "a pour page"}
+    from_types: [page_observee]
+    to_types: [site_web]
+    one_target: true
+  - key: prouve_par
+    name: is proven by
+    names: {fr: "est prouvée par"}
+    inverse_name: proves
+    inverse_names: {fr: "prouve"}
+    from_types: [page_observee]
+    to_types: [media_asset]
+    attributes:
+      - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
+      - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
+      - { key: kind, name: Part, names: {fr: "Partie"}, kind: enum, values: [capture, html, text] }
+  - key: offre_de
+    name: is an offer of
+    names: {fr: "est une offre de"}
+    inverse_name: offers
+    inverse_names: {fr: "propose"}
+    from_types: [offre_cpf]
+    to_types: [organization]
+    one_target: true
+    attributes:
+      - { key: rapproche_par, name: Matched by, names: {fr: "Rapprochée par"}, kind: enum, values: [siret, nda, nom] }
+  - key: porte_sur
+    name: is about
+    names: {fr: "porte sur"}
+    inverse_name: is the subject of
+    inverse_names: {fr: "fait l'objet de"}
+    from_types: [offre_cpf]
+    to_types: [certification]
+  - key: concerne
+    name: concerns
+    names: {fr: "concerne"}
+    inverse_name: is concerned by
+    inverse_names: {fr: "est concerné par"}
+    from_types: [ecart]
+    to_types: [organization]
+    one_target: true
+  - key: sur
+    name: bears on
+    names: {fr: "porte sur la certification"}
+    inverse_name: has as finding
+    inverse_names: {fr: "a pour écart"}
+    from_types: [ecart]
+    to_types: [certification]
+  - key: constate_dans
+    name: is observed in
+    names: {fr: "est constaté dans"}
+    inverse_name: shows
+    inverse_names: {fr: "montre"}
+    from_types: [ecart]
+    to_types: [page_observee, offre_cpf, media_asset]
+    attributes:
+      - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
+  - key: selon
+    name: follows the rule
+    names: {fr: "selon la règle"}
+    inverse_name: produced
+    inverse_names: {fr: "a produit"}
+    from_types: [ecart]
+    to_types: [regle]
+    one_target: true
+  - key: traite_par
+    name: is handled by
+    names: {fr: "est traité par"}
+    inverse_name: handles
+    inverse_names: {fr: "traite"}
+    from_types: [ecart]
+    to_types: [procedure]
+  - key: procedure_de
+    name: is a procedure of
+    names: {fr: "est une procédure de"}
+    inverse_name: has as procedure
+    inverse_names: {fr: "a pour procédure"}
+    from_types: [procedure]
+    to_types: [organization]
+    one_target: true
+  - key: relance_de
+    name: is a reminder of
+    names: {fr: "est une relance de"}
+    inverse_name: has as reminder
+    inverse_names: {fr: "a pour relance"}
+    from_types: [relance]
+    to_types: [procedure]
+    one_target: true
+hierarchies:
+  - key: reseau
+    name: Network
+    names: {fr: "Réseau"}
+    steps:
+      - { link: habilite_pour, inverse: true }
+      - { link: a_pour_site }
+      - { link: page_de, inverse: true }
+imports:
+  - name: Partner network (sheet)
+    source: file
+    mode: snapshot
+    mapping:
+      key: reseau_partenaires
+      name: Partner network
+      names: {fr: "Réseau des partenaires"}
+      objects:
+        - as: org
+          type: organization
+          key: siren
+          title: raison_sociale
+          properties:
+            siren: { from: siret, convert: [digits, luhn, "left:9"] }
+            nda: { from: nda, convert: [digits] }
+            contact_conformite_email: { from: contact_conformite_email, convert: [email] }
+            contact_conformite_nom: contact_conformite_nom
+            contact_telephone: contact_telephone
+            charge_reseau_email: { from: charge_reseau_email, convert: [email] }
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          properties:
+            code: { from: code_certification, convert: [trim, upper] }
+        - as: site
+          type: site_web
+          key: domaine
+          each: { from: site_web, convert: ["split:;"] }
+          properties:
+            url_racine: { from: ".", convert: [url_origin] }
+            domaine: { from: ".", convert: [domain] }
+      links:
+        - type: habilite_pour
+          from: org
+          to: cert
+          valid_from: { from: date_debut_habilitation, convert: ["date:%d/%m/%Y"] }
+          attributes:
+            perimetre: perimetre
+            declaree_fc: { from: declaree_france_competences, convert: [{ enum: { oui: "true", non: "false" } }] }
+            reference_convention: reference_convention
+            date_fin: { from: date_fin_habilitation, convert: ["date:%d/%m/%Y"] }
+            source: { value: "import" }
+        - { type: a_pour_site, from: org, to: site }
+functions:
+  - name: qw_relance_suivante
+    language: starlark
+    description: Next reminder of an open procedure whose due date passed (r1 to r4 every 15 days, r3 and r4 wait for a human).
+    code: |
+      # Next reminder of an open procedure whose due date passed (D314):
+      # r1, r2, r3, r4 every 15 days; r3 and r4 wait for a human
+      # (`a_valider`, sent by the `valider_envoi` action).
+      # @output procedure any "The procedure moved on (object write by id)"
+      # @output relance any "The reminder (object write by its key)"
+
+      STEPS = ["aucun", "r1", "r2", "r3", "r4"]
+      HUMAN = ["r3", "r4"]
+      DELAY_DAYS = 15
+
+      def num(s):
+          return int(s.lstrip("0") or "0")
+
+      def days(date):
+          y = num(date[0:4])
+          m = num(date[5:7])
+          d = num(date[8:10])
+          if m <= 2:
+              y = y - 1
+          era = y // 400
+          yoe = y - era * 400
+          mp = (m + 9) % 12
+          doy = (153 * mp + 2) // 5 + d - 1
+          doe = yoe * 365 + yoe // 4 - yoe // 100 + doy
+          return era * 146097 + doe - 719468
+
+      def pad(n, w):
+          s = str(n)
+          return "0" * (w - len(s)) + s
+
+      def date(z):
+          z = z + 719468
+          era = z // 146097
+          doe = z - era * 146097
+          yoe = (doe - doe // 1460 + doe // 36524 - doe // 146096) // 365
+          y = yoe + era * 400
+          doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+          mp = (5 * doy + 2) // 153
+          d = doy - (153 * mp + 2) // 5 + 1
+          m = mp + 3 if mp < 10 else mp - 9
+          if m <= 2:
+              y = y + 1
+          return pad(y, 4) + "-" + pad(m, 2) + "-" + pad(d, 2)
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          level = p.get("niveau", "aucun")
+          if level not in STEPS or level == "r4":
+              return None
+          nxt = STEPS[STEPS.index(level) + 1]
+          human = nxt in HUMAN
+          today = msg.get("today", p.get("prochaine_echeance", "1970-01-01"))
+          procedure = {
+              "payload": {
+                  "niveau": nxt,
+                  "prochaine_echeance": date(days(today) + DELAY_DAYS),
+                  "etat": "en_attente_validation" if human else "ouverte",
+              },
+              "object_id": o["id"],
+              "expected_version": o["version"],
+          }
+          relance = {
+              "payload": {
+                  "cle": o["id"] + ":" + nxt,
+                  "niveau": nxt,
+                  "etat": "a_valider" if human else "envoyee",
+                  "envoyee_le": "" if human else msg.get("now", ""),
+                  "destinataire": p.get("contact_email", ""),
+              },
+              "title": o["title"] + " · " + nxt,
+              "procedure_id": o["id"],
+          }
+          return [procedure, relance]
+  - name: qw_regle_adm_01
+    language: starlark
+    description: "ADM-01: a partner whose legal unit ceased, as a finding to review."
+    code: |
+      # ADM-01: a partner whose legal unit ceased (company register) while it
+      # may still be accredited. Deterministic rule: the finding is
+      # `propose`, with the rule version (D316).
+      RULE = "ADM-01"
+      VERSION = 1
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          ceased = p.get("date_cessation", "")
+          return {
+              "payload": {
+                  "cle": RULE + ":" + p.get("siren", o["id"]),
+                  "attendu": "Partenaire en activité",
+                  "constate": "Unité légale cessée" + (" le " + ceased if ceased else ""),
+                  "gravite": "critique",
+                  "etat": "propose",
+                  "detecte_le": msg.get("now", ""),
+                  "regle_version": VERSION,
+              },
+              "title": RULE + " · " + o["title"],
+              "organization_id": o["id"],
+          }
+  - name: qw_lien
+    language: starlark
+    description: Link payload from the object just written to the procedure or organization the message names.
+    code: |
+      # Link payload: the object just written (msg.object) → the object the
+      # message names (msg.procedure_id, else msg.organization_id).
+      def handle(inputs, msg):
+          target = msg.get("procedure_id", msg.get("organization_id", ""))
+          return {"payload": {"source_id": msg["object"]["id"], "target_id": target}}
+flows:
+  - name: "Quali-Watch · reminders"
+    note: "Each morning the procedures whose due date passed move to the next reminder. For the automatic levels, add a Notification node after the reminder write (e-mail channel allowing recipients from flows, recipient field: destinataire, report PDF attached), then deploy."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "0 6 * * *" }, outputs: [{ port: 0, targets: [due] }] }
+        - id: due
+          kind: ontology_query
+          config:
+            object_type: procedure
+            filters:
+              - { key: prochaine_echeance, op: lte, value: "$today" }
+              - { key: etat, op: eq, value: ouverte }
+            limit: 500
+          outputs: [{ port: 0, targets: [next] }]
+        - id: next
+          kind: pnex_function
+          config: { function_name: qw_relance_suivante, language: starlark }
+          outputs: [{ port: 0, targets: [proc] }, { port: 1, targets: [rel] }]
+        - { id: proc, kind: object_upsert, config: { object_type: procedure, key: id } }
+        - { id: rel, kind: object_upsert, config: { object_type: relance, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: relance_de } }
+  - name: "Quali-Watch · rule ADM-01"
+    note: "Each morning the ceased partners become findings to review (create only), linked to their organization."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "0 5 * * *" }, outputs: [{ port: 0, targets: [ceased] }] }
+        - id: ceased
+          kind: ontology_query
+          config:
+            object_type: organization
+            filters: [{ key: etat_administratif, op: eq, value: cesse }]
+            limit: 500
+          outputs: [{ port: 0, targets: [rule] }]
+        - { id: rule, kind: pnex_function, config: { function_name: qw_regle_adm_01, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: concerne } }
+page_templates:
+  - key: constat_ecart
+    name: Finding report
+    names: {fr: "Constat d'écart"}
+    description: One finding, its proof and what is expected.
+    descriptions: {fr: "Un écart, sa preuve et ce qui est attendu."}
+    body: |
+      # Constat d'écart
+
+      ## Partenaire
+
+      Raison sociale, SIREN, certification concernée.
+
+      ## Règle
+
+      Code, libellé, référence légale ou contractuelle, version de la règle.
+
+      ## Attendu
+
+      Ce que la règle demande.
+
+      ## Constaté
+
+      Ce que la page publiée montre, avec l'extrait cité mot pour mot.
+
+      ## Preuve
+
+      - Adresse de la page
+      - Capture pleine page et horodatage du serveur
+      - Empreinte SHA-256 du manifeste et rang dans la chaîne des preuves
+  - key: rapport_partenaire
+    name: Partner report
+    names: {fr: "Rapport partenaire"}
+    description: State, findings and reminders of one partner.
+    descriptions: {fr: "État, écarts et relances d'un partenaire."}
+    body: |
+      # Rapport partenaire
+
+      ## Identité
+
+      SIREN, établissements, dirigeants, numéro de déclaration d'activité, Qualiopi.
+
+      ## Habilitations
+
+      Certifications, périmètre, dates.
+
+      ## Écarts
+
+      - Ouverts
+      - Clos
+
+      ## Relances
+
+      Niveau, date d'envoi, destinataire, suite donnée.
+
+      ## Contrôles
+
+      Dates des parcours du site et des synchronisations.

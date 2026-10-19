@@ -83,3 +83,27 @@ pub fn download_url() -> String {
         crate::api::config::api_base()
     )
 }
+
+/// `GET /api/v1/extension/missions/{id}/pages` — the site registry (D309).
+pub async fn site_pages(
+    mission_id: &str,
+) -> Result<Vec<pnex_core::browser_agent::SitePage>, ApiError> {
+    client::request_all(&format!("/api/v1/extension/missions/{mission_id}/pages")).await
+}
+
+/// `GET /api/v1/extension/proofs?page_id=` — proofs of a page (D310).
+pub async fn page_proofs(
+    page_id: &str,
+) -> Result<Vec<pnex_core::browser_agent::WebProof>, ApiError> {
+    client::request_all(&format!("/api/v1/extension/proofs?page_id={page_id}")).await
+}
+
+/// `GET /api/v1/extension/proofs/verify` — the org's chain recomputed.
+pub async fn verify_proofs() -> Result<pnex_core::browser_agent::ProofChainCheck, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        "/api/v1/extension/proofs/verify",
+        None,
+    )
+    .await
+}

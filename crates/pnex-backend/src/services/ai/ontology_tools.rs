@@ -99,6 +99,16 @@ fn onto_error(e: OntologyError) -> ToolError {
         // The assistant never invokes an action (D183); only kept exhaustive.
         OntologyError::ActionNoFlow => coded(c::ONTOLOGY_ACTION_NO_FLOW, "no deployed flow handles this action".into(), None),
         OntologyError::ActionUnavailable => coded(c::ONTOLOGY_ACTION_UNAVAILABLE, "the action bus is unavailable".into(), None),
+        OntologyError::UniqueDuplicates { property, values } => coded(
+            c::ONTOLOGY_UNIQUE_DUPLICATES,
+            "live objects already share values of this property: the user fixes them before it can be unique".into(),
+            Some(json!({ "property": property, "values": values.join(", ") })),
+        ),
+        OntologyError::Import { code, args } => coded(
+            code,
+            "the import was refused; imports are applied by the user from the Imports page".into(),
+            args,
+        ),
         OntologyError::Db(e) => internal("using the ontology")(e),
     }
 }

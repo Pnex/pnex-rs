@@ -32,6 +32,9 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["time"] }
+# Signed webhook bodies (D315).
+hmac = "0.12"
+sha2 = "0.10"
 
 [dev-dependencies]
 # Récepteur HTTP local (webhook / livraison websocket) — zéro réseau externe.

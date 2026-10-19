@@ -48,6 +48,7 @@ pub fn routes() -> Routes {
         )
         .add("/objects/{id}/links", get(object_links))
         .add("/objects/{id}/graph", get(object_graph))
+        .add("/objects/{id}/hierarchy", get(object_hierarchy))
         .add("/objects/{id}/impact", get(object_impact))
         .add("/objects/{id}/series/{property}", get(object_series))
         .add("/objects/{id}/bindings", get(object_bindings))
@@ -92,6 +93,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         resolve,
         object_links,
         object_graph,
+        object_hierarchy,
         object_impact,
         path,
         object_series,
@@ -192,6 +194,23 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::ONTOLOGY_ACTION_UNAVAILABLE,
             "The action bus is unavailable: the action was not sent.",
         ),
+        OntologyError::UniqueDuplicates { property, values } => Err(coded_error(
+            StatusCode::CONFLICT,
+            err_codes::ONTOLOGY_UNIQUE_DUPLICATES,
+            "Live objects already share values of this property.",
+            Some(serde_json::json!({ "property": property, "values": values.join(", ") })),
+        )),
+        OntologyError::Import { code, args } => Err(coded_error(
+            match code {
+                err_codes::IMPORT_SOURCE_UNREADABLE
+                | err_codes::IMPORT_SOURCE_TOO_LARGE
+                | err_codes::IMPORT_SOURCE_UNREACHABLE => StatusCode::UNPROCESSABLE_ENTITY,
+                _ => StatusCode::CONFLICT,
+            },
+            code,
+            "The import was refused.",
+            args,
+        )),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
             Err(Error::InternalServerError)
@@ -840,6 +859,43 @@ async fn object_graph(
     Query(q): Query<GraphQuery>,
 ) -> Result<Response> {
     reply(graph::neighborhood(&ctx.db, org.org.id, parse_uuid(&id)?, q.depth.unwrap_or(1)).await)
+}
+
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct HierarchyQuery {
+    /// Hierarchy key (default: the first one of the installed packs).
+    key: Option<String>,
+    /// Links valid at this instant (RFC 3339, default now).
+    at: Option<String>,
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/hierarchy",
+    tag = "ontology",
+    operation_id = "ontology_objects_hierarchy",
+    summary = "Get the hierarchy tree under an object",
+    description = "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links valid at `at`. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), HierarchyQuery),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::HierarchyView),
+        (status = 400, description = "Invalid `at` (field → token)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn object_hierarchy(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+    Query(q): Query<HierarchyQuery>,
+) -> Result<Response> {
+    let at = match onto::parse_instant("at", q.at.as_deref()) {
+        Ok(t) => t,
+        Err(e) => return onto_error(e),
+    };
+    reply(onto::hierarchy::tree(&ctx.db, org.org.id, parse_uuid(&id)?, q.key.as_deref(), at).await)
 }
 
 #[utoipa::path(

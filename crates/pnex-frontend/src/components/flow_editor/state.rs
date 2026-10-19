@@ -45,6 +45,9 @@ pub enum PaletteKind {
     MemoryRead,
     ControlSource,
     ActionTrigger,
+    OntologyQuery,
+    ObjectUpsert,
+    LinkUpsert,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -245,6 +248,16 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                 config: pnex_core::ui_control::ControlSourceConfig::default(),
             },
             PaletteKind::ActionTrigger => FlowNodeKind::ActionTrigger {
+                config: Default::default(),
+            },
+            // No type picked yet: the violation banner guides the user.
+            PaletteKind::OntologyQuery => FlowNodeKind::OntologyQuery {
+                config: Default::default(),
+            },
+            PaletteKind::ObjectUpsert => FlowNodeKind::ObjectUpsert {
+                config: Default::default(),
+            },
+            PaletteKind::LinkUpsert => FlowNodeKind::LinkUpsert {
                 config: Default::default(),
             },
             // No stream picked yet: the violation banner guides the user.

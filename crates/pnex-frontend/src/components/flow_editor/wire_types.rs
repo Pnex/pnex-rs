@@ -100,6 +100,9 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::PagePdf { .. }
         | FlowNodeKind::PageWrite { .. }
         | FlowNodeKind::ActionTrigger { .. }
+        | FlowNodeKind::OntologyQuery { .. }
+        | FlowNodeKind::ObjectUpsert { .. }
+        | FlowNodeKind::LinkUpsert { .. }
         | FlowNodeKind::Weather { .. } => Fixed(Object),
         FlowNodeKind::MemoryRead { .. } if port == 0 => Fixed(Object),
         FlowNodeKind::ControlSource { .. } => Fixed(Number),

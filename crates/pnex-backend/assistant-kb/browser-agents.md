@@ -4,7 +4,7 @@ title: Browser agents
 kind: feature
 pages: /edges/browser-agents
 nodes: 
-err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, ext-registry-full, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, extension-limit-reached, media-transcripts-unavailable
+err_codes: ext-permission-missing, ext-selector-not-found, ext-value-not-numeric, ext-login-required, ext-challenge, ext-rate-limited, ext-tab-hidden, ext-drm-protected, ext-registry-full, extension-install-paired-elsewhere, extension-pair-refused, extension-dist-not-found, extension-video-not-found, extension-limit-reached, media-transcripts-unavailable, crawl-unreachable, crawl-robots-disallowed, crawl-blocked, ext-no-agent
 tools: 
 tags: browser, extension, chrome, firefox, agent, mission, collect, web page, value, selector, follow, account, x, twitter, youtube, tiktok, shorts, live, video, captions, subtitles, history, registry, onglet, navigateur, agent navigateur, compte, sous-titres, registre
 ---
@@ -21,6 +21,12 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
   - **Follow an account**: pick X, YouTube or TikTok and type the account. The agent collects the account's whole history (a little deeper at each visit, until the start of the account), then its new posts. By default it keeps posts, text and the platform's own captions (no file). Tick **Force the video collection** to download or record every video, then transcribed by PNeX.
   - **Record a live**: the page of a live; the agent records it in parts of 30 minutes while it is on air, each part a video of the media library.
 - **Video registry** tab: every post the agents saw, once per organization (a post seen again is never downloaded or processed twice), with its state: text post, video not downloaded, transcript in the media library, video in the media library. **Open the review** opens the media with its transcript.
+
+## Crawling a site and dated proofs
+- Mission **Crawl a site**: the server (or a browser agent, for pages built by JavaScript) walks one declared site: robots.txt obeyed, sitemaps first, then the site's links, never off the site, one page every 2 seconds at most. Rules (words, phrases, `re:` expressions) mark the **relevant** pages; the others are only listed.
+- **Pages** on the mission lists the registry: listed, relevant, proven, gone (missing from two crawls in a row, often the proof of a fix). The text of each relevant page is kept as a document whose versions can be compared.
+- A relevant page new or changed gets a **proof** taken by a browser agent of the organization: full-page screenshot, the page's HTML without its scripts (download only) and its text, sealed with the server's time and fingerprints, chained to the previous proof. *Check the proof chain* recomputes it: a proof changed afterwards breaks it. The agent needs the right to capture the site (*ext-permission-missing*); without an agent online the proof waits (*ext-no-agent*).
+- *crawl-robots-disallowed*: the site forbids robots; *crawl-blocked*: it refused the crawler (the crawl stops and never insists); *crawl-unreachable*: the site cannot be reached.
 
 ## Good to know
 

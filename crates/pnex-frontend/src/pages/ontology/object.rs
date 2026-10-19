@@ -42,6 +42,11 @@ pub fn OntologyObject(id: String) -> Element {
     let types = use_resource(|| async { api::ontology::types().await.unwrap_or_default() });
     let link_types =
         use_resource(|| async { api::ontology::link_types().await.unwrap_or_default() });
+    let hid = id.clone();
+    let hierarchy = use_resource(move || {
+        let id = hid.clone();
+        async move { api::ontology::hierarchy(&id, "", "").await.ok() }
+    });
     let mut tab = use_signal(|| "properties".to_string());
     let mut editing = use_signal(|| false);
     let mut archiving = use_signal(|| false);
@@ -81,6 +86,14 @@ pub fn OntologyObject(id: String) -> Element {
     // Consented voice profile of a person (voice-id.md).
     if o.type_key == pnex_core::voice_id::PERSON_TYPE {
         tabs.push(("voice", t!("onto-tab-voice")));
+    }
+    // D305: hierarchies come with packs; no tab without one.
+    let hierarchy = hierarchy.read().clone().flatten();
+    if hierarchy
+        .as_ref()
+        .is_some_and(|h| !h.hierarchies.is_empty())
+    {
+        tabs.insert(3, ("hierarchy", t!("onto-tab-hierarchy")));
     }
     // D231: any object has a gallery, except a media itself.
     if o.type_key != pnex_core::resources::KIND_MEDIA_ASSET {
@@ -171,6 +184,12 @@ pub fn OntologyObject(id: String) -> Element {
                     }
                 } else if tab() == "graph" {
                     GraphPanel { id: o.id.clone(), link_types: all_links.clone() }
+                } else if tab() == "hierarchy" {
+                    crate::components::ontology::hierarchy::HierarchyPanel {
+                        id: o.id.clone(),
+                        initial: hierarchy.clone().unwrap_or_default(),
+                        types: all_types.clone(),
+                    }
                 } else if tab() == "time" {
                     TimePanel {
                         object: o.clone(),
@@ -251,19 +270,46 @@ fn PropertiesPanel(object: ObjectView, type_view: ObjectTypeView) -> Element {
         .cloned()
         .collect();
     let source = object.source_ref.clone().unwrap_or_default();
+    // D306: properties added by another pack are grouped under its name.
+    let mut groups: Vec<(Option<String>, Vec<pnex_core::ontology::PropertyDef>)> = Vec::new();
+    for p in &props {
+        match groups.iter_mut().find(|(k, _)| *k == p.pack) {
+            Some((_, g)) => g.push(p.clone()),
+            None => groups.push((p.pack.clone(), vec![p.clone()])),
+        }
+    }
+    let packs = use_resource(|| async { api::ontology::packs().await.unwrap_or_default() });
+    let pack_name = move |key: &str| {
+        packs
+            .read()
+            .iter()
+            .flatten()
+            .find(|p| p.key == key)
+            .map(|p| crate::components::ontology::tr(&p.name, &p.names))
+            .unwrap_or_else(|| key.to_string())
+    };
     rsx! {
         div { class: SECTION,
             if props.is_empty() {
                 p { class: "text-sm text-gray-500", {t!("onto-no-properties")} }
             }
-            dl { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
-                for p in props {
-                    div { key: "{p.key}", "data-prop": "{p.key}",
-                        dt { class: "text-xs font-medium text-gray-500", {prop_label(&p)} }
-                        dd { class: "text-sm text-gray-900",
-                            PropertyValue {
-                                value: object.properties.get(&p.key).cloned(),
-                                def: p.clone(),
+            for (pack, group) in groups {
+                if let Some(k) = &pack {
+                    h3 {
+                        key: "{k}",
+                        class: "border-t border-gray-100 pt-3 text-xs font-semibold text-gray-500",
+                        {pack_name(k)}
+                    }
+                }
+                dl { class: "grid grid-cols-1 gap-3 sm:grid-cols-2",
+                    for p in group {
+                        div { key: "{p.key}", "data-prop": "{p.key}",
+                            dt { class: "text-xs font-medium text-gray-500", {prop_label(&p)} }
+                            dd { class: "text-sm text-gray-900",
+                                PropertyValue {
+                                    value: object.properties.get(&p.key).cloned(),
+                                    def: p.clone(),
+                                }
                             }
                         }
                     }

@@ -259,6 +259,13 @@ pub(super) async fn create_channel(
             "Owner, admin or member role required to manage notifications.",
         ));
     }
+    // D313: recipients from flow messages are an admin decision.
+    if crate::services::notify_recipients::dynamic(&params.config) && !org.can_administer() {
+        return Err(forbidden(
+            pnex_core::err_codes::NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
+            "Only owners and admins let a channel send to recipients read from flow messages.",
+        ));
+    }
     let name = params.name.trim().to_string();
     let ring = match crate::controllers::secrets::keyring(&ctx) {
         Ok(ring) => ring,
@@ -359,6 +366,14 @@ pub(super) async fn update_channel(
     let Some(m) = find_channel(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
+    // D313: turning recipients from flow messages on is an admin decision.
+    use crate::services::notify_recipients::dynamic;
+    if dynamic(&params.config) && !dynamic(&m.config) && !org.can_administer() {
+        return Err(forbidden(
+            pnex_core::err_codes::NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
+            "Only owners and admins let a channel send to recipients read from flow messages.",
+        ));
+    }
     let name = params.name.trim().to_string();
     // Merge des secrets seulement si le kind est stable (sinon remplacement
     // complet : rien à « garder » d'un ancien kind).

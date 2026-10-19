@@ -150,6 +150,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::time_ranges::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
+        .add_route(controllers::ontology_imports::routes())
         .add_route(controllers::cases::routes())
         .add_route(controllers::ml_models::routes())
         .add_route(controllers::ml_models::internal_routes())
@@ -245,6 +246,10 @@ impl Hooks for App {
         crate::services::ai::conversations::spawn_purger(ctx);
         // Recurrence occurrences roll forward (ontology.md annex B).
         crate::services::ontology::recurrence::spawn_sweeper(ctx);
+        // Scheduled ontology imports (partner-watch.md D303).
+        crate::services::ontology::imports::spawn_scheduler(ctx);
+        // Server site crawls (partner-watch.md D307).
+        crate::services::crawl::spawn_scheduler(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

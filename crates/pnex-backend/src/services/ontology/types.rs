@@ -72,6 +72,44 @@ async fn find_row<C: ConnectionTrait>(
         .ok_or(OntologyError::NotFound)
 }
 
+/// D302: a property made unique on a populated type must not already be
+/// shared by two live objects (the first values are returned).
+async fn check_new_unique<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    old: Option<&ObjectTypeDef>,
+    new: &ObjectTypeDef,
+) -> Result<()> {
+    let was_unique =
+        |k: &str| old.is_some_and(|o| o.properties.iter().any(|p| p.key == k && p.unique));
+    for p in new
+        .properties
+        .iter()
+        .filter(|p| p.unique && !was_unique(&p.key))
+    {
+        let rows = db
+            .query_all_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT properties ->> $3 AS v FROM objects \
+                 WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
+                 GROUP BY 1 HAVING count(*) > 1 ORDER BY 1 LIMIT 5",
+                [org_id.into(), new.key.clone().into(), p.key.clone().into()],
+            ))
+            .await?;
+        let values: Vec<String> = rows
+            .iter()
+            .filter_map(|r| r.try_get::<String>("", "v").ok())
+            .collect();
+        if !values.is_empty() {
+            return Err(OntologyError::UniqueDuplicates {
+                property: p.key.clone(),
+                values,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Validates a definition against the org schema (the type itself counts
 /// as known, so a type may contain or reference itself).
 fn check(s: &OrgSchema, def: &ObjectTypeDef) -> Result<()> {
@@ -162,6 +200,7 @@ pub async fn update(
             pnex_core::err_codes::FIELD_REQUIRED,
         ));
     };
+    check_new_unique(db, org_id, s.object_type(key), &input.def).await?;
     let txn = db.begin().await?;
     let row = find_row(&txn, org_id, key).await?;
     let next = expected + 1;
@@ -199,6 +238,7 @@ async fn extend_system(
     input: &ObjectTypeInput,
 ) -> Result<ObjectTypeView> {
     pnex_core::ontology::schema::check_defs(&input.def.properties, "properties", &|k| s.knows(k))?;
+    check_new_unique(db, org_id, Some(&def), &input.def).await?;
     def.properties = input.def.properties.clone();
     let expected = input.expected_version.unwrap_or(0);
     let txn = db.begin().await?;

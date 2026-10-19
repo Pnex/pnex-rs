@@ -69,6 +69,13 @@ fn filter_sql(
     };
     Ok(match f.op {
         FilterOp::Exists => format!("o.properties ? '{k}'"),
+        FilterOp::In => {
+            let Some(values) = f.value.as_array().filter(|a| a.len() <= 500) else {
+                return Err(invalid(field("value"), FIELD_INVALID));
+            };
+            let p = sql.bind(values.iter().map(text).collect::<Vec<String>>());
+            format!("(o.properties ->> '{k}') = ANY({p})")
+        }
         FilterOp::Eq | FilterOp::Ne => {
             let doc = sql.bind(serde_json::json!({ k: f.value }).to_string());
             let p = format!("o.properties @> {doc}::jsonb");
@@ -235,11 +242,18 @@ pub async fn run(
         .await?
         .and_then(|r| r.try_get::<i64>("", "n").ok())
         .unwrap_or(0);
+    let dir = if q.descending { "DESC" } else { "ASC" };
+    let order = match q.order_by.as_deref().filter(|k| !k.is_empty()) {
+        // The key enters the text: same charset check as the filters.
+        Some(k) if valid_key(k) => format!("(properties ->> '{k}') {dir} NULLS LAST, title, id"),
+        Some(_) => return Err(invalid("order_by", FIELD_INVALID)),
+        None => format!("title {dir}, id"),
+    };
     let lim = sql.bind(limit as i64);
     let off = sql.bind(offset as i64);
     let rows = objects::Model::find_by_statement(Statement::from_sql_and_values(
         backend,
-        format!("WITH {with} SELECT * FROM {last} ORDER BY title, id LIMIT {lim} OFFSET {off}"),
+        format!("WITH {with} SELECT * FROM {last} ORDER BY {order} LIMIT {lim} OFFSET {off}"),
         sql.params,
     ))
     .all(db)

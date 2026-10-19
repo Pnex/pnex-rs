@@ -114,6 +114,7 @@ pub fn routes() -> Routes {
                 .layer(DefaultBodyLimit::max(max))
                 .layer(axum::middleware::from_fn(compute_limits::upload_gate)),
         )
+        .add("/{id}/versions/diff", get(versions_diff))
         .add("/{id}/versions/{n}", get(version_of).delete(delete_version))
         .add("/{id}/versions/{n}/content", get(version_content))
         .add("/{id}/versions/{n}/restore", post(restore))
@@ -146,6 +147,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         version_of,
         delete_version,
         version_content,
+        versions_diff,
         restore
     ))]
     struct Doc;

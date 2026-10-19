@@ -4,7 +4,7 @@ title: Media library
 kind: feature
 pages: /media
 nodes: 
-err_codes: media-write-forbidden, media-last-version, media-file-too-large, media-format-unsupported, media-analysis-no-asr, media-analysis-busy, media-analysis-capture-failed, media-analysis-transcribe-failed
+err_codes: media-write-forbidden, media-last-version, media-file-too-large, media-format-unsupported, media-analysis-no-asr, media-analysis-busy, media-analysis-capture-failed, media-analysis-transcribe-failed, media-diff-unsupported
 tools: 
 tags: media, médias, transcription, transcribe, speakers, locuteurs, audio, library, bibliothèque, video, vidéo, mp4, photo, panorama, 360, splat, floor plan, plan, upload, version, take 360, onnx, glb, 3d model, modèle 3d
 ---
@@ -16,6 +16,9 @@ The Media library (Media › Library) stores the organization's versioned files:
 - Open a media to preview it as is (interactive 360 viewer for panoramas, 3D splat viewer; annotations are not shown here, see the Annotations page); see **Versions**, **Add a version**, **View** or **Restore** an older one, **Download**, **Delete asset**.
 - **Transcribe** an audio or video file from the **Analyses** card of its page: the speech is transcribed with its speakers (S1, S2…, never named automatically), as fast as the transcription engine allows, on the time of the file. It uses the first valid transcription profile of the organization (Streams › Models and profiles); without one the step is greyed with **Set up**. One file transcription runs at a time per organization (*media-analysis-busy*).
 - In the installed apps (not the browser): **Take a photo**; on Android also **Take 360** to capture a panorama with the phone, stitched on the device for a quick preview; the server then builds an HD version that replaces the preview automatically.
+
+## Comparing versions
+- On a document with several versions, **Compare versions** shows the paragraphs added, removed and changed between two versions (*media-diff-unsupported* when the file's text cannot be read).
 
 ## Good to know
 - Versions are kept: adding a version never overwrites the previous one. The last remaining version cannot be deleted alone; delete the whole asset instead.

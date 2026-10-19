@@ -478,6 +478,7 @@ mod preview;
 pub(crate) mod review;
 mod upload;
 mod util;
+mod version_diff;
 
 pub use review::MediaReview;
 

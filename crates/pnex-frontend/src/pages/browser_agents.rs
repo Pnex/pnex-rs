@@ -350,6 +350,7 @@ fn mode_label(mode: &str) -> String {
 enum MissionDialog {
     Edit(Mission),
     Delete(Mission),
+    Pages(Mission),
 }
 
 /// Label of a mission state, with its agent code as a sentence.
@@ -439,8 +440,18 @@ fn MissionsTab(
         .with_td_class("text-gray-600"),
         Column::new(t!("common-actions").to_string(), move |m: &Mission| {
             let (to_toggle, to_edit, to_delete) = (m.clone(), m.clone(), m.clone());
+            let crawl = matches!(m.spec, MissionSpec::CrawlSite(_)).then(|| m.clone());
             let toggle_key = if m.enabled { "browser-missions-disable" } else { "browser-missions-enable" };
             rsx! {
+                if let Some(c) = crawl {
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        r#type: "button",
+                        "data-testid": "mission-pages",
+                        onclick: move |_| dialog.set(Some(MissionDialog::Pages(c.clone()))),
+                        {t!("crawl-pages")}
+                    }
+                }
                 if can_write {
                     div { class: "flex justify-end gap-2",
                         button {
@@ -506,6 +517,9 @@ fn MissionsTab(
                     },
                 }
             },
+            Some(MissionDialog::Pages(m)) => rsx! {
+                crate::pages::site_pages::SitePagesDialog { mission: m.clone(), on_close: move |_| dialog.set(None) }
+            },
             Some(MissionDialog::Delete(m)) => rsx! {
                 ConfirmDialog {
                     title: t!("browser-missions-delete-title"),
@@ -533,9 +547,10 @@ fn MissionsTab(
 }
 
 /// Mission kinds offered by the form (D256), with their label key.
-const KINDS: [(&str, &str); 4] = [
+const KINDS: [(&str, &str); 5] = [
     ("collect_value", "browser-missions-kind-value"),
     ("collect_page", "browser-missions-kind-page"),
+    ("crawl_site", "browser-missions-kind-crawl"),
     ("follow_account", "browser-missions-kind-account"),
     ("watch_live", "browser-missions-kind-live"),
 ];
@@ -563,8 +578,15 @@ fn MissionForm(
         Some(MissionSpec::CollectValue(p)) => p.url.clone(),
         Some(MissionSpec::CollectPage(p)) => p.url.clone(),
         Some(MissionSpec::WatchLive(p)) => p.url.clone(),
+        Some(MissionSpec::CrawlSite(p)) => p.url.clone(),
+        Some(MissionSpec::CaptureProof(p)) => p.url.clone(),
         Some(MissionSpec::FollowAccount(_)) | None => String::new(),
     };
+    let crawl_params = match mission.as_ref().map(|m| &m.spec) {
+        Some(MissionSpec::CrawlSite(p)) => Some(p.clone()),
+        _ => None,
+    };
+    let crawl = use_signal(move || crate::pages::site_pages::CrawlDraft::of(crawl_params.as_ref()));
     let account = match mission.as_ref().map(|m| &m.spec) {
         Some(MissionSpec::FollowAccount(p)) => Some(p.clone()),
         _ => None,
@@ -619,6 +641,7 @@ fn MissionForm(
         let spec = match kind().as_str() {
             "collect_page" => MissionSpec::CollectPage(CollectPageParams { url: url() }),
             "watch_live" => MissionSpec::WatchLive(WatchLiveParams { url: url() }),
+            "crawl_site" => MissionSpec::CrawlSite(crawl().params(url())),
             "follow_account" => MissionSpec::FollowAccount(FollowAccountParams {
                 platform: SocialPlatform::parse(&platform()).unwrap_or(SocialPlatform::X),
                 handle: handle(),
@@ -785,6 +808,9 @@ fn MissionForm(
                             oninput: move |e| url.set(e.value()),
                         }
                     }
+                }
+                if kind() == "crawl_site" {
+                    crate::pages::site_pages::CrawlFields { draft: crawl }
                 }
                 if is_value {
                     div {

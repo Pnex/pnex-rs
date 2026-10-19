@@ -70,6 +70,10 @@ snap = "1"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
+# Site crawl (partner-watch.md D307): HTML → links and readable text, no
+# script run (MIT/ISC, same versions as already in the tree).
+scraper = "0.25"
+ego-tree = "0.10"
 # Device token and Noise pre-shared key generation.
 rand = "0.10"
 # Superviseur du runtime de flows (D18) : SIGUSR1 + test de vie du pid

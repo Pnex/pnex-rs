@@ -278,6 +278,21 @@ async fn agent_row<C: ConnectionTrait>(
     .await
 }
 
+/// Is a browser agent of the org online now?
+pub(crate) async fn any_online(db: &DatabaseConnection, org_id: i64) -> bool {
+    let Ok(rows) = AgentRow::find_by_statement(stmt(
+        &format!("{AGENT_SELECT} WHERE a.org_id = $1"),
+        vec![org_id.into()],
+    ))
+    .all(db)
+    .await
+    else {
+        return false;
+    };
+    let ids: Vec<i64> = rows.iter().map(|r| r.device_registry_id).collect();
+    online_of(db, &ids).await.values().any(|on| *on)
+}
+
 async fn online_of(db: &DatabaseConnection, ids: &[i64]) -> std::collections::HashMap<i64, bool> {
     crate::services::device_liveness::seen_many(db, ids)
         .await
@@ -464,9 +479,9 @@ pub async fn agent_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<Agen
 // ───────────────────────── Missions ─────────────────────────
 
 #[derive(Debug, FromQueryResult)]
-struct MissionRow {
+pub(crate) struct MissionRow {
     id: Uuid,
-    name: String,
+    pub(crate) name: String,
     spec: serde_json::Value,
     target: String,
     interval_secs: i32,
@@ -537,7 +552,9 @@ pub async fn list_missions(
 ) -> Result<Vec<Mission>, ExtensionError> {
     let rows = MissionRow::find_by_statement(stmt(
         &format!(
-            "SELECT {MISSION_COLUMNS} FROM extension_missions WHERE org_id = $1 ORDER BY created_at DESC"
+            // Proof tasks are the server's (D308): shown with their pages.
+            "SELECT {MISSION_COLUMNS} FROM extension_missions WHERE org_id = $1 \
+             AND kind <> 'capture_proof' ORDER BY created_at DESC"
         ),
         vec![org_id.into()],
     ))
@@ -584,7 +601,7 @@ pub async fn create_mission(
     // shortcut: count then insert is racy by a few rows, fine for an abuse cap.
     let count = db
         .query_one_raw(stmt(
-            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1",
+            "SELECT count(*) AS n FROM extension_missions WHERE org_id = $1 AND kind <> 'capture_proof'",
             vec![org_id.into()],
         ))
         .await?
@@ -726,6 +743,11 @@ pub async fn candidates(
             let m = row.view()?;
             // D269: exclusive platforms only on an agent dedicated to them.
             if !ba::mode_allows(&agent.mode, ba::platform_of(&m.target)) {
+                return None;
+            }
+            // A server crawl is the server's (D307).
+            if matches!(&m.spec, MissionSpec::CrawlSite(p) if p.executor == ba::CrawlExecutor::Server)
+            {
                 return None;
             }
             let scroll_depth = match &m.spec {
@@ -905,7 +927,7 @@ pub async fn store_page(
 
 /// An enabled mission this agent may run, with its spec; anything else is
 /// "not found" (an agent never learns about other missions).
-async fn own_mission(
+pub(crate) async fn own_mission(
     db: &DatabaseConnection,
     agent: &AgentAuth,
     mission_id: &str,

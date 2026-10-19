@@ -277,3 +277,89 @@ pub(super) async fn restore(
     let versions = versions_of(&ctx.db, asset.id).await?;
     Ok(format::json(asset_dto(&asset, &versions)).into_response())
 }
+
+// ─────────────────── GET /media/{id}/versions/diff (D311) ───────────────────
+
+#[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(super) struct DiffQuery {
+    /// Older version number.
+    from: i64,
+    /// Newer version number.
+    to: i64,
+}
+
+/// Readable text of a stored version (documents only).
+async fn version_text(ctx: &AppContext, v: &media_versions::Model) -> Result<Option<String>> {
+    use pnex_core::doc_extract;
+    let settings = MediaSettings::from_config(&ctx.config);
+    let store = settings.store().map_err(|_| Error::InternalServerError)?;
+    let bytes = store
+        .get(&v.storage_key)
+        .await
+        .map_err(|_| Error::NotFound)?;
+    let filename = v.filename.clone();
+    let job = tokio::task::spawn_blocking(move || {
+        let format = doc_extract::format_of(&filename, &bytes)?;
+        doc_extract::extract(format, &bytes, &doc_extract::Limits::default()).ok()
+    });
+    let doc = tokio::time::timeout(std::time::Duration::from_secs(30), job)
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .flatten();
+    Ok(doc.map(|d| {
+        d.sections
+            .into_iter()
+            .map(|s| s.text)
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }))
+}
+
+/// `GET /api/v1/media/{id}/versions/diff?from=&to=`: paragraph diff of two
+/// versions of a document, computed on demand (1 MB of text per side).
+#[utoipa::path(
+    get,
+    path = "/api/v1/media/{id}/versions/diff",
+    tag = "media",
+    operation_id = "media_versions_diff",
+    summary = "Compare two versions of a document",
+    description = "Paragraph diff of the readable text of versions `from` and `to` of a document (text, Markdown, CSV, Word, PDF, sheets): paragraphs added, removed and changed with their positions. Computed on demand, 1 MB of text per side at most (`truncated` beyond). Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), DiffQuery),
+    responses(
+        (status = 200, body = pnex_core::text_diff::TextDiff),
+        (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail),
+        (status = 422, description = "Not a readable document (`media-diff-unsupported`)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+pub(super) async fn versions_diff(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<DiffQuery>,
+) -> Result<Response> {
+    let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    let (Some(a), Some(b)) = (
+        find_version(&ctx.db, asset.id, q.from).await?,
+        find_version(&ctx.db, asset.id, q.to).await?,
+    ) else {
+        return Err(Error::NotFound);
+    };
+    let (Some(old), Some(new)) = (version_text(&ctx, &a).await?, version_text(&ctx, &b).await?)
+    else {
+        return Err(crate::controllers::coded_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            pnex_core::err_codes::MEDIA_DIFF_UNSUPPORTED,
+            "Only documents whose text can be read are compared.",
+            None,
+        ));
+    };
+    let mut diff = pnex_core::text_diff::diff(&old, &new);
+    diff.from_version = q.from;
+    diff.to_version = q.to;
+    Ok(format::json(diff).into_response())
+}

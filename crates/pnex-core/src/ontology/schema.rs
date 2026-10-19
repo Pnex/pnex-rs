@@ -135,6 +135,13 @@ pub struct PropertyDef {
     /// Backed by the GIN index of `objects.properties` in queries.
     #[serde(default)]
     pub indexed: bool,
+    /// Natural key (D302): one live object per org × type × value. Text or
+    /// number only; implies `indexed`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unique: bool,
+    /// Pack that added this property to a type it does not own (D306).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<String>,
 }
 
 impl<'de> Deserialize<'de> for PropertyDef {
@@ -153,6 +160,10 @@ impl<'de> Deserialize<'de> for PropertyDef {
             required: bool,
             #[serde(default)]
             indexed: bool,
+            #[serde(default)]
+            unique: bool,
+            #[serde(default)]
+            pack: Option<String>,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -227,7 +238,9 @@ impl<'de> Deserialize<'de> for PropertyDef {
             names: h.names,
             kind,
             required: h.required,
-            indexed: h.indexed,
+            indexed: h.indexed || h.unique,
+            unique: h.unique,
+            pack: h.pack,
         })
     }
 }
@@ -289,6 +302,14 @@ pub fn check_defs(
         }
         if d.kind.is_temporal() && d.required {
             return Err(err(at("required"), FIELD_INVALID));
+        }
+        if d.unique
+            && !matches!(
+                d.kind,
+                PropertyKind::Text { .. } | PropertyKind::Number { .. }
+            )
+        {
+            return Err(err(at("unique"), FIELD_INVALID));
         }
     }
     Ok(())
@@ -511,6 +532,8 @@ mod tests {
             kind,
             required: false,
             indexed: false,
+            unique: false,
+            pack: None,
         }
     }
 

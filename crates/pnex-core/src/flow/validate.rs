@@ -154,6 +154,21 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
             }
+            FlowNodeKind::OntologyQuery { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
+            FlowNodeKind::ObjectUpsert { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
+            FlowNodeKind::LinkUpsert { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
             FlowNodeKind::Weather { config } => {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
@@ -182,6 +197,13 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                         Some(&n.id),
                         "notify_no_template",
                         "select a notification template",
+                    ));
+                }
+                if config.to_field.trim().is_empty() && !config.cc_field.trim().is_empty() {
+                    v.push(FlowViolation::new(
+                        Some(&n.id),
+                        "notify_cc_without_to",
+                        "a copy address needs a recipient field",
                     ));
                 }
                 // The trigger gate is MANDATORY: without it the node would
