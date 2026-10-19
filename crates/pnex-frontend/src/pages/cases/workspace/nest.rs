@@ -40,8 +40,7 @@ pub(super) fn Nest(workspace: CaseWorkspace) -> Element {
     };
     rsx! {
         nav {
-            // Clear of the floating add button at the canvas corner.
-            class: "flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-line py-1 pr-3 pl-16 text-xs",
+            class: "flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-line pb-2 text-xs",
             "aria-label": t!("cw-subcases"),
             "data-testid": "case-nest",
             for p in workspace.parents.iter().rev() {

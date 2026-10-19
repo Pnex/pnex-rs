@@ -637,6 +637,11 @@ fn CaseWorkspaceOf(id: String) -> Element {
                 palette::AddMenu {}
             },
             palette_inset: (ws.view)() == View::Map && (ws.map_list)(),
+            // Above the canvas body, so the floating `+` never covers it.
+            banner: (!w.parents.is_empty() || !w.children.is_empty() || ws.can_write)
+                .then(|| rsx! {
+                    nest::Nest { workspace: w.clone() }
+                }),
             canvas: rsx! {
                 div {
                     class: "flex h-full flex-col outline-none",
@@ -658,7 +663,6 @@ fn CaseWorkspaceOf(id: String) -> Element {
                         drag.set(None);
                         target.set(None);
                     },
-                    nest::Nest { workspace: w.clone() }
                     // The main view, the inspector drawn over it on demand.
                     div { class: "relative min-h-0 flex-1 overflow-hidden",
                         match (ws.view)() {
