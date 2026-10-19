@@ -278,6 +278,11 @@ les règles plus anciennes qui les contredisent.
 | Média produit par un fournisseur de génération (D235) | Généré | Generated | — |
 | Extension de navigateur appairée qui exécute des missions, une par ordinateur (D255) | Agent navigateur | Browser agent | pas « collecteur », pas « extension » seule (= le logiciel à installer) |
 | Ce qu'un agent navigateur exécute : une page, un compte, un live (D256) | Mission | Mission | pas « règle », pas « tâche » |
+| Ensemble nommé de permissions, attribuable (iam.md D287) | Rôle | Role | le rôle d'un acteur dans un dossier |
+| Rôle donné à un membre ou à une équipe (D288) | Attribution | Assignment | pas « affectation », pas un partage |
+| Membres de l'org regroupés pour leurs accès (D286) | Équipe | Team | pas « groupe » (groupe froid, de sociétés, de nœuds) |
+| Unité d'autorisation `service:verbe` (D289) | Permission | Permission | une autorisation du navigateur ou du device |
+| Écran « qui peut faire quoi » (iam.md §9) | Accès | Access | pas « Partager » (lien public d'un tour) |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :

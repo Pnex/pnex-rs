@@ -55,8 +55,9 @@ flowchart TD
   outils, liste au §9 et dans la fiche `assistant`) ;
   pas de deploy, pas de suppression, pas de commande device, aucun outil
   générique (http/sql) ;
-- les outils d'écriture re-vérifient `can_write` (chat ouvert aux viewers,
-  écriture owner/admin/member ; refus `ai-write-forbidden`) ;
+- chaque outil exige sa permission du registre IAM (`pnex_api_contract::iam::TOOLS`,
+  vérifiée par le moteur avant l'outil ; chat ouvert aux viewers, écriture
+  owner/admin/member ; refus `access-denied` + `args.permission`) ;
 - `create_flow`/`update_flow` passent `pnex_core::validate_graph` avant
   persistance ; `validate_calc_expression` permet l'auto-correction ;
 - le chemin `flow_supervisor` / `POST /flows/{id}/deploy` n'est référencé
@@ -172,7 +173,7 @@ fournisseur dans le détail de l'organisation (D119).
   0 deploy, tool_result dans le 2e appel** ; outil interdit → ok:false ;
   401 → 502 `ai-auth-rejected` ; sans fournisseur → 400
   `ai-not-configured` ; borne d'itérations (+ `summary_key` de la trace) ;
-  viewer → refus `ai-write-forbidden` ; deploy entre la lecture et
+  viewer → refus `access-denied` ; deploy entre la lecture et
   l'écriture → `FlowWriteError::Deployed` ; conversations, dashboards,
   rétention, templates (voir §9.5).
 
@@ -326,8 +327,9 @@ flows tournent, comme un flow l'est en D143 :
 **Règle d'extension du registre** (opposable à tout nouvel outil) :
 1. écriture = le **service partagé avec le contrôleur HTTP de l'UI** (mêmes
    validations, mêmes 409) — jamais d'écriture directe en base ;
-2. garde de rôle re-vérifiée dans l'outil (`can_write`), org depuis le
-   principal (R1, R2) ;
+2. permission de l'outil inscrite au registre IAM (`TOOLS`, garde
+   `tests/iam.rs`), vérifiée par le moteur ; org depuis le principal
+   (R1, R2) ;
 3. pas de suppression, pas d'action physique (§9.2) ;
 4. une fiche de connaissance qui décrit l'outil (garde §9.1) ;
 5. trace UI (`summarize`) + deep-link quand une ressource est écrite.
@@ -455,8 +457,8 @@ i18n de l'assistant, fermés :
 - **Trace d'outils localisée** : clé `ai-trace-*` + `args` (§4) ; avant,
   des résumés mi-français mi-anglais affichés verbatim. Les traces
   stockées avant ce changement (sans clé) restent affichées verbatim.
-- **Refus d'outil codés** : rôle viewer → `ai-write-forbidden` (garde
-  unique `tools::require_write`, partagée par tous les outils d'écriture).
+- **Refus d'outil codés** : rôle sans la permission → `access-denied` (garde
+  unique `tools::authorize_tool`, appelée par `execute` avant tout outil).
 - **Plus d'erreur base brute dans une sortie d'outil** :
   `tools::internal(contexte)` journalise le détail côté serveur et ne rend
   au modèle (et à la trace) qu'un refus générique `ai-tool-internal` — une
