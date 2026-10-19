@@ -4,7 +4,7 @@ title: LLM providers (assistant, flows, file analyses)
 kind: feature
 pages: /orgs/current
 nodes: 
-err_codes: llm-provider-forbidden, llm-provider-not-found, llm-provider-name-taken
+err_codes: access-denied, llm-provider-not-found, llm-provider-name-taken
 tools: 
 tags: llm, ai, assistant, used for, usage, flows llm, separate llm, anthropic, claude, openai, api key, model, provider, ia, configure assistant, bring your own llm, byo
 ---

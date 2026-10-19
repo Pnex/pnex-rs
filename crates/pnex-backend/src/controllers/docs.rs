@@ -61,15 +61,6 @@ fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
 
-fn forbidden() -> Error {
-    crate::controllers::coded_error(
-        StatusCode::FORBIDDEN,
-        err_codes::DOCS_WRITE_FORBIDDEN,
-        "Owner, admin or member role required to edit pages.",
-        None,
-    )
-}
-
 /// Trimmed text, or the field error (`required`, `max_length:<n>`).
 fn checked_text(field: &str, raw: &str, max: usize) -> std::result::Result<String, Box<Response>> {
     let text = raw.trim().to_string();
@@ -218,8 +209,7 @@ async fn list(
     request_body = pnex_core::pages::CreateDoc,
     responses(
         (status = 201, body = pnex_core::pages::DocSummary),
-        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`), `template` (`invalid`) or `markdown` (`invalid` with a template, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`), `template` (`invalid`) or `markdown` (`invalid` with a template, `max_length:<n>`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -228,9 +218,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<CreateDoc>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let title = match checked_text("title", &input.title, MAX_TITLE_CHARS) {
         Ok(t) => t,
         Err(resp) => return Ok(*resp),
@@ -318,7 +305,6 @@ async fn detail(
     responses(
         (status = 200, body = pnex_core::pages::DocSummary),
         (status = 400, description = "`field-invalid`: `title` (`required`, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -329,9 +315,6 @@ async fn rename(
     Path(id): Path<Uuid>,
     Json(input): Json<PatchDoc>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let title = match checked_text("title", &input.title, MAX_TITLE_CHARS) {
         Ok(t) => t,
@@ -362,7 +345,6 @@ async fn rename(
     params(("id" = String, Path, format = "uuid", description = "Page id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -372,9 +354,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     docs::Entity::delete_by_id(d.id)
         .exec(&ctx.db)
@@ -523,7 +502,6 @@ struct VersionHead {
     responses(
         (status = 201, body = pnex_core::pages::DocVersionSummary),
         (status = 400, description = "`field-invalid`: `label` (`required`, `max_length:<n>`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -534,9 +512,6 @@ async fn create_version(
     Path(id): Path<Uuid>,
     Json(input): Json<CreateDocVersion>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let label = match checked_text("label", &input.label, MAX_VERSION_LABEL_CHARS) {
         Ok(t) => t,
@@ -635,7 +610,6 @@ async fn version_pdf(
     params(("id" = String, Path, format = "uuid", description = "Page id"), ("n" = i64, Path, description = "Version number")),
     responses(
         (status = 200, body = pnex_core::pages::DocVersionSummary),
-        (status = 403, description = "`docs-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -648,9 +622,6 @@ async fn approve_version(
     org: OrgContext,
     Path((id, n)): Path<(Uuid, i64)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let d = find_doc(&ctx.db, org.org.id, id).await?;
     let v = doc_versions::Entity::find()
         .filter(doc_versions::Column::DocId.eq(d.id))

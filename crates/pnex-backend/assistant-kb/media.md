@@ -4,7 +4,7 @@ title: Media library
 kind: feature
 pages: /media
 nodes: 
-err_codes: media-write-forbidden, media-last-version, media-file-too-large, media-format-unsupported, media-analysis-no-asr, media-analysis-busy, media-analysis-capture-failed, media-analysis-transcribe-failed, media-diff-unsupported
+err_codes: access-denied, media-last-version, media-file-too-large, media-format-unsupported, media-analysis-no-asr, media-analysis-busy, media-analysis-capture-failed, media-analysis-transcribe-failed, media-diff-unsupported
 tools: 
 tags: media, médias, transcription, transcribe, speakers, locuteurs, audio, library, bibliothèque, video, vidéo, mp4, photo, panorama, 360, splat, floor plan, plan, upload, version, take 360, onnx, glb, 3d model, modèle 3d
 ---

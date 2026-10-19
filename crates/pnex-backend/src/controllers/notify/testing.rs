@@ -119,12 +119,6 @@ pub(super) async fn test_draft(
     org: OrgContext,
     Json(params): Json<TestDraftInput>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let name = params.name.unwrap_or_else(|| "draft".to_string());
     let existing = match params.channel_id {
         Some(id) => find_channel(&ctx.db, &org, id)
@@ -154,7 +148,7 @@ pub(super) async fn test_draft(
         org.org.id,
         &params.kind,
         &merged,
-        (!org.can_manage_secrets()).then_some(held.as_slice()),
+        (!org.can("secrets:write")).then_some(held.as_slice()),
     )
     .await
     {
@@ -223,12 +217,6 @@ pub(super) async fn test_channel(
     Path(id): Path<Uuid>,
     raw: axum::body::Bytes,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "notify-write-forbidden",
-            "Owner, admin or member role required to manage notifications.",
-        ));
-    }
     let Some(m) = find_channel(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

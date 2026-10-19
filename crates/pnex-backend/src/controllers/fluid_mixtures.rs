@@ -1,6 +1,6 @@
 //! Custom fluid mixtures: org-scoped CRUD.
 //!
-//! Org scoping (cross-org masked as 404), `can_write()` on writes, 400
+//! Org scoping (cross-org masked as 404), IAM permission on writes, 400
 //! `field-invalid` / `mixture-invalid` violations from `pnex-core`, CoolProp
 //! rejections as `coolprop-error` (engine detail in `args.detail`). The
 //! backend links `pnex-coolprop`: mass-to-mole conversion + CoolProp check
@@ -19,15 +19,6 @@ use crate::controllers::pagination;
 use crate::models::_entities::fluid_mixtures;
 use crate::models::fluid_mixtures::FluidMixtures;
 use pnex_core::{err_codes, FluidMixtureComposition, MixtureBasis};
-
-/// Forbidden with the machine code + canonical English description
-/// (frontend resolves `err-<code>` at render time, verbatim fallback).
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
@@ -260,7 +251,6 @@ struct MixtureBody {
     responses(
         (status = 201, body = pnex_core::FluidMixture),
         (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:255`, `unique`; `composition`: `invalid`), `mixture-invalid` (`errors.violations`) or `coolprop-error` (CoolProp rejected the mixture, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -270,12 +260,6 @@ async fn create(
     org: OrgContext,
     Json(body): Json<MixtureBody>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "fluid-write-forbidden",
-            "Owner, admin or member role required to manage fluid mixtures.",
-        ));
-    }
     let name = body.name.trim().to_string();
     if name.is_empty() {
         return Ok(field_status("name", err_codes::FIELD_REQUIRED));
@@ -344,7 +328,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::FluidMixture),
         (status = 400, description = "`field-invalid` (`name`: `required`, `max_length:255`, `unique`; `composition`: `invalid`), `mixture-invalid` (`errors.violations`) or `coolprop-error` (CoolProp rejected the mixture, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown mixture or mixture of another org", body = crate::openapi::ErrorDetail),
         (status = 503, description = "CoolProp compute pool saturated", body = crate::openapi::ErrorDetail)
     ),
@@ -356,12 +339,6 @@ async fn update(
     Path(id): Path<i64>,
     Json(body): Json<MixtureBody>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "fluid-write-forbidden",
-            "Owner, admin or member role required to manage fluid mixtures.",
-        ));
-    }
     let Some(m) = find_mixture(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -430,7 +407,6 @@ async fn update(
     params(("id" = i64, Path, description = "Mixture id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`fluid-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown mixture or mixture of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -440,12 +416,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "fluid-write-forbidden",
-            "Owner, admin or member role required to manage fluid mixtures.",
-        ));
-    }
     let Some(m) = find_mixture(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

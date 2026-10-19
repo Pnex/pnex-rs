@@ -4,7 +4,7 @@ title: Dashboard switch does nothing
 kind: troubleshooting
 pages: /dashboards, /controls, /annotations, /flows
 nodes: control_source, device_write
-err_codes: control-rate-limited, control-store-unavailable, control-write-forbidden, pin-already-assigned, control-unknown
+err_codes: access-denied, control-rate-limited, control-store-unavailable, pin-already-assigned, control-unknown
 tools: 
 tags: switch does nothing, interrupteur ne marche pas, no effect, sans effet, relay not switching, button not working, control deleted, contrôle supprimé, slider
 ---

@@ -32,19 +32,6 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        return Ok(());
-    }
-    Err(Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new(
-            err_codes::TAXONOMY_WRITE_FORBIDDEN,
-            "Viewer role: taxonomies are read-only.",
-        ),
-    ))
-}
-
 /// Service error → HTTP answer (field errors as `field-invalid`).
 pub(crate) fn taxonomy_error(e: TaxonomyError) -> Result<Response> {
     match e {
@@ -155,7 +142,6 @@ async fn one(
     responses(
         (status = 201, body = pnex_core::taxonomy::Taxonomy),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`; topic fields as `topics.<i>.<name>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`taxonomy-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`taxonomy-name-taken`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -165,7 +151,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<TaxonomyInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match taxonomies::create(&ctx.db, org.org.id, Some(org.auth.user.id), &input).await {
         Ok(row) => Ok((
             StatusCode::CREATED,
@@ -189,7 +174,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::taxonomy::Taxonomy),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`; topic fields as `topics.<i>.<name>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`taxonomy-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`taxonomy-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`taxonomy-name-taken`", body = crate::openapi::ErrorDetail)
     ),
@@ -201,7 +185,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<TaxonomyInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     if let Err(e) = taxonomies::update(&ctx.db, org.org.id, id, &input).await {
         return taxonomy_error(e);
     }
@@ -219,7 +202,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Taxonomy id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`taxonomy-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`taxonomy-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -229,7 +211,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match taxonomies::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => taxonomy_error(e),
@@ -277,7 +258,6 @@ async fn versions(
     responses(
         (status = 201, body = pnex_core::taxonomy::TaxonomyVersion),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`; topic fields as `topics.<i>.<name>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`taxonomy-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`taxonomy-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`taxonomy-version-conflict` (`args.current` = current version)", body = crate::openapi::ErrorDetail)
     ),
@@ -289,7 +269,6 @@ async fn add_version(
     Path(id): Path<Uuid>,
     Json(input): Json<TaxonomyVersionInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match taxonomies::add_version(&ctx.db, org.org.id, id, Some(org.auth.user.id), &input).await {
         Ok(v) => Ok((
             StatusCode::CREATED,

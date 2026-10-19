@@ -8,7 +8,7 @@
 //! - 404 masqué cross-org (POI/lien introuvable ou d'une autre org) ;
 //! - cluster = items individuels (≤ `CLUSTER_INDIVIDUAL_MAX` points dans la
 //!   bbox) sinon clusters numérotés (centroïde + échantillon) ;
-//! - écritures `can_write()` (owner|admin), logique portée par
+//! - writes need their IAM permission (`pois:write`), logic in
 //!   `services/pois.rs` (point unique, école `services/flow.rs`).
 
 use axum::extract::{Path, Query, State};

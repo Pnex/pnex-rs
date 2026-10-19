@@ -27,17 +27,7 @@ use crate::components::ui::{
     BTN_SECONDARY, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, PANEL, TAB, TAB_ACTIVE,
     TAB_BAR,
 };
-use crate::state::{org, session, toasts};
-
-fn can_write() -> bool {
-    let (Some(user), Some(org_id)) = (session::user(), org::current()) else {
-        return false;
-    };
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .is_some_and(|m| org::role_can_write(m.role))
-}
+use crate::state::{org, toasts};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Tab {
@@ -51,7 +41,7 @@ pub fn BrowserAgents() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut tab = use_signal(|| Tab::Agents);
     let mut creating = use_signal(|| false);
-    let write = can_write();
+    let write = crate::state::access::can("extension:write");
     let agents = use_resource(move || async move {
         let _ = reload();
         api::extension::agents().await

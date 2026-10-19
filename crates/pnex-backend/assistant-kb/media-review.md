@@ -4,7 +4,7 @@ title: Review a media with its transcript and speakers
 kind: feature
 pages: /media/:id/review, /streams/:id/review
 nodes: 
-err_codes: media-analysis-no-detector, media-analysis-detect-failed, voice-id-not-enough-speech, media-attribution-conflict, media-write-forbidden, media-analysis-no-asr, media-analysis-no-voice-profile, media-analysis-no-speakers, media-analysis-identify-failed
+err_codes: access-denied, media-analysis-no-detector, media-analysis-detect-failed, voice-id-not-enough-speech, media-attribution-conflict, media-analysis-no-asr, media-analysis-no-voice-profile, media-analysis-no-speakers, media-analysis-identify-failed
 tools: 
 tags: stream review, relire un flux, radio, retention, rétention, detection, détection, objects, objets, boxes, boîtes, enrol, enrôler, retranscribe, retranscrire, voice, voix, recognition, reconnaissance, voice profile, profil vocal, statement, déclaration, quote, citation, review, relecture, relire, transcript, transcription, subtitles, sous-titres, speakers, locuteurs, who speaks, qui parle, attribution, attribuer, person, personne, intervenant, participant, appears in, apparaît dans, timeline, frise
 ---
@@ -32,4 +32,4 @@ The review screen of an audio or video file (Media › open a file › Analyses 
 - A post captured without its video shows its text and timeline, without a player.
 - Two people editing the same span: the second save is refused with *media-attribution-conflict*; reload the page and do it again.
 - Voice recognition needs a ready voice profile (*media-analysis-no-voice-profile*, see Voice ID) and a PNeX transcription with speakers (*media-analysis-no-speakers*); platform subtitles have no speakers: transcribe the file first.
-- Viewers can review and read the attributions; only owners and admins attribute (*media-write-forbidden*).
+- Viewers can review and read the attributions; members attribute (refusal: *access-denied*).

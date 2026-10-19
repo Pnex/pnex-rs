@@ -764,7 +764,7 @@ pub fn PoiTreeSection(
                         key: "{fid}",
                         kind: pnex_core::resources::KIND_FOLDER.to_string(),
                         id: fid.to_string(),
-                        can_write: crate::state::org::current_can_write(),
+                        can_write: crate::state::access::can("pois:write"),
                     }
                 }
             }

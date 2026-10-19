@@ -20,8 +20,8 @@ pub fn ObjectPageLink(kind: String, native_id: String) -> Element {
     let Some(Some(object)) = res.read().clone() else {
         return rsx! {};
     };
-    let can_add =
-        crate::state::org::current_can_write() && object.type_key != pnex_core::ontology::KIND_CASE;
+    let can_add = crate::state::access::can("ontology:write")
+        && object.type_key != pnex_core::ontology::KIND_CASE;
     let object_id = object.id.clone();
     rsx! {
         if can_add {

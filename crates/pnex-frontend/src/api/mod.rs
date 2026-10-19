@@ -20,6 +20,8 @@ pub mod dashboards;
 pub mod fluid_mixtures;
 /// Référentiel des hosts serveur PNeX (wizard device).
 pub mod hosts;
+/// Access management (iam.md §8).
+pub mod iam;
 pub mod meta;
 // Consommé uniquement par le pipeline capture360 (cfg android) — mort sur
 // les autres cibles, école capture360/mod.rs (allow(dead_code) documenté).

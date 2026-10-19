@@ -14,7 +14,7 @@ use crate::app::Route;
 use crate::components::confirm::ConfirmDialog;
 use crate::components::crud::layout::{ListLayout, DANGER_BTN, PRIMARY_BTN};
 use crate::components::ontology::{field_errors, type_label, ICON_NAMES};
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = crate::components::ui::FIELD_LABEL;
@@ -88,7 +88,7 @@ pub fn OntologyType(type_key: String) -> Element {
     let key = type_key;
     let navigator = use_navigator();
     let is_new = key == "_new";
-    let admin = org::current_can_administer();
+    let admin = crate::state::access::can("ontology.schema:write");
     let types = use_resource(|| async { api::ontology::types().await.unwrap_or_default() });
     let all: Vec<ObjectTypeView> = types.read().clone().unwrap_or_default();
     let existing = all.iter().find(|t| t.def.key == key).cloned();

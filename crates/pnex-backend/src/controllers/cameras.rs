@@ -1,5 +1,5 @@
 //! Cameras & recordings API (camera-video.md D76/D79/D80) — org-scoped
-//! (`X-Org-Id`, cross-org = masking 404), writes gated by `can_write()`.
+//! (`X-Org-Id`, cross-org = masking 404), writes gated by their IAM permission.
 //!
 //! - `GET    /api/v1/cameras`: cameras of the org (settings + live state), paginated
 //! - `PATCH  /api/v1/cameras/{device}/settings`: validated, pushed live
@@ -28,16 +28,6 @@ use crate::models::_entities::{device_cameras, device_registries, video_segments
 use crate::services::camera;
 use crate::services::media::MediaSettings;
 use pnex_core::camera::{CameraView, CaptureMode, FrameSize, VideoSegment};
-
-fn forbidden() -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(
-            "camera-write-forbidden",
-            "Changing camera settings or recordings requires the owner, admin or member role",
-        ),
-    )
-}
 
 /// Page parameters of the camera list.
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -204,7 +194,6 @@ pub struct SettingsPatch {
     responses(
         (status = 200, body = pnex_core::camera::CameraView),
         (status = 400, description = "`field-invalid`: `framesize`/`capture_mode` `invalid`, `quality`/`fps` `range:<min>..<max>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`camera-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown camera or camera of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -215,9 +204,6 @@ async fn patch_settings(
     Path(device): Path<i64>,
     axum::Json(patch): axum::Json<SettingsPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let Some((cam, dev)) = find_camera(&ctx.db, &org, device).await? else {
         return Err(Error::NotFound);
     };
@@ -524,7 +510,6 @@ async fn segment_content(
     params(("id" = String, Path, format = "uuid", description = "Video segment UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`camera-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown segment", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -534,9 +519,6 @@ async fn delete_segment(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let Some((seg, _)) = find_segment(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

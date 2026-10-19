@@ -98,7 +98,7 @@ fn ObjectsTab(initial_type: String, tabs: Element) -> Element {
     let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
     let mut creating = use_signal(|| false);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("ontology:write");
     let navigator = use_navigator();
 
     let types = use_resource(move || async move { api::ontology::types().await });

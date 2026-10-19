@@ -4,7 +4,7 @@ title: Sites
 kind: feature
 pages: /sites
 nodes: 
-err_codes: poi-write-forbidden, poi-link-write-forbidden, poi-device-already-placed
+err_codes: access-denied, poi-device-already-placed
 tools: 
 tags: sites, site, tree, arbre, folders, dossiers, building, bâtiment, room, local, location, emplacement, breadcrumb, organisation
 ---

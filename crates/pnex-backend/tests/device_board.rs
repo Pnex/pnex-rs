@@ -184,10 +184,7 @@ async fn board_change_follows_the_chip_and_moves_the_soldered_screen() {
         .unwrap();
         let res = put_board(&server, &bob, org, device, oled).await;
         res.assert_status(axum_test::http::StatusCode::FORBIDDEN);
-        assert_eq!(
-            res.json::<serde_json::Value>()["error"],
-            "device-write-forbidden"
-        );
+        assert_eq!(res.json::<serde_json::Value>()["error"], "access-denied");
         let row = device_registries::Entity::find_by_id(device)
             .one(&ctx.db)
             .await

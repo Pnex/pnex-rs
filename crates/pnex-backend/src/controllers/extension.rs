@@ -102,19 +102,6 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        return Ok(());
-    }
-    Err(Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new(
-            err_codes::EXTENSION_WRITE_FORBIDDEN,
-            "Viewer role: browser agents and missions are read-only.",
-        ),
-    ))
-}
-
 fn extension_error(e: ExtensionError) -> Result<Response> {
     let coded = |status, code: &str, msg: &str| {
         Err(Error::CustomError(status, ErrorDetail::new(code, msg)))
@@ -224,7 +211,6 @@ async fn agents(
     responses(
         (status = 201, body = pnex_core::browser_agent::PairResponse),
         (status = 400, description = "`extension-pair-refused`: malformed install key or bad signature", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`extension-install-paired-elsewhere`: the install is paired with another org; `extension-limit-reached` (`args.max`): the org holds as many agents as allowed", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -234,7 +220,6 @@ async fn pair(
     org: OrgContext,
     Json(req): Json<PairRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match extension::pair(&ctx.db, org.org.id, org.auth.user.id, &req).await {
         Ok(paired) => Ok((StatusCode::CREATED, format::json(paired)).into_response()),
         Err(e) => extension_error(e),
@@ -254,7 +239,6 @@ async fn pair(
     responses(
         (status = 200, body = pnex_core::browser_agent::BrowserAgent),
         (status = 400, description = "`field-invalid`: `errors.fields.name` `required` or `max_length:N`, `errors.fields.mode` `invalid`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`extension-agent-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -265,7 +249,6 @@ async fn update_agent(
     Path(id): Path<i64>,
     Json(input): Json<BrowserAgentPatch>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match extension::update_agent(&ctx.db, org.org.id, id, &input).await {
         Ok(a) => format::json(a),
         Err(e) => extension_error(e),
@@ -1116,7 +1099,6 @@ async fn mission(
     responses(
         (status = 201, body = pnex_core::browser_agent::Mission),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`); spec fields as `spec.params.<name>`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`extension-limit-reached` (`args.max`): the org holds as many missions as allowed", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1126,7 +1108,6 @@ async fn create_mission(
     org: OrgContext,
     Json(input): Json<MissionCreate>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match extension::create_mission(&ctx.db, org.org.id, org.auth.user.id, &input).await {
         Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
         Err(e) => extension_error(e),
@@ -1146,7 +1127,6 @@ async fn create_mission(
     responses(
         (status = 200, body = pnex_core::browser_agent::Mission),
         (status = 400, description = "`field-invalid`: `errors.fields` tokens `required`, `max_length:N`, `invalid`, `not-found` (`agent_id`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`extension-mission-version-conflict` (`args.current`)", body = crate::openapi::ErrorDetail)
     ),
@@ -1158,7 +1138,6 @@ async fn update_mission(
     Path(id): Path<Uuid>,
     Json(patch): Json<MissionPatch>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match extension::update_mission(&ctx.db, org.org.id, id, &patch).await {
         Ok(m) => format::json(m),
         Err(e) => extension_error(e),
@@ -1176,7 +1155,6 @@ async fn update_mission(
     params(("id" = String, Path, format = "uuid", description = "Mission id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`extension-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -1186,7 +1164,6 @@ async fn remove_mission(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match extension::delete_mission(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => extension_error(e),

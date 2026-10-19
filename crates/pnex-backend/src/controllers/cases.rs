@@ -17,9 +17,7 @@ use pnex_core::ontology::api::{
 };
 
 use crate::auth::OrgContext;
-use crate::controllers::ontology::{
-    actor, o2, onto_error, paged, parse_uuid, require_write, PageQuery,
-};
+use crate::controllers::ontology::{actor, o2, onto_error, paged, parse_uuid, PageQuery};
 use crate::services::ontology::cases;
 use axum::extract::Query;
 
@@ -132,7 +130,6 @@ async fn open_case(
     org: OrgContext,
     Json(input): Json<CaseOpenInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(cases::open(&ctx.db, org.org.id, &actor(&org), &input).await)
 }
 
@@ -159,7 +156,6 @@ async fn import_case(
     org: OrgContext,
     Json(doc): Json<CaseExport>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(cases::import_case(&ctx.db, org.org.id, &actor(&org), &doc).await)
 }
 
@@ -211,7 +207,6 @@ async fn create_event(
     Path(id): Path<String>,
     Json(input): Json<CaseEventInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(cases::create_event(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -240,7 +235,6 @@ async fn attach(
     Path(id): Path<String>,
     Json(input): Json<CaseAttachInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(cases::attach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -268,7 +262,6 @@ async fn detach(
     Path(id): Path<String>,
     Json(input): Json<CaseDetachInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(cases::detach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -362,7 +355,6 @@ async fn import_track(
     Path(id): Path<String>,
     Json(input): Json<TrackImportInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(cases::import(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -415,7 +407,6 @@ async fn delete_track_import(
     org: OrgContext,
     Path((id, iid)): Path<(String, String)>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let (id, iid) = (parse_uuid(&id)?, parse_uuid(&iid)?);
     match cases::delete_import(&ctx.db, org.org.id, id, iid).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
@@ -448,7 +439,6 @@ async fn detect(
     Path(id): Path<String>,
     Json(q): Json<DetectQuery>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let (id, user) = (parse_uuid(&id)?, actor(&org).user_id);
     reply(cases::detect(&ctx.db, o2(&ctx).as_ref(), org.org.id, user, id, &q).await)
 }
@@ -506,7 +496,6 @@ async fn retain(
     Path((id, pid)): Path<(String, String)>,
     Json(input): Json<ProposalRetain>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let (id, pid) = (parse_uuid(&id)?, parse_uuid(&pid)?);
     reply(cases::retain(&ctx.db, org.org.id, &actor(&org), id, pid, &input).await)
 }
@@ -538,7 +527,6 @@ async fn reject(
     Path((id, pid)): Path<(String, String)>,
     Json(input): Json<ProposalReject>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let (id, pid) = (parse_uuid(&id)?, parse_uuid(&pid)?);
     let pid_s = pid.to_string();
     let rejected = cases::reject(&ctx.db, org.org.id, &actor(&org), id, pid, &input)
@@ -598,7 +586,6 @@ async fn freeze(
     Path(id): Path<String>,
     Json(input): Json<CaseSnapshotInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let id = parse_uuid(&id)?;
     created(
         cases::freeze(
@@ -804,7 +791,6 @@ async fn save_layout(
     Path(id): Path<String>,
     Json(input): Json<CaseLayout>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let id = parse_uuid(&id)?;
     reply(cases::save_layout(&ctx.db, org.org.id, &actor(&org), id, &input).await)
 }
@@ -879,7 +865,6 @@ async fn add_page(
     Path(id): Path<String>,
     Json(input): Json<CasePageInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     created(cases::add_page(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
 }
 
@@ -933,7 +918,6 @@ async fn purge(
     Path(id): Path<String>,
     Json(input): Json<CasePurgeInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(
         cases::purge(
             &ctx.db,

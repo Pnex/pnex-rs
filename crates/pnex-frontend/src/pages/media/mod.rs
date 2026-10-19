@@ -30,15 +30,8 @@ use crate::components::icons;
 use crate::components::labels_editor::{LabelChips, LabelsEditor};
 use crate::components::modal::Modal;
 use crate::state::media::OPEN_MEDIA;
-use crate::state::{org, session, toasts};
+use crate::state::toasts;
 use crate::util::{media_blob_url_tracked, sleep, trigger_download};
-
-/// User role in the current org (devices.rs school).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
 
 /// Human-readable size (B/KB/MB/GB) for the list Size column.
 fn format_size(bytes: i64) -> String {
@@ -85,7 +78,7 @@ pub fn Media() -> Element {
     // Take 360 overlay (Android) open.
     let mut take360_open = use_signal(|| false);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("media:write");
 
     let list = use_resource(move || {
         let filters = MediaFilters {

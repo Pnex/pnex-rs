@@ -347,7 +347,7 @@ async fn crud_versions_isolation_and_viewer() {
         ] {
             let (st, e) = call(&server, m, &p, &env.bob, org_a, body).await;
             assert_eq!(st, 403, "{m} {p}");
-            assert_eq!(e["error"], "docs-write-forbidden");
+            assert_eq!(e["error"], "access-denied");
         }
 
         let (st, _) = call(&server, "DELETE", &path, &env.alice, org_a, None).await;
@@ -776,7 +776,7 @@ async fn comments_threads_roles_and_live_notice() {
             let (st, e) = call(&server, m, &p, &env.bob, org_a, body).await;
             assert_eq!(
                 (st, e["error"].as_str()),
-                (403, Some("docs-write-forbidden")),
+                (403, Some("access-denied")),
                 "{m} {p}"
             );
         }

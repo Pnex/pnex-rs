@@ -5,12 +5,6 @@ use super::*;
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is
 // the verbatim fallback for unregistered codes.
-pub(super) fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// `field-invalid` 400 on one field.
 pub(super) fn field_status(field: &str, msg: &str) -> Response {

@@ -6,8 +6,8 @@
 //! Writing it stores and publishes a value for the `control-source` flow
 //! nodes — never a device command (D128).
 //!
-//! School `viz_widgets.rs`: org scoping (masked 404), `can_write()` for
-//! every write (operating a control included), field errors as tokens.
+//! School `viz_widgets.rs`: org scoping (masked 404), an IAM permission for
+//! every write (`controls:operate` to operate a control), field errors as tokens.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -45,15 +45,6 @@ fn custom_error(
             description: Some(msg.to_string()),
             errors: args.map(|a| serde_json::json!({ "args": a })),
         },
-    )
-}
-
-fn write_forbidden() -> Error {
-    custom_error(
-        StatusCode::FORBIDDEN,
-        err_codes::CONTROL_WRITE_FORBIDDEN,
-        "Owner, admin or member role required to manage or operate controls.",
-        None,
     )
 }
 
@@ -311,7 +302,6 @@ async fn detail(
     responses(
         (status = 201, body = pnex_core::ui_control::UiControl),
         (status = 400, description = "`field-invalid` (`errors.fields`: `key`, `label`, `spec`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`control-key-taken`: another control of the org uses this key", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -321,9 +311,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<CreateUiControl>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let key = params.key.trim();
     if let Some(resp) = validate_definition(key, &params.label, &params.spec) {
         return Ok(resp);
@@ -360,7 +347,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::ui_control::UiControl),
         (status = 400, description = "`field-invalid` (`errors.fields`: `key`, `label`, `spec`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`control-key-taken`: another control of the org uses this key", body = crate::openapi::ErrorDetail)
     ),
@@ -372,9 +358,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(params): Json<UpdateUiControl>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let Some(m) = find_control(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -426,7 +409,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Control id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`control-in-use` (arg `flow`: names of the listening flows)", body = crate::openapi::ErrorDetail)
     ),
@@ -437,9 +419,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let Some(m) = find_control(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -484,7 +463,6 @@ async fn delete(
     responses(
         (status = 200, body = pnex_core::ui_control::ControlValue),
         (status = 400, description = "`control-value-invalid` (arg `reason`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`control-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown control (or another org's)", body = crate::openapi::ErrorDetail),
         (status = 429, description = "`control-rate-limited`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "`control-store-unavailable`: the value was not sent", body = crate::openapi::ErrorDetail)
@@ -497,9 +475,6 @@ async fn write_value(
     Path(id): Path<Uuid>,
     Json(params): Json<WriteControlValue>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(write_forbidden());
-    }
     let Some(m) = find_control(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

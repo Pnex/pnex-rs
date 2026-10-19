@@ -383,7 +383,7 @@ async fn org_isolation_and_viewer_read_only() {
         ] {
             let (st, e) = call(&server, m, &p, &env.bob, org_a, body).await;
             assert_eq!(st, 403, "{m} {p}");
-            assert_eq!(e["error"], "time-range-write-forbidden");
+            assert_eq!(e["error"], "access-denied");
         }
         let (st, e) = upload(
             &server,
@@ -394,7 +394,7 @@ async fn org_isolation_and_viewer_read_only() {
         )
         .await;
         assert_eq!(st, 403);
-        assert_eq!(e["error"], "time-range-write-forbidden");
+        assert_eq!(e["error"], "access-denied");
     })
     .await;
 }

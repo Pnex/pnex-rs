@@ -27,12 +27,6 @@ pub(super) async fn update_peripherals(
     Path(id): Path<i64>,
     Json(body): Json<pnex_core::UpdateDevicePeripherals>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            err_codes::DEVICE_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage devices.",
-        ));
-    }
     let Some(device) = find_device(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

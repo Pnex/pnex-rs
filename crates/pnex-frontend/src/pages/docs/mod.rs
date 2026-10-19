@@ -53,7 +53,7 @@ fn DocList() -> Element {
     let mut error = use_signal(|| Option::<ApiError>::None);
     let mut confirm_delete = use_signal(|| Option::<Uuid>::None);
     let navigator = use_navigator();
-    let can_write = crate::state::org::current_can_write();
+    let can_write = crate::state::access::can("docs:write");
 
     // D218: own label filter ("name" or "name:value"), applied server-side.
     let filter_label = use_signal(String::new);

@@ -18,13 +18,12 @@ pub(super) struct UploadQuery {
     tag = "media",
     operation_id = "media_upload",
     summary = "Upload a new media asset",
-    description = "Creates an asset and its version 1 from the raw request body (`application/octet-stream`, no multipart); metadata travel in the query. The kind is taken from `kind` when given, else sniffed from content and extension; the content must be an allowed format whose extension matches it. Stored in object storage; owner/admin only. Concurrent large uploads are queued per server.",
+    description = "Creates an asset and its version 1 from the raw request body (`application/octet-stream`, no multipart); metadata travel in the query. The kind is taken from `kind` when given, else sniffed from content and extension; the content must be an allowed format whose extension matches it. Stored in object storage; owner, admin or member. Concurrent large uploads are queued per server.",
     params(UploadQuery),
     request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "File bytes"),
     responses(
         (status = 201, body = MediaAssetDto),
         (status = 400, description = "Format not allowed or mismatching extension (`media-format-unsupported`), or `field-invalid` (`filename`: `required` for an empty body, `kind`: `invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 413, description = "Body over the upload limit (`media-file-too-large`, `errors.args.max_bytes`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -35,12 +34,6 @@ pub(super) async fn upload(
     Query(q): Query<UploadQuery>,
     body: Bytes,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let settings = MediaSettings::from_config(&ctx.config);
     if body.is_empty() {
         return Ok(field_status(
@@ -332,13 +325,12 @@ pub(super) struct PatchAsset {
     tag = "media",
     operation_id = "media_update",
     summary = "Rename a media asset or change its description",
-    description = "Absent fields are left unchanged. Owner/admin only.",
+    description = "Absent fields are left unchanged. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     request_body = PatchAsset,
     responses(
         (status = 200, body = MediaAssetDto),
         (status = 400, description = "Empty name (`field-invalid`, `name`: `required`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -349,12 +341,6 @@ pub(super) async fn update(
     Path(id): Path<Uuid>,
     Json(patch): Json<PatchAsset>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -387,11 +373,10 @@ pub(super) async fn update(
     tag = "media",
     operation_id = "media_delete",
     summary = "Delete a media asset",
-    description = "Permanently deletes the asset, all its versions and their stored files, and its labels, containment and links. Owner/admin only.",
+    description = "Permanently deletes the asset, all its versions and their stored files, and its labels, containment and links. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -401,12 +386,6 @@ pub(super) async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

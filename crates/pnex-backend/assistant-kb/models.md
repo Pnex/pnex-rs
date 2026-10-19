@@ -4,7 +4,7 @@ title: Vision models
 kind: feature
 pages: /models
 nodes: vision_detect, camera_source
-err_codes: ml-model-write-forbidden, ml-model-missing-bytes, ml-model-load-failed, ml-model-inference-failed, ml-model-invalid
+err_codes: access-denied, ml-model-missing-bytes, ml-model-load-failed, ml-model-inference-failed, ml-model-invalid
 tools: 
 tags: models, modèles, onnx, yolox, vision, object detection, détection, ai, ia, inference, labels, threshold, seuil
 ---

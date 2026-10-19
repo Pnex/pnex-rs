@@ -242,7 +242,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
 
     match &*detail.value().read() {
         Some(Ok(detail)) => {
-            let can_write = crate::state::org::role_can_administer(detail.role);
+            let can_write = crate::state::access::role_can(detail.role, "orgs.members:write");
             let is_owner = detail.role == OrgRole::Owner;
             let members = detail.members.clone();
             let name = detail.name.clone();

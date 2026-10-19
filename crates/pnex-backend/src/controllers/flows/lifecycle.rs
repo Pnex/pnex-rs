@@ -595,7 +595,6 @@ pub(crate) async fn pin_write_owners_by_device(
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-deploy-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
     ),
@@ -627,7 +626,6 @@ pub(super) async fn deploy(
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-deploy-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow or version not found", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
     ),
@@ -653,12 +651,7 @@ async fn deploy_version(
     id: i64,
     body: Option<Json<pnex_core::DeployFlow>>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "flow-deploy-forbidden",
-            "Owner, admin or member role required to deploy flows.",
-        ));
-    }
+    // `flows:deploy` is checked by the extractor of every caller.
     let Some(flow) = find_flow(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -816,7 +809,6 @@ async fn deploy_version(
     params(("id" = i64, Path, description = "Flow id")),
     responses(
         (status = 200, body = FlowStopResult),
-        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Not deployed (`flow-stop-not-deployed`) or no deployed version (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
@@ -828,12 +820,6 @@ pub(super) async fn stop(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "flow-exec-forbidden",
-            "Owner, admin or member role required to manage flow execution.",
-        ));
-    }
     if find_flow(&ctx.db, &org, id).await?.is_none() {
         return Err(Error::NotFound);
     }
@@ -931,7 +917,6 @@ async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Not stopped (`flow-start-not-stopped`) or never deployed (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
@@ -943,12 +928,6 @@ pub(super) async fn start(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "flow-exec-forbidden",
-            "Owner, admin or member role required to manage flow execution.",
-        ));
-    }
     if find_flow(&ctx.db, &org, id).await?.is_none() {
         return Err(Error::NotFound);
     }
@@ -1014,7 +993,6 @@ async fn start_stopped(ctx: AppContext, org: OrgContext, flow: flows::Model) -> 
     responses(
         (status = 200, body = FlowDeployResult),
         (status = 400, description = "Deploy gate or engine pre-flight violations (pin/recorder exclusivity, unknown controls, actions, streams, taxonomies, range scopes, unresolved functions, unreadable graph, `engine_load`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-exec-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Never deployed (`flow-no-deployed-version`)", body = crate::openapi::ErrorDetail),
         (status = 503, description = "The flow runtime did not acknowledge (`flow-runtime`, `args.detail`); database unchanged", body = crate::openapi::ErrorDetail)
@@ -1026,12 +1004,6 @@ pub(super) async fn restart(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "flow-exec-forbidden",
-            "Owner, admin or member role required to manage flow execution.",
-        ));
-    }
     if find_flow(&ctx.db, &org, id).await?.is_none() {
         return Err(Error::NotFound);
     }

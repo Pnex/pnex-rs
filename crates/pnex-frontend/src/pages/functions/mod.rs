@@ -36,16 +36,8 @@ use crate::components::functions_reference::FunctionsReferenceModal;
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
 use crate::state::functions::OPEN_FUNCTION;
-use crate::state::{org, session, toasts};
+use crate::state::{org, toasts};
 use crate::util;
-
-/// Rôle de l'utilisateur dans l'org courante — même helper que `flows.rs`
-/// (privé par page, convention projet).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
 
 #[component]
 pub fn Functions() -> Element {
@@ -75,7 +67,7 @@ pub fn Functions() -> Element {
     // Cible de suppression (id, nom) — confirmation à la demande.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("functions:write");
 
     let list = use_resource(move || {
         let _ = reload();

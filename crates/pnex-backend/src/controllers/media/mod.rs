@@ -18,7 +18,7 @@
 //! purgeable, a row without its blob is not.
 //!
 //! Errors (D239, all `ErrorDetail`): 400 `field-invalid` with machine tokens
-//! in `errors.fields`, 403 `media-write-forbidden` via `can_write()`, 404
+//! in `errors.fields`, 403 `access-denied` from the IAM extractor, 404
 //! masking other orgs, 409 coded conflicts.
 
 use axum::body::Bytes;

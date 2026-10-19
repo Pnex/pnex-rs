@@ -496,11 +496,7 @@ async fn viewer_cannot_manage_providers() {
         )
         .await;
         assert_eq!(create.status_code(), 403, "{}", create.text());
-        assert!(
-            create.text().contains("llm-provider-forbidden"),
-            "{}",
-            create.text()
-        );
+        assert!(create.text().contains("access-denied"), "{}", create.text());
     })
     .await;
 }
@@ -1065,7 +1061,7 @@ async fn viewer_converses_but_cannot_write() {
         assert_eq!(body["tool_trace"][0]["ok"], false, "{body}");
         assert_eq!(
             body["tool_trace"][0]["code"],
-            pnex_core::err_codes::AI_WRITE_FORBIDDEN,
+            pnex_core::err_codes::ACCESS_DENIED,
             "coded refusal, rendered by the UI: {body}"
         );
         let flows = send_json(&server, "GET", "/api/v1/flows", &env.alice, org, None)
@@ -1680,7 +1676,7 @@ async fn assistant_versions_taxonomies_on_top_of_what_it_read() {
         .await;
         assert_eq!(
             trace[0]["code"],
-            pnex_core::err_codes::AI_WRITE_FORBIDDEN,
+            pnex_core::err_codes::ACCESS_DENIED,
             "{trace:?}"
         );
     })
@@ -1731,7 +1727,7 @@ async fn assistant_works_the_ontology_through_the_ui_services() {
             ("query_ontology", serde_json::json!({"query": {}})),
         ])
         .await;
-        assert_eq!(trace[0]["code"], pnex_core::err_codes::AI_WRITE_FORBIDDEN, "{trace:?}");
+        assert_eq!(trace[0]["code"], pnex_core::err_codes::ACCESS_DENIED, "{trace:?}");
         assert_eq!(trace[1]["ok"], true, "a viewer reads");
     })
     .await;

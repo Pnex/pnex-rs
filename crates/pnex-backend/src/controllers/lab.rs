@@ -78,19 +78,6 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        return Ok(());
-    }
-    Err(Error::CustomError(
-        StatusCode::FORBIDDEN,
-        ErrorDetail::new(
-            err_codes::LAB_WRITE_FORBIDDEN,
-            "Viewer role: Vision Lab projects are read-only.".to_string(),
-        ),
-    ))
-}
-
 /// Service failure → HTTP answer: field errors as `field-invalid`, the
 /// rest as a coded `ErrorDetail` (+ `args`).
 fn fail(e: LabError) -> Result<Response> {
@@ -192,8 +179,7 @@ async fn show(
     request_body = pnex_core::lab::LabProjectInput,
     responses(
         (status = 201, body = pnex_core::lab::LabProject),
-        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -202,7 +188,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<LabProjectInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match lab::create_project(&ctx.db, org.org.id, &user_of(&org), &input).await {
         Ok(p) => Ok((StatusCode::CREATED, format::json(p)).into_response()),
         Err(e) => fail(e),
@@ -221,7 +206,6 @@ async fn create(
     responses(
         (status = 200, body = pnex_core::lab::LabProject),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-project-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`lab-class-in-use`", body = crate::openapi::ErrorDetail)
     ),
@@ -233,7 +217,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<LabProjectInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(lab::update_project(&ctx.db, org.org.id, id, &input).await)
 }
 
@@ -247,7 +230,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Project id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-project-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -257,7 +239,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match lab::delete_project(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => fail(e),
@@ -307,7 +288,6 @@ struct AddImages {
     responses(
         (status = 200, body = pnex_core::lab::LabImagesAdded),
         (status = 400, description = "`lab-asset-not-image` or field errors", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-project-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -318,7 +298,6 @@ async fn add_images(
     Path(id): Path<Uuid>,
     Json(body): Json<AddImages>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let store = MediaSettings::from_config(&ctx.config)
         .store()
         .map_err(|_| Error::InternalServerError)?;
@@ -336,7 +315,6 @@ async fn add_images(
     params(("id" = String, Path, format = "uuid", description = "Image id")),
     responses(
         (status = 204, description = "Removed"),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-image-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -346,7 +324,6 @@ async fn remove_image(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match lab::remove_image(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => fail(e),
@@ -365,7 +342,6 @@ async fn remove_image(
     responses(
         (status = 200, body = pnex_core::lab::LabImage),
         (status = 400, description = "`lab-box-invalid` or `lab-negative-with-boxes`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-image-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`lab-annotations-conflict`: stale `expected_version`", body = crate::openapi::ErrorDetail)
     ),
@@ -377,7 +353,6 @@ async fn save_annotations(
     Path(id): Path<Uuid>,
     Json(input): Json<LabAnnotationsInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(lab::save_annotations(&ctx.db, org.org.id, id, &input).await)
 }
 
@@ -394,7 +369,6 @@ async fn save_annotations(
     responses(
         (status = 200, body = pnex_core::lab::LabImagesAdded),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Project or camera not found, or `camera-export-empty`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -405,7 +379,6 @@ async fn import_recording(
     Path(id): Path<Uuid>,
     Json(req): Json<LabRecordingImport>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let added = lab::import_recording(&ctx, org.org.id, id, &req).await;
     reply(added.map(|images| pnex_core::lab::LabImagesAdded { images }))
 }
@@ -423,7 +396,6 @@ async fn import_recording(
     responses(
         (status = 201, body = pnex_core::lab::LabTrainingRun),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-version-not-found`", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`lab-train-busy`: a run is already active", body = crate::openapi::ErrorDetail)
     ),
@@ -435,7 +407,6 @@ async fn train(
     Path(id): Path<Uuid>,
     Json(req): Json<LabTrainRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match crate::services::lab_train::start(&ctx, org.org.id, id, &req, &user_of(&org)).await {
         Ok(run) => Ok((StatusCode::CREATED, format::json(run)).into_response()),
         Err(e) => fail(e),
@@ -477,7 +448,6 @@ async fn runs(
     params(("id" = String, Path, format = "uuid", description = "Training run id")),
     responses(
         (status = 200, body = pnex_core::lab::LabTrainingRun),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-run-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -487,7 +457,6 @@ async fn cancel_run(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(crate::services::lab_train::cancel(&ctx.db, org.org.id, id).await)
 }
 
@@ -504,7 +473,6 @@ async fn cancel_run(
     responses(
         (status = 200, body = pnex_core::lab::LabImagesAdded),
         (status = 400, description = "`field-invalid` (`errors.fields`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Project or video not found", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`lab-video-unsupported`, `lab-video-too-large` or `lab-video-decode-failed`", body = crate::openapi::ErrorDetail)
     ),
@@ -516,7 +484,6 @@ async fn import_video(
     Path(id): Path<Uuid>,
     Json(req): Json<LabVideoImport>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let added = lab::import_video(&ctx, org.org.id, id, &req).await;
     reply(added.map(|images| pnex_core::lab::LabImagesAdded { images }))
 }
@@ -533,7 +500,6 @@ async fn import_video(
     request_body = pnex_core::lab::LabSuggestRequest,
     responses(
         (status = 200, body = pnex_core::lab::LabSuggestions),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-image-not-found`", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`lab-propagate-no-previous` or a model error", body = crate::openapi::ErrorDetail),
         (status = 503, description = "Vision pool saturated", body = crate::openapi::ErrorDetail)
@@ -546,7 +512,6 @@ async fn propagate(
     Path(id): Path<Uuid>,
     Json(req): Json<LabSuggestRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let store = MediaSettings::from_config(&ctx.config)
         .store()
         .map_err(|_| Error::InternalServerError)?;
@@ -566,7 +531,6 @@ async fn propagate(
     params(("id" = String, Path, format = "uuid", description = "Image id")),
     responses(
         (status = 200, body = pnex_core::lab::LabSuggestions),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-image-not-found`", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`lab-interpolate-no-keyframes`", body = crate::openapi::ErrorDetail)
     ),
@@ -577,7 +541,6 @@ async fn interpolate(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let found = lab::interpolate(&ctx.db, org.org.id, id).await;
     reply(found.map(|suggestions| pnex_core::lab::LabSuggestions { suggestions }))
 }
@@ -595,7 +558,6 @@ async fn interpolate(
     request_body = pnex_core::lab::LabSuggestRequest,
     responses(
         (status = 200, body = pnex_core::lab::LabSuggestions),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Image or model not found", body = crate::openapi::ErrorDetail),
         (status = 422, description = "`ml-model-missing-bytes`, `ml-model-load-failed` or `ml-model-inference-failed`", body = crate::openapi::ErrorDetail),
         (status = 503, description = "Vision pool saturated", body = crate::openapi::ErrorDetail)
@@ -608,7 +570,6 @@ async fn suggest(
     Path(id): Path<Uuid>,
     Json(req): Json<LabSuggestRequest>,
 ) -> Result<Response> {
-    require_write(&org)?;
     let store = MediaSettings::from_config(&ctx.config)
         .store()
         .map_err(|_| Error::InternalServerError)?;
@@ -680,7 +641,6 @@ struct FreezeBody {
     responses(
         (status = 201, body = pnex_core::lab::LabDatasetVersion),
         (status = 400, description = "`lab-dataset-empty`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`lab-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`lab-project-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -691,7 +651,6 @@ async fn freeze(
     Path(id): Path<Uuid>,
     Json(body): Json<FreezeBody>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match lab::freeze(&ctx.db, org.org.id, id, &user_of(&org), &body.note).await {
         Ok(v) => Ok((StatusCode::CREATED, format::json(v)).into_response()),
         Err(e) => fail(e),

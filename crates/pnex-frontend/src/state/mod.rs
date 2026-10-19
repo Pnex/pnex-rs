@@ -1,5 +1,7 @@
 //! État global de l'app (signals Dioxus) : session, org courante.
 
+/// Rights of the user in the current org (iam.md §9).
+pub mod access;
 pub mod ai;
 pub mod annotations;
 pub mod compat;

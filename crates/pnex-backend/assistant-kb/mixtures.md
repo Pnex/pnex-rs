@@ -4,7 +4,7 @@ title: Fluid Mixtures
 kind: feature
 pages: /mixtures
 nodes: cool_prop
-err_codes: fluid-write-forbidden, mixture-invalid, coolprop-error
+err_codes: access-denied, mixture-invalid, coolprop-error
 tools: 
 tags: mixture, mixtures, fluid, coolprop, refrigerant, glycol, thermodynamics, diagram, mélange, fluide, thermo
 ---

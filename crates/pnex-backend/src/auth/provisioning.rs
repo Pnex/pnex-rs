@@ -125,7 +125,8 @@ async fn find_or_create_user(
                 .one(txn)
                 .await?
             {
-                if !email_verified {
+                // A service account identity never signs in (iam.md §7).
+                if !email_verified || existing.is_service {
                     return Err(ProvisionError::UnverifiedEmailRelink);
                 }
                 let mut active: users::ActiveModel = existing.into();

@@ -59,7 +59,7 @@ fn fluid_error_text(err: &FluidError) -> String {
 #[component]
 pub fn FluidMixtures() -> Element {
     let mut reload = use_signal(|| 0u32);
-    let can_write = crate::state::org::current_can_write();
+    let can_write = crate::state::access::can("fluid-mixtures:write");
     let search = use_signal(String::new);
     // Formulaire : `None` = fermé ; `Some(id)` = édition, `Some(String::new())`
     // vs création distingue via `editing_id.is_empty()`.

@@ -405,7 +405,6 @@ async fn annotations(
     responses(
         (status = 200, body = CameraRecordingsDeleted),
         (status = 400, description = "Missing/invalid window or too wide (`camera-range-invalid`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`camera-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device or device of another organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -416,13 +415,6 @@ async fn delete_range(
     Path(device): Path<i64>,
     Query(q): Query<RangeQuery>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(coded(
-            StatusCode::FORBIDDEN,
-            err_codes::CAMERA_WRITE_FORBIDDEN,
-            "Changing camera settings or recordings requires the owner, admin or member role",
-        ));
-    }
     let (from, to) = window(&q, DELETE_MAX_SPAN_SECS)?;
     find_device(&ctx.db, &org, device).await?;
     let mut deleted = 0u64;

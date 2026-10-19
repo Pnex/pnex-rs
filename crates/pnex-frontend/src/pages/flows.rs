@@ -28,14 +28,6 @@ use crate::components::loading_overlay::LoadingOverlay;
 use crate::components::ui::INPUT;
 use crate::state::{org, session, toasts};
 
-/// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer ») —
-/// même helper que `devices.rs` (privé par page, convention projet).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
-
 #[component]
 pub fn Flows(id: String) -> Element {
     let mut reload = use_signal(|| 0u32);
@@ -68,7 +60,7 @@ pub fn Flows(id: String) -> Element {
     // la ligne montre un spinner pour ne pas donner l'impression d'un clic perdu.
     let mut deleting = use_signal(|| None::<i64>);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("flows:write");
 
     let list = use_resource(move || {
         let filters = api::flows::FlowFilters {

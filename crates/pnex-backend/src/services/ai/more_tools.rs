@@ -5,7 +5,7 @@
 //!
 //! Writes go through the services of the UI's HTTP controllers
 //! (`services::notify_templates`, `services::functions`), re-check
-//! `can_write`, never delete, never send a notification and never touch a
+//! the tool's IAM permission, never delete, never send a notification and never touch a
 //! channel (channels hold credentials; their test sends a real message).
 //! A template or function change never reaches a running flow: deployed
 //! flows keep the snapshot / pinned version taken at deploy.
@@ -16,7 +16,7 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, ToolDeps, ToolError, ToolOutcome};
 use crate::models::_entities::{
     annotation_layers, device_placements, function_versions, functions, map_pins, notify_templates,
     tours,
@@ -137,7 +137,6 @@ pub async fn create_notification_template(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let input = template_input(args)?;
     let m = tpl::create(deps.db, deps.org_id, &input)
         .await
@@ -151,7 +150,6 @@ pub async fn update_notification_template(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let m = find_template(deps, uuid_arg(args, "template_id")?).await?;
     let expected = str_arg(args, "expected_updated_at")?;
     let current = m.updated_at.to_rfc3339();
@@ -317,7 +315,6 @@ pub async fn test_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
 }
 
 pub async fn create_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let input = pnex_core::CreateFunction {
         name: str_arg(args, "name")?,
         language: language_arg(args)?,
@@ -338,7 +335,6 @@ pub async fn create_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOu
 /// of the version read with get_function. Flows keep their pinned version
 /// until the user picks the new one and redeploys.
 pub async fn update_function(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let f = find_function(deps, i64_arg(args, "function_id")?).await?;
     let input = pnex_core::SaveFunctionVersion {
         expected_version_number: i64_arg(args, "expected_version")?,
@@ -608,7 +604,6 @@ pub async fn create_taxonomy_version(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let id = uuid_arg(args, "taxonomy_id")?;
     let expected = i64_arg(args, "expected_version")?;
     let topics: Vec<pnex_core::taxonomy::Topic> = serde_json::from_value(

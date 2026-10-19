@@ -86,7 +86,7 @@ pub fn VoiceId() -> Element {
         ListLayout {
             title: t!("voice-page-title").to_string(),
             // Enrolment (consent) is owners and admins only.
-            can_write: crate::state::org::current_can_administer(),
+            can_write: crate::state::access::can("voice-id:write"),
             add_label: Some(t!("voice-new").to_string()),
             on_add: move |_| picking.set(true),
             subtitle: Some(t!("voice-page-subtitle").to_string()),

@@ -9,12 +9,12 @@ use crate::api;
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::tr;
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 #[component]
 pub fn PacksTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
-    let admin = org::current_can_administer();
+    let admin = crate::state::access::can("ontology.schema:write");
     let packs = use_resource(move || async move {
         let _ = reload();
         api::ontology::packs().await.unwrap_or_default()

@@ -24,7 +24,7 @@ use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{ACTIONS_TD_CLASS, ACTIONS_TH_CLASS};
 use crate::components::icons;
 use crate::components::labels_editor::{use_row_labels, LabelChips, LabelsButton};
-use crate::state::{org, session, toasts};
+use crate::state::{org, toasts};
 
 mod form;
 mod test_image;
@@ -34,13 +34,6 @@ use crate::components::ui::BTN_SECONDARY_SM;
 use form::ModelFormModal;
 use test_image::TestImageModal;
 use test_live::TestLiveModal;
-
-/// User role in the current org (media/devices school).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
 
 /// Which modal is open.
 #[derive(Clone, PartialEq)]
@@ -60,7 +53,7 @@ pub fn Models() -> Element {
     let filter_search = use_signal(String::new);
     let mut reload = use_signal(|| 0u32);
     let mut dialog = use_signal(|| None::<Dialog>);
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("ml:write");
 
     let models = use_resource(move || {
         let offset = page() * PAGE_SIZE;

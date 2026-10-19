@@ -39,13 +39,6 @@ fn conflict(code: &str, msg: &str) -> Error {
     )
 }
 
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
-
 /// `field-invalid` 400 on one field.
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
@@ -200,8 +193,7 @@ fn tour_write_error_response(e: crate::services::tour::TourWriteError) -> Respon
     request_body = pnex_core::CreateTour,
     responses(
         (status = 201, body = pnex_core::TourDetail),
-        (status = 400, description = "`field-invalid` (`name`) or `tour-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`name`) or `tour-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -210,12 +202,6 @@ async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateTour>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-write-forbidden",
-            "Owner, admin or member role required to manage tours",
-        ));
-    }
     let (tour, version) = match crate::services::tour::create_tour(
         &ctx.db,
         org.org.id,
@@ -237,7 +223,7 @@ async fn create(
             version,
             version,
             None,
-            org.can_write(),
+            org.can("tours:write"),
         )),
     )
         .into_response())
@@ -360,7 +346,7 @@ async fn list(
             let published_n = t
                 .published_version_id
                 .and_then(|id| published_numbers.get(&id).copied());
-            summary_dto(t, latest_n, published_n, org.can_write())
+            summary_dto(t, latest_n, published_n, org.can("tours:write"))
         })
         .collect();
 
@@ -452,7 +438,7 @@ async fn detail(
         doc_number,
         latest_number,
         published_number,
-        org.can_write(),
+        org.can("tours:write"),
     ))
     .into_response())
 }
@@ -473,7 +459,6 @@ async fn detail(
     responses(
         (status = 200, body = pnex_core::TourDetail),
         (status = 400, description = "`field-invalid` (`name`) or `tour-invalid` with `errors.violations` = `[{subject, code, message}]`", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`tour-version-conflict` (`errors.args.expected` / `errors.args.current`)", body = crate::openapi::ErrorDetail)
     ),
@@ -485,12 +470,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(params): Json<pnex_core::UpdateTour>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-write-forbidden",
-            "Owner, admin or member role required to manage tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -515,7 +494,7 @@ async fn update(
         version,
         version,
         published_number,
-        org.can_write(),
+        org.can("tours:write"),
     ))
     .into_response())
 }
@@ -534,7 +513,6 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`tour-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -544,12 +522,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-write-forbidden",
-            "Owner, admin or member role required to manage tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -706,7 +678,6 @@ async fn version_detail(
     request_body = Option<pnex_core::PublishTour>,
     responses(
         (status = 200, body = pnex_core::TourDetail),
-        (status = 403, description = "`tour-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or version", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -717,12 +688,6 @@ async fn publish(
     Path(id): Path<Uuid>,
     body: Option<Json<pnex_core::PublishTour>>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-publish-forbidden",
-            "Owner, admin or member role required to publish tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -767,7 +732,7 @@ async fn publish(
         version_number,
         latest_number,
         Some(version_number),
-        org.can_write(),
+        org.can("tours:write"),
     ))
     .into_response())
 }
@@ -784,7 +749,6 @@ async fn publish(
     params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
     responses(
         (status = 200, body = pnex_core::TourDetail),
-        (status = 403, description = "`tour-publish-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -794,12 +758,6 @@ async fn unpublish(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-publish-forbidden",
-            "Owner, admin or member role required to publish tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -823,7 +781,7 @@ async fn unpublish(
         latest_number,
         latest_number,
         None,
-        org.can_write(),
+        org.can("tours:write"),
     ))
     .into_response())
 }
@@ -842,7 +800,6 @@ async fn unpublish(
     params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
     responses(
         (status = 200, body = TourShare),
-        (status = 403, description = "`tour-share-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`tour-not-published`", body = crate::openapi::ErrorDetail)
     ),
@@ -853,12 +810,6 @@ async fn create_share(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-share-forbidden",
-            "Owner, admin or member role required to share tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -903,7 +854,6 @@ struct TourShare {
     params(("id" = String, Path, format = "uuid", description = "Tour id (UUID)")),
     responses(
         (status = 204, description = "Revoked"),
-        (status = 403, description = "`tour-share-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown tour or tour of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -913,12 +863,6 @@ async fn delete_share(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "tour-share-forbidden",
-            "Owner, admin or member role required to share tours",
-        ));
-    }
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

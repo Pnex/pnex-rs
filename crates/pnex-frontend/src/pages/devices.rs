@@ -32,15 +32,8 @@ use crate::components::ui::INPUT;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
 use crate::flash;
 use crate::state::devices::OPEN_DEVICE;
-use crate::state::{org, session, toasts};
+use crate::state::{org, toasts};
 use crate::util::{save_blob, sleep};
-
-/// Rôle de l'utilisateur dans l'org courante (« owner »/« admin »/« viewer »).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
 
 /// Cible du modal de déploiement OTA — tout ce que le modal doit afficher
 /// et décider : version cible vs courante, fraîcheur du build vis-à-vis
@@ -105,7 +98,7 @@ pub fn Devices() -> Element {
     let mut bulk_selected = use_signal(HashSet::<String>::new);
     let mut bulk_modal = use_signal(|| None::<bool>);
 
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("devices:write");
 
     let list = use_resource(move || {
         let filters = api::devices::DeviceFilters {

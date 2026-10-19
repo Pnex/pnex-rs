@@ -47,40 +47,6 @@ pub fn restore(memberships: &[pnex_core::OrgMembership]) {
     }
 }
 
-/// Content writes (flows, devices, dashboards, channels...): owner, admin
-/// or member (secrets.md D117). Mirrors `OrgContext::can_write`.
-pub fn role_can_write(role: pnex_core::OrgRole) -> bool {
-    role.can_write()
-}
-
-/// The signed-in user may write content in the current org (member+).
-pub fn current_can_write() -> bool {
-    let (Some(user), Some(org_id)) = (crate::state::session::user(), current()) else {
-        return false;
-    };
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .is_some_and(|m| role_can_write(m.role))
-}
-
-/// Org governance (members, LLM providers, telemetry deletion, vault
-/// writes): owner or admin. Mirrors `OrgContext::can_administer`.
-pub fn role_can_administer(role: pnex_core::OrgRole) -> bool {
-    role.can_administer()
-}
-
-/// The signed-in user administers the current org (owner or admin).
-pub fn current_can_administer() -> bool {
-    let (Some(user), Some(org_id)) = (crate::state::session::user(), current()) else {
-        return false;
-    };
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .is_some_and(|m| role_can_administer(m.role))
-}
-
 /// Désélectionne l'org courante.
 pub fn clear() {
     ORG.with_mut(|v| *v = None);

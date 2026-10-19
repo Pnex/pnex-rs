@@ -94,7 +94,7 @@ fn use_surface_live(
         move || ids.clone(),
         reload,
         via,
-        crate::state::org::current_can_write(),
+        crate::state::access::can("controls:operate"),
     );
     let batch = use_resource(move || {
         let sources = sources.clone();

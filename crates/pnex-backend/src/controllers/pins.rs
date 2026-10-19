@@ -609,7 +609,6 @@ fn new_cmd_id() -> String {
     responses(
         (status = 200, body = CommandSent),
         (status = 400, description = "Invalid body, op, value, interval, reserved or non-admitted GPIO, chip-capability violation (`caps-*`), edge agent device", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`pin-commands-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Device offline (`pin-device-offline`), pin written by a flow (`pin-reserved-by-flow`), or deployed flows use the pin (`pin-flow-conflict`, `errors.args.count` and `errors.args.flows` = comma-separated flow names)", body = crate::openapi::ErrorDetail)
     ),
@@ -621,12 +620,6 @@ async fn commands(
     Path(id): Path<i64>,
     body: String,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::PIN_COMMANDS_FORBIDDEN,
-            "Owner, admin or member role required to send device commands.",
-        ));
-    }
     let device = device_of_org(&ctx.db, &org, id).await?;
     // Software agent (edge D95, browser D255): no pins, no firmware commands.
     if super::edge_agents::is_software(&ctx.db, &device).await {
@@ -884,7 +877,6 @@ async fn commands(
     responses(
         (status = 200, body = CustomCommandSent),
         (status = 400, description = "Invalid body, unannounced command (`device-command-unknown`), or edge agent device", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`pin-commands-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Device offline (`pin-device-offline`)", body = crate::openapi::ErrorDetail)
     ),
@@ -896,12 +888,6 @@ async fn custom_command(
     Path(id): Path<i64>,
     body: String,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::PIN_COMMANDS_FORBIDDEN,
-            "Owner, admin or member role required to send device commands.",
-        ));
-    }
     let device = device_of_org(&ctx.db, &org, id).await?;
     // Software agent (edge D95, browser D255): no pins, no firmware commands.
     if super::edge_agents::is_software(&ctx.db, &device).await {
@@ -1035,10 +1021,6 @@ fn bad_request(code: &str, msg: &str) -> Error {
 /// 400 carrying interpolation data in `errors.args`.
 fn bad_request_args(code: &str, msg: &str, args: serde_json::Value) -> Error {
     custom_error(StatusCode::BAD_REQUEST, code, msg, Some(args))
-}
-
-fn forbidden(code: &str, msg: &str) -> Error {
-    custom_error(StatusCode::FORBIDDEN, code, msg, None)
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).

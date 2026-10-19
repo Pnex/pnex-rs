@@ -18,13 +18,12 @@ pub(super) struct VersionQuery {
     tag = "media",
     operation_id = "media_versions_create",
     summary = "Upload a new version of a media asset",
-    description = "Appends version n+1 from the raw request body (`application/octet-stream`) and makes it current; older versions are kept. Owner/admin only.",
+    description = "Appends version n+1 from the raw request body (`application/octet-stream`) and makes it current; older versions are kept. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), VersionQuery),
     request_body(content = Vec<u8>, content_type = "application/octet-stream", description = "File bytes"),
     responses(
         (status = 201, body = MediaAssetDto),
         (status = 400, description = "Format not allowed (`media-format-unsupported`) or empty body (`field-invalid`, `filename`: `required`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or asset of another organisation", body = crate::openapi::ErrorDetail),
         (status = 413, description = "Body over the upload limit (`media-file-too-large`)", body = crate::openapi::ErrorDetail)
     ),
@@ -37,12 +36,6 @@ pub(super) async fn add_version(
     Query(q): Query<VersionQuery>,
     body: Bytes,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -172,11 +165,10 @@ pub(super) async fn find_version(
     tag = "media",
     operation_id = "media_versions_delete",
     summary = "Delete one version of a media asset",
-    description = "Deletes the version and its stored file. If it was current, the highest remaining version becomes current. The last remaining version cannot be deleted (delete the asset instead). Owner/admin only.",
+    description = "Deletes the version and its stored file. If it was current, the highest remaining version becomes current. The last remaining version cannot be deleted (delete the asset instead). Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Last remaining version (`media-last-version`)", body = crate::openapi::ErrorDetail)
     ),
@@ -187,12 +179,6 @@ pub(super) async fn delete_version(
     org: OrgContext,
     Path(path): Path<VersionPath>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, path.id).await? else {
         return Err(Error::NotFound);
     };
@@ -241,11 +227,10 @@ pub(super) async fn delete_version(
     tag = "media",
     operation_id = "media_versions_restore",
     summary = "Make an older version current",
-    description = "Points the asset's current version at version n; no version is created or deleted. Owner/admin only.",
+    description = "Points the asset's current version at version n; no version is created or deleted. Owner, admin or member.",
     params(("id" = String, Path, format = "uuid", description = "Media asset UUID"), ("n" = i64, Path, description = "Version number (1-based)")),
     responses(
         (status = 200, body = MediaAssetDto),
-        (status = 403, description = "Viewer role (`media-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown asset or version", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -255,12 +240,6 @@ pub(super) async fn restore(
     org: OrgContext,
     Path(path): Path<VersionPath>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "media-write-forbidden",
-            "Media writes are restricted to owner and admin roles",
-        ));
-    }
     let Some(asset) = find_asset(&ctx.db, &org, path.id).await? else {
         return Err(Error::NotFound);
     };

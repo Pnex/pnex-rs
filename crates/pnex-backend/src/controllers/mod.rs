@@ -30,6 +30,8 @@ pub mod geo;
 /// Global typeahead across the org's objects (D69).
 pub mod global_search;
 pub mod health;
+/// Access management API (iam.md §8).
+pub mod iam;
 pub mod internal_flow;
 /// Endpoint interne de livraison websocket (runtime de flows / loopback).
 pub mod internal_notify;

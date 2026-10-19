@@ -114,6 +114,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::doc_comments::openapi(),
         controllers::geo::openapi(),
         controllers::orgs::openapi(),
+        controllers::iam::openapi(),
         controllers::user_info::openapi(),
         controllers::oauth2::openapi(),
         controllers::secrets::openapi(),
@@ -189,6 +190,20 @@ fn auth_errors(op: &mut Operation, rate_limit: Option<&crate::services::rate_lim
         responses.insert(
             "403".into(),
             error("`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"),
+        );
+    }
+    // The engine refuses before the handler (iam.md D291): name the
+    // permission every org operation needs.
+    let permission = op
+        .operation_id
+        .as_deref()
+        .and_then(pnex_api_contract::iam::operation);
+    if let (Some(pnex_api_contract::iam::Access::Org(p)), Some(RefOr::T(res))) =
+        (permission, responses.get_mut("403"))
+    {
+        res.description = format!(
+            "{} · `access-denied` (`args.permission` = `{p}`): the caller's role does not grant it",
+            res.description
         );
     }
     if let Some(rule) = rate_limit.filter(|_| !responses.contains_key("429")) {

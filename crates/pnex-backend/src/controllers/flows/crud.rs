@@ -14,8 +14,7 @@ use super::*;
     request_body = pnex_core::CreateFlow,
     responses(
         (status = 201, body = pnex_core::Flow),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `device_id`) or `flow-invalid` (`errors.violations`: graph violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `device_id`) or `flow-invalid` (`errors.violations`: graph violations)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -24,12 +23,6 @@ pub(super) async fn create(
     org: OrgContext,
     Json(params): Json<pnex_core::CreateFlow>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage flows.",
-        ));
-    }
     let ring = crate::services::secrets::Keyring::from_config(&ctx.config).ok();
     let (flow, version, graph) = match crate::services::flow::create_flow(
         &ctx.db,
@@ -61,7 +54,7 @@ fn graph_writer<'a>(
     crate::services::secrets::flow::GraphWriter {
         ring,
         user_id: Some(org.auth.user.id),
-        can_write_secrets: org.can_manage_secrets(),
+        can_write_secrets: org.can("secrets:write"),
     }
 }
 
@@ -259,7 +252,6 @@ pub(super) async fn detail(
     responses(
         (status = 200, description = "Saved; `deployed_version_number` is always null in this answer", body = pnex_core::Flow),
         (status = 400, description = "`field-invalid` (`errors.fields`: `name`, `device_id`) or `flow-invalid` (`errors.violations`: graph violations)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail),
         (status = 409, description = "Stale version (`flow-stale-version`)", body = crate::openapi::ErrorDetail)
     ),
@@ -271,12 +263,6 @@ pub(super) async fn update(
     Path(id): Path<i64>,
     Json(params): Json<pnex_core::UpdateFlow>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage flows.",
-        ));
-    }
     let Some(flow) = find_flow(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -316,7 +302,6 @@ pub(super) async fn update(
     params(("id" = i64, Path, description = "Flow id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "Viewer role (`flow-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -326,12 +311,6 @@ pub(super) async fn delete(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            pnex_core::err_codes::FLOW_WRITE_FORBIDDEN,
-            "Owner, admin or member role required to manage flows.",
-        ));
-    }
     if find_flow(&ctx.db, &org, id).await?.is_none() {
         return Err(Error::NotFound);
     }

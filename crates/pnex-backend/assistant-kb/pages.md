@@ -4,7 +4,7 @@ title: Pages
 kind: feature
 pages: /pages
 nodes: 
-err_codes: docs-write-forbidden, doc-comment-not-author
+err_codes: access-denied, doc-comment-not-author
 tools: 
 tags: page, pages, comment, comments, commentaire, document, notes, procedure, report, collaborative, rich text, markdown, version, note, compte rendu, procédure
 ---

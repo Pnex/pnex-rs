@@ -668,7 +668,7 @@ fn OccurrenceProposal(entry: AiToolTrace) -> Element {
             if let Some(r) = loaded {
                 crate::pages::calendar::OccurrenceDialog {
                     range: r,
-                    can_write: crate::state::org::current_can_write(),
+                    can_write: crate::state::access::can("ontology:write"),
                     initial_change: change.clone(),
                     initial_date: date.clone(),
                     on_close: move |_| open.set(false),

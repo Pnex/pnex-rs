@@ -49,14 +49,6 @@ fn agent_error(status: StatusCode, code: &str, msg: &str) -> Error {
     )
 }
 
-fn forbidden() -> Error {
-    agent_error(
-        StatusCode::FORBIDDEN,
-        "agent-write-forbidden",
-        "Owner, admin or member role required to manage edge agents.",
-    )
-}
-
 /// Hex SHA-256.
 fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
@@ -194,7 +186,6 @@ async fn info(
     responses(
         (status = 200, body = pnex_core::agent::AgentInfo),
         (status = 400, description = "Quota out of range (`agent-quota-invalid`) or not an agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -205,9 +196,6 @@ async fn update_settings(
     Path(id): Path<i64>,
     Json(body): Json<AgentSettingsPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     if !MAX_KEYS_RANGE.contains(&body.max_keys) {
         return Err(agent_error(
             StatusCode::BAD_REQUEST,
@@ -301,7 +289,6 @@ async fn find_key(
     responses(
         (status = 200, body = pnex_core::agent::AgentKey),
         (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device or key", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -312,9 +299,6 @@ async fn patch_key(
     Path((id, key_id)): Path<(i64, i64)>,
     Json(body): Json<AgentKeyPatch>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let device = find_agent(&ctx.db, &org, id).await?;
     let row = find_key(&ctx.db, device.id, key_id).await?;
     let mut active: agent_keys::ActiveModel = row.into();
@@ -338,7 +322,6 @@ async fn patch_key(
     responses(
         (status = 204, description = "Deleted"),
         (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device or key", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -348,9 +331,6 @@ async fn delete_key(
     org: OrgContext,
     Path((id, key_id)): Path<(i64, i64)>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let device = find_agent(&ctx.db, &org, id).await?;
     let row = find_key(&ctx.db, device.id, key_id).await?;
     let name = row.key.clone();
@@ -397,7 +377,6 @@ fn display_code(raw: &str) -> String {
     responses(
         (status = 201, body = pnex_core::agent::AgentEnrollmentCreated),
         (status = 400, description = "Device is not an edge agent (`agent-not-an-agent`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "Viewer (`agent-write-forbidden`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown device (or other org)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -407,9 +386,6 @@ async fn create_enrollment(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden());
-    }
     let device = find_agent(&ctx.db, &org, id).await?;
     let now = chrono::Utc::now();
     // One pending code per agent: older unused codes are revoked.

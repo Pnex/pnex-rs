@@ -18,7 +18,6 @@ use super::*;
     responses(
         (status = 201, body = DevicePlacementDto),
         (status = 400, description = "`field-invalid`: `device_id` not found in the org, `location_detail` too long", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown POI or POI of another org", body = crate::openapi::ErrorDetail),
         (status = 409, description = "`poi-device-already-placed`: `errors.args` carries `device_id`, `current_placement_id`, `current_pin_id`, `current_pin_label` (strings)", body = crate::openapi::ErrorDetail)
     ),
@@ -30,12 +29,6 @@ pub(super) async fn attach_device(
     Path(id): Path<Uuid>,
     Json(p): Json<DeviceAttachPayload>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     let pin = svc::find_pin(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?;
@@ -75,7 +68,6 @@ pub(super) async fn attach_device(
     responses(
         (status = 200, body = DevicePlacementDto),
         (status = 400, description = "`field-invalid`: `pin_id` not found in the org, `location_detail` too long", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown placement or placement of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -86,12 +78,6 @@ pub(super) async fn update_placement(
     Path(id): Path<i64>,
     Json(p): Json<PlacementPatchPayload>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     match svc::update_placement(
         &ctx.db,
         org.org.id,
@@ -121,7 +107,6 @@ pub(super) async fn update_placement(
     params(("id" = i64, Path, description = "Placement id")),
     responses(
         (status = 204, description = "Detached"),
-        (status = 403, description = "`poi-write-forbidden`: viewer role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "Unknown placement or placement of another org", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -131,12 +116,6 @@ pub(super) async fn delete_placement(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "poi-write-forbidden",
-            "Owner, admin or member role required to manage POIs",
-        ));
-    }
     match svc::delete_placement(&ctx.db, org.org.id, id)
         .await
         .map_err(|_| Error::InternalServerError)?

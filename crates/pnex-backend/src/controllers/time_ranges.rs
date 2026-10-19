@@ -1,6 +1,6 @@
 //! Time ranges API (media-ingest.md D169, §6): list by scope and time
 //! window (D14), create, update, delete, CSV/ICS import. Org from the
-//! principal (R1), `can_write` at the head of every write handler (R2);
+//! principal (R1), `time-ranges:write` checked by the IAM extractor (R2);
 //! a scope that is not the org's answers a `scope_id` field error.
 
 use axum::extract::{Path, Query, State};
@@ -40,18 +40,7 @@ fn detail(status: StatusCode, code: &str, msg: &str) -> Error {
     Error::CustomError(status, ErrorDetail::new(code, msg.to_string()))
 }
 
-fn require_write(org: &OrgContext) -> Result<()> {
-    if org.can_write() {
-        return Ok(());
-    }
-    Err(detail(
-        StatusCode::FORBIDDEN,
-        err_codes::TIME_RANGE_WRITE_FORBIDDEN,
-        "Viewer role: time ranges are read-only.",
-    ))
-}
-
-/// The object-type write role on top of `can_write` (shared rule:
+/// The object-type write role on top of `time-ranges:write` (shared rule:
 /// [`time_ranges::scope_writable`]).
 async fn require_object_role(
     ctx: &AppContext,
@@ -196,7 +185,7 @@ async fn list(
     ))
 }
 
-/// `POST /api/v1/time-ranges` — `can_write`; origin `manual`. With an
+/// `POST /api/v1/time-ranges` — origin `manual`. With an
 /// `external_id` already used in the scope, the range is updated (upsert).
 #[utoipa::path(
     post,
@@ -210,7 +199,7 @@ async fn list(
         (status = 201, description = "Created", body = pnex_core::time_range::TimeRange),
         (status = 200, description = "Existing `external_id`: updated", body = pnex_core::time_range::TimeRange),
         (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail)
+        (status = 403, description = "`ontology-write-forbidden`: the type of the scope requires a higher role", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -219,7 +208,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<TimeRangeInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     require_object_role(
         &ctx,
         &org,
@@ -281,7 +269,7 @@ async fn get_one(
     }
 }
 
-/// `PATCH /api/v1/time-ranges/{id}` — `can_write`. Absent fields keep their
+/// `PATCH /api/v1/time-ranges/{id}` — absent fields keep their
 /// value, an empty string clears; scope, origin and provenance are kept.
 #[utoipa::path(
     patch,
@@ -295,7 +283,7 @@ async fn get_one(
     responses(
         (status = 200, body = pnex_core::time_range::TimeRange),
         (status = 400, description = "`field-invalid`: `errors.fields` maps the field to a token", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`: the type of the scope requires a higher role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`time-range-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -306,7 +294,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<TimeRangeInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     require_range_role(&ctx, &org, id).await?;
     match time_ranges::update(&ctx.db, org.org.id, id, &input).await {
         Ok(row) => {
@@ -328,7 +315,7 @@ async fn update(
     }
 }
 
-/// `DELETE /api/v1/time-ranges/{id}` — `can_write`.
+/// `DELETE /api/v1/time-ranges/{id}`.
 #[utoipa::path(
     delete,
     path = "/api/v1/time-ranges/{id}",
@@ -339,7 +326,7 @@ async fn update(
     params(("id" = String, Path, format = "uuid", description = "Time range id (UUID)")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`: the type of the scope requires a higher role", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`time-range-not-found`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -349,7 +336,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    require_write(&org)?;
     require_range_role(&ctx, &org, id).await?;
     match time_ranges::delete(&ctx.db, org.org.id, id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
@@ -381,7 +367,7 @@ fn too_large() -> Error {
 }
 
 /// `POST /api/v1/time-ranges/import?format=csv|ics&scope_kind=&scope_id=`
-/// — `can_write`; raw body (1 MiB, 5000 rows at most). Upserts by
+/// — raw body (1 MiB, 5000 rows at most). Upserts by
 /// `external_id` with origin `import`; answers the counts and the reasons
 /// of the rejected rows.
 #[utoipa::path(
@@ -396,7 +382,7 @@ fn too_large() -> Error {
     responses(
         (status = 200, body = pnex_core::time_range::RangeImportResult),
         (status = 400, description = "`time-range-import-invalid` (unreadable file), or `field-invalid` (bad `format` or scope)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`time-range-write-forbidden` or `ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`ontology-write-forbidden`: the type of the scope requires a higher role", body = crate::openapi::ErrorDetail),
         (status = 413, description = "`time-range-import-too-large` (args `max_kib`, `max_rows`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -407,7 +393,6 @@ async fn import_ranges(
     Query(q): Query<ImportQuery>,
     body: axum::body::Bytes,
 ) -> Result<Response> {
-    require_write(&org)?;
     let Some(format) = q.format.as_deref().and_then(Format::from_wire) else {
         return field("format", err_codes::FIELD_INVALID);
     };

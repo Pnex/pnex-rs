@@ -80,14 +80,7 @@ impl SecretDraft {
 
 /// Vault writes (typing a value) are owner/admin only (D117).
 pub fn can_manage_secrets() -> bool {
-    let (Some(user), Some(org_id)) = (crate::state::session::user(), crate::state::org::current())
-    else {
-        return false;
-    };
-    user.orgs
-        .iter()
-        .find(|m| m.id == org_id)
-        .is_some_and(|m| crate::state::org::role_can_administer(m.role))
+    crate::state::access::can("secrets:write")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

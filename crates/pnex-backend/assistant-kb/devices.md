@@ -4,7 +4,7 @@ title: Devices & agents
 kind: feature
 pages: /devices
 nodes: device_read, device_write
-err_codes: device-write-forbidden, build-in-progress, build-create-forbidden, pin-flow-conflict, pin-reserved-by-flow, pin-device-offline, board-reserved-screen, device-board-unknown, device-board-soc-mismatch
+err_codes: access-denied, build-in-progress, pin-flow-conflict, pin-reserved-by-flow, pin-device-offline, board-reserved-screen, device-board-unknown, device-board-soc-mismatch
 tools: 
 tags: device, devices, agent, board, pinout, pins, firmware, ota, flash, provisioning, token, capteur, carte, appareil
 ---

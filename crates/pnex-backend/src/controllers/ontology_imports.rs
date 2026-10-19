@@ -13,7 +13,7 @@ use loco_rs::prelude::*;
 use pnex_core::ontology::import::{ImportApply, ObjectImportInput};
 use serde::Deserialize;
 
-use super::ontology::{onto_error, paged, parse_uuid, require_write, PageQuery};
+use super::ontology::{onto_error, paged, parse_uuid, PageQuery};
 use crate::auth::OrgContext;
 use crate::services::ontology::imports;
 
@@ -98,7 +98,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<ObjectImportInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(
         StatusCode::CREATED,
         imports::create(&ctx.db, org.org.id, Some(org.auth.user.id), &input, None).await,
@@ -154,7 +153,6 @@ async fn update(
     Path(id): Path<String>,
     Json(input): Json<ObjectImportInput>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(
         StatusCode::OK,
         imports::update(&ctx.db, org.org.id, parse_uuid(&id)?, &input).await,
@@ -181,7 +179,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    require_write(&org)?;
     match imports::delete(&ctx.db, org.org.id, parse_uuid(&id)?).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => onto_error(e),
@@ -277,7 +274,6 @@ async fn dry_run(
     Query(q): Query<DryRunQuery>,
     body: axum::body::Bytes,
 ) -> Result<Response> {
-    require_write(&org)?;
     let file = (!body.is_empty()).then(|| (body.to_vec(), q.filename.unwrap_or_default()));
     reply(
         StatusCode::ACCEPTED,
@@ -316,7 +312,6 @@ async fn apply(
     Path(id): Path<String>,
     Json(input): Json<ImportApply>,
 ) -> Result<Response> {
-    require_write(&org)?;
     reply(
         StatusCode::ACCEPTED,
         imports::apply(

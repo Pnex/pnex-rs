@@ -10,7 +10,7 @@ use sea_orm::QuerySelect;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, ToolDeps, ToolError, ToolOutcome};
 use crate::services::time_ranges::{self, ListFilter, RangeError};
 
 /// Rows returned by one listing.
@@ -93,7 +93,6 @@ pub async fn propose_occurrence_change(
     deps: &ToolDeps<'_>,
     args: &Value,
 ) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let coded = |code: &'static str, message: &str| ToolError {
         message: message.into(),
         code: Some(code),

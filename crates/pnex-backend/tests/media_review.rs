@@ -336,7 +336,7 @@ async fn spans_are_attributed_to_persons_without_voice() {
         )
         .await;
         assert_eq!(st, 403, "{e}");
-        assert_eq!(e["error"], "media-write-forbidden");
+        assert_eq!(e["error"], "access-denied");
         let (st, _) = call(&server, "DELETE", &one, &env.bob, org, None).await;
         assert_eq!(st, 403);
         let (st, _) = call(&server, "GET", &path, &env.bob, bob_org, None).await;

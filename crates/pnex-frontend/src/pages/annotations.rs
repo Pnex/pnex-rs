@@ -27,15 +27,8 @@ use crate::components::tour_viewer::{TourViewer, ViewerSource};
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY, BTN_SECONDARY_SM};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::annotations::OPEN_LAYER;
-use crate::state::{org, session, toasts};
+use crate::state::toasts;
 use crate::util::media_blob_url;
-
-/// Rôle de l'utilisateur dans l'org courante (école media.rs).
-fn current_role() -> Option<pnex_core::OrgRole> {
-    let user = session::user()?;
-    let org_id = org::current()?;
-    user.orgs.iter().find(|m| m.id == org_id).map(|m| m.role)
-}
 
 #[derive(Clone, PartialEq)]
 enum View {
@@ -45,7 +38,7 @@ enum View {
 
 #[component]
 pub fn Annotations() -> Element {
-    let can_write = current_role().is_some_and(crate::state::org::role_can_write);
+    let can_write = crate::state::access::can("annotation-layers:write");
 
     // ─── Listes de base (médias pour les noms + filtre) ───
     let mut view = use_signal(|| View::List);

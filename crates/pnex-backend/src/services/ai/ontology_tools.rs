@@ -4,7 +4,7 @@
 //! `expected_version`). The schema the model reasons on is generated from
 //! the org's registry, never written by hand.
 //!
-//! Guard rails: org from the principal (R1); `can_write` plus the type's
+//! Guard rails: org from the principal (R1); the tool's IAM permission plus the type's
 //! write role for objects and links, org admin for the schema (R2, D188);
 //! no delete — an object is never archived by the assistant and a link is
 //! only closed, which keeps it as history; no physical action (binding a
@@ -17,7 +17,7 @@ use pnex_core::ontology::{ObjectTypeDef, WriteRole};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::tools::{internal, require_write, ToolDeps, ToolError, ToolOutcome};
+use super::tools::{internal, ToolDeps, ToolError, ToolOutcome};
 use crate::services::ontology::{self as onto, links, objects, query, types, Actor, OntologyError};
 
 /// Rows a query returns to the model at most.
@@ -38,7 +38,6 @@ fn uuid_arg(args: &Value, key: &str) -> Result<Uuid, ToolError> {
 }
 
 fn actor(deps: &ToolDeps<'_>) -> Result<Actor, ToolError> {
-    require_write(deps)?;
     deps.actor
         .clone()
         .ok_or_else(|| "this tool needs a signed-in member".into())
@@ -278,7 +277,6 @@ pub async fn create_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutc
 /// dispatched here, the UI shows a button that opens the invocation dialog
 /// pre-filled with these arguments (D123).
 pub async fn propose_action(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
-    require_write(deps)?;
     let id = uuid_arg(args, "object_id")?;
     let key = args
         .get("action")

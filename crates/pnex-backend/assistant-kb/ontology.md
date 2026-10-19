@@ -4,7 +4,7 @@ title: Ontology — objects, links and their history
 kind: feature
 pages: /ontology, /ontology/object/:id, /ontology/types/:type_key
 nodes: action_trigger
-err_codes: ontology-not-found, ontology-already-exists, ontology-version-conflict, ontology-type-in-use, ontology-write-forbidden, ontology-admin-required, ontology-system-read-only, ontology-link-not-allowed, ontology-link-cardinality, ontology-action-no-flow, ontology-action-unavailable, ontology-action-unknown
+err_codes: access-denied, ontology-not-found, ontology-already-exists, ontology-version-conflict, ontology-type-in-use, ontology-write-forbidden, ontology-system-read-only, ontology-link-not-allowed, ontology-link-cardinality, ontology-action-no-flow, ontology-action-unavailable, ontology-action-unknown
 tools: describe_ontology, query_ontology, get_object, create_object, update_object, open_link, close_link, propose_action, save_object_type
 tags: recurrence, récurrence, maintenance plan, plan de maintenance, ontology, ontologie, object, objet, type, link, lien, relation, pump, pompe, machine, site, line, ligne, equipment, équipement, asset, actif, sensor replacement, remplacement capteur, history, historique, as of, graph, graphe, gallery, galerie, 3D model, modèle 3D, glb, pose, skeleton, squelette, reference picture, image de référence, pack, maintenance, yaml, provenance, action, start maintenance, mettre en maintenance, trigger, déclencheur
 ---
@@ -44,5 +44,5 @@ A type may declare **actions** (for example *Start maintenance* on a pump, from 
 - An open link takes a place: a series property is fed by one sensor at a time, and some link types allow one target per source. A second one is refused (*ontology-link-cardinality*): close the first one.
 - If someone saved the object or the type while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - System objects (devices, media…) are created and deleted from their own pages (*ontology-system-read-only*); you may add your own properties to a system type in the Schema tab.
-- Viewers read everything but change nothing; a type can require the admin role to write its objects (*ontology-write-forbidden*). Only owners and admins edit the schema and install packs (*ontology-admin-required*).
+- Viewers read everything but change nothing; a type can require the admin role to write its objects (*ontology-write-forbidden*). Only owners and admins edit the schema and install packs (*access-denied* otherwise).
 - The assistant can read the schema and the objects, create and update objects, open and close links, save types and propose actions; it never runs an action, never archives an object and never deletes anything.

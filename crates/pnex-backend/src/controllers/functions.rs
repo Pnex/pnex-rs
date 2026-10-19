@@ -1,6 +1,6 @@
 //! Registre « Fonctions » — CRUD org-scoped + versioning append-only +
 //! test en live. École `controllers/edge_refs.rs` : scoping org (404 masqué
-//! cross-org), écriture gated `can_write()`, 400 champ-par-champ. Le test
+//! cross-org), writes gated by their IAM permission, 400 field by field. Le test
 //! spawn le binaire runtime (`--test-function`) — viewer autorisé (lecture).
 
 use axum::extract::{Path, Query, State};
@@ -28,12 +28,6 @@ use pnex_core::{
 // Error helpers carry a machine code (`pnex_core::err_codes` registry) so
 // the frontend can resolve `err-<kebab>` at render time; the English text is
 // the verbatim fallback for unregistered codes.
-fn forbidden(code: &str, msg: &str) -> Error {
-    Error::CustomError(
-        StatusCode::FORBIDDEN,
-        loco_rs::controller::ErrorDetail::new(code, msg.to_string()),
-    )
-}
 
 /// 503 `functions-runtime-disabled`: the flow runtime is not enabled.
 fn runtime_disabled() -> Error {
@@ -229,8 +223,7 @@ async fn list(
     request_body = CreateFunction,
     responses(
         (status = 201, body = FunctionDetail),
-        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -239,12 +232,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<CreateFunction>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "functions-write-forbidden",
-            "Owner, admin or member role required to manage functions",
-        ));
-    }
     let (f, version) = match create_function(&ctx.db, org.org.id, &input).await {
         Ok(pair) => pair,
         Err(e) => return Ok(write_error_response(e)),
@@ -336,7 +323,6 @@ async fn detail(
     responses(
         (status = 200, body = FunctionDetail),
         (status = 400, description = "`field-invalid` (`errors.fields`: `name`) or `function-directive-invalid` (`args.line`, `args.detail`)", body = crate::openapi::ErrorDetail),
-        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail),
         (status = 409, description = "`function-version-conflict`", body = crate::openapi::ErrorDetail)
     ),
@@ -348,12 +334,6 @@ async fn save_version(
     Path(id): Path<i64>,
     Json(input): Json<SaveFunctionVersion>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "functions-write-forbidden",
-            "Owner, admin or member role required to manage functions",
-        ));
-    }
     let Some(f) = find_function(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
@@ -451,7 +431,6 @@ async fn versions(
     params(("id" = i64, Path, description = "Function id")),
     responses(
         (status = 204, description = "Deleted"),
-        (status = 403, description = "`functions-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, body = crate::openapi::ErrorDetail),
         (status = 409, description = "`function-in-use`: used by deployed flows (`args.flows`)", body = crate::openapi::ErrorDetail)
     ),
@@ -462,12 +441,6 @@ async fn delete(
     org: OrgContext,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    if !org.can_write() {
-        return Err(forbidden(
-            "functions-write-forbidden",
-            "Owner, admin or member role required to manage functions",
-        ));
-    }
     let Some(f) = find_function(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };

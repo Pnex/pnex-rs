@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 /// What the MCP exposes, and what the `pnex` CLI asks `--yes` for.
 pub mod exposure;
 
+/// Who may call each operation and assistant tool (iam.md D289).
+pub mod iam;
+
 /// Version du contrat attendue par CE binaire. Un bump = rupture d'API.
 ///
 /// 2 (2026-09-12, D43) : `Poi.device_id` (colonne unique) remplacé par

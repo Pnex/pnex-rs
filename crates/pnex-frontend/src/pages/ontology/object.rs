@@ -21,7 +21,7 @@ use crate::components::ontology::property_input::{prop_label, PropertyInput, Pro
 use crate::components::ontology::{
     field_errors, icon_of, key_label, link_label, short_time, type_label, TypeIcon,
 };
-use crate::state::{org, toasts};
+use crate::state::toasts;
 
 const BTN: &str = crate::components::ui::BTN_SECONDARY_SM;
 const SECTION: &str = "bg-white rounded-lg border border-gray-200 p-4 space-y-3";
@@ -52,7 +52,7 @@ pub fn OntologyObject(id: String) -> Element {
     let mut archiving = use_signal(|| false);
     // Action being invoked (D183).
     let mut invoking = use_signal(|| None::<String>);
-    let can_write = org::current_can_write();
+    let can_write = crate::state::access::can("ontology:write");
 
     let o = match &*object.read() {
         Some(Ok(o)) => o.clone(),

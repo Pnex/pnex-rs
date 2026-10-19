@@ -341,10 +341,7 @@ async fn isolation_org_et_auth_401() {
             .add_header("X-Org-Id", org_a.to_string())
             .await;
         assert_eq!(scan.status_code(), 403);
-        assert_eq!(
-            scan.json::<serde_json::Value>()["error"],
-            "edge-write-forbidden"
-        );
+        assert_eq!(scan.json::<serde_json::Value>()["error"], "access-denied");
     })
     .await;
 }

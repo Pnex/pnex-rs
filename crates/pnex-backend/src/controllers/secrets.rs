@@ -146,7 +146,7 @@ async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    let details = !org.is_viewer();
+    let details = org.can("secrets:usage");
     let ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
     let mut usages = if details {
         match store::usages_of(&ctx.db, &ids).await {
@@ -226,9 +226,6 @@ async fn create(
     org: OrgContext,
     Json(input): Json<OrgSecretInput>,
 ) -> Result<Response> {
-    if !org.can_manage_secrets() {
-        return Err(forbidden());
-    }
     let ring = match keyring(&ctx) {
         Ok(r) => r,
         Err(e) => return store_error(e),
@@ -275,9 +272,6 @@ async fn update(
     Path(id): Path<Uuid>,
     Json(input): Json<OrgSecretInput>,
 ) -> Result<Response> {
-    if !org.can_manage_secrets() {
-        return Err(forbidden());
-    }
     let ring = match keyring(&ctx) {
         Ok(r) => r,
         Err(e) => return store_error(e),
@@ -321,9 +315,6 @@ async fn remove(
     org: OrgContext,
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
-    if !org.can_manage_secrets() {
-        return Err(forbidden());
-    }
     match store::delete(&ctx.db, Some(org.org.id), id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => store_error(e),
