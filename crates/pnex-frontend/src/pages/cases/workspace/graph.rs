@@ -62,7 +62,8 @@ pub(super) struct GNode {
 pub(super) fn family(type_key: &str) -> &'static str {
     match type_key {
         "person" => "person",
-        "organization" => "organization",
+        // An outlet or a party is an organization for the reader (media_coverage).
+        "organization" | "media" | "party" => "organization",
         "place" => "place",
         "piece" => "piece",
         "claim" | "hypothesis" | "statement" => "claim",
@@ -1466,6 +1467,11 @@ mod tests {
         for k in keys {
             assert_ne!(family(k), "other", "type `{k}` needs a family in graph.rs");
         }
+        // Media coverage: outlets and parties read as organizations.
+        assert_eq!(
+            (family("media"), family("party")),
+            ("organization", "organization")
+        );
     }
 
     #[test]
