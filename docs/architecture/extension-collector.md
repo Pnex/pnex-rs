@@ -55,6 +55,14 @@ Rouvre `cases.md` §4 et `discourse-analysis.md` DA6 pour l'extension :
   reste exclue tant que Q1 (§15) n'est pas tranchée (§13 de
   `media-ingest.md` : pas de préréglage de téléchargeur).
 
+> **Amendé le 2026-10-19 (`partner-watch.md` D307–D310, proposition)** :
+> la cible déclarée peut être un **site** (`web:site:<origine>`) ;
+> l'agent (ou le crawl serveur) découvre ses pages **dans cette origine
+> seulement** (`robots.txt`, `sitemap.xml`, liens internes, plafonds).
+> Aucune découverte hors du site déclaré. Une page pertinente reçoit une
+> **preuve** : capture pleine page, HTML nettoyé, texte, manifeste
+> horodaté (amende l'amendement L1 de D261).
+
 ## 3. Vocabulaire
 
 - **Agent** : un device de classe `extension` (une ligne `device_registries`,
@@ -491,6 +499,7 @@ ne remplit jamais de formulaire de connexion.
 | L4 | `watch_live`, flux `browser`, upload webm + extraction audio | live transcrit dans la chaîne média |
 | L5 | portage Firefox (fond en page, fenêtre dédiée) | mêmes e2e sous Firefox |
 | L6 | YouTube : vidéos + shorts, historique, sous-titres (D282–D284) | une chaîne suivie, son historique au registre, texte des sous-titres |
+| L8 (proposé, `partner-watch.md`) | Mission `crawl_site` (D307), registre `site_pages` (D309), tâche `capture_proof` : capture pleine page + HTML nettoyé + manifeste chaîné (D308, D310) | un site parcouru, ses pages pertinentes prouvées et datées |
 | L7 (plus tard) | Mission `search` : recherche sur une plateforme (mots-clés, hashtag) ; chaque résultat passe par le registre (D259) : déjà connu → ignoré, nouveau seulement relevé, collecté selon la mission. Objectif : ne pas noyer l'org sous ce qu'elle a déjà | une recherche relancée ne relève que les nouveautés |
 
 **Avancement.** L0 se découpe en L0a (serveur), L0b (extension wasm) et
@@ -716,3 +725,4 @@ chaque version d'adaptateur (les plateformes changent) :
 | D270 | Distribution | construite avec l'image, `GET /api/v1/extension/download` (zip + `server.json`), chargement non empaqueté en v1 |
 | D269 | Plateformes exclusives (note, réglée par §16.1) | `needs_foreground` par adaptateur, fixé par mesure ; `true` = 1 agent = 1 PC = 1 plateforme, mode `dedicated:<plateforme>`, pause si l'onglet devient caché |
 | D268 | Rétention | par mission, vocabulaire D161 (`none`/`days:N`/`keep`), défaut d'org |
+| D307–D310 | Site et preuve (`partner-watch.md`, proposé) | `crawl_site` borné à l'origine déclarée (amende D254) ; registre `site_pages` ; preuve = capture pleine page + HTML nettoyé + manifeste horodaté, chaîne d'empreintes (amende L1/D261) |

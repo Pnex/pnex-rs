@@ -173,6 +173,11 @@ du code au schéma de type (D176). Les liens (D179) servent tout le
 reste. Ne pas fusionner les deux : un arbre se navigue, un graphe se
 requête.
 
+> **2026-10-19 (`partner-watch.md` D305, proposé)** : une hiérarchie à
+> plusieurs parents (dirigeants, groupes, filiales) n'entre pas dans le
+> containment ; c'est une **vue d'arbre calculée sur des liens** déclarés
+> par un pack. D180 est inchangé.
+
 ### D181 — Le temps appartient aux objets, pas aux devices
 
 - **Liaison device → objet** : une capability d'un device est liée à une
@@ -342,6 +347,14 @@ Packs de référence pour valider le noyau :
 
 Règle : une fonctionnalité qui n'a de sens que pour un pack va **dans le
 pack**, jamais dans le noyau.
+
+> **2026-10-19 (`partner-watch.md`, proposé)** : deux packs de plus,
+> `entreprises_fr` (unité légale = `organization` étendue, établissement =
+> `map_pin`, dirigeants par lien temporel `dirige`, D304) et
+> `quali_watch` (contrôle des réseaux de certificateurs). Le format de
+> pack gagne `extends:` (D306), la propriété `unique` (D302), des
+> mappings d'import (D301), des fonctions et des modèles de flows non
+> déployés (D316).
 
 ### D191 — Migration 0.1 → 0.2 : non destructive
 

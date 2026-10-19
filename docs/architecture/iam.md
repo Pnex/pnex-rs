@@ -496,6 +496,11 @@ qu'une opération n'a pas son filtre de liste, le registre la marque
   en a besoin.
 - **Clés côté navigateur** : non en V1 ; une application externe passe
   toujours par son serveur (Next.js, Dioxus fullstack).
+- **À trancher (2026-10-19, `partner-watch.md` D300)** : un SaaS tiers
+  (Quali-Watch) a besoin d'un compte de service qui **écrit** :
+  objets, liens et invocation d'actions, bornés aux types d'un pack
+  (portée D296), sans IAM, suppression, deploy ni action physique. Les
+  comptes de service V1 sont en lecture seule : ajout proposé au lot I4.
 - **Quotas** : par **org**, jamais par compte de service ni par clé.
   Tous les principaux d'une org (membres, comptes de service) consomment
   les mêmes quotas, rattachés au niveau d'abonnement de l'org

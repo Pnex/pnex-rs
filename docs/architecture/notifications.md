@@ -504,3 +504,14 @@ le journal des livraisons quitte la base relationnelle.
   `flow_id`, `node_id`, `template_id`, HTTP 404 ; badges ; UI fr/en
   (Playwright), bouton Journal préfiltré.
 
+## 16. Amendement proposé — destinataire dynamique et webhook signé (D313, D315, 2026-10-19)
+
+Détail : `partner-watch.md`.
+
+- **D313** : `pnex_notify` gagne `to_field` (adresse tirée du message) pour
+  les seuls canaux SMTP marqués `dynamic_recipients` par un admin d'org ;
+  contenu = modèle seulement, plafonds par canal et par destinataire,
+  adresse hachée au journal D86, expéditeur = SMTP de l'org.
+- **D315** : le canal `webhook` garde l'en-tête secret statique et gagne un
+  mode `hmac` (`x-pnex-timestamp`, `x-pnex-signature: sha256=…` sur
+  `timestamp.corps`), secret au coffre (D54).
