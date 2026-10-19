@@ -105,6 +105,9 @@ struct StreamRow {
 /// this shape across versions.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct StreamStats {
+    /// Creation of the stream, µs (its stats stay at 0 until a flush).
+    #[serde(default)]
+    pub created_at: Option<i64>,
     #[serde(default)]
     pub doc_time_min: Option<i64>,
     #[serde(default)]
@@ -136,6 +139,20 @@ pub struct StreamDetail {
 #[derive(Debug, Deserialize)]
 struct PasscodeData {
     passcode: String,
+}
+
+/// Stream names, most recently written first: callers cap the list, and
+/// an org with more streams than the cap must keep its live ones. A fresh
+/// stream reports `doc_time_max: 0` until O2 flushes it, so its creation
+/// time counts too; a stream with no date at all is brand new: first.
+fn newest_first(mut rows: Vec<StreamRow>) -> Vec<String> {
+    rows.sort_by_key(|r| {
+        let last = r.stats.as_ref().map_or(0, |s| {
+            s.doc_time_max.unwrap_or(0).max(s.created_at.unwrap_or(0))
+        });
+        std::cmp::Reverse(if last > 0 { last } else { i64::MAX })
+    });
+    rows.into_iter().map(|r| r.name).collect()
 }
 
 /// Client OpenObserve — un pour le boot (root), réutilisable pour
@@ -646,7 +663,7 @@ impl Client {
             )
             .await?;
         serde_json::from_str::<StreamsResponse>(&text)
-            .map(|r| r.list.into_iter().map(|s| s.name).collect())
+            .map(|r| newest_first(r.list))
             .map_err(|e| format!("streams illisibles : {e}"))
     }
 
@@ -777,5 +794,26 @@ impl Client {
             .await
             .map(|r| r.status().is_success())
             .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streams_are_listed_newest_first() {
+        let list: StreamsResponse = serde_json::from_value(serde_json::json!({ "list": [
+            { "name": "old", "stats": { "doc_time_max": 10 } },
+            { "name": "recent", "stats": { "doc_time_max": 30 } },
+            { "name": "fresh" },
+            { "name": "middle", "stats": { "doc_time_max": 20 } },
+            { "name": "unflushed", "stats": { "created_at": 40, "doc_time_max": 0 } }
+        ]}))
+        .unwrap();
+        assert_eq!(
+            newest_first(list.list),
+            ["fresh", "unflushed", "recent", "middle", "old"]
+        );
     }
 }
