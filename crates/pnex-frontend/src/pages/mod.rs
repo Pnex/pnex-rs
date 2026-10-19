@@ -3,6 +3,8 @@
 
 /// Page dédiée annotations (D55 + porte D60(3)) — flow canonique des
 /// couches, indépendant des tours.
+/// Access management of the org (iam.md §9).
+pub mod access;
 pub mod admin_status;
 pub mod annotations;
 pub mod auth_callback;

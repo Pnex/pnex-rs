@@ -8,6 +8,7 @@
 //! `Router` nu bénéficie des deep links et du back/forward navigateur sans
 //! configuration.
 
+use crate::pages::access::Access;
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
 use crate::pages::{
@@ -163,6 +164,11 @@ pub enum Route {
         // Org secrets vault (D110–D117): names and usages, never a value.
         #[route("/secrets")]
         Secrets {},
+
+        // Access management (iam.md §9): roles, teams, assignments,
+        // service accounts and their access keys.
+        #[route("/access")]
+        Access {},
 
         #[route("/profile")]
         Profile {},
