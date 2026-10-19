@@ -164,6 +164,20 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::system::routes())
 }
 
+/// Several pods boot together with auto_migrate: on Postgres the migration
+/// runs under a session advisory lock (pods serialize), then loco's own
+/// unlocked auto-migrate is disabled. `dangerously_recreate` keeps the
+/// framework path (tests only).
+async fn migrate_locked(config: &mut Config) -> Result<()> {
+    if config.database.auto_migrate && !config.database.dangerously_recreate {
+        crate::services::db_lock::migrate_under_lock::<Migrator>(&config.database.uri)
+            .await
+            .map_err(|e| loco_rs::Error::Message(format!("boot migration failed: {e}")))?;
+        config.database.auto_migrate = false;
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl Hooks for App {
     fn app_name() -> &'static str {
@@ -194,17 +208,20 @@ impl Hooks for App {
         pnex_core::egress::init(pnex_core::egress::EgressPolicy::parse(
             egress.as_deref().unwrap_or_default(),
         ));
-        // Several pods boot together with auto_migrate: on Postgres the
-        // migration runs here under a session advisory lock (pods
-        // serialize), then loco's own unlocked auto-migrate is disabled.
-        // `dangerously_recreate` keeps the framework path (tests only).
-        if config.database.auto_migrate && !config.database.dangerously_recreate {
-            crate::services::db_lock::migrate_under_lock::<Migrator>(&config.database.uri)
-                .await
-                .map_err(|e| loco_rs::Error::Message(format!("boot migration failed: {e}")))?;
-            config.database.auto_migrate = false;
-        }
+        migrate_locked(&mut config).await?;
         create_app::<Self, Migrator>(mode, environment, config).await
+    }
+
+    /// `pnex-server start` builds the app through loco's CLI, which calls
+    /// `create_app` without the `boot` hook: the locked migration runs here,
+    /// the first hook of the CLI (server and worker containers raced on an
+    /// unlocked migration, 2026-10-19).
+    async fn load_config(env: &Environment) -> Result<Config> {
+        let mut config = env.load()?;
+        if std::env::args().skip(1).any(|a| a == "start") {
+            migrate_locked(&mut config).await?;
+        }
+        Ok(config)
     }
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
