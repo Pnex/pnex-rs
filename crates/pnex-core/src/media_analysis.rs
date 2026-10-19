@@ -25,11 +25,12 @@ pub enum AnalysisStep {
 }
 
 impl AnalysisStep {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::Index,
         Self::Summarize,
         Self::Transcribe,
         Self::Identify,
+        Self::Detect,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -179,6 +180,12 @@ mod tests {
     fn steps_round_trip_and_kinds() {
         for s in AnalysisStep::ALL {
             assert_eq!(AnalysisStep::parse(s.as_str()), Some(s));
+        }
+        // Every offered step must parse back, else its row vanishes from the state.
+        for kind in ["document", "table", "audio", "video"] {
+            for &s in steps_for_kind(kind) {
+                assert_eq!(AnalysisStep::parse(s.as_str()), Some(s), "{kind}");
+            }
         }
         assert!(steps_for_kind("document").contains(&AnalysisStep::Summarize));
         assert!(steps_for_kind("splat").is_empty());

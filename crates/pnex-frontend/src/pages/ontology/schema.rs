@@ -37,6 +37,14 @@ fn set_label(set: &TypeSet, types: &[ObjectTypeView]) -> String {
     }
 }
 
+fn schema_rank(v: &ObjectTypeView) -> u8 {
+    match (v.def.system, &v.pack_key) {
+        (true, _) => 2,
+        (false, Some(_)) => 1,
+        (false, None) => 0,
+    }
+}
+
 #[component]
 pub fn SchemaTab(tabs: Element) -> Element {
     let mut reload = use_signal(|| 0u32);
@@ -46,11 +54,13 @@ pub fn SchemaTab(tabs: Element) -> Element {
         let _ = reload();
         api::ontology::types().await
     });
-    let (state, rows) = match &*types.read() {
+    let (state, mut rows) = match &*types.read() {
         None => (None, Vec::new()),
         Some(Ok(r)) => (Some(Ok(())), r.clone()),
         Some(Err(e)) => (Some(Err(e.clone())), Vec::new()),
     };
+    // The org's own types first, then pack types, system types last.
+    rows.sort_by_key(schema_rank);
     let columns = vec![
         Column::new(t!("onto-col-type").to_string(), |v: &ObjectTypeView| {
             let icon = icon_of(&v.def);

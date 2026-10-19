@@ -183,7 +183,11 @@ pub fn OntologyObject(id: String) -> Element {
                         can_write: can_write && !archived,
                     }
                 } else if tab() == "graph" {
-                    GraphPanel { id: o.id.clone(), link_types: all_links.clone() }
+                    GraphPanel {
+                        id: o.id.clone(),
+                        link_types: all_links.clone(),
+                        types: all_types.clone(),
+                    }
                 } else if tab() == "hierarchy" {
                     crate::components::ontology::hierarchy::HierarchyPanel {
                         id: o.id.clone(),
@@ -735,7 +739,7 @@ fn LinkForm(
 }
 
 #[component]
-fn GraphPanel(id: String, link_types: Vec<LinkTypeView>) -> Element {
+fn GraphPanel(id: String, link_types: Vec<LinkTypeView>, types: Vec<ObjectTypeView>) -> Element {
     let mut depth = use_signal(|| 1u32);
     let gid = id.clone();
     let graph = use_resource(move || {
@@ -758,6 +762,7 @@ fn GraphPanel(id: String, link_types: Vec<LinkTypeView>) -> Element {
                 neighborhood: n.clone(),
                 center: id.clone(),
                 link_types: link_types.clone(),
+                types: types.clone(),
             }
         },
         Some(Err(e)) => {

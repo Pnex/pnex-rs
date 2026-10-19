@@ -120,7 +120,9 @@ fn PropertyField(
                     onchange: move |e| set(doc, &key, Value::String(e.value())),
                     option { value: "", "—" }
                     for v in values {
-                        option { key: "{v}", value: "{v}", selected: v == value, "{v}" }
+                        option { key: "{v}", value: "{v}", selected: v == value,
+                            {super::enum_label(&v)}
+                        }
                     }
                 }
             }
@@ -569,6 +571,18 @@ pub fn PropertyValue(
         }
         (PropertyKind::FuzzyTime, Value::Object(_)) => {
             let text = super::fuzzy_label(&v);
+            rsx! {
+                span { class: "font-mono", "{text}" }
+            }
+        }
+        (PropertyKind::Enum { .. }, Value::String(s)) => {
+            let text = super::enum_label(s);
+            rsx! {
+                span { "{text}" }
+            }
+        }
+        (PropertyKind::DateTime, Value::String(s)) => {
+            let text = super::short_time(s);
             rsx! {
                 span { class: "font-mono", "{text}" }
             }
