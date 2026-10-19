@@ -3,8 +3,8 @@ id: flows
 title: Flows
 kind: feature
 pages: /flows
-nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display
-err_codes: pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-deploy-forbidden, flow-start-not-stopped, flow-no-deployed-version, ai-flow-running
+nodes: inject, device_read, device_write, calc, metric, pnex_notify, debug, display, ontology_query, object_upsert, link_upsert
+err_codes: pin-already-assigned, flow-stale-version, flow-debug-disabled, flow-deploy-forbidden, flow-start-not-stopped, flow-no-deployed-version, ai-flow-running, ontology-node-unknown
 tools: 
 tags: flow, flows, etl, automation, node-red, deploy, pipeline, nodes, debug, automatisation, déployer
 ---
@@ -18,6 +18,13 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 - **Stop** pauses a deployed flow, **Start** resumes its last deployed version, **Restart** reloads the engine as-is and clears what the nodes remember (notification anti-spam, values waiting for a trigger); deploying the same version again keeps it.
 - **History** lists versions: **Load** one into the editor, or **Deploy** an earlier version (rollback, no new version).
 - **Debug** opens the debug feed (last 100 entries, 5-minute window) when the server enables debug tools; otherwise the full feed is disabled (run mode), but each Debug and Display node still shows the last message it received.
+
+## Ontology nodes
+- **Ontology query** reads the objects of one type matching filters (values `$today`, `$now`, `$msg.payload.x` read when the message arrives); one message per object, or one message with the list.
+- **Object write** creates or updates an object from the message, found by a unique property of its type or by its id; *Create only* leaves an existing object as it is (a finding a human reviewed is never reset). Never on a system type (device, flow, media…).
+- **Link write** opens, updates or closes a link between two objects.
+- The writes follow the same rules as the ontology pages (validations, roles: a type reserved to admins stays out of reach) and are marked as made by the flow in the object's *Provenance*; 600 writes a minute per organization at most. Deploying a node naming a type, key or link type that does not exist is refused (*ontology-node-unknown*).
+- Packs may ship flow models (for example *Quali-Watch · reminders*): they arrive as drafts; complete them (a Notification node for the e-mails) and deploy them yourself.
 
 ## Good to know
 

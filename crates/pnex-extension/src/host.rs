@@ -65,6 +65,14 @@ extern "C" {
         content_type: &str,
     ) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
+    pub async fn text_blob(text: &str) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn capture_full_page(tab: f64, max_css: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn read_clean_html(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    pub async fn read_links(tab: f64) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
     pub async fn focus_tab(tab: f64) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
     pub async fn is_tab_visible(tab: f64) -> Result<JsValue, JsValue>;

@@ -8,7 +8,9 @@
 
 pub mod action;
 pub mod api;
+pub mod flow;
 pub mod graph;
+pub mod import;
 pub mod layout;
 pub mod money;
 pub mod ownership;
@@ -386,6 +388,8 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         kind,
         required: false,
         indexed: false,
+        unique: false,
+        pack: None,
     }
 }
 
@@ -525,6 +529,8 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         kind: PropertyKind::Text { max_len: Some(255) },
         required: true,
         indexed: false,
+        unique: false,
+        pack: None,
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
         inverse_names: Default::default(),

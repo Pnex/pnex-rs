@@ -56,6 +56,10 @@ pub fn routes() -> Routes {
         .add("/internal/flow/video-annotations", post(video_annotations))
         // Org model calls of the vision-caption / media-fuse nodes (D195/D196).
         .add("/internal/flow/ai/caption", post(flow_ai_caption))
+        // Ontology nodes (partner-watch.md D312).
+        .add("/internal/flow/ontology/query", post(flow_ontology_query))
+        .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
+        .add("/internal/flow/ontology/link", post(flow_ontology_link))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -614,6 +618,70 @@ fn flow_ai_reply<T: serde::Serialize>(
                 .into_response()
         }
     }
+}
+
+/// Answer of an ontology node call; refusals are runtime diagnostics
+/// (verbatim in the node status), ontology errors keep their code.
+fn ontology_reply<T: serde::Serialize>(
+    org_id: i64,
+    r: std::result::Result<T, crate::services::ontology::flow_nodes::NodeError>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    let refused = |status: StatusCode, code: &str| {
+        tracing::warn!(org_id, code, "flow ontology call refused");
+        Ok((status, axum::Json(serde_json::json!({ "code": code }))).into_response())
+    };
+    match r {
+        Ok(v) => Ok(axum::Json(v).into_response()),
+        Err(NodeError::NotDeployed) => refused(StatusCode::FORBIDDEN, "flow-node-not-deployed"),
+        Err(NodeError::Budget) => refused(StatusCode::TOO_MANY_REQUESTS, "flow-ontology-budget"),
+        Err(NodeError::Onto(e)) => crate::controllers::ontology::onto_error(e),
+    }
+}
+
+async fn flow_ontology_query(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ontology::flow::FlowQueryRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::ontology::flow_nodes::query(&ctx.db, &req).await;
+    ontology_reply(req.node.org_id, r)
+}
+
+async fn flow_ontology_upsert(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ontology::flow::FlowUpsertRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::ontology::flow_nodes::upsert(&ctx.db, &req).await;
+    ontology_reply(req.node.org_id, r)
+}
+
+async fn flow_ontology_link(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ontology::flow::FlowLinkRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::ontology::flow_nodes::link(&ctx.db, &req).await;
+    ontology_reply(req.node.org_id, r)
 }
 
 async fn flow_page_write(

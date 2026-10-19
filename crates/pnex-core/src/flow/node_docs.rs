@@ -459,6 +459,37 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Message: payload = the action parameters (object), topic = action key, msg.object = {id, type, title}, msg.action = {invocation_id, key, by, ts_ms}. Invoking an action with no deployed flow holding its trigger is refused. Several flows may listen to the same action; each gets every invocation.",
     },
     NodeDoc {
+        kind: "ontology_query",
+        summary: "Reads the live objects of one ontology type matching property filters (e.g. procedures whose next due date has passed). Input: any message (often a daily inject). One output port.",
+        config: &[
+            ("object_type", "object type key, must exist at deploy"),
+            ("filters", "[{key: property, op: eq|ne|lt|lte|gt|gte|contains|exists|in, value}] — value may be \"$today\" (YYYY-MM-DD), \"$now\" (RFC 3339) or \"$msg.<path>\" (read from the incoming message); `in` takes a list"),
+            ("order_by", "property key to sort on (title by default); descending: bool"),
+            ("limit", "1..=500, default 100"),
+            ("output", "each (default: one message per object) | array (one message, payload = list)"),
+        ],
+        notes: "Each output message: payload = the object's properties, msg.object = {id, type, title, version}, msg.today (YYYY-MM-DD) and msg.now (RFC 3339) of the run; with output array, payload = [{id, title, version, properties}]. Dates compare as text (ISO dates sort right). Feed object_upsert with msg.object_id = msg.object.id to update what was read.",
+    },
+    NodeDoc {
+        kind: "object_upsert",
+        summary: "Creates or updates one ontology object from msg.payload (its properties), matched on the type's unique property (natural key) or on its id. One output port.",
+        config: &[
+            ("object_type", "object type key (not a system type such as device or flow), must exist at deploy"),
+            ("key", "a unique property of the type (e.g. \"siren\"), or \"id\" to update msg.object_id"),
+            ("skip_existing", "bool: an object already there is left as is (rules creating findings must not reset one a human reviewed)"),
+        ],
+        notes: "msg.payload = {property: value}; the properties given replace those values, the others stay. msg.title sets the title (default: the key value). msg.expected_version, when set, refuses a write on a newer version (409). Output: msg.object = the object written, msg.created = bool. A refused write (validation, role, 600 writes a minute per organization) is logged in the node status and the message dropped. Provenance: flow:<flow id>@<version>.",
+    },
+    NodeDoc {
+        kind: "link_upsert",
+        summary: "Opens a typed ontology link between two objects (or updates its attributes when it is already open), or closes it. One output port.",
+        config: &[
+            ("link_type", "link type key, must exist at deploy"),
+            ("close", "bool: close the open link instead of opening it"),
+        ],
+        notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link. Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
+    },
+    NodeDoc {
         kind: "control_source",
         summary: "Event source fed by org controls operated from dashboards and annotations (switch, slider, button, number, select, stepper, command, colour). One output port per listed control.",
         config: &[

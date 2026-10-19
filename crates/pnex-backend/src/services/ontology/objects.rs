@@ -113,6 +113,55 @@ pub(super) async fn check_properties<C: ConnectionTrait>(
     Ok(out)
 }
 
+/// D302: a unique property names at most one live object per org × type
+/// × value; `except` is the object being updated.
+// shortcut: checked before the write, not by an index: two concurrent
+// writers of the same new key can both pass; imports serialize per org.
+pub(super) async fn check_unique<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    def: &ObjectTypeDef,
+    props: &Map<String, Value>,
+    except: Option<Uuid>,
+) -> Result<()> {
+    for p in def.properties.iter().filter(|p| p.unique) {
+        let Some(v) = props.get(&p.key) else {
+            continue;
+        };
+        if find_by_key(db, org_id, &def.key, &p.key, v)
+            .await?
+            .is_some_and(|o| Some(o.id) != except)
+        {
+            return Err(super::invalid(p.key.clone(), "duplicate"));
+        }
+    }
+    Ok(())
+}
+
+/// The live object of `type_key` whose unique property `key` is `value`.
+pub async fn find_by_key<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    type_key: &str,
+    key: &str,
+    value: &Value,
+) -> Result<Option<objects::Model>> {
+    let text = match value {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    Ok(objects::Entity::find()
+        .filter(objects::Column::OrgId.eq(org_id))
+        .filter(objects::Column::TypeKey.eq(type_key))
+        .filter(objects::Column::ValidTo.is_null())
+        .filter(Expr::cust_with_values(
+            "properties ->> $1 = $2",
+            [key.to_string(), text],
+        ))
+        .one(db)
+        .await?)
+}
+
 /// Investigation pack (cases.md K7): `claim.status = corroborated` needs
 /// at least two `sourced_by` pieces of distinct origins (a piece's source
 /// URL, else the object it wraps, else the piece itself), unless a
@@ -193,6 +242,7 @@ pub async fn create<C: ConnectionTrait>(
     require_role(def, actor)?;
     let title = check_title(&input.title)?;
     let props = check_properties(db, org_id, def, &input.properties).await?;
+    check_unique(db, org_id, def, &props, None).await?;
     check_claim(db, org_id, &def.key, None, &props).await?;
     let id = Uuid::new_v4();
     let row = objects::ActiveModel {
@@ -230,6 +280,22 @@ pub async fn update(
     id: Uuid,
     input: &ObjectInput,
 ) -> Result<ObjectView> {
+    let (view, conclusion) = update_in(db, org_id, actor, id, input).await?;
+    if let Some(page) = conclusion {
+        super::cases::on_concluded(db, org_id, actor, &page).await;
+    }
+    Ok(view)
+}
+
+/// `update` inside a transaction; returns the conclusion page of a case
+/// that just concluded (its versioning runs after the commit).
+pub async fn update_in<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    id: Uuid,
+    input: &ObjectInput,
+) -> Result<(ObjectView, Option<String>)> {
     let s = schema(db, org_id).await?;
     let row = find(db, org_id, id).await?;
     if row.valid_to.is_some() {
@@ -248,6 +314,7 @@ pub async fn update(
         check_title(&input.title)?
     };
     let props = check_properties(db, org_id, def, &input.properties).await?;
+    check_unique(db, org_id, def, &props, Some(id)).await?;
     // Checked when the status changes, not on every later edit.
     let status_changed = row.properties.get("status") != props.get("status");
     let concluded = status_changed
@@ -287,9 +354,6 @@ pub async fn update(
             current: row.version,
         });
     }
-    if let Some(page) = conclusion {
-        super::cases::on_concluded(db, org_id, actor, &page).await;
-    }
     let before = view(&row, &s);
     let after = view(&find(db, org_id, id).await?, &s);
     super::recurrence::refresh_logged(db, org_id, id).await;
@@ -300,13 +364,18 @@ pub async fn update(
         serde_json::to_value(&before).unwrap_or_default(),
         &after,
     ));
-    Ok(after)
+    Ok((after, conclusion))
 }
 
 /// Archives an org-type object: its validity closes, its open links close
 /// with it (D179), nothing is deleted. System objects are deleted by their
 /// own pages, which closes their identity.
-pub async fn archive(db: &DatabaseConnection, org_id: i64, actor: &Actor, id: Uuid) -> Result<()> {
+pub async fn archive<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    id: Uuid,
+) -> Result<()> {
     let s = schema(db, org_id).await?;
     let row = find(db, org_id, id).await?;
     if row.valid_to.is_some() {

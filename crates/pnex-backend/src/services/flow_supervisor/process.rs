@@ -91,6 +91,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_MEDIA_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/media"),
             )
+            // Ontology nodes (D312): base of `/internal/flow/ontology/{query,upsert,link}`.
+            .env(
+                "PNEX_FLOW_ONTOLOGY_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/ontology"),
+            )
             // Pages written by page-write nodes (D209).
             .env(
                 "PNEX_FLOW_PAGE_URL",

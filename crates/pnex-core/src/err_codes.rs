@@ -625,6 +625,38 @@ pub const ONTOLOGY_CHANGES_UNAVAILABLE: &str = "ontology-changes-unavailable";
 /// An `action-trigger` names a type or action absent from the org schema;
 /// `args.object_type`, `args.action`.
 pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
+/// Two media versions compared by text (D311) when one is not a document\nwhose text can be read.
+pub const MEDIA_DIFF_UNSUPPORTED: &str = "media-diff-unsupported";
+/// A proof waits for a browser agent of the org to be online (D308).
+pub const EXT_NO_AGENT: &str = "ext-no-agent";
+/// The site refused the crawler (401, 403 or 429): the crawl stopped (D307).
+pub const CRAWL_BLOCKED: &str = "crawl-blocked";
+/// The site's robots.txt forbids the crawl (D307): nothing is read.
+pub const CRAWL_ROBOTS_DISALLOWED: &str = "crawl-robots-disallowed";
+/// A server crawl could not reach the site or read its robots.txt (D307).
+pub const CRAWL_UNREACHABLE: &str = "crawl-unreachable";
+/// A notify node reading its recipient from the message targets a channel\nthat is not SMTP with `dynamic_recipients` (D313); refused at deploy.
+pub const NOTIFY_DYNAMIC_RECIPIENTS_OFF: &str = "notify-dynamic-recipients-off";
+/// Only an org owner or admin lets an SMTP channel send to recipients taken\nfrom flow messages (D313).
+pub const NOTIFY_DYNAMIC_RECIPIENTS_ADMIN: &str = "notify-dynamic-recipients-admin";
+/// An ontology flow node names a type, key or link type absent from the org\nschema (D312), refused at deploy.
+pub const ONTOLOGY_NODE_UNKNOWN: &str = "ontology-node-unknown";
+/// The preview was already applied, or the import or the data changed since.
+pub const IMPORT_RUN_STALE: &str = "import-run-stale";
+/// An import preview with row errors cannot be applied (D301).
+pub const IMPORT_HAS_ERRORS: &str = "import-has-errors";
+/// A snapshot run that lost over 30 % of the records of the previous one:\nrefused without closing anything (D303); `args.previous`, `args.rows`.
+pub const IMPORT_SUSPICIOUS_DROP: &str = "import-suspicious-drop";
+/// A scheduled run whose records lack columns of the mapping, or hold no\nrecord while the previous run had some: refused without writing (D303);\n`args.columns`.
+pub const IMPORT_SCHEMA_CHANGED: &str = "import-schema-changed";
+/// An import URL that cannot be fetched (refused address, network, HTTP error).
+pub const IMPORT_SOURCE_UNREACHABLE: &str = "import-source-unreachable";
+/// An import source over its caps: 200 MB decompressed, 50,000 records (D301).
+pub const IMPORT_SOURCE_TOO_LARGE: &str = "import-source-too-large";
+/// An import source that cannot be read in its format (D301).
+pub const IMPORT_SOURCE_UNREADABLE: &str = "import-source-unreadable";
+/// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
+pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
 /// (cases-workspace.md K38).
 pub const CASE_LEGAL_BASIS_REQUIRED: &str = "case-legal-basis-required";
@@ -786,6 +818,22 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_ACTION_UNAVAILABLE,
     ONTOLOGY_CHANGES_UNAVAILABLE,
     ONTOLOGY_ACTION_UNKNOWN,
+    MEDIA_DIFF_UNSUPPORTED,
+    EXT_NO_AGENT,
+    CRAWL_BLOCKED,
+    CRAWL_ROBOTS_DISALLOWED,
+    CRAWL_UNREACHABLE,
+    NOTIFY_DYNAMIC_RECIPIENTS_OFF,
+    NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
+    ONTOLOGY_NODE_UNKNOWN,
+    IMPORT_RUN_STALE,
+    IMPORT_HAS_ERRORS,
+    IMPORT_SUSPICIOUS_DROP,
+    IMPORT_SCHEMA_CHANGED,
+    IMPORT_SOURCE_UNREACHABLE,
+    IMPORT_SOURCE_TOO_LARGE,
+    IMPORT_SOURCE_UNREADABLE,
+    ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,
     CASE_READS_UNAVAILABLE,

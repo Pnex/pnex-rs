@@ -302,6 +302,33 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // The backend reads these configs from the deployed graph (D312):
+            // the artifact only names the node.
+            FlowNodeKind::OntologyQuery { config } => serde_json::json!({
+                "type": "pnex-ontology-query",
+                "filters": config.filters,
+                "output": config.output,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
+            FlowNodeKind::ObjectUpsert { config } => serde_json::json!({
+                "type": "pnex-object-upsert",
+                "key": config.key,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
+            FlowNodeKind::LinkUpsert { config } => serde_json::json!({
+                "type": "pnex-link-upsert",
+                "close": config.close,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);
@@ -396,6 +423,8 @@ pub fn to_red_flows_json_with(
                 "template_vars": config.template_vars,
                 "anti_spam": config.anti_spam,
                 "attach_field": config.attach_field,
+                "to_field": config.to_field,
+                "cc_field": config.cc_field,
                 // Deploy-derived: true iff a wire is annotated on the
                 // `trigger` gate row — the runtime gates sends on the
                 // boolean arriving with `topic = "trigger"`. Derived here

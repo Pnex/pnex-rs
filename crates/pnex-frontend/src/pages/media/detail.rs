@@ -27,6 +27,8 @@ pub(super) fn MediaDetail(
     let mut uploading = use_signal(|| false);
     // Version delete target (number) — detail ConfirmDialog.
     let mut delete_target = use_signal(|| None::<i64>);
+    // « Compare » dialog of two document versions (D311).
+    let mut comparing = use_signal(|| false);
     // Server HD job running for this asset (Take 360 V2) — drives the
     // "patience" overlay on the preview.
     let mut hd_running = use_signal(|| false);
@@ -376,6 +378,23 @@ pub(super) fn MediaDetail(
                                             }
                                             {t!("media-versions-add")}
                                         }
+                                    }
+                                }
+                                if versions_rows.len() > 1
+                                    && matches!(asset.media_kind(), MediaKind::Document | MediaKind::Table)
+                                {
+                                    button {
+                                        class: "mt-2 text-xs text-signal-600 hover:underline",
+                                        "data-testid": "media-compare",
+                                        onclick: move |_| comparing.set(true),
+                                        {t!("media-diff-compare")}
+                                    }
+                                }
+                                if comparing() {
+                                    super::version_diff::VersionDiffDialog {
+                                        asset_id: asset.id.clone(),
+                                        versions: versions_rows.iter().map(|v| v.version_number).collect::<Vec<_>>(),
+                                        on_close: move |_| comparing.set(false),
                                     }
                                 }
                                 if let Some(v_err) = versions_error {

@@ -51,6 +51,18 @@ pub fn routes() -> Routes {
                     crate::services::compute_limits::upload_gate,
                 )),
         )
+        .add(
+            "/uploads/proof",
+            post(upload_proof).layer(axum::extract::DefaultBodyLimit::max(
+                pnex_core::browser_agent::PROOF_SCREENSHOT_MAX + 1024 * 1024,
+            )),
+        )
+        .add("/uploads/site-page", post(upload_site_page))
+        .add("/uploads/crawl-done", post(upload_crawl_done))
+        .add("/missions/{id}/pages", get(site_pages))
+        .add("/proofs", get(proofs))
+        .add("/proofs/verify", get(verify_proofs))
+        .add("/proofs/{id}", get(proof))
         .add("/videos", get(videos))
         .add("/missions", get(missions).post(create_mission))
         .add(
@@ -72,6 +84,13 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         upload_video,
         upload_captions,
         upload_live,
+        upload_proof,
+        upload_site_page,
+        upload_crawl_done,
+        site_pages,
+        proofs,
+        verify_proofs,
+        proof,
         videos,
         missions,
         mission,
@@ -744,6 +763,265 @@ async fn upload_live(
     match extension::store_live_part(&ctx, &agent, &mission_id, part, started, raw).await {
         Ok(stored) => Ok((StatusCode::CREATED, format::json(stored)).into_response()),
         Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/uploads/proof` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/proof",
+    tag = "extension",
+    operation_id = "extension_upload_proof",
+    summary = "Upload a part of a web proof",
+    description = "Called by a browser agent for its `capture_proof` tasks (asked by the server for relevant pages new or changed), no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Part` (`screenshot`: full-page PNG; `html`: rendered DOM, cleaned again by the server and only ever served as a download; `text`: a page snapshot JSON), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, part and SHA-256 of the body, usable once). Once the three parts are in, the server seals the proof: manifest with its reception time, the SHA-256 of each part and of the org's previous manifest. Rate-limited per agent.",
+    request_body(content = Vec<u8>, content_type = "application/octet-stream"),
+    responses(
+        (status = 201, body = pnex_core::browser_agent::ProofPartStored),
+        (status = 400, description = "`field-invalid`: unknown part, empty, too large, not a PNG or not a snapshot", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`: not an open proof task of this agent", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`: too many captures", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`: Valkey unreachable", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_proof(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_string())
+            .unwrap_or_default()
+    };
+    let mission_id = header("x-pnex-mission");
+    let Some(part) = pnex_core::browser_agent::ProofPart::parse(&header("x-pnex-part")) else {
+        return Ok(super::field_error("x-pnex-part", err_codes::FIELD_INVALID));
+    };
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::proof_upload_message(device_id, ts, &mission_id, part, &body_sha)
+    })
+    .await?;
+    match crate::services::proofs::store_part(&ctx, &agent, &mission_id, part, raw).await {
+        Ok(stored) => Ok((StatusCode::CREATED, format::json(stored)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/uploads/site-page` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/site-page",
+    tag = "extension",
+    operation_id = "extension_upload_site_page",
+    summary = "Report a page of an agent site crawl",
+    description = "Called by a browser agent walking a site for a `crawl_site` mission run by agents (pages rendered by JavaScript), no user session, signed like a page capture (`X-Pnex-Ts`, `X-Pnex-Signature` over the timestamp, the mission and the SHA-256 of the body). The page must belong to the declared site; it enters the site registry with the same relevance rules as a server crawl. Rate-limited per agent.",
+    request_body = pnex_core::browser_agent::SitePageReport,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::SitePage),
+        (status = 400, description = "`field-invalid`: off the site, text too long, registry full", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`: not an agent crawl of this agent", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_site_page(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let Ok(report) = serde_json::from_slice::<pnex_core::browser_agent::SitePageReport>(&raw)
+    else {
+        return Ok(super::field_error("body", err_codes::FIELD_INVALID));
+    };
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::upload_message(device_id, ts, &report.mission_id, &body_sha)
+    })
+    .await?;
+    match crate::services::crawl::store_report(&ctx, &agent, &report).await {
+        Ok(page) => Ok((StatusCode::CREATED, format::json(page)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/uploads/crawl-done` — agent credentials, no user.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/uploads/crawl-done",
+    tag = "extension",
+    operation_id = "extension_upload_crawl_done",
+    summary = "End an agent site crawl",
+    description = "Called by a browser agent at the end of a `crawl_site` walk, signed like a page capture: the pages it read; a complete walk counts the pages of the site it did not see (`gone` after two crawls without them).",
+    request_body = pnex_core::browser_agent::CrawlDone,
+    responses(
+        (status = 204, description = "Recorded"),
+        (status = 400, description = "`field-invalid`", body = crate::openapi::ErrorDetail),
+        (status = 401, description = "`extension-upload-refused`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 429, description = "`rate-limited`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`extension-ticket-unavailable`", body = crate::openapi::ErrorDetail)
+    ),
+    security(())
+)]
+async fn upload_crawl_done(
+    State(ctx): State<AppContext>,
+    headers: axum::http::HeaderMap,
+    raw: axum::body::Bytes,
+) -> Result<Response> {
+    let Ok(done) = serde_json::from_slice::<pnex_core::browser_agent::CrawlDone>(&raw) else {
+        return Ok(super::field_error("body", err_codes::FIELD_INVALID));
+    };
+    let body_sha = sha256_hex(&raw);
+    let agent = signed_upload(&ctx, &headers, |device_id, ts| {
+        pnex_core::browser_agent::upload_message(device_id, ts, &done.mission_id, &body_sha)
+    })
+    .await?;
+    match crate::services::crawl::agent_done(&ctx, &agent, &done).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct SitePagesQuery {
+    /// `listed`, `relevant`, `captured` or `gone`.
+    state: Option<String>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/extension/missions/{id}/pages` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/missions/{id}/pages",
+    tag = "extension",
+    operation_id = "extension_site_pages_list",
+    summary = "List the pages of a crawled site",
+    description = "The site registry of a `crawl_site` mission, most recently seen first: state (`listed`, `relevant`, `captured`, `gone`), first and last seen, text fingerprint, the document holding the versions of its text and its last proof. Paginated (`limit`/`offset`). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Mission id (UUID)"), SitePagesQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::SitePage>),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn site_pages(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Query(q): Query<SitePagesQuery>,
+) -> Result<Response> {
+    if let Err(e) = extension::get_mission(&ctx.db, org.org.id, id).await {
+        return extension_error(e);
+    }
+    let state = q.state.as_deref().filter(|s| !s.is_empty());
+    match crate::services::crawl::pages(&ctx.db, org.org.id, id, state).await {
+        Ok(rows) => paged(
+            &format!("/api/v1/extension/missions/{id}/pages"),
+            &PageQuery {
+                limit: q.limit,
+                offset: q.offset,
+            },
+            rows,
+        ),
+        Err(e) => extension_error(e.into()),
+    }
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+struct ProofsQuery {
+    /// Registry page (UUID).
+    #[param(value_type = Option<String>, format = "uuid")]
+    page_id: Option<Uuid>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
+}
+
+/// `GET /api/v1/extension/proofs` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/proofs",
+    tag = "extension",
+    operation_id = "extension_proofs_list",
+    summary = "List the web proofs",
+    description = "Proofs of the org, newest first (`page_id` filters on a registry page): parts (screenshot, HTML, text media with their SHA-256), manifest and chain number once sealed. Paginated (`limit`/`offset`). Any member.",
+    params(ProofsQuery),
+    responses((status = 200, body = pnex_core::Paginated<pnex_core::browser_agent::WebProof>)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn proofs(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Query(q): Query<ProofsQuery>,
+) -> Result<Response> {
+    match crate::services::proofs::list(&ctx.db, org.org.id, q.page_id).await {
+        Ok(rows) => paged(
+            "/api/v1/extension/proofs",
+            &PageQuery {
+                limit: q.limit,
+                offset: q.offset,
+            },
+            rows,
+        ),
+        Err(e) => extension_error(e.into()),
+    }
+}
+
+/// `GET /api/v1/extension/proofs/{id}` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/proofs/{id}",
+    tag = "extension",
+    operation_id = "extension_proofs_get",
+    summary = "Get a web proof",
+    description = "One proof: parts and, once sealed, its manifest (requested and final address, agent, mission, server reception time, SHA-256 of each part and of the previous manifest). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Proof id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::browser_agent::WebProof),
+        (status = 404, description = "`extension-mission-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn proof(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match crate::services::proofs::get(&ctx.db, org.org.id, id).await {
+        Ok(Some(p)) => format::json(p),
+        Ok(None) => extension_error(ExtensionError::MissionNotFound),
+        Err(e) => extension_error(e.into()),
+    }
+}
+
+/// `GET /api/v1/extension/proofs/verify` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/proofs/verify",
+    tag = "extension",
+    operation_id = "extension_proofs_verify",
+    summary = "Verify the chain of web proofs",
+    description = "Recomputes the org's chain of sealed proofs: each manifest's SHA-256, its link to the previous manifest, and each part's SHA-256 against its stored media. Answers the first broken proof, if any. Any member.",
+    responses((status = 200, body = pnex_core::browser_agent::ProofChainCheck)),
+    security(("bearer" = [], "org" = []))
+)]
+async fn verify_proofs(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> {
+    match crate::services::proofs::verify(&ctx.db, org.org.id).await {
+        Ok(check) => format::json(check),
+        Err(e) => extension_error(e.into()),
     }
 }
 

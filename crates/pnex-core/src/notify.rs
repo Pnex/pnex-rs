@@ -242,6 +242,30 @@ pub struct NotifyDeliveryEntry {
     /// Live websocket sessions reached (websocket channel only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delivered: Option<i64>,
+    /// SHA-256 (hex) of a recipient taken from the message (D313): the
+    /// address itself is never journaled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipient_hash: Option<String>,
+}
+
+/// Messages sent per day by one channel to recipients taken from messages.
+pub const DYNAMIC_PER_CHANNEL_DAY: i32 = 200;
+/// Messages sent per day to one recipient taken from messages.
+pub const DYNAMIC_PER_RECIPIENT_DAY: i32 = 3;
+
+/// `POST /internal/flow/notify-recipient`: may the node send to this
+/// address now? The server checks the deployed node, the channel flag and
+/// the daily caps, and counts the send when it answers yes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecipientCheck {
+    pub org_id: i64,
+    pub flow_id: i64,
+    pub version: i64,
+    pub node_id: String,
+    pub channel_id: Uuid,
+    pub to: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cc: Option<String>,
 }
 
 /// Journal entry as read back (`GET /api/v1/notify/deliveries`).

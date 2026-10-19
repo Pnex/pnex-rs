@@ -37,6 +37,40 @@ pub fn routes() -> Routes {
     Routes::new()
         .add("/internal/notify/deliver", post(deliver))
         .add("/internal/notify/journal", post(journal))
+        .add("/internal/notify/recipient", post(recipient))
+}
+
+/// `POST /internal/notify/recipient` — may the flow node send to this
+/// address taken from its message (D313)? Counts the send on "yes".
+async fn recipient(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    body: axum::Json<pnex_core::RecipientCheck>,
+) -> Result<Response> {
+    if let Some(denied) = unauthorized(&ctx, &headers) {
+        return Ok(denied);
+    }
+    let fence = crate::services::flow_cluster::fence_header(&headers);
+    if !crate::services::flow_cluster::fence_ok(&ctx.db, body.org_id, fence).await {
+        return Ok(StatusCode::CONFLICT.into_response());
+    }
+    use crate::services::notify_recipients::{check, Refusal};
+    Ok(match check(&ctx.db, &body.0).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(r) => {
+            let status = match r {
+                Refusal::ChannelCap | Refusal::RecipientCap => StatusCode::TOO_MANY_REQUESTS,
+                Refusal::InvalidAddress => StatusCode::BAD_REQUEST,
+                Refusal::NotDeployed | Refusal::ChannelNotDynamic => StatusCode::FORBIDDEN,
+            };
+            tracing::info!(
+                org = body.org_id,
+                code = r.code(),
+                "message recipient refused"
+            );
+            (status, axum::Json(serde_json::json!({ "code": r.code() }))).into_response()
+        }
+    })
 }
 
 /// Service token check shared by both routes (`None` = authorized).

@@ -292,6 +292,91 @@ export async function fetch_blob(url, maxBytes) {
   return JSON.stringify({ id, sha256, size: bytes.length });
 }
 
+/** Keeps bytes for an upload: JSON `{"id", "sha256", "size"}` (hex digest). */
+async function keep(bytes) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const id = nextBlob++;
+  blobs.set(id, bytes);
+  const sha256 = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+  return JSON.stringify({ id, sha256, size: bytes.length });
+}
+
+/** A text (UTF-8) kept for an upload. */
+export async function text_blob(text) {
+  return keep(new TextEncoder().encode(text));
+}
+
+/**
+ * Full-page screenshot of the tab (D310): scrolls screen by screen, captures
+ * each with captureVisibleTab (at most 2 a second, the browser quota) and
+ * stitches them into one PNG, cut at `maxCss` CSS pixels (and the canvas
+ * limit). No chrome.debugger. Brings the tab to the front: a capture sees
+ * only the visible tab.
+ */
+export async function capture_full_page(tabId, maxCss) {
+  const tab = await api.tabs.update(tabId, { active: true });
+  if (tab?.windowId != null) await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
+  const [first] = await api.scripting.executeScript({
+    target: { tabId },
+    func: () => ({ h: document.documentElement.scrollHeight, vh: innerHeight, w: innerWidth, dpr: devicePixelRatio || 1 }),
+  });
+  const d = first?.result;
+  if (!d || !d.vh) throw new Error("no page");
+  const height = Math.min(d.h, maxCss, Math.floor(32000 / d.dpr));
+  const canvas = new OffscreenCanvas(Math.round(d.w * d.dpr), Math.round(height * d.dpr));
+  const ctx = canvas.getContext("2d");
+  for (let y = 0; y < height; y += d.vh) {
+    const top = Math.min(y, Math.max(0, height - d.vh));
+    await api.scripting.executeScript({ target: { tabId }, args: [top], func: (t) => window.scrollTo(0, t) });
+    await sleep(600);
+    const url = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    const bmp = await createImageBitmap(await (await fetch(url)).blob());
+    ctx.drawImage(bmp, 0, Math.round(top * d.dpr));
+    bmp.close();
+  }
+  await api.scripting.executeScript({ target: { tabId }, func: () => window.scrollTo(0, 0) });
+  const png = await canvas.convertToBlob({ type: "image/png" });
+  return keep(new Uint8Array(await png.arrayBuffer()));
+}
+
+/** The rendered DOM without scripts, frames, embeds nor inline handlers (5 MB cap). */
+export async function read_clean_html(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const root = document.documentElement.cloneNode(true);
+      root.querySelectorAll("script,iframe,frame,frameset,object,embed,noscript,template").forEach((e) => e.remove());
+      for (const el of root.querySelectorAll("*")) {
+        for (const a of [...el.attributes]) {
+          if (a.name.startsWith("on") || /^\s*javascript:/i.test(a.value)) el.removeAttribute(a.name);
+        }
+      }
+      return ("<!doctype html>\n" + root.outerHTML).slice(0, 5000000);
+    },
+  });
+  return keep(new TextEncoder().encode(result?.result ?? ""));
+}
+
+/** Links of the tab, absolute, without fragment: JSON array (2,000 at most). */
+export async function read_links(tabId) {
+  const [result] = await api.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const out = new Set();
+      for (const a of document.querySelectorAll("a[href]")) {
+        try {
+          const u = new URL(a.getAttribute("href"), location.href);
+          u.hash = "";
+          out.add(u.href);
+        } catch {}
+        if (out.size >= 2000) break;
+      }
+      return [...out];
+    },
+  });
+  return JSON.stringify(result?.result ?? []);
+}
+
 /** POSTs a downloaded file, then forgets it: JSON `{"status", "body"}`. */
 export async function upload_blob(id, url, bearer, extra, contentType) {
   const bytes = blobs.get(id);

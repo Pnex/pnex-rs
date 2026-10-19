@@ -4,6 +4,11 @@
 //!
 //! D54 : `secret_value` est un champ secret write-only, transmis en header
 //! (`secret_header`), jamais concaténé dans l'URL ni loggé.
+//!
+//! D315: with `signing = hmac` the secret is never sent; the body is signed
+//! instead: `x-pnex-timestamp: <unix seconds>` and
+//! `x-pnex-signature: sha256=<hex HMAC-SHA256(secret, timestamp + "." + body)>`.
+//! The receiver recomputes it and refuses a timestamp older than 5 minutes.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -13,6 +18,33 @@ use crate::error::NotifyError;
 use crate::{Channel, Message};
 
 pub struct WebhookChannel;
+
+/// `header`: the secret travels as is in `secret_header` (compatibility);
+/// `hmac`: the body is signed with it (D315).
+const SIGNING: &[&str] = &["header", "hmac"];
+pub const TIMESTAMP_HEADER: &str = "x-pnex-timestamp";
+pub const SIGNATURE_HEADER: &str = "x-pnex-signature";
+
+/// `sha256=<hex>` of `timestamp.body` under `secret`.
+pub fn signature(secret: &str, timestamp: i64, body: &[u8]) -> String {
+    use hmac::{Hmac, Mac};
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes())
+        .expect("HMAC takes a key of any length");
+    mac.update(timestamp.to_string().as_bytes());
+    mac.update(b".");
+    mac.update(body);
+    let hex: String = mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    format!("sha256={hex}")
+}
+
+fn hmac_mode(config: &serde_json::Value) -> bool {
+    str_field(config, "signing") == Some("hmac")
+}
 
 #[async_trait]
 impl Channel for WebhookChannel {
@@ -49,6 +81,15 @@ impl Channel for WebhookChannel {
                 None,
                 &[],
             ),
+            field(
+                "signing",
+                "notify-field-signing",
+                pnex_core::FieldType::Select,
+                false,
+                None,
+                Some("notify-field-signing-help"),
+                SIGNING,
+            ),
         ]
     }
 
@@ -60,6 +101,17 @@ impl Channel for WebhookChannel {
         }
         let header = str_field(config, "secret_header");
         let value = str_field(config, "secret_value");
+        if let Some(mode) = str_field(config, "signing") {
+            if !SIGNING.contains(&mode) {
+                return Err("signing is header or hmac".into());
+            }
+        }
+        if hmac_mode(config) {
+            return match value {
+                Some(_) => Ok(()),
+                None => Err("hmac signing needs secret_value".into()),
+            };
+        }
         match (header, value) {
             (Some(_), Some(_)) | (None, None) => Ok(()),
             (None, Some(_)) => Err("secret_header is required to send secret_value".into()),
@@ -70,16 +122,34 @@ impl Channel for WebhookChannel {
     async fn send(&self, config: &serde_json::Value, msg: &Message) -> Result<(), NotifyError> {
         let url =
             str_field(config, "url").ok_or_else(|| NotifyError::Config("missing url".into()))?;
-        let mut req = CLIENT.post(url).json(&json!({
+        // Serialized once: the signed bytes are the bytes sent.
+        let body = serde_json::to_vec(&json!({
             "subject": msg.subject,
             "body": msg.body,
             "meta": msg.meta,
-        }));
-        if let Some((header, value)) =
-            str_field(config, "secret_header").zip(str_field(config, "secret_value"))
-        {
-            req = req.header(header, value);
+        }))
+        .map_err(|e| NotifyError::Config(e.to_string()))?;
+        let mut req = CLIENT
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        match (hmac_mode(config), str_field(config, "secret_value")) {
+            (true, Some(secret)) => {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                req = req
+                    .header(TIMESTAMP_HEADER, ts.to_string())
+                    .header(SIGNATURE_HEADER, signature(secret, ts, &body));
+            }
+            (true, None) => return Err(NotifyError::Config("missing secret_value".into())),
+            (false, value) => {
+                if let Some((header, value)) = str_field(config, "secret_header").zip(value) {
+                    req = req.header(header, value);
+                }
+            }
         }
+        let req = req.body(body);
         let resp = req
             .send()
             .await
@@ -144,6 +214,52 @@ mod tests {
         assert_eq!(body["subject"], "Job terminé");
         assert_eq!(body["body"], "stitch #8 ok");
         assert_eq!(body["meta"]["source"], "test");
+    }
+
+    #[tokio::test]
+    async fn hmac_mode_signs_the_exact_body_and_never_sends_the_secret() {
+        let seen = Arc::new(tokio::sync::Mutex::new(None::<(HeaderMap, Vec<u8>)>));
+        let seen_for_handler = seen.clone();
+        let app = axum::Router::new().route(
+            "/hook",
+            post(move |headers: HeaderMap, body: axum::body::Bytes| {
+                let seen = seen_for_handler.clone();
+                async move {
+                    *seen.lock().await = Some((headers, body.to_vec()));
+                    StatusCode::OK
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        crate::channels::open_egress_for_tests();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let cfg = json!({
+            "url": format!("http://{addr}/hook"),
+            "secret_header": "x-leak",
+            "secret_value": "k3y",
+            "signing": "hmac",
+        });
+        let msg = Message {
+            subject: Some("Écart".into()),
+            body: "à valider".into(),
+            meta: json!({"kind": "ecart"}),
+        };
+        WebhookChannel.send(&cfg, &msg).await.unwrap();
+        let (headers, body) = seen.lock().await.take().unwrap();
+        assert!(headers.get("x-leak").is_none());
+        let ts: i64 = headers[TIMESTAMP_HEADER].to_str().unwrap().parse().unwrap();
+        assert_eq!(
+            headers[SIGNATURE_HEADER].to_str().unwrap(),
+            signature("k3y", ts, &body)
+        );
+        assert_ne!(signature("k3y", ts + 1, &body), signature("k3y", ts, &body));
+        assert!(WebhookChannel
+            .validate(&json!({"url": "https://e.com", "signing": "hmac"}))
+            .is_err());
+        assert!(WebhookChannel
+            .validate(&json!({"url": "https://e.com", "signing": "rsa", "secret_value": "x"}))
+            .is_err());
     }
 
     #[tokio::test]

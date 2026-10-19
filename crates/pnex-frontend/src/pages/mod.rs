@@ -50,6 +50,7 @@ pub mod share;
 pub mod shell;
 /// Vitrine du socle CRUD (/_showcase) — fixtures locales, hors nav.
 pub mod showcase;
+pub mod site_pages;
 pub mod streams;
 pub mod studio;
 pub mod system;

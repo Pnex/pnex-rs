@@ -1,0 +1,181 @@
+# Reference pack "French companies" (partner-watch.md D304–D306): the
+# legal unit is the `organization` of the investigation pack, extended with
+# its SIRENE fields (D306) so that it keeps `owns`, `employs`, `member_of`
+# and the case tooling; an establishment is a `map_pin` (it has an address,
+# hence a place on the map and in Sites) tied to its legal unit by
+# `etablissement_de`; officers are `person` or `organization` (a holding
+# chairing a company) linked by the temporal `dirige` (mandate dates =
+# link validity).
+# Personal data is minimized (D304): officers carry their name, the role on
+# the link and a register key (name, first names, birth month as the
+# register publishes it) that merges the same officer across companies;
+# no full birth date, no personal address.
+# The company register import queries each known SIREN (weekly once a
+# recurrence is set on it): legal unit fields, head office and matching
+# establishments on the map, officers and holdings. Only known legal units
+# are enriched; a mandate that ended is not closed by it (incremental).
+# Hierarchy (D305): a tree computed on links (several parents allowed),
+# never containment.
+key: entreprises_fr
+name: French companies
+names: {fr: "Entreprises françaises"}
+version: "1.0.0"
+requires: [investigation]
+description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
+descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
+extends:
+  - type: organization
+    properties:
+      - { key: siren, name: SIREN, names: {fr: "SIREN"}, kind: text, max_len: 9, unique: true }
+      - { key: forme_juridique, name: Legal form, names: {fr: "Forme juridique"}, kind: text, max_len: 255 }
+      - { key: naf, name: NAF code, names: {fr: "Code NAF"}, kind: text, max_len: 8, indexed: true }
+      - key: etat_administratif
+        name: Administrative status
+        names: {fr: "État administratif"}
+        kind: enum
+        values: [actif, cesse]
+        indexed: true
+      - { key: date_creation, name: Created on, names: {fr: "Créée le"}, kind: date }
+      - { key: date_cessation, name: Ceased on, names: {fr: "Cessée le"}, kind: date }
+      - { key: effectif_tranche, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
+      - { key: nda, name: Training declaration number, names: {fr: "Numéro de déclaration d'activité"}, kind: text, max_len: 11, indexed: true }
+      - { key: qualiopi, name: Qualiopi, names: {fr: "Qualiopi"}, kind: bool }
+      - { key: qualiopi_categories, name: Qualiopi categories, names: {fr: "Catégories Qualiopi"}, kind: text, max_len: 255 }
+      - { key: qualiopi_maj, name: Qualiopi data of, names: {fr: "Donnée Qualiopi du"}, kind: date }
+  - type: person
+    properties:
+      - { key: identifiant_registre, name: Register key, names: {fr: "Clé au registre"}, kind: text, max_len: 300, unique: true }
+  - type: map_pin
+    properties:
+      - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14, unique: true }
+      - { key: siege, name: Head office, names: {fr: "Siège"}, kind: bool }
+      - key: etat_administratif
+        name: Administrative status
+        names: {fr: "État administratif"}
+        kind: enum
+        values: [actif, ferme]
+        indexed: true
+      - { key: enseigne, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
+link_types:
+  - key: etablissement_de
+    name: is an establishment of
+    names: {fr: "est un établissement de"}
+    inverse_name: has as establishment
+    inverse_names: {fr: "a pour établissement"}
+    from_types: [map_pin]
+    to_types: [organization]
+    one_target: true
+  - key: dirige
+    name: directs
+    names: {fr: "dirige"}
+    inverse_name: is directed by
+    inverse_names: {fr: "est dirigée par"}
+    from_types: [person, organization]
+    to_types: [organization]
+    attributes:
+      - key: role
+        name: Role
+        names: {fr: "Rôle"}
+        kind: enum
+        values: [president, directeur_general, dg_delegue, gerant, administrateur, membre_directoire, autre]
+      - { key: qualite, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+hierarchies:
+  - key: groupe
+    name: Group
+    names: {fr: "Groupe"}
+    steps:
+      - { link: owns }
+      - { link: etablissement_de, inverse: true }
+      - { link: dirige, inverse: true }
+imports:
+  - name: Company register (SIRENE)
+    source: api
+    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
+    max_pages: 200
+    mapping:
+      key: recherche_entreprises
+      name: Company register
+      names: {fr: "Recherche d'entreprises"}
+      format: json
+      rows: results
+      per_object: { type: organization, property: siren, param: q }
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          create: false
+          update: true
+          missing: skip
+          properties:
+            siren: siren
+            forme_juridique: nature_juridique
+            naf: activite_principale
+            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, C: cesse } }] }
+            date_creation: date_creation
+            date_cessation: date_fermeture
+            effectif_tranche: tranche_effectif_salarie
+            qualiopi: complements.est_qualiopi
+        - as: siege
+          type: map_pin
+          key: siret
+          title: nom_complet
+          location: { lat: siege.latitude, lon: siege.longitude }
+          properties:
+            siret: siege.siret
+            siege: { value: true }
+            etat_administratif: { from: siege.etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+        - as: etab
+          type: map_pin
+          key: siret
+          each: matching_etablissements
+          title: ^nom_complet
+          location: { lat: latitude, lon: longitude }
+          properties:
+            siret: siret
+            siege: est_siege
+            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+        - as: personne
+          type: person
+          key: identifiant_registre
+          each: dirigeants
+          when: { from: type_dirigeant, equals: personne physique }
+          title: { concat: [prenoms, nom] }
+          properties:
+            identifiant_registre: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
+        - as: holding
+          type: organization
+          key: siren
+          each: dirigeants
+          when: { from: type_dirigeant, equals: personne morale }
+          title: denomination
+          properties:
+            siren: siren
+      links:
+        - { type: etablissement_de, from: siege, to: ul }
+        - { type: etablissement_de, from: etab, to: ul }
+        - type: dirige
+          from: personne
+          to: ul
+          attributes: &mandate
+            role:
+              from: qualite
+              convert:
+                - lower
+                - enum:
+                    "président": president
+                    "président de sas": president
+                    "directeur général": directeur_general
+                    "directeur général délégué": dg_delegue
+                    "gérant": gerant
+                    "co-gérant": gerant
+                    "administrateur": administrateur
+                    "membre du directoire": membre_directoire
+                    "*": autre
+            qualite: qualite
+            source: { value: "recherche-entreprises.api.gouv.fr" }
+        - type: dirige
+          from: holding
+          to: ul
+          attributes: *mandate

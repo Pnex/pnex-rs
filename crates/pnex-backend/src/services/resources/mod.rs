@@ -26,8 +26,6 @@ pub mod labels;
 pub mod location;
 pub mod registry;
 
-use sea_orm::DatabaseConnection;
-
 // ─────────────────────────── erreurs ───────────────────────────
 
 #[derive(Debug)]
@@ -62,8 +60,8 @@ pub enum ResourceError {
 /// **symétrique** (l'incohérence viz_links disparaît) : arêtes purgées des
 /// deux bouts ; le sous-arbre est **re-rooté** (détaché), jamais supprimé —
 /// la couche d'organisation ne détruit jamais une entité métier.
-pub async fn purge_for(
-    db: &DatabaseConnection,
+pub async fn purge_for<C: sea_orm::ConnectionTrait>(
+    db: &C,
     org_id: i64,
     kind: &str,
     id: &str,

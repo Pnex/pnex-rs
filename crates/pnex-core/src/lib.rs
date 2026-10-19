@@ -172,6 +172,13 @@ pub use prompb::*;
 #[cfg(feature = "frame-crypto")]
 pub mod frame;
 
+/// Paragraph diff of two document versions (partner-watch.md D311).
+pub mod text_diff;
+
+/// Readers of ontology import sources (partner-watch.md D301).
+#[cfg(feature = "doc-extract")]
+pub mod import_read;
+
 pub mod pagination;
 pub use pagination::*;
 

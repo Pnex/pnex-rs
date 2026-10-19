@@ -476,3 +476,17 @@ pub async fn content_bytes(id: &str) -> Result<Vec<u8>, ApiError> {
 pub async fn version_content_bytes(asset_id: &str, n: i64) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(reqwest::Method::GET, &version_content_path(asset_id, n)).await
 }
+
+/// `GET /api/v1/media/{id}/versions/diff?from=&to=` (D311).
+pub async fn versions_diff(
+    id: &str,
+    from: i64,
+    to: i64,
+) -> Result<pnex_core::text_diff::TextDiff, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/media/{id}/versions/diff?from={from}&to={to}"),
+        None,
+    )
+    .await
+}

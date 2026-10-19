@@ -128,6 +128,23 @@ pub async fn object_links(
     client::request_all(&path).await
 }
 
+/// Hierarchy tree under an object (D305); empty `key` = the first one,
+/// `at` = a `YYYY-MM-DD` day (links valid at its end), empty = now.
+pub async fn hierarchy(
+    id: &str,
+    key: &str,
+    at: &str,
+) -> Result<pnex_core::ontology::api::HierarchyView, ApiError> {
+    let mut path = format!("{BASE}/objects/{id}/hierarchy?");
+    if !key.is_empty() {
+        path.push_str(&format!("key={}&", urlencode(key)));
+    }
+    if !at.is_empty() {
+        path.push_str(&format!("at={}", urlencode(&format!("{at}T23:59:59Z"))));
+    }
+    client::request(Method::GET, &path, None).await
+}
+
 pub async fn graph(id: &str, depth: u32) -> Result<Neighborhood, ApiError> {
     client::request(
         Method::GET,
@@ -233,4 +250,68 @@ pub async fn export_yaml() -> Result<Vec<u8>, ApiError> {
 
 pub async fn import_yaml(yaml: Vec<u8>) -> Result<PackView, ApiError> {
     client::request_upload(Method::POST, &format!("{BASE}/import"), yaml).await
+}
+
+// ─────────────────────────── imports (D301) ───────────────────────────
+
+use pnex_core::ontology::import::{
+    ImportApply, ImportPreview, ImportRunView, ObjectImportInput, ObjectImportView,
+};
+
+pub async fn imports() -> Result<Vec<ObjectImportView>, ApiError> {
+    client::request_all(&format!("{BASE}/imports")).await
+}
+
+pub async fn create_import(input: &ObjectImportInput) -> Result<ObjectImportView, ApiError> {
+    client::request(Method::POST, &format!("{BASE}/imports"), body(input)).await
+}
+
+pub async fn update_import(
+    id: &str,
+    input: &ObjectImportInput,
+) -> Result<ObjectImportView, ApiError> {
+    client::request(Method::PUT, &format!("{BASE}/imports/{id}"), body(input)).await
+}
+
+pub async fn delete_import(id: &str) -> Result<(), ApiError> {
+    client::request_opt::<serde_json::Value>(Method::DELETE, &format!("{BASE}/imports/{id}"), None)
+        .await
+        .map(|_| ())
+}
+
+pub async fn import_runs(id: &str) -> Result<Vec<ImportRunView>, ApiError> {
+    client::request_all(&format!("{BASE}/imports/{id}/runs")).await
+}
+
+pub async fn import_run(id: &str, run: &str) -> Result<ImportPreview, ApiError> {
+    client::request(
+        Method::GET,
+        &format!("{BASE}/imports/{id}/runs/{run}"),
+        None,
+    )
+    .await
+}
+
+/// Starts a preview; `file` = the bytes of a file import (empty for URL
+/// and API sources).
+pub async fn preview_import(
+    id: &str,
+    name: &str,
+    file: Vec<u8>,
+) -> Result<ImportRunView, ApiError> {
+    client::request_upload(
+        Method::POST,
+        &format!("{BASE}/imports/{id}/dry-run?filename={}", urlencode(name)),
+        file,
+    )
+    .await
+}
+
+pub async fn apply_import(id: &str, input: &ImportApply) -> Result<ImportRunView, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("{BASE}/imports/{id}/apply"),
+        body(input),
+    )
+    .await
 }

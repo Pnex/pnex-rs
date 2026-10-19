@@ -6,6 +6,7 @@ pub mod action_dialog;
 pub mod add_to_case;
 pub mod gallery;
 pub mod graph_view;
+pub mod hierarchy;
 pub mod object_link;
 pub mod open_case;
 pub mod property_input;

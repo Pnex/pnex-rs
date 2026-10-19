@@ -855,6 +855,15 @@ pub struct NotifyNodeConfig {
     /// Only channels that carry files (`smtp`) attach it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub attach_field: String,
+    /// Path, in the render context, of the recipient e-mail (D313): only on
+    /// SMTP channels marked `dynamic_recipients`, one address, capped per
+    /// day per channel and per recipient by the server. Empty = the
+    /// channel's fixed recipients.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to_field: String,
+    /// Path of one address in copy (with `to_field` only).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cc_field: String,
 }
 
 /// Règle anti-spam d'un nœud notify (compteur × durée, une seule règle

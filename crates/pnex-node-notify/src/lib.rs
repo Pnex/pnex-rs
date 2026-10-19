@@ -143,6 +143,14 @@ struct PnexNotifyNodeConfig {
     /// Path of the media id to attach (D209); empty = none.
     #[serde(default)]
     attach_field: String,
+    /// Paths of the recipient and copy addresses read from the message
+    /// (D313); empty = the channels' fixed recipients.
+    #[serde(default)]
+    to_field: String,
+    #[serde(default)]
+    cc_field: String,
+    #[serde(default)]
+    pnex_version: i64,
 }
 
 /// État muable du nœud (école vendor join.rs : `Mutex` std, scopes courts,
@@ -261,6 +269,8 @@ struct PnexNotifyNode {
     secret_source: Option<(String, String)>,
     /// Media endpoint + runtime token (D209) — set when `attach_field` is.
     media_source: Option<(String, String)>,
+    /// Recipient check endpoint + token (D313) — set when `to_field` is.
+    recipient_check: Option<(String, String)>,
     /// Sendable configs resolved from the vault, by channel index.
     secret_cache: Mutex<BTreeMap<usize, serde_json::Value>>,
     /// État muable : accumulation + anti-spam.
@@ -378,6 +388,21 @@ impl PnexNotifyNode {
             }
         };
 
+        // D313: no server check, no message recipient.
+        let recipient_check =
+            match (cfg.to_field.trim().is_empty(), &journal) {
+                (true, _) => None,
+                (false, Some((url, token))) => Some((
+                    url.replace("/internal/notify/journal", "/internal/notify/recipient"),
+                    token.clone(),
+                )),
+                (false, None) => return Err(EdgelinkError::InvalidOperation(
+                    "pnex-notify: PNEX_NOTIFY_JOURNAL_URL/_DELIVER_TOKEN missing from the runtime \
+                     environment (recipient read from the message)"
+                        .into(),
+                )
+                .into()),
+            };
         Ok(Box::new(PnexNotifyNode {
             base: base_node,
             config: cfg,
@@ -386,6 +411,7 @@ impl PnexNotifyNode {
             journal,
             secret_source,
             media_source,
+            recipient_check,
             secret_cache: Mutex::new(BTreeMap::new()),
             state: Mutex::new(NotifyNodeState::default()),
             commit_wake: tokio::sync::Notify::new(),
@@ -450,6 +476,7 @@ impl PnexNotifyNode {
         status: &str,
         http_status: Option<u16>,
         error: Option<String>,
+        recipient_hash: Option<String>,
     ) {
         let entry = pnex_core::NotifyDeliveryEntry {
             org_id: self.config.pnex_org_id,
@@ -472,6 +499,7 @@ impl PnexNotifyNode {
             flow_id: Some(self.config.pnex_flow_id).filter(|f| *f > 0),
             node_id: Some(self.node_ref()).filter(|n| !n.is_empty()),
             delivered: None,
+            recipient_hash,
         };
         let Some((url, token)) = self.journal.clone() else {
             log::debug!(
@@ -605,6 +633,15 @@ impl PnexNotifyNode {
         });
 
         let attachment = self.attachment(&context_payload).await;
+        // D313: the recipient read from the message, refused before render
+        // when it is not one valid address.
+        let recipient = match recipient_of(&context_payload, &self.config) {
+            Ok(r) => r,
+            Err(why) => {
+                log::warn!("pnex-notify [{}] : message dropped — {why}", self.name());
+                return Ok(());
+            }
+        };
 
         // 1) Render (once, shared by every channel).
         let rendered = match pnex_notify::render(
@@ -662,6 +699,7 @@ impl PnexNotifyNode {
                             "anti-spam: max {} / {} s",
                             anti.max_msgs, anti.window_secs
                         )),
+                        None,
                     );
                 }
                 return Ok(());
@@ -681,7 +719,33 @@ impl PnexNotifyNode {
                 );
                 continue;
             };
-            let outcome = match self.sendable(i, kind, config).await {
+            let mut sendable = self.sendable(i, kind, config).await;
+            let mut hash = None;
+            if let (Some((to, cc)), Ok(c)) = (&recipient, &mut sendable) {
+                if kind == "smtp" {
+                    hash = Some(pnex_notify::recipient_hash(to));
+                    if let Err(code) = self.check_recipient(i, to, cc.as_deref()).await {
+                        log::warn!(
+                            "pnex-notify [{}] : recipient refused by the server ({code})",
+                            self.name()
+                        );
+                        self.journal_attempt(
+                            i,
+                            &rendered,
+                            pnex_core::DELIVERY_BLOCKED,
+                            None,
+                            Some(code),
+                            hash,
+                        );
+                        continue;
+                    }
+                    c["to"] = serde_json::json!(to);
+                    if let Some(cc) = cc {
+                        c["cc"] = serde_json::json!(cc);
+                    }
+                }
+            }
+            let outcome = match sendable {
                 Ok(config) if ch.carries_attachments() => match &attachment {
                     Ok(files) => {
                         pnex_notify::with_retry(|| {
@@ -699,9 +763,14 @@ impl PnexNotifyNode {
             // The websocket success is journaled by the backend deliver
             // endpoint; everything else is reported from here.
             match &outcome {
-                Ok(()) if kind != "websocket" => {
-                    self.journal_attempt(i, &rendered, pnex_core::DELIVERY_SENT, None, None)
-                }
+                Ok(()) if kind != "websocket" => self.journal_attempt(
+                    i,
+                    &rendered,
+                    pnex_core::DELIVERY_SENT,
+                    None,
+                    None,
+                    hash.clone(),
+                ),
                 Ok(()) => {}
                 Err(e) => self.journal_attempt(
                     i,
@@ -709,6 +778,7 @@ impl PnexNotifyNode {
                     pnex_core::DELIVERY_FAILED,
                     pnex_notify::journal::http_status(e),
                     Some(e.to_string()),
+                    hash.clone(),
                 ),
             }
             match outcome {
@@ -738,6 +808,28 @@ impl PnexNotifyNode {
             st.ready = false;
         }
         Ok(())
+    }
+
+    /// Server check of a message recipient on channel `index` (D313).
+    async fn check_recipient(
+        &self,
+        index: usize,
+        to: &str,
+        cc: Option<&str>,
+    ) -> Result<(), String> {
+        let Some((url, token)) = &self.recipient_check else {
+            return Err("notify-recipient-check-unconfigured".into());
+        };
+        let req = pnex_core::RecipientCheck {
+            org_id: self.config.pnex_org_id,
+            flow_id: self.config.pnex_flow_id,
+            version: self.config.pnex_version,
+            node_id: self.config.pnex_node_id.clone(),
+            channel_id: self.channel_ids.get(index).copied().unwrap_or_default(),
+            to: to.to_string(),
+            cc: cc.map(str::to_string),
+        };
+        pnex_notify::journal::check_recipient(url, token, &req).await
     }
 
     /// The file named by `attach_field` in the render context (D209):
@@ -833,6 +925,37 @@ async fn fetch_secret(
 
 /// Media id at `path`: a uuid string, or an object holding `asset_id` (the
 /// whole `page_pdf` output).
+/// The recipient (and copy) read from the render context (D313): `None`
+/// without `to_field`; `Err` when an address is missing or not one valid
+/// e-mail (no lists: one recipient, one copy).
+fn recipient_of(
+    context: &serde_json::Value,
+    cfg: &PnexNotifyNodeConfig,
+) -> std::result::Result<Option<(String, Option<String>)>, String> {
+    if cfg.to_field.trim().is_empty() {
+        return Ok(None);
+    }
+    let read = |path: &str| {
+        pnex_core::resolve_msg_path(context, path.trim())
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    };
+    let valid = pnex_core::ontology::import::valid_email;
+    let to = read(&cfg.to_field).ok_or("no recipient address in the message")?;
+    if !valid(&to) {
+        return Err("the recipient is not one valid e-mail address".into());
+    }
+    let cc = match cfg.cc_field.trim() {
+        "" => None,
+        path => read(path),
+    };
+    if cc.as_deref().is_some_and(|c| !valid(c)) {
+        return Err("the copy is not one valid e-mail address".into());
+    }
+    Ok(Some((to, cc)))
+}
+
 fn attachment_id(context: &serde_json::Value, path: &str) -> Option<uuid::Uuid> {
     let v = pnex_core::resolve_msg_path(context, path.trim())?;
     let s = v.get("asset_id").unwrap_or(v).as_str()?;
@@ -1063,6 +1186,34 @@ mod tests {
         // Old artifacts carry no trigger flag — refused at build (see
         // `ensure_trigger_wired`), the deserializer itself stays tolerant.
         assert!(!cfg.trigger);
+    }
+
+    #[test]
+    fn recipient_is_one_valid_address_from_the_message() {
+        let mut cfg: PnexNotifyNodeConfig = serde_json::from_str(
+            r#"{"pnex_notify_channels": [], "pnex_notify_template": {"body": "x"},
+                "to_field": "payload.contact", "cc_field": "payload.copie"}"#,
+        )
+        .unwrap();
+        let ctx = |c: serde_json::Value| serde_json::json!({ "payload": c });
+        assert_eq!(
+            recipient_of(&ctx(serde_json::json!({"contact": " a@b.fr "})), &cfg).unwrap(),
+            Some(("a@b.fr".to_string(), None))
+        );
+        assert!(
+            recipient_of(&ctx(serde_json::json!({"contact": "a@b.fr, c@d.fr"})), &cfg).is_err()
+        );
+        assert!(recipient_of(&ctx(serde_json::json!({})), &cfg).is_err());
+        assert!(recipient_of(
+            &ctx(serde_json::json!({"contact": "a@b.fr", "copie": "nope"})),
+            &cfg
+        )
+        .is_err());
+        cfg.to_field.clear();
+        assert_eq!(
+            recipient_of(&ctx(serde_json::json!({})), &cfg).unwrap(),
+            None
+        );
     }
 
     #[test]

@@ -36,6 +36,8 @@ pub mod ns {
     pub const MEDIA_STREAM_QUOTA: i32 = 0x504e_0009;
     /// Ontology pack install of one org (check installed + write types).
     pub const ONTOLOGY_PACK: i32 = 0x504e_000a;
+    /// Ontology import runs of one org (one application at a time, D301).
+    pub const ONTOLOGY_IMPORT: i32 = 0x504e_000b;
 }
 
 /// Advisory lock key used by the boot migration (single int8 form).

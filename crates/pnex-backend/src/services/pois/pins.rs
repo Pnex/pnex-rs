@@ -13,8 +13,8 @@ pub struct NewPin<'a> {
     pub metadata: Option<serde_json::Value>,
 }
 
-pub async fn create_pin(
-    db: &DatabaseConnection,
+pub async fn create_pin<C: sea_orm::ConnectionTrait>(
+    db: &C,
     org_id: i64,
     p: NewPin<'_>,
 ) -> Result<map_pins::Model, VizWriteError> {

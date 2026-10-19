@@ -610,6 +610,8 @@ async fn run_mission(
         MissionSpec::CollectPage(p) => p.url.clone(),
         MissionSpec::FollowAccount(p) => p.platform.list_urls(&p.handle)[0].clone(),
         MissionSpec::WatchLive(p) => p.url.clone(),
+        MissionSpec::CrawlSite(p) => format!("{}/", p.url),
+        MissionSpec::CaptureProof(p) => p.url.clone(),
     };
     // Sites the mission reads: its page, or the platform's sites.
     let needed: Vec<String> = match &m.spec {
@@ -658,6 +660,8 @@ async fn run_mission(
             return follow_account(session, plan, m, f, tab, platform).await
         }
         MissionSpec::WatchLive(l) => return watch_live(session, plan, m, l, platform).await,
+        MissionSpec::CrawlSite(c) => return crawl_site(session, m, c, tab).await,
+        MissionSpec::CaptureProof(_) => return capture_proof(session, m, tab).await,
     };
     #[derive(Deserialize)]
     struct Read {
@@ -731,6 +735,233 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
         Ok(r) if r.status == 201 => serde_json::from_str::<ba::PageStored>(&r.body)
             .map(|s| format!("v{}", s.version))
             .unwrap_or_default(),
+        Ok(r) => error_of(&r),
+        Err(e) => e,
+    }
+}
+
+/// Signs (upload message over the SHA-256 of the body) and POSTs a JSON
+/// body of a mission.
+async fn signed_json(
+    session: &Session,
+    route: &str,
+    mission_id: &str,
+    body: &str,
+) -> Result<HttpReply, String> {
+    let creds = &session.creds;
+    let ts = host::now_ms() as i64;
+    let sha = sha256_hex(body.as_bytes());
+    let signature = host::sign(&ba::upload_message(&creds.device_id, ts, mission_id, &sha))
+        .await
+        .map_err(|e| err_text(&e))?;
+    let headers =
+        serde_json::json!({ "X-Pnex-Ts": ts.to_string(), "X-Pnex-Signature": text(&signature) });
+    call_with(
+        "POST",
+        &format!("{}{route}", creds.server),
+        &creds.token,
+        "",
+        body,
+        &headers.to_string(),
+    )
+    .await
+}
+
+/// `capture_proof` (D308, D310): full-page screenshot, cleaned HTML and
+/// readable text of the page, each uploaded signed; the server seals the
+/// proof once the three are in.
+async fn capture_proof(session: &Session, m: &AssignedMission, tab: f64) -> String {
+    let shot = match host::capture_full_page(tab, f64::from(ba::PROOF_HEIGHT_MAX)).await {
+        Ok(v) => v,
+        // No capture right on this site (host permission): the task waits.
+        Err(e) => {
+            session.send(&AgentMsg::State {
+                mission_id: m.id.clone(),
+                state: MissionState::Blocked,
+                code: Some(err_codes::EXT_PERMISSION_MISSING.into()),
+            });
+            return err_text(&e);
+        }
+    };
+    let html = host::read_clean_html(tab).await;
+    let page = host::read_page(tab).await;
+    #[derive(Deserialize)]
+    struct Page {
+        url: String,
+        title: String,
+        text: String,
+    }
+    let Some(page) = page
+        .ok()
+        .and_then(|v| serde_json::from_str::<Page>(&text(&v)).ok())
+    else {
+        return "read-failed".into();
+    };
+    let snapshot = serde_json::to_string(&ba::PageSnapshot {
+        mission_id: m.id.clone(),
+        url: page.url,
+        title: page.title,
+        text: page.text,
+    })
+    .unwrap_or_default();
+    let text_blob = host::text_blob(&snapshot).await;
+    let parts = [
+        (ba::ProofPart::Screenshot, Ok(shot), "image/png"),
+        (ba::ProofPart::Html, html, "application/octet-stream"),
+        (ba::ProofPart::Text, text_blob, "application/json"),
+    ];
+    let mut last = String::new();
+    for (part, blob, content_type) in parts {
+        let Some(blob) = blob
+            .ok()
+            .and_then(|v| serde_json::from_str::<Blob>(&text(&v)).ok())
+        else {
+            return format!("{}-failed", part.wire());
+        };
+        let ts = host::now_ms() as i64;
+        let message =
+            ba::proof_upload_message(&session.creds.device_id, ts, &m.id, part, &blob.sha256);
+        let headers = serde_json::json!({
+            "X-Pnex-Ts": ts.to_string(),
+            "X-Pnex-Mission": m.id,
+            "X-Pnex-Part": part.wire(),
+        });
+        last = match upload(
+            session,
+            "/api/v1/extension/uploads/proof",
+            &blob,
+            &message,
+            headers,
+            content_type,
+        )
+        .await
+        {
+            Ok(r) if r.status == 201 => serde_json::from_str::<ba::ProofPartStored>(&r.body)
+                .map(|s| {
+                    if s.sealed {
+                        format!("proof {}", s.proof_id)
+                    } else {
+                        part.wire().into()
+                    }
+                })
+                .unwrap_or_default(),
+            Ok(r) => return error_of(&r),
+            Err(e) => return e,
+        };
+    }
+    last
+}
+
+/// Paths an agent crawl never opens (not pages).
+const CRAWL_SKIPPED: [&str; 12] = [
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".zip", ".mp4", ".mp3", ".xml",
+    ".docx",
+];
+
+/// `crawl_site` run by an agent (D307): the same walk as the server's, in
+/// the platform tab, at the D258 pace, never off the origin; each page is
+/// reported signed, the end of the walk too.
+async fn crawl_site(
+    session: &Session,
+    m: &AssignedMission,
+    p: &ba::CrawlSiteParams,
+    first_tab: f64,
+) -> String {
+    #[derive(Deserialize)]
+    struct Page {
+        url: String,
+        title: String,
+        text: String,
+    }
+    let origin = p.url.clone();
+    let mut queue: std::collections::VecDeque<(String, u32)> = std::collections::VecDeque::new();
+    let mut known: BTreeSet<String> = BTreeSet::new();
+    let start = format!("{origin}/");
+    known.insert(start.clone());
+    queue.push_back((start, 0));
+    let (mut tab, mut first, mut read, mut truncated) = (first_tab, true, Vec::new(), false);
+    while let Some((url, depth)) = queue.pop_front() {
+        if read.len() >= p.max_pages as usize {
+            truncated = true;
+            break;
+        }
+        if !first {
+            host::sleep(ba::CRAWL_DELAY_MS as f64).await;
+            tab = match host::agent_tab(tab, &url).await {
+                Ok(id) => id.as_f64().unwrap_or(tab),
+                Err(_) => continue,
+            };
+        }
+        first = false;
+        let Some(page) = host::read_page(tab)
+            .await
+            .ok()
+            .and_then(|v| serde_json::from_str::<Page>(&text(&v)).ok())
+        else {
+            continue;
+        };
+        // A redirect off the site is not followed (D307).
+        if origin_of(&page.url) != origin {
+            continue;
+        }
+        let report = ba::SitePageReport {
+            mission_id: m.id.clone(),
+            url: page.url.clone(),
+            title: page.title,
+            text: page.text,
+            depth,
+        };
+        let body = serde_json::to_string(&report).unwrap_or_default();
+        match signed_json(session, "/api/v1/extension/uploads/site-page", &m.id, &body).await {
+            Ok(r) if r.status == 201 => {
+                read.push(page.url.split('#').next().unwrap_or_default().to_string())
+            }
+            Ok(r) => return error_of(&r),
+            Err(e) => return e,
+        }
+        if depth >= p.max_depth {
+            continue;
+        }
+        let links: Vec<String> = host::read_links(tab)
+            .await
+            .ok()
+            .and_then(|v| serde_json::from_str(&text(&v)).ok())
+            .unwrap_or_default();
+        for link in links {
+            let path = link.strip_prefix(&origin).map(|rest| {
+                rest.split(['?', '#'])
+                    .next()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+            });
+            let Some(path) = path.filter(|p| p.is_empty() || p.starts_with('/')) else {
+                continue;
+            };
+            if p.exclude.iter().any(|x| path.starts_with(x.as_str()))
+                || CRAWL_SKIPPED.iter().any(|e| path.ends_with(e))
+            {
+                continue;
+            }
+            if known.insert(link.clone()) {
+                queue.push_back((link, depth + 1));
+            }
+        }
+    }
+    let done = ba::CrawlDone {
+        mission_id: m.id.clone(),
+        urls: read.clone(),
+        complete: !truncated,
+    };
+    let body = serde_json::to_string(&done).unwrap_or_default();
+    match signed_json(
+        session,
+        "/api/v1/extension/uploads/crawl-done",
+        &m.id,
+        &body,
+    )
+    .await
+    {
+        Ok(r) if r.status == 204 => format!("{} pages", read.len()),
         Ok(r) => error_of(&r),
         Err(e) => e,
     }

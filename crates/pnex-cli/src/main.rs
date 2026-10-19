@@ -30,6 +30,7 @@ const DANGEROUS: &[&str] = &[
     "outward",
     "sign-off",
     "platform",
+    "bulk",
 ];
 
 struct Param {

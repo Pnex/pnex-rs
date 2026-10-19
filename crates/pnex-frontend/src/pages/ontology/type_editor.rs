@@ -338,6 +338,8 @@ fn Editor(
                                             },
                                             required: false,
                                             indexed: false,
+                                            unique: false,
+                                            pack: None,
                                         })
                                 });
                             },
@@ -537,6 +539,19 @@ fn PropertyRow(
                             },
                         }
                         {t!("onto-indexed")}
+                    }
+                    label {
+                        class: "flex items-center gap-1 text-xs text-gray-700",
+                        title: t!("onto-unique-help"),
+                        input {
+                            r#type: "checkbox",
+                            checked: p.unique,
+                            onchange: move |e| {
+                                let v = e.checked();
+                                edit(Box::new(move |p| p.unique = v));
+                            },
+                        }
+                        {t!("onto-unique")}
                     }
                     button {
                         class: "ml-auto text-xs text-red-700 hover:underline",

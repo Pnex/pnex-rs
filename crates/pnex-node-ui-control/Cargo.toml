@@ -3,7 +3,7 @@ name = "pnex-node-ui-control"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Flow nodes PNeX — control-source (org controls written from the surfaces) and action-trigger (ontology actions), over Valkey pub/sub"
+description = "Flow nodes PNeX — control-source (org controls written from the surfaces), action-trigger (ontology actions, over Valkey pub/sub) and the ontology query / upsert / link nodes"
 
 [dependencies]
 edgelink-core = { path = "../../vendor/edgelinkd/crates/core", default-features = false, features = ["core", "js"] }
@@ -23,6 +23,8 @@ tokio-util = "0.7"
 log = "0.4"
 chrono = { workspace = true }
 uuid = { workspace = true }
+# Ontology nodes → backend internal routes (D312).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 # The `#[flow_node]` macro emits unqualified `inventory::submit!` — direct dep required
 inventory = "0.3"
 

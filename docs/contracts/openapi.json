@@ -2319,6 +2319,24 @@
         ],
         "type": "string"
       },
+      "CaptureProofParams": {
+        "description": "`capture_proof` (D308, D310): capture one page as a proof.",
+        "properties": {
+          "page_id": {
+            "description": "Registry page the proof is for.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "page_id"
+        ],
+        "type": "object"
+      },
       "CaptureState": {
         "description": "Capture supervisor state of a stream, shown on /media.",
         "enum": [
@@ -3106,6 +3124,14 @@
         ],
         "type": "object"
       },
+      "Change": {
+        "enum": [
+          "added",
+          "removed",
+          "changed"
+        ],
+        "type": "string"
+      },
       "ChangeView": {
         "description": "One change of an object or a link (D184), from the O2 `object_changes`\nstream.",
         "properties": {
@@ -3773,6 +3799,86 @@
         },
         "required": [
           "values"
+        ],
+        "type": "object"
+      },
+      "CrawlDone": {
+        "description": "End of an agent crawl: the pages it read; a complete walk counts the\nmissing ones (`gone` after two).",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "mission_id": {
+            "type": "string"
+          },
+          "urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "mission_id",
+          "urls",
+          "complete"
+        ],
+        "type": "object"
+      },
+      "CrawlExecutor": {
+        "description": "Who walks a site (D307): the server (public pages, no script run) or a\nbrowser agent (pages rendered by JavaScript, the D258 pace).",
+        "enum": [
+          "server",
+          "agent"
+        ],
+        "type": "string"
+      },
+      "CrawlSiteParams": {
+        "description": "`crawl_site` (D307): walk one declared site, list its pages, keep the\nrelevant ones (and their proofs, D308).",
+        "properties": {
+          "exclude": {
+            "description": "Path prefixes never visited (`/blog/`).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "executor": {
+            "$ref": "#/components/schemas/CrawlExecutor"
+          },
+          "match": {
+            "description": "A page matching any rule is relevant; none = every page is.",
+            "items": {
+              "$ref": "#/components/schemas/Matcher"
+            },
+            "type": "array"
+          },
+          "max_depth": {
+            "description": "Link depth from the entry points (default and at most 5).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_pages": {
+            "description": "Pages per crawl (default 200, at most 2,000).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "proofs": {
+            "description": "Relevant pages new or changed get a proof by an agent (D308).",
+            "type": "boolean"
+          },
+          "record": {
+            "$ref": "#/components/schemas/PageRecord"
+          },
+          "url": {
+            "description": "Any address of the site: its origin bounds the walk.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
         ],
         "type": "object"
       },
@@ -4859,6 +4965,195 @@
         ],
         "type": "object"
       },
+      "DiffClose": {
+        "description": "An object archived or a link closed by a snapshot run.",
+        "properties": {
+          "id": {
+            "description": "Object UUID or link id.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "`object` | `link`.",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "type_key",
+          "label"
+        ],
+        "type": "object"
+      },
+      "DiffCreate": {
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "key_prop": {
+            "type": "string"
+          },
+          "location": {
+            "description": "`[lat, lon]` of a created `map_pin`.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "properties": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type_key",
+          "key_prop",
+          "key",
+          "title",
+          "properties"
+        ],
+        "type": "object"
+      },
+      "DiffEnd": {
+        "description": "An end of a link: an existing object, or one created by the run\n(index in `created`).",
+        "properties": {
+          "created": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "type": "object"
+      },
+      "DiffLink": {
+        "properties": {
+          "attributes": {
+            "type": "object"
+          },
+          "from": {
+            "$ref": "#/components/schemas/DiffEnd"
+          },
+          "link_type": {
+            "type": "string"
+          },
+          "to": {
+            "$ref": "#/components/schemas/DiffEnd"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "link_type",
+          "from",
+          "to",
+          "attributes"
+        ],
+        "type": "object"
+      },
+      "DiffLinkUpdate": {
+        "properties": {
+          "attributes": {
+            "description": "The link's attributes once updated.",
+            "type": "object"
+          },
+          "changes": {
+            "type": "object"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "link_type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "link_type",
+          "label",
+          "attributes",
+          "changes"
+        ],
+        "type": "object"
+      },
+      "DiffUpdate": {
+        "properties": {
+          "changes": {
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "new_title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_key": {
+            "type": "string"
+          },
+          "version": {
+            "description": "Object version read by the preview: the application writes on it.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "type_key",
+          "key",
+          "title",
+          "version",
+          "changes"
+        ],
+        "type": "object"
+      },
       "Direction": {
         "enum": [
           "out",
@@ -5349,7 +5644,8 @@
           "gt",
           "gte",
           "contains",
-          "exists"
+          "exists",
+          "in"
         ],
         "type": "string"
       },
@@ -6944,6 +7240,119 @@
         ],
         "type": "string"
       },
+      "Hierarchy": {
+        "description": "A tree read on links (D305): at each node, its children are the objects\nreached by each step in turn. A node with several parents appears under\neach of them.",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "names": {
+            "$ref": "#/components/schemas/BTreeMap"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/HierarchyStep"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "steps"
+        ],
+        "type": "object"
+      },
+      "HierarchyNode": {
+        "description": "A node of a computed hierarchy, flat in depth-first order.",
+        "properties": {
+          "also_under": {
+            "description": "Titles of the other parents this node also appears under.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "depth": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "link": {
+            "description": "Link type that leads here from the parent (empty for the root).",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type_key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type_key",
+          "title",
+          "depth",
+          "link"
+        ],
+        "type": "object"
+      },
+      "HierarchyStep": {
+        "properties": {
+          "inverse": {
+            "description": "Follow the link from its target to its source.",
+            "type": "boolean"
+          },
+          "link": {
+            "description": "Link type key.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "link"
+        ],
+        "type": "object"
+      },
+      "HierarchyView": {
+        "description": "`GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed\npacks, and the tree of the one asked (the first by default).",
+        "properties": {
+          "hierarchies": {
+            "items": {
+              "$ref": "#/components/schemas/Hierarchy"
+            },
+            "type": "array"
+          },
+          "key": {
+            "description": "Key of the hierarchy computed; empty when none is installed.",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/HierarchyNode"
+            },
+            "type": "array"
+          },
+          "truncated": {
+            "description": "The depth or node cap cut the tree.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hierarchies",
+          "key",
+          "nodes",
+          "truncated"
+        ],
+        "type": "object"
+      },
       "Hit": {
         "properties": {
           "asset_id": {
@@ -7081,6 +7490,263 @@
           "link_type"
         ],
         "type": "object"
+      },
+      "Hunk": {
+        "description": "One change: paragraphs `from` (index in the old text) and `to` (index\nin the new one), with their text.",
+        "properties": {
+          "after": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "before": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "change": {
+            "$ref": "#/components/schemas/Change"
+          },
+          "from": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "to": {
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "change"
+        ],
+        "type": "object"
+      },
+      "ImportApply": {
+        "description": "`POST …/apply`: the preview run, on the import version it was read on.",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "expected_version"
+        ],
+        "type": "object"
+      },
+      "ImportCounts": {
+        "description": "Counters of a run's difference.",
+        "properties": {
+          "closed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "created": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "links_opened": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "links_updated": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "warnings": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "closed",
+          "links_opened",
+          "links_updated",
+          "errors",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ImportDiff": {
+        "description": "What a run writes (D301): computed by the preview, applied as is.",
+        "properties": {
+          "closed": {
+            "items": {
+              "$ref": "#/components/schemas/DiffClose"
+            },
+            "type": "array"
+          },
+          "created": {
+            "items": {
+              "$ref": "#/components/schemas/DiffCreate"
+            },
+            "type": "array"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/RowIssue"
+            },
+            "type": "array"
+          },
+          "links_opened": {
+            "items": {
+              "$ref": "#/components/schemas/DiffLink"
+            },
+            "type": "array"
+          },
+          "links_updated": {
+            "items": {
+              "$ref": "#/components/schemas/DiffLinkUpdate"
+            },
+            "type": "array"
+          },
+          "rows": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated": {
+            "items": {
+              "$ref": "#/components/schemas/DiffUpdate"
+            },
+            "type": "array"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/RowIssue"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "rows",
+          "created",
+          "updated",
+          "closed",
+          "links_opened",
+          "links_updated",
+          "errors",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "ImportMode": {
+        "description": "`incremental`: creates and updates. `snapshot`: also closes what this\nimport wrote before and the run no longer holds.",
+        "enum": [
+          "incremental",
+          "snapshot"
+        ],
+        "type": "string"
+      },
+      "ImportPreview": {
+        "description": "`POST …/dry-run` answer: the run to apply and its difference (each\nlist cut to 500 entries; `run.counts` has the totals).",
+        "properties": {
+          "diff": {
+            "$ref": "#/components/schemas/ImportDiff"
+          },
+          "run": {
+            "$ref": "#/components/schemas/ImportRunView"
+          }
+        },
+        "required": [
+          "run",
+          "diff"
+        ],
+        "type": "object"
+      },
+      "ImportRunView": {
+        "description": "One run: a preview waiting for its application, or a finished run.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/ImportCounts"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "import_version": {
+            "description": "Import version the run was computed on.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "number": {
+            "description": "Sequence per import: provenance `import:<import id>@<number>`.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "rows": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "description": "`running` | `preview` | `applied` | `refused` | `failed` | `stale`.",
+            "type": "string"
+          },
+          "state_code": {
+            "description": "Machine code of a refusal or failure (`import-schema-changed`…).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "trigger": {
+            "description": "`preview` | `schedule` | `manual`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "state",
+          "trigger",
+          "import_version",
+          "rows",
+          "counts",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "ImportSource": {
+        "description": "Where an import reads its records.",
+        "enum": [
+          "file",
+          "url",
+          "api"
+        ],
+        "type": "string"
       },
       "IndexState": {
         "properties": {
@@ -8585,6 +9251,30 @@
         },
         "type": "object"
       },
+      "MatchKind": {
+        "description": "How a relevance rule reads the page text (closed list, D307).",
+        "enum": [
+          "word",
+          "phrase",
+          "regex"
+        ],
+        "type": "string"
+      },
+      "Matcher": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MatchKind"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "value"
+        ],
+        "type": "object"
+      },
       "MediaAnalysesState": {
         "description": "Analysis offers, step states and index state of an asset's current version.",
         "properties": {
@@ -9710,6 +10400,44 @@
               "kind"
             ],
             "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "crawl_site"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CrawlSiteParams"
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "Created by the server only (D308): one proof of one page.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "capture_proof"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CaptureProofParams",
+                "description": "Created by the server only (D308): one proof of one page."
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -10463,6 +11191,139 @@
         ],
         "type": "object"
       },
+      "ObjectImportInput": {
+        "description": "Create or update an import (`expected_version` on update, else 409).",
+        "properties": {
+          "expected_version": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mapping": {
+            "description": "The mapping, YAML.",
+            "type": "string"
+          },
+          "max_pages": {
+            "description": "API pages per run (default 50, at most `PAGES_MAX`).",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "name": {
+            "type": "string"
+          },
+          "recurrence": {
+            "description": "A `recurrence` value (URL and API sources only): scheduled runs\napply without preview.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/ImportSource"
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "mapping"
+        ],
+        "type": "object"
+      },
+      "ObjectImportView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_run": {
+            "$ref": "#/components/schemas/ImportRunView"
+          },
+          "mapping": {
+            "description": "The mapping, YAML.",
+            "type": "string"
+          },
+          "max_pages": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "name": {
+            "type": "string"
+          },
+          "next_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pack_key": {
+            "description": "The pack that shipped the mapping, if any.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recurrence": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/ImportSource"
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "mapping",
+          "source",
+          "mode",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "ObjectInput": {
         "description": "Create or update an object. For a system object only `properties`\n(the org's extra properties) is writable; its title is the native one.",
         "properties": {
@@ -10729,6 +11590,9 @@
               "null"
             ]
           },
+          "descending": {
+            "type": "boolean"
+          },
           "filters": {
             "items": {
               "$ref": "#/components/schemas/PropertyFilter"
@@ -10772,6 +11636,13 @@
             "minimum": 0,
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "order_by": {
+            "description": "Property to sort on (as text; ISO dates sort right); title when\nabsent.",
+            "type": [
+              "string",
               "null"
             ]
           },
@@ -11321,6 +12192,48 @@
           "name",
           "version",
           "description"
+        ],
+        "type": "object"
+      },
+      "PageRecord": {
+        "description": "Relevant pages written as objects of an org type: registry field →\nproperty key (`url` → the type's unique property). Optional link of\neach page object to one object (its site).",
+        "properties": {
+          "link_to": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "link_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proof_link": {
+            "description": "Link type from the page object to each part of its proofs (D310),\nwith `captured_at`, `sha256_manifest` and `kind` (`capture`, `html`,\n`text`) when the link type declares them.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "properties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "properties"
         ],
         "type": "object"
       },
@@ -12591,6 +13504,42 @@
         ],
         "type": "object"
       },
+      "Paginated_ImportRunView": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ImportRunView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_LabDatasetVersion": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -13383,6 +14332,42 @@
         ],
         "type": "object"
       },
+      "Paginated_ObjectImportView": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/ObjectImportView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_ObjectRef": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -13877,6 +14862,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/SeriesBinding"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_SitePage": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/SitePage"
             },
             "type": "array"
           }
@@ -14489,6 +15510,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/VoiceProfileView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_WebProof": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/WebProof"
             },
             "type": "array"
           }
@@ -15270,6 +16327,49 @@
         },
         "type": "object"
       },
+      "ProofChainCheck": {
+        "description": "`GET …/proofs/verify`: the org's chain of manifests recomputed.",
+        "properties": {
+          "broken_at": {
+            "description": "First proof whose manifest, parts or link to the previous one does\nnot hold.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "count": {
+            "description": "Sealed proofs checked.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "count"
+        ],
+        "type": "object"
+      },
+      "ProofPartStored": {
+        "description": "Answer of a proof part upload: the proof, sealed once its parts are in.",
+        "properties": {
+          "proof_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "sealed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "proof_id",
+          "sealed"
+        ],
+        "type": "object"
+      },
       "PropertyDef": {
         "allOf": [
           {
@@ -15290,7 +16390,18 @@
               "names": {
                 "$ref": "#/components/schemas/BTreeMap"
               },
+              "pack": {
+                "description": "Pack that added this property to a type it does not own (D306).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "required": {
+                "type": "boolean"
+              },
+              "unique": {
+                "description": "Natural key (D302): one live object per org × type × value. Text or\nnumber only; implies `indexed`.",
                 "type": "boolean"
               }
             },
@@ -16315,6 +17426,27 @@
         ],
         "type": "object"
       },
+      "RowIssue": {
+        "description": "An error or warning of a record: 1-based row, column (or field path),\nmachine token.",
+        "properties": {
+          "column": {
+            "type": "string"
+          },
+          "row": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "row",
+          "column",
+          "token"
+        ],
+        "type": "object"
+      },
       "RunOrigin": {
         "description": "Where the text of a run comes from (D276).",
         "enum": [
@@ -16967,6 +18099,128 @@
           "at",
           "kind",
           "lane"
+        ],
+        "type": "object"
+      },
+      "SitePage": {
+        "description": "A page of the site registry (D309).",
+        "properties": {
+          "depth": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "doc_asset_id": {
+            "description": "Document holding the versions of its text (relevant pages).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_proof_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "misses": {
+            "description": "Crawls in a row without the page.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "mission_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "object_id": {
+            "description": "Object written by the mission's `record`.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "site": {
+            "type": "string"
+          },
+          "state": {
+            "description": "`listed` | `relevant` | `captured` | `gone` | `blocked`.",
+            "type": "string"
+          },
+          "state_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "url",
+          "title",
+          "depth",
+          "state",
+          "first_seen_at",
+          "last_seen_at",
+          "misses"
+        ],
+        "type": "object"
+      },
+      "SitePageReport": {
+        "description": "A page a browser agent read while crawling a site (D307, agent\nexecutor), sent signed like a page capture.",
+        "properties": {
+          "depth": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mission_id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mission_id",
+          "url",
+          "text"
         ],
         "type": "object"
       },
@@ -17937,6 +19191,50 @@
         },
         "required": [
           "kind"
+        ],
+        "type": "object"
+      },
+      "TextDiff": {
+        "properties": {
+          "added": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "changed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "from_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "hunks": {
+            "items": {
+              "$ref": "#/components/schemas/Hunk"
+            },
+            "type": "array"
+          },
+          "removed": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "A side was longer than the caps: the diff covers its start only.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "from_version",
+          "to_version",
+          "added",
+          "removed",
+          "changed",
+          "hunks",
+          "truncated"
         ],
         "type": "object"
       },
@@ -20186,6 +21484,64 @@
         },
         "required": [
           "url"
+        ],
+        "type": "object"
+      },
+      "WebProof": {
+        "description": "A web proof (D310): its parts and, once sealed, its manifest and the\nplace it holds in the org's chain of manifests.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manifest": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "manifest_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "parts": {
+            "description": "`{part: {media_id, sha256, bytes}}`.",
+            "type": "object"
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "site_page_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "`open` (parts arriving) or `sealed`.",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "url",
+          "state",
+          "parts"
         ],
         "type": "object"
       },
@@ -34873,6 +36229,337 @@
         ]
       }
     },
+    "/api/v1/extension/missions/{id}/pages": {
+      "get": {
+        "description": "The site registry of a `crawl_site` mission, most recently seen first: state (`listed`, `relevant`, `captured`, `gone`), first and last seen, text fingerprint, the document holding the versions of its text and its last proof. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_site_pages_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mission id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`listed`, `relevant`, `captured` or `gone`.",
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_SitePage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the pages of a crawled site",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/proofs": {
+      "get": {
+        "description": "Proofs of the org, newest first (`page_id` filters on a registry page): parts (screenshot, HTML, text media with their SHA-256), manifest and chain number once sealed. Paginated (`limit`/`offset`). Any member.",
+        "operationId": "extension_proofs_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Registry page (UUID).",
+            "in": "query",
+            "name": "page_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_WebProof"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the web proofs",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/proofs/verify": {
+      "get": {
+        "description": "Recomputes the org's chain of sealed proofs: each manifest's SHA-256, its link to the previous manifest, and each part's SHA-256 against its stored media. Answers the first broken proof, if any. Any member.",
+        "operationId": "extension_proofs_verify",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofChainCheck"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verify the chain of web proofs",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/proofs/{id}": {
+      "get": {
+        "description": "One proof: parts and, once sealed, its manifest (requested and final address, agent, mission, server reception time, SHA-256 of each part and of the previous manifest). Any member.",
+        "operationId": "extension_proofs_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Proof id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebProof"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a web proof",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
     "/api/v1/extension/uploads/captions": {
       "post": {
         "description": "Called by a browser agent for a post its `follow_account` mission saw, no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, post and SHA-256 of the body, usable once). Stores the captions as a transcription run of origin `platform` on the post's video media, created without a file when the video is not downloaded. Rate-limited per agent.",
@@ -34953,6 +36640,84 @@
           {}
         ],
         "summary": "Upload the platform captions of a post",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/crawl-done": {
+      "post": {
+        "description": "Called by a browser agent at the end of a `crawl_site` walk, signed like a page capture: the pages it read; a complete walk counts the pages of the site it did not see (`gone` after two crawls without them).",
+        "operationId": "extension_upload_crawl_done",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CrawlDone"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Recorded"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "End an agent site crawl",
         "tags": [
           "extension"
         ]
@@ -35124,6 +36889,177 @@
           {}
         ],
         "summary": "Upload a page capture of a browser agent",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/proof": {
+      "post": {
+        "description": "Called by a browser agent for its `capture_proof` tasks (asked by the server for relevant pages new or changed), no user session: `Authorization: Bearer <agent token>`, `X-Pnex-Mission`, `X-Pnex-Part` (`screenshot`: full-page PNG; `html`: rendered DOM, cleaned again by the server and only ever served as a download; `text`: a page snapshot JSON), `X-Pnex-Ts` and `X-Pnex-Signature` (install key signature of the timestamp, mission, part and SHA-256 of the body, usable once). Once the three parts are in, the server seals the proof: manifest with its reception time, the SHA-256 of each part and of the org's previous manifest. Rate-limited per agent.",
+        "operationId": "extension_upload_proof",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProofPartStored"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: unknown part, empty, too large, not a PNG or not a snapshot"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`: unknown token, bad or reused signature, body not matching it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`: not an open proof task of this agent"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`: too many captures"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`: Valkey unreachable"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Upload a part of a web proof",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/uploads/site-page": {
+      "post": {
+        "description": "Called by a browser agent walking a site for a `crawl_site` mission run by agents (pages rendered by JavaScript), no user session, signed like a page capture (`X-Pnex-Ts`, `X-Pnex-Signature` over the timestamp, the mission and the SHA-256 of the body). The page must belong to the declared site; it enters the site registry with the same relevance rules as a server crawl. Rate-limited per agent.",
+        "operationId": "extension_upload_site_page",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SitePageReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SitePage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: off the site, text too long, registry full"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-upload-refused`"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-mission-not-found`: not an agent crawl of this agent"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`rate-limited`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`extension-ticket-unavailable`"
+          }
+        },
+        "security": [
+          {}
+        ],
+        "summary": "Report a page of an agent site crawl",
         "tags": [
           "extension"
         ]
@@ -44847,6 +46783,115 @@
         ]
       }
     },
+    "/api/v1/media/{id}/versions/diff": {
+      "get": {
+        "description": "Paragraph diff of the readable text of versions `from` and `to` of a document (text, Markdown, CSV, Word, PDF, sheets): paragraphs added, removed and changed with their positions. Computed on demand, 1 MB of text per side at most (`truncated` beyond). Any org member.",
+        "operationId": "media_versions_diff",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Media asset UUID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Older version number.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Newer version number.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextDiff"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unknown asset or version"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Not a readable document (`media-diff-unsupported`)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Compare two versions of a document",
+        "tags": [
+          "media"
+        ]
+      }
+    },
     "/api/v1/media/{id}/versions/{n}": {
       "delete": {
         "description": "Deletes the version and its stored file. If it was current, the highest remaining version becomes current. The last remaining version cannot be deleted (delete the asset instead). Owner/admin only.",
@@ -48262,6 +50307,821 @@
         ]
       }
     },
+    "/api/v1/ontology/imports": {
+      "get": {
+        "description": "The org's declarative imports (mapping, source, mode, schedule) with their last run. Paginated (`limit`/`offset`). Any org member.",
+        "operationId": "ontology_imports_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ObjectImportView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the imports",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "post": {
+        "description": "Creates a declarative import: a YAML mapping checked against the org schema, a source (`file` sent with each preview, `url`, or `api`), a mode (`incremental` or `snapshot`) and, for URL and API sources, an optional recurrence (scheduled runs apply without preview). Org writers (owner, admin, member).",
+        "operationId": "ontology_imports_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectImportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectImportView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid input or mapping (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` (viewer)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an import",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/imports/{id}": {
+      "delete": {
+        "description": "Deletes the import and its run journal; the objects and links it wrote stay. Org writers.",
+        "operationId": "ontology_imports_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` (viewer)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete an import",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "get": {
+        "description": "One import with its last run. Any org member.",
+        "operationId": "ontology_imports_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectImportView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get an import",
+        "tags": [
+          "ontology"
+        ]
+      },
+      "put": {
+        "description": "Replaces the import on top of `expected_version` (409 otherwise); a pending preview of the previous version can no longer be applied. Org writers.",
+        "operationId": "ontology_imports_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectImportInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectImportView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid input or mapping (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` (viewer)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-version-conflict`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Update an import",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/imports/{id}/apply": {
+      "post": {
+        "description": "Writes exactly the difference of the preview `run_id`, in one transaction, on the import version `expected_version` and the object versions the preview read: anything changed since refuses the whole run (`import-run-stale`). A preview with row errors is refused (`import-has-errors`). Runs in the background: answers the `running` run (202). Org writers; the type write roles apply.",
+        "operationId": "ontology_imports_apply",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportApply"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `run_id` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` (viewer)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-version-conflict`, `import-run-stale`, `import-has-errors`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Apply a preview",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/imports/{id}/dry-run": {
+      "post": {
+        "description": "Starts a preview: the source (the file sent as the raw body for a `file` import, max 50 MB; fetched for `url` and `api`) is read and its difference computed in the background without writing anything. Answers the `running` run (202); poll `GET …/runs/{run_id}`. Org writers.",
+        "operationId": "ontology_imports_dry_run",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Name of the file sent (its extension gives the format when the\nmapping does not).",
+            "in": "query",
+            "name": "filename",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The file (file imports only)",
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`file` required for a file import (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` (viewer)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Preview an import",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/imports/{id}/runs": {
+      "get": {
+        "description": "The last 50 runs, newest first: state (`running`, `preview`, `applied`, `refused`, `failed`, `stale`), refusal code, counters. Paginated (`limit`/`offset`). Any org member.",
+        "operationId": "ontology_imports_runs_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ImportRunView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the runs of an import",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/imports/{id}/runs/{run_id}": {
+      "get": {
+        "description": "A run and, while it is a preview, its difference: objects created, updated (old → new), closed, links opened or updated, errors and warnings by row and column (each list cut to 500 entries; the counters hold the totals). Any org member.",
+        "operationId": "ontology_imports_runs_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Run id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a run and its difference",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
     "/api/v1/ontology/link-types": {
       "get": {
         "description": "Every link type visible to the organisation (system and org), with the types each one connects. Paginated (`limit`/`offset`). Any org member.",
@@ -49701,6 +52561,113 @@
           }
         ],
         "summary": "Get the neighbourhood graph of an object",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/objects/{id}/hierarchy": {
+      "get": {
+        "description": "Tree computed on the links a hierarchy of an installed pack declares (depth ≤ 6, 500 nodes), links valid at `at`. A node with several parents appears under each, with the others in `also_under`. Lists the installed hierarchies too. Any org member.",
+        "operationId": "ontology_objects_hierarchy",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Hierarchy key (default: the first one of the installed packs).",
+            "in": "query",
+            "name": "key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Links valid at this instant (RFC 3339, default now).",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HierarchyView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Invalid `at` (field → token)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the hierarchy tree under an object",
         "tags": [
           "ontology"
         ]

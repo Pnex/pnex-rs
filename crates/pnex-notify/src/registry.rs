@@ -135,15 +135,15 @@ mod tests {
                 "websocket"
             ]
         );
-        // websocket : aucun champ (info-block UI) ; webhook : 3 champs ;
-        // ntfy : 5 champs ; telegram 2 ; slack 1 ; discord 2 ; smtp 7.
+        // websocket : aucun champ (info-block UI) ; webhook : 4 champs ;
+        // ntfy : 5 champs ; telegram 2 ; slack 1 ; discord 2 ; smtp 8.
         assert!(channel("websocket").unwrap().field_spec().is_empty());
-        assert_eq!(channel("webhook").unwrap().field_spec().len(), 3);
+        assert_eq!(channel("webhook").unwrap().field_spec().len(), 4);
         assert_eq!(channel("ntfy").unwrap().field_spec().len(), 5);
         assert_eq!(channel("telegram").unwrap().field_spec().len(), 2);
         assert_eq!(channel("slack").unwrap().field_spec().len(), 1);
         assert_eq!(channel("discord").unwrap().field_spec().len(), 2);
-        assert_eq!(channel("smtp").unwrap().field_spec().len(), 7);
+        assert_eq!(channel("smtp").unwrap().field_spec().len(), 8);
     }
 
     #[test]

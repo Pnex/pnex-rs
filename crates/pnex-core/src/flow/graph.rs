@@ -185,6 +185,21 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::action::ActionTriggerConfig,
     },
+    /// Objects of one type matching filters (partner-watch.md D312).
+    OntologyQuery {
+        #[serde(default)]
+        config: crate::ontology::flow::OntologyQueryConfig,
+    },
+    /// Creates or updates an object on its natural key (D302, D312).
+    ObjectUpsert {
+        #[serde(default)]
+        config: crate::ontology::flow::ObjectUpsertConfig,
+    },
+    /// Opens, updates or closes a typed link (D312).
+    LinkUpsert {
+        #[serde(default)]
+        config: crate::ontology::flow::LinkUpsertConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -346,6 +361,15 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "action_trigger" => Ok(Self::ActionTrigger {
+                    config: opt_config(config)?,
+                }),
+                "ontology_query" => Ok(Self::OntologyQuery {
+                    config: opt_config(config)?,
+                }),
+                "object_upsert" => Ok(Self::ObjectUpsert {
+                    config: opt_config(config)?,
+                }),
+                "link_upsert" => Ok(Self::LinkUpsert {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {

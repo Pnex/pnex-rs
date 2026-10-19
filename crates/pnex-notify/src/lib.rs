@@ -94,5 +94,15 @@ pub struct Attachment {
     pub data: Vec<u8>,
 }
 
+/// Hash journaled for a recipient taken from a message (D313): SHA-256
+/// hex of the trimmed, lower-case address — never the address itself.
+pub fn recipient_hash(address: &str) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(address.trim().to_lowercase().as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// Largest attachment a notification carries, bytes.
 pub const ATTACHMENT_MAX_BYTES: usize = 10 * 1024 * 1024;
