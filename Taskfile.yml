@@ -597,6 +597,8 @@ tasks:
       # L'issuer vu par les devices (HTTPS) est issuer_url de
       # development.yaml (RAUTHY_ISSUER_URL), aligné sur PUB_URL du compose.
       RAUTHY_URL: "http://localhost:8080"
+      # Platform browser (compose service browser, Chrome headless, D325).
+      PNEX_BROWSER_URL: "http://127.0.0.1:9222"
     cmds:
       - '{{.G}} cargo build -p pnex-backend --bin pnex-server'
       - cd crates/pnex-backend && PNEX_GUARD_NO_LOCK=1 {{.G}} cargo run --bin pnex-server -- start --server-and-worker

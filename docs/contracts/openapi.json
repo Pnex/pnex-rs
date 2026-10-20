@@ -1692,6 +1692,37 @@
         ],
         "type": "object"
       },
+      "AssertSpec": {
+        "additionalProperties": false,
+        "description": "Exactly one check.",
+        "properties": {
+          "count_min": {
+            "$ref": "#/components/schemas/CountMin"
+          },
+          "not_empty": {
+            "description": "A previous extract (by name) is not empty.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "page_contains": {
+            "description": "The page text contains this (case and accents ignored).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url_contains": {
+            "description": "The current address contains this.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "AssignableRole": {
         "description": "Managed role an assignment may give (owner stays a membership role).",
         "enum": [
@@ -2198,6 +2229,139 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "BrowserCheck": {
+        "description": "One check of an endpoint test.",
+        "properties": {
+          "check": {
+            "description": "`version`, `context`, `navigate`, `internal-refused`.",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Diagnostic as is, not translated.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "check",
+          "ok",
+          "ms"
+        ],
+        "type": "object"
+      },
+      "BrowserEndpoint": {
+        "description": "A CDP browser of the org (site-recipes.md D325). The token is a vault\nreference, never its value (R4, R16).",
+        "properties": {
+          "cdp_url": {
+            "description": "`wss://…`, `ws://…`, or the `http(s)://host:port` of `/json/version`.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "max_connections": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/SecretFieldView"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "cdp_url",
+          "max_connections",
+          "is_default",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "BrowserEndpointInput": {
+        "description": "Create or replace a browser endpoint; `token: None` keeps the current one.",
+        "properties": {
+          "cdp_url": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "max_connections": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "token": {
+            "$ref": "#/components/schemas/SecretFieldInput"
+          }
+        },
+        "required": [
+          "name",
+          "cdp_url"
+        ],
+        "type": "object"
+      },
+      "BrowserTestResult": {
+        "description": "Answer of an endpoint test.",
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserCheck"
+            },
+            "type": "array"
+          },
+          "engine": {
+            "description": "`Browser` of `/json/version`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latency_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "protocol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "latency_ms",
+          "checks"
+        ],
         "type": "object"
       },
       "BucketBasis": {
@@ -3978,6 +4142,24 @@
         },
         "required": [
           "values"
+        ],
+        "type": "object"
+      },
+      "CountMin": {
+        "additionalProperties": false,
+        "properties": {
+          "min": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "min"
         ],
         "type": "object"
       },
@@ -5831,6 +6013,50 @@
           "ticket",
           "expires_in"
         ],
+        "type": "object"
+      },
+      "ExtractKind": {
+        "enum": [
+          "text",
+          "pdf"
+        ],
+        "type": "string"
+      },
+      "ExtractSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "all_text": {
+            "description": "The whole page text.",
+            "type": "boolean"
+          },
+          "as": {
+            "description": "Name of the output (default `extract-<step>`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "between": {
+            "description": "Page text between the first marker and the next second one.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "optional": {
+            "type": "boolean"
+          },
+          "selector": {
+            "description": "Text of every element matching this CSS selector.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "FieldSpec": {
@@ -8027,6 +8253,75 @@
         "required": [
           "status",
           "chunk_count"
+        ],
+        "type": "object"
+      },
+      "IngestStepView": {
+        "description": "One journaled step (`GET /flows/{id}/ingest-steps`): node panel and\nrun log.",
+        "properties": {
+          "bytes": {
+            "description": "Staging bytes the step wrote.",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "code": {
+            "description": "Machine code of an error (`err-<code>` in the UI).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "flow_version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manifest": {
+            "description": "What the step received and produced (64 KB at most).",
+            "type": "object"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "port": {
+            "description": "0 done, 1 error, 2 unchanged.",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purged": {
+            "description": "Its staging files are deleted.",
+            "type": "boolean"
+          },
+          "run_id": {
+            "description": "One id per pass of the chain.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "step": {
+            "description": "`source_resolve`, `file_download`, `archive_extract`, `table_inspect`,\n`rows_filter`, `ontology_import` or `staging_cleanup`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "node_id",
+          "flow_version",
+          "step",
+          "port",
+          "manifest",
+          "bytes",
+          "purged",
+          "created_at"
         ],
         "type": "object"
       },
@@ -13022,6 +13317,42 @@
         ],
         "type": "object"
       },
+      "Paginated_BrowserEndpoint": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/BrowserEndpoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_BuildRecord": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -13876,6 +14207,42 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/ImportRunView"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_IngestStepView": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/IngestStepView"
             },
             "type": "array"
           }
@@ -15362,6 +15729,114 @@
         ],
         "type": "object"
       },
+      "Paginated_SiteRecipe": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/SiteRecipe"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_SiteRecipeRun": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/SiteRecipeRun"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
+      "Paginated_SiteRecipeVersion": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/SiteRecipeVersion"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_SocialVideo": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -16046,6 +16521,42 @@
         ],
         "type": "object"
       },
+      "Paginated_WebSite": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/WebSite"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_WifiCredential": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -16189,6 +16700,36 @@
               "boolean",
               "null"
             ]
+          }
+        },
+        "type": "object"
+      },
+      "PdfSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "as": {
+            "description": "Name of the output (default `pdf-<step>`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "href_contains": {
+            "description": "First link whose address contains this.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "link_text_contains": {
+            "description": "First link whose text contains this.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "optional": {
+            "type": "boolean"
           }
         },
         "type": "object"
@@ -17468,6 +18009,52 @@
         ],
         "type": "string"
       },
+      "Recipe": {
+        "additionalProperties": false,
+        "description": "A recipe as written.",
+        "properties": {
+          "allow_hosts": {
+            "description": "Off-site hosts `follow_pdf` may fetch from.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "browser": {
+            "description": "Browser endpoint of the org to play on (its name); the org default,\nelse the platform browser, when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "params": {
+            "description": "Names the run fills in, used as `{{name}}` in the steps.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "site": {
+            "description": "Host or address of the site; normalised by [`site_host`].",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "site",
+          "steps"
+        ],
+        "type": "object"
+      },
       "RecordingTimeline": {
         "description": "Continuous recording of one camera over a window\n(`GET /api/v1/cameras/{device}/recordings`): segments in ascending start\norder, overlapping ones included (the player/export chain them with\n[`playback_chain`]).",
         "properties": {
@@ -18085,6 +18672,88 @@
         ],
         "type": "object"
       },
+      "RunExtract": {
+        "description": "What a run brought back.",
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "chars": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "file": {
+            "description": "File of the PDF (`GET …/runs/{id}/files/{file}`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "from": {
+            "description": "Address the PDF was fetched from.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExtractKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "text": {
+            "description": "Text read (the PDF's text for a PDF), capped.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "text",
+          "chars",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "RunInput": {
+        "description": "Play a recipe: a saved one (`recipe_id`) or a draft (`yaml`).",
+        "properties": {
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Values of the recipe's `params`.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "recipe_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "yaml": {
+            "description": "Draft to play instead of the saved version.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "RunOrigin": {
         "description": "Where the text of a run comes from (D276).",
         "enum": [
@@ -18092,6 +18761,72 @@
           "platform"
         ],
         "type": "string"
+      },
+      "RunStatus": {
+        "enum": [
+          "running",
+          "ok",
+          "failed"
+        ],
+        "type": "string"
+      },
+      "RunStep": {
+        "description": "One played step.",
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "Diagnostic as is (HTTP status, address refused…), not translated.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "index": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reason": {
+            "description": "Token of [`reason`] when failed or skipped.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "screenshot": {
+            "description": "File of the step's screenshot (`GET …/runs/{id}/files/{file}`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/StepStatus"
+          },
+          "url": {
+            "description": "Page address after the step.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "action",
+          "label",
+          "status",
+          "url",
+          "ms"
+        ],
+        "type": "object"
       },
       "SafeState": {
         "description": "Rest state of an output (link loss, boot, admission); default low.",
@@ -18314,7 +19049,8 @@
           "wifi",
           "llm-provider",
           "media-stream",
-          "geo-provider"
+          "geo-provider",
+          "browser-endpoint"
         ],
         "type": "string"
       },
@@ -18943,6 +19679,207 @@
         ],
         "type": "object"
       },
+      "SiteRecipe": {
+        "description": "A saved recipe.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/Recipe",
+            "description": "The parsed recipe (step list of the studio)."
+          },
+          "site": {
+            "description": "Normalised host of the site.",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "name",
+          "yaml",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "SiteRecipeDraft": {
+        "description": "Check a draft without saving it.",
+        "properties": {
+          "yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "yaml"
+        ],
+        "type": "object"
+      },
+      "SiteRecipeInput": {
+        "description": "Create or replace a recipe.",
+        "properties": {
+          "expected_version": {
+            "description": "Version the edit was made on (update only): another save in\nbetween answers 409.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "yaml"
+        ],
+        "type": "object"
+      },
+      "SiteRecipeRun": {
+        "description": "One run of a recipe (journal row; the single read adds the diff).",
+        "properties": {
+          "changes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TextDiff"
+            },
+            "description": "Per extract name: changes since the previous finished run of the\nsame recipe (single read only).",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "extracts": {
+            "items": {
+              "$ref": "#/components/schemas/RunExtract"
+            },
+            "type": "array"
+          },
+          "failed_step": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recipe_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recipe_version": {
+            "description": "Saved version played; `null` for a draft.",
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "site": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStep"
+            },
+            "type": "array"
+          },
+          "trigger": {
+            "description": "`studio` or `flow`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "site",
+          "name",
+          "trigger",
+          "status",
+          "steps",
+          "extracts",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "SiteRecipeVersion": {
+        "description": "One saved version of a recipe (D221).",
+        "properties": {
+          "author": {
+            "description": "E-mail of the author, when known.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "yaml": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "yaml",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "SkippedTab": {
         "description": "Tab of ANOTHER deployed flow left out of the projection (unreadable\nstored graph); the deploy itself goes on.",
         "properties": {
@@ -19336,6 +20273,92 @@
         ],
         "type": "object"
       },
+      "Step": {
+        "description": "One closed action. No form input, no login, no script (D254, D258).",
+        "oneOf": [
+          {
+            "description": "A path or an address of the site.",
+            "properties": {
+              "open": {
+                "description": "A path or an address of the site.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "open"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "click": {
+                "$ref": "#/components/schemas/Target"
+              }
+            },
+            "required": [
+              "click"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "`bottom`, or a CSS selector to bring into view.",
+            "properties": {
+              "scroll": {
+                "description": "`bottom`, or a CSS selector to bring into view.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "scroll"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "wait": {
+                "$ref": "#/components/schemas/WaitSpec"
+              }
+            },
+            "required": [
+              "wait"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "follow_pdf": {
+                "$ref": "#/components/schemas/PdfSpec"
+              }
+            },
+            "required": [
+              "follow_pdf"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "extract": {
+                "$ref": "#/components/schemas/ExtractSpec"
+              }
+            },
+            "required": [
+              "extract"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "assert": {
+                "$ref": "#/components/schemas/AssertSpec"
+              }
+            },
+            "required": [
+              "assert"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "StepOffer": {
         "description": "A step that can be launched now, or why not (`blocked` = error code,\ne.g. `media-analysis-no-llm`: shown greyed with a link to fix it).",
         "properties": {
@@ -19362,6 +20385,14 @@
           "step"
         ],
         "type": "object"
+      },
+      "StepStatus": {
+        "enum": [
+          "ok",
+          "skipped",
+          "failed"
+        ],
+        "type": "string"
       },
       "StitchJobDto": {
         "description": "A server-side panorama stitch job.",
@@ -19579,6 +20610,47 @@
           "deployment_mode",
           "generated_at"
         ],
+        "type": "object"
+      },
+      "Target": {
+        "additionalProperties": false,
+        "description": "Locates an element: exactly one of `text`, `text_contains`,\n`selector`, `role` (with an optional accessible `name`).",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "optional": {
+            "description": "A missing target is skipped instead of failing the run.",
+            "type": "boolean"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "selector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_contains": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "Taxonomy": {
@@ -22298,6 +23370,39 @@
         ],
         "type": "string"
       },
+      "WaitSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "ms": {
+            "description": "Fixed pause, ms.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "optional": {
+            "type": "boolean"
+          },
+          "text": {
+            "description": "Wait until the page shows this text (up to `timeout_ms`).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timeout_ms": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "WatchLiveParams": {
         "description": "`watch_live` (D260): record a live page while it is on air, in parts\nof at most [`LIVE_PART_MAX_MS`], each a `video` media.",
         "properties": {
@@ -22366,6 +23471,33 @@
           "url",
           "state",
           "parts"
+        ],
+        "type": "object"
+      },
+      "WebSite": {
+        "description": "A web site of the org: the recipes anchored on it and its last run.",
+        "properties": {
+          "last_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_status": {
+            "$ref": "#/components/schemas/RunStatus"
+          },
+          "recipes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "site": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "site",
+          "recipes"
         ],
         "type": "object"
       },
@@ -26321,6 +27453,428 @@
         "summary": "List the board profiles",
         "tags": [
           "boards"
+        ]
+      }
+    },
+    "/api/v1/browser-endpoints": {
+      "get": {
+        "description": "CDP browsers the organization plays its navigation rules on, with the default. The token is a vault reference, never its value. Without any, runs use the platform browser. Any member.",
+        "operationId": "browser_endpoints_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_BrowserEndpoint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `browser-endpoints:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List browser endpoints",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "post": {
+        "description": "Registers a CDP browser (`wss://…`, `ws://…` or `http(s)://host:port`). The address must pass the egress policy (no internal host). A typed `token` value is stored in the org vault and sent as `Authorization: Bearer`. The first endpoint, or one with `is_default`, becomes the org default. Owner or admin only.",
+        "operationId": "browser_endpoints_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserEndpointInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserEndpoint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` maps the field to a token"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `browser-endpoints:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`browser-endpoint-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a browser endpoint",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/browser-endpoints/{id}": {
+      "delete": {
+        "description": "Deletes the endpoint and its dedicated token. Rules that named it fail until edited. Owner or admin only.",
+        "operationId": "browser_endpoints_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Browser endpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `browser-endpoints:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`browser-endpoint-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a browser endpoint",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "put": {
+        "description": "Full replacement; an absent `token` keeps the current one. Owner or admin only.",
+        "operationId": "browser_endpoints_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Browser endpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserEndpointInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserEndpoint"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` maps the field to a token"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `browser-endpoints:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`browser-endpoint-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`browser-endpoint-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace a browser endpoint",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/browser-endpoints/{id}/test": {
+      "post": {
+        "description": "From the server: reads `/json/version` with the token, opens a fresh browser context, loads a public page with a screenshot, and checks that an internal address is refused. Answers each check, the engine and the latency; nothing is stored. Owner or admin only.",
+        "operationId": "browser_endpoints_test",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Browser endpoint id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserTestResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `browser-endpoints:test`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`browser-endpoint-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Test a browser endpoint",
+        "tags": [
+          "site-recipes"
         ]
       }
     },
@@ -39537,6 +41091,112 @@
           }
         ],
         "summary": "Deploy a flow version",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/api/v1/flows/{id}/ingest-steps": {
+      "get": {
+        "description": "Paginated journal of the open-data ingestion steps a flow ran, newest first: step, output port, error code and manifest (what the step received and produced). Optional `node_id` filter. Requires reading flows.",
+        "operationId": "flows_ingest_steps",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Flow id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only the steps of this node.",
+            "in": "query",
+            "name": "node_id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_IngestStepView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `flows:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Flow not found in this organisation"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the ingestion steps of a flow",
         "tags": [
           "flows"
         ]
@@ -60891,6 +62551,1061 @@
         ]
       }
     },
+    "/api/v1/site-recipes": {
+      "get": {
+        "description": "Navigation recipes of the organization, of one site with `site`. Each carries its YAML and the parsed recipe. Any member.",
+        "operationId": "site_recipes_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Host or address of a site (any spelling: normalised).",
+            "in": "query",
+            "name": "site",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_SiteRecipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List site recipes",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "post": {
+        "description": "Saves a navigation recipe (YAML) on the site it names; version 1. Requires a writer role.",
+        "operationId": "site_recipes_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteRecipeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-invalid` (violations) or `field-invalid` (`name = unique` on the site)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:write`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/runs": {
+      "get": {
+        "description": "Run journal, newest first: of a site (`site`) or of a recipe (`recipe_id`). Any member.",
+        "operationId": "site_recipes_runs_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Host or address of a site.",
+            "in": "query",
+            "name": "site",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Runs of one recipe.",
+            "in": "query",
+            "name": "recipe_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_SiteRecipeRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `recipe_id = invalid-uuid`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List site recipe runs",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "post": {
+        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). Visits the site from the server. Requires a writer role.",
+        "operationId": "site_recipes_runs_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipeRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Play a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/runs/{id}": {
+      "get": {
+        "description": "A run with its steps (status, reason, address, screenshot file), its extracts and, per extract, what changed since the previous finished run of the same recipe. Any member.",
+        "operationId": "site_recipes_runs_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Run id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipeRun"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-run-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a site recipe run",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/runs/{id}/files/{file}": {
+      "get": {
+        "description": "A step screenshot (`step-<n>.jpg`, JPEG) or a fetched PDF (`pdf-<n>.pdf`, always as an attachment). Any member.",
+        "operationId": "site_recipes_runs_file",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Run id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "File name, from the run's steps or extracts",
+            "in": "path",
+            "name": "file",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-run-not-found`: unknown run or file"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Download a file of a run",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/validate": {
+      "post": {
+        "description": "Parses and checks a recipe draft without saving it; answers the parsed recipe (its step list). Any member.",
+        "operationId": "site_recipes_validate",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteRecipeDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-invalid`: `errors.violations` lists `{path, token}`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Check a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/{id}": {
+      "delete": {
+        "description": "Deletes the recipe; its runs stay in the journal. Requires a writer role.",
+        "operationId": "site_recipes_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "get": {
+        "description": "Any member.",
+        "operationId": "site_recipes_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      },
+      "put": {
+        "description": "Replaces the YAML and bumps the version. With `expected_version`, a save made in between answers 409. Requires a writer role.",
+        "operationId": "site_recipes_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteRecipeInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-invalid` (violations) or `field-invalid` (`name = unique` on the site)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-version-conflict`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Replace a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/{id}/versions": {
+      "get": {
+        "description": "Every saved version of the recipe with its YAML and author, newest first. Any member.",
+        "operationId": "site_recipes_versions_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_SiteRecipeVersion"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the versions of a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/{id}/versions/{version}/restore": {
+      "post": {
+        "description": "Makes an earlier version the active one: its YAML is saved again as a new version. Requires a writer role.",
+        "operationId": "site_recipes_versions_restore",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Version number to restore",
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipe"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-invalid`: the old version no longer passes the rules"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`: unknown recipe or version"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restore a version of a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
     "/api/v1/stitch-jobs": {
       "post": {
         "description": "Creates a `queued` job for a 360 capture ring (poses + field of view). Frames are then uploaded one by one with `POST /api/v1/stitch-jobs/{id}/frames/{k}`; the last one starts the server stitch, whose panorama is published as a new version of the media asset. Writer role required.",
@@ -66471,6 +69186,83 @@
         "summary": "Test an audio clip against voice profiles",
         "tags": [
           "voice-id"
+        ]
+      }
+    },
+    "/api/v1/web-sites": {
+      "get": {
+        "description": "Web sites of the organization: one per normalised host carrying a navigation recipe, with the recipe count and the last run. Most recently run first. Any member.",
+        "operationId": "web_sites_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_WebSite"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List web sites",
+        "tags": [
+          "site-recipes"
         ]
       }
     },

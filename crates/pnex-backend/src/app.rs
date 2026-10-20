@@ -149,6 +149,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::extension::routes())
         .add_route(controllers::ws_extension::routes())
         .add_route(controllers::time_ranges::routes())
+        .add_route(controllers::site_recipes::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
         .add_route(controllers::ontology_imports::routes())
@@ -270,6 +271,12 @@ impl Hooks for App {
         crate::services::ontology::imports::spawn_scheduler(ctx);
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
+        // Site recipe runs cut by a restart never finish (D326).
+        match crate::services::site_recipes::recover(&ctx.db).await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(runs = n, "interrupted site recipe runs marked failed"),
+            Err(e) => tracing::warn!(error = %e, "site recipe runs not recovered"),
+        }
         // Ingestion staging purge: TTL, raw retention, orphans (D318).
         crate::services::ingest::spawn_purge(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one

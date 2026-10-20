@@ -175,6 +175,9 @@ pub mod frame;
 /// Paragraph diff of two document versions (partner-watch.md D311).
 pub mod text_diff;
 
+/// Site navigation rules played by the server browser (site-recipes.md D323–D326).
+pub mod site_recipe;
+
 /// Readers of ontology import sources (partner-watch.md D301).
 #[cfg(feature = "doc-extract")]
 pub mod import_read;

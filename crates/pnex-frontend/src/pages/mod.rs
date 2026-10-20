@@ -60,6 +60,8 @@ pub mod system;
 pub mod trust_ca;
 pub mod visualisation;
 pub mod voice_id;
+/// Web sites and their navigation studio (site-recipes.md D323–D326).
+pub mod web_sites;
 
 pub use admin_status::AdminStatus;
 pub use annotations::Annotations;

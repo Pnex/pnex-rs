@@ -144,6 +144,8 @@ pub enum SecretConsumerKind {
     MediaStream,
     /// Credential of an org geo provider (geo-layers.md L19).
     GeoProvider,
+    /// Token of an org browser endpoint (site-recipes.md D325).
+    BrowserEndpoint,
 }
 
 impl SecretConsumerKind {
@@ -155,6 +157,7 @@ impl SecretConsumerKind {
             Self::LlmProvider => "llm-provider",
             Self::MediaStream => "media-stream",
             Self::GeoProvider => "geo-provider",
+            Self::BrowserEndpoint => "browser-endpoint",
         }
     }
 
@@ -166,6 +169,7 @@ impl SecretConsumerKind {
             "llm-provider" => Self::LlmProvider,
             "media-stream" => Self::MediaStream,
             "geo-provider" => Self::GeoProvider,
+            "browser-endpoint" => Self::BrowserEndpoint,
             _ => return None,
         })
     }

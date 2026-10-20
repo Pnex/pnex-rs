@@ -248,6 +248,27 @@ const RULES: &[Rule] = &[
         use_instead: "payments (Money view)",
         allowed_keys: &[],
     },
+    // D323: the web site of a navigation rule is a « Site web » (« Site »
+    // alone is a POI); its YAML is a « règle », never a « recette ».
+    Rule {
+        scope: Scope::Fr,
+        term: "site internet",
+        use_instead: "site web (D323)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "recette",
+        use_instead: "règle de navigation (D323)",
+        allowed_keys: &[],
+    },
+    Rule {
+        // Locale only: the cards say « recipe » for a how-to.
+        scope: Scope::En,
+        term: "recipe",
+        use_instead: "navigation rule (D323)",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

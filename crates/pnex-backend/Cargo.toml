@@ -124,6 +124,8 @@ if-addrs = { workspace = true }
 futures-util = "0.3"
 uuid = { workspace = true, features = ["v5"] }
 serde-saphyr = "1.3"
+# CDP client of the server browser (site-recipes.md D325); MIT.
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 # v10 : choix d'un backend crypto obligatoire. rust_crypto (défaut loco) :
 # mettre aussi aws_lc_rs créerait une union de 2 backends -> panic runtime
 # ("exactly one of the 'rust_crypto' and 'aws_lc_rs' features")

@@ -551,6 +551,29 @@ async fn resolve_labels<C: ConnectionTrait>(
             names.insert((SecretConsumerKind::GeoProvider, r.id.to_string()), r.name);
         }
     }
+    let ids = uuids(ids_of(SecretConsumerKind::BrowserEndpoint));
+    if !ids.is_empty() {
+        #[derive(sea_orm::FromQueryResult)]
+        struct Row {
+            id: Uuid,
+            name: String,
+        }
+        for r in <Row as sea_orm::FromQueryResult>::find_by_statement(
+            sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT id, name FROM browser_endpoints WHERE id = ANY($1)",
+                vec![ids.into()],
+            ),
+        )
+        .all(db)
+        .await?
+        {
+            names.insert(
+                (SecretConsumerKind::BrowserEndpoint, r.id.to_string()),
+                r.name,
+            );
+        }
+    }
     let ids = uuids(ids_of(SecretConsumerKind::MediaStream));
     if !ids.is_empty() {
         for r in media_streams::Entity::find()

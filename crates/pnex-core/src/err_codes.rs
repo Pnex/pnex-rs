@@ -648,6 +648,23 @@ pub const INGEST_UNSAFE_PATH: &str = "ingest-unsafe-path";
 /// holds (D322); `args.closed`, `args.held`, `args.max_pct`.
 pub const INGEST_SUSPICIOUS_CLOSURES: &str = "ingest-suspicious-closures";
 
+// ── Site navigation rules (site-recipes.md D323–D326) ───────────────────
+
+/// A site recipe is not valid YAML or breaks a rule; `errors.violations`
+/// lists `{path, token}` (`steps.3` + `one_of`…).
+pub const SITE_RECIPE_INVALID: &str = "site-recipe-invalid";
+/// Site recipe not found (or not in the org).
+pub const SITE_RECIPE_NOT_FOUND: &str = "site-recipe-not-found";
+/// The recipe was saved by someone else since it was read.
+pub const SITE_RECIPE_VERSION_CONFLICT: &str = "site-recipe-version-conflict";
+/// Site recipe run not found (or not in the org).
+pub const SITE_RECIPE_RUN_NOT_FOUND: &str = "site-recipe-run-not-found";
+/// A run is missing a value of the recipe's `params`; `args.param`.
+pub const SITE_RECIPE_PARAM_MISSING: &str = "site-recipe-param-missing";
+/// Browser endpoint not found (or not in the org).
+pub const BROWSER_ENDPOINT_NOT_FOUND: &str = "browser-endpoint-not-found";
+/// A browser endpoint of the org already has this name.
+pub const BROWSER_ENDPOINT_NAME_TAKEN: &str = "browser-endpoint-name-taken";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -827,6 +844,13 @@ pub const ALL: &[&str] = &[
     INGEST_ARCHIVE_UNSUPPORTED,
     INGEST_UNSAFE_PATH,
     INGEST_SUSPICIOUS_CLOSURES,
+    SITE_RECIPE_INVALID,
+    SITE_RECIPE_NOT_FOUND,
+    SITE_RECIPE_VERSION_CONFLICT,
+    SITE_RECIPE_RUN_NOT_FOUND,
+    SITE_RECIPE_PARAM_MISSING,
+    BROWSER_ENDPOINT_NOT_FOUND,
+    BROWSER_ENDPOINT_NAME_TAKEN,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,
