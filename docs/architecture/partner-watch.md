@@ -13,7 +13,8 @@
 > étudiées (usurpation de marque, faux RIB, appels d'offres :
 > `pnex-business/lucas/`).
 
-Liens : `extension-collector.md` (D254–D284, amendés par D307–D310),
+Liens : `ingestion.md` (D317–D322, open data France Compétences dans un
+flow), `extension-collector.md` (D254–D284, amendés par D307–D310),
 `ontology.md` (D176–D191, D190 packs), `iam.md` (D285–D299, comptes de
 service), `notifications.md` (D49–D68), `flow-engine.md`, `media.md`
 (versions), `doc-search.md`, `pages.md` (PDF), `api-contract.md`, `mcp.md`,
@@ -420,12 +421,25 @@ diff, du robots.txt, du nettoyage HTML.
   reste à faire avec elle.
 - **D301** : langage de mapping (`ontology::import`) : `rows`, `objects`
   (`as`, `type`, `key`, `create`, `update`, `missing: error|skip`, `each`,
-  `when`, `title`, `location` pour un `map_pin`), `links` (`valid_from`,
-  `attributes`, `close_missing`), champs `from` / `value` / `concat`,
-  `^chemin` pour remonter à l'enregistrement depuis un `each` ; conversions
-  fermées `trim`, `digits`, `upper`, `lower`, `left:n`, `date:fmt`,
-  `money:XXX`, `split:sep`, `url_origin`, `domain`, `luhn`, `email`,
-  `{enum: {…, "*": défaut}}`. Source API **par objet** (`per_object` :
+  `when`, `title`, `location` pour un `map_pin`, `needs`), `links`
+  (`valid_from`, `attributes`, `close_missing`, `create`, `on_conflict`),
+  champs `from` / `value` / `concat`, `^chemin` pour remonter à
+  l'enregistrement depuis un `each`, `#` pour la position de l'élément
+  (à partir de 1) ; conversions fermées `trim`, `digits`, `upper`,
+  `lower`, `left:n`, `date:fmt`, `money:XXX`, `split:sep`,
+  `split_spaces:n` (un paragraphe par suite d'au moins n blancs),
+  `before:sep`, `after:sep`, `max_by:champ` puis `field:champ` (l'élément
+  au champ le plus grand, ex. l'année la plus récente), `url_origin`,
+  `domain`, `luhn`, `email`,
+  `{enum: {…, "*": défaut}}`. Ajouts 2026-10-20 (pack `quali_watch`
+  1.2.0, contenu des fiches RS/RNCP) : `needs: <as>` n'écrit l'objet que
+  si l'entrée nommée (plus haut) se résout — un registre entier lu sans
+  filtre n'enrichit que les certifications de l'org ; `create: false` sur
+  un lien ne fait que compléter un lien ouvert ; les attributs et le
+  `valid_from` d'un lien qui touche un `each` se lisent dans l'élément.
+  Plafonds : 5 000 éléments par `each` et par ligne (une fiche RS liste
+  jusqu'à ~4 300 partenaires), 500 000 objets planifiés par run
+  (`import-source-too-large`). Source API **par objet** (`per_object` :
   une requête par objet connu, les moins récemment mis à jour d'abord)
   pour les registres interrogés par identifiant ; incompatible avec le
   mode `snapshot`. Aperçu et application tournent en tâche de fond

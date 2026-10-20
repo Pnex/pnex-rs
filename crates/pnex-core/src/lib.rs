@@ -179,6 +179,9 @@ pub mod text_diff;
 #[cfg(feature = "doc-extract")]
 pub mod import_read;
 
+/// Open-data ingestion flow nodes (ingestion.md D317–D322).
+pub mod ingest;
+
 pub mod pagination;
 pub use pagination::*;
 

@@ -591,9 +591,12 @@ pub async fn dry_run(
                         first_row(&m, &name),
                     )
                     .await
-                    .map_err(|e| {
-                        tracing::warn!(import = %imp.id, error = %e, "import preview failed");
-                        err_codes::IMPORT_SOURCE_UNREADABLE
+                    .map_err(|e| match e {
+                        OntologyError::Import { code, .. } => code,
+                        e => {
+                            tracing::warn!(import = %imp.id, error = %e, "import preview failed");
+                            err_codes::IMPORT_SOURCE_UNREADABLE
+                        }
                     }),
                 }
             }
@@ -937,6 +940,162 @@ pub async fn run_now(
     load_run(db, imp.id, run.id).await.map(|(r, _)| r.view())
 }
 
+/// What a flow `ontology_import` step got (ingestion.md D322).
+pub struct FlowImportOutcome {
+    pub run: ImportRunView,
+    pub counts: imp::ImportCounts,
+    /// Refusal or failure code; the run is journaled either way.
+    pub code: Option<&'static str>,
+    pub args: Value,
+}
+
+/// Live objects and links this import wrote (provenance `import:<id>@…`).
+async fn held<C: ConnectionTrait>(db: &C, org_id: i64, import_id: Uuid) -> Result<usize> {
+    let like = format!("import:{import_id}@%");
+    let row = db
+        .query_one_raw(stmt(
+            "SELECT (SELECT count(*) FROM objects WHERE org_id = $1 AND valid_to IS NULL \
+               AND source_ref LIKE $2) + (SELECT count(*) FROM resource_edges \
+               WHERE org_id = $1 AND valid_to IS NULL AND source_ref LIKE $2) AS n",
+            vec![org_id.into(), like.into()],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|r| r.try_get::<i64>("", "n").ok())
+        .unwrap_or(0)
+        .max(0) as usize)
+}
+
+/// A run started by a flow node on a staged file (or, for an API import,
+/// on its own source): checked like a scheduled run (D303), refused when
+/// it would close more than `max_closures_pct` % of what the import holds,
+/// then kept as a preview (applicable from the Imports tab) or applied
+/// with the author's role. Synchronous: the flow waits for the outcome.
+pub async fn run_from_flow(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    file: Option<(Vec<u8>, String)>,
+    apply: bool,
+    max_closures_pct: u32,
+) -> Result<FlowImportOutcome> {
+    let imp = find_row(db, org_id, id).await?;
+    let m = imp.mapping()?;
+    let run = open_run(db, &imp, "flow", None).await?;
+    let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
+    let rows = match (&file, &m.per_object, imp.source()) {
+        (Some((bytes, name)), None, _) => {
+            let (bytes, name, m2) = (bytes.clone(), name.clone(), m.clone());
+            tokio::task::spawn_blocking(move || {
+                pnex_core::import_read::read_records(&bytes, &name, &m2).map_err(source::read_error)
+            })
+            .await
+            .unwrap_or(Err(source::UNREADABLE))
+        }
+        (None, None, ImportSource::File) => Err(err_codes::INGEST_ENTRY_MISSING),
+        _ => records(db, &imp, &m, None).await,
+    };
+    let end = |state: &'static str,
+               code: Option<&'static str>,
+               args: Value,
+               d: Option<ImportDiff>,
+               keep: bool| {
+        let run_id = run.id;
+        let imp = imp.clone();
+        async move {
+            finish_run(db, run_id, state, code, d.as_ref(), keep).await?;
+            if state == "refused" {
+                notify_refused(db, &imp, code.unwrap_or_default(), args.clone()).await;
+            }
+            let (r, _) = load_run(db, imp.id, run_id).await?;
+            Ok::<_, OntologyError>(FlowImportOutcome {
+                run: r.view(),
+                counts: d.as_ref().map(ImportDiff::counts).unwrap_or_default(),
+                code,
+                args,
+            })
+        }
+    };
+    let rows = match rows {
+        Ok(r) => r,
+        Err(code) => return end("failed", Some(code), Value::Null, None, false).await,
+    };
+    let previous = previous_rows(db, imp.id).await.unwrap_or(0);
+    let missing = imp::missing_columns(&m, &rows);
+    if (rows.is_empty() && previous > 0) || (!rows.is_empty() && !missing.is_empty()) {
+        let columns = if missing.is_empty() {
+            "—".to_string()
+        } else {
+            missing.join(", ")
+        };
+        let args = serde_json::json!({ "columns": columns });
+        return end(
+            "refused",
+            Some(err_codes::IMPORT_SCHEMA_CHANGED),
+            args,
+            None,
+            false,
+        )
+        .await;
+    }
+    let snapshot = imp.mode() == ImportMode::Snapshot;
+    let s = match schema(db, imp.org_id).await {
+        Ok(s) => s,
+        Err(_) => return end("failed", Some(source::UNREADABLE), Value::Null, None, false).await,
+    };
+    let first = first_row(&m, &name);
+    let mut d = match diff::compute(db, imp.org_id, imp.id, &s, &m, snapshot, &rows, first).await {
+        Ok(d) => d,
+        Err(OntologyError::Import { code, .. }) => {
+            return end("failed", Some(code), Value::Null, None, false).await
+        }
+        Err(_) => return end("failed", Some(source::UNREADABLE), Value::Null, None, false).await,
+    };
+    if snapshot && !d.errors.is_empty() {
+        return end(
+            "refused",
+            Some(err_codes::IMPORT_HAS_ERRORS),
+            Value::Null,
+            Some(d),
+            true,
+        )
+        .await;
+    }
+    let holding = held(db, imp.org_id, imp.id).await?;
+    if holding > 0 && d.closed.len() * 100 > holding * max_closures_pct as usize {
+        let args = serde_json::json!({
+            "closed": d.closed.len().to_string(),
+            "held": holding.to_string(),
+            "max_pct": max_closures_pct.to_string(),
+        });
+        let code = Some(err_codes::INGEST_SUSPICIOUS_CLOSURES);
+        return end("refused", code, args, Some(d), true).await;
+    }
+    if !apply {
+        return end("preview", None, Value::Null, Some(d), true).await;
+    }
+    let Some(role) = author_role(db, &imp).await else {
+        let code = Some(err_codes::ONTOLOGY_WRITE_FORBIDDEN);
+        return end("refused", code, Value::Null, None, false).await;
+    };
+    let actor = Actor {
+        user_id: imp.created_by,
+        role,
+        source_ref: format!("import:{}@{}", imp.id, run.number),
+    };
+    // Incremental: the valid records go, the bad ones stay in the journal.
+    let errors = std::mem::take(&mut d.errors);
+    let written = write_locked(db, &imp, &actor, &d).await;
+    d.errors = errors;
+    match written {
+        Ok(()) => end("applied", None, Value::Null, Some(d), false).await,
+        Err(e) => {
+            tracing::warn!(import = %imp.id, error = %e, "flow import failed");
+            end("failed", Some(error_code(&e)), Value::Null, Some(d), false).await
+        }
+    }
+}
+
 type Refusal = (&'static str, &'static str, Value, Option<Box<ImportDiff>>);
 
 async fn scheduled(
@@ -989,6 +1148,7 @@ async fn scheduled(
     };
     let mut d = match diff::compute(db, imp.org_id, imp.id, &s, m, snapshot, &rows, 1).await {
         Ok(d) => d,
+        Err(OntologyError::Import { code, .. }) => return Err(("failed", code, Value::Null, None)),
         Err(_) => {
             return Err((
                 "failed",

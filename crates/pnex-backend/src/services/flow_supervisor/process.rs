@@ -96,6 +96,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_ONTOLOGY_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/ontology"),
             )
+            // Ingestion steps (ingestion.md D317–D322).
+            .env(
+                "PNEX_FLOW_INGEST_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/ingest"),
+            )
             // Pages written by page-write nodes (D209).
             .env(
                 "PNEX_FLOW_PAGE_URL",

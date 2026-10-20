@@ -270,6 +270,8 @@ impl Hooks for App {
         crate::services::ontology::imports::spawn_scheduler(ctx);
         // Server site crawls (partner-watch.md D307).
         crate::services::crawl::spawn_scheduler(ctx);
+        // Ingestion staging purge: TTL, raw retention, orphans (D318).
+        crate::services::ingest::spawn_purge(ctx);
         // Flow execution cluster (D106): this process as a flow worker (one
         // supervised runtime for the orgs placed on it) and as a placement
         // controller candidate — here and not connect_workers (ServerOnly

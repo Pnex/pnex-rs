@@ -36,6 +36,7 @@ use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
 mod action;
+mod ingest;
 mod ontology;
 
 use pnex_core::ui_control::{

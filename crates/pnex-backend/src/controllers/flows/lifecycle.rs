@@ -700,6 +700,11 @@ async fn deploy_version(
             .await
             .map_err(|_| Error::InternalServerError)?,
         );
+        conflicts.extend(
+            crate::services::ingest::deploy_violations(&ctx.db, org.org.id, &candidate_graph)
+                .await
+                .map_err(|_| Error::InternalServerError)?,
+        );
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts
@@ -1118,6 +1123,71 @@ pub(super) async fn node_status(
         entries,
     })
     .into_response())
+}
+
+/// Journal of the flow's ingestion steps (ingestion.md D317–D322), newest
+/// first: the manifest each step published (node panel) and the run it
+/// belongs to (run log).
+#[utoipa::path(
+    get,
+    path = "/api/v1/flows/{id}/ingest-steps",
+    tag = "flows",
+    operation_id = "flows_ingest_steps",
+    summary = "List the ingestion steps of a flow",
+    description = "Paginated journal of the open-data ingestion steps a flow ran, newest first: step, output port, error code and manifest (what the step received and produced). Optional `node_id` filter. Requires reading flows.",
+    params(("id" = i64, Path, description = "Flow id"), IngestStepsQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ingest::IngestStepView>),
+        (status = 404, description = "Flow not found in this organisation", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+pub(super) async fn ingest_steps(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<i64>,
+    Query(q): Query<IngestStepsQuery>,
+) -> Result<Response> {
+    let Some(flow) = find_flow(&ctx.db, &org, id).await? else {
+        return Err(Error::NotFound);
+    };
+    let page = pagination::PageParams::from(q.limit.as_deref(), q.offset.as_deref());
+    let node = q
+        .node_id
+        .as_deref()
+        .filter(|n| !n.is_empty() && n.len() <= 64);
+    let (count, results) = crate::services::ingest::steps(
+        &ctx.db,
+        flow.org_id,
+        flow.id,
+        node,
+        page.limit as u64,
+        page.offset as u64,
+    )
+    .await
+    .map_err(|_| Error::InternalServerError)?;
+    let filters: Vec<(String, String)> = node
+        .map(|n| vec![("node_id".to_string(), n.to_string())])
+        .unwrap_or_default();
+    Ok(format::json(pagination::envelope(
+        &format!("/api/v1/flows/{id}/ingest-steps"),
+        &filters,
+        page,
+        count as i64,
+        results,
+    ))
+    .into_response())
+}
+
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub(super) struct IngestStepsQuery {
+    /// Only the steps of this node.
+    node_id: Option<String>,
+    #[param(value_type = Option<i64>)]
+    limit: Option<String>,
+    #[param(value_type = Option<i64>)]
+    offset: Option<String>,
 }
 
 /// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).

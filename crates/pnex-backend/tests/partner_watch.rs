@@ -166,10 +166,11 @@ async fn natural_keys_extensions_and_hierarchy() {
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 3);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
-            2
+            3
         );
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 2);
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 2);
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 3);
+        // SIRENE, the partner sheet and the five France Compétences imports.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 7);
 
         // D302: one live organization per SIREN.
         let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789"})).await;
@@ -660,6 +661,497 @@ async fn message_recipients_need_an_admin_flag_and_respect_the_caps() {
         let h: String = row.try_get("", "recipient_hash").unwrap();
         assert_eq!(h, pnex_notify::recipient_hash("contact@partenaire.fr"));
         unsafe { std::env::remove_var("PNEX_NOTIFY_INTERNAL_TOKEN") };
+    })
+    .await;
+}
+
+// ───────────── open-data ingestion (ingestion.md D317–D322) ─────────────
+
+const FC_STANDARD: &str = "\"Id_Fiche\";\"Numero_Fiche\";\"Intitule\";\"Nomenclature_Europe_Niveau\";\"Date_Decision\";\"Date_Fin_Enregistrement\";\"Date_Effet\";\"Actif\"\n\
+    \"1\";\"RS6765\";\"Télépilote de drone\";\"\";\"15/01/2024\";\"15/01/2027\";\"\";\"ACTIVE\"\n\
+    \"2\";\"RS6766\";\"Télépilote confirmé\";\"\";\"16/01/2024\";\"16/01/2027\";\"\";\"INACTIVE\"\n\
+    \"3\";\"RNCP1\";\"Autre\";\"NIV6\";\"01/01/2020\";\"01/01/2025\";\"01/02/2020\";\"ACTIVE\"\n";
+const FC_CERTIFIERS: &str = "\"Numero_Fiche\";\"Siret_Certificateur\";\"Nom_Certificateur\"\n\
+    \"RS6765\";\"\t80259488700019\";\"TELEPILOTE\"\n\
+    \"RS6766\";\"\t80259488700019\";\"TELEPILOTE\"\n\
+    \"RNCP1\";\"\t13002526500013\";\"AUTRE\"\n";
+
+/// Partner rows; `drop` removes those whose SIREN starts with it.
+fn fc_partners(drop: &[&str]) -> String {
+    let rows = [
+        (
+            "RS6765",
+            "PARTENAIRE UN",
+            "11111111800001",
+            "HABILITATION_ORGA_FORM",
+        ),
+        (
+            "RS6765",
+            "PARTENAIRE UN",
+            "11111111800019",
+            "HABILITATION_ORGA_FORM",
+        ),
+        (
+            "RS6765",
+            "PARTENAIRE DEUX",
+            "22222222600003",
+            "HABILITATION_FORMER",
+        ),
+        (
+            "RS6765",
+            "PARTENAIRE DEUX",
+            "22222222600011",
+            "HABILITATION_ORGANISER",
+        ),
+        (
+            "RS6766",
+            "PARTENAIRE TROIS",
+            "33333333400006",
+            "HABILITATION_ORGANISER",
+        ),
+        ("RNCP1", "AILLEURS", "13002526500013", "HABILITATION_FORMER"),
+    ];
+    let mut out = String::from(
+        "\"Numero_Fiche\";\"Nom_Partenaire\";\"Siret_Partenaire\";\"Habilitation_Partenaire\"\n",
+    );
+    for (fiche, nom, siret, hab) in rows {
+        if !drop.iter().any(|d| siret.starts_with(d)) {
+            out.push_str(&format!("\"{fiche}\";\"{nom}\";\"\t{siret}\";\"{hab}\"\n"));
+        }
+    }
+    out
+}
+
+fn fc_zip(partners: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for (name, body) in [
+        (
+            "export_fiches_CSV_Ancienne_Nouvelle_Certification_2026_10_20.csv",
+            "Numero_Fiche\n",
+        ),
+        ("export_fiches_CSV_Standard_2026_10_20.csv", FC_STANDARD),
+        (
+            "export_fiches_CSV_Certificateurs_2026_10_20.csv",
+            FC_CERTIFIERS,
+        ),
+        ("export_fiches_CSV_Partenaires_2026_10_20.csv", partners),
+    ] {
+        w.start_file(name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        w.write_all(body.as_bytes()).unwrap();
+    }
+    w.finish().unwrap().into_inner()
+}
+
+/// data.gouv.fr stand-in: the dataset (an older and the current export)
+/// and the current zip, which the test swaps.
+async fn mock_datagouv(zip: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String {
+    use axum::routing::get;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let dataset = json!({"title": "Répertoires", "resources": [
+        {"title": "export-fiches-csv-2026-10-19.zip", "url": format!("{base}/files/old.zip"),
+         "format": "zip", "last_modified": "2026-10-19T03:00:00+00:00"},
+        {"title": "export-fiches-csv-2026-10-20.zip", "url": format!("{base}/files/export-fiches-csv-2026-10-20.zip"),
+         "format": "zip", "last_modified": "2026-10-20T03:00:00.000000"},
+        {"title": "export-fiches-xml-2026-10-21.zip", "url": format!("{base}/files/x.zip"),
+         "format": "zip", "last_modified": "2026-10-21T03:00:00+00:00"}
+    ]});
+    let app = axum::Router::new()
+        .route(
+            "/api/1/datasets/fc/",
+            get(move || async move { axum::Json(dataset) }),
+        )
+        .route(
+            "/files/export-fiches-csv-2026-10-20.zip",
+            get(move || async move { zip.lock().unwrap().clone() }),
+        );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
+async fn ingest(server: &axum_test::TestServer, node: Value, msg: &Value) -> Value {
+    let res = server
+        .post("/internal/flow/ingest")
+        .add_header("x-pnex-flow-token", "tok-pw-1")
+        .json(&json!({"node": node, "msg": msg}))
+        .await;
+    assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
+    res.json::<Value>()
+}
+
+fn count(db_row: Option<sea_orm::QueryResult>) -> i64 {
+    db_row.unwrap().try_get::<i64>("", "n").unwrap()
+}
+
+#[tokio::test]
+#[serial]
+async fn open_data_ingestion_chain() {
+    with_app(|server, env| async move {
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
+        let base = mock_datagouv(zip.clone()).await;
+        unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
+        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
+
+        // The pack ships the flow as a draft, its import nodes resolved by name.
+        let row = q(format!("SELECT f.id, v.id AS vid, v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
+            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
+            .await.unwrap().expect("pack flow");
+        let (flow, vid) = (row.try_get::<i64>("", "id").unwrap(), row.try_get::<i64>("", "vid").unwrap());
+        let mut graph = row.try_get::<Value>("", "graph").unwrap();
+        let nodes = graph["nodes"].as_array_mut().unwrap();
+        for n in nodes.iter_mut() {
+            if n["kind"] == "ingest" && n["config"]["step"] == "ontology_import" {
+                assert!(n["config"]["import_id"].as_str().is_some_and(|s| s.len() == 36), "{n}");
+            }
+            // Q-I1: the client certifier's SIRET, set by the operator.
+            if n["id"] == "filter_c" {
+                n["config"]["values"] = json!(["80259488700019"]);
+            }
+            if n["id"] == "resolve" {
+                n["config"]["dataset"] = json!("fc");
+            }
+        }
+        let version = q(format!("SELECT version_number AS n FROM flow_versions WHERE id = {vid}"))
+            .await.unwrap().unwrap().try_get::<i64>("", "n").unwrap();
+        env.db.execute_raw(Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
+            "UPDATE flow_versions SET graph = $1 WHERE id = $2", vec![graph.into(), vid.into()])).await.unwrap();
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE flows SET status = 'deployed', deployed_version_id = {vid} WHERE id = {flow}"))).await.unwrap();
+        let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": version, "node_id": id});
+
+        // One pass of the chain, as the runtime wires it; returns the
+        // replies by node.
+        let chain = [
+            "resolve", "download", "extract", "inspect_c", "filter_c", "import_c",
+            "inspect_s", "filter_s", "import_s", "inspect_p", "filter_p", "import_p", "cleanup",
+        ];
+        let run = |stop_on_port: bool| {
+            let server = &server;
+            async move {
+                let mut msg = json!({});
+                let mut replies = std::collections::HashMap::new();
+                for id in chain {
+                    let r = ingest(server, node(id), &msg).await;
+                    msg = r["msg"].clone();
+                    let port = r["port"].as_u64().unwrap();
+                    replies.insert(id, r);
+                    if stop_on_port && port != 0 {
+                        break;
+                    }
+                }
+                replies
+            }
+        };
+
+        let r = run(true).await;
+        for id in chain {
+            assert_eq!(r[id]["port"], 0, "{id}: {}", r[id]);
+        }
+        assert!(r["resolve"]["manifest"]["url"].as_str().unwrap().ends_with("export-fiches-csv-2026-10-20.zip"));
+        let dl = &r["download"]["manifest"];
+        assert_eq!(dl["sha256"].as_str().unwrap().len(), 64, "{dl}");
+        assert!(dl["staging_key"].as_str().unwrap().starts_with(&format!("org_{org}/staging/{flow}/")));
+        let x = &r["extract"]["manifest"];
+        assert_eq!((x["format"].clone(), x["total"].clone(), x["selected"].clone()), (json!("zip"), json!(4), json!(3)), "{x}");
+        assert_eq!(r["inspect_c"]["manifest"]["rows"], 3);
+        assert_eq!(r["inspect_c"]["manifest"]["columns"][1]["name"], "Siret_Certificateur");
+        assert_eq!((r["filter_c"]["manifest"]["rows_in"].clone(), r["filter_c"]["manifest"]["rows_out"].clone()), (json!(3), json!(2)));
+        assert_eq!(r["import_c"]["manifest"]["state"], "applied", "{}", r["import_c"]);
+        assert_eq!(r["filter_s"]["manifest"]["rows_out"], 2, "only the client's sheets");
+        assert_eq!(r["filter_p"]["manifest"]["rows_out"], 5, "{}", r["filter_p"]);
+        assert_eq!(r["import_p"]["manifest"]["state"], "applied", "{}", r["import_p"]);
+        assert!(r["cleanup"]["manifest"]["deleted_keys"].as_array().unwrap().len() >= 5, "{}", r["cleanup"]);
+
+        // The ontology: certifications of the client with their sheet,
+        // its `porte` links, the partners' accreditations and scopes.
+        let (_, certs) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org,
+            Some(json!({"type_key": "certification", "limit": 10}))).await;
+        let by_code = |code: &str| certs["rows"].as_array().unwrap().iter()
+            .find(|r| r["object"]["properties"]["code"] == code).cloned().unwrap_or(Value::Null);
+        assert_eq!(certs["count"], 2, "{certs}");
+        let rs = &by_code("RS6765")["object"]["properties"];
+        assert_eq!((rs["repertoire"].clone(), rs["statut"].clone()), (json!("rs"), json!("actif")), "{rs}");
+        assert_eq!(rs["intitule"], "Télépilote de drone");
+        assert_eq!(rs["date_enregistrement"], "2024-01-15", "Date_Decision when Date_Effet is empty");
+        assert_eq!(by_code("RS6766")["object"]["properties"]["statut"], "inactif");
+        let links = |relation: &str| format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
+            AND relation = '{relation}' AND valid_to IS NULL");
+        assert_eq!(count(q(links("porte")).await.unwrap()), 2);
+        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
+        let scope = q(format!("SELECT e.attributes AS a FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
+            WHERE e.org_id = {org} AND e.relation = 'habilite_pour' AND o.properties ->> 'siren' = '333333334'"))
+            .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
+        assert_eq!((scope["perimetre"].clone(), scope["declaree_fc"].clone()), (json!("evaluation"), json!(true)), "{scope}");
+        // Two establishments of one SIREN, one preparing, one assessing:
+        // one link covering both, whatever the row order (Q-I2).
+        let both = q(format!("SELECT e.attributes AS a FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
+            WHERE e.org_id = {org} AND e.relation = 'habilite_pour' AND o.properties ->> 'siren' = '222222226'"))
+            .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
+        assert_eq!(both["perimetre"], "les_deux", "{both}");
+
+        // The node panel reads the journal.
+        let (st, steps) = call(&server, "GET", &format!("/api/v1/flows/{flow}/ingest-steps?node_id=extract"), &env.alice, org, None).await;
+        assert_eq!((st, steps["count"].clone()), (200, json!(1)), "{steps}");
+        assert_eq!(steps["results"][0]["manifest"]["entries"][0]["selected"], false);
+
+        // Same file the next night: unchanged, nothing written.
+        let r2 = run(true).await;
+        assert_eq!(r2["download"]["port"], 2, "{}", r2["download"]);
+        assert!(!r2.contains_key("extract"));
+
+        // A partner gone from the open data: its accreditation closes.
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&["333"]));
+        let r3 = run(true).await;
+        assert_eq!(r3["import_p"]["manifest"]["closed"], 1, "{}", r3["import_p"]);
+        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
+
+        // Most of the network gone at once: refused, nothing closed.
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222"]));
+        let r4 = run(true).await;
+        assert_eq!(r4["import_p"]["port"], 1, "{}", r4["import_p"]);
+        assert_eq!(r4["import_p"]["code"], "ingest-suspicious-closures");
+        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
+
+        // A changed shape stops the chain before any import.
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&[]).replace("Habilitation_Partenaire", "Habilitation"));
+        let r5 = run(true).await;
+        assert_eq!(r5["inspect_p"]["code"], "import-schema-changed", "{}", r5["inspect_p"]);
+        assert!(!r5.contains_key("import_p"));
+
+        // A forged node is refused; a key of another org is never read.
+        let res = server.post("/internal/flow/ingest").add_header("x-pnex-flow-token", "tok-pw-1")
+            .json(&json!({"node": node("nope"), "msg": {}})).await;
+        assert_eq!(res.status_code().as_u16(), 403);
+        let r = ingest(&server, node("inspect_c"), &json!({"staging_key": "org_999999/staging/1/x/raw/a.csv"})).await;
+        assert_eq!((r["port"].clone(), r["code"].clone()), (json!(1), json!("ingest-entry-missing")), "{r}");
+
+        // The purge leaves live runs alone and empties what is expired.
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE ingest_steps SET created_at = now() - interval '8 days', keep_until = NULL WHERE org_id = {org}"))).await.unwrap();
+        let store = pnex_backend::services::artifact_store::S3Config::from_config(
+            &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap()).store().unwrap();
+        pnex_backend::services::ingest::purge(&env.db, &store).await.unwrap();
+        assert_eq!(count(q(format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
+            AND purged_at IS NULL AND bytes > 0")).await.unwrap()), 0);
+        assert!(store.list_prefix(&format!("org_{org}/staging/")).await.unwrap().is_empty());
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+        unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
+    })
+    .await;
+}
+
+/// The shape of the RS XML export (v4.1); partner names and SIRET made up.
+const RS_XML: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<FICHES>
+    <VERSION_FLUX>4.1</VERSION_FLUX>
+    <FICHE>
+        <NUMERO_FICHE>RS7511</NUMERO_FICHE>
+        <INTITULE>Développer son activité avec le référencement naturel</INTITULE>
+        <PARTENAIRES>
+            <PARTENAIRE>
+                <NOM_PARTENAIRE>PARTENAIRE A</NOM_PARTENAIRE>
+                <SIRET_PARTENAIRE>11111111100011</SIRET_PARTENAIRE>
+                <HABILITATION_PARTENAIRE>HABILITATION_ORGA_FORM</HABILITATION_PARTENAIRE>
+                <ETAT_HABILITATION>Inactif</ETAT_HABILITATION>
+                <DATE_DERNIERE_MODIFICATION_ETAT>04/08/2026</DATE_DERNIERE_MODIFICATION_ETAT>
+            </PARTENAIRE>
+            <PARTENAIRE>
+                <NOM_PARTENAIRE>PARTENAIRE A</NOM_PARTENAIRE>
+                <SIRET_PARTENAIRE>11111111100029</SIRET_PARTENAIRE>
+                <HABILITATION_PARTENAIRE>HABILITATION_ORGA_FORM</HABILITATION_PARTENAIRE>
+                <ETAT_HABILITATION>Actif</ETAT_HABILITATION>
+                <DATE_ACTIF>28/01/2026</DATE_ACTIF>
+                <DATE_DERNIERE_MODIFICATION_ETAT>17/03/2026</DATE_DERNIERE_MODIFICATION_ETAT>
+            </PARTENAIRE>
+            <PARTENAIRE>
+                <NOM_PARTENAIRE>PARTENAIRE B</NOM_PARTENAIRE>
+                <SIRET_PARTENAIRE>22222222200012</SIRET_PARTENAIRE>
+                <HABILITATION_PARTENAIRE>HABILITATION_FORMER</HABILITATION_PARTENAIRE>
+                <ETAT_HABILITATION>Inactif</ETAT_HABILITATION>
+                <DATE_DERNIERE_MODIFICATION_ETAT>12/05/2026</DATE_DERNIERE_MODIFICATION_ETAT>
+            </PARTENAIRE>
+            <PARTENAIRE>
+                <NOM_PARTENAIRE>PARTENAIRE C</NOM_PARTENAIRE>
+                <SIRET_PARTENAIRE>33333333300012</SIRET_PARTENAIRE>
+                <HABILITATION_PARTENAIRE>HABILITATION_FORMER</HABILITATION_PARTENAIRE>
+                <ETAT_HABILITATION>Actif</ETAT_HABILITATION>
+                <DATE_DERNIERE_MODIFICATION_ETAT>12/05/2026</DATE_DERNIERE_MODIFICATION_ETAT>
+            </PARTENAIRE>
+        </PARTENAIRES>
+        <CAPACITES_ATTESTEES>Cadrer le projet de référencement naturel de son site internet (cible, objectifs…), afin de fixer des objectifs marketing.   Réaliser un audit des intentions de recherches de sa cible.    Optimiser les différents contenus web de son site (titles, metas, URL).   Élaborer une stratégie éditoriale orientée référencement.   Mettre en place une stratégie de netlinking.   Auditer les résultats de sa stratégie de référencement naturel.</CAPACITES_ATTESTEES>
+        <SI_JURY_FI>
+            <ACTIF>Non</ACTIF>
+        </SI_JURY_FI>
+        <SI_JURY_FC>
+            <ACTIF>Oui</ACTIF>
+            <COMPOSITION>Le jury de certification est composé de trois personnes.</COMPOSITION>
+        </SI_JURY_FC>
+        <STATISTIQUES_PROMOTIONS>
+            <STATISTIQUES_PROMOTION>
+                <ANNEE>2023</ANNEE>
+                <NOMBRE_CERTIFIES>4</NOMBRE_CERTIFIES>
+            </STATISTIQUES_PROMOTION>
+            <STATISTIQUES_PROMOTION>
+                <ANNEE>2024</ANNEE>
+                <NOMBRE_CERTIFIES>64</NOMBRE_CERTIFIES>
+            </STATISTIQUES_PROMOTION>
+        </STATISTIQUES_PROMOTIONS>
+        <LIEN_URL_DESCRIPTION>▷ Certification « Développer son activité avec le référencement naturel »           </LIEN_URL_DESCRIPTION>
+        <OBJECTIFS_CONTEXTE>La certification s’adresse aux dirigeants de petites entreprises.    La certification permet de structurer la démarche.</OBJECTIFS_CONTEXTE>
+        <ACTIF>Oui</ACTIF>
+        <PREREQUIS_ENTREE_FORMATION>Un site internet ou un projet de site.</PREREQUIS_ENTREE_FORMATION>
+    </FICHE>
+    <FICHE>
+        <NUMERO_FICHE>RS56</NUMERO_FICHE>
+        <PARTENAIRES>
+            <PARTENAIRE>
+                <SIRET_PARTENAIRE>22222222200012</SIRET_PARTENAIRE>
+                <ETAT_HABILITATION>Inactif</ETAT_HABILITATION>
+            </PARTENAIRE>
+        </PARTENAIRES>
+        <CAPACITES_ATTESTEES>aptitude au vol aux instruments    connaissances dans les matières énumérées ci-dessus</CAPACITES_ATTESTEES>
+        <STATISTIQUES_PROMOTIONS>
+            <STATISTIQUES_PROMOTION>
+                <ANNEE>2024</ANNEE>
+                <NOMBRE_CERTIFIES>12</NOMBRE_CERTIFIES>
+            </STATISTIQUES_PROMOTION>
+        </STATISTIQUES_PROMOTIONS>
+    </FICHE>
+</FICHES>
+"#;
+
+const BLOCS_CSV: &str =
+    "\"Numero_Fiche\";\"Bloc_Competences_Code\";\"Bloc_Competences_Libelle\"\r\n\
+    \"RNCP183\";\"RNCP183BC01\";\"Monter et mettre en service des installations frigorifiques\"\r\n\
+    \"RNCP183\";\"RNCP183BC02\";\"Assurer la maintenance des installations frigorifiques\"\r\n";
+
+/// The pack import of this name.
+async fn import_named(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    name: &str,
+) -> (String, Value) {
+    let (st, list) = call(
+        server,
+        "GET",
+        "/api/v1/ontology/imports?limit=50",
+        token,
+        org,
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{list}");
+    let imp = list["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["name"] == name)
+        .unwrap_or_else(|| panic!("{name}: {list}"));
+    (
+        imp["id"].as_str().unwrap().to_string(),
+        imp["version"].clone(),
+    )
+}
+
+async fn props_of(
+    db: &DatabaseConnection,
+    org: i64,
+    type_key: &str,
+    key: &str,
+    value: &str,
+) -> Value {
+    db.query_one_raw(sea_orm::Statement::from_string(
+        sea_orm::DatabaseBackend::Postgres,
+        format!(
+            "SELECT properties FROM objects WHERE org_id = {org} AND type_key = '{type_key}' \
+                 AND valid_to IS NULL AND properties ->> '{key}' = '{value}'"
+        ),
+    ))
+    .await
+    .unwrap()
+    .map(|r| r.try_get::<Value>("", "properties").unwrap())
+    .unwrap_or(Value::Null)
+}
+
+#[tokio::test]
+#[serial]
+async fn france_competences_sheet_content() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let mut ids = std::collections::HashMap::new();
+        for (code, props) in [("RS7511", json!({"code": "RS7511"})), ("RNCP183", json!({"code": "RNCP183"}))] {
+            let (st, r) = object(&server, &env.alice, org, "certification", code, props).await;
+            assert_eq!(st, 201, "{r}");
+            ids.insert(code, r["id"].as_str().unwrap().to_string());
+        }
+        for (name, siren) in [("A", "111111111"), ("B", "222222222"), ("C", "333333333")] {
+            let (st, r) = object(&server, &env.alice, org, "organization", name, json!({"siren": siren})).await;
+            assert_eq!(st, 201, "{r}");
+            ids.insert(siren, r["id"].as_str().unwrap().to_string());
+        }
+        // Accreditations opened by fc_partenaires: A and B, not C.
+        for siren in ["111111111", "222222222"] {
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
+                Some(json!({"link_type": "habilite_pour", "source_id": ids[siren], "target_id": ids["RS7511"]}))).await;
+            assert_eq!(st, 201, "{r}");
+        }
+
+        // RNCP skill blocks.
+        let (id, v) = import_named(&server, &env.alice, org, "France Compétences · skill blocks").await;
+        let p = preview(&server, &env.alice, org, &id, BLOCS_CSV).await;
+        assert_eq!((p["run"]["counts"]["created"].clone(), p["run"]["counts"]["links_opened"].clone()), (json!(2), json!(2)), "{p}");
+        let (_, r) = apply(&server, &env.alice, org, &id, &p, &v).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let b = props_of(&env.db, org, "competence", "cle", "RNCP183BC02").await;
+        assert_eq!((b["rang"].as_f64(), b["nature"].clone()), (Some(2.0), json!("bloc")), "{b}");
+
+        // RS sheets: RS56 is not one of the org's, nothing of it is written.
+        let (id, v) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
+        let p = preview(&server, &env.alice, org, &id, RS_XML).await;
+        assert_eq!(p["run"]["state"], "preview", "{p}");
+        assert!(p["diff"]["errors"].as_array().unwrap().is_empty(), "{p}");
+        let c = &p["run"]["counts"];
+        // Six competencies and their links, two accreditations completed
+        // (C has none: none is opened), RS7511 enriched.
+        assert_eq!((c["created"].clone(), c["links_opened"].clone(), c["links_updated"].clone(), c["updated"].clone()),
+            (json!(6), json!(6), json!(2), json!(1)), "{p}");
+        let (_, r) = apply(&server, &env.alice, org, &id, &p, &v).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let c3 = props_of(&env.db, org, "competence", "cle", "RS7511-C3").await;
+        assert_eq!(c3["rang"].as_f64(), Some(3.0), "{c3}");
+        assert!(c3["libelle"].as_str().unwrap().starts_with("Optimiser les différents contenus"), "{c3}");
+        assert_eq!(props_of(&env.db, org, "competence", "cle", "RS56-C1").await, Value::Null);
+        let cert = props_of(&env.db, org, "certification", "code", "RS7511").await;
+        assert_eq!(cert["nb_certifies"].as_f64(), Some(64.0), "{cert}");
+        assert_eq!(cert["jury"], json!("Le jury de certification est composé de trois personnes."), "{cert}");
+        assert!(cert["objectifs"].as_str().unwrap().starts_with("La certification s’adresse"), "{cert}");
+        let edges = env.db.query_all_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("SELECT source_id, attributes FROM resource_edges WHERE org_id = {org} \
+                     AND relation = 'habilite_pour' AND valid_to IS NULL ORDER BY source_id"),
+        )).await.unwrap();
+        let states: Vec<(String, Value, Value)> = edges.iter().map(|r| {
+            let a = r.try_get::<Value>("", "attributes").unwrap();
+            (r.try_get::<String>("", "source_id").unwrap(), a["etat_fc"].clone(), a["date_etat"].clone())
+        }).collect();
+        assert_eq!(states.len(), 2, "no accreditation opened for C: {states:?}");
+        // A: one SIRET still active wins over the inactive one.
+        assert_eq!((states[0].1.clone(), states[1].1.clone()), (json!("actif"), json!("inactif")), "{states:?}");
+        assert_eq!(states[1].2, json!("2026-05-12"));
+
+        // Same file again: nothing to do.
+        let p = preview(&server, &env.alice, org, &id, RS_XML).await;
+        let c = &p["run"]["counts"];
+        assert_eq!((c["created"].clone(), c["updated"].clone(), c["links_opened"].clone(), c["links_updated"].clone(), c["closed"].clone()),
+            (json!(0), json!(0), json!(0), json!(0), json!(0)), "{p}");
     })
     .await;
 }

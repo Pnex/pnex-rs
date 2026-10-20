@@ -13,9 +13,23 @@
 # `valider_envoi` action sends.
 # The partner network import reads the certifier's sheet (one row per
 # partner × certification, pnex-quali-watch/import-excel.md) as a snapshot:
-# a row gone closes its accreditation, nothing is deleted. Open data syncs
-# (France Compétences, CPF catalogue, DGEFP list) wait for their data
-# dictionaries to be checked (PRD Q1).
+# a row gone closes its accreditation, nothing is deleted.
+# France Compétences open data (ingestion.md D317–D322) arrives through the
+# "Ingestion France Compétences" flow: the daily zip of data.gouv.fr is
+# resolved, downloaded, extracted, inspected, filtered (the client
+# certifier's SIRET, then the certifications it holds) and imported by
+# fc_certificateurs, fc_fiches and fc_partenaires (a partner gone from the
+# open data closes its accreditation); the SIRENE import then enriches the
+# organizations. Accreditations are linked at SIREN level (Q-I2 open).
+# The same night run reads the content of the sheets: RNCP skill blocks
+# (fc_blocs, CSV of the same zip) and, from the RS XML export, each
+# competency of a sheet (one per paragraph of CAPACITES_ATTESTEES, keyed
+# RS7511-C3), objectives, prerequisites, jury, graduates, and the state of
+# each accreditation (fc_rs_xml). The XML <ACTIF> is not trusted: the sheet
+# status comes from the CSV Standard (fc_fiches).
+# Programmes (the certifier's reference and each partner's) and their
+# modules are compared competency by competency through `couvre`: the
+# cross-table is a computed view, not a type (pnex-quali-watch PRD §5.7).
 # Rules and reminders ship as functions and flow models (D316): created at
 # install when the org has none of that name, as drafts, never deployed by
 # the install (D123). A deterministic rule writes its finding `propose`
@@ -24,7 +38,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.0.0"
+version: "1.2.0"
 requires: [entreprises_fr]
 extends:
   - type: organization
@@ -50,6 +64,12 @@ types:
       - { key: date_echeance, name: Expires on, names: {fr: "Échéance"}, kind: date }
       - { key: statut, name: Status, names: {fr: "Statut"}, kind: enum, values: [actif, inactif, echu], indexed: true }
       - { key: url_fiche, name: Register page, names: {fr: "Fiche du répertoire"}, kind: url }
+      - { key: objectifs, name: Objectives and context, names: {fr: "Objectifs et contexte"}, kind: text, max_len: 50000 }
+      - { key: prerequis, name: Entry prerequisites, names: {fr: "Prérequis"}, kind: text, max_len: 50000 }
+      - { key: jury, name: Jury, names: {fr: "Jury"}, kind: text, max_len: 10000 }
+      - { key: nb_certifies, name: Graduates (last year), names: {fr: "Certifiés (dernière année)"}, kind: number, min: 0 }
+      # The register gives a title here as often as a link: text.
+      - { key: url_description, name: Certifier description, names: {fr: "Descriptif du certificateur"}, kind: text, max_len: 2048 }
   - key: site_web
     name: Website
     names: {fr: "Site web"}
@@ -206,6 +226,44 @@ types:
       - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [a_valider, envoyee, echec], required: true, indexed: true }
       - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
       - { key: lien_corrige_ouvert_le, name: Fix link opened on, names: {fr: "Lien « corrigé » ouvert le"}, kind: date_time }
+  - key: competence
+    name: Competency
+    names: {fr: "Compétence"}
+    icon: cube
+    may_be_contained_in: [folder]
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 64, required: true, unique: true }
+      - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
+      - { key: libelle, name: Official wording, names: {fr: "Libellé officiel"}, kind: text, max_len: 10000 }
+      - { key: nature, name: Kind, names: {fr: "Nature"}, kind: enum, values: [competence, bloc], indexed: true }
+  - key: programme
+    name: Programme
+    names: {fr: "Programme"}
+    icon: layers
+    may_be_contained_in: [folder]
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: enum, values: [reference, partenaire], indexed: true }
+      - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
+      - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
+      - { key: format, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte] }
+      - { key: heures_synchrones, name: Live hours, names: {fr: "Heures synchrones"}, kind: number, unit: h, min: 0 }
+      - { key: heures_preparation, name: Preparation hours, names: {fr: "Heures de préparation"}, kind: number, unit: h, min: 0 }
+      - { key: heures_total, name: Total hours, names: {fr: "Heures au total"}, kind: number, unit: h, min: 0 }
+      - { key: recu_le, name: Received on, names: {fr: "Reçu le"}, kind: date }
+  - key: module
+    name: Module
+    names: {fr: "Module"}
+    icon: file-text
+    may_be_contained_in: [folder]
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
+      - { key: titre, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
+      - { key: heures, name: Hours, names: {fr: "Heures"}, kind: number, unit: h, min: 0 }
+      - { key: contenu, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 20000 }
+      - { key: cas_pratique, name: Case study, names: {fr: "Cas pratique"}, kind: text, max_len: 4000 }
+      - { key: livrable, name: Deliverable, names: {fr: "Livrable"}, kind: text, max_len: 2000 }
 link_types:
   - key: porte
     name: holds
@@ -227,6 +285,9 @@ link_types:
       - { key: reference_convention, name: Agreement reference, names: {fr: "Référence de la convention"}, kind: text, max_len: 255 }
       - { key: date_fin, name: Accredited until, names: {fr: "Habilité jusqu'au"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 255 }
+      - { key: etat_fc, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [actif, inactif] }
+      - { key: date_actif, name: Active since, names: {fr: "Actif depuis"}, kind: date }
+      - { key: date_etat, name: State changed on, names: {fr: "État modifié le"}, kind: date }
   - key: a_pour_site
     name: has as website
     names: {fr: "a pour site"}
@@ -291,7 +352,7 @@ link_types:
     inverse_name: shows
     inverse_names: {fr: "montre"}
     from_types: [ecart]
-    to_types: [page_observee, offre_cpf, media_asset]
+    to_types: [page_observee, offre_cpf, media_asset, programme, module]
     attributes:
       - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
   - key: selon
@@ -325,6 +386,50 @@ link_types:
     from_types: [relance]
     to_types: [procedure]
     one_target: true
+  - key: competence_de
+    name: is a competency of
+    names: {fr: "est une compétence de"}
+    inverse_name: has as competency
+    inverse_names: {fr: "a pour compétence"}
+    from_types: [competence]
+    to_types: [certification]
+    one_target: true
+  - key: programme_pour
+    name: prepares for
+    names: {fr: "prépare à"}
+    inverse_name: is prepared by
+    inverse_names: {fr: "est préparée par"}
+    from_types: [programme]
+    to_types: [certification]
+    one_target: true
+  - key: programme_de
+    name: is a programme of
+    names: {fr: "est un programme de"}
+    inverse_name: has as programme
+    inverse_names: {fr: "a pour programme"}
+    from_types: [programme]
+    to_types: [organization]
+    one_target: true
+  - key: module_de
+    name: is a module of
+    names: {fr: "est un module de"}
+    inverse_name: has as module
+    inverse_names: {fr: "a pour module"}
+    from_types: [module]
+    to_types: [programme]
+    one_target: true
+  - key: couvre
+    name: covers
+    names: {fr: "couvre"}
+    inverse_name: is covered by
+    inverse_names: {fr: "est couverte par"}
+    from_types: [module]
+    to_types: [competence]
+    attributes:
+      - { key: rapproche_par, name: Matched by, names: {fr: "Rapproché par"}, kind: enum, values: [code_cite, intitule, llm, humain] }
+      - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
+      - { key: confiance, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
+      - { key: valide, name: Validated, names: {fr: "Validé"}, kind: bool }
 hierarchies:
   - key: reseau
     name: Network
@@ -378,6 +483,176 @@ imports:
             date_fin: { from: date_fin_habilitation, convert: ["date:%d/%m/%Y"] }
             source: { value: "import" }
         - { type: a_pour_site, from: org, to: site }
+  - name: France Compétences · certifiers
+    source: file
+    mode: incremental
+    mapping:
+      key: fc_certificateurs
+      name: France Compétences certifiers
+      names: {fr: "Certificateurs France Compétences"}
+      format: csv
+      delimiter: ";"
+      objects:
+        - as: org
+          type: organization
+          key: siren
+          title: { from: Nom_Certificateur, convert: [trim] }
+          properties:
+            siren: { from: Siret_Certificateur, convert: [digits, luhn, "left:9"] }
+        - as: cert
+          type: certification
+          key: code
+          properties:
+            code: { from: Numero_Fiche, convert: [trim, upper] }
+            repertoire: { from: Numero_Fiche, convert: [trim, upper, "left:2", { enum: { RN: rncp, RS: rs } }] }
+      links:
+        - { type: porte, from: org, to: cert, close_missing: false }
+  - name: France Compétences · sheets
+    source: file
+    mode: incremental
+    mapping:
+      key: fc_fiches
+      name: France Compétences sheets
+      names: {fr: "Fiches France Compétences"}
+      format: csv
+      delimiter: ";"
+      objects:
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          update: true
+          missing: skip
+          properties:
+            code: { from: Numero_Fiche, convert: [trim, upper] }
+            intitule: { from: Intitule, convert: [trim] }
+            niveau: { from: Nomenclature_Europe_Niveau, convert: [trim] }
+            # RS sheets leave Date_Effet empty: Date_Decision then.
+            date_enregistrement: { concat: [Date_Effet, Date_Decision], sep: "|", convert: ["before:|", "date:%d/%m/%Y"] }
+            date_echeance: { from: Date_Fin_Enregistrement, convert: ["date:%d/%m/%Y"] }
+            statut: { from: Actif, convert: [{ enum: { ACTIVE: actif, INACTIVE: inactif } }] }
+  - name: France Compétences · partners
+    source: file
+    mode: snapshot
+    mapping:
+      key: fc_partenaires
+      name: France Compétences partners
+      names: {fr: "Partenaires France Compétences"}
+      format: csv
+      delimiter: ";"
+      objects:
+        - as: org
+          type: organization
+          key: siren
+          title: { from: Nom_Partenaire, convert: [trim] }
+          properties:
+            siren: { from: Siret_Partenaire, convert: [digits, luhn, "left:9"] }
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          properties:
+            code: { from: Numero_Fiche, convert: [trim, upper] }
+      links:
+        - type: habilite_pour
+          from: org
+          to: cert
+          attributes:
+            perimetre: { from: Habilitation_Partenaire, convert: [{ enum: { HABILITATION_ORGA_FORM: les_deux, HABILITATION_FORMER: preparation, HABILITATION_ORGANISER: evaluation } }] }
+            declaree_fc: { value: true }
+            source: { value: france_competences }
+          # Several SIRET of one SIREN with different scopes: both.
+          on_conflict: { perimetre: les_deux }
+  - name: France Compétences · skill blocks
+    source: file
+    mode: snapshot
+    mapping:
+      key: fc_blocs
+      name: France Compétences skill blocks
+      names: {fr: "Blocs de compétences France Compétences"}
+      format: csv
+      delimiter: ";"
+      objects:
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          properties:
+            code: { from: Numero_Fiche, convert: [trim, upper] }
+        - as: bloc
+          type: competence
+          key: cle
+          title: { from: Bloc_Competences_Libelle, convert: [trim] }
+          close_missing: true
+          properties:
+            cle: { from: Bloc_Competences_Code, convert: [trim, upper] }
+            rang: { from: Bloc_Competences_Code, convert: [trim, upper, "after:BC", digits] }
+            libelle: { from: Bloc_Competences_Libelle, convert: [trim] }
+            nature: { value: bloc }
+      links:
+        - { type: competence_de, from: bloc, to: cert }
+  - name: France Compétences · RS sheets (XML)
+    source: file
+    mode: snapshot
+    mapping:
+      key: fc_rs_xml
+      name: France Compétences RS sheets
+      names: {fr: "Fiches RS France Compétences (XML)"}
+      format: xml
+      rows: FICHES/FICHE
+      objects:
+        # The whole register is read: only the org's certifications are
+        # enriched, their competencies created (`needs`).
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          update: true
+          missing: skip
+          properties:
+            code: { from: NUMERO_FICHE, convert: [trim, upper] }
+            objectifs: { from: OBJECTIFS_CONTEXTE, convert: [trim] }
+            prerequis: { from: PREREQUIS_ENTREE_FORMATION, convert: [trim] }
+            # The first jury described, whatever the access route.
+            jury: { concat: [SI_JURY_FC.COMPOSITION, SI_JURY_FI.COMPOSITION, SI_JURY_VAE.COMPOSITION, SI_JURY_CQ.COMPOSITION, SI_JURY_CL.COMPOSITION], sep: "|", convert: ["before:|"] }
+            # The latest year: the register lists them in no set order.
+            nb_certifies: { from: STATISTIQUES_PROMOTIONS.STATISTIQUES_PROMOTION, convert: ["max_by:ANNEE", "field:NOMBRE_CERTIFIES"] }
+            url_description: { from: LIEN_URL_DESCRIPTION, convert: [trim] }
+        - as: comp
+          type: competence
+          key: cle
+          needs: cert
+          close_missing: true
+          # One competency per paragraph (runs of 3 blanks or more).
+          each: { from: CAPACITES_ATTESTEES, convert: ["split_spaces:3"] }
+          title: "."
+          properties:
+            cle: { concat: ["^NUMERO_FICHE", "#"], sep: "-C", convert: [upper] }
+            rang: "#"
+            libelle: "."
+            nature: { value: competence }
+        - as: org
+          type: organization
+          key: siren
+          create: false
+          missing: skip
+          each: PARTENAIRES.PARTENAIRE
+          properties:
+            siren: { from: SIRET_PARTENAIRE, convert: [digits, "left:9"] }
+      links:
+        - { type: competence_de, from: comp, to: cert }
+        # Only completes the accreditations fc_partenaires opened.
+        - type: habilite_pour
+          from: org
+          to: cert
+          create: false
+          close_missing: false
+          attributes:
+            etat_fc: { from: ETAT_HABILITATION, convert: [trim, { enum: { Actif: actif, Inactif: inactif } }] }
+            date_actif: { from: DATE_ACTIF, convert: ["date:%d/%m/%Y"] }
+            date_etat: { from: DATE_DERNIERE_MODIFICATION_ETAT, convert: ["date:%d/%m/%Y"] }
+          # Several SIRET of one SIREN: active when one of them is.
+          on_conflict: { etat_fc: actif }
 functions:
   - name: qw_relance_suivante
     language: starlark
@@ -532,6 +807,33 @@ flows:
         - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
         - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: concerne } }
+  - name: "Ingestion France Compétences"
+    note: "Each night the France Compétences open data (data.gouv.fr) is downloaded, inspected and imported: your certifications, their sheets and skill blocks, then their partners with their accreditation scope; the new organizations are then enriched from the company register; last, the RS sheets (XML) give each certification its competencies, objectives, prerequisites and jury, and each accreditation its France Compétences state. Before deploying, put your certifier's SIRET in the values of the « Certificateurs » row filter. Each step shows what it read and produced in its panel."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "30 3 * * *" }, outputs: [{ port: 0, targets: [resolve] }] }
+        - { id: resolve, kind: ingest, config: { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }, outputs: [{ port: 0, targets: [download] }] }
+        # Unchanged CSV zip: the RS sheets may still have changed.
+        - { id: download, kind: ingest, config: { step: file_download }, outputs: [{ port: 0, targets: [extract] }, { port: 2, targets: [resolve_rs] }] }
+        - { id: extract, kind: ingest, config: { step: archive_extract, entries: ["*Certificateurs*.csv", "*Standard*.csv", "*Partenaires*.csv", "*Blocs_De_Comp*.csv"] }, outputs: [{ port: 0, targets: [inspect_c] }] }
+        - { id: inspect_c, kind: ingest, config: { step: table_inspect, entry: "*Certificateurs*.csv", expected_columns: [Numero_Fiche, Siret_Certificateur, Nom_Certificateur] }, outputs: [{ port: 0, targets: [filter_c] }] }
+        - { id: filter_c, kind: ingest, config: { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, values: [], convert: [digits] }, outputs: [{ port: 0, targets: [import_c] }] }
+        - { id: import_c, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · certifiers", action: apply }, outputs: [{ port: 0, targets: [inspect_s] }] }
+        - { id: inspect_s, kind: ingest, config: { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }, outputs: [{ port: 0, targets: [filter_s] }] }
+        - { id: filter_s, kind: ingest, config: { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_s] }] }
+        - { id: import_s, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · sheets", action: apply }, outputs: [{ port: 0, targets: [inspect_b] }] }
+        - { id: inspect_b, kind: ingest, config: { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }, outputs: [{ port: 0, targets: [filter_b] }] }
+        - { id: filter_b, kind: ingest, config: { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_b] }] }
+        - { id: import_b, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · skill blocks", action: apply }, outputs: [{ port: 0, targets: [inspect_p] }] }
+        - { id: inspect_p, kind: ingest, config: { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }, outputs: [{ port: 0, targets: [filter_p] }] }
+        - { id: filter_p, kind: ingest, config: { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_p] }] }
+        - { id: import_p, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · partners", action: apply }, outputs: [{ port: 0, targets: [enrich] }] }
+        - { id: enrich, kind: ingest, config: { step: ontology_import, import_name: "Company register (SIRENE)", action: apply }, outputs: [{ port: 0, targets: [resolve_rs] }] }
+        - { id: resolve_rs, kind: ingest, config: { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-rs-v4-1-*.zip" }, outputs: [{ port: 0, targets: [download_rs] }] }
+        - { id: download_rs, kind: ingest, config: { step: file_download }, outputs: [{ port: 0, targets: [extract_rs] }, { port: 2, targets: [cleanup] }] }
+        - { id: extract_rs, kind: ingest, config: { step: archive_extract, entries: ["*.xml"] }, outputs: [{ port: 0, targets: [import_rs] }] }
+        - { id: import_rs, kind: ingest, config: { step: ontology_import, entry: "*.xml", import_name: "France Compétences · RS sheets (XML)", action: apply }, outputs: [{ port: 0, targets: [cleanup] }] }
+        - { id: cleanup, kind: ingest, config: { step: staging_cleanup } }
 page_templates:
   - key: constat_ecart
     name: Finding report

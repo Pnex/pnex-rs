@@ -631,6 +631,23 @@ pub const IMPORT_SOURCE_UNREACHABLE: &str = "import-source-unreachable";
 pub const IMPORT_SOURCE_TOO_LARGE: &str = "import-source-too-large";
 /// An import source that cannot be read in its format (D301).
 pub const IMPORT_SOURCE_UNREADABLE: &str = "import-source-unreadable";
+/// The org's staging area is full (2 GB, D318): nothing was downloaded.
+pub const INGEST_STAGING_QUOTA: &str = "ingest-staging-quota";
+/// The object storage holding the staging area is not reachable (D318).
+pub const INGEST_STAGING_UNAVAILABLE: &str = "ingest-staging-unavailable";
+/// No data.gouv.fr resource matches the pattern (D317); `args.pattern`.
+pub const INGEST_NO_RESOURCE: &str = "ingest-no-resource";
+/// No file to read: no extracted entry matches, or no earlier step staged
+/// one (D319); `args.entry`.
+pub const INGEST_ENTRY_MISSING: &str = "ingest-entry-missing";
+/// An archive format that is not read (zip, tar, tar.gz and gz are; D319).
+pub const INGEST_ARCHIVE_UNSUPPORTED: &str = "ingest-archive-unsupported";
+/// An archive entry whose path leaves its folder (`..`, absolute): refused.
+pub const INGEST_UNSAFE_PATH: &str = "ingest-unsafe-path";
+/// An import run would close more than the allowed share of what the import
+/// holds (D322); `args.closed`, `args.held`, `args.max_pct`.
+pub const INGEST_SUSPICIOUS_CLOSURES: &str = "ingest-suspicious-closures";
+
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -803,6 +820,13 @@ pub const ALL: &[&str] = &[
     IMPORT_SOURCE_UNREACHABLE,
     IMPORT_SOURCE_TOO_LARGE,
     IMPORT_SOURCE_UNREADABLE,
+    INGEST_STAGING_QUOTA,
+    INGEST_STAGING_UNAVAILABLE,
+    INGEST_NO_RESOURCE,
+    INGEST_ENTRY_MISSING,
+    INGEST_ARCHIVE_UNSUPPORTED,
+    INGEST_UNSAFE_PATH,
+    INGEST_SUSPICIOUS_CLOSURES,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,

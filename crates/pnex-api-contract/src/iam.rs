@@ -450,6 +450,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("flows_get", Access::Org("flows:read")),
     ("flows_list", Access::Org("flows:read")),
     ("flows_node_status", Access::Org("flows:read")),
+    ("flows_ingest_steps", Access::Org("flows:read")),
     ("flows_restart", Access::Org("flows:deploy")),
     ("flows_rollback", Access::Org("flows:deploy")),
     ("flows_runtime", Access::Org("flows:read")),

@@ -15,7 +15,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, FromQueryResult, Statement};
 use serde_json::{Map, Value};
 use uuid::Uuid;
 
-use super::super::{OrgSchema, Result};
+use super::super::{OntologyError, OrgSchema, Result};
 
 /// Keys looked up per query.
 const BATCH: usize = 1_000;
@@ -52,6 +52,9 @@ struct Agg {
     create: bool,
     update: bool,
     missing: pnex_core::ontology::import::Missing,
+    /// Objects it needs (indexes in the run's objects): written only when
+    /// one of them resolves.
+    needs: Vec<usize>,
 }
 
 enum End {
@@ -84,7 +87,7 @@ fn changes(
 }
 
 /// A link of the run: type, from and to (indexes of the deduplicated
-/// objects), start, attributes, row.
+/// objects), start, attributes, mapping entry.
 type PlannedPair = (
     String,
     usize,
@@ -129,7 +132,8 @@ pub async fn compute<C: ConnectionTrait>(
     let mut objs: Vec<Agg> = Vec::new();
     let mut by_key: HashMap<(String, String), usize> = HashMap::new();
     let mut planned_links: Vec<PlannedPair> = Vec::new();
-    let mut seen_links: HashSet<(String, usize, usize)> = HashSet::new();
+    let mut seen_links: HashMap<(String, usize, usize), usize> = HashMap::new();
+    let mut planned = 0usize;
     for (i, row) in rows.iter().enumerate() {
         let row_no = first_row + i;
         let plan = match plan_row(m, &schema, row_no, row) {
@@ -139,8 +143,16 @@ pub async fn compute<C: ConnectionTrait>(
                 continue;
             }
         };
-        let mut local = Vec::with_capacity(plan.objects.len());
+        planned += plan.objects.len();
+        if planned > pnex_core::ontology::import::PLANNED_MAX {
+            return Err(OntologyError::Import {
+                code: pnex_core::err_codes::IMPORT_SOURCE_TOO_LARGE,
+                args: None,
+            });
+        }
+        let mut local: Vec<usize> = Vec::with_capacity(plan.objects.len());
         for o in plan.objects {
+            let needs: Vec<usize> = o.needs.iter().map(|n| local[*n]).collect();
             let k = (o.type_key.clone(), o.key.clone());
             let idx = match by_key.get(&k) {
                 Some(&idx) => {
@@ -163,6 +175,7 @@ pub async fn compute<C: ConnectionTrait>(
                     a.location = a.location.or(o.location);
                     a.create |= o.create;
                     a.update |= o.update;
+                    a.needs.extend(needs);
                     idx
                 }
                 None => {
@@ -180,6 +193,7 @@ pub async fn compute<C: ConnectionTrait>(
                         create: o.create,
                         update: o.update,
                         missing: o.missing,
+                        needs,
                     });
                     objs.len() - 1
                 }
@@ -188,8 +202,31 @@ pub async fn compute<C: ConnectionTrait>(
         }
         for l in plan.links {
             let (from, to) = (local[l.from], local[l.to]);
-            if seen_links.insert((l.link_type.clone(), from, to)) {
-                planned_links.push((l.link_type, from, to, l.valid_from, l.attributes, row_no));
+            let Some(&at) = seen_links.get(&(l.link_type.clone(), from, to)) else {
+                seen_links.insert((l.link_type.clone(), from, to), planned_links.len());
+                planned_links.push((l.link_type, from, to, l.valid_from, l.attributes, l.entry));
+                continue;
+            };
+            // The same pair again (two SIRET of one SIREN): merge its attributes.
+            let rule = m.links.get(l.entry).map(|lm| &lm.on_conflict);
+            let first = &mut planned_links[at].4;
+            for (k, v) in l.attributes {
+                match first.get(&k) {
+                    None => {
+                        first.insert(k, v);
+                    }
+                    Some(old) if *old == v => {}
+                    Some(_) => match rule.and_then(|r| r.get(&k)) {
+                        Some(merged) => {
+                            first.insert(k, merged.clone());
+                        }
+                        None => diff.warnings.push(RowIssue {
+                            row: row_no,
+                            column: k,
+                            token: "conflict".into(),
+                        }),
+                    },
+                }
             }
         }
     }
@@ -229,6 +266,16 @@ pub async fn compute<C: ConnectionTrait>(
     for a in &objs {
         let def = s.object_type(&a.type_key);
         let label = format!("{} {}", a.type_key, a.key);
+        // Needs an object that resolved to none (a skipped lookup): left out.
+        // A need first seen later than this object counts as resolved.
+        if !a.needs.is_empty()
+            && a.needs
+                .iter()
+                .all(|n| matches!(ends.get(*n), Some(End::Missing)))
+        {
+            ends.push(End::Missing);
+            continue;
+        }
         match live.get(&(a.type_key.clone(), a.key.clone())) {
             Some(o) => {
                 ends.push(End::Existing(o.id, o.title.clone()));
@@ -343,7 +390,7 @@ pub async fn compute<C: ConnectionTrait>(
         }),
         End::Missing => None,
     };
-    for (link_type, from, to, valid_from, attributes, _row) in planned_links {
+    for (link_type, from, to, valid_from, attributes, entry) in planned_links {
         let (Some(f), Some(t)) = (end_of(&ends[from]), end_of(&ends[to])) else {
             continue;
         };
@@ -365,6 +412,10 @@ pub async fn compute<C: ConnectionTrait>(
                 }
                 continue;
             }
+        }
+        // `create: false`: this import only completes open links.
+        if m.links.get(entry).is_some_and(|l| !l.create) {
+            continue;
         }
         diff.links_opened.push(DiffLink {
             link_type,

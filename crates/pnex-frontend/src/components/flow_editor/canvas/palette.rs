@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 42] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 49] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -36,6 +36,13 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 42] = [
     PaletteKind::OntologyQuery,
     PaletteKind::ObjectUpsert,
     PaletteKind::LinkUpsert,
+    PaletteKind::IngestResolve,
+    PaletteKind::IngestDownload,
+    PaletteKind::IngestExtract,
+    PaletteKind::IngestInspect,
+    PaletteKind::IngestFilter,
+    PaletteKind::IngestImport,
+    PaletteKind::IngestCleanup,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
     PaletteKind::EventLog,
@@ -88,6 +95,13 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
+        PaletteKind::IngestResolve => "ingest-resolve",
+        PaletteKind::IngestDownload => "ingest-download",
+        PaletteKind::IngestExtract => "ingest-extract",
+        PaletteKind::IngestInspect => "ingest-inspect",
+        PaletteKind::IngestFilter => "ingest-filter",
+        PaletteKind::IngestImport => "ingest-import",
+        PaletteKind::IngestCleanup => "ingest-cleanup",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -146,6 +160,13 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
+        PaletteKind::IngestResolve => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestDownload => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestExtract => (PaletteIcon::Layers, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestInspect => (PaletteIcon::Eye, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestFilter => (PaletteIcon::Spline, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestImport => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::IngestCleanup => (PaletteIcon::History, "bg-cyan-50 text-cyan-700"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -197,6 +218,15 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
+        FlowNodeKind::Ingest { config } => match config.step {
+            pnex_core::ingest::IngestStep::SourceResolve => PaletteKind::IngestResolve,
+            pnex_core::ingest::IngestStep::FileDownload => PaletteKind::IngestDownload,
+            pnex_core::ingest::IngestStep::ArchiveExtract => PaletteKind::IngestExtract,
+            pnex_core::ingest::IngestStep::TableInspect => PaletteKind::IngestInspect,
+            pnex_core::ingest::IngestStep::RowsFilter => PaletteKind::IngestFilter,
+            pnex_core::ingest::IngestStep::OntologyImport => PaletteKind::IngestImport,
+            pnex_core::ingest::IngestStep::StagingCleanup => PaletteKind::IngestCleanup,
+        },
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -214,6 +244,7 @@ pub(crate) enum PaletteCategory {
     Code,
     Storage,
     Ontology,
+    Ingestion,
     Ai,
     Integrations,
     Debug,
@@ -221,7 +252,7 @@ pub(crate) enum PaletteCategory {
 
 /// Section order in the palette: the path of a flow (source → processing →
 /// output), debug last.
-pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 10] = [
+pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 11] = [
     PaletteCategory::Triggers,
     PaletteCategory::Devices,
     PaletteCategory::Control,
@@ -229,6 +260,7 @@ pub(crate) const PALETTE_CATEGORIES: [PaletteCategory; 10] = [
     PaletteCategory::Code,
     PaletteCategory::Storage,
     PaletteCategory::Ontology,
+    PaletteCategory::Ingestion,
     PaletteCategory::Ai,
     PaletteCategory::Integrations,
     PaletteCategory::Debug,
@@ -266,6 +298,13 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::OntologyQuery | PaletteKind::ObjectUpsert | PaletteKind::LinkUpsert => {
             PaletteCategory::Ontology
         }
+        PaletteKind::IngestResolve
+        | PaletteKind::IngestDownload
+        | PaletteKind::IngestExtract
+        | PaletteKind::IngestInspect
+        | PaletteKind::IngestFilter
+        | PaletteKind::IngestImport
+        | PaletteKind::IngestCleanup => PaletteCategory::Ingestion,
         PaletteKind::VisionDetect
         | PaletteKind::VisionTrack
         | PaletteKind::VisionZone
@@ -291,6 +330,7 @@ pub(crate) fn category_label(category: PaletteCategory) -> String {
         PaletteCategory::Code => t!("flows-category-code").to_string(),
         PaletteCategory::Storage => t!("flows-category-storage").to_string(),
         PaletteCategory::Ontology => t!("flows-category-ontology").to_string(),
+        PaletteCategory::Ingestion => t!("flows-category-ingestion").to_string(),
         PaletteCategory::Ai => t!("flows-category-ai").to_string(),
         PaletteCategory::Integrations => t!("flows-category-integrations").to_string(),
         PaletteCategory::Debug => t!("flows-category-debug").to_string(),
@@ -469,6 +509,34 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::LinkUpsert => (
             t!("flows-palette-link-upsert").to_string(),
             t!("flows-palette-link-upsert-help").to_string(),
+        ),
+        PaletteKind::IngestResolve => (
+            t!("flows-palette-ingest-resolve").to_string(),
+            t!("flows-palette-ingest-resolve-help").to_string(),
+        ),
+        PaletteKind::IngestDownload => (
+            t!("flows-palette-ingest-download").to_string(),
+            t!("flows-palette-ingest-download-help").to_string(),
+        ),
+        PaletteKind::IngestExtract => (
+            t!("flows-palette-ingest-extract").to_string(),
+            t!("flows-palette-ingest-extract-help").to_string(),
+        ),
+        PaletteKind::IngestInspect => (
+            t!("flows-palette-ingest-inspect").to_string(),
+            t!("flows-palette-ingest-inspect-help").to_string(),
+        ),
+        PaletteKind::IngestFilter => (
+            t!("flows-palette-ingest-filter").to_string(),
+            t!("flows-palette-ingest-filter-help").to_string(),
+        ),
+        PaletteKind::IngestImport => (
+            t!("flows-palette-ingest-import").to_string(),
+            t!("flows-palette-ingest-import-help").to_string(),
+        ),
+        PaletteKind::IngestCleanup => (
+            t!("flows-palette-ingest-cleanup").to_string(),
+            t!("flows-palette-ingest-cleanup-help").to_string(),
         ),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),

@@ -37,6 +37,7 @@ pub mod functions;
 pub mod geo;
 /// Authorization engine and action registry checks (iam.md D285–D299).
 pub mod iam;
+pub mod ingest;
 /// Live last-value telemetry cache (Valkey) — write side (pnex-device-read
 /// acceleration).
 pub mod lab;

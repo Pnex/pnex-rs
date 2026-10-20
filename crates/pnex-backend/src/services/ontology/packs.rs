@@ -11,7 +11,10 @@
 
 use pnex_core::ontology::api::{LinkTypeInput, ObjectTypeInput, Pack, PackView, PageTemplate};
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, TypeSet};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
+    Set,
+};
 use uuid::Uuid;
 
 use pnex_core::err_codes::FIELD_INVALID;
@@ -431,6 +434,17 @@ async fn install_automation(
             known.insert(f.name.clone(), (id, v.version_number, v.inputs, v.outputs));
         }
     }
+    // name → id of the org's imports (ingestion nodes, D322).
+    let imports: std::collections::HashMap<String, String> = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT id::text AS id, name FROM object_imports WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?
+        .iter()
+        .filter_map(|r| Some((r.try_get("", "name").ok()?, r.try_get("", "id").ok()?)))
+        .collect();
     for (i, f) in pack.flows.iter().enumerate() {
         let exists = flows::Entity::find()
             .filter(flows::Column::OrgId.eq(org_id))
@@ -447,6 +461,7 @@ async fn install_automation(
                 .get(name)
                 .map(|(id, v, inputs, outputs)| (*id, *v, inputs.clone(), outputs.clone()))
         });
+        resolve_imports(&mut graph, |name| imports.get(name).cloned());
         let graph: pnex_core::FlowGraph = serde_json::from_value(graph)
             .map_err(|_| invalid(format!("flows.{i}.graph"), FIELD_INVALID))?;
         crate::services::flow::create_flow(
@@ -495,6 +510,25 @@ pub fn resolve_functions(
             c["version_number"] = v.into();
             c["inputs"] = inputs;
             c["outputs"] = outputs;
+        }
+    }
+}
+
+/// Ingestion nodes naming an import (`import_name`, no id) get the id of
+/// the org's import of that name.
+pub fn resolve_imports(graph: &mut serde_json::Value, lookup: impl Fn(&str) -> Option<String>) {
+    let Some(nodes) = graph.get_mut("nodes").and_then(|n| n.as_array_mut()) else {
+        return;
+    };
+    for n in nodes.iter_mut().filter(|n| n["kind"] == "ingest") {
+        let Some(c) = n.get_mut("config").and_then(|c| c.as_object_mut()) else {
+            continue;
+        };
+        let Some(name) = c.remove("import_name") else {
+            continue;
+        };
+        if let Some(id) = name.as_str().and_then(&lookup) {
+            c.insert("import_id".into(), id.into());
         }
     }
 }
