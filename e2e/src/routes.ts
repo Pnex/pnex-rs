@@ -29,6 +29,7 @@ export const ROUTES: RouteCase[] = [
   { path: '/notifications', title: 'nav-notifications' },
   { path: '/catalog', title: 'nav-catalog' },
   { path: '/edges/refs', title: 'edgerefs-title' },
+  { path: '/web-sites', title: 'web-sites-title' },
   { path: '/orgs', title: 'orgs-title' },
   { path: '/orgs/current', title: null },
   { path: '/secrets', title: 'secrets-title' },

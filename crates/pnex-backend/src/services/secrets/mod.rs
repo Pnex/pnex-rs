@@ -1,6 +1,7 @@
 //! Org secrets vault (secrets.md D110–D118).
 
 pub mod binding;
+pub mod browser;
 pub mod crypto;
 pub mod flow;
 pub mod geo;

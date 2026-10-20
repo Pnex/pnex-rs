@@ -257,6 +257,9 @@ les règles plus anciennes qui les contredisent.
 | Texte libre d'un dossier d'enquête | Note | Note | une annotation |
 | Discussion sur un passage d'une Page | Commentaire | Comment | une annotation |
 | Lieu sur la carte | Site / repère | Site / place | une annotation |
+| Site internet parcouru par des règles de navigation (D323) | Site web | Website | pas « Site » seul (= repère de la carte) |
+| Suite d'étapes YAML qui parcourt un site web (D323) | Règle (de navigation) | (Navigation) rule | pas « recette » / « recipe » |
+| Groupe de menu : tout ce qui alimente PNeX (appareils, agents navigateur, sites web) | Sources | Sources | pas « Appareils » pour le groupe |
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | État sauvegardé d'un objet | Version | Version | — |

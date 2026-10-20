@@ -78,6 +78,8 @@ pub mod secrets;
 pub mod settings;
 pub mod shared_valkey;
 pub mod singleton;
+/// Site navigation rules and the server browser (site-recipes.md D323–D326).
+pub mod site_recipes;
 pub mod stitch;
 pub mod storage_reconcile;
 pub mod surface_controls;

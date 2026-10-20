@@ -44,6 +44,9 @@ mod m20261019_000034_site_pages_and_proofs;
 mod m20261019_000035_iam_roles_teams;
 mod m20261019_000036_iam_service_accounts;
 mod m20261020_000037_ingest_steps;
+mod m20261020_000038_site_recipes;
+mod m20261020_000039_browser_endpoints;
+mod m20261020_000040_site_recipe_versions;
 
 pub struct Migrator;
 
@@ -84,6 +87,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20261019_000035_iam_roles_teams::Migration),
             Box::new(m20261019_000036_iam_service_accounts::Migration),
             Box::new(m20261020_000037_ingest_steps::Migration),
+            Box::new(m20261020_000038_site_recipes::Migration),
+            Box::new(m20261020_000039_browser_endpoints::Migration),
+            Box::new(m20261020_000040_site_recipe_versions::Migration),
         ]
     }
 }

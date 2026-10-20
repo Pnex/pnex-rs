@@ -411,6 +411,11 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         crate::components::geo_providers::GeoProviders { can_manage: can_write }
                     }
 
+                    // Browser endpoints the navigation rules play on (D325).
+                    div { class: "p-4 md:p-6",
+                        crate::components::browser_endpoints::BrowserEndpoints { can_manage: can_write }
+                    }
+
                 }
 
                 if confirm_delete() {

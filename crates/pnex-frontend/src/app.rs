@@ -11,6 +11,7 @@
 use crate::pages::access::Access;
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
+use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
     Controls, Dashboard, Dashboards, Devices, Docs, Events, Firmware, Flows, FluidMixtures,
@@ -153,6 +154,13 @@ pub enum Route {
         // Browser agents and their missions (extension-collector.md D255).
         #[route("/edges/browser-agents")]
         BrowserAgents {},
+
+        // Web sites and their navigation studio (site-recipes.md D323–D326).
+        #[route("/web-sites")]
+        WebSites {},
+
+        #[route("/web-sites/:site")]
+        WebSiteStudio { site: String },
 
         #[route("/orgs")]
         Orgs {},

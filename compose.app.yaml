@@ -38,6 +38,9 @@ x-pnex-env: &pnex-env
   PNEX_S3_ACCESS_KEY: ${PNEX_S3_ACCESS_KEY:-rustfsadmin}
   PNEX_S3_SECRET_KEY: ${PNEX_S3_SECRET_KEY:-rustfsadmin}
   PNEX_S3_PATH_STYLE: ${PNEX_S3_PATH_STYLE:-true}
+  # Platform browser of the navigation rules (site-recipes.md D325).
+  PNEX_BROWSER_URL: ${PNEX_BROWSER_URL:-http://browser:9222}
+  PNEX_BROWSER_TOKEN: ${PNEX_BROWSER_TOKEN:-}
   # D72: platform admins (comma separated emails), deployment mode
   # (self_hosted | saas) and fallback O2 retention in days. The default
   # admin is the Rauthy bootstrap account (example.com is IANA-reserved:
@@ -84,6 +87,8 @@ services:
         condition: service_started
       rustfs-init:
         condition: service_completed_successfully
+      browser:
+        condition: service_started
     environment:
       <<: *pnex-env
     ports:

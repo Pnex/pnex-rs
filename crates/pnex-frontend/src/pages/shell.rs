@@ -96,12 +96,15 @@ fn ShellContent() -> Element {
                 // Rail toggle next to the logo, away from logout.
                 if rail {
                     div { class: "flex flex-col items-center gap-1 px-3 pt-4 pb-2",
-                        img {
-                            src: asset!("/assets/logo-mark.png"),
-                            alt: "PNeX",
-                            class: "h-7 w-7",
+                        // Same gerbe as the expanded header, kept within the mark's box.
+                        div { class: "relative flex h-10 w-10 items-center justify-center",
+                            HeaderGerbe {}
+                            img {
+                                src: asset!("/assets/logo-mark.png"),
+                                alt: "PNeX",
+                                class: "relative h-7 w-7",
+                            }
                         }
-                        div { class: "h-4", ActivityMark {} }
                         button {
                             class: "inline-flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-surface hover:text-ink",
                             r#type: "button",
@@ -319,6 +322,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || at(Route::Catalog {})
         || at(Route::EdgeRefs {})
         || at(Route::BrowserAgents {})
+        || matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. })
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
         || at(Route::Functions {})
@@ -511,6 +515,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::BrowserAgents {},
                     label: t!("nav-browser-agents"),
                     active: at(Route::BrowserAgents {}),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::WebSites {},
+                    label: t!("nav-web-sites"),
+                    active: matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. }),
                     on_navigate,
                 }
             }

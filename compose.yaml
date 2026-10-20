@@ -157,6 +157,17 @@ services:
       timeout: 3s
       retries: 10
 
+  # Server browser of the navigation rules (site-recipes.md D325): Chrome
+  # headless-shell over CDP. No token: reachable from the compose network
+  # and 127.0.0.1 only (host-run backend: http://127.0.0.1:9222).
+  browser:
+    image: chromedp/headless-shell:155.0.8059.26
+    container_name: pnex-browser
+    ports:
+      - "127.0.0.1:9222:9222"
+    shm_size: 512m
+    mem_limit: 1g
+
 volumes:
   pnex-pgdata:
   pnex-rauthydata:
