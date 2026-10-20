@@ -619,8 +619,7 @@ impl Run {
         let Some(store) = &self.store else {
             return false;
         };
-        // shortcut: run files are never purged yet; apply the mission
-        // retention (D268) when runs come from scheduled flows (N2).
+        // Pruned with the rule's `captures` retention (D268, prune_files).
         let key = format!("org_{}/site_recipes/{}/{file}", self.org_id, self.run_id);
         match store.put_bytes(&key, Bytes::from(bytes)).await {
             Ok(()) => {

@@ -5885,6 +5885,11 @@ web-sites-field-params = Paramètres
 web-sites-field-rule-name = Nom de la règle
 web-sites-field-site = Site web
 web-sites-help-browser = Nom d'un navigateur de l'organisation ; vide = navigateur par défaut.
+web-sites-field-captures = Conservation des captures
+web-sites-help-captures = Captures d'écran et PDF des passages ; le texte des extraits et le journal restent. Les extraits des passages réussis lancés par un flow sont aussi dans les médias.
+web-sites-captures-none = Aucune : supprimées après le passage
+web-sites-captures-days = { $days } jour(s)
+web-sites-captures-keep = Conservées
 web-sites-help-params = Séparés par des virgules ; utilisables dans les étapes en {"{{"}nom{"}}"}.
 web-sites-param-needed = Renseignez les paramètres de la règle
 web-sites-search-action = Chercher une action…

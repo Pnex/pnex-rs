@@ -225,7 +225,26 @@ pub struct Recipe {
     /// else the platform browser, when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// How long the run files (screenshots, PDFs) are kept, D161 wire
+    /// format (`none`, `days:N`, `keep`); [`CAPTURES_DEFAULT`] when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captures: Option<String>,
     pub steps: Vec<Step>,
+}
+
+/// Retention of the run files of a recipe that names none (D268).
+pub const CAPTURES_DEFAULT: crate::media_ingest::AudioRetention =
+    crate::media_ingest::AudioRetention::Days(30);
+
+impl Recipe {
+    /// Retention of the run files (screenshots, PDFs); the text extracts
+    /// stay in the journal for good.
+    pub fn capture_retention(&self) -> crate::media_ingest::AudioRetention {
+        self.captures
+            .as_deref()
+            .and_then(crate::media_ingest::AudioRetention::from_wire)
+            .unwrap_or(CAPTURES_DEFAULT)
+    }
 }
 
 /// One problem of a recipe: where (`steps.3`, `site`…) and a machine
@@ -414,7 +433,7 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
     for k in obj.keys() {
         if !matches!(
             k.as_str(),
-            "name" | "site" | "allow_hosts" | "params" | "browser" | "steps"
+            "name" | "site" | "allow_hosts" | "params" | "browser" | "captures" | "steps"
         ) {
             out.push(v(k, "unknown"));
         }
@@ -479,6 +498,18 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
             None
         }
     };
+    let captures = match obj.get("captures") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(c))
+            if crate::media_ingest::AudioRetention::from_wire(c.trim()).is_some() =>
+        {
+            Some(c.trim().to_string())
+        }
+        Some(_) => {
+            out.push(v("captures", "invalid"));
+            None
+        }
+    };
     let mut steps = Vec::new();
     match obj.get("steps").and_then(Value::as_array) {
         None => out.push(v("steps", "required")),
@@ -508,6 +539,7 @@ pub fn validate(doc: &Value) -> Result<Recipe, Vec<Violation>> {
         allow_hosts,
         params,
         browser,
+        captures,
         steps,
     })
 }
@@ -649,6 +681,9 @@ pub fn to_yaml(r: &Recipe) -> String {
     }
     if let Some(b) = &r.browser {
         out += &format!("browser: {}\n", s(b));
+    }
+    if let Some(c) = &r.captures {
+        out += &format!("captures: {}\n", s(c));
     }
     out += "steps:\n";
     for step in &r.steps {
@@ -1006,6 +1041,24 @@ mod tests {
         assert_eq!(r.steps.len(), 6);
         assert!(r.steps[1].optional());
         assert_eq!(r.steps[4].label(), "Programme … Modalités");
+    }
+
+    #[test]
+    fn captures_retention_defaults_and_round_trips() {
+        let r = validate(&la_strat()).unwrap();
+        assert_eq!(r.capture_retention(), CAPTURES_DEFAULT);
+        let mut d = la_strat();
+        d["captures"] = json!("days:0");
+        assert!(validate(&d)
+            .unwrap_err()
+            .contains(&v("captures", "invalid")));
+        d["captures"] = json!("keep");
+        let r = validate(&d).unwrap();
+        assert_eq!(
+            r.capture_retention(),
+            crate::media_ingest::AudioRetention::Keep
+        );
+        assert!(to_yaml(&r).contains("captures: \"keep\"\n"));
     }
 
     #[test]

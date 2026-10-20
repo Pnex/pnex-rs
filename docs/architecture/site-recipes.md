@@ -4,7 +4,7 @@
 > le noyau PNeX livre. Suite de `partner-watch.md` (D300–D316) et d'`ingestion.md`
 > (D317–D322). **N1 codé le 2026-10-20** (D323–D326 + navigateurs configurables) ;
 > **N2 codé le 2026-10-20** (D327 nœud de flow, notification ok → échec, prochains
-> passages) ; D328 (`llm_extract`) reste à faire.
+> passages, extraits versés à la médiathèque, rétention des captures D268) ; D328 (`llm_extract`) reste à faire.
 
 ## 1. Principe
 
@@ -143,9 +143,19 @@ Un échec ne conclut rien. La notification ok → échec passe par le nœud de f
   `site_recipe` de la règle dans les flows déployés jusqu'aux inject ; cron (5 ou 6
   champs, UTC comme le runtime) → 5 prochaines dates (`croner`), intervalle affiché tel
   quel. Le studio les montre sous la règle enregistrée.
-- Raccourci : les extraits restent dans le journal (`site_recipe_runs`), pas encore dans
-  la médiathèque (dédoublonnage PDF par SHA-256 prévu par la proposition) ; captures
-  toujours sans rétention.
+- **Médiathèque** : à chaque passage `flow` **réussi**, chaque extrait devient un média
+  `document` (un par règle × paramètres × nom d'extrait, retrouvé par ses métadonnées
+  `{source: site_recipe, recipe_id, output, params}`) ; nouvelle version seulement si le
+  SHA-256 du contenu change (le fichier PDF pour un extrait PDF, sinon le texte en
+  Markdown). Indexé par la recherche de documents. Le manifeste porte `media` et
+  `media_version`. Un passage en échec ne verse rien ; un versement raté est journalisé
+  sans faire échouer le passage. Les passages du studio jouent des brouillons : rien n'est
+  versé.
+- **Rétention des fichiers (D268)** : la règle porte `captures` (`none`, `days:N`, `keep`,
+  vocabulaire D161, défaut `days:30`, choix dans les réglages de la règle). Un pruner
+  horaire (un pod à la fois) supprime captures et PDF des passages terminés au-delà de la
+  rétention du YAML joué ; étapes, extraits texte et journal restent, le studio n'offre
+  plus les fichiers disparus. La rétention appartient à la règle (la source), pas au flow.
 
 ### D328 — `llm_extract` (à faire, N3)
 
@@ -173,10 +183,9 @@ Inchangé par rapport à la proposition v0.3.
 - Raccourcis notés dans le code : statut inconnu d'une page atteinte par un clic sous
   Obscura ; résolution DNS refaite par le navigateur (la politique réseau du conteneur
   est la vraie garde) ; relais local à usage unique (fenêtre de course en boucle locale) ;
-  captures jamais purgées (rétention D268 avec N2) ; diff cherché sur 20 passages.
+  diff cherché sur 20 passages.
 
 ## 4. Reste à faire
 
-N2 restant : extraits et PDF versés à la médiathèque, rétention des captures (D268) ;
 N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, « reprendre à l'étape N »,
 exécutant agent ; aligner `site_origin` (D307) sur `site_host`.
