@@ -32,7 +32,8 @@
     {
       "matches": [
         "https://x.com/*",
-        "https://www.youtube.com/*"
+        "https://www.youtube.com/*",
+        "https://www.tiktok.com/*"
       ],
       "js": [
         "hook.js"
@@ -43,7 +44,8 @@
     {
       "matches": [
         "https://x.com/*",
-        "https://www.youtube.com/*"
+        "https://www.youtube.com/*",
+        "https://www.tiktok.com/*"
       ],
       "js": [
         "relay.js"

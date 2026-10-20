@@ -79,6 +79,15 @@
       }
     }
   },
+  "debug_label": {
+    "message": "Debug traces"
+  },
+  "debug_hint": {
+    "message": "Writes each step of the missions to the console of the service worker (extensions page, Inspect views: service worker)."
+  },
+  "org_paired_label": {
+    "message": "Organization:"
+  },
   "server_paired_label": {
     "message": "PNeX server:"
   },

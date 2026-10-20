@@ -10,4 +10,6 @@ button.secondary { background: transparent; color: var(--fg); border: 1px solid 
 button:disabled { opacity: .6; cursor: default; }
 ul { padding-left: 18px; } li { margin: 6px 0; word-break: break-all; }
 .hint { color: var(--muted); font-size: 13px; }
+label.check { display: flex; gap: 8px; align-items: center; margin-top: 24px; color: var(--fg); }
+label.check input { width: auto; }
 #error { color: var(--bad); }

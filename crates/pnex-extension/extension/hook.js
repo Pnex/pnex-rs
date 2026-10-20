@@ -7,6 +7,7 @@
   const WANTED = {
     "x.com": /\/graphql\/[^/]+\/(UserTweets|UserMedia|UserTweetsAndReplies)\b/,
     "www.youtube.com": /\/youtubei\/v1\/browse\b/,
+    "www.tiktok.com": /\/api\/post\/item_list\b/,
   }[location.hostname];
   if (!WANTED) return;
   const MAX = 8 * 1024 * 1024;

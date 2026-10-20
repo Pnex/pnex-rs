@@ -685,6 +685,19 @@ Relever :
 - les réponses réseau observées par le crochet arrivent-elles encore ;
 - le rythme réel des pas de l'agent (minuteries ralenties).
 
+Un agent `dedicated:<plateforme>` lit **toujours** au premier plan
+(champ `foreground` de la mission, calculé par le serveur :
+`needs_foreground` ou agent dédié) : le PC lui est réservé, et un onglet
+caché ne charge pas la suite d'une liste. Deux plateformes dédiées sur une
+même machine = deux profils du navigateur, deux agents, fenêtres visibles
+côte à côte (une fenêtre recouverte vaut un onglet caché).
+
+Piège mesuré (2026-10-20, Brave 155) : `scrollBy`/`scrollTo` renvoient une
+promesse réglée à la fin du défilement, jamais dans un onglet caché ;
+renvoyée par la fonction injectée, elle bloquait `executeScript` à vie.
+Toute injection est désormais bornée (`tab-timeout`, 20 s) et ne renvoie
+jamais cette promesse.
+
 Le contrôle de visibilité de l'agent (`ext-tab-hidden`) et le mode
 `dedicated` sont codés quel que soit le résultat ; seule la valeur par
 plateforme dépend des mesures. Tableau à remplir au fil des lots, revu à
@@ -696,6 +709,7 @@ chaque version d'adaptateur (les plateformes changent) :
 | X | live | à mesurer | à mesurer | à mesurer | — | — |
 | TikTok | fil + vidéo | pause signalée | à mesurer | à mesurer | — | — |
 | TikTok | live | à mesurer | à mesurer | à mesurer | — | — |
+| YouTube | fil (vidéos + shorts) | lit les ~30 vidéos et ~48 shorts de tête (`ytInitialData`), **ne charge pas la suite** au défilement (0 réponse `browse`) : nouveautés OK, historique profond non | à mesurer | à mesurer | `false` (partagé = nouveautés seules ; `dedicated:youtube` = premier plan, historique) | 2026-10-20 |
 | YouTube | live | à mesurer | à mesurer | à mesurer | — | — |
 | Facebook | fil + vidéo | à mesurer | à mesurer | à mesurer | — | — |
 | Web générique | page | à mesurer | à mesurer | à mesurer | — | — |

@@ -161,7 +161,12 @@ pub async fn login(server: String) -> Result<String, JsValue> {
 /// Pairs this install with `org_id` (D266) and stores the agent
 /// credentials. Resolves with the agent name.
 #[wasm_bindgen]
-pub async fn pair(server: String, access_token: String, org_id: f64) -> Result<String, JsValue> {
+pub async fn pair(
+    server: String,
+    access_token: String,
+    org_id: f64,
+    org_name: String,
+) -> Result<String, JsValue> {
     let server = normalize_server(&server).ok_or_else(|| js_err("server-invalid"))?;
     let org_id = org_id as i64;
     let install_key = text(
@@ -201,6 +206,7 @@ pub async fn pair(server: String, access_token: String, org_id: f64) -> Result<S
     let creds = Creds {
         server,
         org_id,
+        org_name,
         agent_id: paired.agent.id,
         device_id: paired.agent.device_id,
         name: paired.agent.name.clone(),
@@ -404,6 +410,8 @@ impl Session {
         if let Some(link) = sh.link.as_mut() {
             let wire = link.seal_text(&plain);
             host::ws_send(socket, &wire);
+        } else {
+            host::debug_log("PNeX agent: link closed, message dropped");
         }
     }
 
@@ -534,7 +542,9 @@ impl Session {
                 }
                 let (this, plan) = (this.clone(), plan.clone());
                 spawn_local(async move {
+                    host::debug_log(&format!("PNeX agent: {} started", m.target));
                     let outcome = run_mission(&this, &plan, &platform, &m).await;
+                    host::debug_log(&format!("PNeX agent: {} done: {outcome}", m.target));
                     let mut p = plan.borrow_mut();
                     p.busy.remove(&platform);
                     p.outcome.insert(m.id.clone(), outcome);
@@ -645,6 +655,8 @@ async fn run_mission(
         ));
         return err_codes::EXT_PERMISSION_MISSING.into();
     }
+    // The pass starts: a state left from an earlier pass (blocked) is stale.
+    session.send(&state(MissionState::Running, ""));
     let tab = plan.borrow().tabs.get(platform).copied().unwrap_or(-1.0);
     // Responses of the previous visit are stale.
     take_responses(tab);
@@ -1055,6 +1067,7 @@ async fn follow_account(
             };
             plan.borrow_mut().tabs.insert(platform.to_string(), tab);
         }
+        host::debug_log(&format!("PNeX agent: {} reading {list}", m.target));
         // What the page loaded before any scroll (YouTube keeps it in the page).
         if let Ok(initial) = host::read_initial_data(tab).await {
             let initial = text(&initial);
@@ -1076,7 +1089,7 @@ async fn follow_account(
             &mut tracks,
         );
         // D269: some platforms pause a hidden tab; never read one blind.
-        if params.platform.needs_foreground() {
+        if m.foreground || params.platform.needs_foreground() {
             let _ = host::focus_tab(tab).await;
             if !visible(tab).await {
                 session.send(&AgentMsg::State {
@@ -1089,14 +1102,22 @@ async fn follow_account(
         }
         let mut idle = 0;
         let mut scrolls = 0;
+        // A scroll that failed proves nothing about the end of the list.
+        let mut broken = false;
         while scrolls < depth {
             host::sleep(3_000.0 + js_sys::Math::random() * 3_000.0).await;
-            if host::scroll(tab).await.is_err() {
+            if let Err(e) = host::scroll(tab).await {
+                host::debug_log(&format!("PNeX agent: scroll failed ({})", err_text(&e)));
+                broken = true;
                 break;
             }
             scrolls += 1;
             host::sleep(1_500.0).await;
             let docs = take_responses(tab);
+            host::debug_log(&format!(
+                "PNeX agent: scroll {scrolls}/{depth}, {} responses",
+                docs.len()
+            ));
             if docs.is_empty() {
                 idle += 1;
                 if idle >= END_AFTER_IDLE_SCROLLS {
@@ -1113,9 +1134,14 @@ async fn follow_account(
                 );
             }
         }
+        host::debug_log(&format!(
+            "PNeX agent: {} {list}: {scrolls} scrolls, {} posts so far",
+            m.target,
+            posts.len()
+        ));
         deepest = deepest.max(scrolls);
         // A list ends when it stopped loading before the depth asked.
-        end_reached &= scrolls < depth;
+        end_reached &= !broken && scrolls < depth;
     }
     if posts.is_empty() {
         // Nothing read: a sign-in or consent wall, or the page changed.

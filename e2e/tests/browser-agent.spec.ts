@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { expect, test } from '../src/fixtures.ts';
-import { BASE_URL } from '../src/env.ts';
+import { BASE_URL, ORG_NAME } from '../src/env.ts';
 
 test.describe('browser agent', { tag: ['@extension'] }, () => {
   test('extension: paired agent reads a value and keeps a page', async ({ api, tokens, runState, prefix }) => {
@@ -57,16 +57,16 @@ test.describe('browser agent', { tag: ['@extension'] }, () => {
       // from BASE_URL behind an edge).
       await expect(options.locator('#server')).not.toHaveValue('');
       const name = await options.evaluate(
-        async ([server, token, org]) => {
+        async ([server, token, org, orgName]) => {
           // Module of the extension page, unknown to the test's type checker.
           const pkg = './pkg/pnex_extension.js';
           const m = await import(pkg);
           await m.default();
-          const name = await m.pair(server, token, org);
+          const name = await m.pair(server, token, org, orgName);
           (globalThis as any).chrome.runtime.sendMessage({ t: 'wake' });
           return name;
         },
-        [BASE_URL, tokens.access, runState.orgId] as const,
+        [BASE_URL, tokens.access, runState.orgId, ORG_NAME] as const,
       );
       expect(name).toBeTruthy();
 

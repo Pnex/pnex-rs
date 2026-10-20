@@ -34,6 +34,8 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - State **Blocked — the site is not allowed yet**: open the extension options and click **Allow** next to the site (X needs x.com and video.twimg.com; TikTok needs tiktok.com and its subdomains).
 - **The site asks to sign in** or **shows a verification**: sign in or solve it in the agent's browser, then resume the mission. The agent never bypasses a verification.
 - TikTok pauses its videos in a hidden tab: keep the agent's window in front, screen unlocked, while it reads TikTok.
+- YouTube on a shared agent reads the latest videos and shorts of the account only: a hidden tab loads no more of the list. For the older history, set the agent's mode to dedicated to YouTube: it then brings its tab to the front while it reads.
+- Two dedicated platforms on one computer: use one browser profile per platform, each with its own paired agent, and keep both windows visible side by side.
 - A video without a downloadable file (YouTube) is recorded in real time: it takes as long as the video. A long video is recorded in parts of 30 minutes (8 hours at most); the first part is the post's media, each next part a media of its own. A protected video (DRM) is never recorded.
 - Platform captions are kept as a transcript of origin "platform"; **Retranscribe** on the review screen adds a PNeX transcript.
 - One browser agent runs a target at a time; a site runs one mission at a time, at least 20 seconds apart.

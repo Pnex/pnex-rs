@@ -29,6 +29,9 @@ pub const CREDS_KEY: &str = "pnex.creds";
 pub struct Creds {
     pub server: String,
     pub org_id: i64,
+    /// Name of the org at pairing time, shown in the options page.
+    #[serde(default)]
+    pub org_name: String,
     pub agent_id: i64,
     pub device_id: String,
     pub name: String,
@@ -138,6 +141,7 @@ mod tests {
             target,
             interval_secs: 60,
             scroll_depth: 0,
+            foreground: false,
         }
     }
 
@@ -204,5 +208,36 @@ mod tests {
         );
         assert!(sso_url("https://p.io", "c", "s")
             .contains("redirect_uri=https%3A%2F%2Fp.io%2Fapi%2Fv1%2Foauth2%2Fnative"));
+    }
+
+    /// Every followed platform gets the response hook: without it the
+    /// agent reads no post there (TikTok shipped without it).
+    #[test]
+    fn hook_runs_on_every_followed_platform() {
+        for manifest in [
+            include_str!("../extension/manifest.json"),
+            include_str!("../extension/manifest.firefox.json"),
+        ] {
+            let m: serde_json::Value = serde_json::from_str(manifest).unwrap();
+            for platform in [
+                ba::SocialPlatform::X,
+                ba::SocialPlatform::YouTube,
+                ba::SocialPlatform::TikTok,
+            ] {
+                let page = &platform.list_urls("a")[0];
+                let host = page.split('/').nth(2).unwrap();
+                for script in m["content_scripts"].as_array().unwrap() {
+                    let matches = script["matches"].to_string();
+                    assert!(
+                        matches.contains(&format!("https://{host}/*")),
+                        "{host}: {script}"
+                    );
+                }
+                assert!(
+                    include_str!("../extension/hook.js").contains(&format!("\"{host}\"")),
+                    "{host} missing from hook.js"
+                );
+            }
+        }
     }
 }
