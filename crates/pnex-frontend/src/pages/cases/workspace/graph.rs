@@ -277,6 +277,24 @@ pub(super) fn without(
     (kept, edges, capped)
 }
 
+/// The first `cap` nodes of a graph, after the family filter: hiding a
+/// family makes room for the nodes the cap left out.
+pub(super) fn cut(
+    (mut nodes, edges, capped): (Vec<GNode>, Vec<GEdge>, usize),
+    cap: usize,
+) -> (Vec<GNode>, Vec<GEdge>, usize) {
+    if nodes.len() <= cap {
+        return (nodes, edges, capped);
+    }
+    let dropped = nodes.len() - cap;
+    nodes.truncate(cap);
+    let edges = edges
+        .into_iter()
+        .filter(|e| e.a < cap && e.b < cap)
+        .collect();
+    (nodes, edges, capped + dropped)
+}
+
 /// How a relation draws at the cursor: valid then; not yet (faded: it is
 /// often recorded after the facts); closed before (hidden).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -553,9 +571,12 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
             return;
         };
         let rel = relations.read().clone().unwrap_or_default();
-        let (nodes, edges, _) = without(
-            build(&w, (ws.follow)().as_deref(), &rel, &extra(), cap()),
-            &families.read(),
+        let (nodes, edges, _) = cut(
+            without(
+                build(&w, (ws.follow)().as_deref(), &rel, &extra(), usize::MAX),
+                &families.read(),
+            ),
+            cap(),
         );
         let mut prev = positions.peek().clone();
         if !*seeded.peek() {
@@ -632,9 +653,12 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         }
         let Some(w) = (ws.data)() else { return };
         let rel = relations.read().clone().unwrap_or_default();
-        let (nodes, edges, _) = without(
-            build(&w, (ws.follow)().as_deref(), &rel, &extra(), cap()),
-            &families.read(),
+        let (nodes, edges, _) = cut(
+            without(
+                build(&w, (ws.follow)().as_deref(), &rel, &extra(), usize::MAX),
+                &families.read(),
+            ),
+            cap(),
         );
         let aspect = crate::util::element_rect(GRAPH_HOST).map_or(1.6, |r| r.2 / r.3.max(1.0));
         let data = sigma_data(&nodes, &edges, &positions.peek(), aspect);
@@ -714,9 +738,12 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
                 ("dblclick", Some(id)) if !is_event(&id) => {
                     let rel = relations.peek().clone().unwrap_or_default();
                     let follow = ws.follow.peek().clone();
-                    let (nodes, _, _) = without(
-                        build(&w, follow.as_deref(), &rel, &extra.peek(), cap()),
-                        &families.peek(),
+                    let (nodes, _, _) = cut(
+                        without(
+                            build(&w, follow.as_deref(), &rel, &extra.peek(), usize::MAX),
+                            &families.peek(),
+                        ),
+                        cap(),
                     );
                     let title = nodes
                         .iter()
@@ -740,13 +767,10 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
 
     let follow = (ws.follow)();
     let rel = relations.read().clone().unwrap_or_default();
-    let (nodes, edges, hidden) = without(
-        build(&workspace, follow.as_deref(), &rel, &extra(), cap()),
-        &families.read(),
-    );
+    let all = build(&workspace, follow.as_deref(), &rel, &extra(), usize::MAX);
     // Nodes per family before filtering, for the legend.
     let mut per_family: HashMap<&'static str, usize> = HashMap::new();
-    for n in build(&workspace, follow.as_deref(), &rel, &extra(), cap()).0 {
+    for n in &all.0 {
         let f = if is_evidence(n.family) {
             EVIDENCE
         } else {
@@ -754,6 +778,7 @@ pub(super) fn Graph(workspace: CaseWorkspace) -> Element {
         };
         *per_family.entry(f).or_default() += 1;
     }
+    let (nodes, edges, hidden) = cut(without(all, &families.read()), cap());
     let cursor = (ws.cursor)();
     let mut fade = faded(&nodes, &edges, cursor);
     let path = (ws.path)();
@@ -1538,5 +1563,22 @@ mod tests {
         // Sigma draws them all.
         let (nodes, _, hidden) = build(&w, None, &[], &[], SIGMA_CAP);
         assert_eq!((nodes.len(), hidden), (CAP + 5, 0));
+    }
+
+    #[test]
+    fn a_hidden_family_makes_room_under_the_cap() {
+        let mut w = workspace(Vec::new(), &["p1", "p2", "p3"]);
+        for id in ["acme", "globex"] {
+            w.undated.push(ObjectRef {
+                type_key: "organization".into(),
+                ..obj(id)
+            });
+        }
+        let hide: HashSet<String> = ["person".to_string()].into();
+        let (nodes, _, capped) = cut(without(build(&w, None, &[], &[], usize::MAX), &hide), 2);
+        let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!((ids, capped), (vec!["acme", "globex"], 0));
+        let (nodes, _, capped) = cut(build(&w, None, &[], &[], usize::MAX), 2);
+        assert_eq!((nodes.len(), capped), (2, 3));
     }
 }
