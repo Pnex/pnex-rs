@@ -542,7 +542,8 @@ function drawClusters(h) {
     // Sigma flips the Y axis: the disc's top is whichever edge is higher.
     const [p, q] = [-1, 1].map((k) => h.renderer.graphToViewport({ x: c.x, y: c.y + k * c.r }));
     const top = p.y < q.y ? p : q;
-    const name = String(h.state.names[c.key] || c.key).toUpperCase();
+    const type = h.state.names[c.type] || c.type;
+    const name = String(c.via ? `${type} · ${c.via}` : type).toUpperCase();
     const text = `${name} · ${c.count}`;
     ctx.lineJoin = 'round';
     ctx.lineWidth = 4;

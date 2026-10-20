@@ -54,6 +54,15 @@ test('isolated nodes stand in a column right of the drawing, by title', () => {
   expect(memo.y).toBeLessThan(zed.y);
 });
 
+test('many isolated nodes wrap into a block, not one long column', () => {
+  const g = new Graph({ type: 'undirected' });
+  for (let i = 0; i < 400; i++) g.addNode(`n${String(i).padStart(3, '0')}`, { title: `n${i}`, size: 8 });
+  forceLayout(g, 'case-1', 1.6);
+  const xs = new Set(g.mapNodes((_n, a) => a.x));
+  const ys = new Set(g.mapNodes((_n, a) => a.y));
+  expect([xs.size, ys.size]).toEqual([20, 20]);
+});
+
 test('the chronological view: dates left to right, objects in their lane', () => {
   const day = 86400000;
   const nodes = [
@@ -127,6 +136,37 @@ test('clusters: one disc per type, largest first, busiest node at its centre', (
   const person = clusters[0];
   expect(positions.p2).toEqual({ x: person.x, y: person.y });
   for (const n of nodes) expect(Number.isFinite(positions[n.id].x)).toBe(true);
+});
+
+test('clusters: neighbouring discs never overlap, 2 or 3 groups', () => {
+  const make = (sizes) => sizes.flatMap((n, g) =>
+    Array.from({ length: n }, (_, i) => ({ id: `g${g}-${i}`, type: `t${g}`, title: `${i}` })));
+  for (const sizes of [[926, 40], [926, 40, 12], [5, 5, 5]]) {
+    const { clusters } = clusterLayout(make(sizes), []);
+    const k = clusters.length;
+    for (let i = 0; i < (k > 2 ? k : k - 1); i++) {
+      const [p, q] = [clusters[i], clusters[(i + 1) % k]];
+      expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeGreaterThanOrEqual(p.r + q.r + 90 - 1e-6);
+    }
+  }
+  expect(clusterLayout(make([3]), []).clusters[0]).toMatchObject({ x: 0, y: 0 });
+});
+
+test('clusters: one disc per role, by the link a node mostly starts', () => {
+  const nodes = [
+    { id: 'cert', type: 'organization' }, { id: 'c1', type: 'organization' },
+    { id: 'c2', type: 'organization' }, { id: 'rs', type: 'title' }, { id: 'lone', type: 'organization' },
+  ];
+  const rel = (a, b, link) => ({ a, b, kind: 'relation', link, label: link.replace('_', ' ') });
+  const edges = [rel('cert', 'rs', 'porte'), rel('c1', 'rs', 'habilite_pour'), rel('c2', 'rs', 'habilite_pour')];
+  const { clusters } = clusterLayout(nodes, edges);
+  const by = Object.fromEntries(clusters.map((c) => [c.key, [c.type, c.via, c.count]]));
+  expect(by).toEqual({
+    'organization habilite_pour': ['organization', 'habilite pour', 2],
+    'organization porte': ['organization', 'porte', 1],
+    organization: ['organization', null, 1],
+    title: ['title', null, 1],
+  });
 });
 
 test('orbit: neighbours on ring 1 with the link label, theirs on ring 2, the rest hidden', () => {

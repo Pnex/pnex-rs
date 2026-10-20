@@ -83,9 +83,17 @@ export function forceLayout(graph, seed, aspect) {
   if (!Number.isFinite(x1)) [x1, y0, y1] = [0, 0, 0];
   const title = (n) => String(graph.getNodeAttribute(n, 'title') || n);
   loose.sort((p, q) => title(p).localeCompare(title(q)));
+  // Past 15, the column wraps into a block about as wide as tall: a case of
+  // unlinked members would otherwise draw as one thin line.
   const gap = 40;
-  const top = (y0 + y1) / 2 - ((loose.length - 1) * gap) / 2;
-  loose.forEach((n, i) => graph.mergeNodeAttributes(n, { x: x1 + 120, y: top + i * gap }));
+  const rows = Math.max(15, Math.ceil(Math.sqrt(loose.length)));
+  const top = (y0 + y1) / 2 - ((Math.min(rows, loose.length) - 1) * gap) / 2;
+  loose.forEach((n, i) =>
+    graph.mergeNodeAttributes(n, {
+      x: x1 + 120 + Math.floor(i / rows) * gap * 2,
+      y: top + (i % rows) * gap,
+    }),
+  );
 }
 
 // Rows of the chronological view (GS5): object families above or below the
@@ -247,37 +255,77 @@ function degrees(edges) {
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
 const STEP = 16;
 
-// Positions of the cluster view: one disc per object type (events apart),
-// the busiest nodes in the middle of their disc, the discs on a circle,
-// largest first. Also returns each disc's centre, radius and count, for
-// its label. Derived, never saved.
+// The link type a node is most often the source of among the relations
+// (a tie goes alphabetically), by id: certifier and certified company are
+// both organizations, yet one `porte`, the other `habilite_pour`.
+function roles(edges) {
+  const out = {};
+  for (const e of edges) {
+    if (e.kind !== 'relation' || !e.link || e.a === e.b) continue;
+    const c = (out[e.a] ||= {});
+    c[e.link] = (c[e.link] || 0) + 1;
+  }
+  const best = {};
+  for (const [id, counts] of Object.entries(out)) {
+    best[id] = Object.entries(counts).sort((p, q) => q[1] - p[1] || (p[0] < q[0] ? -1 : 1))[0][0];
+  }
+  return best;
+}
+
+// Positions of the cluster view: one disc per object type and role (the
+// link it mostly starts; events apart), the busiest nodes in the middle of
+// their disc, the discs on a circle, largest first. Also returns each
+// disc's centre, radius, count, type and link label, for its label.
+// Derived, never saved.
 export function clusterLayout(nodes, edges) {
   const deg = degrees(edges);
+  const role = roles(edges);
+  const labels = {};
+  for (const e of edges) if (e.link && e.label) labels[e.link] = e.label;
   const groups = new Map();
   for (const n of nodes) {
-    const k = n.event ? 'event' : n.type || n.family || 'other';
-    (groups.get(k) || groups.set(k, []).get(k)).push(n);
+    const type = n.event ? 'event' : n.type || n.family || 'other';
+    const link = n.event ? null : role[n.id] || null;
+    const k = link ? `${type} ${link}` : type;
+    if (!groups.has(k)) groups.set(k, { type, link, items: [] });
+    groups.get(k).items.push(n);
   }
   const list = [...groups.entries()]
-    .map(([key, items]) => ({ key, items, r: STEP * Math.sqrt(items.length) + 24 }))
+    .map(([key, g]) => ({ key, ...g, r: STEP * Math.sqrt(g.items.length) + 24 }))
     .sort((p, q) => q.items.length - p.items.length || (p.key < q.key ? -1 : 1));
   const gap = 90;
   const around = list.reduce((s, g) => s + 2 * g.r + gap, 0);
-  const radius = list.length > 1 ? around / (2 * Math.PI) : 0;
-  const out = {};
-  const clusters = [];
+  const angles = [];
   let walked = 0;
   for (const g of list) {
-    const a = ((walked + g.r + gap / 2) / around) * 2 * Math.PI - Math.PI / 2;
+    angles.push(((walked + g.r + gap / 2) / around) * 2 * Math.PI - Math.PI / 2);
     walked += 2 * g.r + gap;
+  }
+  // The arc is not the chord: wide enough that neighbours never overlap.
+  let radius = list.length > 1 ? around / (2 * Math.PI) : 0;
+  const pairs = list.length > 2 ? list.length : list.length - 1;
+  for (let i = 0; i < pairs; i++) {
+    const j = (i + 1) % list.length;
+    let da = Math.abs(angles[j] - angles[i]);
+    if (da > Math.PI) da = 2 * Math.PI - da;
+    const chord = 2 * Math.sin(da / 2);
+    if (chord > 0) radius = Math.max(radius, (list[i].r + list[j].r + gap) / chord);
+  }
+  const out = {};
+  const clusters = [];
+  list.forEach((g, gi) => {
+    const a = angles[gi];
     const [cx, cy] = [radius * Math.cos(a), radius * Math.sin(a)];
     g.items.sort((p, q) => (deg[q.id] || 0) - (deg[p.id] || 0) || String(p.title).localeCompare(String(q.title)));
     g.items.forEach((n, i) => {
       const r = STEP * Math.sqrt(i);
       out[n.id] = { x: cx + r * Math.cos(i * GOLDEN), y: cy + r * Math.sin(i * GOLDEN) };
     });
-    clusters.push({ key: g.key, x: cx, y: cy, r: g.r, count: g.items.length });
-  }
+    clusters.push({
+      key: g.key, type: g.type, via: g.link ? labels[g.link] || g.link : null,
+      x: cx, y: cy, r: g.r, count: g.items.length,
+    });
+  });
   return { positions: out, clusters };
 }
 
