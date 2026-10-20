@@ -1,6 +1,6 @@
 # Veille de réseaux de partenaires — briques noyau (D300–D316)
 
-> Statut : **implémenté hors PW7 (2026-10-19, non commité)** — voir §8 pour
+> Statut : **implémenté hors PW7 (2026-10-19, commit d7f94ceb)** — voir §8 pour
 > ce qui est livré, les choix faits en route et les limites connues. Déclencheur :
 > le produit Quali-Watch (dépôt `pnex-quali-watch`, PRD v0.1), un SaaS pour
 > organismes certificateurs qui contrôlent le réseau des organismes de
