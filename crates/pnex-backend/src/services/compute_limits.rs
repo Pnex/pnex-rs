@@ -61,6 +61,13 @@ pub fn busy_error(s: Saturated) -> Error {
     )
 }
 
+/// `503 server-busy` when no database connection could be had in time: the
+/// request is safe to retry as is. `None` for any other database error.
+pub fn db_busy(e: &sea_orm::DbErr) -> Option<Error> {
+    matches!(e, sea_orm::DbErr::ConnectionAcquire(_))
+        .then(|| busy_error(Saturated { pool: "database" }))
+}
+
 impl Pool {
     /// Builds a pool (exposed for tests; production code uses the
     /// `coolprop()`/`vision()`/... accessors).
@@ -241,5 +248,16 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
+    }
+
+    #[test]
+    fn pool_timeout_is_busy_other_db_errors_are_not() {
+        use sea_orm::{ConnAcquireErr, DbErr};
+        let timeout = DbErr::ConnectionAcquire(ConnAcquireErr::Timeout);
+        assert!(matches!(
+            db_busy(&timeout),
+            Some(Error::CustomError(StatusCode::SERVICE_UNAVAILABLE, _))
+        ));
+        assert!(db_busy(&DbErr::RecordNotFound("x".into())).is_none());
     }
 }
