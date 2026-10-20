@@ -537,6 +537,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "ontology_export",
             "ontology_import",
             "site_recipes_runs_file",
+            "site_recipes_runs_live",
             "stitch_jobs_frames_upload",
             "time_ranges_import",
             "voice_id_samples_create",

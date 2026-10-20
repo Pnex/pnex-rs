@@ -167,7 +167,9 @@ pub fn spawn(
     params: BTreeMap<String, String>,
     resume: Option<super::Resume>,
 ) {
-    tokio::spawn(play_to_end(ctx, org_id, run_id, recipe, params, resume));
+    tokio::spawn(play_to_end(
+        ctx, org_id, run_id, recipe, params, resume, true,
+    ));
 }
 
 /// Plays a run and journals its outcome (flow nodes wait for it).
@@ -178,11 +180,12 @@ pub async fn play_to_end(
     recipe: Recipe,
     params: BTreeMap<String, String>,
     resume: Option<super::Resume>,
+    live: bool,
 ) -> RunStatus {
     let db = ctx.db.clone();
     let outcome = tokio::time::timeout(
         RUN_TIMEOUT,
-        play(ctx, org_id, run_id, recipe, params, resume),
+        play(ctx, org_id, run_id, recipe, params, resume, live),
     )
     .await
     .unwrap_or(Err((None, reason::TIMEOUT)));
@@ -226,6 +229,7 @@ async fn play(
     recipe: Recipe,
     params: BTreeMap<String, String>,
     resume: Option<super::Resume>,
+    live: bool,
 ) -> Result<(), (Option<u32>, &'static str)> {
     let site = site_host(&recipe.site).unwrap_or_default();
     let base = site_base(&recipe.site).unwrap_or_default();
@@ -309,9 +313,62 @@ async fn play(
         pre_shot: None,
         resume,
     };
+    let frames = live.then(|| {
+        tokio::spawn(live_frames(
+            run.ctx.config.clone(),
+            run.page.cdp.clone(),
+            run.page.session.clone(),
+            run_id,
+        ))
+    });
     let result = run.all_steps().await;
+    if let Some(f) = frames {
+        f.abort();
+    }
     run.page.close().await;
     result
+}
+
+/// Interval of the live view frames.
+const LIVE_EVERY: Duration = Duration::from_millis(1500);
+
+/// Live view of a studio run: the viewport every [`LIVE_EVERY`] in Valkey
+/// (shared by the pods, expires on its own), read by the studio while the
+/// run plays. No Valkey: no live view, the step screenshots remain.
+async fn live_frames(
+    config: loco_rs::config::Config,
+    cdp: Arc<super::cdp::Cdp>,
+    session: String,
+    run_id: Uuid,
+) {
+    use base64::Engine as _;
+    use redis::AsyncCommands as _;
+    let Some(mut conn) = crate::services::shared_valkey::conn(&config).await else {
+        return;
+    };
+    let key = super::live_key(run_id);
+    loop {
+        tokio::time::sleep(LIVE_EVERY).await;
+        // A busy engine (Obscura while it loads) just skips a frame.
+        let Ok(shot) = cdp
+            .call_within(
+                Some(&session),
+                "Page.captureScreenshot",
+                json!({ "format": "jpeg", "quality": 50 }),
+                Duration::from_secs(5),
+            )
+            .await
+        else {
+            continue;
+        };
+        let Some(bytes) = shot["data"]
+            .as_str()
+            .and_then(|d| base64::engine::general_purpose::STANDARD.decode(d).ok())
+        else {
+            continue;
+        };
+        let _: redis::RedisResult<()> = conn.set_ex(&key, bytes, super::LIVE_TTL_SECS).await;
+    }
 }
 
 async fn fetch_robots(base: &str) -> Robots {

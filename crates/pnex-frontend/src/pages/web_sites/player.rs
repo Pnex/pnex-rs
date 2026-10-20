@@ -62,6 +62,38 @@ pub(super) fn Stage(run: Option<SiteRecipeRun>, index: usize) -> Element {
         }
     }));
     let url = image.read().clone().flatten();
+    // While a studio run plays, the live view of the server browser.
+    let running = run.as_ref().is_some_and(|r| r.status == RunStatus::Running);
+    let mut live = use_signal(|| None::<String>);
+    let live_id = run_id.clone();
+    use_resource(use_reactive!(|live_id, running| async move {
+        if let Some(old) = live.peek().clone() {
+            crate::util::release_image_url(&old);
+        }
+        live.set(None);
+        if !running {
+            return;
+        }
+        // Dropped by the resource when the run stops or changes.
+        loop {
+            if let Ok(bytes) = api::site_recipes::live(&live_id).await {
+                if let Some(u) = (!bytes.is_empty())
+                    .then(|| crate::util::image_url_from_bytes(&bytes, "image/jpeg"))
+                    .flatten()
+                {
+                    if let Some(old) = live.peek().clone() {
+                        crate::util::release_image_url(&old);
+                    }
+                    live.set(Some(u));
+                }
+            }
+            sleep_ms(1500).await;
+        }
+    }));
+    let url = match (running, live()) {
+        (true, Some(l)) => Some(l),
+        _ => url,
+    };
     rsx! {
         div { class: "relative flex h-full min-h-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-rail",
             match (step.clone(), url) {
@@ -87,6 +119,11 @@ pub(super) fn Stage(run: Option<SiteRecipeRun>, index: usize) -> Element {
                 (None, _) => rsx! {
                     p { class: "max-w-md px-6 text-center text-sm text-slate", {t!("web-sites-run-empty")} }
                 },
+            }
+            if running && live().is_some() {
+                span { class: "absolute left-3 top-3 rounded bg-alarm px-2 py-0.5 text-xs font-semibold text-white",
+                    {t!("web-sites-live")}
+                }
             }
             if let Some(s) = step {
                 StepBand { step: s }
