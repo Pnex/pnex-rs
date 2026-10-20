@@ -77,7 +77,8 @@ pub async fn run(
         return Ok(unavailable());
     };
     let run_id = Uuid::parse_str(&started.id).expect("uuid");
-    let status = browser::play_to_end(ctx.clone(), org_id, run_id, recipe, params.clone()).await;
+    let status =
+        browser::play_to_end(ctx.clone(), org_id, run_id, recipe, params.clone(), None).await;
     let Ok(view) = super::run(&ctx.db, org_id, run_id).await else {
         return Ok(unavailable());
     };

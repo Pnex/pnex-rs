@@ -127,6 +127,8 @@ pub(super) fn RunTimeline(
     runs: Vec<SiteRecipeRun>,
     index: Signal<usize>,
     on_pick: EventHandler<String>,
+    /// Plays the draft again from a step of this run (`None`: read only).
+    on_resume: Option<EventHandler<u32>>,
 ) -> Element {
     let mut index = index;
     let mut playing = use_signal(|| false);
@@ -234,6 +236,13 @@ pub(super) fn RunTimeline(
             status_label(r.status)
         )
     };
+    // A finished run can be resumed at any step but the first.
+    let resume_at = run
+        .as_ref()
+        .filter(|r| r.status != RunStatus::Running)
+        .and_then(|r| r.steps.get(i))
+        .map(|s| s.index)
+        .filter(|k| *k >= 1);
     let failed = run
         .as_ref()
         .filter(|r| r.status == RunStatus::Failed)
@@ -287,6 +296,15 @@ pub(super) fn RunTimeline(
                 }
                 if let Some(f) = failed {
                     span { class: "text-sm font-medium text-alarm", "{f}" }
+                }
+                if let (Some(on_resume), Some(at)) = (on_resume, resume_at) {
+                    button {
+                        class: "h-8 rounded-md border border-line-strong px-2 text-sm text-ink hover:bg-sunken",
+                        title: t!("web-sites-resume-help").to_string(),
+                        "data-testid": "web-sites-resume",
+                        onclick: move |_| on_resume.call(at),
+                        {t!("web-sites-resume", n : at + 1)}
+                    }
                 }
             }
             Timeline {
