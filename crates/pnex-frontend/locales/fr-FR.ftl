@@ -5790,6 +5790,7 @@ web-sites-loading = Chargement…
 web-sites-empty = Aucun site web : ajoutez-en un pour écrire sa première règle.
 web-sites-col-site = Site web
 web-sites-col-recipes = Règles
+web-sites-col-pages = Pages parcourues
 web-sites-col-last-run = Dernier passage
 web-sites-host-label = Adresse du site
 web-sites-host-help = Un hôte ou une adresse : « la-strat.fr » et « https://www.la-strat.fr/x » désignent le même site.

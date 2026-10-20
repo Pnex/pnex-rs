@@ -45,6 +45,9 @@ Entité `site_recipes` (org, `site` = hôte normalisé, `name` unique par site, 
   d'une mission `crawl_site` et la clé `site` de son registre `site_pages` en dérivent
   (`web:site:<hôte>`, `browser_agent::site_key`) : un crawl et les règles d'un même site
   partagent l'hôte. Le crawl reste borné à l'**origine** déclarée (schéma et port compris).
+  La page Sites web liste l'union des hôtes des règles et des sites parcourus
+  (`site_pages`), avec le nombre de pages parcourues : un site parcouru sans règle s'ouvre
+  dans le studio sur une règle de départ.
 - Jamais livrée par un pack ; par org PNeX (R1).
 
 ### D324 — Studio `/web-sites/:site` (refondu le 2026-10-20 : identité PNeX)

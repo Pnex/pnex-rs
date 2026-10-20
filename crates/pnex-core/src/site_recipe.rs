@@ -752,6 +752,9 @@ pub struct SiteRecipeDraft {
 pub struct WebSite {
     pub site: String,
     pub recipes: i64,
+    /// Pages of the site found by a `crawl_site` mission (D307).
+    #[serde(default)]
+    pub pages: i64,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub last_run_at: Option<String>,
     pub last_status: Option<RunStatus>,

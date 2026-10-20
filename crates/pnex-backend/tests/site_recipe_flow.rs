@@ -219,6 +219,23 @@ async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
             .json(&json!({"yaml": other, "resume": {"run_id": earlier, "step": 1}}))
             .await;
         assert_eq!(r.status_code().as_u16(), 400, "{}", r.text());
+
+        // A crawled site without a rule is listed with its pages (D307 key).
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO site_pages (id, org_id, site, url) VALUES ($1, $2, 'web:site:partner.fr', 'https://partner.fr/a')",
+            [uuid::Uuid::new_v4().into(), org.into()],
+        ))
+        .await
+        .unwrap();
+        let sites = server
+            .get("/api/v1/web-sites")
+            .add_header("Authorization", &auth)
+            .add_header("X-Org-Id", org.to_string())
+            .await
+            .json::<Value>();
+        let partner = sites["results"].as_array().unwrap().iter().find(|s| s["site"] == "partner.fr").cloned();
+        assert_eq!(partner.map(|p| (p["recipes"].clone(), p["pages"].clone())), Some((json!(0), json!(1))), "{sites}");
     })
     .await;
 }

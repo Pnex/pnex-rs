@@ -23576,6 +23576,11 @@
           "last_status": {
             "$ref": "#/components/schemas/RunStatus"
           },
+          "pages": {
+            "description": "Pages of the site found by a `crawl_site` mission (D307).",
+            "format": "int64",
+            "type": "integer"
+          },
           "recipes": {
             "format": "int64",
             "type": "integer"
