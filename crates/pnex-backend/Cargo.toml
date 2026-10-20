@@ -118,6 +118,8 @@ chrono = { workspace = true }
 # ICS TZID of the time range import (D169); MIT OR Apache-2.0, already in
 # the tree through loco (tokio-cron-scheduler).
 chrono-tz = "0.10"
+# Next runs of the flows that play a site recipe (D326); already locked via edgelink.
+croner = "3.0.1"
 # GPX track import (cases-workspace.md K26); MIT, same version as pnex-core's.
 quick-xml = "0.41"
 if-addrs = { workspace = true }

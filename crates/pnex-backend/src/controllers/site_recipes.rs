@@ -14,7 +14,7 @@ use loco_rs::prelude::*;
 use pnex_core::err_codes;
 use pnex_core::site_recipe::{
     Recipe, RunInput, SiteRecipe, SiteRecipeDraft, SiteRecipeInput, SiteRecipeRun,
-    SiteRecipeVersion, WebSite,
+    SiteRecipeSchedule, SiteRecipeVersion, WebSite,
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -39,6 +39,7 @@ pub fn routes() -> Routes {
             get(get_one).put(update).delete(remove),
         )
         .add("/site-recipes/{id}/versions", get(versions_list))
+        .add("/site-recipes/{id}/schedule", get(schedule))
         .add(
             "/site-recipes/{id}/versions/{version}/restore",
             post(versions_restore),
@@ -353,6 +354,34 @@ async fn versions_list(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/v1/site-recipes/{id}/schedule",
+    tag = "site-recipes",
+    operation_id = "site_recipes_schedule",
+    summary = "When a site recipe plays next",
+    description = "The deployed flows whose triggers reach a node playing the recipe, with their cron expressions and repeat intervals, and the next cron times across them (UTC). Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Recipe id (UUID)")),
+    responses(
+        (status = 200, body = SiteRecipeSchedule),
+        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn schedule(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    if let Err(e) = recipes::get(&ctx.db, org.org.id, id).await {
+        return recipe_error(e);
+    }
+    match recipes::flow_node::schedule(&ctx.db, org.org.id, id).await {
+        Ok(s) => format::json(s),
+        Err(e) => db_error(e),
+    }
+}
+
+#[utoipa::path(
     post,
     path = "/api/v1/site-recipes/{id}/versions/{version}/restore",
     tag = "site-recipes",
@@ -635,6 +664,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         remove,
         versions_list,
         versions_restore,
+        schedule,
         run_create,
         runs,
         run_get,

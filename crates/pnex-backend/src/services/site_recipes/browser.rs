@@ -164,19 +164,29 @@ pub fn spawn(
     recipe: Recipe,
     params: BTreeMap<String, String>,
 ) {
-    tokio::spawn(async move {
-        let db = ctx.db.clone();
-        let outcome = tokio::time::timeout(RUN_TIMEOUT, play(ctx, org_id, run_id, recipe, params))
-            .await
-            .unwrap_or(Err((None, reason::TIMEOUT)));
-        let (status, step, why) = match outcome {
-            Ok(()) => (RunStatus::Ok, None, None),
-            Err((step, why)) => (RunStatus::Failed, step, Some(why)),
-        };
-        if let Err(e) = super::finish(&db, run_id, status, step, why).await {
-            tracing::error!(error = %e, run = %run_id, "site recipe run not finished");
-        }
-    });
+    tokio::spawn(play_to_end(ctx, org_id, run_id, recipe, params));
+}
+
+/// Plays a run and journals its outcome (flow nodes wait for it).
+pub async fn play_to_end(
+    ctx: AppContext,
+    org_id: i64,
+    run_id: Uuid,
+    recipe: Recipe,
+    params: BTreeMap<String, String>,
+) -> RunStatus {
+    let db = ctx.db.clone();
+    let outcome = tokio::time::timeout(RUN_TIMEOUT, play(ctx, org_id, run_id, recipe, params))
+        .await
+        .unwrap_or(Err((None, reason::TIMEOUT)));
+    let (status, step, why) = match outcome {
+        Ok(()) => (RunStatus::Ok, None, None),
+        Err((step, why)) => (RunStatus::Failed, step, Some(why)),
+    };
+    if let Err(e) = super::finish(&db, run_id, status, step, why).await {
+        tracing::error!(error = %e, run = %run_id, "site recipe run not finished");
+    }
+    status
 }
 
 /// Longest setup call to the browser (context, page, interception).

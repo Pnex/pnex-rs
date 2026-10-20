@@ -3,8 +3,8 @@ id: web-sites
 title: Websites and navigation rules
 kind: feature
 pages: /web-sites, /web-sites/:site
-nodes: 
-err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, browser-endpoint-not-found, browser-endpoint-name-taken
+nodes: site_recipe
+err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken
 tools: 
 tags: website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal
 ---
@@ -31,6 +31,7 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 - **Save** keeps the rule as a new version. **Versions** lists them on a timeline: **Open** loads one in the editor, **Compare** shows the YAML changes with the active version, **Restore** makes it active again.
 - **Extracts** shows each text and PDF read, and what changed since the last run that read it. **Download the PDF** saves it.
 - The run list of the player picks an earlier run to replay.
+- **Next runs** (Rule tab of a saved rule): the deployed flows that play the rule, their cron or interval, and the next times (UTC). A rule has no schedule of its own: to play it every day, add a **Website rule** node (Ingestion section of the flow palette) after an inject node with a cron, pick the rule and fill its parameters, then deploy. Its runs land in the same journal (trigger flow). The failed output gets each failure, the broke output only the first failure after a passing run: wire the broke output to a notification to hear once when a site changes.
 - Browsers: Organization page, **Browsers of the navigation rules**: add a CDP browser (address, token, simultaneous connections), make it the default, **Test** it (version with the token, fresh context, public page captured, internal address refused). Without any, rules play on the platform browser.
 
 ## Why a step fails

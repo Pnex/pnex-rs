@@ -884,6 +884,101 @@ pub struct RunInput {
     pub params: BTreeMap<String, String>,
 }
 
+// ─────────────────────────── flow node (D327) ───────────────────────────
+
+/// Output ports of the `site_recipe` node: the run passed, failed again,
+/// or failed right after a passing run (wire that one to a notification).
+pub const NODE_PORT_OK: usize = 0;
+pub const NODE_PORT_FAILED: usize = 1;
+pub const NODE_PORT_BROKE: usize = 2;
+pub const NODE_PORT_COUNT: usize = 3;
+
+/// Config of a `site_recipe` flow node: one saved recipe of the org,
+/// played on the server browser at each message.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteRecipeNodeConfig {
+    #[serde(default)]
+    pub recipe_id: String,
+    /// Values of the recipe's `params`; `msg.params` overrides them.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, String>,
+}
+
+impl SiteRecipeNodeConfig {
+    /// Shape errors, shown while editing (an unset recipe is allowed).
+    pub fn check(&self) -> Option<(&'static str, &'static str)> {
+        let bad = |m| Some(("site_recipe_config_invalid", m));
+        if !self.recipe_id.is_empty() && uuid::Uuid::parse_str(&self.recipe_id).is_err() {
+            return bad("the recipe id is not a uuid");
+        }
+        if self.params.len() > PARAMS_MAX
+            || self
+                .params
+                .iter()
+                .any(|(k, v)| k.len() > STRING_MAX || v.chars().count() > STRING_MAX)
+        {
+            return bad("at most 10 parameters of 500 characters");
+        }
+        None
+    }
+
+    /// Deploy gate: a recipe must be chosen.
+    pub fn check_deployable(&self) -> Option<(&'static str, &'static str)> {
+        self.check().or_else(|| {
+            self.recipe_id
+                .is_empty()
+                .then_some(("site_recipe_config_unset", "choose a navigation rule"))
+        })
+    }
+}
+
+/// When a recipe plays next: the deployed flows whose triggers reach one
+/// of its nodes (D326, no scheduler of its own).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct SiteRecipeSchedule {
+    pub flows: Vec<ScheduledFlow>,
+    /// Next cron times across those flows, soonest first (UTC).
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>, format = DateTime))]
+    pub next: Vec<String>,
+}
+
+/// A deployed flow that plays the recipe, and its triggers.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ScheduledFlow {
+    pub flow_id: i64,
+    pub name: String,
+    /// Cron expressions of its inject nodes (UTC).
+    pub cron: Vec<String>,
+    /// Repeat intervals of its inject nodes, seconds.
+    pub every_secs: Vec<f64>,
+}
+
+/// `POST /internal/flow/site-recipe`: the deployed node and the message's
+/// parameter values (the recipe is read from the deployed config).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SiteRecipeNodeRequest {
+    pub node: crate::ontology::flow::FlowNodeRef,
+    #[serde(default)]
+    pub params: BTreeMap<String, String>,
+}
+
+/// Answer: output port, the run's manifest, the extracts' text by name,
+/// and a refusal code when the run could not start.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SiteRecipeNodeReply {
+    pub port: usize,
+    #[serde(default)]
+    pub manifest: Value,
+    #[serde(default)]
+    pub payload: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub args: Value,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -971,5 +1066,16 @@ mod tests {
             site_base("www.la-strat.fr").as_deref(),
             Some("https://www.la-strat.fr")
         );
+    }
+
+    #[test]
+    fn the_flow_node_needs_a_recipe_to_deploy() {
+        let mut c = SiteRecipeNodeConfig::default();
+        assert!(c.check().is_none());
+        assert_eq!(c.check_deployable().unwrap().0, "site_recipe_config_unset");
+        c.recipe_id = "nope".into();
+        assert_eq!(c.check().unwrap().0, "site_recipe_config_invalid");
+        c.recipe_id = "6f1c2b7e-1d2a-4c3b-9e8f-0a1b2c3d4e5f".into();
+        assert!(c.check_deployable().is_none());
     }
 }

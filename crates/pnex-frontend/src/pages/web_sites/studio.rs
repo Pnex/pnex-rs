@@ -23,6 +23,7 @@ use crate::app::Route;
 use crate::components::editor_shell::{
     Chip, EditorShell, EditorStatus, PaletteIcon, PaletteItem, PalettePopover, StatusTone,
 };
+use crate::components::ontology::short_time;
 use crate::components::ui::{
     BTN_DANGER, BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT, TAB, TAB_ACTIVE,
     TAB_BAR,
@@ -587,6 +588,9 @@ pub fn WebSiteStudio(site: String) -> Element {
                                         }
                                     }
                                     p { class: FIELD_HELP, {t!("web-sites-play-help")} }
+                                    if let Some(Editing::Saved { id, .. }) = editing() {
+                                        ScheduleNote { recipe_id: id }
+                                    }
                                 }
                                 if tab() == Tab::Code {
                                     textarea {
@@ -674,6 +678,53 @@ fn RuleTabs(
                     onclick: move |_| on_new.call(()),
                     "+ "
                     {t!("web-sites-new-recipe")}
+                }
+            }
+        }
+    }
+}
+
+/// When the saved rule plays next: the deployed flows that trigger it
+/// (D326, no scheduler of its own).
+#[component]
+fn ScheduleNote(recipe_id: String) -> Element {
+    let id = recipe_id.clone();
+    let schedule = use_resource(use_reactive!(|id| async move {
+        api::site_recipes::schedule(&id).await
+    }));
+    let Some(Ok(s)) = &*schedule.read() else {
+        return rsx! {};
+    };
+    if s.flows.is_empty() {
+        return rsx! {
+            p { class: FIELD_HELP, {t!("web-sites-schedule-none")} }
+        };
+    }
+    let next: Vec<String> = s.next.iter().map(|t| short_time(t)).collect();
+    rsx! {
+        div { class: "space-y-1 rounded-md border border-line px-3 py-2 text-sm",
+            p { class: "font-medium text-ink", {t!("web-sites-schedule")} }
+            for f in s.flows.clone() {
+                p { key: "{f.flow_id}", class: "text-slate",
+                    Link {
+                        class: "text-signal-700 hover:underline",
+                        to: Route::Flows {
+                            id: f.flow_id.to_string(),
+                        },
+                        "{f.name}"
+                    }
+                    for c in f.cron.iter() {
+                        " · {c}"
+                    }
+                    for secs in f.every_secs.iter() {
+                        " · "
+                        {t!("web-sites-schedule-every", minutes : (secs / 60.0).round() as i64)}
+                    }
+                }
+            }
+            if !next.is_empty() {
+                p { class: "text-xs text-slate",
+                    {t!("web-sites-schedule-next", times : next.join(", "))}
                 }
             }
         }

@@ -341,6 +341,17 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            // The backend reads the recipe from the deployed graph (D327).
+            FlowNodeKind::SiteRecipe { .. } => {
+                padded_ports = Some(crate::site_recipe::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-site-recipe",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);

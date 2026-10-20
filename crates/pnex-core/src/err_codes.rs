@@ -661,6 +661,9 @@ pub const SITE_RECIPE_VERSION_CONFLICT: &str = "site-recipe-version-conflict";
 pub const SITE_RECIPE_RUN_NOT_FOUND: &str = "site-recipe-run-not-found";
 /// A run is missing a value of the recipe's `params`; `args.param`.
 pub const SITE_RECIPE_PARAM_MISSING: &str = "site-recipe-param-missing";
+/// A flow node could not have its rule played (server unreachable, no
+/// object storage, run not journaled).
+pub const SITE_RECIPE_UNAVAILABLE: &str = "site-recipe-unavailable";
 /// Browser endpoint not found (or not in the org).
 pub const BROWSER_ENDPOINT_NOT_FOUND: &str = "browser-endpoint-not-found";
 /// A browser endpoint of the org already has this name.
@@ -849,6 +852,7 @@ pub const ALL: &[&str] = &[
     SITE_RECIPE_VERSION_CONFLICT,
     SITE_RECIPE_RUN_NOT_FOUND,
     SITE_RECIPE_PARAM_MISSING,
+    SITE_RECIPE_UNAVAILABLE,
     BROWSER_ENDPOINT_NOT_FOUND,
     BROWSER_ENDPOINT_NAME_TAKEN,
     ONTOLOGY_UNIQUE_DUPLICATES,
