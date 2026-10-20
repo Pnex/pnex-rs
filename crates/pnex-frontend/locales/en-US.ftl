@@ -5794,6 +5794,7 @@ web-sites-loading = Loading…
 web-sites-empty = No website yet: add one to write its first rule.
 web-sites-col-site = Website
 web-sites-col-recipes = Rules
+web-sites-col-pages = Crawled pages
 web-sites-col-last-run = Last run
 web-sites-host-label = Site address
 web-sites-host-help = A host or an address: “la-strat.fr” and “https://www.la-strat.fr/x” are the same site.

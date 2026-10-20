@@ -8,7 +8,7 @@ err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-confl
 tools: list_site_recipes, get_site_recipe, try_site_recipe, get_site_recipe_run, propose_site_recipe
 tags: website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal
 ---
-The Websites page (Sources menu) lists the websites walked by navigation rules, with their last run. Opening a website shows its studio: the rules of the site, the run step by step, what it extracted and the run journal.
+The Websites page (Sources menu) lists the websites walked by navigation rules or crawled by a browser mission (Crawl a site), with their rules, crawled pages and last run. A crawled site without a rule opens in the studio with a starter rule. Opening a website shows its studio: the rules of the site, the run step by step, what it extracted and the run journal.
 
 A navigation rule is YAML bound to one website: `name`, `site` (a host or an address; `la-strat.fr` and `https://www.la-strat.fr/x` are the same site), optional `params` (filled in at each run, used as `{{name}}`), optional `allow_hosts` (other hosts a PDF may come from), optional `browser` (the name of a browser of the organization) and `steps`. It is configuration, never code: no form input, no login.
 

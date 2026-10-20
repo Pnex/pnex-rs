@@ -107,6 +107,9 @@ pub fn WebSites() -> Element {
         Column::new(t!("web-sites-col-recipes").to_string(), |s: &WebSite| {
             rsx! { "{s.recipes}" }
         }),
+        Column::new(t!("web-sites-col-pages").to_string(), |s: &WebSite| {
+            rsx! { "{s.pages}" }
+        }),
         Column::new(
             t!("web-sites-col-last-run").to_string(),
             |s: &WebSite| match (s.last_run_at.clone(), s.last_status) {

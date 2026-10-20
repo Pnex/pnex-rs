@@ -90,8 +90,8 @@ impl RecipeRow {
     }
 }
 
-/// Web sites of the org (one per host carrying a recipe), most recently
-/// run first.
+/// Web sites of the org: one per host carrying a recipe or crawled by a
+/// `crawl_site` mission (same host key, D307), most recently run first.
 pub async fn sites(
     db: &DatabaseConnection,
     org_id: i64,
@@ -102,6 +102,7 @@ pub async fn sites(
     struct Row {
         site: String,
         recipes: i64,
+        pages: i64,
         last_run_at: Option<DateTimeWithTimeZone>,
         last_status: Option<String>,
     }
@@ -109,20 +110,27 @@ pub async fn sites(
     struct Count {
         n: i64,
     }
+    const HOSTS: &str = "WITH hosts AS ( \
+        SELECT site FROM site_recipes WHERE org_id = $1 \
+        UNION SELECT substr(site, 10) FROM site_pages WHERE org_id = $1 AND site LIKE 'web:site:%')";
     let count = Count::find_by_statement(stmt(
-        "SELECT count(DISTINCT site)::bigint AS n FROM site_recipes WHERE org_id = $1",
+        &format!("{HOSTS} SELECT count(*)::bigint AS n FROM hosts"),
         vec![org_id.into()],
     ))
     .one(db)
     .await?
     .map_or(0, |c| c.n);
     let rows = Row::find_by_statement(stmt(
-        "SELECT r.site, count(*)::bigint AS recipes, l.started_at AS last_run_at, l.status AS last_status \
-         FROM site_recipes r \
-         LEFT JOIN LATERAL (SELECT started_at, status FROM site_recipe_runs x \
-             WHERE x.org_id = r.org_id AND x.site = r.site ORDER BY started_at DESC LIMIT 1) l ON true \
-         WHERE r.org_id = $1 GROUP BY r.site, l.started_at, l.status \
-         ORDER BY l.started_at DESC NULLS LAST, r.site LIMIT $2 OFFSET $3",
+        &format!(
+            "{HOSTS} SELECT h.site, \
+             (SELECT count(*) FROM site_recipes r WHERE r.org_id = $1 AND r.site = h.site)::bigint AS recipes, \
+             (SELECT count(*) FROM site_pages p WHERE p.org_id = $1 AND p.site = 'web:site:' || h.site)::bigint AS pages, \
+             l.started_at AS last_run_at, l.status AS last_status \
+             FROM hosts h \
+             LEFT JOIN LATERAL (SELECT started_at, status FROM site_recipe_runs x \
+                 WHERE x.org_id = $1 AND x.site = h.site ORDER BY started_at DESC LIMIT 1) l ON true \
+             ORDER BY l.started_at DESC NULLS LAST, h.site LIMIT $2 OFFSET $3"
+        ),
         vec![org_id.into(), limit.into(), offset.into()],
     ))
     .all(db)
@@ -133,6 +141,7 @@ pub async fn sites(
             .map(|r| WebSite {
                 site: r.site,
                 recipes: r.recipes,
+                pages: r.pages,
                 last_run_at: r.last_run_at.map(|t| t.to_rfc3339()),
                 last_status: r.last_status.as_deref().map(RunStatus::parse),
             })
