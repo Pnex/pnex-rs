@@ -726,6 +726,77 @@ pub fn spawn_pruner(ctx: &loco_rs::app::AppContext) {
     });
 }
 
+/// Where a resumed run starts (studio only).
+#[derive(Debug, Clone)]
+pub struct Resume {
+    /// First step played.
+    pub step: usize,
+    /// Page the earlier run was on after the step before.
+    pub url: String,
+    /// Steps taken over, marked `reused`, without their screenshots.
+    pub steps: Vec<RunStep>,
+    /// Extracts of the steps taken over, without their files.
+    pub extracts: Vec<RunExtract>,
+}
+
+/// Checks a resume point against an earlier run of the org (same site, a
+/// step before that did not fail, a page still on the site). `Ok(None)`:
+/// the resume point is not valid for this recipe.
+pub async fn resume_point(
+    db: &DatabaseConnection,
+    org_id: i64,
+    recipe: &Recipe,
+    resume: &pnex_core::site_recipe::RunResume,
+) -> Result<Option<Resume>, RecipeError> {
+    let Ok(run_id) = Uuid::parse_str(&resume.run_id) else {
+        return Ok(None);
+    };
+    let row = run_row(db, org_id, run_id).await?;
+    let step = resume.step as usize;
+    let site = site_host(&recipe.site).unwrap_or_default();
+    if row.site != site || step == 0 || step >= recipe.steps.len() {
+        return Ok(None);
+    }
+    let earlier = row.view();
+    let Some(before) = earlier.steps.iter().find(|s| s.index as usize == step - 1) else {
+        return Ok(None);
+    };
+    if before.status == pnex_core::site_recipe::StepStatus::Failed
+        || !browser::on_site(&site, &before.url)
+    {
+        return Ok(None);
+    }
+    let steps = earlier
+        .steps
+        .iter()
+        .filter(|s| (s.index as usize) < step)
+        .map(|s| RunStep {
+            status: pnex_core::site_recipe::StepStatus::Skipped,
+            reason: Some(pnex_core::site_recipe::reason::REUSED.into()),
+            detail: None,
+            screenshot: None,
+            ..s.clone()
+        })
+        .collect();
+    let names: Vec<String> = recipe.steps[..step]
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| s.output_name(i))
+        .collect();
+    let extracts = earlier
+        .extracts
+        .into_iter()
+        .filter(|e| names.contains(&e.name))
+        .map(|e| RunExtract { file: None, ..e })
+        .collect();
+    Ok(Some(Resume {
+        step,
+        url: before.url.clone(),
+        steps,
+        extracts,
+    }))
+}
+
 /// Storage key of a run's file (`step-3.jpg`, `pdf-5.pdf`), if it has one.
 pub async fn file_key(
     db: &DatabaseConnection,

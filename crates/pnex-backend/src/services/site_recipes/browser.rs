@@ -84,7 +84,7 @@ fn sha256_hex(data: &[u8]) -> String {
 }
 
 /// Same site: the recipe's host, with or without `www.`.
-fn on_site(site: &str, url: &str) -> bool {
+pub(super) fn on_site(site: &str, url: &str) -> bool {
     site_host(url).as_deref() == Some(site)
 }
 
@@ -153,6 +153,8 @@ struct Run {
     keys: BTreeMap<String, String>,
     /// Capture taken by the step itself (click: before acting).
     pre_shot: Option<String>,
+    /// Start point of a resumed run (studio).
+    resume: Option<super::Resume>,
 }
 
 /// Plays a run in the background; the journal row is updated after each
@@ -163,8 +165,9 @@ pub fn spawn(
     run_id: Uuid,
     recipe: Recipe,
     params: BTreeMap<String, String>,
+    resume: Option<super::Resume>,
 ) {
-    tokio::spawn(play_to_end(ctx, org_id, run_id, recipe, params));
+    tokio::spawn(play_to_end(ctx, org_id, run_id, recipe, params, resume));
 }
 
 /// Plays a run and journals its outcome (flow nodes wait for it).
@@ -174,11 +177,15 @@ pub async fn play_to_end(
     run_id: Uuid,
     recipe: Recipe,
     params: BTreeMap<String, String>,
+    resume: Option<super::Resume>,
 ) -> RunStatus {
     let db = ctx.db.clone();
-    let outcome = tokio::time::timeout(RUN_TIMEOUT, play(ctx, org_id, run_id, recipe, params))
-        .await
-        .unwrap_or(Err((None, reason::TIMEOUT)));
+    let outcome = tokio::time::timeout(
+        RUN_TIMEOUT,
+        play(ctx, org_id, run_id, recipe, params, resume),
+    )
+    .await
+    .unwrap_or(Err((None, reason::TIMEOUT)));
     let (status, step, why) = match outcome {
         Ok(()) => (RunStatus::Ok, None, None),
         Err((step, why)) => (RunStatus::Failed, step, Some(why)),
@@ -218,6 +225,7 @@ async fn play(
     run_id: Uuid,
     recipe: Recipe,
     params: BTreeMap<String, String>,
+    resume: Option<super::Resume>,
 ) -> Result<(), (Option<u32>, &'static str)> {
     let site = site_host(&recipe.site).unwrap_or_default();
     let base = site_base(&recipe.site).unwrap_or_default();
@@ -299,6 +307,7 @@ async fn play(
         extracts: Vec::new(),
         keys: BTreeMap::new(),
         pre_shot: None,
+        resume,
     };
     let result = run.all_steps().await;
     run.page.close().await;
@@ -640,7 +649,35 @@ impl Run {
             }
         }
         let steps = self.recipe.steps.clone();
-        for (i, step) in steps.iter().enumerate() {
+        let mut first = 0;
+        if let Some(r) = self.resume.take() {
+            first = r.step;
+            self.steps = r.steps;
+            self.extracts = r.extracts;
+            let started = Instant::now();
+            let outcome = tokio::time::timeout(STEP_TIMEOUT, self.open(&r.url))
+                .await
+                .unwrap_or(Err(Fail::of(reason::TIMEOUT)));
+            if let Err(Fail(w, detail)) = outcome {
+                // The way back to the resume page failed: shown as an open.
+                let shot = self.screenshot(first).await;
+                self.steps.push(RunStep {
+                    index: first as u32,
+                    action: "open".into(),
+                    label: r.url,
+                    status: StepStatus::Failed,
+                    reason: Some(w.to_string()),
+                    detail,
+                    url: self.url().await,
+                    ms: started.elapsed().as_millis() as u64,
+                    screenshot: shot,
+                });
+                self.save().await;
+                return Err((Some(first as u32), w));
+            }
+            self.save().await;
+        }
+        for (i, step) in steps.iter().enumerate().skip(first) {
             let started = Instant::now();
             let outcome = tokio::time::timeout(STEP_TIMEOUT, self.step(i, step))
                 .await
@@ -665,22 +702,26 @@ impl Run {
                 ms: started.elapsed().as_millis() as u64,
                 screenshot: shot,
             });
-            if let Err(e) = super::save_progress(
-                &self.ctx.db,
-                self.run_id,
-                &self.steps,
-                &self.extracts,
-                &self.keys,
-            )
-            .await
-            {
-                tracing::warn!(error = %e, "site recipe progress not saved");
-            }
+            self.save().await;
             if let Err(Fail(w, _)) = outcome {
                 return Err((Some(i as u32), w));
             }
         }
         Ok(())
+    }
+
+    async fn save(&self) {
+        if let Err(e) = super::save_progress(
+            &self.ctx.db,
+            self.run_id,
+            &self.steps,
+            &self.extracts,
+            &self.keys,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "site recipe progress not saved");
+        }
     }
 
     async fn step(&mut self, i: usize, step: &Step) -> StepResult {

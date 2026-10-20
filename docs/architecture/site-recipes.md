@@ -83,7 +83,16 @@ Quatre volets : règles (onglets par règle + étapes + YAML + paramètres), pas
 au fil de l'eau, capture par étape avec la cible cerclée, étape en échec en rouge et sa
 raison), extraits (texte, PDF à télécharger, diff avec le dernier passage qui avait cet
 extrait), quand (journal). Lecture = essai du brouillon affiché ; l'assistant n'est pas
-encore branché (N3).
+encore branché (N4).
+
+**Reprendre à l'étape N** (N4, codé le 2026-10-21) : sur un passage terminé, le lecteur
+propose « Reprendre à l'étape N » pour l'étape affichée (N ≥ 2). Le brouillon est rejoué
+à partir de N en ouvrant la page où ce passage se trouvait après l'étape N−1 (même
+préflight et mêmes gardes qu'un `open`) ; les étapes d'avant sont reprises, grisées, raison
+`reused`, sans capture, et leurs extraits texte aussi (sans fichier PDF), pour que les
+`assert: {not_empty}` suivants les voient. Refus (`field-invalid` sur `resume`) : passage
+d'un autre site, étape N−1 en échec, N hors du brouillon ; passage inconnu =
+`site-recipe-run-not-found`. Studio seulement : un flow joue toujours toute la règle.
 
 ### D325 — Navigateur serveur et navigateurs configurables
 
@@ -189,5 +198,4 @@ Inchangé par rapport à la proposition v0.3.
 
 ## 4. Reste à faire
 
-N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, « reprendre à l'étape N »,
-exécutant agent.
+N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, exécutant agent.

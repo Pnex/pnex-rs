@@ -416,12 +416,12 @@ async fn versions_restore(
     tag = "site-recipes",
     operation_id = "site_recipes_runs_create",
     summary = "Play a site recipe",
-    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). Visits the site from the server. Requires a writer role.",
+    description = "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server. Requires a writer role.",
     request_body = RunInput,
     responses(
         (status = 202, body = SiteRecipeRun),
-        (status = 400, description = "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`site-recipe-not-found`", body = crate::openapi::ErrorDetail)
+        (status = 400, description = "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft; `resume` when the earlier run is of another site, its step failed or the step is out of range)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`site-recipe-not-found`, or `site-recipe-run-not-found` for the run of `resume`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -472,6 +472,15 @@ async fn run_create(
             Some(serde_json::json!({ "param": missing })),
         ));
     }
+    let resume = match &input.resume {
+        None => None,
+        Some(r) => match recipes::resume_point(&ctx.db, org.org.id, &recipe, r).await {
+            Ok(Some(p)) => Some(p),
+            Ok(None) => return Ok(super::field_error("resume", err_codes::FIELD_INVALID)),
+            Err(RecipeError::NotFound) => return Err(run_not_found()),
+            Err(e) => return recipe_error(e),
+        },
+    };
     let new = NewRun {
         recipe_id,
         recipe_version: version,
@@ -486,7 +495,7 @@ async fn run_create(
         Err(e) => return db_error(e),
     };
     let run_id = Uuid::parse_str(&run.id).expect("uuid");
-    browser::spawn(ctx.clone(), org.org.id, run_id, recipe, params);
+    browser::spawn(ctx.clone(), org.org.id, run_id, recipe, params, resume);
     Ok((StatusCode::ACCEPTED, format::json(run)).into_response())
 }
 

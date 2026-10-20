@@ -413,8 +413,7 @@ fn check_step(i: usize, step: &Step, params: &[String], names: &mut Vec<String>)
         Step::Wait(w) if w.ms.or(w.timeout_ms).is_some_and(|ms| ms > WAIT_MAX_MS) => {
             out.push(v(&at, format!("max:{WAIT_MAX_MS}")));
         }
-        Step::Extract(e) => names.push(e.name.clone().unwrap_or_else(|| format!("extract-{i}"))),
-        Step::FollowPdf(p) => names.push(p.name.clone().unwrap_or_else(|| format!("pdf-{i}"))),
+        Step::Extract(_) | Step::FollowPdf(_) => names.extend(step.output_name(i)),
         Step::Assert(AssertSpec {
             not_empty: Some(n), ..
         }) if !names.contains(n) => out.push(v(&at, format!("unknown_extract:{n}"))),
@@ -786,6 +785,17 @@ impl RunStatus {
 }
 
 /// Why a step failed (machine token, `run-reason-<token>` in the UI).
+/// Name of what step `i` brings back (`extract`, `follow_pdf`), if any.
+impl Step {
+    pub fn output_name(&self, i: usize) -> Option<String> {
+        match self {
+            Step::Extract(e) => Some(e.name.clone().unwrap_or_else(|| format!("extract-{i}"))),
+            Step::FollowPdf(p) => Some(p.name.clone().unwrap_or_else(|| format!("pdf-{i}"))),
+            _ => None,
+        }
+    }
+}
+
 pub mod reason {
     pub const TARGET_NOT_FOUND: &str = "target-not-found";
     pub const ASSERT_FAILED: &str = "assert-failed";
@@ -800,6 +810,8 @@ pub mod reason {
     pub const BROWSER: &str = "browser-unavailable";
     pub const PARAM_MISSING: &str = "param-missing";
     pub const INTERRUPTED: &str = "interrupted";
+    /// Step taken over from the run a resumed run started from.
+    pub const REUSED: &str = "reused";
     pub const ALL: &[&str] = &[
         TARGET_NOT_FOUND,
         ASSERT_FAILED,
@@ -814,6 +826,7 @@ pub mod reason {
         BROWSER,
         PARAM_MISSING,
         INTERRUPTED,
+        REUSED,
     ];
 }
 
@@ -917,6 +930,21 @@ pub struct RunInput {
     /// Values of the recipe's `params`.
     #[serde(default)]
     pub params: BTreeMap<String, String>,
+    /// Start at a step instead of the first one (studio only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<RunResume>,
+}
+
+/// Resume point of a run: starts on the page an earlier run of the same
+/// site was on after step `step - 1`, and plays from `step` on. The earlier
+/// steps and their extracts are taken over from that run.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct RunResume {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub run_id: String,
+    /// First step played (>= 1).
+    pub step: u32,
 }
 
 // ─────────────────────────── flow node (D327) ───────────────────────────

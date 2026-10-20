@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::site_recipe::{
-    new_step, to_yaml, validate, Recipe, RunInput, RunStatus, SiteRecipe, SiteRecipeRun,
+    new_step, to_yaml, validate, Recipe, RunInput, RunResume, RunStatus, SiteRecipe, SiteRecipeRun,
     SiteRecipeVersion, Violation, ACTIONS,
 };
 
@@ -239,7 +239,7 @@ pub fn WebSiteStudio(site: String) -> Element {
         });
     };
 
-    let play = move |_| {
+    let mut start = move |resume: Option<RunResume>| {
         let input = RunInput {
             recipe_id: match editing() {
                 Some(Editing::Saved { id, .. }) => Some(id),
@@ -247,6 +247,7 @@ pub fn WebSiteStudio(site: String) -> Element {
             },
             yaml: Some(current_yaml()),
             params: params(),
+            resume,
         };
         message.set(None);
         spawn(async move {
@@ -260,6 +261,13 @@ pub fn WebSiteStudio(site: String) -> Element {
                 Err(e) => message.set(Some(localize(&e))),
             }
         });
+    };
+    let play = move |_| start(None);
+    let resume = move |step: u32| {
+        let Some(r) = run() else {
+            return;
+        };
+        start(Some(RunResume { run_id: r.id, step }));
     };
 
     let save = move |_| {
@@ -499,6 +507,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                             runs,
                             index: step_index,
                             on_pick: pick_run,
+                            on_resume: can_write.then_some(EventHandler::new(resume)),
                         }
                     }
                     if column() {

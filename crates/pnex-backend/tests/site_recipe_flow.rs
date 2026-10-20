@@ -164,3 +164,59 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
+    with_app(|server, token, db| async move {
+        let auth = format!("Bearer {token}");
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", &auth)
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let yaml = "name: programme\nsite: example.org\nsteps:\n  - open: \"/\"\n  - extract: {all_text: true, as: page}\n  - assert: {not_empty: page}\n";
+        let earlier = uuid::Uuid::new_v4();
+        let steps = json!([
+            {"index": 0, "action": "open", "label": "/", "status": "ok", "url": "https://example.org/", "ms": 10, "screenshot": "step-0.jpg"},
+            {"index": 1, "action": "extract", "label": "page", "status": "failed", "reason": "target-not-found", "url": "https://example.org/", "ms": 10}
+        ]);
+        db.execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO site_recipe_runs (id, org_id, site, name, yaml, params, trigger, status, steps, extracts, keys, finished_at) \
+             VALUES ($1, $2, 'example.org', 'programme', $3, '{}', 'studio', 'failed', $4, '[]', '{}', now())",
+            [earlier.into(), org.into(), yaml.into(), steps.into()],
+        ))
+        .await
+        .unwrap();
+        let start = |resume: Value| {
+            server
+                .post("/api/v1/site-recipes/runs")
+                .add_header("Authorization", &auth)
+                .add_header("X-Org-Id", org.to_string())
+                .json(&json!({"yaml": yaml, "resume": resume}))
+        };
+        // Step 1 starts on the page left by step 0, which passed.
+        let ok = start(json!({"run_id": earlier, "step": 1})).await;
+        assert_eq!(ok.status_code().as_u16(), 202, "{}", ok.text());
+        // Step 2 would start after the failed step 1; step 0 has no page before.
+        for step in [0, 2, 9] {
+            let r = start(json!({"run_id": earlier, "step": step})).await;
+            assert_eq!(r.status_code().as_u16(), 400, "step {step}: {}", r.text());
+        }
+        let r = start(json!({"run_id": uuid::Uuid::new_v4(), "step": 1})).await;
+        assert_eq!(r.json::<Value>()["error"], "site-recipe-run-not-found");
+        // Another site's run is refused.
+        let other = yaml.replace("example.org", "example.com");
+        let r = server
+            .post("/api/v1/site-recipes/runs")
+            .add_header("Authorization", &auth)
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({"yaml": other, "resume": {"run_id": earlier, "step": 1}}))
+            .await;
+        assert_eq!(r.status_code().as_u16(), 400, "{}", r.text());
+    })
+    .await;
+}

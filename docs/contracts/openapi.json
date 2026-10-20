@@ -18751,6 +18751,10 @@
               "null"
             ]
           },
+          "resume": {
+            "$ref": "#/components/schemas/RunResume",
+            "description": "Start at a step instead of the first one (studio only)."
+          },
           "yaml": {
             "description": "Draft to play instead of the saved version.",
             "type": [
@@ -18768,6 +18772,26 @@
           "platform"
         ],
         "type": "string"
+      },
+      "RunResume": {
+        "description": "Resume point of a run: starts on the page an earlier run of the same\nsite was on after step `step - 1`, and plays from `step` on. The earlier\nsteps and their extracts are taken over from that run.",
+        "properties": {
+          "run_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "step": {
+            "description": "First step played (>= 1).",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "step"
+        ],
+        "type": "object"
       },
       "RunStatus": {
         "enum": [
@@ -62885,7 +62909,7 @@
         ]
       },
       "post": {
-        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). Visits the site from the server. Requires a writer role.",
+        "description": "Starts a run on the server browser: a saved recipe (`recipe_id`), or a draft (`yaml`, with `recipe_id` to file it under that recipe). Answers at once with the run, `running`; its steps fill in as they finish (poll the run). `resume` starts at a step, on the page an earlier run of the site was on after the step before; the earlier steps and their extracts are taken over from that run. Visits the site from the server. Requires a writer role.",
         "operationId": "site_recipes_runs_create",
         "parameters": [
           {
@@ -62928,7 +62952,7 @@
                 }
               }
             },
-            "description": "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft)"
+            "description": "`site-recipe-invalid` (violations), `site-recipe-param-missing` (`args.param`) or `field-invalid` (`recipe_id = required` with neither a recipe nor a draft; `resume` when the earlier run is of another site, its step failed or the step is out of range)"
           },
           "401": {
             "content": {
@@ -62958,7 +62982,7 @@
                 }
               }
             },
-            "description": "`site-recipe-not-found`"
+            "description": "`site-recipe-not-found`, or `site-recipe-run-not-found` for the run of `resume`"
           }
         },
         "security": [
