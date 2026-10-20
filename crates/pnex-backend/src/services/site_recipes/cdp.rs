@@ -170,7 +170,8 @@ impl Cdp {
 pub struct Tab {
     pub cdp: Arc<Cdp>,
     pub session: String,
-    target: String,
+    /// Target id; also the id of the tab's main frame.
+    pub target: String,
     context: String,
 }
 
