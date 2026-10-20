@@ -5889,6 +5889,11 @@ web-sites-field-params = Parameters
 web-sites-field-rule-name = Rule name
 web-sites-field-site = Website
 web-sites-help-browser = Name of a browser of the organization; empty = the default browser.
+web-sites-field-captures = Screenshot retention
+web-sites-help-captures = Screenshots and PDFs of the runs; the extract text and the journal stay. The extracts of passing runs started by a flow are also in the media.
+web-sites-captures-none = None: deleted after the run
+web-sites-captures-days = { $days } day(s)
+web-sites-captures-keep = Kept
 web-sites-help-params = Comma separated; used in the steps as {"{{"}name{"}}"}.
 web-sites-param-needed = Fill in the rule's parameters
 web-sites-search-action = Search an action…

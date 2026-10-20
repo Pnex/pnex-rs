@@ -18027,6 +18027,13 @@
               "null"
             ]
           },
+          "captures": {
+            "description": "How long the run files (screenshots, PDFs) are kept, D161 wire\nformat (`none`, `days:N`, `keep`); [`CAPTURES_DEFAULT`] when absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },

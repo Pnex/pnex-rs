@@ -379,6 +379,18 @@ impl RunRow {
         } else {
             (RunStatus::parse(&self.status), self.reason.clone())
         };
+        // Files gone with the retention (D268) are no longer offered.
+        let keys = self.keys();
+        let mut steps: Vec<RunStep> =
+            serde_json::from_value(self.steps.clone()).unwrap_or_default();
+        for s in &mut steps {
+            s.screenshot = s.screenshot.take().filter(|f| keys.contains_key(f));
+        }
+        let mut extracts: Vec<RunExtract> =
+            serde_json::from_value(self.extracts.clone()).unwrap_or_default();
+        for e in &mut extracts {
+            e.file = e.file.take().filter(|f| keys.contains_key(f));
+        }
         SiteRecipeRun {
             id: self.id.to_string(),
             recipe_id: self.recipe_id.map(|u| u.to_string()),
@@ -389,8 +401,8 @@ impl RunRow {
             status,
             failed_step: self.failed_step.map(|i| i.max(0) as u32),
             reason,
-            steps: serde_json::from_value(self.steps.clone()).unwrap_or_default(),
-            extracts: serde_json::from_value(self.extracts.clone()).unwrap_or_default(),
+            steps,
+            extracts,
             changes: BTreeMap::new(),
             started_at: self.started_at.to_rfc3339(),
             finished_at: self.finished_at.map(|t| t.to_rfc3339()),
@@ -604,6 +616,116 @@ pub async fn run(
     Ok(out)
 }
 
+// ───────────────────────────── retention (D268) ─────────────────────────────
+
+const PRUNE_EVERY: std::time::Duration = std::time::Duration::from_secs(3600);
+const PRUNE_BATCH: i64 = 200;
+
+/// Whether the files of a run finished at `finished` are past `retention`.
+fn files_expired(
+    retention: pnex_core::media_ingest::AudioRetention,
+    finished: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> bool {
+    use pnex_core::media_ingest::AudioRetention;
+    match retention {
+        AudioRetention::None => true,
+        AudioRetention::Days(n) => finished + chrono::Duration::days(i64::from(n)) <= now,
+        AudioRetention::Keep => false,
+    }
+}
+
+/// Deletes the screenshots and PDFs of the finished runs past the
+/// retention of the YAML they played; steps and text extracts stay.
+/// Returns how many runs lost their files.
+pub async fn prune_files(
+    db: &DatabaseConnection,
+    store: &crate::services::artifact_store::S3Store,
+) -> Result<u64, sea_orm::DbErr> {
+    #[derive(FromQueryResult)]
+    struct Row {
+        id: Uuid,
+        yaml: String,
+        keys: serde_json::Value,
+        finished_at: DateTimeWithTimeZone,
+    }
+    let now = chrono::Utc::now();
+    let mut pruned = 0u64;
+    let mut after = Uuid::nil();
+    loop {
+        let rows = Row::find_by_statement(stmt(
+            "SELECT id, yaml, keys, finished_at FROM site_recipe_runs \
+             WHERE finished_at IS NOT NULL AND keys NOT IN ('{}'::jsonb, '[]'::jsonb) AND id > $1 \
+             ORDER BY id LIMIT $2",
+            vec![after.into(), PRUNE_BATCH.into()],
+        ))
+        .all(db)
+        .await?;
+        let Some(last) = rows.last() else {
+            break;
+        };
+        after = last.id;
+        for row in &rows {
+            let retention = parse(&row.yaml)
+                .map(|r| r.capture_retention())
+                .unwrap_or(pnex_core::site_recipe::CAPTURES_DEFAULT);
+            if !files_expired(retention, row.finished_at.to_utc(), now) {
+                continue;
+            }
+            let keys: BTreeMap<String, String> =
+                serde_json::from_value(row.keys.clone()).unwrap_or_default();
+            let mut kept = false;
+            for key in keys.values() {
+                if let Err(e) = store.delete_key(key).await {
+                    tracing::warn!(run = %row.id, error = %e, "site recipe file not pruned");
+                    kept = true;
+                }
+            }
+            if kept {
+                continue;
+            }
+            db.execute_raw(stmt(
+                "UPDATE site_recipe_runs SET keys = '{}' WHERE id = $1",
+                vec![row.id.into()],
+            ))
+            .await?;
+            pruned += 1;
+        }
+    }
+    Ok(pruned)
+}
+
+/// Hourly file pruner, one pod at a time (D106); skipped in tests
+/// (`ForegroundBlocking`), where [`prune_files`] is called directly.
+pub fn spawn_pruner(ctx: &loco_rs::app::AppContext) {
+    use loco_rs::config::WorkerMode;
+    if matches!(ctx.config.workers.mode, WorkerMode::ForegroundBlocking) {
+        return;
+    }
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        let mut tick = tokio::time::interval(PRUNE_EVERY);
+        loop {
+            tick.tick().await;
+            if !crate::services::singleton::my_turn(&ctx.db, "site-recipe-file-pruner", PRUNE_EVERY)
+                .await
+            {
+                continue;
+            }
+            let Ok(store) =
+                crate::services::artifact_store::S3Config::from_config(&ctx.config).store()
+            else {
+                continue;
+            };
+            match prune_files(&ctx.db, &store).await {
+                Ok(n) if n > 0 => tracing::info!(runs = n, "site recipe file pruner"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "site recipe file pruner failed"),
+            }
+        }
+    });
+}
+
 /// Storage key of a run's file (`step-3.jpg`, `pdf-5.pdf`), if it has one.
 pub async fn file_key(
     db: &DatabaseConnection,
@@ -617,6 +739,17 @@ pub async fn file_key(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_files_expire_with_the_rule_retention() {
+        use pnex_core::media_ingest::AudioRetention;
+        let now = chrono::Utc::now();
+        let old = now - chrono::Duration::days(31);
+        assert!(files_expired(AudioRetention::Days(30), old, now));
+        assert!(!files_expired(AudioRetention::Days(30), now, now));
+        assert!(files_expired(AudioRetention::None, now, now));
+        assert!(!files_expired(AudioRetention::Keep, old, now));
+    }
 
     #[test]
     fn yaml_written_by_the_visual_editor_parses_back() {

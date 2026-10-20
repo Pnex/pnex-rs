@@ -511,7 +511,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("recipe_id", "uuid of a saved rule of the organisation (required to deploy); the latest saved version is played"),
             ("params", "values of the rule's parameters, e.g. {code: RS0101}; msg.params (an object of strings) overrides them"),
         ],
-        notes: "Trigger it from an inject node with a cron (the studio lists those next runs). msg.payload = {extract name: text}; msg.manifest = {site, recipe, version, run, status, failed_step?, outputs: [{name, kind, sha256, chars, changed, from?}]} where changed compares with the previous run that brought the same extract back. A run takes up to 10 minutes and the node handles one message at a time. A failure concludes nothing: never close or delete records on port 1 or 2. A missing rule or parameter answers on port 1 with msg.error = {code, args}.",
+        notes: "Trigger it from an inject node with a cron (the studio lists those next runs). msg.payload = {extract name: text}; msg.manifest = {site, recipe, version, run, status, failed_step?, outputs: [{name, kind, sha256, chars, changed, from?, media?, media_version?}]} where changed compares with the previous run that brought the same extract back. On a passing run each extract is also a document of the media library (media = its id; one document per rule, parameters and extract, a new version only when the content changed; a PDF extract is the PDF file). A run takes up to 10 minutes and the node handles one message at a time. A failure concludes nothing: never close or delete records on port 1 or 2. A missing rule or parameter answers on port 1 with msg.error = {code, args}.",
     },
     NodeDoc {
         kind: "control_source",

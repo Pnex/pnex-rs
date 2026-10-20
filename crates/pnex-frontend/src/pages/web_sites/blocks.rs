@@ -486,6 +486,7 @@ pub(super) fn RecipeSettings(
 ) -> Element {
     let mut recipe = recipe;
     let r = recipe.read().clone();
+    let captures = r.capture_retention().wire();
     let list = |v: &[String]| v.join(", ");
     let parse = |s: String| -> Vec<String> {
         s.split(',')
@@ -549,6 +550,33 @@ pub(super) fn RecipeSettings(
                 },
             }
             p { class: FIELD_HELP, {t!("web-sites-help-browser")} }
+            label { class: "block text-xs text-gray-600", {t!("web-sites-field-captures")} }
+            select {
+                class: INPUT,
+                disabled: !can_write,
+                onchange: move |e| {
+                    recipe.write().captures = Some(e.value());
+                    on_change.call(());
+                },
+                for c in CAPTURES {
+                    option { value: c, selected: captures == c, {captures_label(c)} }
+                }
+            }
+            p { class: FIELD_HELP, {t!("web-sites-help-captures")} }
+        }
+    }
+}
+
+/// Retentions offered for the run files (D268, D161 wire format).
+const CAPTURES: [&str; 6] = ["none", "days:7", "days:30", "days:90", "days:365", "keep"];
+
+fn captures_label(wire: &str) -> String {
+    match wire {
+        "none" => t!("web-sites-captures-none").to_string(),
+        "keep" => t!("web-sites-captures-keep").to_string(),
+        other => {
+            let days = other.trim_start_matches("days:").to_string();
+            t!("web-sites-captures-days", days: days).to_string()
         }
     }
 }
@@ -564,6 +592,7 @@ mod tests {
             allow_hosts: vec![],
             params: vec![],
             browser: None,
+            captures: None,
             steps: (0..n).map(|i| Step::Open(format!("/{i}"))).collect(),
         }
     }

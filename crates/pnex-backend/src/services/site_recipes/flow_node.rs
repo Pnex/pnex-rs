@@ -77,7 +77,7 @@ pub async fn run(
         return Ok(unavailable());
     };
     let run_id = Uuid::parse_str(&started.id).expect("uuid");
-    let status = browser::play_to_end(ctx.clone(), org_id, run_id, recipe, params).await;
+    let status = browser::play_to_end(ctx.clone(), org_id, run_id, recipe, params.clone()).await;
     let Ok(view) = super::run(&ctx.db, org_id, run_id).await else {
         return Ok(unavailable());
     };
@@ -97,10 +97,25 @@ pub async fn run(
             .map(|s| s.action.clone());
         json!({ "index": i, "action": action, "reason": view.reason })
     });
+    // A failed run concludes nothing: only a passing one feeds the library.
+    let mut media = BTreeMap::new();
+    if status == RunStatus::Ok {
+        for e in &view.extracts {
+            match publish(ctx, org_id, recipe_id, &params, run_id, &view.name, e).await {
+                Ok(m) => {
+                    media.insert(e.name.clone(), m);
+                }
+                Err(err) => {
+                    tracing::warn!(run = %run_id, extract = %e.name, error = %err, "extract not published");
+                }
+            }
+        }
+    }
     let outputs: Vec<Value> = view
         .extracts
         .iter()
         .map(|e| {
+            let (asset, version) = media.get(&e.name).copied().unzip();
             json!({
                 "name": e.name,
                 "kind": e.kind,
@@ -108,6 +123,8 @@ pub async fn run(
                 "chars": e.chars,
                 "changed": view.changes.contains_key(&e.name),
                 "from": e.from,
+                "media": asset,
+                "media_version": version,
             })
         })
         .collect();
@@ -134,6 +151,139 @@ pub async fn run(
         code: None,
         args: Value::Null,
     })
+}
+
+/// Puts one extract of a passing flow run in the media library: one
+/// document per rule, parameters and extract name, a new version only when
+/// its content changed (a PDF is the fetched file, else the text as
+/// Markdown). Returns the document and its current version.
+async fn publish(
+    ctx: &AppContext,
+    org_id: i64,
+    recipe_id: Uuid,
+    params: &BTreeMap<String, String>,
+    run_id: Uuid,
+    recipe_name: &str,
+    e: &pnex_core::site_recipe::RunExtract,
+) -> Result<(Uuid, i64), String> {
+    use crate::models::_entities::media_assets;
+    use sea_orm::{ActiveModelTrait, EntityTrait, Set};
+    let pdf = match &e.file {
+        Some(file) if e.kind == pnex_core::site_recipe::ExtractKind::Pdf => {
+            let key = super::file_key(&ctx.db, org_id, run_id, file)
+                .await
+                .map_err(|_| "run not found".to_string())?
+                .ok_or("pdf file gone")?;
+            crate::services::artifact_store::S3Config::from_config(&ctx.config)
+                .store()?
+                .get_bytes(&key)
+                .await?
+        }
+        _ => None,
+    };
+    let (filename, content_type, bytes) = match pdf {
+        Some(b) => (format!("{}.pdf", e.name), "application/pdf", b),
+        None => {
+            let source = e
+                .from
+                .as_deref()
+                .map(|f| format!("<{f}>\n\n"))
+                .unwrap_or_default();
+            let md = format!(
+                "# {recipe_name} · {}\n\n{source}{}\n",
+                e.name,
+                e.text.trim()
+            );
+            (format!("{}.md", e.name), "text/markdown", md.into_bytes())
+        }
+    };
+    let sha = crate::services::media::sha256_hex(&bytes);
+    let params_json = serde_json::to_value(params).unwrap_or_default();
+    let found = ctx
+        .db
+        .query_one_raw(stmt(
+            "SELECT a.id, v.sha256, v.version_number FROM media_assets a \
+             LEFT JOIN media_versions v ON v.id = a.current_version_id \
+             WHERE a.org_id = $1 AND a.metadata->>'source' = 'site_recipe' \
+             AND a.metadata->>'recipe_id' = $2 AND a.metadata->>'output' = $3 \
+             AND a.metadata->'params' = $4 LIMIT 1",
+            vec![
+                org_id.into(),
+                recipe_id.to_string().into(),
+                e.name.clone().into(),
+                params_json.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+    let found = found.map(|r| {
+        (
+            r.try_get::<Uuid>("", "id").ok(),
+            r.try_get::<Option<String>>("", "sha256").ok().flatten(),
+            r.try_get::<Option<i64>>("", "version_number")
+                .ok()
+                .flatten(),
+        )
+    });
+    if let Some((Some(id), Some(old), Some(version))) = &found {
+        if *old == sha {
+            return Ok((*id, *version));
+        }
+    }
+    let asset = match found.and_then(|f| f.0) {
+        Some(id) => media_assets::Entity::find_by_id(id)
+            .one(&ctx.db)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("asset gone")?,
+        // shortcut: the asset row is written before its first version, like
+        // the media upload; a failed write leaves an empty document behind.
+        None => {
+            let values: Vec<&str> = params.values().map(String::as_str).collect();
+            let suffix = if values.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", values.join(", "))
+            };
+            media_assets::ActiveModel {
+                id: Set(Uuid::new_v4()),
+                org_id: Set(org_id),
+                kind: Set("document".into()),
+                name: Set(format!("{recipe_name} · {}{suffix}", e.name)
+                    .chars()
+                    .take(255)
+                    .collect()),
+                description: Set(None),
+                metadata: Set(Some(json!({
+                    "source": "site_recipe",
+                    "recipe_id": recipe_id.to_string(),
+                    "output": e.name,
+                    "params": params_json,
+                    "source_url": e.from,
+                }))),
+                ..Default::default()
+            }
+            .insert(&ctx.db)
+            .await
+            .map_err(|e| e.to_string())?
+        }
+    };
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    let version = crate::controllers::media::write_version(
+        ctx,
+        org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename,
+            content_type: content_type.into(),
+            note: Some(format!("run {run_id}")),
+            bytes: bytes.into(),
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok((asset.id, version.version_number))
 }
 
 /// Status of the previous finished flow run of the recipe (studio runs
