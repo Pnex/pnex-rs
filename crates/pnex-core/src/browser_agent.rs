@@ -313,6 +313,11 @@ pub fn is_exclusive(platform: &str) -> bool {
     SocialPlatform::parse(platform).is_some_and(SocialPlatform::needs_foreground)
 }
 
+/// Whether an agent in `mode` reads `platform` in a tab at the front (D269).
+pub fn runs_in_front(mode: &str, platform: &str) -> bool {
+    is_exclusive(platform) || mode.starts_with("dedicated:")
+}
+
 /// Whether an agent in `mode` runs a mission on `platform` (D269).
 pub fn mode_allows(mode: &str, platform: &str) -> bool {
     match mode.strip_prefix("dedicated:") {
@@ -1039,6 +1044,11 @@ pub struct AssignedMission {
     /// [`RECENT_DEPTH`].
     #[serde(default)]
     pub scroll_depth: u32,
+    /// The agent brings the mission's tab to the front while reading it
+    /// (D269): platforms that pause hidden, and any platform on an agent
+    /// dedicated to it (a hidden tab loads no more of a list).
+    #[serde(default)]
+    pub foreground: bool,
 }
 
 /// Scrolls of a visit once the history is collected (recent posts only).
@@ -1340,6 +1350,10 @@ mod tests {
         );
         assert!(mode_allows("dedicated:tiktok", "tiktok"));
         assert!(!mode_allows("dedicated:tiktok", "x"));
+        // A hidden tab loads no more of a list: a dedicated agent reads in front.
+        assert!(!runs_in_front("shared", "youtube"));
+        assert!(runs_in_front("shared", "tiktok"));
+        assert!(runs_in_front("dedicated:youtube", "youtube"));
         assert!(check_mode("dedicated:youtube").is_ok());
         assert!(check_mode("dedicated:web").is_err());
         let spec = MissionSpec::FollowAccount(FollowAccountParams {

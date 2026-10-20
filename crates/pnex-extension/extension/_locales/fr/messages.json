@@ -79,6 +79,15 @@
       }
     }
   },
+  "debug_label": {
+    "message": "Traces de débogage"
+  },
+  "debug_hint": {
+    "message": "Écrit chaque étape des missions dans la console du service worker (page des extensions, Inspect views : service worker)."
+  },
+  "org_paired_label": {
+    "message": "Organisation :"
+  },
   "server_paired_label": {
     "message": "Serveur PNeX :"
   },

@@ -91,6 +91,7 @@ async fn ws_extension(
                 agent,
                 session,
                 silence_ttl_secs: settings.silence_ttl_secs,
+                touch_every: settings.liveness_touch_interval(),
                 held: BTreeMap::new(),
                 announced: false,
                 seen_window: (tokio::time::Instant::now(), 0),
@@ -106,6 +107,8 @@ struct Link {
     agent: AgentAuth,
     session: String,
     silence_ttl_secs: i64,
+    /// Presence lease renewal period, well inside `silence_ttl_secs`.
+    touch_every: Duration,
     /// Missions held by this session, by id.
     held: BTreeMap<String, AssignedMission>,
     /// The held set was sent at least once.
@@ -118,12 +121,19 @@ impl Link {
     async fn run(&mut self, mut socket: WebSocket, mut codec: FrameCodec) {
         let mut tick = tokio::time::interval(REFRESH);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // The presence lease expires after `silence_ttl_secs` (10 s): renewing
+        // it on the 15 s mission tick showed the agent offline most of the time.
+        let mut touch = tokio::time::interval(self.touch_every);
+        touch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // A timeout around `recv` restarted on every tick and never fired:
+        // the silence is measured from the last frame instead.
+        let mut last_frame = tokio::time::Instant::now();
         tracing::info!(agent = %self.agent.device_id, "browser agent link up");
         loop {
             tokio::select! {
-                _ = tick.tick() => {
-                    if !extension::still_paired(&self.ctx.db, &self.agent).await {
-                        close_socket(&mut socket, 4005, "Agent unpaired").await;
+                _ = touch.tick() => {
+                    if last_frame.elapsed() > WATCHDOG {
+                        tracing::info!(agent = %self.agent.device_id, "browser agent silent, closing");
                         return;
                     }
                     if let Ok(false) = device_liveness::touch_owned(
@@ -132,23 +142,34 @@ impl Link {
                         close_socket(&mut socket, 4003, "Superseded").await;
                         return;
                     }
+                }
+                _ = tick.tick() => {
+                    if !extension::still_paired(&self.ctx.db, &self.agent).await {
+                        close_socket(&mut socket, 4005, "Agent unpaired").await;
+                        return;
+                    }
                     if self.refresh().await && !send(&mut socket, &mut codec, &self.desired()).await {
                         return;
                     }
                 }
-                incoming = tokio::time::timeout(WATCHDOG, socket.recv()) => {
+                incoming = socket.recv() => {
+                    last_frame = tokio::time::Instant::now();
                     let text = match incoming {
-                        Ok(Some(Ok(Message::Text(t)))) => t,
-                        Ok(Some(Ok(Message::Close(_)) | Err(_))) | Ok(None) | Err(_) => return,
-                        Ok(Some(Ok(_))) => continue,
+                        Some(Ok(Message::Text(t))) => t,
+                        Some(Ok(Message::Close(_)) | Err(_)) | None => return,
+                        Some(Ok(_)) => continue,
                     };
                     // A refused frame desynchronizes the Noise counters: close.
                     let Some(plain) = codec.open(text.as_str()) else {
                         tracing::warn!(agent = %self.agent.device_id, "unauthenticated frame, closing");
                         return;
                     };
-                    let Ok(msg) = serde_json::from_str::<AgentMsg>(&plain) else {
-                        continue;
+                    let msg = match serde_json::from_str::<AgentMsg>(&plain) {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            tracing::warn!(agent = %self.agent.device_id, error = %e, "unreadable agent message, ignored");
+                            continue;
+                        }
                     };
                     if let Some(answer) = self.handle(msg).await {
                         if !send(&mut socket, &mut codec, &answer).await {

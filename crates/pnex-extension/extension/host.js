@@ -4,6 +4,25 @@
 
 const api = globalThis.browser ?? globalThis.chrome;
 
+/** Longest wait for a script injected in a tab before it counts as failed. */
+const EXEC_TIMEOUT_MS = 20000;
+
+/**
+ * `scripting.executeScript` bounded in time: a tab that never answers (frozen,
+ * discarded, stuck navigation) fails with `tab-timeout` instead of hanging the
+ * mission forever.
+ */
+function exec(details) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("tab-timeout")), EXEC_TIMEOUT_MS);
+  });
+  // The agent's tabs are loaded before any read: waiting for "document_idle"
+  // (idle tasks, throttled in a hidden tab) only delays or hangs it.
+  const run = api.scripting.executeScript({ injectImmediately: true, ...details });
+  return Promise.race([run, timeout]).finally(() => clearTimeout(timer));
+}
+
 // ── HTTP ────────────────────────────────────────────────────────────────
 
 /**
@@ -59,6 +78,18 @@ export async function store_remove(key) {
 }
 
 /** Live state for the options page (session storage: gone with the browser). */
+// Mission traces in the service worker console, switched on from the options page.
+const DEBUG_KEY = "pnex.debug";
+let debug = false;
+api.storage.local.get(DEBUG_KEY).then((r) => (debug = !!r[DEBUG_KEY]), () => {});
+api.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && DEBUG_KEY in changes) debug = !!changes[DEBUG_KEY].newValue;
+});
+
+export function debug_log(line) {
+  if (debug) console.log(line);
+}
+
 export function set_status(json) {
   api.storage.session?.set({ "pnex.status": json }).catch(() => {});
 }
@@ -202,7 +233,7 @@ async function groupTab(tabId) {
 
 /** Reads one element of the tab: JSON `{"found": bool, "value": "..."}`. */
 export async function read_value(tabId, selector, attr) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     args: [selector, attr],
     func: (sel, how) => {
@@ -217,7 +248,7 @@ export async function read_value(tabId, selector, attr) {
 
 /** Readable text of the tab: JSON `{"url", "title", "text"}` (1 MB cap). */
 export async function read_page(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     func: () => ({
       url: location.href,
@@ -230,15 +261,20 @@ export async function read_page(tabId) {
 
 /** Scrolls the tab by most of a screen, like a reader would. */
 export async function scroll(tabId) {
-  await api.scripting.executeScript({
+  await exec({
     target: { tabId },
-    func: () => window.scrollBy({ top: Math.round(window.innerHeight * 0.8), behavior: "smooth" }),
+    // Recent browsers return a promise from scrollBy/scrollTo that settles when
+    // the scroll ends, never in a hidden tab: returning it hung executeScript.
+    // "smooth" never animates there either.
+    func: () => {
+      window.scrollBy({ top: Math.round(window.innerHeight * 0.8), behavior: "instant" });
+    },
   });
 }
 
 /** Data a page embeds before any request (YouTube's `ytInitialData`), JSON or "null". */
 export async function read_initial_data(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     world: "MAIN",
     func: () => {
@@ -254,7 +290,7 @@ export async function read_initial_data(tabId) {
 
 /** Player data of a watch page (`ytInitialPlayerResponse`), JSON or "null". */
 export async function read_player_response(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     world: "MAIN",
     func: () => {
@@ -316,7 +352,7 @@ export async function text_blob(text) {
 export async function capture_full_page(tabId, maxCss) {
   const tab = await api.tabs.update(tabId, { active: true });
   if (tab?.windowId != null) await api.windows.update(tab.windowId, { focused: true }).catch(() => {});
-  const [first] = await api.scripting.executeScript({
+  const [first] = await exec({
     target: { tabId },
     func: () => ({ h: document.documentElement.scrollHeight, vh: innerHeight, w: innerWidth, dpr: devicePixelRatio || 1 }),
   });
@@ -327,21 +363,25 @@ export async function capture_full_page(tabId, maxCss) {
   const ctx = canvas.getContext("2d");
   for (let y = 0; y < height; y += d.vh) {
     const top = Math.min(y, Math.max(0, height - d.vh));
-    await api.scripting.executeScript({ target: { tabId }, args: [top], func: (t) => window.scrollTo(0, t) });
+    await exec({ target: { tabId }, args: [top], func: (t) => {
+      window.scrollTo(0, t);
+    } });
     await sleep(600);
     const url = await api.tabs.captureVisibleTab(tab.windowId, { format: "png" });
     const bmp = await createImageBitmap(await (await fetch(url)).blob());
     ctx.drawImage(bmp, 0, Math.round(top * d.dpr));
     bmp.close();
   }
-  await api.scripting.executeScript({ target: { tabId }, func: () => window.scrollTo(0, 0) });
+  await exec({ target: { tabId }, func: () => {
+    window.scrollTo(0, 0);
+  } });
   const png = await canvas.convertToBlob({ type: "image/png" });
   return keep(new Uint8Array(await png.arrayBuffer()));
 }
 
 /** The rendered DOM without scripts, frames, embeds nor inline handlers (5 MB cap). */
 export async function read_clean_html(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     func: () => {
       const root = document.documentElement.cloneNode(true);
@@ -359,7 +399,7 @@ export async function read_clean_html(tabId) {
 
 /** Links of the tab, absolute, without fragment: JSON array (2,000 at most). */
 export async function read_links(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     func: () => {
       const out = new Set();
@@ -406,7 +446,7 @@ export async function focus_tab(tabId) {
 
 /** Whether the page of the tab is visible (`document.visibilityState`). */
 export async function is_tab_visible(tabId) {
-  const [result] = await api.scripting.executeScript({
+  const [result] = await exec({
     target: { tabId },
     func: () => document.visibilityState === "visible",
   });
@@ -420,7 +460,7 @@ globalThis.__pnexRecordings ??= new Map();
 /** Starts recording the tab's video; resolves once the recorder is asked. */
 export async function start_recording(tabId, id, maxMs, bitrate, live, maxBytes, fromMs) {
   globalThis.__pnexRecordings.set(id, { chunks: [], size: 0, max: maxBytes, done: false, reason: null });
-  await api.scripting.executeScript({ target: { tabId }, files: ["recorder.js"] });
+  await exec({ target: { tabId }, files: ["recorder.js"] });
   await api.tabs.sendMessage(tabId, { t: "pnex-record", id, maxMs, bitrate, live, fromMs });
 }
 

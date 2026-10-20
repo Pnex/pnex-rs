@@ -27,6 +27,8 @@ extern "C" {
     #[wasm_bindgen(catch)]
     pub async fn store_remove(key: &str) -> Result<JsValue, JsValue>;
     pub fn set_status(json: &str);
+    /// Logs only when debug traces are on in the options page.
+    pub fn debug_log(line: &str);
     pub async fn bundled_server() -> JsValue;
 
     #[wasm_bindgen(catch)]

@@ -23,6 +23,8 @@ async function render() {
   if (!creds) return;
   const c = JSON.parse(creds);
   $("name").textContent = c.name;
+  // Agents paired before the org name was stored show the org id.
+  $("paired-org").textContent = c.org_name || `#${c.org_id}`;
   $("paired-server").textContent = c.server;
   $("link").textContent = msg(status.connected ? "link_up" : "link_down");
   const missions = status.missions ?? [];
@@ -86,11 +88,14 @@ $("login").onclick = () =>
 
 $("pair").onclick = () =>
   busy($("pair"), async () => {
-    await pair(session.server, session.access_token, Number($("org").value));
+    const org = $("org").selectedOptions[0];
+    await pair(session.server, session.access_token, Number(org.value), org.text);
     session = null;
     api.runtime.sendMessage({ t: "wake" });
     await render();
   });
+
+$("debug").onchange = () => api.storage.local.set({ "pnex.debug": $("debug").checked });
 
 $("unpair").onclick = () =>
   busy($("unpair"), async () => {
@@ -101,4 +106,5 @@ $("unpair").onclick = () =>
 api.storage.onChanged.addListener(() => render());
 await init();
 $("server").value = (await server_hint()) ?? "";
+$("debug").checked = !!(await api.storage.local.get("pnex.debug"))["pnex.debug"];
 await render();

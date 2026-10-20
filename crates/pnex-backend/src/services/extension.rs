@@ -757,12 +757,14 @@ pub async fn candidates(
                 }
                 _ => 0,
             };
+            let foreground = ba::runs_in_front(&agent.mode, ba::platform_of(&m.target));
             Some(ba::AssignedMission {
                 id: m.id,
                 spec: m.spec,
                 target: m.target,
                 interval_secs: m.interval_secs,
                 scroll_depth,
+                foreground,
             })
         })
         .collect())
