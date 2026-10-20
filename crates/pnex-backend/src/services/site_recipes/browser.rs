@@ -338,6 +338,7 @@ async fn intercept(
     let cdp = page.cdp.clone();
     let session = page.session.clone();
     let site = site.to_string();
+    let main_frame = page.target.clone();
     tokio::spawn(async move {
         loop {
             let ev = match events.recv().await {
@@ -350,8 +351,14 @@ async fn intercept(
                 continue;
             }
             let id = ev.params["requestId"].clone();
+            // Only the tab's own page is a navigation: embedded frames
+            // (videos, maps, widgets) pass the egress policy alone.
+            let top = ev.params["resourceType"].as_str() == Some("Document")
+                && ev.params["frameId"].as_str() == Some(main_frame.as_str());
             if let Some(code) = ev.params["responseStatusCode"].as_i64() {
-                guard.lock().expect("guard").status = Some(code);
+                if top {
+                    guard.lock().expect("guard").status = Some(code);
+                }
                 let _ = cdp
                     .call(
                         Some(&session),
@@ -365,8 +372,7 @@ async fn intercept(
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let document = ev.params["resourceType"].as_str() == Some("Document");
-            let refused = judge(&url, document, &site, &guard, &robots).await;
+            let refused = judge(&url, top, &site, &guard, &robots).await;
             let sent = match refused {
                 None => {
                     cdp.call(
@@ -393,7 +399,8 @@ async fn intercept(
     Ok(())
 }
 
-/// `Some(reason)` when the request must not leave.
+/// `Some(reason)` when the request must not leave. `document`: the tab's
+/// own page (main frame), the only request held to the site and robots.
 async fn judge(
     url: &str,
     document: bool,
