@@ -3,8 +3,6 @@
 //! run journal with its screenshots and PDFs. Org from the principal (R1),
 //! `site-recipes:*` checked by the IAM extractor (R2).
 
-use std::collections::BTreeMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::routing::{get, post};
@@ -22,7 +20,7 @@ use uuid::Uuid;
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
 use crate::services::site_recipes::endpoints::{self, EndpointError};
-use crate::services::site_recipes::{self as recipes, browser, NewRun, RecipeError};
+use crate::services::site_recipes::{self as recipes, RecipeError};
 use pnex_core::site_recipe::{BrowserEndpoint, BrowserEndpointInput, BrowserTestResult};
 
 pub fn routes() -> Routes {
@@ -431,72 +429,33 @@ async fn run_create(
     org: OrgContext,
     Json(input): Json<RunInput>,
 ) -> Result<Response> {
-    let recipe_id = match input.recipe_id.as_deref().filter(|s| !s.is_empty()) {
-        None => None,
-        Some(raw) => match Uuid::parse_str(raw) {
-            Ok(id) => Some(id),
-            Err(_) => {
+    use recipes::StartError;
+    let run =
+        match recipes::start_run(&ctx, org.org.id, Some(org.auth.user.id), input, "studio").await {
+            Ok(r) => r,
+            Err(StartError::BadRecipeId) => {
                 return Ok(super::field_error(
                     "recipe_id",
                     err_codes::FIELD_INVALID_UUID,
                 ))
             }
-        },
-    };
-    let saved = match recipe_id {
-        Some(id) => match recipes::get(&ctx.db, org.org.id, id).await {
-            Ok(r) => Some(r),
-            Err(e) => return recipe_error(e),
-        },
-        None => None,
-    };
-    let (yaml, version) = match (&input.yaml, &saved) {
-        (Some(y), _) => (y.clone(), None),
-        (None, Some(r)) => (r.yaml.clone(), Some(r.version)),
-        (None, None) => return Ok(super::field_error("recipe_id", err_codes::FIELD_REQUIRED)),
-    };
-    let recipe = match recipes::parse(&yaml) {
-        Ok(r) => r,
-        Err(v) => return recipe_error(RecipeError::Invalid(v)),
-    };
-    let params: BTreeMap<String, String> = input
-        .params
-        .into_iter()
-        .filter(|(k, _)| recipe.params.contains(k))
-        .map(|(k, v)| (k, v.chars().take(500).collect()))
-        .collect();
-    if let Some(missing) = recipe.params.iter().find(|p| !params.contains_key(*p)) {
-        return Err(super::coded_error(
-            StatusCode::BAD_REQUEST,
-            err_codes::SITE_RECIPE_PARAM_MISSING,
-            format!("A value is missing for the recipe parameter {missing}."),
-            Some(serde_json::json!({ "param": missing })),
-        ));
-    }
-    let resume = match &input.resume {
-        None => None,
-        Some(r) => match recipes::resume_point(&ctx.db, org.org.id, &recipe, r).await {
-            Ok(Some(p)) => Some(p),
-            Ok(None) => return Ok(super::field_error("resume", err_codes::FIELD_INVALID)),
-            Err(RecipeError::NotFound) => return Err(run_not_found()),
-            Err(e) => return recipe_error(e),
-        },
-    };
-    let new = NewRun {
-        recipe_id,
-        recipe_version: version,
-        recipe: &recipe,
-        yaml: &yaml,
-        params: &params,
-        trigger: "studio",
-        user_id: Some(org.auth.user.id),
-    };
-    let run = match recipes::insert_run(&ctx.db, org.org.id, &new).await {
-        Ok(r) => r,
-        Err(e) => return db_error(e),
-    };
-    let run_id = Uuid::parse_str(&run.id).expect("uuid");
-    browser::spawn(ctx.clone(), org.org.id, run_id, recipe, params, resume);
+            Err(StartError::NoRecipe) => {
+                return Ok(super::field_error("recipe_id", err_codes::FIELD_REQUIRED))
+            }
+            Err(StartError::ParamMissing(missing)) => {
+                return Err(super::coded_error(
+                    StatusCode::BAD_REQUEST,
+                    err_codes::SITE_RECIPE_PARAM_MISSING,
+                    format!("A value is missing for the recipe parameter {missing}."),
+                    Some(serde_json::json!({ "param": missing })),
+                ))
+            }
+            Err(StartError::BadResume) => {
+                return Ok(super::field_error("resume", err_codes::FIELD_INVALID))
+            }
+            Err(StartError::ResumeRunNotFound) => return Err(run_not_found()),
+            Err(StartError::Recipe(e)) => return recipe_error(e),
+        };
     Ok((StatusCode::ACCEPTED, format::json(run)).into_response())
 }
 

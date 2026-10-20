@@ -12,6 +12,19 @@ mod versions;
 
 pub use studio::WebSiteStudio;
 
+/// A rule the assistant proposed, waiting for the studio of its site to
+/// open it as an unsaved draft (D144: the human saves it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProposedRule {
+    pub site: String,
+    pub recipe: pnex_core::site_recipe::Recipe,
+    pub yaml: String,
+    /// Saved rule the draft is a new version of.
+    pub recipe_id: Option<String>,
+}
+
+pub static PROPOSED: GlobalSignal<Option<ProposedRule>> = GlobalSignal::new(|| None);
+
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::site_recipe::{site_host, RunStatus, WebSite};

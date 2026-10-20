@@ -2400,6 +2400,7 @@ async fn recurrence_occurrences_are_materialized_and_kept_by_history() {
                 author: None,
                 o2: None,
                 config: None,
+                app: None,
                 actor: Some(Actor::manual(1, role)),
             };
             let cal = execute(&deps(OrgMemberRole::Admin), "list_calendar", &json!({})).await.unwrap().value;

@@ -726,6 +726,79 @@ pub fn spawn_pruner(ctx: &loco_rs::app::AppContext) {
     });
 }
 
+/// Why a run did not start.
+#[derive(Debug)]
+pub enum StartError {
+    /// `recipe_id` is not a UUID.
+    BadRecipeId,
+    /// Neither a saved recipe nor a draft.
+    NoRecipe,
+    ParamMissing(String),
+    /// The resume point does not fit the recipe.
+    BadResume,
+    ResumeRunNotFound,
+    Recipe(RecipeError),
+}
+
+/// Starts a run on the server browser (studio or assistant): a saved
+/// recipe, or a draft filed under it; answers at once with the run,
+/// `running`, played in the background.
+pub async fn start_run(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    user_id: Option<i64>,
+    input: pnex_core::site_recipe::RunInput,
+    trigger: &str,
+) -> Result<SiteRecipeRun, StartError> {
+    let recipe_id = match input.recipe_id.as_deref().filter(|s| !s.is_empty()) {
+        None => None,
+        Some(raw) => Some(Uuid::parse_str(raw).map_err(|_| StartError::BadRecipeId)?),
+    };
+    let saved = match recipe_id {
+        Some(id) => Some(get(&ctx.db, org_id, id).await.map_err(StartError::Recipe)?),
+        None => None,
+    };
+    let (yaml, version) = match (&input.yaml, &saved) {
+        (Some(y), _) => (y.clone(), None),
+        (None, Some(r)) => (r.yaml.clone(), Some(r.version)),
+        (None, None) => return Err(StartError::NoRecipe),
+    };
+    let recipe = parse(&yaml).map_err(|v| StartError::Recipe(RecipeError::Invalid(v)))?;
+    let params: BTreeMap<String, String> = input
+        .params
+        .into_iter()
+        .filter(|(k, _)| recipe.params.contains(k))
+        .map(|(k, v)| (k, v.chars().take(500).collect()))
+        .collect();
+    if let Some(missing) = recipe.params.iter().find(|p| !params.contains_key(*p)) {
+        return Err(StartError::ParamMissing(missing.clone()));
+    }
+    let resume = match &input.resume {
+        None => None,
+        Some(r) => match resume_point(&ctx.db, org_id, &recipe, r).await {
+            Ok(Some(p)) => Some(p),
+            Ok(None) => return Err(StartError::BadResume),
+            Err(RecipeError::NotFound) => return Err(StartError::ResumeRunNotFound),
+            Err(e) => return Err(StartError::Recipe(e)),
+        },
+    };
+    let new = NewRun {
+        recipe_id,
+        recipe_version: version,
+        recipe: &recipe,
+        yaml: &yaml,
+        params: &params,
+        trigger,
+        user_id,
+    };
+    let run = insert_run(&ctx.db, org_id, &new)
+        .await
+        .map_err(|e| StartError::Recipe(RecipeError::Db(e)))?;
+    let run_id = Uuid::parse_str(&run.id).expect("uuid");
+    browser::spawn(ctx.clone(), org_id, run_id, recipe, params, resume);
+    Ok(run)
+}
+
 /// Where a resumed run starts (studio only).
 #[derive(Debug, Clone)]
 pub struct Resume {
