@@ -20,6 +20,11 @@ pub async fn list(site: &str) -> Result<Vec<SiteRecipe>, ApiError> {
     client::request_all(&format!("/api/v1/site-recipes?site={}", urlencode(site))).await
 }
 
+/// `GET /api/v1/site-recipes`, every recipe of the org.
+pub async fn all() -> Result<Vec<SiteRecipe>, ApiError> {
+    client::request_all("/api/v1/site-recipes").await
+}
+
 /// `POST /api/v1/site-recipes/validate` — 400 = `site-recipe-invalid`.
 pub async fn validate(yaml: &str) -> Result<Recipe, ApiError> {
     let body = SiteRecipeDraft {
@@ -178,6 +183,16 @@ pub async fn restore(id: &str, version: i32) -> Result<SiteRecipe, ApiError> {
             "/api/v1/site-recipes/{}/versions/{version}/restore",
             urlencode(id)
         ),
+        None,
+    )
+    .await
+}
+
+/// `GET /api/v1/site-recipes/{id}/schedule`.
+pub async fn schedule(id: &str) -> Result<pnex_core::site_recipe::SiteRecipeSchedule, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/site-recipes/{}/schedule", urlencode(id)),
         None,
     )
     .await

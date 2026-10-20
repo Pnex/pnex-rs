@@ -130,6 +130,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::PagePdf { .. } => (2, 0),
         // Ingestion step: done, error (+ unchanged for a download).
         FlowNodeKind::Ingest { config } => (config.port_count(), 0),
+        // Site rule: passed, failed, broke.
+        FlowNodeKind::SiteRecipe { .. } => (pnex_core::site_recipe::NODE_PORT_COUNT, 0),
         _ => (1, 0),
     }
 }
@@ -192,6 +194,11 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-weather-port-current").to_string(),
             t!("flows-weather-port-daily").to_string(),
             t!("flows-weather-port-hourly").to_string(),
+        ],
+        FlowNodeKind::SiteRecipe { .. } => vec![
+            t!("flows-site-recipe-port-ok").to_string(),
+            t!("flows-site-recipe-port-failed").to_string(),
+            t!("flows-site-recipe-port-broke").to_string(),
         ],
         _ => Vec::new(),
     }

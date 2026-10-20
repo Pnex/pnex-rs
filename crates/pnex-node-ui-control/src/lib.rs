@@ -38,6 +38,7 @@ use edgelink_macro::*;
 mod action;
 mod ingest;
 mod ontology;
+mod site_recipe;
 
 use pnex_core::ui_control::{
     control_channel, control_value_key, ControlEvent, ControlSourceConfig,

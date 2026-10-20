@@ -705,6 +705,15 @@ async fn deploy_version(
                 .await
                 .map_err(|_| Error::InternalServerError)?,
         );
+        conflicts.extend(
+            crate::services::site_recipes::flow_node::deploy_violations(
+                &ctx.db,
+                org.org.id,
+                &candidate_graph,
+            )
+            .await
+            .map_err(|_| Error::InternalServerError)?,
+        );
         conflicts
             .extend(unknown_media_streams_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts

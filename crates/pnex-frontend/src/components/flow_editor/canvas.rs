@@ -389,6 +389,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::ObjectUpsert { .. } => kind_labels(PaletteKind::ObjectUpsert),
         pnex_core::FlowNodeKind::LinkUpsert { .. } => kind_labels(PaletteKind::LinkUpsert),
         pnex_core::FlowNodeKind::Ingest { .. } => kind_labels(kind_of(&node.kind)),
+        pnex_core::FlowNodeKind::SiteRecipe { .. } => kind_labels(PaletteKind::SiteRecipe),
         pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
@@ -473,7 +474,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::OntologyQuery { .. }
         | pnex_core::FlowNodeKind::ObjectUpsert { .. }
         | pnex_core::FlowNodeKind::LinkUpsert { .. }
-        | pnex_core::FlowNodeKind::Ingest { .. } => {
+        | pnex_core::FlowNodeKind::Ingest { .. }
+        | pnex_core::FlowNodeKind::SiteRecipe { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
@@ -680,7 +682,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::Anomaly { .. }
         | pnex_core::FlowNodeKind::Forecast { .. }
-        | pnex_core::FlowNodeKind::Weather { .. } => {
+        | pnex_core::FlowNodeKind::Weather { .. }
+        | pnex_core::FlowNodeKind::SiteRecipe { .. } => {
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
             geometry::predict_output_labels(&node.kind)
                 .into_iter()
@@ -1337,6 +1340,14 @@ fn node_subtitle(node: &FlowNode) -> String {
         pnex_core::FlowNodeKind::RangeUpsert { config } => {
             format!("{} · {}", config.scope_kind, config.origin)
         }
+        // The rule's name lives in the org: the subtitle shows its parameters.
+        pnex_core::FlowNodeKind::SiteRecipe { config } if config.recipe_id.is_empty() => "—".into(),
+        pnex_core::FlowNodeKind::SiteRecipe { config } => config
+            .params
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", "),
         pnex_core::FlowNodeKind::Weather { config } => format!(
             "{:.2}, {:.2} · {} min",
             config.latitude, config.longitude, config.interval_min

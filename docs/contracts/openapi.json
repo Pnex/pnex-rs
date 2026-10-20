@@ -18919,6 +18919,40 @@
         ],
         "type": "object"
       },
+      "ScheduledFlow": {
+        "description": "A deployed flow that plays the recipe, and its triggers.",
+        "properties": {
+          "cron": {
+            "description": "Cron expressions of its inject nodes (UTC).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "every_secs": {
+            "description": "Repeat intervals of its inject nodes, seconds.",
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "flow_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "flow_id",
+          "name",
+          "cron",
+          "every_secs"
+        ],
+        "type": "object"
+      },
       "ScopeKind": {
         "description": "What a range belongs to: a media stream of the org, the org, or any\nontology object (D182: a line's shift, a machine's batch).",
         "enum": [
@@ -19848,6 +19882,30 @@
           "steps",
           "extracts",
           "started_at"
+        ],
+        "type": "object"
+      },
+      "SiteRecipeSchedule": {
+        "description": "When a recipe plays next: the deployed flows whose triggers reach one\nof its nodes (D326, no scheduler of its own).",
+        "properties": {
+          "flows": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduledFlow"
+            },
+            "type": "array"
+          },
+          "next": {
+            "description": "Next cron times across those flows, soonest first (UTC).",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "flows",
+          "next"
         ],
         "type": "object"
       },
@@ -63405,6 +63463,85 @@
           }
         ],
         "summary": "Replace a site recipe",
+        "tags": [
+          "site-recipes"
+        ]
+      }
+    },
+    "/api/v1/site-recipes/{id}/schedule": {
+      "get": {
+        "description": "The deployed flows whose triggers reach a node playing the recipe, with their cron expressions and repeat intervals, and the next cron times across them (UTC). Any member.",
+        "operationId": "site_recipes_schedule",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Recipe id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteRecipeSchedule"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `site-recipes:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`site-recipe-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "When a site recipe plays next",
         "tags": [
           "site-recipes"
         ]

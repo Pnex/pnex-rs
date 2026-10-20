@@ -288,6 +288,7 @@ pub const EXPOSED: &[&str] = &[
     "site_recipes_list",
     "site_recipes_runs_get",
     "site_recipes_runs_list",
+    "site_recipes_schedule",
     "site_recipes_update",
     "site_recipes_validate",
     "site_recipes_versions_list",

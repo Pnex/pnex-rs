@@ -55,6 +55,7 @@ pub enum PaletteKind {
     IngestFilter,
     IngestImport,
     IngestCleanup,
+    SiteRecipe,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -309,6 +310,10 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
                     step: pnex_core::ingest::IngestStep::StagingCleanup,
                     ..Default::default()
                 },
+            },
+            // No rule picked yet: the deploy gate guides the user.
+            PaletteKind::SiteRecipe => FlowNodeKind::SiteRecipe {
+                config: pnex_core::site_recipe::SiteRecipeNodeConfig::default(),
             },
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {

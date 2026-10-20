@@ -505,6 +505,15 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Chain them in order, one wire each: source_resolve → file_download → archive_extract → (table_inspect → rows_filter → ontology_import) per table → staging_cleanup. msg.ingest = {run_id, url, raw_key, staging_key, entries:[{name, staging_key, bytes}]} is passed along; msg.manifest holds the step's manifest. Staging files are purged after 7 days at most; an org holds 2 GB of staging at most (ingest-staging-quota). Wire port 1 to a notify node to hear about a broken source.",
     },
     NodeDoc {
+        kind: "site_recipe",
+        summary: "Plays a saved website navigation rule (Web sites page) on the server browser at each message: one site, one rule, its steps journaled like a run started from the studio (trigger flow). Ports: 0 passed, 1 failed again, 2 broke (failed right after a passing run: wire it to a notify node to hear once when a site changes).",
+        config: &[
+            ("recipe_id", "uuid of a saved rule of the organisation (required to deploy); the latest saved version is played"),
+            ("params", "values of the rule's parameters, e.g. {code: RS7511}; msg.params (an object of strings) overrides them"),
+        ],
+        notes: "Trigger it from an inject node with a cron (the studio lists those next runs). msg.payload = {extract name: text}; msg.manifest = {site, recipe, version, run, status, failed_step?, outputs: [{name, kind, sha256, chars, changed, from?}]} where changed compares with the previous run that brought the same extract back. A run takes up to 10 minutes and the node handles one message at a time. A failure concludes nothing: never close or delete records on port 1 or 2. A missing rule or parameter answers on port 1 with msg.error = {code, args}.",
+    },
+    NodeDoc {
         kind: "control_source",
         summary: "Event source fed by org controls operated from dashboards and annotations (switch, slider, button, number, select, stepper, command, colour). One output port per listed control.",
         config: &[

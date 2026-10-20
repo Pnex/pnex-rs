@@ -205,6 +205,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ingest::IngestConfig,
     },
+    /// Plays a saved site navigation rule on the server browser
+    /// (site-recipes.md D327).
+    SiteRecipe {
+        #[serde(default)]
+        config: crate::site_recipe::SiteRecipeNodeConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -378,6 +384,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "ingest" => Ok(Self::Ingest {
+                    config: opt_config(config)?,
+                }),
+                "site_recipe" => Ok(Self::SiteRecipe {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {

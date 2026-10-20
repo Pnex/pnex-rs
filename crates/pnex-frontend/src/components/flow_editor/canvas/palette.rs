@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 49] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 50] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -43,6 +43,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 49] = [
     PaletteKind::IngestFilter,
     PaletteKind::IngestImport,
     PaletteKind::IngestCleanup,
+    PaletteKind::SiteRecipe,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
     PaletteKind::EventLog,
@@ -102,6 +103,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::IngestFilter => "ingest-filter",
         PaletteKind::IngestImport => "ingest-import",
         PaletteKind::IngestCleanup => "ingest-cleanup",
+        PaletteKind::SiteRecipe => "site-recipe",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -167,6 +169,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::IngestFilter => (PaletteIcon::Spline, "bg-cyan-50 text-cyan-700"),
         PaletteKind::IngestImport => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
         PaletteKind::IngestCleanup => (PaletteIcon::History, "bg-cyan-50 text-cyan-700"),
+        PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -227,6 +230,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
             pnex_core::ingest::IngestStep::OntologyImport => PaletteKind::IngestImport,
             pnex_core::ingest::IngestStep::StagingCleanup => PaletteKind::IngestCleanup,
         },
+        FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -304,7 +308,8 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::IngestInspect
         | PaletteKind::IngestFilter
         | PaletteKind::IngestImport
-        | PaletteKind::IngestCleanup => PaletteCategory::Ingestion,
+        | PaletteKind::IngestCleanup
+        | PaletteKind::SiteRecipe => PaletteCategory::Ingestion,
         PaletteKind::VisionDetect
         | PaletteKind::VisionTrack
         | PaletteKind::VisionZone
@@ -537,6 +542,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::IngestCleanup => (
             t!("flows-palette-ingest-cleanup").to_string(),
             t!("flows-palette-ingest-cleanup-help").to_string(),
+        ),
+        PaletteKind::SiteRecipe => (
+            t!("flows-palette-site-recipe").to_string(),
+            t!("flows-palette-site-recipe-help").to_string(),
         ),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),

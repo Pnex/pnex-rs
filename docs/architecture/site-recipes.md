@@ -3,7 +3,8 @@
 > Proposition source : `pnex-quali-watch/navigation.md` v0.3 (Quali-Watch). Ici : ce que
 > le noyau PNeX livre. Suite de `partner-watch.md` (D300–D316) et d'`ingestion.md`
 > (D317–D322). **N1 codé le 2026-10-20** (D323–D326 + navigateurs configurables) ;
-> D327 (nœud de flow) et D328 (`llm_extract`) restent à faire.
+> **N2 codé le 2026-10-20** (D327 nœud de flow, notification ok → échec, prochains
+> passages) ; D328 (`llm_extract`) reste à faire.
 
 ## 1. Principe
 
@@ -15,7 +16,7 @@ jamais en production.
 ```mermaid
 flowchart LR
   S[Studio /web-sites/:site] -- Lecture brouillon --> R[run site_recipe_runs]
-  F[flow N2 : nœud site_recipe] -. plus tard .-> R
+  F[flow : nœud site_recipe] -- passage attendu --> R
   R --> P[préflight HTTP gardé<br/>robots, 2 s, statut]
   P --> B[navigateur CDP<br/>Obscura par défaut]
   B --> J[journal : étapes + captures + extraits]
@@ -118,11 +119,37 @@ statut `running | ok | failed`, étape en échec et raison, étapes (JSON, sauv�
 chaque étape : le studio les voit arriver), extraits (texte ≤ 200 000 car., SHA-256),
 clés S3 des captures et PDF (`org_{id}/site_recipes/{run}/…`). Un passage resté `running`
 au-delà de 11 min est montré `interrupted` ; au démarrage, ces passages sont fermés.
-Un échec ne conclut rien. La notification ok → échec viendra avec les flows (N2).
+Un échec ne conclut rien. La notification ok → échec passe par le nœud de flow (D327).
 
-### D327 — Nœud `site_recipe` (à faire, N2) · D328 — `llm_extract` (à faire, N3)
+### D327 — Nœud de flow `site_recipe`
 
-Inchangés par rapport à la proposition v0.3.
+- Config : `recipe_id` (règle enregistrée de l'org, obligatoire au déploiement — garde
+  `site_recipe_config_unset` / `site_recipe_unknown`) et `params` ; `msg.params` (objet de
+  chaînes) les remplace message par message. La **dernière version enregistrée** est
+  jouée, lue par le backend dans la version déployée du flow (le runtime n'est pas fiable).
+- Runtime (`pnex-site-recipe`, crate `pnex-node-ui-control`) : un appel
+  `POST /internal/flow/site-recipe` par message, attendu (≤ 20 min, un message à la fois) ;
+  le passage est journalisé comme un passage du studio, déclencheur `flow`.
+- Sortie : `msg.payload = {nom d'extrait: texte}`, `msg.manifest = {site, recipe,
+  recipe_id, version, run, status, reason?, failed_step?: {index, action, reason},
+  outputs: [{name, kind, sha256, chars, changed, from?}]}` (`changed` = diffère du dernier
+  passage qui a ramené cet extrait). Refus (règle absente, paramètre manquant, serveur
+  indisponible) : port 1, `msg.error = {code, args}`.
+- **Ports** : 0 réussi, 1 échec, 2 **cassé** = échec juste après un passage `flow` réussi
+  (les passages du studio jouent des brouillons : ils ne comptent pas). La notification
+  « une fois quand ça casse » = port 2 → nœud de notification ; pas de notification
+  serveur à part (« une surface lit, un flow agit »).
+- **Quand** : `GET /site-recipes/{id}/schedule` remonte les fils depuis chaque nœud
+  `site_recipe` de la règle dans les flows déployés jusqu'aux inject ; cron (5 ou 6
+  champs, UTC comme le runtime) → 5 prochaines dates (`croner`), intervalle affiché tel
+  quel. Le studio les montre sous la règle enregistrée.
+- Raccourci : les extraits restent dans le journal (`site_recipe_runs`), pas encore dans
+  la médiathèque (dédoublonnage PDF par SHA-256 prévu par la proposition) ; captures
+  toujours sans rétention.
+
+### D328 — `llm_extract` (à faire, N3)
+
+Inchangé par rapport à la proposition v0.3.
 
 ## 3. Notes d'implémentation
 
@@ -150,6 +177,6 @@ Inchangés par rapport à la proposition v0.3.
 
 ## 4. Reste à faire
 
-N2 nœud `site_recipe` + notification ok → échec + « prochains passages » lus dans le cron ;
+N2 restant : extraits et PDF versés à la médiathèque, rétention des captures (D268) ;
 N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, « reprendre à l'étape N »,
 exécutant agent ; aligner `site_origin` (D307) sur `site_host`.

@@ -62,6 +62,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
         // Open-data ingestion steps (ingestion.md D317–D322).
         .add("/internal/flow/ingest", post(flow_ingest))
+        // Website navigation rules played by flows (site-recipes.md D327).
+        .add("/internal/flow/site-recipe", post(flow_site_recipe))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -714,6 +716,41 @@ async fn flow_ingest(
         }
         Err(e) => {
             tracing::warn!(org_id = req.node.org_id, error = ?e, "flow ingest step failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+/// `POST /internal/flow/site-recipe` — one run of a deployed
+/// `site_recipe` node, waited for. A failing run answers 200 on its port;
+/// only a forged or stale node is refused.
+async fn flow_site_recipe(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::site_recipe::SiteRecipeNodeRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    match crate::services::site_recipes::flow_node::run(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
+        Err(NodeError::NotDeployed) => {
+            tracing::warn!(
+                org_id = req.node.org_id,
+                "flow site recipe call refused: node not deployed"
+            );
+            Ok((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
+            )
+                .into_response())
+        }
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow site recipe failed");
             Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }

@@ -8,6 +8,7 @@
 pub mod browser;
 pub mod cdp;
 pub mod endpoints;
+pub mod flow_node;
 
 use std::collections::BTreeMap;
 
