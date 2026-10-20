@@ -108,7 +108,8 @@ async fn authenticate(parts: &Parts, state: &AppContext) -> Result<AuthUser, loc
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "access key lookup failed");
-                loco_rs::Error::InternalServerError
+                crate::services::compute_limits::db_busy(&e)
+                    .unwrap_or(loco_rs::Error::InternalServerError)
             })?;
         let Some((user, sp)) = found else {
             return Err(loco_rs::Error::Unauthorized(WWW_AUTHENTICATE.to_string()));
@@ -149,7 +150,8 @@ async fn authenticate(parts: &Parts, state: &AppContext) -> Result<AuthUser, loc
                 | provisioning::ProvisionError::UnverifiedEmailRelink => {
                     loco_rs::Error::Unauthorized(err.to_string())
                 }
-                _ => loco_rs::Error::InternalServerError,
+                provisioning::ProvisionError::Db(e) => crate::services::compute_limits::db_busy(&e)
+                    .unwrap_or(loco_rs::Error::InternalServerError),
             }
         })?;
     if !ttl.is_zero() {
@@ -217,13 +219,17 @@ impl FromRequestParts<AppContext> for OrgContext {
             let org = organizations::Entity::find_by_id(sp.org_id)
                 .one(&state.db)
                 .await
-                .map_err(|_| loco_rs::Error::InternalServerError)?
+                .map_err(|e| {
+                    crate::services::compute_limits::db_busy(&e)
+                        .unwrap_or(loco_rs::Error::InternalServerError)
+                })?
                 .ok_or_else(not_member)?;
             let grants = crate::services::iam::store::grants(&state.db, org.id, auth.user.id, None)
                 .await
                 .map_err(|e| {
                     tracing::error!(error = %e, "iam grants query failed");
-                    loco_rs::Error::InternalServerError
+                    crate::services::compute_limits::db_busy(&e)
+                        .unwrap_or(loco_rs::Error::InternalServerError)
                 })?;
             (org, OrgMemberRole::Viewer, grants)
         } else {
@@ -247,7 +253,10 @@ impl FromRequestParts<AppContext> for OrgContext {
                 .find_also_related(organizations::Entity)
                 .one(&state.db)
                 .await
-                .map_err(|_| loco_rs::Error::InternalServerError)?;
+                .map_err(|e| {
+                    crate::services::compute_limits::db_busy(&e)
+                        .unwrap_or(loco_rs::Error::InternalServerError)
+                })?;
 
             let Some((membership, org)) = row else {
                 return Err(not_member());
@@ -265,7 +274,8 @@ impl FromRequestParts<AppContext> for OrgContext {
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, "iam grants query failed");
-                loco_rs::Error::InternalServerError
+                crate::services::compute_limits::db_busy(&e)
+                    .unwrap_or(loco_rs::Error::InternalServerError)
             })?;
             (org, membership.role, grants)
         };
