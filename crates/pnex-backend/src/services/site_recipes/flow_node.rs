@@ -252,6 +252,8 @@ fn next_times(
     let parser = croner::parser::CronParser::builder()
         .seconds(croner::parser::Seconds::Optional)
         .build();
+    // Whole seconds: the occurrences keep the start's sub-second part.
+    let now = chrono::Timelike::with_nanosecond(&now, 0).unwrap_or(now);
     let mut out: Vec<_> = crons
         .iter()
         .filter_map(|c| parser.parse(c).ok())
@@ -343,7 +345,8 @@ mod tests {
 
     #[test]
     fn next_times_merge_crons_soonest_first() {
-        let now = chrono::Utc.with_ymd_and_hms(2026, 10, 20, 5, 0, 0).unwrap();
+        let now = chrono::Utc.with_ymd_and_hms(2026, 10, 20, 5, 0, 0).unwrap()
+            + chrono::Duration::milliseconds(250);
         let next = next_times(
             &["0 6 * * *".into(), "30 0 6 * * *".into(), "bad".into()],
             now,
