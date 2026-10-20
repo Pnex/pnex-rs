@@ -1143,9 +1143,11 @@ async fn france_competences_sheet_content() {
             (r.try_get::<String>("", "source_id").unwrap(), a["etat_fc"].clone(), a["date_etat"].clone())
         }).collect();
         assert_eq!(states.len(), 2, "no accreditation opened for C: {states:?}");
+        // Edges are matched by organization: their ids are random UUIDs.
+        let of = |siren: &str| states.iter().find(|s| s.0 == ids[siren]).cloned().unwrap();
         // A: one SIRET still active wins over the inactive one.
-        assert_eq!((states[0].1.clone(), states[1].1.clone()), (json!("actif"), json!("inactif")), "{states:?}");
-        assert_eq!(states[1].2, json!("2026-05-12"));
+        assert_eq!((of("111111111").1, of("222222222").1), (json!("actif"), json!("inactif")), "{states:?}");
+        assert_eq!(of("222222222").2, json!("2026-05-12"));
 
         // Same file again: nothing to do.
         let p = preview(&server, &env.alice, org, &id, RS_XML).await;
