@@ -200,6 +200,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::flow::LinkUpsertConfig,
     },
+    /// One step of an open-data ingestion chain (ingestion.md D317–D322).
+    Ingest {
+        #[serde(default)]
+        config: crate::ingest::IngestConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -370,6 +375,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "link_upsert" => Ok(Self::LinkUpsert {
+                    config: opt_config(config)?,
+                }),
+                "ingest" => Ok(Self::Ingest {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {

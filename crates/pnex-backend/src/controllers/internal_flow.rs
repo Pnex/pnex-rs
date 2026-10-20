@@ -60,6 +60,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ontology/query", post(flow_ontology_query))
         .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
+        // Open-data ingestion steps (ingestion.md D317–D322).
+        .add("/internal/flow/ingest", post(flow_ingest))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -667,6 +669,54 @@ async fn flow_ontology_upsert(
     }
     let r = crate::services::ontology::flow_nodes::upsert(&ctx.db, &req).await;
     ontology_reply(req.node.org_id, r)
+}
+
+/// `POST /internal/flow/ingest` — one step of a deployed `ingest` node.
+/// A failing step answers 200 on its error port (a broken source is a flow
+/// outcome); only a forged or stale node is refused.
+async fn flow_ingest(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::ingest::IngestRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let store = match crate::services::artifact_store::S3Config::from_config(&ctx.config).store() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "ingest step without object storage");
+            let reply = pnex_core::ingest::IngestReply {
+                port: pnex_core::ingest::PORT_ERROR,
+                msg: req.msg,
+                code: Some(pnex_core::err_codes::INGEST_STAGING_UNAVAILABLE.into()),
+                ..Default::default()
+            };
+            return Ok(axum::Json(reply).into_response());
+        }
+    };
+    match crate::services::ingest::run(&ctx.db, &store, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
+        Err(NodeError::NotDeployed) => {
+            tracing::warn!(
+                org_id = req.node.org_id,
+                "flow ingest call refused: node not deployed"
+            );
+            Ok((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
+            )
+                .into_response())
+        }
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow ingest step failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
 }
 
 async fn flow_ontology_link(

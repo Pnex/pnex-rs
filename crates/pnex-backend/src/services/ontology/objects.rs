@@ -13,7 +13,7 @@ use pnex_core::ontology::{
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
+    Set, TransactionTrait,
 };
 use serde_json::{Map, Value};
 use uuid::Uuid;
@@ -280,7 +280,10 @@ pub async fn update(
     id: Uuid,
     input: &ObjectInput,
 ) -> Result<ObjectView> {
-    let (view, conclusion) = update_in(db, org_id, actor, id, input).await?;
+    // One transaction: a failure after the write leaves nothing behind its error.
+    let txn = db.begin().await?;
+    let (view, conclusion) = update_in(&txn, org_id, actor, id, input).await?;
+    txn.commit().await?;
     if let Some(page) = conclusion {
         super::cases::on_concluded(db, org_id, actor, &page).await;
     }

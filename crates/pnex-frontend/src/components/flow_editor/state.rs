@@ -48,6 +48,13 @@ pub enum PaletteKind {
     OntologyQuery,
     ObjectUpsert,
     LinkUpsert,
+    IngestResolve,
+    IngestDownload,
+    IngestExtract,
+    IngestInspect,
+    IngestFilter,
+    IngestImport,
+    IngestCleanup,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -259,6 +266,49 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::LinkUpsert => FlowNodeKind::LinkUpsert {
                 config: Default::default(),
+            },
+            // Step picked from the palette; its fields start empty.
+            PaletteKind::IngestResolve => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::SourceResolve,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestDownload => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::FileDownload,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestExtract => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::ArchiveExtract,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestInspect => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::TableInspect,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestFilter => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::RowsFilter,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestImport => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::OntologyImport,
+                    ..Default::default()
+                },
+            },
+            PaletteKind::IngestCleanup => FlowNodeKind::Ingest {
+                config: pnex_core::ingest::IngestConfig {
+                    step: pnex_core::ingest::IngestStep::StagingCleanup,
+                    ..Default::default()
+                },
             },
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {

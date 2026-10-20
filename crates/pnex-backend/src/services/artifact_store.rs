@@ -187,6 +187,70 @@ impl S3Store {
             .collect())
     }
 
+    /// Multipart writer of a large object (8 MiB parts), for bodies streamed
+    /// from elsewhere (ingestion staging, D318). Its sha256 is not known
+    /// up front: the caller journals it instead of the object metadata.
+    pub async fn writer(&self, key: &str) -> Result<opendal::Writer, String> {
+        if key.is_empty() {
+            return Err("empty key".into());
+        }
+        let mut meta = object_metadata(key, String::new(), chrono::Utc::now());
+        meta.retain(|(k, _)| k != "pnex-sha256");
+        self.operator
+            .writer_with(key)
+            .chunk(8 * 1024 * 1024)
+            .user_metadata(meta)
+            .await
+            .map_err(|e| format!("S3 writer {key}: {e}"))
+    }
+
+    /// Writes a whole object (hashed into its metadata).
+    pub async fn put_bytes(&self, key: &str, bytes: Bytes) -> Result<(), String> {
+        self.write(key, bytes).await
+    }
+
+    /// Size of an object, `Ok(None)` when absent.
+    pub async fn size(&self, key: &str) -> Result<Option<u64>, String> {
+        match self.operator.stat(key).await {
+            Ok(m) => Ok(Some(m.content_length())),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("S3 stat {key}: {e}")),
+        }
+    }
+
+    /// The whole object, `Ok(None)` when absent.
+    pub async fn get_bytes(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
+        self.read(key).await
+    }
+
+    /// Idempotent delete.
+    pub async fn delete_key(&self, key: &str) -> Result<(), String> {
+        self.remove(key).await
+    }
+
+    /// Objects under `prefix`: key, size, last modification.
+    pub async fn list_prefix(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<(String, u64, Option<chrono::DateTime<chrono::Utc>>)>, String> {
+        let entries = match self.operator.list_with(prefix).recursive(true).await {
+            Ok(e) => e,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(format!("S3 list {prefix}: {e}")),
+        };
+        Ok(entries
+            .into_iter()
+            .filter(|e| !e.path().ends_with('/'))
+            .map(|e| {
+                let m = e.metadata();
+                let at = m
+                    .last_modified()
+                    .map(|t| chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::from(t)));
+                (e.path().to_string(), m.content_length(), at)
+            })
+            .collect())
+    }
+
     /// `Ok(None)` when absent.
     async fn read(&self, key: &str) -> Result<Option<Vec<u8>>, String> {
         match self.operator.read(key).await {

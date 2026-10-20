@@ -65,7 +65,7 @@ fn unzip(bytes: &[u8], want: Option<SourceFormat>) -> Result<(Vec<u8>, SourceFor
 }
 
 /// UTF-8, else Latin-1 (a CSV saved by a spreadsheet on Windows).
-fn text_of(bytes: &[u8]) -> String {
+pub fn text_of(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
         Ok(s) => s.to_string(),
         // shortcut: Latin-1, not Windows-1252 (0x80–0x9F differ: €, curly

@@ -19,8 +19,11 @@ use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 pub const ROWS_MAX: usize = 50_000;
 /// Objects and links declared by one mapping.
 pub const ENTRIES_MAX: usize = 20;
-/// Elements expanded by one `each` in one row.
-pub const EACH_MAX: usize = 200;
+/// Elements expanded by one `each` in one row (an RS sheet lists up to
+/// ~4,300 partners).
+pub const EACH_MAX: usize = 5_000;
+/// Objects planned by one run, every row and `each` together.
+pub const PLANNED_MAX: usize = 500_000;
 pub const PATH_MAX: usize = 255;
 /// YAML text of a mapping.
 pub const MAPPING_MAX_BYTES: usize = 64 * 1024;
@@ -61,7 +64,8 @@ impl SourceFormat {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FieldSpec {
     /// Column name, or a dot path in a JSON/XML record; `.` = the element
-    /// of an `each`, `^path` = the record holding it.
+    /// of an `each`, `#` = its position (from 1), `^path` = the record
+    /// holding it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<String>,
     /// Constant used instead of a column.
@@ -136,6 +140,19 @@ pub enum Convert {
     Money(String),
     /// One value per part (only in an `each`).
     Split(String),
+    /// One value per paragraph: parts separated by a run of at least `n`
+    /// blanks (only in an `each`).
+    SplitSpaces(usize),
+    /// The text before the first separator (all of it when absent): after
+    /// a `concat`, the first non-empty column (a coalesce).
+    Before(String),
+    /// The text after the last separator (all of it when absent).
+    After(String),
+    /// Of a list of elements (or a lone one), the one whose field is the
+    /// largest (numbers compared as numbers): the latest year.
+    MaxBy(String),
+    /// A field of an element (after `max_by`).
+    Field(String),
     /// `scheme://host` of a URL or a bare domain (`https` by default).
     UrlOrigin,
     /// Host of a URL or a bare domain, lower case, without `www.`.
@@ -150,6 +167,11 @@ pub enum Convert {
 }
 
 impl Convert {
+    /// Yields several values (only in an `each`).
+    fn splits(&self) -> bool {
+        matches!(self, Self::Split(_) | Self::SplitSpaces(_))
+    }
+
     fn parse(s: &str) -> Option<Self> {
         let (name, arg) = s.split_once(':').unwrap_or((s, ""));
         Some(match (name, arg) {
@@ -167,6 +189,13 @@ impl Convert {
                 Self::Money(c.into())
             }
             ("split", sep) if !sep.is_empty() && sep.len() <= 4 => Self::Split(sep.into()),
+            ("before", sep) if !sep.is_empty() && sep.len() <= 4 => Self::Before(sep.into()),
+            ("after", sep) if !sep.is_empty() && sep.len() <= 4 => Self::After(sep.into()),
+            ("max_by", f) if !f.is_empty() && f.len() <= PATH_MAX => Self::MaxBy(f.into()),
+            ("field", f) if !f.is_empty() && f.len() <= PATH_MAX => Self::Field(f.into()),
+            ("split_spaces", n) => {
+                Self::SplitSpaces(n.parse().ok().filter(|n| (2..=16).contains(n))?)
+            }
             _ => return None,
         })
     }
@@ -185,6 +214,11 @@ impl Convert {
             Self::Date(f) => format!("date:{f}"),
             Self::Money(c) => format!("money:{c}"),
             Self::Split(s) => format!("split:{s}"),
+            Self::Before(s) => format!("before:{s}"),
+            Self::After(s) => format!("after:{s}"),
+            Self::MaxBy(f) => format!("max_by:{f}"),
+            Self::Field(f) => format!("field:{f}"),
+            Self::SplitSpaces(n) => format!("split_spaces:{n}"),
             Self::Enum(m) => return serde_json::json!({ "enum": m }),
         })
     }
@@ -221,7 +255,7 @@ impl utoipa::PartialSchema for Convert {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
         utoipa::openapi::schema::ObjectBuilder::new()
             .description(Some(
-                "A conversion: `trim`, `digits`, `upper`, `lower`, `left:<n>`, `date:<format>`, `money:<currency>`, `split:<sep>`, `url_origin`, `domain`, `luhn`, `email`, or `{enum: {source: target, \"*\": other}}`.",
+                "A conversion: `trim`, `digits`, `upper`, `lower`, `left:<n>`, `date:<format>`, `money:<currency>`, `split:<sep>`, `before:<sep>`, `url_origin`, `domain`, `luhn`, `email`, or `{enum: {source: target, \"*\": other}}`.",
             ))
             .into()
     }
@@ -296,6 +330,10 @@ pub struct ObjectMap {
     /// row is refused) or `skip` (the row only enriches what exists).
     #[serde(default, skip_serializing_if = "Missing::is_error")]
     pub missing: Missing,
+    /// Entry (an earlier `as`) this object needs: when it resolves to no
+    /// object (a skipped lookup), this one is not written either.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -338,6 +376,15 @@ pub struct LinkMap {
     /// Snapshot mode: close the links of this import absent from the run.
     #[serde(default = "yes")]
     pub close_missing: bool,
+    /// `false`: only an open link gets the attributes, none is opened.
+    #[serde(default = "yes")]
+    pub create: bool,
+    /// Several records of one pair disagreeing on an attribute: it takes
+    /// this value (`perimetre: les_deux` merges preparation and
+    /// evaluation). Without it the first record wins, with a warning.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub on_conflict: BTreeMap<String, Value>,
 }
 
 fn yes() -> bool {
@@ -392,7 +439,7 @@ impl Mapping {
     pub fn columns(&self) -> Vec<String> {
         let mut out = Vec::new();
         let mut push = |f: &FieldSpec| {
-            if let Some(p) = f.from.as_deref().filter(|p| *p != ".") {
+            if let Some(p) = f.from.as_deref().filter(|p| *p != "." && *p != "#") {
                 if !out.iter().any(|c| c == p) {
                     out.push(p.to_string());
                 }
@@ -408,7 +455,16 @@ impl Mapping {
                 o.title.iter().for_each(&mut push);
             }
         }
+        let each = |alias: &str| {
+            self.objects
+                .iter()
+                .any(|o| o.alias == alias && o.each.is_some())
+        };
         for l in &self.links {
+            // Read from the element when the link touches an `each`.
+            if each(&l.from) || each(&l.to) {
+                continue;
+            }
             l.attributes.values().for_each(&mut push);
             l.valid_from.iter().for_each(&mut push);
         }
@@ -491,7 +547,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             let Some(d) = t.properties.iter().find(|p| &p.key == k) else {
                 return Err(ferr(at(&format!("properties.{k}")), FIELD_INVALID));
             };
-            if d.kind.is_temporal() || f.convert.iter().any(|c| matches!(c, Convert::Split(_))) {
+            if d.kind.is_temporal() || f.convert.iter().any(Convert::splits) {
                 return Err(ferr(at(&format!("properties.{k}")), FIELD_INVALID));
             }
             check_field(&at(&format!("properties.{k}")), f)?;
@@ -510,6 +566,12 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             (None, true) => return Err(ferr(at("location"), FIELD_REQUIRED)),
             (Some(_), false) => return Err(ferr(at("location"), FIELD_INVALID)),
             (None, false) => {}
+        }
+        if o.needs
+            .as_deref()
+            .is_some_and(|a| !m.objects[..i].iter().any(|p| p.alias == a))
+        {
+            return Err(ferr(at("needs"), FIELD_INVALID));
         }
         // Other system objects are created by their own pages.
         if t.native() && !pin && o.create {
@@ -540,6 +602,15 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         if let Some(f) = &l.valid_from {
             check_field(&at("valid_from"), f)?;
         }
+        for (k, v) in &l.on_conflict {
+            let Some(def) = lt.attributes.iter().find(|a| &a.key == k) else {
+                return Err(ferr(at(&format!("on_conflict.{k}")), FIELD_INVALID));
+            };
+            let one = cast(def, v.clone()).map(|v| Map::from_iter([(k.clone(), v)]));
+            if !one.is_ok_and(|one| check_values(std::slice::from_ref(def), &one).is_ok()) {
+                return Err(ferr(at(&format!("on_conflict.{k}")), FIELD_INVALID));
+            }
+        }
     }
     Ok(())
 }
@@ -550,6 +621,32 @@ pub fn from_value(v: Value) -> Result<Mapping, FieldError> {
 }
 
 // ───────────────────────────── reading records ─────────────────────────────
+
+/// Parts of `s` separated by a run of at least `n` blanks, trimmed, empty
+/// ones dropped.
+fn paragraphs(s: &str, n: usize) -> Vec<&str> {
+    let mut out = Vec::new();
+    let (mut start, mut run, mut run_from) = (0, 0, 0);
+    for (i, c) in s.char_indices() {
+        if c.is_whitespace() {
+            if run == 0 {
+                run_from = i;
+            }
+            run += 1;
+            continue;
+        }
+        if run >= n {
+            out.push(&s[start..run_from]);
+            start = i;
+        }
+        run = 0;
+    }
+    out.push(&s[start..]);
+    out.into_iter()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect()
+}
 
 /// The value at a dot path (`a.b.0.c`); `.` or empty = the record itself.
 pub fn get_path<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
@@ -665,6 +762,8 @@ pub struct PlannedObject {
     pub create: bool,
     pub update: bool,
     pub missing: Missing,
+    /// Indexes in `RowPlan::objects` of the objects of the entry it needs.
+    pub needs: Vec<usize>,
 }
 
 /// A link between two planned objects (indexes in `RowPlan::objects`).
@@ -714,18 +813,48 @@ fn origin_of(raw: &str) -> Option<String> {
 }
 
 /// Applies string conversions; `Ok(None)` = empty value.
-fn convert(v: Option<Value>, convs: &[Convert]) -> Result<Option<Value>, String> {
+pub fn convert(v: Option<Value>, convs: &[Convert]) -> Result<Option<Value>, String> {
     let mut cur = match v {
         None | Some(Value::Null) => return Ok(None),
         Some(v) => v,
     };
     for c in convs {
+        // Structure conversions work on elements, not on text.
+        match c {
+            Convert::MaxBy(f) => {
+                let key = |e: &Value| {
+                    let t = get_path(e, f).and_then(text_of).unwrap_or_default();
+                    (number_of(&t).unwrap_or(f64::NEG_INFINITY), t)
+                };
+                cur = match cur {
+                    Value::Array(a) => a
+                        .into_iter()
+                        .max_by(|x, y| {
+                            key(x)
+                                .partial_cmp(&key(y))
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .unwrap_or(Value::Null),
+                    one => one,
+                };
+                continue;
+            }
+            Convert::Field(f) => {
+                cur = get_path(&cur, f).cloned().unwrap_or(Value::Null);
+                if cur.is_null() {
+                    return Ok(None);
+                }
+                continue;
+            }
+            _ => {}
+        }
         let s = match text_of(&cur) {
             Some(s) => s,
-            None if matches!(c, Convert::Split(_)) => return Ok(Some(cur)),
+            None if c.splits() => return Ok(Some(cur)),
             None => return Err(FIELD_INVALID.into()),
         };
         cur = match c {
+            Convert::MaxBy(_) | Convert::Field(_) => unreachable!("handled above"),
             Convert::Trim => Value::String(s.trim().to_string()),
             Convert::Digits => Value::String(s.chars().filter(char::is_ascii_digit).collect()),
             Convert::Upper => Value::String(s.to_uppercase()),
@@ -747,6 +876,26 @@ fn convert(v: Option<Value>, convs: &[Convert]) -> Result<Option<Value>, String>
                 let n = number_of(&s).ok_or_else(|| FIELD_INVALID.to_string())?;
                 serde_json::json!({ "amount": n, "currency": currency })
             }
+            Convert::Before(sep) => Value::String(
+                s.split(sep.as_str())
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+            ),
+            Convert::After(sep) => Value::String(
+                s.rsplit(sep.as_str())
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string(),
+            ),
+            Convert::SplitSpaces(n) => Value::Array(
+                paragraphs(&s, *n)
+                    .into_iter()
+                    .map(|p| Value::String(p.into()))
+                    .collect(),
+            ),
             Convert::Split(sep) => Value::Array(
                 s.split(sep.as_str())
                     .map(str::trim)
@@ -871,24 +1020,31 @@ fn cast(def: &PropertyDef, v: Value) -> Result<Value, String> {
     })
 }
 
-fn read(
-    row: &Value,
-    elem: Option<&Value>,
-    f: &FieldSpec,
-) -> Result<Option<Value>, (String, String)> {
+/// The element of an `each` and its position (from 1).
+type Elem<'a> = Option<(&'a Value, usize)>;
+
+/// A path of a field: `#` = the element's position, `^path` = in the
+/// record, else in the element (the record outside an `each`).
+fn at_path(row: &Value, elem: Elem, p: &str) -> Option<Value> {
+    if p == "#" {
+        return elem.map(|(_, n)| Value::from(n));
+    }
+    match p.strip_prefix('^') {
+        Some(p) => get_path(row, p).cloned(),
+        None => get_path(elem.map_or(row, |(e, _)| e), p).cloned(),
+    }
+}
+
+fn read(row: &Value, elem: Elem, f: &FieldSpec) -> Result<Option<Value>, (String, String)> {
     let col = f.from.clone().unwrap_or_else(|| f.concat.join("+"));
-    let base = elem.unwrap_or(row);
     let raw = match (&f.from, &f.value) {
         (_, Some(v)) => Some(v.clone()),
-        (Some(p), None) => match p.strip_prefix('^') {
-            Some(p) => get_path(row, p).cloned(),
-            None => get_path(base, p).cloned(),
-        },
+        (Some(p), None) => at_path(row, elem, p),
         (None, None) if !f.concat.is_empty() => {
             let parts: Vec<String> = f
                 .concat
                 .iter()
-                .filter_map(|p| get_path(base, p).and_then(text_of))
+                .filter_map(|p| at_path(row, elem, p).as_ref().and_then(text_of))
                 .map(|t| t.trim().to_string())
                 .filter(|t| !t.is_empty())
                 .collect();
@@ -909,42 +1065,65 @@ pub fn plan_row(
 ) -> Result<RowPlan, Vec<RowIssue>> {
     let mut plan = RowPlan::default();
     let mut issues = Vec::new();
+    let issue = |(column, token): (String, String)| RowIssue {
+        row: row_no,
+        column,
+        token,
+    };
     // Indexes in `plan.objects` of each entry (one, or one per element).
     let mut produced: Vec<Vec<usize>> = Vec::new();
+    // The `each` element of every planned object, with its position.
+    let mut elems: Vec<Option<(Value, usize)>> = Vec::new();
     for (i, o) in m.objects.iter().enumerate() {
         let mut mine = Vec::new();
-        let Some(def) = s.object_type(&o.type_key) else {
+        let def = s.object_type(&o.type_key);
+        // An object needing an entry that produced nothing is not planned.
+        let needs = match o
+            .needs
+            .as_deref()
+            .and_then(|a| m.objects.iter().position(|x| x.alias == a))
+        {
+            Some(n) => match produced.get(n) {
+                Some(p) if !p.is_empty() => p.clone(),
+                _ => {
+                    produced.push(mine);
+                    continue;
+                }
+            },
+            None => Vec::new(),
+        };
+        let Some(def) = def else {
             produced.push(mine);
             continue;
         };
-        let elems: Vec<Option<Value>> = match &o.each {
+        let items: Vec<Option<(Value, usize)>> = match &o.each {
             None => vec![None],
             Some(f) => match read(row, None, f) {
-                Ok(Some(Value::Array(a))) => a.into_iter().take(EACH_MAX).map(Some).collect(),
-                Ok(Some(v)) => vec![Some(v)],
+                Ok(Some(Value::Array(a))) => a
+                    .into_iter()
+                    .take(EACH_MAX)
+                    .enumerate()
+                    .map(|(n, v)| Some((v, n + 1)))
+                    .collect(),
+                Ok(Some(v)) => vec![Some((v, 1))],
                 Ok(None) => Vec::new(),
-                Err((column, token)) => {
-                    issues.push(RowIssue {
-                        row: row_no,
-                        column,
-                        token,
-                    });
+                Err(e) => {
+                    issues.push(issue(e));
                     Vec::new()
                 }
             },
         };
-        for elem in elems {
-            match plan_object(i, o, def, row, elem.as_ref()) {
-                Ok(Some(p)) => {
+        for item in items {
+            let elem = item.as_ref().map(|(v, n)| (v, *n));
+            match plan_object(i, o, def, row, elem) {
+                Ok(Some(mut p)) => {
+                    p.needs = needs.clone();
                     mine.push(plan.objects.len());
                     plan.objects.push(p);
+                    elems.push(item);
                 }
                 Ok(None) => {}
-                Err((column, token)) => issues.push(RowIssue {
-                    row: row_no,
-                    column,
-                    token,
-                }),
+                Err(e) => issues.push(issue(e)),
             }
         }
         produced.push(mine);
@@ -957,74 +1136,6 @@ pub fn plan_row(
         let Some(lt) = s.links.iter().find(|d| d.key == l.link_type) else {
             continue;
         };
-        let mut attrs = Map::new();
-        let mut bad = false;
-        for (k, f) in &l.attributes {
-            match read(row, None, f) {
-                Ok(Some(v)) => {
-                    let def = lt.attributes.iter().find(|a| &a.key == k);
-                    match def.map(|d| cast(d, v)) {
-                        Some(Ok(v)) => {
-                            attrs.insert(k.clone(), v);
-                        }
-                        _ => {
-                            bad = true;
-                            issues.push(RowIssue {
-                                row: row_no,
-                                column: f.from.clone().unwrap_or_else(|| k.clone()),
-                                token: FIELD_INVALID.into(),
-                            });
-                        }
-                    }
-                }
-                Ok(None) => {}
-                Err((column, token)) => {
-                    bad = true;
-                    issues.push(RowIssue {
-                        row: row_no,
-                        column,
-                        token,
-                    });
-                }
-            }
-        }
-        match check_values(&lt.attributes, &attrs) {
-            Ok(a) => attrs = a,
-            Err((k, token)) => {
-                bad = true;
-                let column = l
-                    .attributes
-                    .get(&k)
-                    .and_then(|f| f.from.clone())
-                    .unwrap_or(k);
-                issues.push(RowIssue {
-                    row: row_no,
-                    column,
-                    token,
-                });
-            }
-        }
-        let valid_from = match &l.valid_from {
-            None => None,
-            Some(f) => match read(row, None, f) {
-                Ok(v) => v.and_then(|v| text_of(&v)).map(|d| match d.len() {
-                    10 => format!("{d}T00:00:00Z"),
-                    _ => d,
-                }),
-                Err((column, token)) => {
-                    bad = true;
-                    issues.push(RowIssue {
-                        row: row_no,
-                        column,
-                        token,
-                    });
-                    None
-                }
-            },
-        };
-        if bad {
-            continue;
-        }
         let froms = &produced[fi];
         let tos = &produced[ti];
         // One side may be an `each`: one link per element.
@@ -1040,19 +1151,110 @@ pub fn plan_row(
                 .flat_map(|t| froms.iter().map(move |f| (*f, *t)))
                 .collect()
         };
+        // Its paths are then read from the element, else once per record.
+        let side = match (m.objects[fi].each.is_some(), m.objects[ti].each.is_some()) {
+            (true, _) => Some(true),
+            (_, true) => Some(false),
+            _ => None,
+        };
+        let shared = match side {
+            None => match link_values(l, lt, row, None) {
+                Ok(v) => Some(v),
+                Err(mut e) => {
+                    issues.extend(e.drain(..).map(issue));
+                    continue;
+                }
+            },
+            Some(_) => None,
+        };
         for (from, to) in pairs {
+            let (attributes, valid_from) = match (&shared, side) {
+                (Some(v), _) => v.clone(),
+                (None, Some(on_from)) => {
+                    let at = if on_from { from } else { to };
+                    let elem = elems[at].as_ref().map(|(v, n)| (v, *n));
+                    match link_values(l, lt, row, elem) {
+                        Ok(v) => v,
+                        Err(mut e) => {
+                            issues.extend(e.drain(..).map(issue));
+                            continue;
+                        }
+                    }
+                }
+                (None, None) => continue,
+            };
             plan.links.push(PlannedLink {
                 entry: i,
                 link_type: l.link_type.clone(),
                 from,
                 to,
-                valid_from: valid_from.clone(),
-                attributes: attrs.clone(),
+                valid_from,
+                attributes,
             });
         }
     }
     if issues.is_empty() {
         Ok(plan)
+    } else {
+        Err(issues)
+    }
+}
+
+/// Attributes and start of one link, read from the record (or the `each`
+/// element), or the (column, token) issues.
+#[allow(clippy::type_complexity)]
+fn link_values(
+    l: &LinkMap,
+    lt: &LinkTypeDef,
+    row: &Value,
+    elem: Elem,
+) -> Result<(Map<String, Value>, Option<String>), Vec<(String, String)>> {
+    let mut attrs = Map::new();
+    let mut issues = Vec::new();
+    for (k, f) in &l.attributes {
+        match read(row, elem, f) {
+            Ok(Some(v)) => {
+                let def = lt.attributes.iter().find(|a| &a.key == k);
+                match def.map(|d| cast(d, v)) {
+                    Some(Ok(v)) => {
+                        attrs.insert(k.clone(), v);
+                    }
+                    _ => issues.push((
+                        f.from.clone().unwrap_or_else(|| k.clone()),
+                        FIELD_INVALID.into(),
+                    )),
+                }
+            }
+            Ok(None) => {}
+            Err(e) => issues.push(e),
+        }
+    }
+    match check_values(&lt.attributes, &attrs) {
+        Ok(a) => attrs = a,
+        Err((k, token)) => {
+            let column = l
+                .attributes
+                .get(&k)
+                .and_then(|f| f.from.clone())
+                .unwrap_or(k);
+            issues.push((column, token));
+        }
+    }
+    let valid_from = match &l.valid_from {
+        None => None,
+        Some(f) => match read(row, elem, f) {
+            Ok(v) => v.and_then(|v| text_of(&v)).map(|d| match d.len() {
+                10 => format!("{d}T00:00:00Z"),
+                _ => d,
+            }),
+            Err(e) => {
+                issues.push(e);
+                None
+            }
+        },
+    };
+    if issues.is_empty() {
+        Ok((attrs, valid_from))
     } else {
         Err(issues)
     }
@@ -1065,10 +1267,10 @@ fn plan_object(
     o: &ObjectMap,
     def: &ObjectTypeDef,
     row: &Value,
-    elem: Option<&Value>,
+    elem: Elem,
 ) -> Result<Option<PlannedObject>, (String, String)> {
     if let Some(w) = &o.when {
-        let v = get_path(elem.unwrap_or(row), &w.from).and_then(text_of);
+        let v = at_path(row, elem, &w.from).as_ref().and_then(text_of);
         if v.as_deref().map(str::trim) != Some(w.equals.as_str()) {
             return Ok(None);
         }
@@ -1155,6 +1357,7 @@ fn plan_object(
         create: o.create,
         update: o.update.unwrap_or(o.create),
         missing: o.missing,
+        needs: Vec::new(),
     }))
 }
 
@@ -1577,6 +1780,22 @@ mod tests {
             .properties
             .insert("nope".into(), serde_json::from_value(json!("x")).unwrap());
         assert_eq!(check(&m, &s).unwrap_err().0, "objects.0.properties.nope");
+        // A merge value names a declared attribute and fits its kind.
+        let mut m = mapping();
+        m.links[0]
+            .on_conflict
+            .insert("perimetre".into(), json!("les_deux"));
+        assert_eq!(check(&m, &s), Ok(()));
+        m.links[0]
+            .on_conflict
+            .insert("perimetre".into(), json!("tout"));
+        assert_eq!(
+            check(&m, &s).unwrap_err().0,
+            "links.0.on_conflict.perimetre"
+        );
+        let mut m = mapping();
+        m.links[0].on_conflict.insert("nope".into(), json!("x"));
+        assert_eq!(check(&m, &s).unwrap_err().0, "links.0.on_conflict.nope");
         assert!(
             from_value(json!({"key": "a", "name": "a", "objects": [], "script": "x"})).is_err()
         );
@@ -1654,6 +1873,33 @@ mod tests {
     }
 
     #[test]
+    fn concat_then_before_is_a_coalesce() {
+        let f: FieldSpec = serde_json::from_value(json!({
+            "concat": ["Date_Effet", "Date_Decision"], "sep": "|",
+            "convert": ["before:|", "date:%d/%m/%Y"]
+        }))
+        .unwrap();
+        let both = json!({"Date_Effet": "01/02/2024", "Date_Decision": "15/01/2024"});
+        let rs = json!({"Date_Effet": "", "Date_Decision": "15/01/2024"});
+        assert_eq!(read(&both, None, &f).unwrap(), Some(json!("2024-02-01")));
+        assert_eq!(read(&rs, None, &f).unwrap(), Some(json!("2024-01-15")));
+        assert_eq!(read(&json!({}), None, &f).unwrap(), None);
+        // The repertoire of a sheet number: two letters, then an enum.
+        let r: FieldSpec = serde_json::from_value(json!({
+            "from": "n", "convert": ["trim", "upper", "left:2", {"enum": {"RN": "rncp", "RS": "rs"}}]
+        }))
+        .unwrap();
+        assert_eq!(
+            read(&json!({"n": "rs6765"}), None, &r).unwrap(),
+            Some(json!("rs"))
+        );
+        assert_eq!(
+            read(&json!({"n": "RNCP1"}), None, &r).unwrap(),
+            Some(json!("rncp"))
+        );
+    }
+
+    #[test]
     fn csv_parses_quotes_and_guesses_the_separator() {
         let t = parse_csv(
             "\u{feff}a;b;c\r\n1;\"x;y\";\"he said \"\"hi\"\"\"\n\n2;\"multi\nline\";\n",
@@ -1712,5 +1958,129 @@ mod tests {
         assert!(!suspicious_drop(0, 0));
         assert!(!suspicious_drop(100, 75));
         assert!(suspicious_drop(100, 69));
+    }
+
+    #[test]
+    fn paragraphs_after_and_latest() {
+        let v = convert(
+            Some(json!(
+                "Cadrer   Auditer le site.  Deux espaces\n\n\nOptimiser"
+            )),
+            &[Convert::SplitSpaces(3)],
+        )
+        .unwrap();
+        assert_eq!(
+            v,
+            Some(json!([
+                "Cadrer",
+                "Auditer le site.  Deux espaces",
+                "Optimiser"
+            ]))
+        );
+        assert_eq!(Convert::parse("split_spaces:1"), None);
+        let v = convert(
+            Some(json!("RNCP183BC02")),
+            &[Convert::parse("after:BC").unwrap()],
+        )
+        .unwrap();
+        assert_eq!(v, Some(json!("02")));
+        // The latest year, in any order; an XML lone child is one element.
+        let latest = [
+            Convert::parse("max_by:ANNEE").unwrap(),
+            Convert::parse("field:N").unwrap(),
+        ];
+        let many = json!([{"ANNEE": "2023", "N": "4"}, {"ANNEE": "2024", "N": "64"}, {"ANNEE": "2022", "N": "1"}]);
+        assert_eq!(convert(Some(many), &latest).unwrap(), Some(json!("64")));
+        assert_eq!(
+            convert(Some(json!({"ANNEE": "2024", "N": "12"})), &latest).unwrap(),
+            Some(json!("12"))
+        );
+        assert_eq!(
+            convert(Some(json!({"ANNEE": "2024"})), &latest).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn each_positions_element_links_and_needs() {
+        let t: Vec<ObjectTypeDef> = serde_json::from_value(json!([
+            {"key": "certification", "name": "C", "properties": [{"key": "code", "kind": "text", "unique": true}]},
+            {"key": "competence", "name": "K", "properties": [
+                {"key": "cle", "kind": "text", "unique": true}, {"key": "rang", "kind": "number"},
+                {"key": "libelle", "kind": "text"}]},
+            {"key": "organization", "name": "O", "properties": [{"key": "siren", "kind": "text", "unique": true}]}
+        ]))
+        .unwrap();
+        let l: Vec<LinkTypeDef> = serde_json::from_value(json!([
+            {"key": "competence_de", "name": "d", "from_types": ["competence"], "to_types": ["certification"]},
+            {"key": "habilite_pour", "name": "h", "from_types": ["organization"], "to_types": ["certification"],
+             "attributes": [{"key": "etat_fc", "kind": "enum", "values": ["actif", "inactif"]}]}
+        ]))
+        .unwrap();
+        let s = Schema {
+            types: &t,
+            links: &l,
+        };
+        let m = from_value(json!({
+            "key": "rs", "name": "RS", "format": "xml", "rows": "FICHES/FICHE",
+            "objects": [
+                {"as": "cert", "type": "certification", "key": "code", "create": false, "missing": "skip",
+                 "properties": {"code": "NUMERO_FICHE"}},
+                {"as": "comp", "type": "competence", "key": "cle", "needs": "cert",
+                 "each": {"from": "CAPACITES_ATTESTEES", "convert": ["split_spaces:3"]},
+                 "properties": {"cle": {"concat": ["^NUMERO_FICHE", "#"], "sep": "-C"},
+                                "rang": "#", "libelle": "."}},
+                {"as": "org", "type": "organization", "key": "siren", "create": false, "missing": "skip",
+                 "each": "PARTENAIRES.PARTENAIRE",
+                 "properties": {"siren": {"from": "SIRET_PARTENAIRE", "convert": ["left:9"]}}}
+            ],
+            "links": [
+                {"type": "competence_de", "from": "comp", "to": "cert"},
+                {"type": "habilite_pour", "from": "org", "to": "cert", "create": false,
+                 "attributes": {"etat_fc": {"from": "ETAT_HABILITATION", "convert": [{"enum": {"Actif": "actif", "Inactif": "inactif"}}]}}}
+            ]
+        }))
+        .unwrap();
+        assert_eq!(check(&m, &s), Ok(()));
+        // Element-relative link paths are not record columns (D303).
+        assert_eq!(
+            m.columns(),
+            [
+                "NUMERO_FICHE",
+                "CAPACITES_ATTESTEES",
+                "PARTENAIRES.PARTENAIRE"
+            ]
+        );
+        let row = json!({
+            "NUMERO_FICHE": "RS0101",
+            "CAPACITES_ATTESTEES": "Cadrer le projet    Auditer les intentions",
+            "PARTENAIRES": {"PARTENAIRE": [
+                {"SIRET_PARTENAIRE": "91338332900012", "ETAT_HABILITATION": "Actif"},
+                {"SIRET_PARTENAIRE": "53098720500016", "ETAT_HABILITATION": "Inactif"}
+            ]}
+        });
+        let p = plan_row(&m, &s, 1, &row).unwrap();
+        let comps: Vec<_> = p
+            .objects
+            .iter()
+            .filter(|o| o.type_key == "competence")
+            .collect();
+        assert_eq!(comps.len(), 2);
+        assert_eq!(
+            (comps[1].key.as_str(), &comps[1].properties["rang"]),
+            ("RS0101-C2", &json!(2))
+        );
+        assert_eq!(comps[0].needs, [0]);
+        let etats: Vec<_> = p
+            .links
+            .iter()
+            .filter(|l| l.link_type == "habilite_pour")
+            .map(|l| l.attributes["etat_fc"].clone())
+            .collect();
+        assert_eq!(etats, [json!("actif"), json!("inactif")]);
+        // A `needs` naming a later entry is refused.
+        let mut bad = m.clone();
+        bad.objects[1].needs = Some("org".into());
+        assert_eq!(check(&bad, &s).unwrap_err().0, "objects.1.needs");
     }
 }

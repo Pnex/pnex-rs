@@ -213,7 +213,7 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
         )),
         OntologyError::Db(e) => {
             tracing::error!(error = %e, "ontology database error");
-            Err(Error::InternalServerError)
+            Err(crate::services::compute_limits::db_busy(&e).unwrap_or(Error::InternalServerError))
         }
     }
 }
@@ -568,7 +568,14 @@ async fn create_object(
     org: OrgContext,
     Json(input): Json<ObjectInput>,
 ) -> Result<Response> {
-    created(objects::create(&ctx.db, org.org.id, &actor(&org), &input).await)
+    let r: onto::Result<_> = async {
+        let txn = ctx.db.begin().await?;
+        let v = objects::create(&txn, org.org.id, &actor(&org), &input).await?;
+        txn.commit().await?;
+        Ok(v)
+    }
+    .await;
+    created(r)
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -703,7 +710,15 @@ async fn archive_object(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    match objects::archive(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?).await {
+    let id = parse_uuid(&id)?;
+    let r: onto::Result<()> = async {
+        let txn = ctx.db.begin().await?;
+        objects::archive(&txn, org.org.id, &actor(&org), id).await?;
+        txn.commit().await?;
+        Ok(())
+    }
+    .await;
+    match r {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(e) => onto_error(e),
     }
@@ -1106,7 +1121,14 @@ async fn create_link(
     org: OrgContext,
     Json(input): Json<LinkInput>,
 ) -> Result<Response> {
-    created(links::create(&ctx.db, org.org.id, &actor(&org), &input).await)
+    let r: onto::Result<_> = async {
+        let txn = ctx.db.begin().await?;
+        let v = links::create(&txn, org.org.id, &actor(&org), &input).await?;
+        txn.commit().await?;
+        Ok(v)
+    }
+    .await;
+    created(r)
 }
 
 #[utoipa::path(
@@ -1132,7 +1154,14 @@ async fn update_link(
     Path(id): Path<i64>,
     Json(input): Json<LinkUpdate>,
 ) -> Result<Response> {
-    reply(links::update(&ctx.db, org.org.id, &actor(&org), id, &input.attributes).await)
+    let r: onto::Result<_> = async {
+        let txn = ctx.db.begin().await?;
+        let v = links::update(&txn, org.org.id, &actor(&org), id, &input.attributes).await?;
+        txn.commit().await?;
+        Ok(v)
+    }
+    .await;
+    reply(r)
 }
 
 #[utoipa::path(
@@ -1168,7 +1197,14 @@ async fn close_link(
         }
     };
     let valid_to = body.valid_to;
-    reply(links::close(&ctx.db, org.org.id, &actor(&org), id, valid_to.as_deref()).await)
+    let r: onto::Result<_> = async {
+        let txn = ctx.db.begin().await?;
+        let v = links::close(&txn, org.org.id, &actor(&org), id, valid_to.as_deref()).await?;
+        txn.commit().await?;
+        Ok(v)
+    }
+    .await;
+    reply(r)
 }
 
 // ─────────────────────────── query ───────────────────────────

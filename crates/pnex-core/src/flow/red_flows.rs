@@ -329,6 +329,18 @@ pub fn to_red_flows_json_with(
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
+            // Read from the deployed graph by the backend too (D317).
+            FlowNodeKind::Ingest { config } => {
+                padded_ports = Some(config.port_count());
+                serde_json::json!({
+                    "type": "pnex-ingest",
+                    "step": config.step,
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);

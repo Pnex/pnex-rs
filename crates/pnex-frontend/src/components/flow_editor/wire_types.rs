@@ -103,6 +103,7 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::OntologyQuery { .. }
         | FlowNodeKind::ObjectUpsert { .. }
         | FlowNodeKind::LinkUpsert { .. }
+        | FlowNodeKind::Ingest { .. }
         | FlowNodeKind::Weather { .. } => Fixed(Object),
         FlowNodeKind::MemoryRead { .. } if port == 0 => Fixed(Object),
         FlowNodeKind::ControlSource { .. } => Fixed(Number),

@@ -78,6 +78,7 @@ pub fn routes() -> Routes {
         .add("/{id}/runtime", get(runtime))
         .add("/{id}/debug", get(debug))
         .add("/{id}/node-status", get(node_status))
+        .add("/{id}/ingest-steps", get(ingest_steps))
         .add("/{id}/stop", post(stop))
         .add("/{id}/start", post(start))
         .add("/{id}/restart", post(restart))
@@ -99,6 +100,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         runtime,
         debug,
         node_status,
+        ingest_steps,
         stop,
         start,
         restart

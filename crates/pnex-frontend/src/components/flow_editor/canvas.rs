@@ -388,6 +388,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::OntologyQuery { .. } => kind_labels(PaletteKind::OntologyQuery),
         pnex_core::FlowNodeKind::ObjectUpsert { .. } => kind_labels(PaletteKind::ObjectUpsert),
         pnex_core::FlowNodeKind::LinkUpsert { .. } => kind_labels(PaletteKind::LinkUpsert),
+        pnex_core::FlowNodeKind::Ingest { .. } => kind_labels(kind_of(&node.kind)),
         pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
@@ -471,7 +472,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. }
         | pnex_core::FlowNodeKind::OntologyQuery { .. }
         | pnex_core::FlowNodeKind::ObjectUpsert { .. }
-        | pnex_core::FlowNodeKind::LinkUpsert { .. } => {
+        | pnex_core::FlowNodeKind::LinkUpsert { .. }
+        | pnex_core::FlowNodeKind::Ingest { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
@@ -1311,6 +1313,21 @@ fn node_subtitle(node: &FlowNode) -> String {
             l if config.close => format!("✕ {l}"),
             l => l.to_string(),
         },
+        pnex_core::FlowNodeKind::Ingest { config } => {
+            use pnex_core::ingest::IngestStep as S;
+            let s = match config.step {
+                S::SourceResolve if config.dataset.is_empty() => config.url.clone(),
+                S::SourceResolve => config.resource_match.clone(),
+                S::ArchiveExtract => config.entries.join(", "),
+                S::TableInspect => config.entry.clone(),
+                S::RowsFilter => format!("{} · {}", config.entry, config.column),
+                _ => String::new(),
+            };
+            match s.trim_matches([' ', '·']) {
+                "" => "—".into(),
+                t => t.to_string(),
+            }
+        }
         pnex_core::FlowNodeKind::MediaSource { config } => match config.streams.as_slice() {
             [] => "—".into(),
             [one] => one.clone(),

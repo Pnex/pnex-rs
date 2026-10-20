@@ -43,6 +43,7 @@ mod m20261019_000033_notify_dynamic_sends;
 mod m20261019_000034_site_pages_and_proofs;
 mod m20261019_000035_iam_roles_teams;
 mod m20261019_000036_iam_service_accounts;
+mod m20261020_000037_ingest_steps;
 
 pub struct Migrator;
 
@@ -82,6 +83,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261019_000034_site_pages_and_proofs::Migration),
             Box::new(m20261019_000035_iam_roles_teams::Migration),
             Box::new(m20261019_000036_iam_service_accounts::Migration),
+            Box::new(m20261020_000037_ingest_steps::Migration),
         ]
     }
 }
