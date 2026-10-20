@@ -176,7 +176,7 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
             }}
         }))).await;
         assert_eq!(st, 201, "{m}");
-        assert_eq!(m["target"], format!("web:site:{origin}"));
+        assert_eq!(m["target"], "web:site:127.0.0.1", "keyed by the normalised host (D307)");
         let mission: uuid::Uuid = m["id"].as_str().unwrap().parse().unwrap();
         let Ok(MissionSpec::CrawlSite(params)) = serde_json::from_value::<MissionSpec>(m["spec"].clone()) else {
             panic!("crawl spec");

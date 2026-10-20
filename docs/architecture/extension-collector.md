@@ -56,7 +56,7 @@ Rouvre `cases.md` §4 et `discourse-analysis.md` DA6 pour l'extension :
   `media-ingest.md` : pas de préréglage de téléchargeur).
 
 > **Amendé le 2026-10-19 (`partner-watch.md` D307–D310, proposition)** :
-> la cible déclarée peut être un **site** (`web:site:<origine>`) ;
+> la cible déclarée peut être un **site** (`web:site:<hôte>`, hôte normalisé comme les règles de navigation ; découverte bornée à l'origine déclarée) ;
 > l'agent (ou le crawl serveur) découvre ses pages **dans cette origine
 > seulement** (`robots.txt`, `sitemap.xml`, liens internes, plafonds).
 > Aucune découverte hors du site déclaré. Une page pertinente reçoit une

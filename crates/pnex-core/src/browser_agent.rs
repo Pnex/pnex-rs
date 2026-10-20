@@ -656,6 +656,14 @@ pub fn fold(text: &str) -> String {
         .collect()
 }
 
+/// Target and registry key of a declared site (D307): `web:site:<host>`,
+/// the host normalised like the navigation rules (`site_host`), so a crawl
+/// and the rules of one site share it whatever the scheme or `www.`.
+pub fn site_key(origin: &str) -> String {
+    let host = crate::site_recipe::site_host(origin).unwrap_or_else(|| origin.to_string());
+    format!("web:site:{host}")
+}
+
 /// `https://host[:port]` of a site address.
 pub fn site_origin(raw: &str) -> Option<String> {
     let u = url::Url::parse(raw.trim()).ok()?;
@@ -955,7 +963,7 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
             let mut out = p.clone();
             out.url = origin.clone();
             out.exclude = p.exclude.iter().map(|x| x.trim().to_string()).collect();
-            Ok((MissionSpec::CrawlSite(out), format!("web:site:{origin}")))
+            Ok((MissionSpec::CrawlSite(out), site_key(&origin)))
         }
         MissionSpec::FollowAccount(p) => {
             let handle = p.handle.trim().trim_start_matches('@');
@@ -1252,6 +1260,15 @@ pub struct SocialVideo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_site_key_ignores_scheme_and_www() {
+        assert_eq!(site_key("https://www.LaStrat.fr"), "web:site:lastrat.fr");
+        assert_eq!(
+            site_key("http://lastrat.fr"),
+            site_key("https://lastrat.fr")
+        );
+    }
 
     fn value(url: &str, selector: &str, attr: &str, metric: &str) -> MissionSpec {
         MissionSpec::CollectValue(CollectValueParams {
