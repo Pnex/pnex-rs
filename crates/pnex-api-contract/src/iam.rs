@@ -762,6 +762,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("site-recipes:write"),
     ),
     ("site_recipes_runs_file", Access::Org("site-recipes:read")),
+    ("site_recipes_runs_live", Access::Org("site-recipes:read")),
     ("site_recipes_runs_get", Access::Org("site-recipes:read")),
     ("site_recipes_runs_list", Access::Org("site-recipes:read")),
     ("site_recipes_schedule", Access::Org("site-recipes:read")),

@@ -94,6 +94,15 @@ préflight et mêmes gardes qu'un `open`) ; les étapes d'avant sont reprises, g
 d'un autre site, étape N−1 en échec, N hors du brouillon ; passage inconnu =
 `site-recipe-run-not-found`. Studio seulement : un flow joue toujours toute la règle.
 
+**Vue en direct** (N4, codé le 2026-10-21) : pendant un passage du studio, le navigateur
+serveur est capturé toutes les 1,5 s (JPEG qualité 50) dans Valkey (`pnex:site-recipe:live:<run>`,
+20 s de vie, partagé par les pods) ; `GET /site-recipes/runs/{id}/live` le sert (204 sans
+image) et la scène l'affiche, badge « En direct », à la place de la capture de l'étape tant
+que le passage tourne. Raccourci assumé à la place du screencast CDP sur websocket de la
+proposition : rien à router entre pods, Obscura (qui ne répond pas pendant un chargement)
+saute simplement des images. Sans Valkey : pas de vue en direct, les captures par étape
+restent. Les passages lancés par un flow n'en produisent pas.
+
 ### D325 — Navigateur serveur et navigateurs configurables
 
 - Moteur par défaut : **Chrome headless-shell** (`chromedp/headless-shell`, service
@@ -198,4 +207,4 @@ Inchangé par rapport à la proposition v0.3.
 
 ## 4. Reste à faire
 
-N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, exécutant agent.
+N3 `llm_extract` ; N4 assistant dans le studio, exécutant agent.

@@ -34,6 +34,7 @@ pub fn routes() -> Routes {
         .add("/site-recipes/runs", get(runs).post(run_create))
         .add("/site-recipes/runs/{id}", get(run_get))
         .add("/site-recipes/runs/{id}/files/{file}", get(run_file))
+        .add("/site-recipes/runs/{id}/live", get(run_live))
         .add(
             "/site-recipes/{id}",
             get(get_one).put(update).delete(remove),
@@ -661,6 +662,44 @@ async fn run_file(
     Ok(res)
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/site-recipes/runs/{id}/live",
+    tag = "site-recipes",
+    operation_id = "site_recipes_runs_live",
+    summary = "Live view of a run",
+    description = "The last view of the server browser while a studio run plays (JPEG, a new one about every 1.5 s, gone some seconds after the run); 204 when there is none. Any member.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Run id (UUID)")
+    ),
+    responses(
+        (status = 200, content_type = "image/jpeg", body = Vec<u8>),
+        (status = 204, description = "No live view: the run is not playing in the studio, or the server has no Valkey"),
+        (status = 404, description = "`site-recipe-run-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn run_live(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match recipes::live_frame(&ctx, org.org.id, id).await {
+        Ok(Some(bytes)) => Ok((
+            [
+                (header::CONTENT_TYPE, "image/jpeg"),
+                (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+                (header::CACHE_CONTROL, "no-store"),
+            ],
+            bytes,
+        )
+            .into_response()),
+        Ok(None) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(RecipeError::NotFound) => Err(run_not_found()),
+        Err(e) => recipe_error(e),
+    }
+}
+
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(paths(
@@ -678,6 +717,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         runs,
         run_get,
         run_file,
+        run_live,
         endpoints_list,
         endpoints_create,
         endpoints_update,

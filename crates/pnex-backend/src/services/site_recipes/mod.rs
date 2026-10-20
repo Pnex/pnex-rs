@@ -797,6 +797,32 @@ pub async fn resume_point(
     }))
 }
 
+/// Lifetime of a live view frame (the last one fades after the run).
+pub const LIVE_TTL_SECS: u64 = 20;
+
+/// Valkey key of the live view frame of a run.
+pub fn live_key(run_id: Uuid) -> String {
+    format!("pnex:site-recipe:live:{run_id}")
+}
+
+/// Last live view frame of a run of the org, if one is fresh.
+pub async fn live_frame(
+    ctx: &loco_rs::app::AppContext,
+    org_id: i64,
+    run_id: Uuid,
+) -> Result<Option<Vec<u8>>, RecipeError> {
+    use redis::AsyncCommands as _;
+    run_row(&ctx.db, org_id, run_id).await?;
+    let Some(mut conn) = crate::services::shared_valkey::conn(&ctx.config).await else {
+        return Ok(None);
+    };
+    Ok(conn
+        .get::<_, Option<Vec<u8>>>(live_key(run_id))
+        .await
+        .ok()
+        .flatten())
+}
+
 /// Storage key of a run's file (`step-3.jpg`, `pdf-5.pdf`), if it has one.
 pub async fn file_key(
     db: &DatabaseConnection,

@@ -5838,6 +5838,7 @@ web-sites-reason-browser-unavailable = Server browser unreachable
 web-sites-reason-param-missing = A parameter value is missing
 web-sites-reason-interrupted = Run cut by a server restart
 web-sites-reason-reused = Taken over from the earlier run
+web-sites-live = Live
 web-sites-resume = Resume at step { $n }
 web-sites-resume-help = Plays the rule shown from this step, starting on the page the run was on after the step before; the earlier steps and extracts are taken over.
 err-site-recipe-invalid = The navigation rule is invalid.

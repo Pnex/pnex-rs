@@ -5834,6 +5834,7 @@ web-sites-reason-browser-unavailable = Navigateur du serveur injoignable
 web-sites-reason-param-missing = Valeur de paramètre manquante
 web-sites-reason-interrupted = Passage interrompu par un redémarrage du serveur
 web-sites-reason-reused = Repris du passage précédent
+web-sites-live = En direct
 web-sites-resume = Reprendre à l'étape { $n }
 web-sites-resume-help = Joue la règle affichée à partir de cette étape, depuis la page où était le passage après l'étape d'avant ; les étapes et extraits précédents sont repris.
 err-site-recipe-invalid = La règle de navigation est invalide.

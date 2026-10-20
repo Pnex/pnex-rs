@@ -119,6 +119,16 @@ pub fn file_path(run_id: &str, file: &str) -> String {
     )
 }
 
+/// `GET /api/v1/site-recipes/runs/{id}/live`: the last live view frame,
+/// empty when there is none (204).
+pub async fn live(run_id: &str) -> Result<Vec<u8>, ApiError> {
+    client::request_bytes(
+        reqwest::Method::GET,
+        &format!("/api/v1/site-recipes/runs/{}/live", urlencode(run_id)),
+    )
+    .await
+}
+
 // ───────────────────────────── browser endpoints ─────────────────────────────
 
 use pnex_core::site_recipe::{BrowserEndpoint, BrowserEndpointInput, BrowserTestResult};
