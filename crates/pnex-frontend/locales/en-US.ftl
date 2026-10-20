@@ -4810,6 +4810,15 @@ ai-trace-case-board = board: { $hypotheses } hypothesis(es), { $unsourced } unso
 ai-trace-action-proposed = proposed "{ $action }" on "{ $title }"
 ai-review-action = Review and run "{ $action }"
 ai-trace-calendar = { $count } calendar occurrence(s)
+ai-trace-site-recipes = { $count } navigation rule(s)
+ai-trace-site-recipe = rule "{ $name }" read
+ai-trace-site-recipe-run = run { $status ->
+    [ok] passed
+    [failed] failed
+   *[other] still running
+}, { $steps } step(s)
+ai-trace-site-recipe-proposed = proposed the rule "{ $name }"
+ai-open-in-studio = Open in the studio
 ai-trace-occurrence-proposed = proposed to { $change ->
     [done] mark as done
     [move] move

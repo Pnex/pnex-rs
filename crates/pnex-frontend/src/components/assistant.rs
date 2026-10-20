@@ -494,7 +494,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
                 .filter(|e| {
                     e.ok && matches!(
                         e.name.as_str(),
-                        "propose_action" | "propose_occurrence_change"
+                        "propose_action" | "propose_occurrence_change" | "propose_site_recipe"
                     )
                 })
                 .cloned()
@@ -574,6 +574,11 @@ fn ProposalButton(entry: AiToolTrace) -> Element {
     if entry.name == "propose_occurrence_change" {
         return rsx! {
             OccurrenceProposal { entry }
+        };
+    }
+    if entry.name == "propose_site_recipe" {
+        return rsx! {
+            SiteRecipeProposal { entry }
         };
     }
     let mut open = use_signal(|| false);
@@ -675,6 +680,53 @@ fn OccurrenceProposal(entry: AiToolTrace) -> Element {
                     on_done: move |_| open.set(false),
                 }
             }
+        }
+    }
+}
+
+/// Button of a proposed navigation rule: opens it in the studio of its
+/// site as an unsaved draft; the user plays and saves it (D144).
+#[component]
+fn SiteRecipeProposal(entry: AiToolTrace) -> Element {
+    let navigator = use_navigator();
+    let mut error = use_signal(|| None::<String>);
+    let arg = |k: &str| {
+        entry
+            .arguments
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    let (yaml, recipe_id) = (arg("yaml").unwrap_or_default(), arg("recipe_id"));
+    let open = move |_| {
+        let (yaml, recipe_id) = (yaml.clone(), recipe_id.clone());
+        spawn(async move {
+            let recipe = match crate::api::site_recipes::validate(&yaml).await {
+                Ok(r) => r,
+                Err(e) => {
+                    error.set(Some(crate::api::error_i18n::localize(&e)));
+                    return;
+                }
+            };
+            let site = pnex_core::site_recipe::site_host(&recipe.site).unwrap_or_default();
+            *crate::pages::web_sites::PROPOSED.write() =
+                Some(crate::pages::web_sites::ProposedRule {
+                    site: site.clone(),
+                    recipe,
+                    yaml,
+                    recipe_id,
+                });
+            navigator.push(crate::app::Route::WebSiteStudio { site });
+        });
+    };
+    rsx! {
+        button {
+            class: "px-3 py-1.5 rounded-md border border-signal-600 text-signal-600 text-sm hover:bg-signal-50",
+            onclick: open,
+            {t!("ai-open-in-studio")}
+        }
+        if let Some(e) = error() {
+            p { class: "text-xs text-red-600", "{e}" }
         }
     }
 }

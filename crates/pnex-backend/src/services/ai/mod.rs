@@ -26,6 +26,7 @@ pub mod more_tools;
 pub mod ontology_tools;
 pub mod provider;
 pub mod providers;
+pub mod site_tools;
 pub mod tools;
 
 pub use config::{AiSettings, ResolvedAiConfig};

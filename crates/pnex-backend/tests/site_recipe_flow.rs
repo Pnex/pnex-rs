@@ -15,7 +15,7 @@ use serial_test::serial;
 
 async fn with_app<F, Fut>(f: F)
 where
-    F: FnOnce(axum_test::TestServer, String, DatabaseConnection) -> Fut,
+    F: FnOnce(axum_test::TestServer, String, loco_rs::app::AppContext) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let base = common::spawn_mock_rauthy().await;
@@ -33,7 +33,7 @@ where
     let config: RequestConfig = RequestConfigBuilder::new().build();
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
-        move |server, ctx| async move { f(server, alice, ctx.db.clone()).await },
+        move |server, ctx| async move { f(server, alice, ctx.clone()).await },
     )
     .await;
 }
@@ -86,7 +86,8 @@ async fn play(server: &axum_test::TestServer, body: Value) -> (u16, Value) {
 #[tokio::test]
 #[serial]
 async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
-    with_app(|server, token, db| async move {
+    with_app(|server, token, ctx| async move {
+        let db = ctx.db.clone();
         let auth = format!("Bearer {token}");
         let org = server
             .get("/api/v1/user-info")
@@ -168,7 +169,8 @@ async fn deployed_node_plays_its_rule_and_reports_when_it_breaks() {
 #[tokio::test]
 #[serial]
 async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
-    with_app(|server, token, db| async move {
+    with_app(|server, token, ctx| async move {
+        let db = ctx.db.clone();
         let auth = format!("Bearer {token}");
         let org = server
             .get("/api/v1/user-info")
@@ -217,6 +219,50 @@ async fn a_run_resumes_only_from_a_valid_step_of_the_same_site() {
             .json(&json!({"yaml": other, "resume": {"run_id": earlier, "step": 1}}))
             .await;
         assert_eq!(r.status_code().as_u16(), 400, "{}", r.text());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn the_assistant_tries_and_proposes_rules_without_saving() {
+    use pnex_backend::services::ai::tools::{execute, ToolDeps};
+    with_app(|server, token, ctx| async move {
+        let auth = format!("Bearer {token}");
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", &auth)
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let deps = |role: pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole| ToolDeps {
+            db: &ctx.db,
+            org_id: org,
+            grants: pnex_backend::services::iam::Grants::managed(&role),
+            author: None,
+            o2: None,
+            config: Some(&ctx.config),
+            app: Some(&ctx),
+            actor: Some(pnex_backend::services::ontology::Actor::manual(1, role)),
+        };
+        use pnex_backend::models::_entities::sea_orm_active_enums::OrgMemberRole as R;
+        let yaml = "name: programme\nsite: https://www.example.org/x\nsteps:\n  - open: \"/\"\n  - extract: {all_text: true, as: page}\n";
+        let r = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap().value;
+        assert_eq!(r["status"], "failed", "{r}");
+        assert_eq!(r["reason"], pnex_core::site_recipe::reason::BROWSER);
+        let run = execute(&deps(R::Member), "get_site_recipe_run", &json!({"run_id": r["run_id"]})).await.unwrap().value;
+        assert_eq!(run["run_id"], r["run_id"]);
+        let bad = execute(&deps(R::Member), "try_site_recipe", &json!({"yaml": "name: x\nsite: example.org\nsteps: []\n"})).await.unwrap_err();
+        assert_eq!(bad.code, Some("site-recipe-invalid"));
+        let p = execute(&deps(R::Member), "propose_site_recipe", &json!({"yaml": yaml})).await.unwrap().value;
+        assert_eq!((p["executed"].as_bool(), p["site"].as_str()), (Some(false), Some("example.org")), "{p}");
+        let list = execute(&deps(R::Member), "list_site_recipes", &json!({})).await.unwrap().value;
+        assert_eq!(list["rules"], json!([]), "a proposal saves nothing");
+        // A viewer reads but neither plays nor proposes.
+        let denied = execute(&deps(R::Viewer), "try_site_recipe", &json!({"yaml": yaml})).await.unwrap_err();
+        assert_eq!(denied.code, Some("access-denied"));
+        execute(&deps(R::Viewer), "list_site_recipes", &json!({})).await.unwrap();
     })
     .await;
 }

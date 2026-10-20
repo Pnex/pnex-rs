@@ -132,9 +132,40 @@ pub fn WebSiteStudio(site: String) -> Element {
         }));
     };
 
+    // A rule proposed by the assistant opens as an unsaved draft.
+    use_effect(move || {
+        let Some(p) = super::PROPOSED.read().clone() else {
+            return;
+        };
+        if p.site != *site.peek() {
+            return;
+        }
+        let Some(Ok(list)) = &*recipes.read() else {
+            return;
+        };
+        *super::PROPOSED.write() = None;
+        let saved = p
+            .recipe_id
+            .as_ref()
+            .and_then(|id| list.iter().find(|r| &r.id == id));
+        editing.set(Some(match saved {
+            Some(r) => Editing::Saved {
+                id: r.id.clone(),
+                version: r.version,
+            },
+            None => Editing::New,
+        }));
+        recipe.set(p.recipe);
+        yaml.set(p.yaml);
+        violations.set(Vec::new());
+        opened.set(None);
+        selected.set(None);
+        dirty.set(true);
+    });
+
     // First rule opened on arrival; a starter rule on an empty site.
     use_effect(move || {
-        if editing.peek().is_some() {
+        if editing.peek().is_some() || super::PROPOSED.peek().is_some() {
             return;
         }
         if let Some(Ok(list)) = &*recipes.read() {

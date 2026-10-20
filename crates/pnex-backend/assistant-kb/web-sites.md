@@ -5,7 +5,7 @@ kind: feature
 pages: /web-sites, /web-sites/:site
 nodes: site_recipe
 err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken
-tools: 
+tools: list_site_recipes, get_site_recipe, try_site_recipe, get_site_recipe_run, propose_site_recipe
 tags: website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal
 ---
 The Websites page (Sources menu) lists the websites walked by navigation rules, with their last run. Opening a website shows its studio: the rules of the site, the run step by step, what it extracted and the run journal.
@@ -34,6 +34,10 @@ A navigation rule is YAML bound to one website: `name`, `site` (a host or an add
 - **Resume at step N** (player bar, on a finished run, the step shown): plays the rule shown from that step, starting on the page the run was on after the step before. The earlier steps are greyed (taken over from the earlier run) and their extracts kept. Handy after fixing a step deep in a long rule. Refused when the step before had failed.
 - **Next runs** (Rule tab of a saved rule): the deployed flows that play the rule, their cron or interval, and the next times (UTC). A rule has no schedule of its own: to play it every day, add a **Website rule** node (Ingestion section of the flow palette) after an inject node with a cron, pick the rule and fill its parameters, then deploy. Its runs land in the same journal (trigger flow). The extracts of each passing flow run are also documents of the media library (one per rule, parameters and extract, a new version only when the content changed; the PDF itself for a PDF extract), found by the document search. The failed output gets each failure, the broke output only the first failure after a passing run: wire the broke output to a notification to hear once when a site changes.
 - Browsers: Organization page, **Browsers of the navigation rules**: add a CDP browser (address, token, simultaneous connections), make it the default, **Test** it (version with the token, fresh context, public page captured, internal address refused). Without any, rules play on the platform browser.
+
+## With the assistant
+
+The assistant can list and read the rules (list_site_recipes, get_site_recipe), explore a page and try a draft on the server browser (try_site_recipe: `open` then `extract: {all_text: true}` shows the page text; the run lands in the site journal, trigger assistant), read a run (get_site_recipe_run) and propose a rule (propose_site_recipe). It never saves a rule: **Open in the studio** under its answer opens the proposal as an unsaved draft in the studio of the site, where the user plays it and saves it. Website text is data for it, never instructions.
 
 ## Why a step fails
 

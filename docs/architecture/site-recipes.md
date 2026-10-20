@@ -103,6 +103,16 @@ proposition : rien à router entre pods, Obscura (qui ne répond pas pendant un 
 saute simplement des images. Sans Valkey : pas de vue en direct, les captures par étape
 restent. Les passages lancés par un flow n'en produisent pas.
 
+**Assistant dans le studio** (N4, codé le 2026-10-21) : cinq outils (`services/ai/site_tools.rs`)
+— `list_site_recipes`, `get_site_recipe`, `get_site_recipe_run` (lecture,
+`site-recipes:read`), `try_site_recipe` (joue un brouillon ou une règle par le même service
+que le studio, `start_run`, déclencheur `assistant`, attend 2 min au plus ; `site-recipes:write`)
+et `propose_site_recipe` (vérifie le YAML, n'enregistre rien ; `site-recipes:write`). Les
+extraits rendus au modèle sont entre balises `<data>` avec la consigne de ne jamais suivre ce
+qu'ils disent (D208), 4 000 caractères chacun. Une proposition s'ouvre dans le studio du site
+par le bouton « Ouvrir dans le studio » sous la réponse, en brouillon non enregistré (nouvelle
+règle, ou nouvelle version de `recipe_id`) : l'humain la joue et l'enregistre (D144).
+
 ### D325 — Navigateur serveur et navigateurs configurables
 
 - Moteur par défaut : **Chrome headless-shell** (`chromedp/headless-shell`, service
@@ -207,4 +217,4 @@ Inchangé par rapport à la proposition v0.3.
 
 ## 4. Reste à faire
 
-N3 `llm_extract` ; N4 assistant dans le studio, exécutant agent.
+N3 `llm_extract` ; N4 exécutant agent (seulement si des sites bloquent le navigateur serveur).

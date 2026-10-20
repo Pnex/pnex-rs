@@ -4809,6 +4809,15 @@ ai-trace-case-board = tableau : { $hypotheses } hypothèse(s), { $unsourced } af
 ai-trace-action-proposed = « { $action } » proposée sur « { $title } »
 ai-review-action = Vérifier et exécuter « { $action } »
 ai-trace-calendar = { $count } occurrence(s) au calendrier
+ai-trace-site-recipes = { $count } règle(s) de navigation
+ai-trace-site-recipe = règle « { $name } » lue
+ai-trace-site-recipe-run = passage { $status ->
+    [ok] réussi
+    [failed] en échec
+   *[other] toujours en cours
+}, { $steps } étape(s)
+ai-trace-site-recipe-proposed = règle « { $name } » proposée
+ai-open-in-studio = Ouvrir dans le studio
 ai-trace-occurrence-proposed = proposé : { $change ->
     [done] marquer réalisée
     [move] déplacer
