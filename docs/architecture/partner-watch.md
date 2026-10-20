@@ -172,7 +172,7 @@ les valeurs. La fiche objet groupe les propriétés par pack.
 ### D307 — Mission `crawl_site` : découvrir dans un site déclaré
 
 **Amende D254** (« aucune découverte automatique ») : la cible déclarée
-peut être un **site** (`web:site:<origine>`) ; la découverte reste
+peut être un **site** (`web:site:<hôte>`, hôte normalisé comme les règles de navigation ; découverte bornée à l'origine déclarée) ; la découverte reste
 bornée à cette origine. Hors origine, rien n'est suivi.
 
 Deux exécutants, un même résultat (registre D309) :

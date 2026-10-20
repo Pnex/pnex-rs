@@ -42,7 +42,9 @@ Entité `site_recipes` (org, `site` = hôte normalisé, `name` unique par site, 
 - violations `{path, token}` (`steps.3` + `one_of`, `unknown_param:x`,
   `unknown_extract:x`, `syntax`…) sous le code `site-recipe-invalid` ;
 - **normalisation** `site_host` : schéma, port, `www.` et chemin retirés. La cible D307
-  (`site_origin`, `web:site:<origine>`) n'est **pas encore** alignée dessus (reste à faire).
+  d'une mission `crawl_site` et la clé `site` de son registre `site_pages` en dérivent
+  (`web:site:<hôte>`, `browser_agent::site_key`) : un crawl et les règles d'un même site
+  partagent l'hôte. Le crawl reste borné à l'**origine** déclarée (schéma et port compris).
 - Jamais livrée par un pack ; par org PNeX (R1).
 
 ### D324 — Studio `/web-sites/:site` (refondu le 2026-10-20 : identité PNeX)
@@ -188,4 +190,4 @@ Inchangé par rapport à la proposition v0.3.
 ## 4. Reste à faire
 
 N3 `llm_extract` ; N4 assistant dans le studio, vue en direct, « reprendre à l'étape N »,
-exécutant agent ; aligner `site_origin` (D307) sur `site_host`.
+exécutant agent.

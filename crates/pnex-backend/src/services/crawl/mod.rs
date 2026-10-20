@@ -617,7 +617,7 @@ pub async fn crawl(
 ) -> CrawlOutcome {
     let mut out = CrawlOutcome::default();
     let origin = params.url.clone();
-    let site = format!("web:site:{origin}");
+    let site = pnex_core::browser_agent::site_key(&origin);
     let Ok(base) = reqwest::Url::parse(&origin) else {
         out.blocked = Some(err_codes::CRAWL_UNREACHABLE);
         return out;
@@ -805,7 +805,7 @@ pub async fn store_report(
     }
     let relevance =
         Relevance::compile(&params.matchers).map_err(|_| ExtensionError::MissionNotFound)?;
-    let site = format!("web:site:{}", params.url);
+    let site = pnex_core::browser_agent::site_key(&params.url);
     let c = CrawlRef {
         org_id: agent.org_id,
         mission_id: id,
@@ -836,7 +836,7 @@ pub async fn agent_done(
     done: &pnex_core::browser_agent::CrawlDone,
 ) -> Result<(), crate::services::extension::ExtensionError> {
     let (id, params) = agent_crawl(ctx, agent, &done.mission_id).await?;
-    let site = format!("web:site:{}", params.url);
+    let site = pnex_core::browser_agent::site_key(&params.url);
     if done.complete && done.urls.len() <= pnex_core::browser_agent::CRAWL_PAGES_MAX as usize {
         count_misses(&ctx.db, agent.org_id, &site, &done.urls).await?;
     }
