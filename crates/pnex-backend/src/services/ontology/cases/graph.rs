@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use pnex_core::ontology::api::{ExpandFacet, ExpandInput, ExpandResult, LinkView};
 use pnex_core::ontology::{REL_INVOLVES, REL_IN_CASE};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use uuid::Uuid;
 
 use super::super::{links, OntologyError, Result};
@@ -38,6 +38,8 @@ pub async fn relations(
         .filter(resource_edges::Column::SourceObjectId.is_in(ids.clone()))
         .filter(resource_edges::Column::TargetObjectId.is_in(ids))
         .filter(resource_edges::Column::Relation.is_not_in([REL_IN_CASE, REL_INVOLVES]))
+        // Stable under the cap: pages of the same case never overlap or skip.
+        .order_by_asc(resource_edges::Column::Id)
         .limit(RELATIONS_CAP)
         .all(db)
         .await?;

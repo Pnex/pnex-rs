@@ -277,22 +277,49 @@ pub(super) fn without(
     (kept, edges, capped)
 }
 
-/// The first `cap` nodes of a graph, after the family filter: hiding a
-/// family makes room for the nodes the cap left out.
+/// At most `cap` nodes of a graph, after the family filter: hiding a
+/// family makes room for the nodes the cap left out. Nodes touched by an
+/// edge go first, so a big case keeps its links instead of a cloud of
+/// loose members; order is otherwise kept.
 pub(super) fn cut(
-    (mut nodes, edges, capped): (Vec<GNode>, Vec<GEdge>, usize),
+    (nodes, edges, capped): (Vec<GNode>, Vec<GEdge>, usize),
     cap: usize,
 ) -> (Vec<GNode>, Vec<GEdge>, usize) {
     if nodes.len() <= cap {
         return (nodes, edges, capped);
     }
     let dropped = nodes.len() - cap;
-    nodes.truncate(cap);
+    let mut linked = vec![false; nodes.len()];
+    for e in &edges {
+        linked[e.a] = true;
+        linked[e.b] = true;
+    }
+    let mut keep = vec![false; nodes.len()];
+    let order = (0..nodes.len())
+        .filter(|i| linked[*i])
+        .chain((0..nodes.len()).filter(|i| !linked[*i]));
+    for i in order.take(cap) {
+        keep[i] = true;
+    }
+    let mut map = vec![None; nodes.len()];
+    let mut kept = Vec::with_capacity(cap);
+    for (i, n) in nodes.into_iter().enumerate() {
+        if keep[i] {
+            map[i] = Some(kept.len());
+            kept.push(n);
+        }
+    }
     let edges = edges
         .into_iter()
-        .filter(|e| e.a < cap && e.b < cap)
+        .filter_map(|e| {
+            Some(GEdge {
+                a: map[e.a]?,
+                b: map[e.b]?,
+                kind: e.kind,
+            })
+        })
         .collect();
-    (nodes, edges, capped + dropped)
+    (kept, edges, capped + dropped)
 }
 
 /// How a relation draws at the cursor: valid then; not yet (faded: it is
@@ -1580,5 +1607,30 @@ mod tests {
         assert_eq!((ids, capped), (vec!["acme", "globex"], 0));
         let (nodes, _, capped) = cut(build(&w, None, &[], &[], usize::MAX), 2);
         assert_eq!((nodes.len(), capped), (2, 3));
+    }
+
+    #[test]
+    fn linked_nodes_win_the_cap() {
+        let mut w = workspace(Vec::new(), &["p1", "p2", "p3"]);
+        for id in ["acme", "globex"] {
+            w.undated.push(ObjectRef {
+                type_key: "organization".into(),
+                ..obj(id)
+            });
+        }
+        let link = LinkView {
+            id: 1,
+            link_type: "employs".into(),
+            source: obj("globex"),
+            target: obj("p3"),
+            attributes: Default::default(),
+            valid_from: "2025-01-01T00:00:00Z".into(),
+            valid_to: None,
+            source_ref: None,
+        };
+        let (nodes, edges, capped) = cut(build(&w, None, &[link], &[], usize::MAX), 3);
+        let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!((ids, capped), (vec!["p1", "p3", "globex"], 2));
+        assert_eq!((edges.len(), edges[0].a, edges[0].b), (1, 2, 1));
     }
 }
