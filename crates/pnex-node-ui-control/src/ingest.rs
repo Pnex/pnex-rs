@@ -28,6 +28,8 @@ const NAME: &str = "pnex-ingest";
 const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
 /// A download of 500 MB on a slow link, then its journal.
 const TIMEOUT: Duration = Duration::from_secs(35 * 60);
+/// Pause between two calls of a step still running on the server.
+const POLL: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Deserialize)]
 struct Common {
@@ -138,11 +140,22 @@ impl IngestNode {
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default()
         };
-        let req = IngestRequest {
+        let mut req = IngestRequest {
             node: self.node.clone(),
             msg: incoming,
         };
-        let reply = self.call(&req).await;
+        // A long step (an import) answers `pending` until it is done.
+        let reply = loop {
+            let reply = self.call(&req).await;
+            if !reply.pending {
+                break reply;
+            }
+            req.msg = reply.msg;
+            tokio::select! {
+                _ = cancel.cancelled() => return Ok(()),
+                _ = tokio::time::sleep(POLL) => {}
+            }
+        };
         {
             let mut m = msg.write().await;
             let ingest = serde_json::to_value(&reply.msg).unwrap_or(Value::Null);

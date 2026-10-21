@@ -4541,6 +4541,7 @@ err-notify-dynamic-recipients-off = This node reads its recipient from the messa
 err-notify-dynamic-recipients-admin = Only owners and admins let a channel send to recipients read from flow messages.
 err-ontology-node-unknown = This node names a type, a key or a link type that does not exist in the organization's ontology: pick another one in the node.
 err-import-run-stale = This preview is out of date (already applied, or the import or the data changed): preview again.
+err-import-run-interrupted = The import was interrupted (its server stopped): nothing was written, run the flow again.
 err-import-has-errors = Some rows have errors: fix the file and preview it again before applying.
 err-import-suspicious-drop = The source went from { $previous } to { $rows } records: the run was refused and nothing was closed.
 err-import-schema-changed = The source changed shape (missing columns: { $columns }): nothing was written. Check the source, then adjust the column mapping.

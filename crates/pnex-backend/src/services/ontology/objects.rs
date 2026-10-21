@@ -150,10 +150,22 @@ pub async fn find_by_key<C: ConnectionTrait>(
         Value::String(s) => s.clone(),
         other => other.to_string(),
     };
+    // Containment uses the GIN index (`->>` alone scans every object of the
+    // type); the string and the scalar spelling of the text are both tried,
+    // `->>` keeps the match exact.
+    let as_string = serde_json::json!({ key: text });
+    let as_scalar = match serde_json::from_str::<Value>(&text) {
+        Ok(v @ (Value::Number(_) | Value::Bool(_))) => serde_json::json!({ key: v }),
+        _ => as_string.clone(),
+    };
     Ok(objects::Entity::find()
         .filter(objects::Column::OrgId.eq(org_id))
         .filter(objects::Column::TypeKey.eq(type_key))
         .filter(objects::Column::ValidTo.is_null())
+        .filter(Expr::cust_with_values(
+            "(properties @> $1 OR properties @> $2)",
+            [as_string, as_scalar],
+        ))
         .filter(Expr::cust_with_values(
             "properties ->> $1 = $2",
             [key.to_string(), text],
@@ -232,7 +244,17 @@ pub async fn create<C: ConnectionTrait>(
     actor: &Actor,
     input: &ObjectInput,
 ) -> Result<ObjectView> {
-    let s = schema(db, org_id).await?;
+    create_with(db, &schema(db, org_id).await?, org_id, actor, input).await
+}
+
+/// `create` on a schema already loaded (a bulk import loads it once).
+pub async fn create_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    input: &ObjectInput,
+) -> Result<ObjectView> {
     let Some(def) = s.object_type(&input.type_key) else {
         return Err(super::invalid("type_key", FIELD_INVALID));
     };
@@ -259,8 +281,8 @@ pub async fn create<C: ConnectionTrait>(
     }
     .insert(db)
     .await?;
-    let v = view(&row, &s);
-    super::recurrence::refresh_logged(db, org_id, id).await;
+    let v = view(&row, s);
+    super::recurrence::refresh_row_logged(db, &row, def).await;
     changes::submit(Change::object(
         org_id,
         "object.create",
@@ -299,7 +321,18 @@ pub async fn update_in<C: ConnectionTrait>(
     id: Uuid,
     input: &ObjectInput,
 ) -> Result<(ObjectView, Option<String>)> {
-    let s = schema(db, org_id).await?;
+    update_in_with(db, &schema(db, org_id).await?, org_id, actor, id, input).await
+}
+
+/// `update_in` on a schema already loaded (a bulk import loads it once).
+pub async fn update_in_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    id: Uuid,
+    input: &ObjectInput,
+) -> Result<(ObjectView, Option<String>)> {
     let row = find(db, org_id, id).await?;
     if row.valid_to.is_some() {
         return Err(OntologyError::NotFound);
@@ -357,9 +390,10 @@ pub async fn update_in<C: ConnectionTrait>(
             current: row.version,
         });
     }
-    let before = view(&row, &s);
-    let after = view(&find(db, org_id, id).await?, &s);
-    super::recurrence::refresh_logged(db, org_id, id).await;
+    let before = view(&row, s);
+    let updated = find(db, org_id, id).await?;
+    let after = view(&updated, s);
+    super::recurrence::refresh_row_logged(db, &updated, def).await;
     changes::submit(Change::object(
         org_id,
         "object.update",

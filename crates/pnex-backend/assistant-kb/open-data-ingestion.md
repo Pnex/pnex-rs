@@ -4,7 +4,7 @@ title: Open-data ingestion — a visible chain of flow steps
 kind: howto
 pages: /flows
 nodes: ingest, inject
-err_codes: ingest-staging-quota, ingest-staging-unavailable, ingest-no-resource, ingest-entry-missing, ingest-archive-unsupported, ingest-unsafe-path, ingest-suspicious-closures, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable
+err_codes: ingest-staging-quota, ingest-staging-unavailable, ingest-no-resource, ingest-entry-missing, ingest-archive-unsupported, ingest-unsafe-path, ingest-suspicious-closures, import-run-interrupted, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable
 tags: ingestion, open data, données ouvertes, data.gouv, france compétences, télécharger, download, zip, archive, extraire, csv, filtre, filter, colonnes, columns, staging, zone de transit, inchangé, unchanged, import, rncp, rs, certificateurs, partenaires, habilitation, compétences, competencies, blocs, référentiel, programme, module, xml
 ---
 A flow can fetch an open-data file by itself every night and feed the ontology, one **visible step per node** (palette section *Data ingestion*). Each step shows, in its panel under **Last runs**, what it read and what it produced: the archive's table of contents, the columns with their fill rate and examples, the rows kept by a filter, the counters of the import.
@@ -29,6 +29,8 @@ The same night it reads the **content of the sheets**: the skill blocks of your 
 - *ingest-no-resource*: no resource of the dataset matches the pattern — open the source node and check the pattern against the dataset page.
 - *ingest-entry-missing*: no extracted file matches the *File read* pattern of the step — compare it with the table of contents shown by the extraction node.
 - *import-schema-changed* on an inspection: the source renamed a column — the inspection panel lists the columns it found; update the expected columns and the import's column mapping.
+- A long import (thousands of rows, or a company register enrichment) keeps its node busy until it ends, minutes or hours: the node status stays on that step meanwhile, and the Imports tab shows the run with its record count.
+- *import-run-interrupted*: the server running the import stopped (restart, update); nothing of that run was written. Run the flow again from its trigger.
 - *ingest-suspicious-closures*: the source suddenly lost much of what the import holds — check the file in the inspection panel; if the drop is real, raise the allowed closures on the import node for one run.
 - *ingest-staging-quota*: the organization's staging area is full (2 GB) — add a Cleanup node at the end of the chain; files older than 7 days are purged anyway.
 - *ingest-archive-unsupported* or *ingest-unsafe-path*: the file is not an archive that can be read, or it holds a path leaving its folder — it is refused as a whole.
