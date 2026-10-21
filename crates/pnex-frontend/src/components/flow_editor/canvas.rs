@@ -306,15 +306,28 @@ pub(crate) fn Canvas(
                     }
                 }
             }
-            button {
-                class: "{crate::components::ui::BTN_SECONDARY_SM} absolute bottom-3 left-3 z-10",
-                r#type: "button",
-                title: t!("flows-fit-view-help"),
-                onclick: move |_| {
-                    fit_to_nodes(cx);
-                },
-                crate::components::icons::Maximize { class: "h-4 w-4" }
-                {t!("flows-fit-view")}
+            div { class: "absolute bottom-3 left-3 z-10 flex gap-2",
+                button {
+                    class: crate::components::ui::BTN_SECONDARY_SM,
+                    r#type: "button",
+                    title: t!("flows-fit-view-help"),
+                    onclick: move |_| {
+                        fit_to_nodes(cx);
+                    },
+                    crate::components::icons::Maximize { class: "h-4 w-4" }
+                    {t!("flows-fit-view")}
+                }
+                button {
+                    class: crate::components::ui::BTN_SECONDARY_SM,
+                    r#type: "button",
+                    title: t!("flows-auto-layout-help"),
+                    onclick: move |_| {
+                        cx.update_graph(state::auto_layout);
+                        fit_to_nodes(cx);
+                    },
+                    crate::components::icons::Workflow { class: "h-4 w-4" }
+                    {t!("flows-auto-layout")}
+                }
             }
         }
     }

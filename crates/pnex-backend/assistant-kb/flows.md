@@ -14,6 +14,7 @@ The Flows page (Automation menu) lists the organization's flows: visual pipeline
 
 - **New flow** creates and opens a flow; **Open** edits one, **Delete** removes it with all its versions. Filter by status (Draft, Deployed, Stopped, Error) or by label (**Filter by label**, e.g. `site:serre`).
 - In the editor, click **+** (Add a node) to pick a node from the palette (Triggers, Devices, Data & math, Code, Storage & series, AI & predictive, Integrations, Debug…), drag from an output port to the next node to wire it, and configure the selected node in the inspector.
+- **Arrange** (bottom left of the canvas) lays the nodes out automatically: one column per stage, branches stacked, and long chains wrapped onto several rows so the flow fits the screen; **Fit** frames every node. The new layout is kept only once saved.
 - **Save** stores a new version. **Deploy** runs the saved version; the editor proposes "Deploy vN?" right after a save.
 - **Stop** pauses a deployed flow, **Start** resumes its last deployed version, **Restart** reloads the engine as-is and clears what the nodes remember (notification anti-spam, values waiting for a trigger); deploying the same version again keeps it.
 - **History** lists versions: **Load** one into the editor, or **Deploy** an earlier version (rollback, no new version).

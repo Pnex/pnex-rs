@@ -955,3 +955,57 @@ fn make_node_range_upsert_guides_stream_pick() {
         "{codes:?}"
     );
 }
+
+#[test]
+fn auto_layout_wraps_long_chains_and_never_overlaps() {
+    // A 20-node chain plus a branch off n1: one line would be ~5000 px wide.
+    let mut graph = FlowGraph {
+        nodes: (1..=21)
+            .map(|i| {
+                make_node(
+                    &format!("n{i}"),
+                    PaletteKind::Debug,
+                    Position { x: 0.0, y: 0.0 },
+                )
+            })
+            .collect(),
+    };
+    for i in 1..20 {
+        add_target(&mut graph, &format!("n{i}"), 0, &format!("n{}", i + 1));
+    }
+    add_target(&mut graph, "n1", 0, "n21");
+    auto_layout(&mut graph);
+
+    let pos = |id: &str| {
+        graph
+            .nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap()
+            .position
+            .unwrap()
+    };
+    // Stages flow left to right inside a band, and the chain wraps to a new band.
+    assert!(pos("n2").x > pos("n1").x);
+    assert!(
+        pos("n20").y > pos("n1").y,
+        "long chain must wrap onto several bands"
+    );
+    // The branch shares n2's column, on its own row.
+    assert_eq!(pos("n21").x, pos("n2").x);
+    assert_ne!(pos("n21").y, pos("n2").y);
+    for a in &graph.nodes {
+        for b in &graph.nodes {
+            let (pa, pb) = (a.position.unwrap(), b.position.unwrap());
+            if a.id != b.id {
+                assert!(
+                    (pa.x - pb.x).abs() >= crate::components::flow_editor::geometry::NODE_W
+                        || (pa.y - pb.y).abs() >= crate::components::flow_editor::geometry::NODE_H,
+                    "{} overlaps {}",
+                    a.id,
+                    b.id
+                );
+            }
+        }
+    }
+}
