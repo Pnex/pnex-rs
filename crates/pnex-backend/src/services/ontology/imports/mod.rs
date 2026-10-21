@@ -1237,13 +1237,15 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
 }
 
 async fn sweep(db: &DatabaseConnection) -> Result<()> {
-    // Runs lost with their pod.
+    // Runs lost with their pod. An application still writing holds the
+    // org's import lock (it dies with its connection): such a run is not lost.
     db.execute_raw(stmt(
         &format!(
             "UPDATE object_import_runs SET state = 'failed', finished_at = now() \
-             WHERE state = 'running' AND started_at < now() - interval '{RUN_LOST_AFTER_MIN} minutes'"
+             WHERE state = 'running' AND started_at < now() - interval '{RUN_LOST_AFTER_MIN} minutes' \
+             AND pg_try_advisory_xact_lock($1, (org_id % 2147483647)::int)"
         ),
-        vec![],
+        vec![crate::services::db_lock::ns::ONTOLOGY_IMPORT.into()],
     ))
     .await?;
     let due = ImportRow::find_by_statement(stmt(
@@ -1316,6 +1318,32 @@ pub async fn install_from_pack(
 mod tests {
     use super::*;
     use pnex_core::ontology::import::ImportCounts;
+
+    /// The sweep's SQL key matches the lock an application holds: a run
+    /// still writing is not swept as lost.
+    #[tokio::test]
+    async fn sweep_sees_the_lock_of_an_application_in_progress() {
+        use crate::services::db_lock::{migrated_test_db, ns, TenantLock};
+        let db = migrated_test_db().await;
+        let org = 2_147_483_647 + 42; // folded like key32
+        let try_lock = || async {
+            db.query_one_raw(stmt(
+                "SELECT pg_try_advisory_xact_lock($1, ($2 % 2147483647)::int) AS ok",
+                vec![ns::ONTOLOGY_IMPORT.into(), org.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<bool>("", "ok")
+            .unwrap()
+        };
+        let lock = TenantLock::acquire(&db, ns::ONTOLOGY_IMPORT, org, Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert!(!try_lock().await, "held by the application");
+        lock.release().await;
+        assert!(try_lock().await, "free once it ends");
+    }
 
     #[test]
     fn counts_round_trip_through_json() {

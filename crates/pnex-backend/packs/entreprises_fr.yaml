@@ -1,26 +1,23 @@
-# Reference pack "French companies" (partner-watch.md D304–D306): the
-# legal unit is the `organization` of the investigation pack, extended with
-# its SIRENE fields (D306) so that it keeps `owns`, `employs`, `member_of`
-# and the case tooling; an establishment is a `map_pin` (it has an address,
-# hence a place on the map and in Sites) tied to its legal unit by
-# `etablissement_de`; officers are `person` or `organization` (a holding
-# chairing a company) linked by the temporal `dirige` (mandate dates =
-# link validity).
-# Personal data is minimized (D304): officers carry their name, the role on
-# the link and a register key (name, first names, birth month as the
-# register publishes it) that merges the same officer across companies;
-# no full birth date, no personal address.
+# Country pack "French companies" (partner-watch.md D304–D306,
+# account-mapping.md D343): the French specifics on top of the worldwide
+# `entreprises` pack. A legal unit carries its SIREN and its French codes,
+# an establishment its SIRET; the shared fields (country, NACE activity,
+# headcount range, status, dates) are filled from them by the import.
+# The NACE class is the NAF code without its letter (`62.01Z` → `62.01`);
+# the headcount range comes from the INSEE band (`NN` = not published).
+# Since 1.1.0 an establishment carries its own headcount (the register
+# publishes it per SIRET): targeting works at site level.
+# Since 2.0.0 the shared fields, `etablissement_de`, `dirige` and the
+# `groupe` hierarchy belong to `entreprises` (handed over on upgrade).
 # The company register import queries each known SIREN (weekly once a
 # recurrence is set on it): legal unit fields, head office and matching
 # establishments on the map, officers and holdings. Only known legal units
 # are enriched; a mandate that ended is not closed by it (incremental).
-# Hierarchy (D305): a tree computed on links (several parents allowed),
-# never containment.
 key: entreprises_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "1.0.0"
-requires: [investigation]
+version: "2.0.0"
+requires: [entreprises]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
 extends:
@@ -29,66 +26,15 @@ extends:
       - { key: siren, name: SIREN, names: {fr: "SIREN"}, kind: text, max_len: 9, unique: true }
       - { key: forme_juridique, name: Legal form, names: {fr: "Forme juridique"}, kind: text, max_len: 255 }
       - { key: naf, name: NAF code, names: {fr: "Code NAF"}, kind: text, max_len: 8, indexed: true }
-      - key: etat_administratif
-        name: Administrative status
-        names: {fr: "État administratif"}
-        kind: enum
-        values: [actif, cesse]
-        indexed: true
-      - { key: date_creation, name: Created on, names: {fr: "Créée le"}, kind: date }
-      - { key: date_cessation, name: Ceased on, names: {fr: "Cessée le"}, kind: date }
       - { key: effectif_tranche, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
       - { key: nda, name: Training declaration number, names: {fr: "Numéro de déclaration d'activité"}, kind: text, max_len: 11, indexed: true }
       - { key: qualiopi, name: Qualiopi, names: {fr: "Qualiopi"}, kind: bool }
       - { key: qualiopi_categories, name: Qualiopi categories, names: {fr: "Catégories Qualiopi"}, kind: text, max_len: 255 }
       - { key: qualiopi_maj, name: Qualiopi data of, names: {fr: "Donnée Qualiopi du"}, kind: date }
-  - type: person
-    properties:
-      - { key: identifiant_registre, name: Register key, names: {fr: "Clé au registre"}, kind: text, max_len: 300, unique: true }
   - type: map_pin
     properties:
       - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14, unique: true }
-      - { key: siege, name: Head office, names: {fr: "Siège"}, kind: bool }
-      - key: etat_administratif
-        name: Administrative status
-        names: {fr: "État administratif"}
-        kind: enum
-        values: [actif, ferme]
-        indexed: true
-      - { key: enseigne, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
-link_types:
-  - key: etablissement_de
-    name: is an establishment of
-    names: {fr: "est un établissement de"}
-    inverse_name: has as establishment
-    inverse_names: {fr: "a pour établissement"}
-    from_types: [map_pin]
-    to_types: [organization]
-    one_target: true
-  - key: dirige
-    name: directs
-    names: {fr: "dirige"}
-    inverse_name: is directed by
-    inverse_names: {fr: "est dirigée par"}
-    from_types: [person, organization]
-    to_types: [organization]
-    attributes:
-      - key: role
-        name: Role
-        names: {fr: "Rôle"}
-        kind: enum
-        values: [president, directeur_general, dg_delegue, gerant, administrateur, membre_directoire, autre]
-      - { key: qualite, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
-      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
-      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
-hierarchies:
-  - key: groupe
-    name: Group
-    names: {fr: "Groupe"}
-    steps:
-      - { link: owns }
-      - { link: etablissement_de, inverse: true }
-      - { link: dirige, inverse: true }
+      - { key: effectif_tranche, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
 imports:
   - name: Company register (SIRENE)
     source: api
@@ -116,6 +62,10 @@ imports:
             date_creation: date_creation
             date_cessation: date_fermeture
             effectif_tranche: tranche_effectif_salarie
+            effectif_min: { from: tranche_effectif_salarie, convert: [&effectif_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
+            effectif_max: { from: tranche_effectif_salarie, convert: [&effectif_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
+            pays: { value: FR }
+            code_activite: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
         - as: siege
           type: map_pin
@@ -126,6 +76,9 @@ imports:
             siret: siege.siret
             siege: { value: true }
             etat_administratif: { from: siege.etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+            effectif_tranche: siege.tranche_effectif_salarie
+            effectif_min: { from: siege.tranche_effectif_salarie, convert: [*effectif_min] }
+            effectif_max: { from: siege.tranche_effectif_salarie, convert: [*effectif_max] }
         - as: etab
           type: map_pin
           key: siret
@@ -136,6 +89,9 @@ imports:
             siret: siret
             siege: est_siege
             etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+            effectif_tranche: tranche_effectif_salarie
+            effectif_min: { from: tranche_effectif_salarie, convert: [*effectif_min] }
+            effectif_max: { from: tranche_effectif_salarie, convert: [*effectif_max] }
         - as: personne
           type: person
           key: identifiant_registre

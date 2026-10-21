@@ -7,6 +7,7 @@
 pub mod imports;
 pub mod object;
 pub mod packs;
+pub mod profile_capture;
 pub mod schema;
 pub mod type_editor;
 

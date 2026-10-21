@@ -120,6 +120,8 @@ Un run `snapshot` refusé ne ferme jamais rien.
 
 ### D304 — Pack `entreprises_fr` : réutiliser, pas créer
 
+> **Amendé 2026-10-21 (D343, `account-mapping.md`)** : les champs communs, `etablissement_de`, `dirige` et la hiérarchie `groupe` passent au pack mondial `entreprises` ; `entreprises_fr` 2.0.0 en devient le pack France.
+
 Pack générique (requires `investigation`) :
 
 - unité légale = `organization` étendue (D306) : `siren` (unique),

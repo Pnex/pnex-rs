@@ -500,6 +500,7 @@ ne remplit jamais de formulaire de connexion.
 | L5 | portage Firefox (fond en page, fenêtre dédiée) | mêmes e2e sous Firefox |
 | L6 | YouTube : vidéos + shorts, historique, sous-titres (D282–D284) | une chaîne suivie, son historique au registre, texte des sous-titres |
 | L8 (proposé, `partner-watch.md`) | Mission `crawl_site` (D307), registre `site_pages` (D309), tâche `capture_proof` : capture pleine page + HTML nettoyé + manifeste chaîné (D308, D310) | un site parcouru, ses pages pertinentes prouvées et datées |
+| L9 (livré 2026-10-21, `account-mapping.md` D333) | Mission `capture_profile` : un profil de réseau social (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) capturé une fois, demandé depuis la fiche d’une `person`, plafond 30/jour/réseau, refus `ext-target-not-profile` des pages de découverte, opposition D341 | le profil d’une personne devient un document et un compte de cette personne |
 | L7 (plus tard) | Mission `search` : recherche sur une plateforme (mots-clés, hashtag) ; chaque résultat passe par le registre (D259) : déjà connu → ignoré, nouveau seulement relevé, collecté selon la mission. Objectif : ne pas noyer l'org sous ce qu'elle a déjà | une recherche relancée ne relève que les nouveautés |
 
 **Avancement.** L0 se découpe en L0a (serveur), L0b (extension wasm) et

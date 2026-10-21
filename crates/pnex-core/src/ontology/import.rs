@@ -1312,10 +1312,10 @@ fn plan_object(
         None => None,
     }
     .map(|t| {
-        t.trim()
-            .chars()
-            .take(super::api::TITLE_MAX)
-            .collect::<String>()
+        // Trimmed again after the cut: the stored title is trimmed, so a
+        // space at the cut would show as a change on every re-import.
+        let cut: String = t.trim().chars().take(super::api::TITLE_MAX).collect();
+        cut.trim_end().to_string()
     })
     .filter(|t| !t.is_empty());
     let titled = title.is_some();
@@ -1818,6 +1818,10 @@ mod tests {
         assert_eq!(p.objects.len(), 4);
         assert_eq!(p.objects[0].key, "123456789");
         assert_eq!(p.objects[0].title, "ACME");
+        let long =
+            json!({"siret": "123456789", "raison_sociale": format!("{} x", "a".repeat(254))});
+        let t = &plan_row(&mapping(), &s, 3, &long).unwrap().objects[0].title;
+        assert_eq!(t.chars().count(), 254, "a space at the cut is trimmed");
         assert!(!p.objects[0].properties.contains_key("nda"));
         assert_eq!(p.objects[1].key, "RNCP12345");
         assert!(!p.objects[1].create);

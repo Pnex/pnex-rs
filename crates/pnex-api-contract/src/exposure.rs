@@ -233,6 +233,8 @@ pub const EXPOSED: &[&str] = &[
     "extension_proofs_list",
     "extension_proofs_get",
     "extension_proofs_verify",
+    "extension_opposition_get",
+    "extension_opposition_create",
     "ontology_imports_list",
     "ontology_imports_get",
     "ontology_imports_create",
@@ -491,6 +493,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         &[
             "extension_missions_create",
             "extension_missions_update",
+            "extension_profile_captures_create",
             "notify_channels_test",
             "notify_channels_test_draft",
             "site_recipes_runs_create",

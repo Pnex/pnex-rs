@@ -2662,6 +2662,25 @@
         ],
         "type": "string"
       },
+      "CaptureProfileParams": {
+        "description": "`capture_profile` (D333): one capture of one person's profile page, in\nthe agent's signed-in session. Asked by a human from the person's page,\ncreated by the server only.",
+        "properties": {
+          "person_id": {
+            "description": "The `person` the profile belongs to.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "url": {
+            "description": "Canonical profile address ([`profile_of`]).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "person_id"
+        ],
+        "type": "object"
+      },
       "CaptureProofParams": {
         "description": "`capture_proof` (D308, D310): capture one page as a proof.",
         "properties": {
@@ -10986,6 +11005,26 @@
               "kind"
             ],
             "type": "object"
+          },
+          {
+            "description": "Created by the server only (D333): one capture of one profile.",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "capture_profile"
+                ],
+                "type": "string"
+              },
+              "params": {
+                "$ref": "#/components/schemas/CaptureProfileParams",
+                "description": "Created by the server only (D333): one capture of one profile."
+              }
+            },
+            "required": [
+              "params",
+              "kind"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -12243,6 +12282,18 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "OppositionView": {
+        "description": "Whether a person objected to prospecting (D341).",
+        "properties": {
+          "opposed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "opposed"
+        ],
         "type": "object"
       },
       "OrgCreated": {
@@ -17343,6 +17394,19 @@
         },
         "required": [
           "body"
+        ],
+        "type": "object"
+      },
+      "ProfileCaptureRequest": {
+        "description": "Body of a profile capture request (D333).",
+        "properties": {
+          "url": {
+            "description": "Address of the profile page, as pasted.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
         ],
         "type": "object"
       },
@@ -38802,6 +38866,271 @@
           }
         ],
         "summary": "List the pages of a crawled site",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/people/{id}/opposition": {
+      "get": {
+        "description": "Whether this person objected to prospecting (D341): profile captures are then refused. Any member.",
+        "operationId": "extension_opposition_get",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OppositionView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Read a person's prospecting objection",
+        "tags": [
+          "extension"
+        ]
+      },
+      "post": {
+        "description": "Records that this person objected to prospecting (D341): the person and its profile addresses enter the org's opposition list, which outlives the person; pending and future profile captures are refused. Requires owner, admin or member role.",
+        "operationId": "extension_opposition_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OppositionView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Record a person's prospecting objection",
+        "tags": [
+          "extension"
+        ]
+      }
+    },
+    "/api/v1/extension/people/{id}/profile-captures": {
+      "post": {
+        "description": "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): a browser agent of the org opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+        "operationId": "extension_profile_captures_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Mission"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ext-target-not-profile`: not one person's profile page; `field-invalid` (`url`): not a known network"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `extension:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no such person"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`prospection-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Capture a person's profile page",
         "tags": [
           "extension"
         ]

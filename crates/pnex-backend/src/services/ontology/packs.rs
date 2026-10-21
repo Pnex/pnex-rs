@@ -29,8 +29,10 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/maintenance.yaml"),
     include_str!("../../../packs/investigation.yaml"),
     include_str!("../../../packs/media_coverage.yaml"),
+    include_str!("../../../packs/entreprises.yaml"),
     include_str!("../../../packs/entreprises_fr.yaml"),
     include_str!("../../../packs/quali_watch.yaml"),
+    include_str!("../../../packs/prospection_b2b.yaml"),
 ];
 
 pub fn shipped() -> Vec<Pack> {
@@ -342,6 +344,16 @@ pub fn requires_closure(pack: &Pack) -> Vec<String> {
     keys
 }
 
+/// Whether `owner` gives a key up to `taker` on upgrade: the shipped
+/// `owner` now builds on `taker`, which took the key over (account-mapping.md
+/// D343: `entreprises_fr` handing its shared fields to `entreprises`).
+fn hands_over(owner: &str, taker: &str) -> bool {
+    shipped()
+        .iter()
+        .find(|p| p.key == owner)
+        .is_some_and(|p| requires_closure(p).iter().any(|k| k == taker))
+}
+
 /// The properties of the type extended by `pack.extends[i]` once extended,
 /// or the field error refusing the extension.
 fn extended_properties(
@@ -362,7 +374,11 @@ fn extended_properties(
     }
     pnex_core::ontology::schema::check_defs(&e.properties, &at("properties"), &|k| s.knows(k))?;
     let mut props = target.properties.clone();
-    props.retain(|p| p.pack.as_deref() != Some(pack.key.as_str()));
+    props.retain(|p| match p.pack.as_deref() {
+        Some(o) if o == pack.key => false,
+        Some(o) => !(hands_over(o, &pack.key) && e.properties.iter().any(|q| q.key == p.key)),
+        None => true,
+    });
     for (j, p) in e.properties.iter().enumerate() {
         if p.required {
             return Err(invalid(
@@ -544,7 +560,7 @@ async fn install_link(
         None => {
             link_types::create(db, org_id, l, Some(pack_key)).await?;
         }
-        Some((local, v, Some(pk))) if pk == pack_key => {
+        Some((local, v, Some(pk))) if pk == pack_key || hands_over(pk, pack_key) => {
             link_types::update(
                 db,
                 org_id,
@@ -555,6 +571,9 @@ async fn install_link(
                 },
             )
             .await?;
+            if pk != pack_key {
+                link_types::set_pack(db, org_id, &l.key, pack_key).await?;
+            }
         }
         Some(_) => return Err(OntologyError::KeyTaken),
     }

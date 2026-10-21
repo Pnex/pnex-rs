@@ -114,6 +114,22 @@ pub async fn update(
     })
 }
 
+/// Moves a link type to another pack (a key handed over on upgrade).
+pub async fn set_pack(
+    db: &DatabaseConnection,
+    org_id: i64,
+    key: &str,
+    pack_key: &str,
+) -> Result<()> {
+    link_types::Entity::update_many()
+        .col_expr(link_types::Column::PackKey, Expr::value(pack_key))
+        .filter(link_types::Column::OrgId.eq(org_id))
+        .filter(link_types::Column::Key.eq(key))
+        .exec(db)
+        .await?;
+    Ok(())
+}
+
 pub async fn delete(db: &DatabaseConnection, org_id: i64, key: &str) -> Result<()> {
     if pnex_core::ontology::is_system_key(key) {
         return Err(OntologyError::SystemReadOnly);

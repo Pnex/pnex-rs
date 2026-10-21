@@ -421,6 +421,15 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("extension_missions_get", Access::Org("extension:read")),
     ("extension_missions_list", Access::Org("extension:read")),
     ("extension_missions_update", Access::Org("extension:write")),
+    (
+        "extension_opposition_create",
+        Access::Org("extension:write"),
+    ),
+    ("extension_opposition_get", Access::Org("extension:read")),
+    (
+        "extension_profile_captures_create",
+        Access::Org("extension:write"),
+    ),
     ("extension_proofs_get", Access::Org("extension:read")),
     ("extension_proofs_list", Access::Org("extension:read")),
     ("extension_proofs_verify", Access::Org("extension:read")),

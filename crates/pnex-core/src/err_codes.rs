@@ -798,6 +798,14 @@ pub const EXT_REGISTRY_FULL: &str = "ext-registry-full";
 /// Agent state: the site is not allowed yet in the extension (optional host
 /// permission, granted by a click in its options page).
 pub const EXT_PERMISSION_MISSING: &str = "ext-permission-missing";
+/// The address is not one person's profile page on a known social network
+/// (search, relations, "people also viewed"…): never captured (D333).
+pub const EXT_TARGET_NOT_PROFILE: &str = "ext-target-not-profile";
+/// The org captured as many profiles of this network today as allowed
+/// (D333); args: `max`.
+pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
+/// The person objected to prospecting: no capture, no re-creation (D341).
+pub const PROSPECTION_OPPOSED: &str = "prospection-opposed";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -827,6 +835,9 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_ACTION_UNKNOWN,
     MEDIA_DIFF_UNSUPPORTED,
     EXT_NO_AGENT,
+    EXT_TARGET_NOT_PROFILE,
+    EXT_PROFILE_DAILY_CAP,
+    PROSPECTION_OPPOSED,
     CRAWL_BLOCKED,
     CRAWL_ROBOTS_DISALLOWED,
     CRAWL_UNREACHABLE,

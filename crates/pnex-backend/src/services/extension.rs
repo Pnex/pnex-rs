@@ -57,6 +57,17 @@ pub enum ExtensionError {
     /// Org cap on agents or missions reached.
     #[error("limit reached")]
     LimitReached { max: i64 },
+    /// Not one person's profile page (D333).
+    #[error("not a profile")]
+    NotProfile,
+    /// Daily profile captures of a network reached (D333).
+    #[error("profile daily cap")]
+    ProfileDailyCap { max: i64 },
+    /// The person objected to prospecting (D341).
+    #[error("prospection opposed")]
+    Opposed,
+    #[error("person not found")]
+    PersonNotFound,
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -828,9 +839,14 @@ pub async fn store_page(
 ) -> Result<ba::PageStored, ExtensionError> {
     use crate::models::_entities::media_assets;
     let (id, mission, spec) = own_mission(&ctx.db, agent, &snapshot.mission_id).await?;
-    if !matches!(spec, MissionSpec::CollectPage(_)) {
-        return Err(ExtensionError::MissionNotFound);
-    }
+    let profile = match &spec {
+        MissionSpec::CollectPage(_) => None,
+        MissionSpec::CaptureProfile(p) => {
+            crate::services::profiles::check_still_allowed(&ctx.db, agent.org_id, id, p).await?;
+            Some(p.clone())
+        }
+        _ => return Err(ExtensionError::MissionNotFound),
+    };
     if snapshot.text.trim().is_empty() {
         return Err(ExtensionError::Invalid {
             field: "text".into(),
@@ -883,6 +899,8 @@ pub async fn store_page(
                     "source": "browser_agent",
                     "mission_id": id.to_string(),
                     "source_url": snapshot.url,
+                    // Read by the 30-day purge of profile texts (D333).
+                    "profile_person_id": profile.as_ref().map(|p| p.person_id.clone()),
                 }))),
                 ..Default::default()
             }
@@ -920,6 +938,9 @@ pub async fn store_page(
             ],
         ))
         .await?;
+    if let Some(p) = &profile {
+        crate::services::profiles::captured(ctx, agent, id, p, asset.id).await?;
+    }
     Ok(ba::PageStored {
         asset_id: asset.id.to_string(),
         version: version.version_number,
@@ -1316,7 +1337,7 @@ async fn part_asset(
 /// `published_by` from the media to the account's person or organization
 /// (D278): read by the review's expected participants (D274). An org
 /// without that link type (pack absent) or an object gone: no link.
-async fn link_publisher(
+pub(crate) async fn link_publisher(
     ctx: &loco_rs::app::AppContext,
     agent: &AgentAuth,
     asset_id: Uuid,

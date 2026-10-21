@@ -64,6 +64,8 @@ pub fn routes() -> Routes {
         .add("/proofs/verify", get(verify_proofs))
         .add("/proofs/{id}", get(proof))
         .add("/videos", get(videos))
+        .add("/people/{id}/profile-captures", post(capture_profile))
+        .add("/people/{id}/opposition", get(opposition).post(oppose))
         .add("/missions", get(missions).post(create_mission))
         .add(
             "/missions/{id}",
@@ -96,7 +98,10 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         mission,
         create_mission,
         update_mission,
-        remove_mission
+        remove_mission,
+        capture_profile,
+        opposition,
+        oppose
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
@@ -150,6 +155,27 @@ fn extension_error(e: ExtensionError) -> Result<Response> {
             "The organization reached its limit of browser agents or missions.",
             Some(serde_json::json!({ "max": max.to_string() })),
         )),
+        ExtensionError::NotProfile => coded(
+            StatusCode::BAD_REQUEST,
+            err_codes::EXT_TARGET_NOT_PROFILE,
+            "Not one person's profile page on a known social network.",
+        ),
+        ExtensionError::ProfileDailyCap { max } => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::EXT_PROFILE_DAILY_CAP,
+            "The organization captured as many profiles of this network today as allowed.",
+            Some(serde_json::json!({ "max": max.to_string() })),
+        )),
+        ExtensionError::Opposed => coded(
+            StatusCode::CONFLICT,
+            err_codes::PROSPECTION_OPPOSED,
+            "This person objected to prospecting: no capture.",
+        ),
+        ExtensionError::PersonNotFound => coded(
+            StatusCode::NOT_FOUND,
+            err_codes::ONTOLOGY_NOT_FOUND,
+            "Person not found.",
+        ),
         ExtensionError::Db(e) => {
             tracing::error!(error = %e, "browser agent database error");
             Err(Error::InternalServerError)
@@ -1211,5 +1237,94 @@ mod tests {
         std::io::Read::read_to_string(&mut zip.by_name("server.json").unwrap(), &mut server)
             .unwrap();
         assert_eq!(server, "{\"server\":\"https://p.io\"}");
+    }
+}
+
+/// Whether a person objected to prospecting (D341).
+#[derive(serde::Serialize, utoipa::ToSchema)]
+struct OppositionView {
+    opposed: bool,
+}
+
+/// `POST /api/v1/extension/people/{id}/profile-captures` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/people/{id}/profile-captures",
+    tag = "extension",
+    operation_id = "extension_profile_captures_create",
+    summary = "Capture a person's profile page",
+    description = "Asks one capture of one profile page (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) of this person (D333): a browser agent of the org opens it once in its signed-in session; the page text becomes a document linked to the person, kept 30 days, and the address an account identifier of the person. Search, relation and suggestion pages are refused. At most 30 captures per network per day. An open capture of the same profile is returned as is. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    request_body = pnex_core::browser_agent::ProfileCaptureRequest,
+    responses(
+        (status = 201, body = pnex_core::browser_agent::Mission),
+        (status = 400, description = "`ext-target-not-profile`: not one person's profile page; `field-invalid` (`url`): not a known network", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`prospection-opposed`: the person objected; `ext-profile-daily-cap` (`args.max`): daily captures of this network reached", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn capture_profile(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+    Json(input): Json<pnex_core::browser_agent::ProfileCaptureRequest>,
+) -> Result<Response> {
+    use crate::services::profiles;
+    match profiles::request(&ctx.db, org.org.id, org.auth.user.id, id, &input.url).await {
+        Ok(m) => Ok((StatusCode::CREATED, format::json(m)).into_response()),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `GET /api/v1/extension/people/{id}/opposition` — every member.
+#[utoipa::path(
+    get,
+    path = "/api/v1/extension/people/{id}/opposition",
+    tag = "extension",
+    operation_id = "extension_opposition_get",
+    summary = "Read a person's prospecting objection",
+    description = "Whether this person objected to prospecting (D341): profile captures are then refused. Any member.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    responses(
+        (status = 200, body = OppositionView),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn opposition(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match crate::services::profiles::opposed(&ctx.db, org.org.id, id).await {
+        Ok(opposed) => format::json(OppositionView { opposed }),
+        Err(e) => extension_error(e),
+    }
+}
+
+/// `POST /api/v1/extension/people/{id}/opposition` — `can_write`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/extension/people/{id}/opposition",
+    tag = "extension",
+    operation_id = "extension_opposition_create",
+    summary = "Record a person's prospecting objection",
+    description = "Records that this person objected to prospecting (D341): the person and its profile addresses enter the org's opposition list, which outlives the person; pending and future profile captures are refused. Requires owner, admin or member role.",
+    params(("id" = String, Path, format = "uuid", description = "Person object id (UUID)")),
+    responses(
+        (status = 200, body = OppositionView),
+        (status = 404, description = "`ontology-not-found`: no such person", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn oppose(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<Uuid>,
+) -> Result<Response> {
+    match crate::services::profiles::oppose(&ctx.db, org.org.id, org.auth.user.id, id).await {
+        Ok(()) => format::json(OppositionView { opposed: true }),
+        Err(e) => extension_error(e),
     }
 }

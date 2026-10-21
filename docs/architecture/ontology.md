@@ -356,6 +356,16 @@ pack**, jamais dans le noyau.
 > mappings d'import (D301), des fonctions et des modèles de flows non
 > déployés (D316).
 
+> **2026-10-21 (`account-mapping.md`, D329)** : pack `prospection_b2b`
+> (`requires: [entreprises_fr]`) : statut commercial des comptes et des
+> sites, persona, liens `recommande`, `suit_le_compte`, `filiale_de`,
+> `utilise_solution`, hiérarchie `groupe_commercial`. Aucun type nouveau.
+
+> **2026-10-21 (D343)** : pack mondial `entreprises` (pays, LEI, NACE,
+> effectif chiffré, `etablissement_de`, `dirige`, hiérarchie `groupe`) ;
+> `entreprises_fr` 2.0.0 en devient le pack France. Une clé passe d'un pack
+> au pack dont il dépend désormais, à la mise à jour.
+
 ### D191 — Migration 0.1 → 0.2 : non destructive
 
 La 0.1 est publiée (2026-09-27) : contrairement à D42 (« app non prod,

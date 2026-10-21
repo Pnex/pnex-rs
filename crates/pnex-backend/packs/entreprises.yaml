@@ -1,0 +1,89 @@
+# Reference pack "Companies" (account-mapping.md D343): what a company is
+# in every country. A legal unit is the `organization` of the investigation
+# pack, extended with fields every register has in some form; an
+# establishment is a `map_pin` tied to its legal unit by `etablissement_de`;
+# officers are `person` or `organization` linked by the temporal `dirige`
+# (mandate dates = link validity).
+# Country specifics (register keys, local codes, the register import) live
+# in one pack per country that requires this one (`entreprises_fr` first).
+# A country pack fills the shared fields from its own: the activity code is
+# a NACE Rev.2 class (`62.01`, the European base of national codes) and the
+# headcount a number range, so targeting and scores work across countries.
+# A company of a country without its pack is still described here, by hand,
+# by a file or by the worldwide sources (LEI, Wikidata).
+# Personal data is minimized (partner-watch.md D304): officers carry their
+# name, the role on the link and a register key that merges the same
+# officer across companies; no full birth date, no personal address.
+# Hierarchy (partner-watch.md D305): a tree computed on links (several
+# parents allowed), never containment.
+key: entreprises
+name: Companies
+names: {fr: "Entreprises"}
+version: "1.0.0"
+requires: [investigation]
+description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
+descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
+extends:
+  - type: organization
+    properties:
+      - { key: pays, name: Country (ISO 3166-1), names: {fr: "Pays (ISO 3166-1)"}, kind: text, max_len: 2, indexed: true }
+      - { key: lei, name: LEI, names: {fr: "LEI"}, kind: text, max_len: 20, unique: true }
+      - { key: code_activite, name: Activity (NACE Rev.2), names: {fr: "Activité (NACE rév. 2)"}, kind: text, max_len: 8, indexed: true }
+      - key: etat_administratif
+        name: Administrative status
+        names: {fr: "État administratif"}
+        kind: enum
+        values: [actif, cesse]
+        indexed: true
+      - { key: date_creation, name: Created on, names: {fr: "Créée le"}, kind: date }
+      - { key: date_cessation, name: Ceased on, names: {fr: "Cessée le"}, kind: date }
+      - { key: effectif_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
+      - { key: effectif_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
+  - type: person
+    properties:
+      - { key: identifiant_registre, name: Register key, names: {fr: "Clé au registre"}, kind: text, max_len: 300, unique: true }
+  - type: map_pin
+    properties:
+      - { key: siege, name: Head office, names: {fr: "Siège"}, kind: bool }
+      - key: etat_administratif
+        name: Administrative status
+        names: {fr: "État administratif"}
+        kind: enum
+        values: [actif, ferme]
+        indexed: true
+      - { key: enseigne, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
+      - { key: effectif_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
+      - { key: effectif_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
+link_types:
+  - key: etablissement_de
+    name: is an establishment of
+    names: {fr: "est un établissement de"}
+    inverse_name: has as establishment
+    inverse_names: {fr: "a pour établissement"}
+    from_types: [map_pin]
+    to_types: [organization]
+    one_target: true
+  - key: dirige
+    name: directs
+    names: {fr: "dirige"}
+    inverse_name: is directed by
+    inverse_names: {fr: "est dirigée par"}
+    from_types: [person, organization]
+    to_types: [organization]
+    attributes:
+      - key: role
+        name: Role
+        names: {fr: "Rôle"}
+        kind: enum
+        values: [president, directeur_general, dg_delegue, gerant, administrateur, membre_directoire, autre]
+      - { key: qualite, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+hierarchies:
+  - key: groupe
+    name: Group
+    names: {fr: "Groupe"}
+    steps:
+      - { link: owns }
+      - { link: etablissement_de, inverse: true }
+      - { link: dirige, inverse: true }
