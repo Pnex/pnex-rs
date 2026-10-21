@@ -924,5 +924,144 @@ pub fn remove_node(graph: &mut FlowGraph, id: &str) {
     }
 }
 
+/// Auto-arranges every node: one column per stage (longest path from a
+/// source), nodes of a column ordered by their parents' rows, and long chains
+/// wrapped onto stacked bands so the whole flow lands close to a 16:9 frame
+/// instead of one endless line.
+pub fn auto_layout(graph: &mut FlowGraph) {
+    use std::collections::HashMap;
+    const COL_GAP: f64 = 80.0;
+    const ROW_GAP: f64 = 40.0;
+    const BAND_GAP: f64 = 100.0;
+    const RATIO: f64 = 16.0 / 9.0;
+
+    let n = graph.nodes.len();
+    if n == 0 {
+        return;
+    }
+    let index: HashMap<&str, usize> = graph
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.id.as_str(), i))
+        .collect();
+    let mut preds: Vec<Vec<usize>> = vec![vec![]; n];
+    let mut succs: Vec<Vec<usize>> = vec![vec![]; n];
+    for (i, node) in graph.nodes.iter().enumerate() {
+        for target in node.outputs.iter().flat_map(|w| &w.targets) {
+            if let Some(&j) = index.get(target.as_str()) {
+                if i != j && !succs[i].contains(&j) {
+                    succs[i].push(j);
+                    preds[j].push(i);
+                }
+            }
+        }
+    }
+
+    // Longest-path layering (Kahn); nodes stuck in a cycle get placed after
+    // their already-layered parents.
+    let mut layer = vec![0usize; n];
+    let mut indegree: Vec<usize> = preds.iter().map(Vec::len).collect();
+    let mut queue: Vec<usize> = (0..n).filter(|&i| indegree[i] == 0).collect();
+    let mut done = vec![false; n];
+    while let Some(i) = queue.pop() {
+        done[i] = true;
+        for &j in &succs[i] {
+            layer[j] = layer[j].max(layer[i] + 1);
+            indegree[j] -= 1;
+            if indegree[j] == 0 {
+                queue.push(j);
+            }
+        }
+    }
+    for i in 0..n {
+        if !done[i] {
+            layer[i] = preds[i]
+                .iter()
+                .filter(|&&p| done[p])
+                .map(|&p| layer[p] + 1)
+                .max()
+                .unwrap_or(0);
+            done[i] = true;
+        }
+    }
+
+    // Column order: barycenter of the parents' rows, current y as tie-break.
+    let layers = layer.iter().max().copied().unwrap_or(0) + 1;
+    let mut columns: Vec<Vec<usize>> = vec![vec![]; layers];
+    let mut row = vec![0.0f64; n];
+    let y_of = |i: usize| graph.nodes[i].position.map_or(0.0, |p| p.y);
+    for (l, column) in columns.iter_mut().enumerate() {
+        let mut members: Vec<(f64, f64, usize)> = (0..n)
+            .filter(|&i| layer[i] == l)
+            .map(|i| {
+                let placed: Vec<f64> = preds[i]
+                    .iter()
+                    .filter(|&&p| layer[p] < l)
+                    .map(|&p| row[p])
+                    .collect();
+                let key = if placed.is_empty() {
+                    f64::MAX
+                } else {
+                    placed.iter().sum::<f64>() / placed.len() as f64
+                };
+                (key, y_of(i), i)
+            })
+            .collect();
+        members.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+        for (r, &(_, _, i)) in members.iter().enumerate() {
+            row[i] = r as f64;
+            column.push(i);
+        }
+    }
+
+    // Pick how many columns per band gets the bounding box nearest 16:9.
+    let heights: Vec<f64> = graph
+        .nodes
+        .iter()
+        .map(super::geometry::node_height_for)
+        .collect();
+    let column_h: Vec<f64> = columns
+        .iter()
+        .map(|c| c.iter().map(|&i| heights[i] + ROW_GAP).sum::<f64>() - ROW_GAP)
+        .collect();
+    let col_w = super::geometry::NODE_W + COL_GAP;
+    let bands_of = |per_band: usize| -> Vec<f64> {
+        column_h
+            .chunks(per_band)
+            .map(|band| band.iter().copied().fold(0.0, f64::max))
+            .collect()
+    };
+    let per_band = (1..=layers)
+        .min_by(|&a, &b| {
+            let score = |c: usize| {
+                let bands = bands_of(c);
+                let h = bands.iter().sum::<f64>() + BAND_GAP * (bands.len() - 1) as f64;
+                ((c as f64 * col_w) / h.max(1.0) / RATIO).ln().abs()
+            };
+            score(a).total_cmp(&score(b))
+        })
+        .unwrap_or(layers);
+
+    let mut top = 0.0;
+    for (band, band_h) in bands_of(per_band).into_iter().enumerate() {
+        for c in 0..per_band {
+            let l = band * per_band + c;
+            let Some(column) = columns.get(l) else {
+                break;
+            };
+            let mut y = top + (band_h - column_h[l]) / 2.0;
+            for &i in column {
+                graph.nodes[i].position = Some(Position {
+                    x: super::geometry::snap(c as f64 * col_w),
+                    y: super::geometry::snap(y),
+                });
+                y += heights[i] + ROW_GAP;
+            }
+        }
+        top += band_h + BAND_GAP;
+    }
+}
+
 #[cfg(test)]
 mod tests;
