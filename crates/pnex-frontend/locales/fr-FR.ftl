@@ -5949,3 +5949,19 @@ web-sites-lane-steps = Étapes
 web-sites-lane-time = Durée du passage
 web-sites-no-extract = Ce passage n'a rien extrait.
 web-sites-search = Chercher un site web…
+
+## Capture de profil d'une personne (D333) et opposition à la prospection (D341)
+profile-capture-open = Capturer un profil
+profile-capture-title = Capturer un profil
+profile-capture-submit = Capturer
+profile-capture-url = Adresse du profil
+profile-capture-help = Une page de profil d'une personne : LinkedIn, X, Facebook, Instagram, TikTok ou YouTube. Un agent navigateur de l'organisation l'ouvre une fois dans sa session connectée ; le texte devient un document de cette personne, gardé 30 jours, et l'adresse un identifiant de compte. Recherches, listes de relations et suggestions sont refusées. 30 captures par réseau et par jour au plus.
+profile-capture-terms-warning = Les conditions de la plateforme peuvent interdire l'accès automatisé, quel que soit le rythme ; le risque de suspension porte sur le compte connecté dans l'agent.
+profile-capture-requested = Capture demandée : elle part dès qu'un agent navigateur est en ligne.
+profile-capture-opposed = Cette personne s'est opposée à la prospection : aucune capture.
+profile-opposition-record = Enregistrer son opposition à la prospection
+profile-opposition-confirm = Confirmer l'opposition (définitive)
+profile-opposition-recorded = Opposition enregistrée : plus aucune capture de cette personne.
+err-ext-target-not-profile = Cette adresse n'est pas la page de profil d'une personne sur un réseau connu (recherche, relations ou suggestions refusées).
+err-ext-profile-daily-cap = L'organisation a capturé aujourd'hui autant de profils de ce réseau que permis ({ $max }) : réessayez demain.
+err-prospection-opposed = Cette personne s'est opposée à la prospection : aucune capture.

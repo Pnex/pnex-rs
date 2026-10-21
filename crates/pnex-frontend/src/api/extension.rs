@@ -107,3 +107,39 @@ pub async fn verify_proofs() -> Result<pnex_core::browser_agent::ProofChainCheck
     )
     .await
 }
+
+/// `POST /api/v1/extension/people/{id}/profile-captures` (D333).
+pub async fn capture_profile(person_id: &str, url: &str) -> Result<Mission, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/extension/people/{person_id}/profile-captures"),
+        body(&pnex_core::browser_agent::ProfileCaptureRequest { url: url.into() }),
+    )
+    .await
+}
+
+/// Whether a person objected to prospecting (D341).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct Opposition {
+    pub opposed: bool,
+}
+
+/// `GET /api/v1/extension/people/{id}/opposition` (D341).
+pub async fn opposition(person_id: &str) -> Result<Opposition, ApiError> {
+    client::request(
+        reqwest::Method::GET,
+        &format!("/api/v1/extension/people/{person_id}/opposition"),
+        None,
+    )
+    .await
+}
+
+/// `POST /api/v1/extension/people/{id}/opposition` (D341).
+pub async fn oppose(person_id: &str) -> Result<Opposition, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/extension/people/{person_id}/opposition"),
+        None,
+    )
+    .await
+}

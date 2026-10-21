@@ -286,6 +286,227 @@ impl SocialPlatform {
     }
 }
 
+/// Networks a person's profile page can be captured from (D333).
+pub const PROFILE_NETWORKS: [&str; 6] = [
+    "linkedin",
+    "x",
+    "facebook",
+    "instagram",
+    "tiktok",
+    "youtube",
+];
+
+/// Most profile captures per org and per network over 24 h (D333). Compiled:
+/// an org can only ask fewer.
+pub const PROFILE_CAPTURES_PER_DAY: i64 = 30;
+
+/// Why an address is not a capturable profile (D333).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileRefusal {
+    /// Not an http(s) address of a known network.
+    NotNetwork,
+    /// A page of a known network that is not one person's profile: search,
+    /// relation lists, "people also viewed", posts…
+    NotProfile,
+}
+
+/// First path segments of each network that are pages, not usernames.
+const X_RESERVED: &[&str] = &[
+    "home",
+    "explore",
+    "search",
+    "notifications",
+    "messages",
+    "i",
+    "settings",
+    "compose",
+    "hashtag",
+    "login",
+    "signup",
+    "tos",
+    "privacy",
+    "intent",
+    "share",
+    "jobs",
+    "communities",
+    "lists",
+    "bookmarks",
+    "following",
+    "followers",
+];
+const FACEBOOK_RESERVED: &[&str] = &[
+    "search",
+    "friends",
+    "groups",
+    "watch",
+    "marketplace",
+    "people",
+    "pages",
+    "events",
+    "login",
+    "hashtag",
+    "gaming",
+    "reel",
+    "reels",
+    "stories",
+    "photo",
+    "photo.php",
+    "permalink.php",
+    "sharer",
+    "sharer.php",
+    "home.php",
+    "help",
+    "policies",
+    "settings",
+    "notifications",
+    "messages",
+    "bookmarks",
+    "saved",
+    "memories",
+    "pymk",
+    "find-friends",
+];
+const INSTAGRAM_RESERVED: &[&str] = &[
+    "explore",
+    "accounts",
+    "p",
+    "reel",
+    "reels",
+    "stories",
+    "direct",
+    "tv",
+    "about",
+    "legal",
+    "developer",
+    "web",
+];
+
+/// The network and canonical address of one person's profile page (D333).
+/// Only a declared profile is ever captured: search results, relation
+/// lists and suggestion pages are refused, so the capture can never become
+/// a way to discover people (D254).
+pub fn profile_of(raw: &str) -> Result<(&'static str, String), ProfileRefusal> {
+    let url = url::Url::parse(raw.trim()).map_err(|_| ProfileRefusal::NotNetwork)?;
+    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() {
+        return Err(ProfileRefusal::NotNetwork);
+    }
+    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    let segs: Vec<String> = url
+        .path_segments()
+        .map(|s| {
+            s.filter(|x| !x.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect()
+        })
+        .unwrap_or_default();
+    let segs: Vec<&str> = segs.iter().map(String::as_str).collect();
+    let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+    let name_ok = |s: &str, max: usize, extra: &str| {
+        !s.is_empty()
+            && s.len() <= max
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || extra.contains(c))
+    };
+    let not_profile = Err(ProfileRefusal::NotProfile);
+    if on("linkedin.com") {
+        return match segs.as_slice() {
+            // Slugs may carry percent-encoded letters.
+            ["in", slug] if name_ok(slug, 100, "-_%") => {
+                Ok(("linkedin", format!("https://www.linkedin.com/in/{slug}")))
+            }
+            _ => not_profile,
+        };
+    }
+    if on("x.com") || on("twitter.com") {
+        return match segs.as_slice() {
+            [h] if name_ok(h, 15, "_") && !X_RESERVED.contains(h) => {
+                Ok(("x", format!("https://x.com/{h}")))
+            }
+            _ => not_profile,
+        };
+    }
+    if on("facebook.com") {
+        return match segs.as_slice() {
+            ["profile.php"] => {
+                let id = url
+                    .query_pairs()
+                    .find(|(k, _)| k == "id")
+                    .map(|(_, v)| v.into_owned())
+                    .filter(|v| {
+                        !v.is_empty() && v.len() <= 20 && v.chars().all(|c| c.is_ascii_digit())
+                    });
+                match id {
+                    Some(id) => Ok((
+                        "facebook",
+                        format!("https://www.facebook.com/profile.php?id={id}"),
+                    )),
+                    None => not_profile,
+                }
+            }
+            [u] if name_ok(u, 50, ".") && !FACEBOOK_RESERVED.contains(u) => {
+                Ok(("facebook", format!("https://www.facebook.com/{u}")))
+            }
+            _ => not_profile,
+        };
+    }
+    if on("instagram.com") {
+        return match segs.as_slice() {
+            [u] if name_ok(u, 30, "._") && !INSTAGRAM_RESERVED.contains(u) => {
+                Ok(("instagram", format!("https://www.instagram.com/{u}/")))
+            }
+            _ => not_profile,
+        };
+    }
+    let handle = |s: &str| {
+        s.strip_prefix('@')
+            .filter(|h| name_ok(h, HANDLE_MAX, "._-"))
+            .map(str::to_owned)
+    };
+    if on("tiktok.com") {
+        return match segs.as_slice() {
+            [h] => handle(h)
+                .map(|h| ("tiktok", format!("https://www.tiktok.com/@{h}")))
+                .ok_or(ProfileRefusal::NotProfile),
+            _ => not_profile,
+        };
+    }
+    if on("youtube.com") {
+        return match segs.as_slice() {
+            [h] | [h, "about"] => handle(h)
+                .map(|h| ("youtube", format!("https://www.youtube.com/@{h}")))
+                .ok_or(ProfileRefusal::NotProfile),
+            _ => not_profile,
+        };
+    }
+    Err(ProfileRefusal::NotNetwork)
+}
+
+/// Lease target of a profile capture: the network's tab (D255).
+pub fn profile_target(network: &str, canonical: &str) -> String {
+    format!("{network}:profile:{canonical}")
+}
+
+/// `capture_profile` (D333): one capture of one person's profile page, in
+/// the agent's signed-in session. Asked by a human from the person's page,
+/// created by the server only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CaptureProfileParams {
+    /// Canonical profile address ([`profile_of`]).
+    pub url: String,
+    /// The `person` the profile belongs to.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub person_id: String,
+}
+
+/// Body of a profile capture request (D333).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProfileCaptureRequest {
+    /// Address of the profile page, as pasted.
+    pub url: String,
+}
+
 /// `follow_account` (D256): the new posts of one public account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -355,6 +576,8 @@ pub enum MissionSpec {
     CrawlSite(CrawlSiteParams),
     /// Created by the server only (D308): one proof of one page.
     CaptureProof(CaptureProofParams),
+    /// Created by the server only (D333): one capture of one profile.
+    CaptureProfile(CaptureProfileParams),
 }
 
 /// `capture_proof` (D308, D310): capture one page as a proof.
@@ -719,6 +942,7 @@ impl MissionSpec {
             Self::WatchLive(_) => "watch_live",
             Self::CrawlSite(_) => "crawl_site",
             Self::CaptureProof(_) => "capture_proof",
+            Self::CaptureProfile(_) => "capture_profile",
         }
     }
 }
@@ -915,8 +1139,10 @@ pub fn check_spec(spec: &MissionSpec) -> Result<(MissionSpec, String), FieldErro
             };
             Ok((MissionSpec::WatchLive(WatchLiveParams { url }), target))
         }
-        // Proofs are asked by the server (D308), never created by hand.
-        MissionSpec::CaptureProof(_) => Err(field("spec.kind", err_codes::FIELD_INVALID)),
+        // Proofs and profile captures are asked by the server (D308, D333).
+        MissionSpec::CaptureProof(_) | MissionSpec::CaptureProfile(_) => {
+            Err(field("spec.kind", err_codes::FIELD_INVALID))
+        }
         MissionSpec::CrawlSite(p) => {
             let f = |k: &str| format!("spec.params.{k}");
             let origin =
@@ -1449,5 +1675,85 @@ mod tests {
         };
         assert_eq!(fp.default_name(), "Chrome · Linux");
         assert_eq!(AgentFingerprint::default().default_name(), "Browser agent");
+    }
+
+    #[test]
+    fn a_profile_is_recognised_and_canonical_per_network() {
+        let ok = |raw: &str| profile_of(raw).unwrap();
+        assert_eq!(
+            ok("https://fr.linkedin.com/in/Jane-Doe-123/?originalSubdomain=fr"),
+            (
+                "linkedin",
+                "https://www.linkedin.com/in/jane-doe-123".into()
+            )
+        );
+        assert_eq!(
+            ok("https://twitter.com/JaneDoe"),
+            ("x", "https://x.com/janedoe".into())
+        );
+        assert_eq!(
+            ok("https://m.facebook.com/profile.php?id=1000123"),
+            (
+                "facebook",
+                "https://www.facebook.com/profile.php?id=1000123".into()
+            )
+        );
+        assert_eq!(
+            ok("https://www.facebook.com/jane.doe"),
+            ("facebook", "https://www.facebook.com/jane.doe".into())
+        );
+        assert_eq!(
+            ok("https://instagram.com/jane_doe/"),
+            ("instagram", "https://www.instagram.com/jane_doe/".into())
+        );
+        assert_eq!(
+            ok("https://www.tiktok.com/@jane.doe"),
+            ("tiktok", "https://www.tiktok.com/@jane.doe".into())
+        );
+        assert_eq!(
+            ok("https://www.youtube.com/@Jane/about"),
+            ("youtube", "https://www.youtube.com/@jane".into())
+        );
+        let target = profile_target("linkedin", "https://www.linkedin.com/in/jane");
+        assert_eq!(platform_of(&target), "linkedin");
+    }
+
+    #[test]
+    fn people_discovery_pages_are_never_a_profile() {
+        for raw in [
+            "https://www.linkedin.com/search/results/people/?keywords=acme",
+            "https://www.linkedin.com/in/jane/details/connections/",
+            "https://www.linkedin.com/mynetwork/",
+            "https://www.linkedin.com/company/acme/people/",
+            "https://x.com/jane/followers",
+            "https://x.com/search?q=acme",
+            "https://www.facebook.com/friends",
+            "https://www.facebook.com/jane/friends",
+            "https://www.facebook.com/profile.php",
+            "https://www.instagram.com/explore/",
+            "https://www.instagram.com/jane/followers/",
+            "https://www.tiktok.com/search?q=jane",
+            "https://www.youtube.com/watch?v=abc",
+        ] {
+            assert_eq!(profile_of(raw), Err(ProfileRefusal::NotProfile), "{raw}");
+        }
+        for raw in [
+            "https://example.org/jane",
+            "ftp://x.com/jane",
+            "not a url",
+            "https://user:pw@x.com/jane",
+        ] {
+            assert_eq!(profile_of(raw), Err(ProfileRefusal::NotNetwork), "{raw}");
+        }
+    }
+
+    #[test]
+    fn a_profile_capture_is_never_created_by_hand() {
+        let spec = MissionSpec::CaptureProfile(CaptureProfileParams {
+            url: "https://x.com/jane".into(),
+            person_id: uuid::Uuid::nil().to_string(),
+        });
+        assert!(check_spec(&spec).is_err());
+        assert_eq!(spec.kind(), "capture_profile");
     }
 }

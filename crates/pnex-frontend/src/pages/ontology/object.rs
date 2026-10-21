@@ -52,6 +52,9 @@ pub fn OntologyObject(id: String) -> Element {
     let mut archiving = use_signal(|| false);
     // Action being invoked (D183).
     let mut invoking = use_signal(|| None::<String>);
+    // Profile capture of a person (D333).
+    let mut capturing = use_signal(|| false);
+    let can_capture = crate::state::access::can("extension:write");
     let can_write = crate::state::access::can("ontology:write");
 
     let o = match &*object.read() {
@@ -134,6 +137,14 @@ pub fn OntologyObject(id: String) -> Element {
                             onclick: move |_| invoking.set(Some(a.key.clone())),
                             {crate::components::ontology::tr(&a.name, &a.names)}
                         }
+                    }
+                }
+                if can_capture && !archived && o.type_key == pnex_core::voice_id::PERSON_TYPE {
+                    button {
+                        class: BTN,
+                        "data-testid": "profile-capture",
+                        onclick: move |_| capturing.set(true),
+                        {t!("profile-capture-open")}
                     }
                 }
                 if can_write && !archived && o.type_key != pnex_core::ontology::KIND_CASE {
@@ -229,6 +240,12 @@ pub fn OntologyObject(id: String) -> Element {
                         editing.set(false);
                         reload.with_mut(|r| *r += 1);
                     },
+                }
+            }
+            if capturing() {
+                super::profile_capture::ProfileCaptureDialog {
+                    person_id: o.id.clone(),
+                    on_close: move |_| capturing.set(false),
                 }
             }
             if let Some(key) = invoking() {

@@ -1029,6 +1029,18 @@ ontologie, e-mail à destinataire dynamique, webhook HMAC, compte de service
 en écriture bornée. Lots PW0 → PW8 ; PW0–PW3 sans attendre l'IAM, PW7
 après les comptes de service (P2.25).
 
+### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1 en cours : pack `prospection_b2b` écrit**
+
+`account-mapping.md`, D329–D342 : un compte vu comme un réseau daté
+(groupe, filiales, établissements, dirigeants, contacts, recommandations)
+sur la carte, dans la hiérarchie et le graphe. Pack `prospection_b2b`
+au-dessus d'`entreprises_fr` ; couverture et espace blanc calculés à la
+lecture ; liens de groupe GLEIF et Wikidata ; rapprochement nom → SIREN
+(`org_resolve`) ; capture ponctuelle d'un profil déclenchée par un humain
+(amende D261) ; signaux commerciaux ; score explicable ; coloration par
+valeur de propriété au noyau (D339). Pas de CRM. Socle mondial `entreprises` + un pack par pays, France d'abord (D343, 2026-10-21). Lots CC0 → CC6 ; CC3
+(données personnelles) attend D341.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1375,3 +1387,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   l'amendement L1 de D261 (`extension-collector.md`), D190 (`ontology.md`) ;
   question ouverte à `iam.md` §14 (compte de service qui écrit). Rien
   d'implémenté.
+- **2026-10-21 (cartographie commerciale)** — Ajout de P2.27
+  (`account-mapping.md`, D329–D342) : pack `prospection_b2b`, couverture
+  et espace blanc, liens de groupe GLEIF/Wikidata, signaux, capture
+  ponctuelle de profil. Amende D261 (`extension-collector.md`, mode
+  `once`) et avance le mapping BODACC prévu en V2 par D304. Pack écrit
+  (CC1, D329).

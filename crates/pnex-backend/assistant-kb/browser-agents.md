@@ -28,6 +28,14 @@ The Browser agents page (Devices menu) lists the browser extensions paired with 
 - A relevant page new or changed gets a **proof** taken by a browser agent of the organization: full-page screenshot, the page's HTML without its scripts (download only) and its text, sealed with the server's time and fingerprints, chained to the previous proof. *Check the proof chain* recomputes it: a proof changed afterwards breaks it. The agent needs the right to capture the site (*ext-permission-missing*); without an agent online the proof waits (*ext-no-agent*).
 - *crawl-robots-disallowed*: the site forbids robots; *crawl-blocked*: it refused the crawler (the crawl stops and never insists); *crawl-unreachable*: the site cannot be reached.
 
+## Capturing a person's profile
+
+- On a **person** page, **Capture a profile**: paste one profile address (LinkedIn, X, Facebook, Instagram, TikTok, YouTube). A browser agent of the organization opens it once, in the session signed in within the agent, at a human pace. The page text becomes a document of that person (kept 30 days, then deleted) and the address an account identifier of the person.
+- Only a profile page is accepted: searches, relation lists and "people also viewed" pages are refused (error "not one person's profile page"). At most 30 captures per network per day for the organization.
+- The capture is always asked by a person in the app: the assistant cannot start one.
+- **Record their objection to prospecting** (in the same window, confirmed twice): no capture of that person or of their profile addresses anymore, even if the person is deleted later.
+- The platform's terms may forbid automated access; the suspension risk falls on the account signed in within the agent.
+
 ## Good to know
 
 - Sign in to X, YouTube or TikTok in the agent's browser before following an account there.

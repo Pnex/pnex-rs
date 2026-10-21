@@ -622,6 +622,7 @@ async fn run_mission(
         MissionSpec::WatchLive(p) => p.url.clone(),
         MissionSpec::CrawlSite(p) => format!("{}/", p.url),
         MissionSpec::CaptureProof(p) => p.url.clone(),
+        MissionSpec::CaptureProfile(p) => p.url.clone(),
     };
     // Sites the mission reads: its page, or the platform's sites.
     let needed: Vec<String> = match &m.spec {
@@ -674,6 +675,7 @@ async fn run_mission(
         MissionSpec::WatchLive(l) => return watch_live(session, plan, m, l, platform).await,
         MissionSpec::CrawlSite(c) => return crawl_site(session, m, c, tab).await,
         MissionSpec::CaptureProof(_) => return capture_proof(session, m, tab).await,
+        MissionSpec::CaptureProfile(_) => return capture_page(session, m, tab).await,
     };
     #[derive(Deserialize)]
     struct Read {
@@ -717,6 +719,21 @@ async fn capture_page(session: &Session, m: &AssignedMission, tab: f64) -> Strin
     else {
         return "read-failed".into();
     };
+    // A profile that redirected elsewhere hit a sign-in or verification
+    // wall: blocked, never bypassed (D333).
+    if matches!(m.spec, MissionSpec::CaptureProfile(_)) && ba::profile_of(&page.url).is_err() {
+        let code = if page.url.contains("checkpoint") || page.url.contains("challenge") {
+            err_codes::EXT_CHALLENGE
+        } else {
+            err_codes::EXT_LOGIN_REQUIRED
+        };
+        session.send(&AgentMsg::State {
+            mission_id: m.id.clone(),
+            state: MissionState::Blocked,
+            code: Some(code.into()),
+        });
+        return code.into();
+    }
     let snapshot = ba::PageSnapshot {
         mission_id: m.id.clone(),
         url: page.url,

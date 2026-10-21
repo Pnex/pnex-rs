@@ -1,0 +1,110 @@
+# Business pack "B2B account mapping" (account-mapping.md D329–D343): an
+# account is the `organization` of the worldwide companies pack (any
+# country; country packs add their registers), extended
+# with its commercial status and coverage; no "company" or "account" type
+# next to it (D304), so the graph stays one.
+# `filiale_de` carries a control or consolidation relation as open sources
+# give it, without a share: `owns` stays for known holdings. Several
+# targets are allowed on purpose: a direct and an ultimate parent, or two
+# sources that disagree, live side by side with their provenance and a
+# human closes the wrong one (D331).
+# `ca_dernier` is the latest known revenue and `ca_exercice` its fiscal
+# year: the core has no per-year scalar property (D178 temporal = O2
+# series or events), past years stay in the object history.
+# `persona` is the role in the buying committee, not a job title (the
+# title stays on `employs.position`). Several people may follow one account,
+# each with the role the org gives it (`suit_le_compte.role`, free text).
+# Coverage and white space are computed at read time (D330), never stored.
+key: prospection_b2b
+name: B2B account mapping
+names: {fr: "Cartographie commerciale"}
+version: "1.0.0"
+requires: [entreprises]
+description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
+descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
+extends:
+  - type: organization
+    properties:
+      - key: statut_compte
+        name: Account status
+        names: {fr: "Statut du compte"}
+        kind: enum
+        values: [client, prospect, cible, ancien_client, concurrent, partenaire, exclu]
+        indexed: true
+      - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
+      - { key: potentiel_utilisateurs, name: Potential users, names: {fr: "Utilisateurs potentiels"}, kind: number, min: 0 }
+      - { key: ca_dernier, name: Latest revenue, names: {fr: "Dernier chiffre d'affaires"}, kind: money }
+      - { key: ca_exercice, name: Revenue fiscal year, names: {fr: "Exercice du chiffre d'affaires"}, kind: number, min: 1900, max: 2100 }
+      - { key: score_cible, name: Target score, names: {fr: "Score de ciblage"}, kind: number }
+  - type: map_pin
+    properties:
+      - key: statut_site
+        name: Site status
+        names: {fr: "Statut du site"}
+        kind: enum
+        values: [client, prospect, non_couvert]
+        indexed: true
+      - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
+  - type: person
+    properties:
+      - key: persona
+        name: Persona
+        names: {fr: "Persona"}
+        kind: enum
+        values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
+        indexed: true
+      - { key: revoir_le, name: Review on, names: {fr: "À revoir le"}, kind: date }
+link_types:
+  - key: recommande
+    name: recommends
+    names: {fr: "recommande"}
+    inverse_name: is recommended by
+    inverse_names: {fr: "est recommandé par"}
+    from_types: [person]
+    to_types: [person, organization]
+    attributes:
+      - { key: date, name: Date, names: {fr: "Date"}, kind: date }
+      - { key: contexte, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+  - key: suit_le_compte
+    name: follows the account
+    names: {fr: "suit le compte"}
+    inverse_name: is followed by
+    inverse_names: {fr: "est suivi par"}
+    from_types: [person]
+    to_types: [organization]
+    attributes:
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
+  - key: filiale_de
+    name: is a subsidiary of
+    names: {fr: "est une filiale de"}
+    inverse_name: has as subsidiary
+    inverse_names: {fr: "a pour filiale"}
+    from_types: [organization]
+    to_types: [organization]
+    attributes:
+      - key: nature
+        name: Nature
+        names: {fr: "Nature"}
+        kind: enum
+        values: [consolidation_directe, consolidation_ultime, declaree, wikidata, saisie]
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+  - key: utilise_solution
+    name: uses the solution of
+    names: {fr: "utilise la solution de"}
+    inverse_name: is the solution of
+    inverse_names: {fr: "équipe"}
+    from_types: [organization, map_pin]
+    to_types: [organization]
+    attributes:
+      - { key: depuis, name: Since, names: {fr: "Depuis"}, kind: date }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+hierarchies:
+  - key: groupe_commercial
+    name: Commercial group
+    names: {fr: "Groupe commercial"}
+    steps:
+      - { link: filiale_de, inverse: true }
+      - { link: owns }
+      - { link: etablissement_de, inverse: true }

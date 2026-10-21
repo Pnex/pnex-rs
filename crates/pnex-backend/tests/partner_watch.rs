@@ -236,6 +236,85 @@ async fn natural_keys_extensions_and_hierarchy() {
     .await;
 }
 
+/// account-mapping.md D343: an org on `entreprises_fr` 1.0.0 (shared fields
+/// and links owned by it) upgrades onto the worldwide `entreprises` pack,
+/// which takes those keys over; objects keep their values.
+#[tokio::test]
+#[serial]
+async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "entreprises_fr").await;
+        let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789", "etat_administratif": "actif"})).await;
+        assert_eq!(st, 201, "{a}");
+        // Back to the 1.0.0 layout: everything owned by `entreprises_fr`.
+        for sql in [
+            format!(
+                "UPDATE object_type_versions SET definition = replace(definition::text, '\"pack\": \"entreprises\"', '\"pack\": \"entreprises_fr\"')::jsonb \
+                 WHERE object_type_id IN (SELECT id FROM object_types WHERE org_id = {org})"
+            ),
+            format!("UPDATE link_types SET pack_key = 'entreprises_fr' WHERE org_id = {org} AND pack_key = 'entreprises'"),
+            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'entreprises'"),
+            format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'entreprises_fr'"),
+        ] {
+            env.db.execute_unprepared(&sql).await.unwrap();
+        }
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/organization", &env.alice, org, None).await;
+        assert!(!t.to_string().contains("\"pack\":\"entreprises\""), "{t}");
+
+        install(&server, &env.alice, org, "entreprises_fr").await;
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/organization", &env.alice, org, None).await;
+        let owner = |k: &str| t["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == k).map(|p| p["pack"].clone());
+        assert_eq!(owner("etat_administratif"), Some(json!("entreprises")));
+        assert_eq!(owner("siren"), Some(json!("entreprises_fr")));
+        assert_eq!(owner("code_activite"), Some(json!("entreprises")));
+        let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
+        let dirige = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "dirige").cloned();
+        assert_eq!(dirige.map(|d| d["pack_key"].clone()), Some(json!("entreprises")), "{l}");
+        let aid = a["id"].as_str().unwrap();
+        let (_, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{aid}"), &env.alice, org, None).await;
+        assert_eq!(o["properties"]["etat_administratif"], "actif", "{o}");
+    })
+    .await;
+}
+
+/// account-mapping.md D329: the B2B pack extends the company types and its
+/// commercial group follows subsidiaries, under each of their parents.
+#[tokio::test]
+#[serial]
+async fn prospection_pack_maps_a_commercial_group() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospection_b2b").await;
+        let (st, e) = object(&server, &env.alice, org, "organization", "Bad", json!({"statut_compte": "lead"})).await;
+        assert_eq!(st, 400, "{e}");
+        let (st, m) = object(&server, &env.alice, org, "organization", "Mother", json!({"lei": "529900T8BM49AURSDO55", "pays": "DE", "statut_compte": "client"})).await;
+        assert_eq!(st, 201, "{m}");
+        let (_, f) = object(&server, &env.alice, org, "organization", "Filiale FR", json!({"pays": "FR", "code_activite": "28.41", "statut_compte": "prospect"})).await;
+        let (_, g) = object(&server, &env.alice, org, "organization", "Usine Lyon SAS", json!({"pays": "FR", "effectif_min": 250, "effectif_max": 499})).await;
+        let (mid, fid, gid) = (m["id"].as_str().unwrap(), f["id"].as_str().unwrap(), g["id"].as_str().unwrap());
+        // D331: a direct and an ultimate parent coexist, each with its nature.
+        for (from, to, nature) in [(fid, mid, "consolidation_directe"), (gid, fid, "consolidation_directe"), (gid, mid, "consolidation_ultime")] {
+            let body = json!({"link_type": "filiale_de", "source_id": from, "target_id": to, "attributes": {"nature": nature, "source": "gleif.org"}});
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mid}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{h}");
+        let nodes: Vec<(&str, u64)> = h["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| (n["title"].as_str().unwrap(), n["depth"].as_u64().unwrap()))
+            .collect();
+        assert_eq!(nodes[0], ("Mother", 0));
+        for n in [("Filiale FR", 1), ("Usine Lyon SAS", 2), ("Usine Lyon SAS", 1)] {
+            assert!(nodes.contains(&n), "{n:?} in {nodes:?}");
+        }
+    })
+    .await;
+}
+
 const MAPPING: &str = r#"
 key: reseau
 name: Partner network

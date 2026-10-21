@@ -262,6 +262,8 @@ impl Hooks for App {
         crate::services::media_ingest::segments::spawn_pruner(ctx);
         // Run files of the navigation rules past their retention (D268).
         crate::services::site_recipes::spawn_pruner(ctx);
+        // Captured profile texts past 30 days (D333).
+        crate::services::profiles::spawn_pruner(ctx);
         crate::services::media_ingest::health::spawn(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
         crate::services::retention::spawn_reconciler(ctx);
