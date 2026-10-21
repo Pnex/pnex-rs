@@ -4540,6 +4540,7 @@ err-notify-dynamic-recipients-off = Ce nœud lit son destinataire dans le messag
 err-notify-dynamic-recipients-admin = Seuls les propriétaires et les administrateurs autorisent un canal à envoyer aux destinataires lus dans les messages des flows.
 err-ontology-node-unknown = Ce nœud nomme un type, une clé ou un type de lien absent de l'ontologie de l'organisation : choisissez-en un autre dans le nœud.
 err-import-run-stale = Cet aperçu n'est plus à jour (déjà appliqué, ou l'import ou les données ont changé) : refaites l'aperçu.
+err-import-run-interrupted = L'import a été interrompu (son serveur s'est arrêté) : rien n'a été écrit, relancez le flow.
 err-import-has-errors = Des lignes sont en erreur : corrigez le fichier et refaites l'aperçu avant d'appliquer.
 err-import-suspicious-drop = La source est passée de { $previous } à { $rows } enregistrements : l'exécution a été refusée et rien n'a été fermé.
 err-import-schema-changed = La source a changé de forme (colonnes manquantes : { $columns }) : rien n'a été écrit. Vérifiez la source puis ajustez la correspondance des colonnes.

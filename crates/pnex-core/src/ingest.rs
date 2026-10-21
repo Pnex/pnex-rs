@@ -336,6 +336,10 @@ pub struct IngestReply {
     pub code: Option<String>,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub args: Value,
+    /// The step still runs on the server: the node sends the same request
+    /// again (with this `msg`, which carries the pass id) until it is done.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pending: bool,
 }
 
 /// One journaled step (`GET /flows/{id}/ingest-steps`): node panel and

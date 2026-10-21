@@ -221,10 +221,22 @@ pub async fn run(
             IngestStep::ArchiveExtract => archive::run(&cx, &config, msg.clone()).await,
             IngestStep::TableInspect => table::run(&cx, &config, msg.clone()).await,
             IngestStep::RowsFilter => filter::run(&cx, &config, msg.clone()).await,
-            IngestStep::OntologyImport => import::run(&cx, &config, msg.clone()).await,
+            // Outlives this call: journaled by its own task, polled.
+            IngestStep::OntologyImport => return import::step(&cx, &config, msg).await,
             IngestStep::StagingCleanup => cleanup(&cx, msg.clone()).await,
         },
     };
+    Ok(finish(&cx, &config, msg, out).await?)
+}
+
+/// Journals a step's outcome and answers the node.
+pub(crate) async fn finish(
+    cx: &Cx<'_>,
+    config: &IngestConfig,
+    msg: IngestMsg,
+    out: Outcome,
+) -> Result<IngestReply, sea_orm::DbErr> {
+    let run_id = cx.run_id;
     // An error passes the message on as it came, for the error branch.
     let next = if out.port == PORT_ERROR {
         msg
@@ -243,13 +255,14 @@ pub async fn run(
         manifest["args"] = out.args.clone();
     }
     let manifest = bounded_manifest(manifest);
-    journal(&cx, &config, &out, &manifest).await?;
+    journal(cx, config, &out, &manifest).await?;
     Ok(IngestReply {
         port: out.port,
         msg: next,
         manifest,
         code: out.code.map(str::to_string),
         args: out.args,
+        pending: false,
     })
 }
 

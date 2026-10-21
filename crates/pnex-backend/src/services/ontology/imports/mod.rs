@@ -456,7 +456,8 @@ async fn finish_run<C: ConnectionTrait>(
     let counts = diff.map(ImportDiff::counts).unwrap_or_default();
     db.execute_raw(stmt(
         "UPDATE object_import_runs SET state = $2, state_code = $3, rows = $4, counts = $5, \
-           diff = $6, finished_at = CASE WHEN $2 = 'preview' THEN NULL ELSE now() END \
+           diff = $6, finished_at = CASE WHEN $2 = 'preview' THEN NULL ELSE now() END, \
+           heartbeat_at = now() \
          WHERE id = $1",
         vec![
             run_id.into(),
@@ -720,26 +721,20 @@ async fn write(
 ) -> Result<()> {
     use super::{links, objects};
     let txn = db.begin().await?;
+    // Loaded once: per write it costs a query per object type.
+    let s = schema(&txn, org_id).await?;
+    // Created meanwhile by someone else: the preview is stale.
+    if keys_taken(&txn, org_id, &diff.created).await? {
+        return Err(OntologyError::KeyTaken);
+    }
     let mut created: Vec<Uuid> = Vec::with_capacity(diff.created.len());
     for c in &diff.created {
-        // Created meanwhile by someone else: the preview is stale.
-        if objects::find_by_key(
-            &txn,
-            org_id,
-            &c.type_key,
-            &c.key_prop,
-            &Value::String(c.key.clone()),
-        )
-        .await?
-        .is_some()
-        {
-            return Err(OntologyError::KeyTaken);
-        }
         let id = if c.type_key == pnex_core::resources::KIND_MAP_PIN {
-            create_pin(&txn, org_id, actor, c).await?
+            create_pin(&txn, &s, org_id, actor, c).await?
         } else {
-            objects::create(
+            objects::create_with(
                 &txn,
+                &s,
                 org_id,
                 actor,
                 &ObjectInput {
@@ -768,8 +763,9 @@ async fn write(
         for (k, ch) in &u.changes {
             props.insert(k.clone(), ch.to.clone());
         }
-        objects::update_in(
+        objects::update_in_with(
             &txn,
+            &s,
             org_id,
             actor,
             id,
@@ -793,8 +789,9 @@ async fn write(
         }
     };
     for l in &diff.links_opened {
-        links::create(
+        links::create_with(
             &txn,
+            &s,
             org_id,
             actor,
             &LinkInput {
@@ -813,7 +810,7 @@ async fn write(
         .await?;
     }
     for l in &diff.links_updated {
-        links::update(&txn, org_id, actor, l.id, &l.attributes).await?;
+        links::update_with(&txn, &s, org_id, actor, l.id, &l.attributes).await?;
     }
     for c in &diff.closed {
         match c.kind.as_str() {
@@ -831,10 +828,47 @@ async fn write(
     Ok(())
 }
 
+/// True when a live object already holds the key of one to create; one
+/// query per type and batch of keys.
+async fn keys_taken<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    created: &[imp::DiffCreate],
+) -> Result<bool> {
+    let mut groups: std::collections::BTreeMap<(&str, &str), Vec<String>> = Default::default();
+    for c in created {
+        groups
+            .entry((c.type_key.as_str(), c.key_prop.as_str()))
+            .or_default()
+            .push(c.key.clone());
+    }
+    for ((type_key, key_prop), keys) in groups {
+        for chunk in keys.chunks(1_000) {
+            let hit = db
+                .query_one_raw(stmt(
+                    "SELECT 1 AS hit FROM objects WHERE org_id = $1 AND type_key = $2 \
+                       AND valid_to IS NULL AND properties ->> $3 = ANY($4) LIMIT 1",
+                    vec![
+                        org_id.into(),
+                        type_key.into(),
+                        key_prop.into(),
+                        chunk.to_vec().into(),
+                    ],
+                ))
+                .await?;
+            if hit.is_some() {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// A `map_pin` establishment: the POI first (its identity row follows by
 /// trigger), then its pack properties on the identity.
 async fn create_pin<C: ConnectionTrait>(
     db: &C,
+    s: &super::OrgSchema,
     org_id: i64,
     actor: &Actor,
     c: &imp::DiffCreate,
@@ -864,8 +898,9 @@ async fn create_pin<C: ConnectionTrait>(
         &pin.id.to_string(),
     )
     .await?;
-    super::objects::update_in(
+    super::objects::update_in_with(
         db,
+        s,
         org_id,
         actor,
         identity.id,
@@ -970,18 +1005,26 @@ async fn held<C: ConnectionTrait>(db: &C, org_id: i64, import_id: Uuid) -> Resul
 /// on its own source): checked like a scheduled run (D303), refused when
 /// it would close more than `max_closures_pct` % of what the import holds,
 /// then kept as a preview (applicable from the Imports tab) or applied
-/// with the author's role. Synchronous: the flow waits for the outcome.
+/// with the author's role. Works on the run `open_from_flow` opened; the
+/// step polls it (`flow_run_of`) while it lasts.
 pub async fn run_from_flow(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
+    run_id: Uuid,
     file: Option<(Vec<u8>, String)>,
     apply: bool,
     max_closures_pct: u32,
 ) -> Result<FlowImportOutcome> {
     let imp = find_row(db, org_id, id).await?;
-    let m = imp.mapping()?;
-    let run = open_run(db, &imp, "flow", None).await?;
+    let (run, _) = load_run(db, imp.id, run_id).await?;
+    let m = match imp.mapping() {
+        Ok(m) => m,
+        Err(e) => {
+            finish_run(db, run.id, "failed", Some(error_code(&e)), None, false).await?;
+            return Err(e);
+        }
+    };
     let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
     let rows = match (&file, &m.per_object, imp.source()) {
         (Some((bytes, name)), None, _) => {
@@ -1020,6 +1063,7 @@ pub async fn run_from_flow(
         Ok(r) => r,
         Err(code) => return end("failed", Some(code), Value::Null, None, false).await,
     };
+    progress(db, run.id, rows.len(), None).await;
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
     if (rows.is_empty() && previous > 0) || (!rows.is_empty() && !missing.is_empty()) {
@@ -1051,6 +1095,7 @@ pub async fn run_from_flow(
         }
         Err(_) => return end("failed", Some(source::UNREADABLE), Value::Null, None, false).await,
     };
+    progress(db, run.id, d.rows, Some(&d)).await;
     if snapshot && !d.errors.is_empty() {
         return end(
             "refused",
@@ -1094,6 +1139,135 @@ pub async fn run_from_flow(
             end("failed", Some(error_code(&e)), Value::Null, Some(d), false).await
         }
     }
+}
+
+/// A flow run without a heartbeat for this long lost its server.
+const FLOW_RUN_STALE: &str = "10 minutes";
+
+/// Opens the run of one `ontology_import` step (pass `ingest_run`, node
+/// `node_id`), after failing the org's flow runs that lost their server.
+/// `None`: that step already has its run (a concurrent call opened it).
+pub async fn open_from_flow(
+    db: &DatabaseConnection,
+    org_id: i64,
+    id: Uuid,
+    ingest_run: Uuid,
+    node_id: &str,
+) -> Result<Option<Uuid>> {
+    let imp = find_row(db, org_id, id).await?;
+    db.execute_raw(stmt(
+        &format!(
+            "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now() \
+             WHERE org_id = $1 AND trigger = 'flow' AND state = 'running' \
+               AND heartbeat_at < now() - interval '{FLOW_RUN_STALE}'"
+        ),
+        vec![org_id.into(), err_codes::IMPORT_RUN_INTERRUPTED.into()],
+    ))
+    .await?;
+    let run = Uuid::new_v4();
+    let opened = db
+        .execute_raw(stmt(
+            "INSERT INTO object_import_runs (id, org_id, import_id, number, state, trigger, \
+               import_version, ingest_run_id, ingest_node_id) \
+             SELECT $1, $2, $3, coalesce(max(number), 0) + 1, 'running', 'flow', $4, $5, $6 \
+             FROM object_import_runs WHERE import_id = $3 \
+             ON CONFLICT (org_id, ingest_run_id, ingest_node_id) \
+               WHERE ingest_run_id IS NOT NULL DO NOTHING",
+            vec![
+                run.into(),
+                imp.org_id.into(),
+                imp.id.into(),
+                imp.version.into(),
+                ingest_run.into(),
+                node_id.into(),
+            ],
+        ))
+        .await?;
+    Ok((opened.rows_affected() == 1).then_some(run))
+}
+
+/// What a running flow run knows so far: its records, then the planned
+/// counts (the write itself is one transaction, all or nothing).
+async fn progress(db: &DatabaseConnection, run_id: Uuid, rows: usize, diff: Option<&ImportDiff>) {
+    let counts = diff.map(ImportDiff::counts).unwrap_or_default();
+    let r = db
+        .execute_raw(stmt(
+            "UPDATE object_import_runs SET rows = $2, counts = $3, heartbeat_at = now() \
+             WHERE id = $1 AND state = 'running'",
+            vec![
+                run_id.into(),
+                (rows as i32).into(),
+                serde_json::to_value(&counts).unwrap_or_default().into(),
+            ],
+        ))
+        .await;
+    if let Err(e) = r {
+        tracing::warn!(run = %run_id, error = %e, "import progress not recorded");
+    }
+}
+
+/// Keeps a flow run alive while its server works on it.
+pub async fn beat(db: &DatabaseConnection, run_id: Uuid) {
+    let r = db
+        .execute_raw(stmt(
+            "UPDATE object_import_runs SET heartbeat_at = now() WHERE id = $1 AND state = 'running'",
+            vec![run_id.into()],
+        ))
+        .await;
+    if let Err(e) = r {
+        tracing::warn!(run = %run_id, error = %e, "import heartbeat not recorded");
+    }
+}
+
+/// A flow step's run as a poll sees it.
+pub struct FlowRunState {
+    pub run: ImportRunView,
+    /// No heartbeat for `FLOW_RUN_STALE`: its server is gone.
+    pub stale: bool,
+}
+
+/// The run opened for step `node_id` of pass `ingest_run`, if any.
+pub async fn flow_run_of(
+    db: &DatabaseConnection,
+    org_id: i64,
+    ingest_run: Uuid,
+    node_id: &str,
+) -> Result<Option<FlowRunState>> {
+    let Some(q) = db
+        .query_one_raw(stmt(
+            &format!(
+                "SELECT id, import_id, heartbeat_at < now() - interval '{FLOW_RUN_STALE}' AS stale \
+                 FROM object_import_runs \
+                 WHERE org_id = $1 AND ingest_run_id = $2 AND ingest_node_id = $3"
+            ),
+            vec![org_id.into(), ingest_run.into(), node_id.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let (id, import_id, stale) = (
+        q.try_get::<Uuid>("", "id")?,
+        q.try_get::<Uuid>("", "import_id")?,
+        q.try_get::<bool>("", "stale")?,
+    );
+    let (row, _) = load_run(db, import_id, id).await?;
+    Ok(Some(FlowRunState {
+        run: row.view(),
+        stale,
+    }))
+}
+
+/// Fails a flow run whose server is gone (or whose file could not be
+/// read); a run that finished meanwhile keeps its outcome.
+pub async fn fail_flow_run(db: &DatabaseConnection, run_id: Uuid, code: &str) -> Result<()> {
+    db.execute_raw(stmt(
+        "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now(), \
+           heartbeat_at = now() WHERE id = $1 AND state = 'running'",
+        vec![run_id.into(), code.into()],
+    ))
+    .await?;
+    Ok(())
 }
 
 type Refusal = (&'static str, &'static str, Value, Option<Box<ImportDiff>>);

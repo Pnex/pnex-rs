@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use super::changes::{self, Change};
 use super::objects::find;
-use super::{parse_instant, role_allows, schema, Actor, OntologyError, Result};
+use super::{parse_instant, role_allows, schema, Actor, OntologyError, OrgSchema, Result};
 use crate::models::_entities::{objects, resource_edges};
 
 pub fn object_ref(o: &objects::Model) -> ObjectRef {
@@ -163,7 +163,17 @@ pub async fn create<C: ConnectionTrait>(
     actor: &Actor,
     input: &LinkInput,
 ) -> Result<LinkView> {
-    let s = schema(db, org_id).await?;
+    create_with(db, &schema(db, org_id).await?, org_id, actor, input).await
+}
+
+/// `create` on a schema already loaded (a bulk import loads it once).
+pub async fn create_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    input: &LinkInput,
+) -> Result<LinkView> {
     let Some(lt) = s.link_type(&input.link_type).cloned() else {
         return Err(super::invalid("link_type", FIELD_INVALID));
     };
@@ -314,7 +324,26 @@ pub async fn update<C: ConnectionTrait>(
     id: i64,
     attributes: &Map<String, Value>,
 ) -> Result<LinkView> {
-    let s = schema(db, org_id).await?;
+    update_with(
+        db,
+        &schema(db, org_id).await?,
+        org_id,
+        actor,
+        id,
+        attributes,
+    )
+    .await
+}
+
+/// `update` on a schema already loaded (a bulk import loads it once).
+pub async fn update_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    id: i64,
+    attributes: &Map<String, Value>,
+) -> Result<LinkView> {
     let row = resource_edges::Entity::find_by_id(id)
         .filter(resource_edges::Column::OrgId.eq(org_id))
         .one(db)

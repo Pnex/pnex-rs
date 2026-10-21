@@ -370,7 +370,19 @@ async fn settle(
     id: &str,
     run: &str,
 ) -> Value {
-    for _ in 0..100 {
+    settle_within(server, token, org, id, run, 100).await
+}
+
+/// `settle` with a budget of `polls` × 100 ms.
+async fn settle_within(
+    server: &axum_test::TestServer,
+    token: &str,
+    org: i64,
+    id: &str,
+    run: &str,
+    polls: u32,
+) -> Value {
+    for _ in 0..polls {
         let (st, r) = call(
             server,
             "GET",
@@ -505,6 +517,56 @@ async fn imports_preview_apply_and_close_missing_links() {
         assert_eq!(st, 409);
         let (_, runs) = call(&server, "GET", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
         assert!(runs["count"].as_i64().unwrap() >= 5, "{runs}");
+    })
+    .await;
+}
+
+/// A few thousand records apply in seconds: the write loads the schema
+/// once, not per object and per link (an N+1 that made a 42k-row file
+/// outlast its flow step).
+#[tokio::test]
+#[serial]
+async fn imports_apply_thousands_of_records_quickly() {
+    with_app(|server, env| async move {
+        const ROWS: usize = 2_000;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        for i in 0..20 {
+            let code = format!("RNCP{i:05}");
+            let (st, r) = object(&server, &env.alice, org, "certification", &code, json!({"code": code})).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let (st, imp) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org,
+            Some(json!({"name": "Bulk", "mapping": MAPPING, "mode": "incremental"}))).await;
+        assert_eq!(st, 201, "{imp}");
+        let id = imp["id"].as_str().unwrap().to_string();
+        let mut csv = String::from("siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n");
+        for i in 0..ROWS {
+            csv.push_str(&format!("{}00012;Org {i};RNCP{:05};les_deux;01/02/2024;oui\n", 100_000_000 + i, i % 20));
+        }
+        let res = server
+            .post(&format!("/api/v1/ontology/imports/{id}/dry-run?filename=bulk.csv"))
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/octet-stream")
+            .bytes(csv.into_bytes().into())
+            .await;
+        assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
+        let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let p = settle_within(&server, &env.alice, org, &id, &run, 600).await;
+        assert_eq!(p["run"]["counts"]["created"], ROWS, "{p}");
+        assert_eq!(p["run"]["counts"]["links_opened"], ROWS, "{p}");
+
+        let started = std::time::Instant::now();
+        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/apply"), &env.alice, org,
+            Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
+        assert_eq!(st, 202, "{r}");
+        // Generous on purpose: about 7 s here, 38 s with a scan per object.
+        let r = settle_within(&server, &env.alice, org, &id, &run, 600).await;
+        let took = started.elapsed();
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        eprintln!("applied {ROWS} records + {ROWS} links in {took:?}");
+        assert!(took < std::time::Duration::from_secs(30), "apply took {took:?}");
     })
     .await;
 }
@@ -1021,6 +1083,100 @@ async fn open_data_ingestion_chain() {
         assert!(store.list_prefix(&format!("org_{org}/staging/")).await.unwrap().is_empty());
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
+    })
+    .await;
+}
+
+/// An import step outlives its HTTP call (no staged file here: the import
+/// fetches its own source, like an API enrichment): `pending` until done,
+/// then the journaled answer, never run twice; a run whose server is gone
+/// fails with `import-run-interrupted`.
+#[tokio::test]
+#[serial]
+async fn ingest_import_outlives_its_call() {
+    with_app(|server, env| async move {
+        use axum::routing::get;
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let (st, r) = object(&server, &env.alice, org, "certification", "RNCP12345", json!({"code": "RNCP12345"})).await;
+        assert_eq!(st, 201, "{r}");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().route("/slow/reseau.csv", get(|| async {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            "siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n\
+             123456789 00012;ACME;RNCP12345;les_deux;01/02/2024;oui\n"
+        }));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let (st, imp) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org,
+            Some(json!({"name": "Slow", "mapping": MAPPING, "mode": "incremental",
+                        "source": "url", "source_url": format!("{base}/slow/reseau.csv")}))).await;
+        assert_eq!(st, 201, "{imp}");
+        let import_id = imp["id"].as_str().unwrap().to_string();
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
+        unsafe { std::env::set_var("PNEX_INGEST_WAIT_MS", "100") };
+
+        use pnex_backend::models::_entities::{flow_versions, flows};
+        use sea_orm::{ActiveModelTrait, Set};
+        let flow = flows::ActiveModel {
+            name: Set("ingest".into()),
+            status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+            org_id: Set(org),
+            ..Default::default()
+        }.insert(&env.db).await.unwrap();
+        let version = flow_versions::ActiveModel {
+            flow_id: Set(flow.id),
+            version_number: Set(1),
+            graph: Set(json!({ "nodes": [{"id": "imp", "kind": "ingest", "config":
+                {"step": "ontology_import", "import_id": import_id, "action": "apply"}}] })),
+            ..Default::default()
+        }.insert(&env.db).await.unwrap();
+        let mut am: flows::ActiveModel = flow.clone().into();
+        am.deployed_version_id = Set(Some(version.id));
+        am.update(&env.db).await.unwrap();
+        let node = json!({"org_id": org, "flow_id": flow.id, "version": 1, "node_id": "imp"});
+        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
+
+        // Slower than the wait: pending, the pass id kept in the message.
+        let pass = uuid::Uuid::new_v4().to_string();
+        let msg = json!({"run_id": pass});
+        let mut r = ingest(&server, node.clone(), &msg).await;
+        assert_eq!(r["pending"], true, "{r}");
+        assert_eq!(r["msg"]["run_id"], pass);
+        for _ in 0..50 {
+            if r["pending"] != true {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            r = ingest(&server, node.clone(), &r["msg"]).await;
+        }
+        assert_eq!((r["port"].clone(), r["manifest"]["state"].clone()), (json!(0), json!("applied")), "{r}");
+        assert_eq!(r["manifest"]["created"], 1, "{r}");
+        let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} AND node_id = 'imp'");
+        let runs = format!("SELECT count(*)::bigint AS n FROM object_import_runs WHERE import_id = '{import_id}'");
+        assert_eq!((count(q(steps.clone()).await.unwrap()), count(q(runs.clone()).await.unwrap())), (1, 1));
+
+        // The same call again: the journaled answer, nothing run twice.
+        let again = ingest(&server, node.clone(), &msg).await;
+        assert_eq!((again["port"].clone(), again["manifest"].clone()), (r["port"].clone(), r["manifest"].clone()), "{again}");
+        assert_eq!((count(q(steps.clone()).await.unwrap()), count(q(runs.clone()).await.unwrap())), (1, 1));
+
+        // A run whose server stopped beating: failed, then journaled.
+        let dead = uuid::Uuid::new_v4();
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "INSERT INTO object_import_runs (id, org_id, import_id, number, state, trigger, import_version, \
+               heartbeat_at, ingest_run_id, ingest_node_id) \
+             SELECT gen_random_uuid(), {org}, '{import_id}', max(number) + 1, 'running', 'flow', 1, \
+               now() - interval '11 minutes', '{dead}', 'imp' FROM object_import_runs WHERE import_id = '{import_id}'"))).await.unwrap();
+        let r = ingest(&server, node.clone(), &json!({"run_id": dead})).await;
+        assert_eq!((r["port"].clone(), r["code"].clone()), (json!(1), json!("import-run-interrupted")), "{r}");
+        let state = q(format!("SELECT state FROM object_import_runs WHERE ingest_run_id = '{dead}'"))
+            .await.unwrap().unwrap().try_get::<String>("", "state").unwrap();
+        assert_eq!(state, "failed");
+        assert_eq!(count(q(steps).await.unwrap()), 2);
+        unsafe { std::env::remove_var("PNEX_INGEST_WAIT_MS") };
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;
 }

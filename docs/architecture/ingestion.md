@@ -109,7 +109,7 @@ séparateur). Manifeste `{rows_in, rows_out, distinct_kept, staging_key}`.
 ### D322 — `ontology_import`
 
 Exécute une import D301 **existante** sur la clé reçue
-(`imports::run_from_flow`, synchrone) : mêmes contrôles qu'un run planifié
+(`imports::run_from_flow`) : mêmes contrôles qu'un run planifié
 (D303 : forme changée, snapshot avec erreurs), plus le garde-fou
 `max_closures_pct` (20 % par défaut) : refus si le run fermerait plus que
 cette part des objets et liens vivants de l'import (`ingest-suspicious-closures`).
@@ -121,6 +121,22 @@ cette part des objets et liens vivants de l'import (`ingest-suspicious-closures`
 
 Un pack référence une import par son nom (`import_name`, résolu à
 l'installation comme `function_name`).
+
+**Durée (2026-10-22, incident fc_certificateurs 42 730 lignes)** : une
+import dépasse n'importe quel appel HTTP (enrichissement `per_object` :
+des heures). L'étape ouvre son run (`ingest_run_id` + `ingest_node_id`,
+unique), le lance dans une tâche détachée qui journalise l'étape elle-même,
+attend 25 s puis répond `pending: true` ; le nœud renvoie la même requête
+toutes les 10 s. Un rappel trouve l'étape journalisée (même réponse, rien
+de relancé), le run en cours (`pending`), ou un run sans battement
+(`heartbeat_at`, toutes les 60 s) depuis 10 min : son serveur est mort, le
+run passe `failed` (`import-run-interrupted`), rien n'a été écrit
+(l'écriture est une transaction). Multi-pods : seul le battement fait foi,
+jamais le boot d'un pod ; l'ouverture d'un run balaie les runs `flow`
+morts de l'org. `rows` puis les comptes prévus sont publiés dès qu'ils sont
+connus. L'écriture charge le schéma une fois et cherche les clés par
+containment (index GIN) : ×5 à ×10 sur un import de quelques milliers de
+lignes.
 
 ## 4. France Compétences dans le pack `quali_watch` (1.1.0)
 

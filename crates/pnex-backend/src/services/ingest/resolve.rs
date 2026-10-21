@@ -89,12 +89,22 @@ pub(super) async fn run(cfg: &IngestConfig, msg: IngestMsg) -> Outcome {
     let Ok(api) = check(&format!("{}/datasets/{dataset}/", api_root())) else {
         return unreachable();
     };
-    let doc: Dataset = match super::download::http().get(api).send().await {
+    let doc: Dataset = match super::download::http().get(api.clone()).send().await {
         Ok(r) if r.status().is_success() => match r.json().await {
             Ok(d) => d,
-            Err(_) => return Outcome::fail(err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null),
+            Err(e) => {
+                tracing::info!(url = %api, error = %e, "ingest dataset unreadable");
+                return Outcome::fail(err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null);
+            }
         },
-        _ => return unreachable(),
+        Ok(r) => {
+            tracing::info!(url = %api, status = %r.status(), "ingest dataset refused");
+            return unreachable();
+        }
+        Err(e) => {
+            tracing::info!(url = %api, error = ?e, "ingest dataset unreachable");
+            return unreachable();
+        }
     };
     let pattern = cfg.resource_match.trim();
     let Some(r) = newest(&doc.resources, pattern) else {

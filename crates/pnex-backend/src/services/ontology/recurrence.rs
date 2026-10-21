@@ -253,6 +253,17 @@ pub fn spawn_sweeper(ctx: &AppContext) {
 }
 
 /// Best-effort refresh after a write: the sweep repairs a failure.
+/// `refresh_logged` on a row and its type already in hand (no schema load).
+pub(super) async fn refresh_row_logged<C: ConnectionTrait>(
+    db: &C,
+    row: &objects::Model,
+    def: &ObjectTypeDef,
+) {
+    if let Err(e) = sync_object(db, row, def, Utc::now().date_naive()).await {
+        tracing::warn!(object = %row.id, error = %e, "recurrence refresh failed");
+    }
+}
+
 pub async fn refresh_logged<C: ConnectionTrait>(db: &C, org_id: i64, object_id: Uuid) {
     if let Err(e) = refresh(db, org_id, object_id).await {
         tracing::warn!(object = %object_id, error = %e, "recurrence refresh failed");

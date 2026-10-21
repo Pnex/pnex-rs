@@ -48,6 +48,7 @@ mod m20261020_000038_site_recipes;
 mod m20261020_000039_browser_endpoints;
 mod m20261020_000040_site_recipe_versions;
 mod m20261021_000041_prospection_oppositions;
+mod m20261022_000042_import_run_heartbeat;
 
 pub struct Migrator;
 
@@ -92,6 +93,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261020_000039_browser_endpoints::Migration),
             Box::new(m20261020_000040_site_recipe_versions::Migration),
             Box::new(m20261021_000041_prospection_oppositions::Migration),
+            Box::new(m20261022_000042_import_run_heartbeat::Migration),
         ]
     }
 }

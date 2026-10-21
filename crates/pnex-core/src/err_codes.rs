@@ -619,6 +619,9 @@ pub const NOTIFY_DYNAMIC_RECIPIENTS_ADMIN: &str = "notify-dynamic-recipients-adm
 pub const ONTOLOGY_NODE_UNKNOWN: &str = "ontology-node-unknown";
 /// The preview was already applied, or the import or the data changed since.
 pub const IMPORT_RUN_STALE: &str = "import-run-stale";
+/// A flow import run whose server stopped working on it (no heartbeat for
+/// 10 minutes): journaled as failed, nothing of it was written.
+pub const IMPORT_RUN_INTERRUPTED: &str = "import-run-interrupted";
 /// An import preview with row errors cannot be applied (D301).
 pub const IMPORT_HAS_ERRORS: &str = "import-has-errors";
 /// A snapshot run that lost over 30 % of the records of the previous one:\nrefused without closing anything (D303); `args.previous`, `args.rows`.
@@ -845,6 +848,7 @@ pub const ALL: &[&str] = &[
     NOTIFY_DYNAMIC_RECIPIENTS_ADMIN,
     ONTOLOGY_NODE_UNKNOWN,
     IMPORT_RUN_STALE,
+    IMPORT_RUN_INTERRUPTED,
     IMPORT_HAS_ERRORS,
     IMPORT_SUSPICIOUS_DROP,
     IMPORT_SCHEMA_CHANGED,
