@@ -174,6 +174,9 @@ pub(super) struct ClusterItemDto {
     pub(super) id: Option<Uuid>,
     pub(super) label: String,
     pub(super) emoji: String,
+    /// Colour token of the pin's coloured status (`green`, `amber`…).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) color: Option<String>,
 }
 
 #[derive(Serialize, utoipa::ToSchema)]

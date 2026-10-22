@@ -390,6 +390,7 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         indexed: false,
         unique: false,
         pack: None,
+        colors: Default::default(),
     }
 }
 
@@ -531,6 +532,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         indexed: false,
         unique: false,
         pack: None,
+        colors: Default::default(),
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
         inverse_names: Default::default(),

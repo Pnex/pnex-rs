@@ -182,6 +182,7 @@ pub(super) async fn cluster(
                 id: i.id,
                 label: i.label,
                 emoji: i.emoji,
+                color: i.color,
             })
             .collect(),
     })

@@ -1,12 +1,14 @@
 //! Hierarchy tab of the object page (partner-watch.md D305): a tree
 //! computed on the links a pack declares, at a date; a node with several
-//! parents shows under each, with the others named.
+//! parents shows under each, with the others named. Coloured statuses
+//! (D339) mark the nodes; the coverage of the tree (D330) sums its users,
+//! counts its statuses and lists its white space.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{HierarchyView, ObjectTypeView};
 
-use super::{icon_of, tr, TypeIcon};
+use super::{enum_label, icon_of, mark_class, property_name, tr, TypeIcon};
 use crate::api;
 use crate::app::Route;
 
@@ -16,6 +18,7 @@ const INPUT: &str = "px-3 py-2 border border-gray-300 rounded-lg text-sm bg-whit
 pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeView>) -> Element {
     let mut key = use_signal(|| initial.key.clone());
     let mut at = use_signal(String::new);
+    let gaps_only = use_signal(|| false);
     let hid = id.clone();
     let view = use_resource(move || {
         let id = hid.clone();
@@ -28,9 +31,17 @@ pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeV
         },
         Some(Ok(v)) => {
             let v = v.clone();
+            let shown: Vec<_> = v
+                .nodes
+                .iter()
+                .cloned()
+                .enumerate()
+                .filter(|(i, n)| !gaps_only() || *i == 0 || n.white_space)
+                .collect();
             rsx! {
+                Coverage { view: v.clone(), types: types.clone(), gaps_only }
                 ul { class: "space-y-1", "data-testid": "onto-hierarchy",
-                    for (i, n) in v.nodes.iter().cloned().enumerate() {
+                    for (i, n) in shown {
                         li {
                             key: "{i}",
                             class: "flex flex-wrap items-center gap-2 text-sm",
@@ -49,6 +60,20 @@ pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeV
                                     id: n.id.clone(),
                                 },
                                 "{n.title}"
+                            }
+                            for m in n.marks.iter() {
+                                span {
+                                    key: "{m.property}",
+                                    class: "inline-flex items-center gap-1 text-xs text-gray-600",
+                                    title: "{property_name(&types, &m.property)}",
+                                    span { class: "h-2 w-2 rounded-full {mark_class(&m.color)}" }
+                                    "{enum_label(&m.value)}"
+                                }
+                            }
+                            if n.white_space {
+                                span { class: "rounded border border-dashed border-gray-300 px-1 text-xs text-gray-500",
+                                    {t!("onto-hierarchy-white-space")}
+                                }
                             }
                             if !n.also_under.is_empty() {
                                 span { class: "text-xs text-gray-500",
@@ -95,6 +120,42 @@ pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeV
                 }
             }
             {body}
+        }
+    }
+}
+
+/// Coverage of the tree (D330): statuses counted, sums, white space.
+#[component]
+fn Coverage(view: HierarchyView, types: Vec<ObjectTypeView>, gaps_only: Signal<bool>) -> Element {
+    if view.counts.is_empty() && view.totals.is_empty() && !view.has_coverage {
+        return rsx! {};
+    }
+    rsx! {
+        div {
+            class: "flex flex-wrap items-center gap-3 rounded border border-gray-200 bg-gray-50 p-2 text-xs text-gray-700",
+            "data-testid": "onto-hierarchy-coverage",
+            for c in view.counts.iter() {
+                span {
+                    key: "{c.property}-{c.value}",
+                    class: "inline-flex items-center gap-1",
+                    title: "{property_name(&types, &c.property)}",
+                    span { class: "h-2 w-2 rounded-full {mark_class(&c.color)}" }
+                    "{enum_label(&c.value)} · {c.count}"
+                }
+            }
+            for s in view.totals.iter() {
+                span { key: "{s.property}", "{property_name(&types, &s.property)} : {s.total}" }
+            }
+            if view.has_coverage {
+                label { class: "inline-flex items-center gap-1",
+                    input {
+                        r#type: "checkbox",
+                        checked: gaps_only(),
+                        onchange: move |e| gaps_only.set(e.checked()),
+                    }
+                    {t!("onto-hierarchy-white-space-only", count : view.white_space)}
+                }
+            }
         }
     }
 }

@@ -173,6 +173,12 @@ maplibreGl.setWorkerUrl(
     });
   }
 
+  // Palette of property colours (pnex_core::ontology::schema::COLORS).
+  var PIN_TONES = {
+    green: '#22c55e', amber: '#f59e0b', red: '#ef4444',
+    blue: '#3b82f6', violet: '#8b5cf6', gray: '#9ca3af',
+  };
+
   function buildPinElement(p) {
     var el = document.createElement('div');
     el.style.cssText =
@@ -188,6 +194,13 @@ maplibreGl.setWorkerUrl(
       'font-size:11px;font-weight:600;color:#1e293b;background:rgba(255,255,255,.9);' +
       'border-radius:4px;padding:0 4px;margin-top:1px;max-width:140px;' +
       'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    // Status colour (D339): a ring under the pin and the label's edge.
+    var tone = PIN_TONES[p.color];
+    if (tone) {
+      dot.style.cssText +=
+        'border-radius:9999px;padding:2px;box-shadow:0 0 0 3px ' + tone + ';background:#fff;';
+      lab.style.borderLeft = '3px solid ' + tone;
+    }
     el.appendChild(dot);
     if (p.label) el.appendChild(lab);
     return el;
@@ -220,6 +233,13 @@ maplibreGl.setWorkerUrl(
       'font-size:10px;font-weight:600;color:#1d4ed8;background:rgba(255,255,255,.92);' +
       'border-radius:4px;padding:0 4px;margin-top:1px;max-width:120px;' +
       'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    // Status colour (D339): a ring under the pin and the label's edge.
+    var tone = PIN_TONES[p.color];
+    if (tone) {
+      dot.style.cssText +=
+        'border-radius:9999px;padding:2px;box-shadow:0 0 0 3px ' + tone + ';background:#fff;';
+      lab.style.borderLeft = '3px solid ' + tone;
+    }
     el.appendChild(dot);
     if (p.label) el.appendChild(lab);
     return el;

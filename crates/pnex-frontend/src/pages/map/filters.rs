@@ -48,6 +48,7 @@ pub(super) async fn redraw_with(
                 String::new()
             },
             count: it.count,
+            color: it.color.clone(),
         })
         .collect();
     for p in positions.read().iter() {
@@ -59,6 +60,7 @@ pub(super) async fn redraw_with(
             label: p.device_id.clone(),
             emoji: "🛰️".to_string(),
             count: 0,
+            color: None,
         });
     }
     map_viewer::set_items(MAP_HOST, &items).await;

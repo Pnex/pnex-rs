@@ -78,6 +78,7 @@ pub(super) fn EventMap(
             label: p.object.title.clone(),
             emoji: "📍".into(),
             count: 0,
+            color: None,
         })
         .collect();
     let located = !pins.is_empty();
@@ -150,6 +151,7 @@ pub(super) fn CaseMap() -> Element {
                 label: e.event.title,
                 emoji: "📌".into(),
                 count: 0,
+                color: None,
             })
         }),
         _ => None,
@@ -163,6 +165,7 @@ pub(super) fn CaseMap() -> Element {
         label: p.object.title.clone(),
         emoji: "📍".into(),
         count: 0,
+        color: None,
     });
     let items: Vec<MapItem> = tracks
         .iter()
@@ -177,6 +180,7 @@ pub(super) fn CaseMap() -> Element {
                 label: t.object.title.clone(),
                 emoji: String::new(),
                 count: 0,
+                color: None,
             })
         })
         .chain(pin)
@@ -249,6 +253,7 @@ pub(super) fn CaseMap() -> Element {
                         label: p.object.title.clone(),
                         emoji: "📍".into(),
                         count: 0,
+                        color: None,
                     })
                     .collect(),
             };

@@ -246,6 +246,33 @@ pub fn short_time(rfc3339: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Dot classes of a property colour token (D339); unknown → gray.
+pub fn mark_class(color: &str) -> &'static str {
+    match color {
+        "green" => "bg-green-500",
+        "amber" => "bg-amber-500",
+        "red" => "bg-red-500",
+        "blue" => "bg-signal-500",
+        "violet" => "bg-violet-500",
+        _ => "bg-gray-400",
+    }
+}
+
+/// Hex of a property colour token, for SVG strokes (same palette as
+/// [`mark_class`] and map.js).
+pub fn tone_hex(color: &str) -> &'static str {
+    match color {
+        "green" => "#22c55e",
+        "amber" => "#f59e0b",
+        "red" => "#ef4444",
+        "blue" => "#3b82f6",
+        "violet" => "#8b5cf6",
+        _ => "#9ca3af",
+    }
+}
+
+/// Display name of a property key, from the first type that has it.
+pub fn property_name(types: &[ObjectTypeView], key: &str) -> String {
 /// Display form of an enum value: its key is user data (`non_conforme`),
 /// shown as words (`Non conforme`); the stored value is unchanged.
 pub fn enum_label(value: &str) -> String {

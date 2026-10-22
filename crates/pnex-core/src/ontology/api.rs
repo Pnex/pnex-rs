@@ -276,6 +276,9 @@ pub struct QueryResult {
 pub struct Neighborhood {
     pub nodes: Vec<ObjectRef>,
     pub links: Vec<LinkView>,
+    /// Object id → colour token of its coloured status (D339).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub colors: std::collections::BTreeMap<String, String>,
 }
 
 /// One point of a recomposed series (D181).
@@ -402,6 +405,26 @@ pub struct Hierarchy {
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub names: super::Names,
     pub steps: Vec<HierarchyStep>,
+    /// Number properties summed over the tree's nodes, each node once
+    /// (account-mapping.md D330: current and potential users).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sums: Vec<String>,
+    /// What makes a node of the tree covered; the others are its white
+    /// space (D330).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<HierarchyCoverage>,
+}
+
+/// A node is covered when it has an open link of one of `links` (a contact
+/// works there) or one of the `values` of a property (a client site).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct HierarchyCoverage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<String>,
+    /// Property key → values that cover.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub values: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -428,6 +451,40 @@ pub struct HierarchyNode {
     /// Titles of the other parents this node also appears under.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub also_under: Vec<String>,
+    /// Its values of coloured properties (D339).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub marks: Vec<NodeMark>,
+    /// Not covered, when the hierarchy declares a coverage (D330).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub white_space: bool,
+}
+
+/// A value of a coloured enum property (account-mapping.md D339).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct NodeMark {
+    pub property: String,
+    pub value: String,
+    /// One of the palette tokens (`green`, `amber`…).
+    pub color: String,
+}
+
+/// How many distinct nodes of the tree hold a coloured value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MarkCount {
+    pub property: String,
+    pub value: String,
+    pub color: String,
+    pub count: u32,
+}
+
+/// A summed number property over the tree.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PropertyTotal {
+    pub property: String,
+    pub total: f64,
 }
 
 /// `GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed
@@ -441,6 +498,16 @@ pub struct HierarchyView {
     pub nodes: Vec<HierarchyNode>,
     /// The depth or node cap cut the tree.
     pub truncated: bool,
+    /// Coverage of the tree, computed at read time, never stored (D330).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub counts: Vec<MarkCount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub totals: Vec<PropertyTotal>,
+    /// Distinct nodes not covered (`white_space` on each of them).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_coverage: bool,
+    #[serde(default)]
+    pub white_space: u32,
 }
 
 /// Properties a pack adds to a type it does not own (D306).
