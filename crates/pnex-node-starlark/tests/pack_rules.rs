@@ -233,6 +233,31 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
 }
 
 #[test]
+fn model_opinion_becomes_evidence_and_moves_the_confidence() {
+    let opinion = |text: &str| {
+        let msg = json!({
+            "payload": {"text": text, "model": "m1"},
+            "proposition": {"source_id": "o1", "target_id": "s1", "attributes": {}, "confidence": 70}
+        });
+        execute(&code_in(PRESENCE, "pw_avis"), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let r = opinion("OUI\nLes mentions citent le SIREN.");
+    assert_eq!(
+        r["payload"]["confidence"], 79,
+        "never above the proposal band"
+    );
+    assert_eq!(
+        r["payload"]["evidence"]["avis_llm"],
+        "OUI\nLes mentions citent le SIREN."
+    );
+    assert_eq!(opinion("non, un annuaire")["payload"]["confidence"], 50);
+    assert_eq!(opinion("PEUT-ETRE")["payload"]["confidence"], 70);
+}
+
+#[test]
 fn signals_digest_lists_the_new_ones_newest_first() {
     let row = |title: &str, date: &str| {
         json!({"id": title, "title": title, "version": 1,

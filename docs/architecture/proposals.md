@@ -143,5 +143,8 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
 - Reste :
   - P3 : dossiers et voix dans la même table ;
   - P4 : acceptation automatique par règle d'org (D377, attend D368) ;
+  - fait depuis : la même proposition reçue à nouveau avec des preuves
+    (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves
+    et la nouvelle confiance ; la boîte affiche les preuves en texte ;
   - producteurs d'objets (`object_upsert` `propose`, entrée d'objet d'un
     mapping), à faire quand un cas réel le demande.

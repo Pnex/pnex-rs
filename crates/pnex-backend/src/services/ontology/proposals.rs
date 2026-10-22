@@ -70,7 +70,9 @@ async fn refs_of<C: ConnectionTrait>(db: &C, org_id: i64, p: &ProposalInput) -> 
 
 /// Records a proposal; `None` when the same fingerprint was already
 /// proposed (open, accepted or rejected: never proposed twice). A new
-/// proposal supersedes the open ones of the same slot.
+/// proposal supersedes the open ones of the same slot. The same values
+/// proposed again with evidence, while still open, refresh its evidence
+/// and confidence (a model's opinion arriving after the first proposal).
 pub async fn propose<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -137,11 +139,24 @@ pub async fn propose<C: ConnectionTrait>(
                 p.origin.trim().into(),
                 p.confidence.into(),
                 slot.clone().into(),
-                fingerprint.into(),
+                fingerprint.clone().into(),
             ],
         ))
         .await?;
     if inserted.is_none() {
+        if !p.evidence.is_null() {
+            db.execute_raw(stmt(
+                "UPDATE proposals SET evidence = $3, confidence = coalesce($4, confidence) \
+                 WHERE org_id = $1 AND fingerprint = $2 AND status = 'proposed'",
+                vec![
+                    org_id.into(),
+                    fingerprint.into(),
+                    p.evidence.clone().into(),
+                    p.confidence.into(),
+                ],
+            ))
+            .await?;
+        }
         return Ok(None);
     }
     db.execute_raw(stmt(

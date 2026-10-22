@@ -290,8 +290,15 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
     À partir de 80 le site est `confirme`, de 40 à 79 `propose`, en
     dessous rien n'est écrit. Enfin `object_upsert` crée le `site_web`
     par `domaine` et `link_upsert` pose `a_pour_site` avec `skip_closed`.
-  - L'étape LLM pour les scores moyens n'est pas faite : un score moyen
-    va directement à l'humain.
+  - **Avis du modèle (`presence_web` 1.2.0)** : un score moyen est
+    proposé tout de suite, puis `llm_text` (LLM de l'org, réponse
+    OUI / NON / PEUT-ETRE + une phrase) et `pw_avis` reproposent les mêmes
+    valeurs avec l'avis en `evidence` : la proposition ouverte prend l'avis
+    et la confiance (+10 sur OUI, 79 au plus ; −20 sur NON). Sans
+    fournisseur d'IA, la proposition reste sans avis. Le texte du site est
+    passé comme donnée. Le choix de `llm_text` plutôt que `text_decide` :
+    le modèle de décision n'est pas installé partout et un échec perdrait
+    la proposition. La capture (Q-W4) reste à faire.
   - Section **« Sites à valider »** en tête de la page Sites web, appuyée
     sur `GET /api/v1/web-presence/candidates` (lecture `ontology:read`,
     exposé au MCP) et `POST …/{id}/decision` (`confirme` | `rejete`,

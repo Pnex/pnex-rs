@@ -1278,9 +1278,18 @@ async fn flow_nodes_write_as_their_deployed_node() {
         // D375: a proposing node writes no link, it proposes one.
         let (_, site2) = object(&server, &env.alice, org, "site_web", "acme2.fr", json!({"url_racine": "https://acme2.fr/", "domaine": "acme2.fr"})).await;
         let req = json!({"node": node("p"), "source_id": a["object"]["id"], "target_id": site2["id"], "attributes": {"score": 60}, "confidence": 60});
-        let (st, r) = internal(&server, "link", req).await;
+        let (st, r) = internal(&server, "link", req.clone()).await;
         assert_eq!((st, r["proposed"].clone()), (200, json!(true)), "{r}");
         assert!(r["proposal_id"].is_string(), "{r}");
+        // The model's opinion arrives after: same values, the open proposal takes it.
+        let mut req2 = req.clone();
+        req2["confidence"] = json!(70);
+        req2["evidence"] = json!({"avis_llm": "OUI, mentions légales"});
+        let (st, r2) = internal(&server, "link", req2).await;
+        assert_eq!((st, r2["proposal_id"].clone()), (200, Value::Null), "{r2}");
+        let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", r["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!((got["evidence"]["avis_llm"].clone(), got["confidence"].clone(), got["status"].clone()),
+            (json!("OUI, mentions légales"), json!(70.0), json!("proposed")), "{got}");
         let open_links = env.db.execute_unprepared(&format!(
             "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);

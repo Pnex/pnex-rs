@@ -281,6 +281,7 @@ pub async fn link(
             values: req.attributes.clone(),
             origin: actor.source_ref.clone(),
             confidence: req.confidence.map(|c| c.clamp(0.0, 100.0)),
+            evidence: req.evidence.clone(),
             ..Default::default()
         };
         let id = super::proposals::propose(db, org, &input).await?;
