@@ -146,7 +146,14 @@ pub struct PropertyDef {
     /// (account-mapping.md D339), one of [`COLORS`].
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub colors: std::collections::BTreeMap<String, String>,
+    /// Enum only: value → displayed label by language (ontology.md D370).
+    /// The value itself is a stable key, never renamed to translate it.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub labels: std::collections::BTreeMap<String, super::Names>,
 }
+
+/// Languages a value label may carry.
+const LABEL_LANGS_MAX: usize = 8;
 
 /// Closed palette of property colours: design tokens, never raw CSS.
 pub const COLORS: &[&str] = &["green", "amber", "red", "blue", "violet", "gray"];
@@ -158,6 +165,19 @@ impl PropertyDef {
             .as_str()
             .and_then(|v| self.colors.get(v))
             .map(String::as_str)
+    }
+
+    /// Label of enum `value` in `lang` (`fr-FR` or `fr`), when one is set.
+    pub fn label_of(&self, value: &str, lang: &str) -> Option<&str> {
+        let names = self.labels.get(value)?;
+        let short = lang.split(['-', '_']).next().unwrap_or(lang);
+        names
+            .get(lang)
+            .or_else(|| names.get(short))
+            .or_else(|| names.get("en"))
+            .or_else(|| names.values().next())
+            .map(String::as_str)
+            .filter(|l| !l.trim().is_empty())
     }
 }
 
@@ -183,6 +203,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             pack: Option<String>,
             #[serde(default)]
             colors: std::collections::BTreeMap<String, String>,
+            #[serde(default)]
+            labels: std::collections::BTreeMap<String, super::Names>,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -261,6 +283,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             unique: h.unique,
             pack: h.pack,
             colors: h.colors,
+            labels: h.labels,
         })
     }
 }
@@ -309,8 +332,18 @@ pub fn check_defs(
                 {
                     return Err(err(at("colors"), FIELD_INVALID));
                 }
+                if d.labels.iter().any(|(v, names)| {
+                    !values.contains(v)
+                        || names.len() > LABEL_LANGS_MAX
+                        || names
+                            .iter()
+                            .any(|(l, t)| l.len() > 8 || t.chars().count() > NAME_MAX)
+                }) {
+                    return Err(err(at("labels"), FIELD_INVALID));
+                }
             }
             _ if !d.colors.is_empty() => return Err(err(at("colors"), FIELD_INVALID)),
+            _ if !d.labels.is_empty() => return Err(err(at("labels"), FIELD_INVALID)),
             PropertyKind::Ref { to_type } if !known_type(to_type) => {
                 return Err(err(at("to_type"), FIELD_INVALID));
             }
@@ -562,6 +595,7 @@ mod tests {
             unique: false,
             pack: None,
             colors: Default::default(),
+            labels: Default::default(),
         }
     }
 
@@ -757,6 +791,34 @@ mod tests {
             status(&[("client", "green")]).color_of(&json!("cible")),
             None
         );
+    }
+
+    #[test]
+    fn labels_translate_enum_values_without_renaming_them() {
+        let known = |_: &str| true;
+        let mut d = def(
+            "statut",
+            PropertyKind::Enum {
+                values: vec!["client".into(), "cible".into()],
+            },
+        );
+        d.labels.insert(
+            "client".into(),
+            [
+                ("en".to_string(), "Customer".to_string()),
+                ("fr".to_string(), "Client".to_string()),
+            ]
+            .into(),
+        );
+        assert!(check_defs(&[d.clone()], "p", &known).is_ok());
+        assert_eq!(d.label_of("client", "fr-FR"), Some("Client"));
+        assert_eq!(d.label_of("client", "de"), Some("Customer"));
+        assert_eq!(d.label_of("cible", "fr"), None);
+        let mut bad = d.clone();
+        bad.labels.insert("autre".into(), Default::default());
+        assert_eq!(check_defs(&[bad], "p", &known).unwrap_err().0, "p.0.labels");
+        let back: PropertyDef = serde_json::from_value(serde_json::to_value(&d).unwrap()).unwrap();
+        assert_eq!(back, d);
     }
 
     #[test]

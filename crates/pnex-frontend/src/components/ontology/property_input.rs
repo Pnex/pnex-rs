@@ -121,7 +121,7 @@ fn PropertyField(
                     option { value: "", "—" }
                     for v in values {
                         option { key: "{v}", value: "{v}", selected: v == value,
-                            {super::enum_label(&v)}
+                            {super::value_label(&def, &v)}
                         }
                     }
                 }
@@ -576,7 +576,7 @@ pub fn PropertyValue(
             }
         }
         (PropertyKind::Enum { .. }, Value::String(s)) => {
-            let text = super::enum_label(s);
+            let text = super::value_label(&def, s);
             rsx! {
                 span { "{text}" }
             }

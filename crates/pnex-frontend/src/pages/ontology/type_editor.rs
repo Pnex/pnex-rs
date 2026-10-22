@@ -341,6 +341,7 @@ fn Editor(
                                             unique: false,
                                             pack: None,
                                             colors: Default::default(),
+                                            labels: Default::default(),
                                         })
                                 });
                             },
@@ -564,7 +565,113 @@ fn PropertyRow(
                 }
             }
             KindConfig { index, def, choices }
+            EnumDisplay { index, def }
         }
+    }
+}
+
+/// How each value of an enum is shown (D370): its text in the UI language
+/// and its colour. The value itself stays the stored key.
+#[component]
+fn EnumDisplay(index: usize, def: Signal<ObjectTypeDef>) -> Element {
+    let Some(p) = def.read().properties.get(index).cloned() else {
+        return rsx! {};
+    };
+    let PropertyKind::Enum { values } = &p.kind else {
+        return rsx! {};
+    };
+    let tag = crate::i18n::current_tag();
+    let lang = tag.split(['-', '_']).next().unwrap_or("en").to_string();
+    let mut edit = move |f: Box<dyn FnOnce(&mut PropertyDef)>| {
+        def.with_mut(|d| {
+            if let Some(p) = d.properties.get_mut(index) {
+                f(p);
+            }
+        });
+    };
+    rsx! {
+        div { class: "space-y-1", "data-testid": "onto-enum-display",
+            p { class: "text-xs text-gray-600", {t!("onto-enum-display", lang : lang.clone())} }
+            for v in values.clone() {
+                div { key: "{v}", class: "grid grid-cols-3 items-center gap-2",
+                    span { class: "font-mono text-xs text-gray-700", "{v}" }
+                    input {
+                        class: INPUT,
+                        placeholder: crate::components::ontology::enum_label(&v),
+                        value: p.labels.get(&v).and_then(|n| n.get(&lang)).cloned().unwrap_or_default(),
+                        oninput: {
+                            let (v, lang) = (v.clone(), lang.clone());
+                            move |e: FormEvent| {
+                                let (v, lang, text) = (v.clone(), lang.clone(), e.value());
+                                edit(Box::new(move |p| set_label(p, &v, &lang, &text)));
+                            }
+                        },
+                    }
+                    select {
+                        class: INPUT,
+                        onchange: {
+                            let v = v.clone();
+                            move |e: FormEvent| {
+                                let (v, c) = (v.clone(), e.value());
+                                edit(Box::new(move |p| set_color(p, &v, &c)));
+                            }
+                        },
+                        option { value: "", {t!("onto-color-none")} }
+                        for c in pnex_core::ontology::schema::COLORS {
+                            option {
+                                key: "{c}",
+                                value: "{c}",
+                                selected: p.colors.get(&v).map(String::as_str) == Some(*c),
+                                {color_label(c)}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn color_label(color: &str) -> String {
+    dioxus_i18n::prelude::i18n()
+        .try_translate(&format!("onto-color-{color}"))
+        .unwrap_or_else(|_| color.to_string())
+}
+
+/// Sets the text of `value` in `lang`; an empty text removes it.
+fn set_label(p: &mut PropertyDef, value: &str, lang: &str, text: &str) {
+    let names = p.labels.entry(value.to_string()).or_default();
+    if text.trim().is_empty() {
+        names.remove(lang);
+    } else {
+        names.insert(lang.to_string(), text.to_string());
+    }
+    if names.is_empty() {
+        p.labels.remove(value);
+    }
+}
+
+/// Drops the texts and colours of values the enum no longer has (the
+/// server refuses them).
+fn keep_known_values(p: &mut PropertyDef) {
+    match &p.kind {
+        PropertyKind::Enum { values } => {
+            p.labels.retain(|v, _| values.contains(v));
+            p.colors.retain(|v, _| values.contains(v));
+        }
+        _ => {
+            p.labels.clear();
+            p.colors.clear();
+        }
+    }
+}
+
+/// Sets the colour of `value`; an empty one removes it.
+fn set_color(p: &mut PropertyDef, value: &str, color: &str) {
+    if color.is_empty() {
+        p.colors.remove(value);
+    } else {
+        p.colors.insert(value.to_string(), color.to_string());
     }
 }
 
@@ -584,6 +691,7 @@ fn KindConfig(index: usize, def: Signal<ObjectTypeDef>, choices: Vec<(String, St
         def.with_mut(|d| {
             if let Some(p) = d.properties.get_mut(index) {
                 p.kind = k;
+                keep_known_values(p);
             }
         });
     };
@@ -727,5 +835,38 @@ fn VersionsList(versions: Vec<pnex_core::ontology::api::ObjectTypeVersionView>) 
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+
+    #[test]
+    fn enum_texts_and_colours_follow_the_values() {
+        let mut p = PropertyDef {
+            key: "statut".into(),
+            name: String::new(),
+            names: Default::default(),
+            kind: PropertyKind::Enum {
+                values: vec!["client".into(), "cible".into()],
+            },
+            required: false,
+            indexed: false,
+            unique: false,
+            pack: None,
+            colors: Default::default(),
+            labels: Default::default(),
+        };
+        set_label(&mut p, "client", "fr", "Client actif");
+        set_color(&mut p, "cible", "amber");
+        assert_eq!(p.label_of("client", "fr-FR"), Some("Client actif"));
+        p.kind = PropertyKind::Enum {
+            values: vec!["client".into()],
+        };
+        keep_known_values(&mut p);
+        assert!(p.colors.is_empty());
+        set_label(&mut p, "client", "fr", " ");
+        assert!(p.labels.is_empty());
     }
 }

@@ -60,10 +60,12 @@ pub async fn tree(
             .iter()
             .filter_map(|p| {
                 let v = row.properties.get(&p.key)?;
+                let value = v.as_str()?.to_string();
                 Some(NodeMark {
                     property: p.key.clone(),
-                    value: v.as_str()?.to_string(),
                     color: p.color_of(v)?.to_string(),
+                    labels: p.labels.get(&value).cloned().unwrap_or_default(),
+                    value,
                 })
             })
             .collect()
@@ -157,6 +159,7 @@ pub async fn tree(
                 property: m.property.clone(),
                 value: m.value.clone(),
                 color: m.color.clone(),
+                labels: m.labels.clone(),
                 count: 1,
             }),
         }

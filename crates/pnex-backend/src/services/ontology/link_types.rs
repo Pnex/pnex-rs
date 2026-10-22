@@ -107,6 +107,15 @@ pub async fn update(
             current: row.version,
         });
     }
+    let scope = format!("link:{key}");
+    super::packs::record_display(
+        db,
+        org_id,
+        &scope,
+        row.pack_key.as_deref(),
+        &input.def.attributes,
+    )
+    .await?;
     Ok(LinkTypeView {
         def: input.def.clone(),
         version: expected + 1,

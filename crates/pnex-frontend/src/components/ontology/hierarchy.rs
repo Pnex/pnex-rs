@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{HierarchyView, ObjectTypeView};
 
-use super::{enum_label, icon_of, mark_class, property_name, tr, TypeIcon};
+use super::{icon_of, mark_class, mark_label, property_name, tr, TypeIcon};
 use crate::api;
 use crate::app::Route;
 
@@ -67,7 +67,7 @@ pub fn HierarchyPanel(id: String, initial: HierarchyView, types: Vec<ObjectTypeV
                                     class: "inline-flex items-center gap-1 text-xs text-gray-600",
                                     title: "{property_name(&types, &m.property)}",
                                     span { class: "h-2 w-2 rounded-full {mark_class(&m.color)}" }
-                                    "{enum_label(&m.value)}"
+                                    "{mark_label(&m.value, &m.labels)}"
                                 }
                             }
                             if n.white_space {
@@ -140,7 +140,7 @@ fn Coverage(view: HierarchyView, types: Vec<ObjectTypeView>, gaps_only: Signal<b
                     class: "inline-flex items-center gap-1",
                     title: "{property_name(&types, &c.property)}",
                     span { class: "h-2 w-2 rounded-full {mark_class(&c.color)}" }
-                    "{enum_label(&c.value)} · {c.count}"
+                    "{mark_label(&c.value, &c.labels)} · {c.count}"
                 }
             }
             for s in view.totals.iter() {

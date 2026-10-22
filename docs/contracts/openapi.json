@@ -9917,6 +9917,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "labels": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Label of the value by language (D370), empty = the value itself."
+          },
           "property": {
             "type": "string"
           },
@@ -11527,6 +11531,10 @@
           "color": {
             "description": "One of the palette tokens (`green`, `amber`…).",
             "type": "string"
+          },
+          "labels": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Label of the value by language (D370), empty = the value itself."
           },
           "property": {
             "type": "string"
@@ -17863,6 +17871,16 @@
               },
               "key": {
                 "type": "string"
+              },
+              "labels": {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/BTreeMap"
+                },
+                "description": "Enum only: value → displayed label by language (ontology.md D370).\nThe value itself is a stable key, never renamed to translate it.",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
               },
               "name": {
                 "type": "string"
