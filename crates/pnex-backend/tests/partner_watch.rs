@@ -600,7 +600,8 @@ async fn presence_web_takes_websites_over() {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
         env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'presence_web'")).await.unwrap();
-        install(&server, &env.alice, org, "presence_web").await;
+        let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/presence_web/install", &env.alice, org, None).await;
+        assert_eq!((st, up["kept"].clone()), (200, json!(["pw_lien"])), "the org's own version is named");
         let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "presence_web").unwrap();
         let code_of = |name: &str| shipped.functions.iter().find(|f| f.name == name).unwrap().code.clone();
         let latest = |sql: String| {

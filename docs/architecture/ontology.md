@@ -822,15 +822,17 @@ confiance, auteur machine.
     ou un flow dont la dernière version a pour auteur `pack:<clé>`, reçoit
     une nouvelle version (celle du pack). Dès que l'org a enregistré sa
     propre version, le pack n'y touche plus. Un flow mis à jour reste à
-    redéployer (D123). Test : `partner_watch` presence_web.
+    redéployer (D123). La réponse de l'installation nomme ce qui a été
+    gardé (`kept`) et l'UI l'affiche après la mise à jour. Test :
+    `partner_watch` presence_web.
 - **Pas fait** :
   - libellés et couleurs des valeurs d'énumération surchargés par l'org
     (D370) ;
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la
-    nouvelle version du pack : l'org garde sa version, sans avertissement ;
-  - le nœud JavaScript ne lit pas les réglages ;
-  - le tamponnage n'a pas de test d'intégration (fonction interne au
-    crate) ; il est couvert par le test unitaire de l'exécuteur.
+    nouvelle version du pack : l'org garde sa version (nommée après la
+    mise à jour), sans moyen dans l'UI de prendre celle du pack ;
+  - le nœud JavaScript ne lit pas les réglages (aucune fonction de pack
+    n'est en JavaScript).
 
 ### D369 — Identité externe et frontière des transactions (principe acté, code au démarrage CRM/ERP)
 

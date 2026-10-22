@@ -91,6 +91,7 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
                 names: p.names.clone(),
                 installed_version,
                 settings,
+                kept: Vec::new(),
                 key: p.key,
                 name: p.name,
                 version: p.version,
@@ -288,6 +289,7 @@ async fn install_locked(
             description: pack.description.clone(),
             installed_version: Some(pack.version.clone()),
             settings: Vec::new(),
+            kept: Vec::new(),
         });
     }
     for key in &pack.requires {
@@ -367,7 +369,7 @@ async fn install_locked(
         install_link(db, org_id, &s, &pack.key, l).await?;
     }
     super::imports::install_from_pack(db, org_id, user_id, pack).await?;
-    install_automation(db, org_id, user_id, pack).await?;
+    let kept = install_automation(db, org_id, user_id, pack).await?;
     let row = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
         .filter(packs::Column::Key.eq(&pack.key))
@@ -403,6 +405,7 @@ async fn install_locked(
         description: pack.description.clone(),
         installed_version: Some(pack.version.clone()),
         settings: Vec::new(),
+        kept,
     })
 }
 
@@ -517,17 +520,19 @@ fn extended_properties(
 /// D316: the pack's functions and flow models, created when the org has
 /// none of that name. On an upgrade, one the org never edited (its latest
 /// version is still the pack's) takes the new pack version; one the org
-/// edited is left alone. Flows are drafts: deploying them stays a human
-/// act (D123), so an upgraded flow runs at its next deploy.
+/// edited is left alone and named in the answer. Flows are drafts:
+/// deploying them stays a human act (D123), so an upgraded flow runs at its
+/// next deploy.
 async fn install_automation(
     db: &DatabaseConnection,
     org_id: i64,
     user_id: Option<i64>,
     pack: &Pack,
-) -> Result<()> {
+) -> Result<Vec<String>> {
     use crate::models::_entities::{flows, functions};
+    let mut kept = Vec::new();
     if pack.functions.is_empty() && pack.flows.is_empty() {
-        return Ok(());
+        return Ok(kept);
     }
     // name → (id, version, inputs, outputs) of the org's functions.
     let mut known: std::collections::HashMap<
@@ -548,6 +553,9 @@ async fn install_automation(
                     .as_ref()
                     .is_some_and(|v| v.code != f.code && pack_wrote(v.note.as_deref(), &pack.key));
                 if !pristine {
+                    if v.as_ref().is_some_and(|v| v.code != f.code) {
+                        kept.push(f.name.clone());
+                    }
                     (row.id, v)
                 } else {
                     let id = row.id;
@@ -634,6 +642,7 @@ async fn install_automation(
                 .as_ref()
                 .is_some_and(|v| v.author.as_deref() == Some(author.as_str()))
         {
+            kept.push(f.name.clone());
             continue;
         }
         let mut graph = f.graph.clone();
@@ -682,7 +691,7 @@ async fn install_automation(
             invalid(format!("flows.{i}"), FIELD_INVALID)
         })?;
     }
-    Ok(())
+    Ok(kept)
 }
 
 /// Whether a version note was written by `key`'s install (`pack <key> <v>`).

@@ -13051,6 +13051,13 @@
               "null"
             ]
           },
+          "kept": {
+            "description": "Answer of an install: the functions and flows the org edited, kept\nas they are instead of the pack's version (D368).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "key": {
             "type": "string"
           },

@@ -4781,6 +4781,7 @@ onto-pack-upgrade = Mettre à jour
 onto-pack-settings = Réglages
 onto-pack-setting-default = Valeur du pack : { $value }.
 onto-pack-done = Pack installé
+onto-pack-kept = Non mis à jour, car votre organisation les a modifiés : { $names }. Ils gardent votre version.
 onto-as-code = Schéma en YAML
 onto-as-code-help = Exportez vos types et types de liens, versionnez-les, importez-les dans une autre organisation.
 onto-export = Exporter le YAML
