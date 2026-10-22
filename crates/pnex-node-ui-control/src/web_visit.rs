@@ -155,6 +155,7 @@ impl WebVisitNode {
                 "text": reply.text,
                 "legal_url": reply.legal_url,
                 "legal_text": reply.legal_text,
+                "screenshot_asset_id": reply.screenshot_asset_id,
             });
             m.set("payload".into(), Variant::from(payload));
             if let Some(code) = &reply.code {

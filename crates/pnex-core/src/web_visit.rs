@@ -36,6 +36,11 @@ pub struct WebVisitConfig {
     /// Also read the legal notice when the page links to one.
     #[serde(default = "yes")]
     pub legal_page: bool,
+    /// Also capture the page with the org's own browser, kept as an image
+    /// of its media library (web-presence.md Q-W4); none configured = no
+    /// capture.
+    #[serde(default)]
+    pub screenshot: bool,
 }
 
 fn yes() -> bool {
@@ -44,7 +49,10 @@ fn yes() -> bool {
 
 impl Default for WebVisitConfig {
     fn default() -> Self {
-        Self { legal_page: true }
+        Self {
+            legal_page: true,
+            screenshot: false,
+        }
     }
 }
 
@@ -90,6 +98,9 @@ pub struct WebVisitNodeReply {
     pub legal_url: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub legal_text: String,
+    /// Media asset of the capture, when asked and a browser answered.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub screenshot_asset_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]

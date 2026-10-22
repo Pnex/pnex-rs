@@ -162,5 +162,55 @@ pub async fn run(
             return Ok(failed(err_codes::WEB_VISIT_UNREACHABLE, Value::Null));
         }
     }
-    Ok(visit(&req.url, config.legal_page).await)
+    let mut reply = visit(&req.url, config.legal_page).await;
+    if config.screenshot && reply.port == NODE_PORT_OK {
+        // A capture that fails leaves the visit as it is.
+        match capture(ctx, org_id, &reply.final_url).await {
+            Ok(id) => reply.screenshot_asset_id = id.to_string(),
+            Err(e) => tracing::warn!(org_id, error = %e, "web visit capture skipped"),
+        }
+    }
+    Ok(reply)
+}
+
+/// The page captured by the org's browser, as an image of its media
+/// library (quota of the org's storage).
+async fn capture(ctx: &AppContext, org_id: i64, url: &str) -> Result<uuid::Uuid, String> {
+    use crate::models::_entities::media_assets;
+    use sea_orm::{ActiveModelTrait, Set};
+    let ring = crate::services::secrets::Keyring::from_config(&ctx.config).ok();
+    let shot = tokio::time::timeout(
+        Duration::from_secs(60),
+        crate::services::site_recipes::endpoints::capture(&ctx.db, ring.as_ref(), org_id, url),
+    )
+    .await
+    .map_err(|_| "timed out".to_string())??;
+    let asset = media_assets::ActiveModel {
+        id: Set(uuid::Uuid::new_v4()),
+        org_id: Set(org_id),
+        kind: Set("image".into()),
+        name: Set(url.chars().take(255).collect()),
+        description: Set(None),
+        metadata: Set(Some(json!({ "source": "web_visit", "source_url": url }))),
+        ..Default::default()
+    }
+    .insert(&ctx.db)
+    .await
+    .map_err(|e| e.to_string())?;
+    let settings = crate::services::media::MediaSettings::from_config(&ctx.config);
+    crate::controllers::media::write_version(
+        ctx,
+        org_id,
+        &asset,
+        crate::controllers::media::IncomingVersion {
+            filename: "capture.jpg".into(),
+            content_type: "image/jpeg".into(),
+            note: None,
+            bytes: shot.into(),
+        },
+        &settings,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(asset.id)
 }

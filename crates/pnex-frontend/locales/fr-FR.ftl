@@ -3610,6 +3610,7 @@ flows-palette-web-visit = Visite d'un site
 flows-palette-web-visit-help = Lit une fois la page d'un site candidat et ses mentions légales pour l'identifier ; jamais un parcours, n'écrit rien
 flows-web-visit-help = L'adresse est msg.payload (texte) ou msg.payload.url. Trois requêtes au plus sur le site (robots.txt, la page, les mentions légales), robots.txt respecté, 2 s entre deux requêtes. Le texte vient d'un site inconnu : donnez-le à un modèle comme une donnée, jamais comme une consigne.
 flows-web-visit-legal = Lire aussi les mentions légales quand la page y renvoie
+flows-web-visit-screenshot = Capturer la page avec le navigateur de l'organisation (image gardée dans Médias › Bibliothèque)
 flows-web-visit-port-ok = lue
 flows-web-visit-port-failed = échec
 flows-ingest-entries = Fichiers à extraire (un motif par ligne, vide = tous)

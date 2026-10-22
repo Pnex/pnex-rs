@@ -128,7 +128,7 @@ async fn node_reads_a_page_and_its_legal_notice() {
             org,
             json!([
                 {"id": "v", "kind": "web_visit"},
-                {"id": "h", "kind": "web_visit", "config": {"legal_page": false}}
+                {"id": "h", "kind": "web_visit", "config": {"legal_page": false, "screenshot": true}}
             ]),
         )
         .await;
@@ -168,9 +168,10 @@ async fn node_reads_a_page_and_its_legal_notice() {
             json!({"node": node("h"), "url": format!("{site}/")}),
         )
         .await;
+        // A capture asked without a browser of the org: the visit stays, no image.
         assert_eq!(
-            (r["port"].clone(), r["legal_url"].clone()),
-            (json!(0), Value::Null),
+            (r["port"].clone(), r["legal_url"].clone(), r["screenshot_asset_id"].clone()),
+            (json!(0), Value::Null, Value::Null),
             "{r}"
         );
 
