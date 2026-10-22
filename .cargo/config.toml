@@ -3,10 +3,10 @@
 # wrapper (scripts/guarded.sh).
 
 [build]
-# A 16-thread machine running terminals, browsers and the Docker stack: 6
-# parallel rustc/linker jobs keep the peak memory of a workspace build well
-# under the guard's ceiling. Override per run with CARGO_BUILD_JOBS.
-jobs = 6
+# A 16-thread machine running a full desktop and the Docker stack: 4
+# parallel rustc/linker jobs (6 linked 60 test binaries of 550 MB at once
+# and took the session down, 2026-10-22). Override with CARGO_BUILD_JOBS.
+jobs = 4
 
 # Debug builds keep line tables only (file:line in backtraces and panics,
 # no variable info for a debugger). Full debuginfo made every backend test

@@ -23,10 +23,19 @@
 # - one heavy build at a time across every session/worktree (machine-wide
 #   lock, waits its turn); PNEX_GUARD_NO_LOCK=1 for long-running processes
 #   (dev servers, `dx serve`) that must not hold it;
-# - CARGO_BUILD_JOBS defaults to 6.
+# - CARGO_BUILD_JOBS defaults to 6;
+# - 2026-10-22: a 19 GB workspace test build (60 test binaries of 550 MB
+#   linked 6 at a time) under its 24G ceiling, plus a game, two browsers
+#   and Docker, pushed the whole session over oomd's 50% and GNOME was
+#   killed before the build. The ceiling is now what the desktop can spare
+#   when the build starts: MemAvailable minus PNEX_GUARD_RESERVE_GB, at
+#   most 16G, 4 jobs (2 under 12G), refused under 8G; and oomd kills the
+#   build at 10% pressure in its own scope, before the desktop feels it.
+#   A build that hits the ceiling fails; the session must never.
 #
-# Tunables (env): PNEX_GUARD_MEM_MAX (default 24G), PNEX_GUARD_MIN_DISK_GB
-# (25), PNEX_GUARD_NO_LOCK, CARGO_BUILD_JOBS.
+# Tunables (env): PNEX_GUARD_MEM_MAX (fixed ceiling, skips the computed
+# one), PNEX_GUARD_RESERVE_GB (16), PNEX_GUARD_MIN_DISK_GB (25),
+# PNEX_GUARD_NO_LOCK, CARGO_BUILD_JOBS.
 # Without a systemd user session (CI, containers) it runs the command with
 # the priority settings only.
 set -euo pipefail
@@ -37,9 +46,9 @@ if [ "$#" -eq 0 ]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-mem_max="${PNEX_GUARD_MEM_MAX:-24G}"
 min_disk_gb="${PNEX_GUARD_MIN_DISK_GB:-25}"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
+reserve_gb="${PNEX_GUARD_RESERVE_GB:-16}"
+jobs_set="${CARGO_BUILD_JOBS:-}"
 
 # Free space on the disk holding target/ (where builds write).
 free_gb="$(df --output=avail -BG "$repo_root" | tail -1 | tr -dc '0-9')"
@@ -56,12 +65,41 @@ command -v nice >/dev/null && prio+=(nice -n 10)
 command -v ionice >/dev/null && prio+=(ionice -c 2 -n 7)
 command -v choom >/dev/null && prio+=(choom -n 800 --)
 
+# Ceiling from the memory free right now (read once the lock is held: the
+# previous build has given its memory back by then).
+size_build() {
+  if [ -n "${PNEX_GUARD_MEM_MAX:-}" ]; then
+    mem_max="$PNEX_GUARD_MEM_MAX"
+    export CARGO_BUILD_JOBS="${jobs_set:-4}"
+    return
+  fi
+  local avail_gb cap_gb
+  avail_gb="$(awk '/^MemAvailable:/ {print int($2 / 1048576)}' /proc/meminfo 2>/dev/null || echo 32)"
+  cap_gb=$((avail_gb - reserve_gb))
+  [ "$cap_gb" -gt 16 ] && cap_gb=16
+  if [ -z "${CI:-}" ] && [ "$cap_gb" -lt 8 ]; then
+    echo "guarded: only ${avail_gb}G of memory available (${reserve_gb}G kept for the desktop) — refusing to build." >&2
+    echo "guarded: close something heavy (game, VM, browser tabs) or stop a dev server, then retry." >&2
+    exit 75
+  fi
+  mem_max="${cap_gb}G"
+  if [ -n "$jobs_set" ]; then
+    export CARGO_BUILD_JOBS="$jobs_set"
+  elif [ "$cap_gb" -lt 12 ]; then
+    export CARGO_BUILD_JOBS=2
+  else
+    export CARGO_BUILD_JOBS=4
+  fi
+  echo "guarded: ceiling ${mem_max} (${avail_gb}G available), ${CARGO_BUILD_JOBS} jobs" >&2
+}
+
 run() {
+  size_build
   if command -v systemd-run >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
     exec systemd-run --user --scope --quiet --collect \
       --unit="pnex-build-$$" \
       -p MemoryMax="$mem_max" -p MemorySwapMax=0 \
-      -p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=20% \
+      -p ManagedOOMMemoryPressure=kill -p ManagedOOMMemoryPressureLimit=10% \
       -- "${prio[@]}" "$@"
   fi
   exec "${prio[@]}" "$@"
