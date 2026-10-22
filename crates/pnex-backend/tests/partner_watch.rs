@@ -164,8 +164,8 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        // quali_watch 3 + presence_web 4 functions; 3 + 1 flows.
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 7);
+        // quali_watch 3 + presence_web 6 functions; 3 + 1 flows.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 9);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
             4
@@ -587,8 +587,36 @@ async fn presence_web_takes_websites_over() {
             let (st, e) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": bad}))).await;
             assert_eq!(st, 400, "{e}");
         }
+        // An upgrade rewrites what the org never edited and keeps the rest:
+        // pw_score as an older pack wrote it, pw_lien edited by the org, the
+        // first flow still at the pack's own (older) version.
+        let fv = |name: &str| format!("SELECT id FROM functions WHERE org_id = {org} AND name = '{name}'");
+        let flow_id = format!("SELECT id FROM flows WHERE org_id = {org} AND name = 'Web presence · find websites'");
+        for sql in [
+            format!("UPDATE function_versions SET code = code || E'\\n# older' WHERE function_id = ({})", fv("pw_score")),
+            format!("UPDATE function_versions SET code = code || E'\\n# mine', note = 'my fix' WHERE function_id = ({})", fv("pw_lien")),
+            format!("UPDATE flow_versions SET graph = jsonb_set(graph, '{{nodes}}', '[]') WHERE flow_id = ({flow_id})"),
+        ] {
+            env.db.execute_unprepared(&sql).await.unwrap();
+        }
         env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'presence_web'")).await.unwrap();
         install(&server, &env.alice, org, "presence_web").await;
+        let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "presence_web").unwrap();
+        let code_of = |name: &str| shipped.functions.iter().find(|f| f.name == name).unwrap().code.clone();
+        let latest = |sql: String| {
+            let db = env.db.clone();
+            async move {
+                let r = db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql)).await.unwrap().unwrap();
+                (r.try_get::<i64>("", "n").unwrap(), r.try_get::<String>("", "t").unwrap())
+            }
+        };
+        let last_fn = |name: &str| format!("SELECT version_number AS n, code AS t FROM function_versions WHERE function_id = ({}) ORDER BY version_number DESC LIMIT 1", fv(name));
+        assert_eq!(latest(last_fn("pw_score")).await, (2, code_of("pw_score")), "unedited function upgraded");
+        assert!(latest(last_fn("pw_lien")).await.1.ends_with("# mine"), "edited function kept");
+        let (n, author) = latest(format!("SELECT version_number AS n, author AS t FROM flow_versions WHERE flow_id = ({flow_id}) ORDER BY version_number DESC LIMIT 1")).await;
+        assert_eq!((n, author.as_str()), (2, "pack:presence_web"), "unedited flow upgraded");
+        install(&server, &env.alice, org, "presence_web").await;
+        assert_eq!(latest(last_fn("pw_score")).await.0, 2, "a same-version reinstall writes nothing");
         let in_force = pnex_backend::services::ontology::packs::org_settings(&env.db, org).await.unwrap();
         assert_eq!(in_force["presence_web.seuil_confirme"], json!(70), "kept across the upgrade");
         let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"seuil_confirme": null}}))).await;

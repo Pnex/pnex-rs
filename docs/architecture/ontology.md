@@ -817,15 +817,17 @@ confiance, auteur machine.
     s'applique au prochain déploiement, geste humain (D123).
   - UI : bouton « Réglages » sur la ligne d'un pack installé.
   - Premier usage : `presence_web` 1.4.0 (`seuil_confirme`, `seuil_propose`).
+  - Montée de version des fonctions et flows (2026-10-22) : une fonction
+    dont la dernière version porte encore la note `pack <clé> <version>`,
+    ou un flow dont la dernière version a pour auteur `pack:<clé>`, reçoit
+    une nouvelle version (celle du pack). Dès que l'org a enregistré sa
+    propre version, le pack n'y touche plus. Un flow mis à jour reste à
+    redéployer (D123). Test : `partner_watch` presence_web.
 - **Pas fait** :
   - libellés et couleurs des valeurs d'énumération surchargés par l'org
     (D370) ;
-  - mise à jour des fonctions et des flows d'un pack déjà installés :
-    l'installation ne réécrit jamais une fonction ni un flow de même nom
-    (l'org a pu les modifier). Une montée de version n'atteint donc pas
-    le code des règles ; seuls les réglages passent. Il faudra une fusion
-    à trois voies (version du pack d'origine, celle de l'org, nouvelle
-    version) ou une copie « à revoir » ;
+  - fusion d'une fonction ou d'un flow que l'org a modifié avec la
+    nouvelle version du pack : l'org garde sa version, sans avertissement ;
   - le nœud JavaScript ne lit pas les réglages ;
   - le tamponnage n'a pas de test d'intégration (fonction interne au
     crate) ; il est couvert par le test unitaire de l'exécuteur.
