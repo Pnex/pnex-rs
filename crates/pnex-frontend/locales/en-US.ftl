@@ -5854,6 +5854,7 @@ proposals-col-values = Proposed values
 proposals-col-origin = Origin
 proposals-col-decision = Decision
 proposals-col-decided = Decided by
+proposals-decided-auto = Automatic: { $rule }
 proposals-accept = Accept
 proposals-correct = Correct and accept
 proposals-reason = Reason

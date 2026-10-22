@@ -12,13 +12,14 @@
 # The identification flow (D365) ships as a draft: each night it takes up
 # to 50 organizations never searched, tries the domain of their e-mails,
 # then the web search, visits up to three candidates, scores what the site
-# says (SIREN, declaration number, name) and writes: 80 and more
-# written, 40 to 79 proposed to a human (page « To validate »),
+# says (SIREN, declaration number, name) and writes: 80 and more a
+# proposal accepted by the org rule (D377, the threshold is a pack
+# setting), 40 to 79 proposed to a human (page « To validate »),
 # below 40 nothing. A rejected site is never proposed again.
 key: presence_web
 name: Web presence
 names: {fr: "Présence web"}
-version: "1.4.0"
+version: "1.5.0"
 requires: [entreprises]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
@@ -211,7 +212,11 @@ functions:
                   "source": cand.get("source", "recherche"),
               },
           }
-          return [site, None] if score >= confirm else [None, site]
+          if score < confirm:
+              return [None, site]
+          # D377: accepted without a human, the rule kept as the reason.
+          site["accept"] = "presence_web.seuil_confirme >= %d (score %d)" % (confirm, score)
+          return [site, None]
   - name: pw_lien_avis
     language: starlark
     description: The proposed link, and what the org's model is asked about it.
@@ -252,7 +257,8 @@ functions:
       def handle(inputs, msg):
           return {"payload": {"source_id": msg["org"]["id"], "target_id": msg["object"]["id"],
                               "attributes": msg.get("lien", {}),
-                              "confidence": msg.get("confidence")}}
+                              "confidence": msg.get("confidence"),
+                              "accept": msg.get("accept", "")}}
 flows:
   - name: "Web presence · find websites"
     note: "Each night, up to 50 organizations never searched get website candidates: the domain of their e-mails first, then the org's web search (three results), each visited once (page and legal notice) and scored on what it says (SIREN, declaration number, name). 80 and more is confirmed, 40 to 79 is proposed on the To validate page, less is dropped; a rejected site is never proposed again. Needs a web search provider (Organisation page). Each run costs up to 50 searches and 200 visits."
@@ -281,7 +287,8 @@ flows:
         - { id: score, kind: pnex_function, config: { function_name: pw_score, language: starlark }, outputs: [{ port: 0, targets: [site] }, { port: 1, targets: [site_p] }] }
         - { id: site, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link] }] }
         - { id: link, kind: pnex_function, config: { function_name: pw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true } }
+        # 80 and more: a proposal accepted by the org rule (D377), traced.
+        - { id: linked, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true } }
         # 40 to 79: the link is a proposal on the To validate page (D375).
         - { id: site_p, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link_p] }] }
         - { id: link_p, kind: pnex_function, config: { function_name: pw_lien_avis, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }, { port: 1, targets: [ask] }] }

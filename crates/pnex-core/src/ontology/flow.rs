@@ -200,6 +200,10 @@ pub struct FlowLinkRequest {
     /// `msg.payload.evidence`.
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub evidence: Value,
+    /// The org rule that accepts the proposal without a human
+    /// (proposals.md D377), from `msg.payload.accept`; cited as the reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accept: Option<String>,
 }
 
 /// Answer of an upsert: the object, and whether it was created.

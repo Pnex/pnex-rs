@@ -213,8 +213,12 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
         r[0]["payload"],
         json!({"url_racine": "https://www.acme.fr/", "domaine": "acme.fr"})
     );
-    // Port 0: written; port 1 (proposed) empty.
+    // Port 0: accepted by the org rule (D377); port 1 (proposed) empty.
     assert!(r[1].is_null(), "{r}");
+    assert_eq!(
+        r[0]["accept"],
+        "presence_web.seuil_confirme >= 80 (score 100)"
+    );
     assert_eq!(r[0]["lien"]["score"], 100);
     assert_eq!(r[0]["confidence"], 100);
     assert_eq!(
@@ -228,6 +232,7 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     let r = score("ACME Formation, organisme à Lyon", "email").unwrap();
     assert!(r[0].is_null(), "{r}");
     assert_eq!(r[1]["lien"]["score"], json!(40));
+    assert!(r[1].get("accept").is_none(), "a human decides: {r}");
     // The name alone: nothing written.
     assert!(score("ACME Formation", "recherche").is_none());
     // D368: the org lowered the confirming score to 40.
@@ -248,6 +253,10 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     .return_json
     .unwrap();
     assert!(r[1].is_null() && r[0]["lien"]["score"] == 40, "{r}");
+    assert_eq!(
+        r[0]["accept"],
+        "presence_web.seuil_confirme >= 40 (score 40)"
+    );
 }
 
 #[test]

@@ -113,7 +113,7 @@ pub async fn propose<C: ConnectionTrait>(
     let (Some(slot), Some(text)) = (slot(p), fingerprint_text(p)) else {
         return Err(invalid("kind", FIELD_INVALID));
     };
-    let fingerprint = format!("{:x}", sha2::Sha256::digest(text.as_bytes()));
+    let fingerprint = digest(&text);
     let refs = refs_of(db, org_id, p).await?;
     let id = Uuid::new_v4();
     let inserted = db
@@ -165,6 +165,56 @@ pub async fn propose<C: ConnectionTrait>(
         vec![org_id.into(), slot.into(), id.into()],
     ))
     .await?;
+    Ok(Some(id))
+}
+
+fn digest(text: &str) -> String {
+    format!("{:x}", sha2::Sha256::digest(text.as_bytes()))
+}
+
+/// Proposes, then accepts under the org's rule `rule` (D377): no user
+/// decides, the rule is the reason. A proposal already open with the same
+/// values is the one accepted; one decided before keeps its decision. A
+/// refused write (cardinality, validation) leaves it open for a human.
+pub async fn propose_accepted(
+    db: &DatabaseConnection,
+    org_id: i64,
+    actor: &Actor,
+    p: &ProposalInput,
+    rule: &str,
+) -> Result<Option<Uuid>> {
+    let id = match propose(db, org_id, p).await? {
+        Some(id) => id,
+        None => {
+            let Some(text) = fingerprint_text(p) else {
+                return Ok(None);
+            };
+            let open = db
+                .query_one_raw(stmt(
+                    "SELECT id FROM proposals \
+                     WHERE org_id = $1 AND fingerprint = $2 AND status = 'proposed'",
+                    vec![org_id.into(), digest(&text).into()],
+                ))
+                .await?
+                .and_then(|r| r.try_get::<Uuid>("", "id").ok());
+            match open {
+                Some(id) => id,
+                None => return Ok(None),
+            }
+        }
+    };
+    let system = Actor {
+        user_id: None,
+        ..actor.clone()
+    };
+    let accept = ProposalDecision {
+        decision: DecisionKind::Accept,
+        reason: Some(rule.to_string()),
+        values: None,
+    };
+    if let Err(e) = decide(db, org_id, &system, id, &accept).await {
+        tracing::warn!(error = %e, %id, "proposal auto-accept refused, left for a human");
+    }
     Ok(Some(id))
 }
 
