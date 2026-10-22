@@ -44,6 +44,7 @@ pub fn PageFromTemplate(object_id: String, type_key: String) -> Element {
             let input = ObjectPageInput {
                 template: key,
                 title: None,
+                lang: Some(crate::i18n::current_tag()),
             };
             match api::ontology::page_from_template(&id, &input).await {
                 Ok(page) => {

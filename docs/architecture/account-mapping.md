@@ -504,7 +504,9 @@ Limites :
   `{{coverage:<h>}}` et `{{white_space:<h>}}` (hiérarchie D305 et
   couverture D330). Une balise inconnue reste écrite telle quelle. Les
   `_` des clés deviennent des espaces, sinon le Markdown de la page les
-  lirait comme de l'italique. Le métier reste dans le pack (D190).
+  lirait comme de l'italique ; une valeur d'énumération qui a un libellé
+  (D370) l'écrit dans la langue de l'auteur. Le métier reste dans le pack
+  (D190).
 - **Route** `POST /api/v1/ontology/objects/{id}/pages` (`docs:write`,
   exposée au MCP comme `docs_create`) : crée la page, instantané du jour,
   puis la relie à l'objet. Le droit d'écrire le type est vérifié au

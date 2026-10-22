@@ -18,6 +18,8 @@ use std::collections::HashMap;
 use serde_json::{Map, Value};
 
 use super::api::{HierarchyView, LinkView};
+use super::schema::name_in;
+use super::{Names, PropertyDef};
 
 /// Bullets listed at most per placeholder.
 pub const LIST_MAX: usize = 100;
@@ -27,6 +29,10 @@ pub struct RenderCtx<'a> {
     pub id: &'a str,
     pub title: &'a str,
     pub properties: &'a Map<String, Value>,
+    /// The object type's properties: an enum value shows its label (D370).
+    pub defs: &'a [PropertyDef],
+    /// Language of the labels (`fr-FR`…).
+    pub lang: &'a str,
     pub today: &'a str,
     /// Open links touching the object.
     pub links: &'a [LinkView],
@@ -116,7 +122,7 @@ fn links(ctx: &RenderCtx, link_type: &str, incoming: bool) -> String {
     }
 }
 
-fn tree(v: &HierarchyView) -> String {
+fn tree(v: &HierarchyView, lang: &str) -> String {
     let lines: Vec<String> = v
         .nodes
         .iter()
@@ -125,7 +131,7 @@ fn tree(v: &HierarchyView) -> String {
             let marks: Vec<String> = n
                 .marks
                 .iter()
-                .map(|m| format!("[{}]", words(&m.value)))
+                .map(|m| format!("[{}]", label(&m.value, &m.labels, lang)))
                 .collect();
             let mut line = format!("{}- {}", "  ".repeat(n.depth as usize), n.title);
             if !marks.is_empty() {
@@ -143,11 +149,40 @@ fn words(k: &str) -> String {
     k.replace('_', " ")
 }
 
-fn coverage(v: &HierarchyView) -> String {
+/// An enum value's label in `lang`, else the value as words.
+fn label(value: &str, labels: &Names, lang: &str) -> String {
+    name_in(labels, lang).map_or_else(|| words(value), str::to_string)
+}
+
+/// A property's text, enum values (one or a list) as their labels.
+fn prop(ctx: &RenderCtx, key: &str) -> String {
+    let Some(v) = ctx.properties.get(key) else {
+        return String::new();
+    };
+    let Some(def) = ctx
+        .defs
+        .iter()
+        .find(|d| d.key == key && !d.labels.is_empty())
+    else {
+        return text(v);
+    };
+    let one = |x: &Value| match x {
+        Value::String(s) => def
+            .label_of(s, ctx.lang)
+            .map_or_else(|| s.clone(), str::to_string),
+        other => text(other),
+    };
+    match v {
+        Value::Array(a) => a.iter().map(one).collect::<Vec<_>>().join(", "),
+        other => one(other),
+    }
+}
+
+fn coverage(v: &HierarchyView, lang: &str) -> String {
     let mut parts: Vec<String> = v
         .counts
         .iter()
-        .map(|c| format!("{} {}", words(&c.value), c.count))
+        .map(|c| format!("{} {}", label(&c.value, &c.labels, lang), c.count))
         .collect();
     parts.extend(
         v.totals
@@ -186,11 +221,11 @@ fn fill(ctx: &RenderCtx, p: &str) -> Option<String> {
     Some(match parts.as_slice() {
         ["title"] => ctx.title.to_string(),
         ["today"] => ctx.today.to_string(),
-        ["prop", key] => ctx.properties.get(*key).map(text).unwrap_or_default(),
+        ["prop", key] => prop(ctx, key),
         ["links", t] => links(ctx, t, false),
         ["links", t, "in"] => links(ctx, t, true),
-        ["tree", k] => tree(tree_of(k)?),
-        ["coverage", k] => coverage(tree_of(k)?),
+        ["tree", k] => tree(tree_of(k)?, ctx.lang),
+        ["coverage", k] => coverage(tree_of(k)?, ctx.lang),
         ["white_space", k] => white_space(tree_of(k)?),
         _ => return None,
     })
@@ -274,7 +309,7 @@ mod tests {
                 property: "statut_compte".into(),
                 value: "client".into(),
                 color: "green".into(),
-                labels: Default::default(),
+                labels: [("fr".to_string(), "Client actif".to_string())].into(),
             }],
             white_space: white,
         };
@@ -299,22 +334,28 @@ mod tests {
             ..Default::default()
         };
         let trees = HashMap::from([("groupe_commercial".to_string(), view)]);
-        let props =
-            json!({"siren": "429853351", "ca_dernier": {"amount": 343838577.0, "currency": "EUR"}});
+        let props = json!({"siren": "429853351", "ca_dernier": {"amount": 343838577.0, "currency": "EUR"}, "statut_compte": "client"});
+        let defs: Vec<PropertyDef> = serde_json::from_value(json!([{
+            "key": "statut_compte", "kind": "enum", "values": ["client", "cible"],
+            "labels": {"client": {"en": "Customer", "fr": "Client actif"}}
+        }]))
+        .unwrap();
         let ctx = RenderCtx {
             id: "m",
             title: "Mecachrome France",
             properties: props.as_object().unwrap(),
+            defs: &defs,
+            lang: "fr-FR",
             today: "2026-10-22",
             links: &links,
             trees: &trees,
         };
-        let body = "# Plan — {{title}} ({{today}})\nSIREN {{prop:siren}}, CA {{prop:ca_dernier}}\n{{links:utilise_solution}}\n{{links:signal_sur:in}}\n{{tree:groupe_commercial}}\n{{coverage:groupe_commercial}}\n{{white_space:groupe_commercial}}\n{{nope}} {{links:knows}}";
+        let body = "# Plan — {{title}} ({{today}})\nSIREN {{prop:siren}}, CA {{prop:ca_dernier}}, {{prop:statut_compte}}\n{{links:utilise_solution}}\n{{links:signal_sur:in}}\n{{tree:groupe_commercial}}\n{{coverage:groupe_commercial}}\n{{white_space:groupe_commercial}}\n{{nope}} {{links:knows}}";
         assert_eq!(hierarchies(body), vec!["groupe_commercial"]);
         let out = render(body, &ctx);
         assert_eq!(
             out,
-            "# Plan — Mecachrome France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR\n- Concurrent SA — depuis: 2024-01-01\n- Ouverture usine\n- Mecachrome France [client]\n  - Toulouse [client]\nclient 2 · utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
+            "# Plan — Mecachrome France (2026-10-22)\nSIREN 429853351, CA 343838577.0 EUR, Client actif\n- Concurrent SA — depuis: 2024-01-01\n- Ouverture usine\n- Mecachrome France [Client actif]\n  - Toulouse [Client actif]\nclient 2 · utilisateurs actuels 50 · white space 1\n- Toulouse\n{{nope}} —"
         );
     }
 }

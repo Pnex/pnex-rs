@@ -12114,6 +12114,13 @@
       "ObjectPageInput": {
         "description": "`POST /ontology/objects/{id}/pages`: a page from a template, filled from\nthe object.",
         "properties": {
+          "lang": {
+            "description": "Language of the enum value labels written in the page (`fr-FR`…);\ndefault English.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "template": {
             "description": "Key of a page template whose subject is the object's type.",
             "type": "string"

@@ -169,16 +169,21 @@ impl PropertyDef {
 
     /// Label of enum `value` in `lang` (`fr-FR` or `fr`), when one is set.
     pub fn label_of(&self, value: &str, lang: &str) -> Option<&str> {
-        let names = self.labels.get(value)?;
-        let short = lang.split(['-', '_']).next().unwrap_or(lang);
-        names
-            .get(lang)
-            .or_else(|| names.get(short))
-            .or_else(|| names.get("en"))
-            .or_else(|| names.values().next())
-            .map(String::as_str)
-            .filter(|l| !l.trim().is_empty())
+        name_in(self.labels.get(value)?, lang)
     }
+}
+
+/// The text of `names` for `lang` (`fr-FR`, then `fr`, then English, then
+/// any); none when empty or blank.
+pub fn name_in<'a>(names: &'a super::Names, lang: &str) -> Option<&'a str> {
+    let short = lang.split(['-', '_']).next().unwrap_or(lang);
+    names
+        .get(lang)
+        .or_else(|| names.get(short))
+        .or_else(|| names.get("en"))
+        .or_else(|| names.values().next())
+        .map(String::as_str)
+        .filter(|l| !l.trim().is_empty())
 }
 
 impl<'de> Deserialize<'de> for PropertyDef {
