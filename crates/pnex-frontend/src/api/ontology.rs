@@ -185,6 +185,26 @@ pub async fn path(from: &str, to: &str, links: &[&str]) -> Result<Vec<ObjectRef>
     Ok(found.path)
 }
 
+/// Shortest introduction chain to `to` from whoever is at the source of an
+/// open link of `from_links` (D338), along `links` only when not empty.
+pub async fn path_from_links(
+    from_links: &[&str],
+    to: &str,
+    links: &[&str],
+) -> Result<Vec<ObjectRef>, ApiError> {
+    let found: ObjectPath = client::request(
+        Method::GET,
+        &format!(
+            "{BASE}/path?from_links={}&to={to}&links={}",
+            from_links.join(","),
+            links.join(",")
+        ),
+        None,
+    )
+    .await?;
+    Ok(found.path)
+}
+
 pub async fn impact(id: &str, upstream: bool) -> Result<Vec<ObjectRef>, ApiError> {
     let found: ObjectImpact = client::request(
         Method::GET,

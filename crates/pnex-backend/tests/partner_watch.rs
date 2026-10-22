@@ -508,6 +508,17 @@ async fn group_coverage_and_status_colours() {
         // The group link is not a link between people: no introduction there.
         assert_eq!(path(&mother, &people).await.0, 404);
         assert_eq!(path(&mother, "").await.0, 200);
+        // Several starts: whoever follows an account (here "Moi", on the group).
+        let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
+            Some(link("suit_le_compte", &me, &mother))).await;
+        assert_eq!(st, 201, "{r}");
+        let url = format!("/api/v1/ontology/path?from_links=suit_le_compte&to={covered}&links={people}");
+        let (st, r) = call(&server, "GET", &url, &env.alice, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        let titles: Vec<&str> = r["path"].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
+        assert_eq!(titles, ["Moi", "Contact", "Filiale suivie"]);
+        let url = format!("/api/v1/ontology/path?from_links=knows_nobody&to={covered}");
+        assert_eq!(call(&server, "GET", &url, &env.alice, org, None).await.0, 404);
 
         // D340: an account plan filled from the account, linked to it.
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{mother}/pages"), &env.alice, org,
