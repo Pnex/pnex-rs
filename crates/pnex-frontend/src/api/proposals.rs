@@ -27,12 +27,18 @@ pub async fn page(
     .await
 }
 
-/// `POST /api/v1/proposals/{id}/decision`.
-pub async fn decide(id: &str, decision: DecisionKind) -> Result<ProposalView, ApiError> {
+/// `POST /api/v1/proposals/{id}/decision`: a reason (kept with a
+/// rejection), corrected values (accepted instead of the proposed ones).
+pub async fn decide(
+    id: &str,
+    decision: DecisionKind,
+    reason: Option<String>,
+    values: Option<serde_json::Map<String, serde_json::Value>>,
+) -> Result<ProposalView, ApiError> {
     let body = ProposalDecision {
         decision,
-        reason: None,
-        values: None,
+        reason,
+        values,
     };
     client::request(
         reqwest::Method::POST,

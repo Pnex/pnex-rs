@@ -9,10 +9,11 @@ use pnex_core::ontology::proposal::{DecisionKind, ProposalStatus, ProposalView};
 
 use crate::api;
 use crate::app::Route;
+use crate::components::crud::form::FormDialog;
 use crate::components::crud::pager::ListPager;
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
-use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM};
+use crate::components::ui::{BTN_PRIMARY_SM, BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT};
 use crate::state::access::can;
 use crate::state::toasts;
 
@@ -51,12 +52,14 @@ pub fn ProposalsTable(
     }
     let decide = move |id: String, d: DecisionKind| {
         spawn(async move {
-            match api::proposals::decide(&id, d).await {
+            match api::proposals::decide(&id, d, None, None).await {
                 Ok(_) => reload.with_mut(|n| *n += 1),
                 Err(e) => toasts::error(e),
             }
         });
     };
+    // Reject with a reason, or accept with corrected values.
+    let mut dialog = use_signal(|| None::<(ProposalView, DecisionKind)>);
     let mut columns = vec![
         Column::new(t!("proposals-col-what").to_string(), |p: &ProposalView| {
             let kind = label("proposals-kind", p.kind.as_str());
@@ -116,7 +119,8 @@ pub fn ProposalsTable(
             Column::new(
                 t!("proposals-col-decision").to_string(),
                 move |p: &ProposalView| {
-                    let (a, r) = (p.id.clone(), p.id.clone());
+                    let a = p.id.clone();
+                    let (fix, rej) = (p.clone(), p.clone());
                     rsx! {
                         span { class: "flex gap-2",
                             button {
@@ -128,7 +132,13 @@ pub fn ProposalsTable(
                             button {
                                 class: BTN_SECONDARY_SM,
                                 r#type: "button",
-                                onclick: move |_| decide(r.clone(), DecisionKind::Reject),
+                                onclick: move |_| dialog.set(Some((fix.clone(), DecisionKind::Accept))),
+                                {t!("proposals-correct")}
+                            }
+                            button {
+                                class: BTN_SECONDARY_SM,
+                                r#type: "button",
+                                onclick: move |_| dialog.set(Some((rej.clone(), DecisionKind::Reject))),
                                 {t!("proposals-reject")}
                             }
                         }
@@ -166,6 +176,95 @@ pub fn ProposalsTable(
                 }
                 ListPager { count, page }
             }
+            if let Some((p, d)) = dialog() {
+                DecisionDialog {
+                    proposal: p,
+                    decision: d,
+                    on_close: move |_| dialog.set(None),
+                    on_done: move |_| {
+                        dialog.set(None);
+                        reload.with_mut(|n| *n += 1);
+                    },
+                }
+            }
         }
     }
+}
+
+/// Reject with a reason, or accept with corrected text values (numbers and
+/// booleans stay as proposed).
+#[component]
+fn DecisionDialog(
+    proposal: ProposalView,
+    decision: DecisionKind,
+    on_close: EventHandler<()>,
+    on_done: EventHandler<()>,
+) -> Element {
+    let mut reason = use_signal(String::new);
+    let initial = proposal.values.clone();
+    let mut values = use_signal(move || initial.clone());
+    let mut busy = use_signal(|| false);
+    let id = proposal.id.clone();
+    let submit = move |_| {
+        let id = id.clone();
+        let reject = decision == DecisionKind::Reject;
+        let r = Some(reason()).filter(|r| !r.trim().is_empty());
+        let v = (!reject).then(|| values());
+        busy.set(true);
+        spawn(async move {
+            match api::proposals::decide(&id, decision, r, v).await {
+                Ok(_) => on_done.call(()),
+                Err(e) => toasts::error(e),
+            }
+            busy.set(false);
+        });
+    };
+    let reject = decision == DecisionKind::Reject;
+    let fields: Vec<(String, String)> = proposal
+        .values
+        .iter()
+        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+        .collect();
+    rsx! {
+        FormDialog {
+            title: if reject { t!("proposals-reject").to_string() } else { t!("proposals-correct").to_string() },
+            submit_label: if reject { t!("proposals-reject").to_string() } else { t!("proposals-accept").to_string() },
+            on_close: move |_| on_close.call(()),
+            on_submit: submit,
+            busy: busy(),
+            valid: true,
+            div { class: "space-y-3",
+                if reject {
+                    label { class: FIELD_LABEL, {t!("proposals-reason")} }
+                    textarea {
+                        class: INPUT,
+                        rows: "3",
+                        maxlength: "{pnex_core::ontology::proposal::REASON_MAX}",
+                        value: "{reason}",
+                        oninput: move |e| reason.set(e.value()),
+                    }
+                    p { class: FIELD_HELP, {t!("proposals-reason-help")} }
+                } else {
+                    for (k, v) in fields {
+                        label { key: "{k}", class: "block",
+                            span { class: FIELD_LABEL, "{k.replace('_', \" \")}" }
+                            input {
+                                class: INPUT,
+                                value: "{v}",
+                                oninput: {
+                                    let k = k.clone();
+                                    move |e: FormEvent| values.with_mut(|m| set_value(m, &k, e.value()))
+                                },
+                            }
+                        }
+                    }
+                    p { class: FIELD_HELP, {t!("proposals-correct-help")} }
+                }
+            }
+        }
+    }
+}
+
+fn set_value(values: &mut serde_json::Map<String, serde_json::Value>, key: &str, value: String) {
+    values.insert(key.to_string(), serde_json::Value::String(value));
 }

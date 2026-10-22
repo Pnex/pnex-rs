@@ -13,7 +13,8 @@ Some writes come from a source that is not sure it is right: a group link from a
 ## What you can do
 - See what is proposed: what (new object, change, new link, link changed or closed), the objects concerned, the proposed values, the origin (an import, a flow, a detector) and its confidence.
 - **Accept** (members): the value is written in the ontology with the same checks as an edit by hand, and its history says it came from a proposal.
-- **Reject**: the proposal is kept with its reason and the same value is never proposed again; another value would be a new proposal.
+- **Correct and accept** (proposals that carry text values): fix a value before it is written; the decision keeps the correction.
+- **Reject**: give a reason if you wish; the proposal is kept with it and the same value is never proposed again; another value would be a new proposal.
 - Filter by status: to validate, accepted, rejected, replaced (a newer proposal for the same thing replaced it before anyone decided).
 
 Viewers read the proposals but do not decide. The assistant never decides: it can only list them.
