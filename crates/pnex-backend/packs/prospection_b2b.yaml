@@ -51,6 +51,7 @@ extends:
         names: {fr: "Statut du compte"}
         kind: enum
         values: [client, prospect, cible, ancien_client, concurrent, partenaire, exclu]
+        colors: { client: green, prospect: amber, cible: blue, ancien_client: gray, concurrent: red, partenaire: violet, exclu: gray }
         indexed: true
       - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
       - { key: potentiel_utilisateurs, name: Potential users, names: {fr: "Utilisateurs potentiels"}, kind: number, min: 0 }
@@ -66,6 +67,7 @@ extends:
         names: {fr: "Statut du site"}
         kind: enum
         values: [client, prospect, non_couvert]
+        colors: { client: green, prospect: amber, non_couvert: gray }
         indexed: true
       - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
   - type: person
@@ -166,7 +168,12 @@ hierarchies:
       - { link: filiale_de, inverse: true }
       - { link: owns }
       - { link: etablissement_de, inverse: true }
+    # Coverage (D330): users summed, a node with a contact or a client
+    sums: [utilisateurs_actuels, potentiel_utilisateurs]
+    coverage:
     steps:
+        colors: { prevu: blue, tenu: green, annule: gray }
+        colors: { a_valider: amber, retenu: green, ecarte: gray }
   - key: critere_ciblage
   - name: pb_criteres
   - name: pb_score
@@ -181,5 +188,11 @@ hierarchies:
         - { id: keep, kind: pnex_function, config: { function_name: pb_criteres, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
             filters: [{ key: score_le, op: ne, value: "$today" }]
         - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+    description: The account as of today, its group, coverage, white space, contacts, signals and competitors, then the next actions.
+    descriptions: {fr: "Le compte au jour dit : groupe, couverture, espace blanc, contacts, signaux et concurrents, puis les prochaines actions."}
       - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
+      {{coverage:groupe_commercial}}
+      ## Espace blanc
+      {{white_space:groupe_commercial}}
       Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
+      {{coverage:groupe_commercial}}

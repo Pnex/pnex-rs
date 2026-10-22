@@ -28,6 +28,8 @@ pub struct ClusterItem {
     pub id: Option<Uuid>,
     pub label: String,
     pub emoji: String,
+    /// Colour of the pin's coloured status (D339), set after clustering.
+    pub color: Option<String>,
 }
 
 fn bucket(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
@@ -60,6 +62,7 @@ fn bucket(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
                 id: if n == 1 { first_id } else { None },
                 label,
                 emoji,
+                color: None,
             },
         )
         .collect();
@@ -80,6 +83,7 @@ pub fn cluster_points(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
                 id: Some(p.id),
                 label: p.label.clone(),
                 emoji: p.emoji.clone(),
+                color: None,
             })
             .collect();
     }
@@ -123,5 +127,23 @@ pub async fn cluster_pins(
             })
         })
         .collect();
-    Ok(cluster_points(&points, cell_size_deg(q.zoom)))
+    let mut items = cluster_points(&points, cell_size_deg(q.zoom));
+    // Single pins wear the colour of their status (account-mapping.md D339).
+    let singles: Vec<String> = items
+        .iter()
+        .filter_map(|i| i.id)
+        .map(|id| id.to_string())
+        .collect();
+    let colors = crate::services::ontology::objects::colors_of(
+        db,
+        org_id,
+        pnex_core::resources::KIND_MAP_PIN,
+        &singles,
+    )
+    .await
+    .map_err(|e| DbErr::Custom(e.to_string()))?;
+    for i in &mut items {
+        i.color = i.id.and_then(|id| colors.get(&id.to_string()).cloned());
+    }
+    Ok(items)
 }

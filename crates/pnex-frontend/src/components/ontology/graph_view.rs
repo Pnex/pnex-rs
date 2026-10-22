@@ -99,7 +99,15 @@ pub fn GraphView(
             ))
         })
         .collect();
-    let nodes: Vec<(String, String, String, (f64, f64), bool)> = neighborhood
+    #[allow(clippy::type_complexity)]
+    let nodes: Vec<(
+        String,
+        String,
+        String,
+        (f64, f64),
+        bool,
+        Option<&'static str>,
+    )> = neighborhood
         .nodes
         .iter()
         .filter_map(|n| {
@@ -110,6 +118,7 @@ pub fn GraphView(
                 super::type_label_of(&types, &n.type_key),
                 p,
                 n.id == center,
+                neighborhood.colors.get(&n.id).map(|c| super::tone_hex(c)),
             ))
         })
         .collect();
@@ -155,7 +164,7 @@ pub fn GraphView(
                     }
                 }
             }
-            for (id, title, kind, (x, y), is_center) in nodes {
+            for (id, title, kind, (x, y), is_center, tone) in nodes {
                 g {
                     key: "n{id}",
                     class: "cursor-pointer",
@@ -173,8 +182,8 @@ pub fn GraphView(
                         cy: "{y}",
                         r: if is_center { "22" } else { "16" },
                         fill: if is_center { "var(--color-signal-600, #2563eb)" } else { "var(--color-white, #ffffff)" },
-                        stroke: "var(--color-signal-600, #2563eb)",
-                        stroke_width: "2",
+                        stroke: tone.unwrap_or("var(--color-signal-600, #2563eb)"),
+                        stroke_width: if tone.is_some() { "4" } else { "2" },
                     }
                     text {
                         x: "{x}",
@@ -230,6 +239,7 @@ mod tests {
         let n = Neighborhood {
             nodes: ["c", "a", "b", "far"].map(r).to_vec(),
             links: vec![l(1, "c", "a"), l(2, "b", "c"), l(3, "a", "far")],
+            ..Default::default()
         };
         let rings = rings(&n, "c");
         assert_eq!(

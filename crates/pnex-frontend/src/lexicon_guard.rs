@@ -42,6 +42,15 @@ const RULES: &[Rule] = &[
         scope: Scope::EnAndCards,
         term: "search engine",
         use_instead: "web search provider (D360)",
+        allowed_keys: &[],
+    },
+    // account-mapping.md D330: the uncovered part of a group.
+    Rule {
+        scope: Scope::Fr,
+        term: "zone blanche",
+        use_instead: "espace blanc (D330)",
+        allowed_keys: &[],
+    },
     // iam.md §3: members grouped for access are a « team » (« Groupe »
     // already names cold groups, company groups, node groups), and a role
     // given to a member or a team is an « attribution ».

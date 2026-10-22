@@ -3610,6 +3610,7 @@
       "ClusterItemDto": {
         "description": "Cluster answer item: single POI (`count == 1`, `id` set) or numbered\ncluster (centroid + sample label).",
         "properties": {
+            "description": "Colour token of the pin's coloured status (`green`, `amber`…).",
           "count": {
             "format": "int32",
             "minimum": 0,
@@ -7741,6 +7742,9 @@
       "Hierarchy": {
         "description": "A tree read on links (D305): at each node, its children are the objects\nreached by each step in turn. A node with several parents appears under\neach of them.",
         "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/HierarchyCoverage",
+            "description": "What makes a node of the tree covered; the others are its white\nspace (D330)."
           "key": {
             "type": "string"
           },
@@ -7755,6 +7759,8 @@
               "$ref": "#/components/schemas/HierarchyStep"
             },
             "type": "array"
+          "sums": {
+            "description": "Number properties summed over the tree's nodes, each node once\n(account-mapping.md D330: current and potential users).",
           }
         },
         "required": [
@@ -7764,6 +7770,7 @@
         ],
         "type": "object"
       },
+      "HierarchyCoverage": {
       "HierarchyNode": {
         "description": "A node of a computed hierarchy, flat in depth-first order.",
         "properties": {
@@ -7787,11 +7794,16 @@
             "description": "Link type that leads here from the parent (empty for the root).",
             "type": "string"
           },
+          "marks": {
+            "description": "Its values of coloured properties (D339).",
+              "$ref": "#/components/schemas/NodeMark"
           "title": {
             "type": "string"
           },
           "type_key": {
             "type": "string"
+          "white_space": {
+            "description": "Not covered, when the hierarchy declares a coverage (D330).",
           }
         },
         "required": [
@@ -7822,6 +7834,10 @@
       "HierarchyView": {
         "description": "`GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed\npacks, and the tree of the one asked (the first by default).",
         "properties": {
+            "description": "Coverage of the tree, computed at read time, never stored (D330).",
+              "$ref": "#/components/schemas/MarkCount"
+          "has_coverage": {
+            "description": "Distinct nodes not covered (`white_space` on each of them).",
           "hierarchies": {
             "items": {
               "$ref": "#/components/schemas/Hierarchy"
@@ -7838,9 +7854,11 @@
             },
             "type": "array"
           },
+              "$ref": "#/components/schemas/PropertyTotal"
           "truncated": {
             "description": "The depth or node cap cut the tree.",
             "type": "boolean"
+          "white_space": {
           }
         },
         "required": [
@@ -9818,6 +9836,8 @@
         },
         "type": "object"
       },
+      "MarkCount": {
+        "description": "How many distinct nodes of the tree hold a coloured value.",
       "MatchKind": {
         "description": "How a relevance rule reads the page text (closed list, D307).",
         "enum": [
@@ -11378,6 +11398,8 @@
       "Neighborhood": {
         "description": "Local graph of an object (D186): nodes and the links among them.",
         "properties": {
+          "colors": {
+            "description": "Object id → colour token of its coloured status (D339).",
           "links": {
             "items": {
               "$ref": "#/components/schemas/LinkView"
@@ -11397,6 +11419,8 @@
         ],
         "type": "object"
       },
+      "NodeMark": {
+        "description": "A value of a coloured enum property (account-mapping.md D339).",
       "NotifyChannel": {
         "description": "Notification channel (destination). The `secret` fields of `config`\nare **never** returned (D54): `secrets_set` lists which are set.",
         "properties": {
@@ -17492,6 +17516,8 @@
           },
           {
             "properties": {
+              "colors": {
+                "description": "Enum only: value → colour of the map, hierarchy and graph\n(account-mapping.md D339), one of [`COLORS`].",
               "indexed": {
                 "description": "Backed by the GIN index of `objects.properties` in queries.",
                 "type": "boolean"
@@ -17824,6 +17850,7 @@
           }
         ]
       },
+      "PropertyTotal": {
       "ProposalReject": {
         "description": "Rejecting a proposal, with an optional reason (K45).",
         "properties": {
@@ -69786,6 +69813,7 @@
         ]
       }
     },
+        "description": "`confirme` marks the open `a_pour_site` link confirmed (the site may then be crawled); `rejete` marks it rejected and closes it, so a flow never proposes it again. `valide_par` takes the user's display name. Needs the right to write the ontology.",
     "/api/v1/web-search/providers": {
         "description": "Search providers the organization's web_search flow nodes query, with the default. The key is a vault reference, never its value. The platform provides none. Any member.",
         "operationId": "web_search_providers_list",

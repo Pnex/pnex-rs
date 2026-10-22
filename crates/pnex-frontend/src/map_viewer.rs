@@ -46,6 +46,8 @@ pub struct MapItem {
     pub emoji: String,
     /// Nombre agrégé (clusters).
     pub count: u32,
+    /// Colour token of the pin's status (D339): `green`, `amber`…
+    pub color: Option<String>,
 }
 
 /// Dernier clic remonté par map.js (item ou carte nue).
@@ -86,7 +88,7 @@ pub async fn mount(host_id: &str, opts: &MapOpts) -> bool {
         .map(|p| {
             serde_json::json!({
                 "kind": p.kind, "id": p.id, "lon": p.lon, "lat": p.lat,
-                "label": p.label, "emoji": p.emoji, "count": p.count,
+                "label": p.label, "emoji": p.emoji, "count": p.count, "color": p.color,
             })
         })
         .collect();
@@ -125,7 +127,7 @@ pub async fn set_items(host_id: &str, items: &[MapItem]) -> bool {
         .map(|p| {
             serde_json::json!({
                 "kind": p.kind, "id": p.id, "lon": p.lon, "lat": p.lat,
-                "label": p.label, "emoji": p.emoji, "count": p.count,
+                "label": p.label, "emoji": p.emoji, "count": p.count, "color": p.color,
             })
         })
         .collect();

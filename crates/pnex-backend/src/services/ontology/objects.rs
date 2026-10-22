@@ -4,6 +4,8 @@
 //! place. Every write is validated against the current type definition,
 //! locked by the type's write role (D188) and journaled (D184).
 
+use std::collections::HashMap;
+
 use pnex_core::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 use pnex_core::ontology::api::{ObjectInput, ObjectView, TITLE_MAX};
 use pnex_core::ontology::schema::check_values;
@@ -456,19 +458,352 @@ pub async fn archive<C: ConnectionTrait>(
     });
     Ok(())
 }
+
 // ─────────────────────────── bulk (data-pipelines.md D347) ───────────────────────────
+
 /// Rows per bulk statement (one JSON parameter each).
 pub(super) const BULK_CHUNK: usize = 5_000;
+
 fn bulk_stmt(sql: &str, values: Vec<sea_orm::Value>) -> sea_orm::Statement {
+    sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres, sql, values)
+}
+
+/// Text of a unique value, as `find_by_key` compares it.
+fn key_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// `check_properties` for many documents: every `ref` checked with one
+/// query per target type and batch.
+async fn check_refs_many<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    items: &[(&ObjectTypeDef, &Map<String, Value>)],
+) -> Result<()> {
+    let mut wanted: std::collections::BTreeMap<&str, Vec<(Uuid, &str)>> = Default::default();
+    for (def, props) in items {
+        for p in &def.properties {
+            let PropertyKind::Ref { to_type } = &p.kind else {
+                continue;
+            };
+            let Some(raw) = props.get(&p.key).and_then(Value::as_str) else {
+                continue;
+            };
+            let id =
+                Uuid::parse_str(raw).map_err(|_| super::invalid(p.key.clone(), FIELD_INVALID))?;
+            wanted
+                .entry(to_type)
+                .or_default()
+                .push((id, p.key.as_str()));
+        }
+    }
+    for (to_type, refs) in wanted {
         for chunk in refs.chunks(BULK_CHUNK) {
+            let ids: Vec<Uuid> = chunk.iter().map(|(id, _)| *id).collect();
+            let found: std::collections::HashSet<Uuid> = db
                 .query_all_raw(bulk_stmt(
+                    "SELECT id FROM objects WHERE org_id = $1 AND type_key = $2 \
+                       AND valid_to IS NULL AND id = ANY($3)",
+                    vec![org_id.into(), to_type.into(), ids.into()],
+                ))
+                .await?
+                .iter()
+                .filter_map(|r| r.try_get::<Uuid>("", "id").ok())
+                .collect();
+                return Err(super::invalid(key.to_string(), FIELD_INVALID));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `check_unique` for many documents (`except` = the object updated):
+/// twice in the batch or held by another live object = `duplicate`.
+async fn check_unique_many<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    items: &[(&ObjectTypeDef, &Map<String, Value>, Option<Uuid>)],
+) -> Result<()> {
+    let mut groups: std::collections::BTreeMap<(&str, &str), HashMap<String, Option<Uuid>>> =
+        Default::default();
+    for (def, props, except) in items {
+        for p in def.properties.iter().filter(|p| p.unique) {
+            let Some(v) = props.get(&p.key) else {
+                continue;
+            };
+            let g = groups
+                .entry((def.key.as_str(), p.key.as_str()))
+                .or_default();
+            if g.insert(key_text(v), *except).is_some() {
+                return Err(super::invalid(p.key.clone(), "duplicate"));
+            }
+        }
+    }
+    for ((type_key, key), values) in groups {
+        let texts: Vec<String> = values.keys().cloned().collect();
+        for chunk in texts.chunks(1_000) {
+            let rows = db
                 .query_all_raw(bulk_stmt(
+                    "SELECT id, properties ->> $3 AS k FROM objects WHERE org_id = $1 \
+                       AND type_key = $2 AND valid_to IS NULL AND properties ->> $3 = ANY($4)",
+                    vec![
+                        org_id.into(),
+                        type_key.into(),
+                        key.into(),
+                        chunk.to_vec().into(),
+                    ],
+                ))
+                .await?;
+            for r in rows {
+                let (Ok(id), Ok(k)) = (r.try_get::<Uuid>("", "id"), r.try_get::<String>("", "k"))
+                else {
+                    continue;
+                };
+                if values.get(&k).is_some_and(|except| *except != Some(id)) {
+                    return Err(super::invalid(key.to_string(), "duplicate"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// shortcut: an updated object of a type that lost its recurrence property
+// keeps its old occurrences until the daily sweep; per-row refresh if it matters.
+async fn refresh_recurrences<C: ConnectionTrait>(db: &C, s: &OrgSchema, rows: &[objects::Model]) {
+    for row in rows {
+        if let Some(def) = s.object_type(&row.type_key) {
+            if !super::recurrence::recurrence_keys(def).is_empty() {
+                super::recurrence::refresh_row_logged(db, row, def).await;
+            }
+        }
+    }
+}
+
+/// `create_with` for many objects (imports): the same checks, a few
+/// queries per type and batch instead of several per object. Claims keep
+/// the one-by-one path (their rule reads links). Ids in input order.
 pub async fn create_many_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    inputs: &[ObjectInput],
+) -> Result<Vec<Uuid>> {
+    let mut ids = vec![Uuid::nil(); inputs.len()];
+    let mut checked: Vec<(usize, &ObjectTypeDef, String, Map<String, Value>)> = Vec::new();
+    for (i, input) in inputs.iter().enumerate() {
+        let Some(def) = s.object_type(&input.type_key) else {
+            return Err(super::invalid("type_key", FIELD_INVALID));
+        };
+        if def.native() {
+            return Err(OntologyError::SystemReadOnly);
+        }
+        require_role(def, actor)?;
+        if def.key == CLAIM {
+            let v = create_with(db, s, org_id, actor, input).await?;
+            ids[i] = Uuid::parse_str(&v.id).map_err(|_| OntologyError::NotFound)?;
+            continue;
+        }
+        let title = check_title(&input.title)?;
+        let props = check_values(&def.properties, &input.properties)?;
+        checked.push((i, def, title, props));
+    }
+    let docs: Vec<_> = checked.iter().map(|(_, d, _, p)| (*d, p)).collect();
+    check_refs_many(db, org_id, &docs).await?;
+    let docs: Vec<_> = checked.iter().map(|(_, d, _, p)| (*d, p, None)).collect();
+    check_unique_many(db, org_id, &docs).await?;
     for chunk in checked.chunks(BULK_CHUNK) {
+        let mut recs = Vec::with_capacity(chunk.len());
+        for (i, def, title, props) in chunk {
+            ids[*i] = Uuid::new_v4();
+            recs.push(serde_json::json!({
+                "id": ids[*i],
+                "type_key": def.key,
+                "type_version": s.type_version(&def.key),
+                "title": title,
+                "properties": props,
+            }));
+        }
             .from_raw_sql(bulk_stmt(
+                "INSERT INTO objects (id, org_id, type_key, type_version, title, native_id, \
+                   properties, source_ref, version) \
+                 SELECT u.id, $1, u.type_key, u.type_version, u.title, u.id::text, u.properties, $2, 1 \
                  FROM jsonb_to_recordset($3::jsonb) AS u(id uuid, type_key text, type_version int, \
+                   title text, properties jsonb) \
+                 RETURNING *",
+                vec![
+                    org_id.into(),
+                    actor.source_ref.clone().into(),
+                    Value::Array(recs).into(),
+                ],
+            ))
+            .all(db)
+            .await?;
+        refresh_recurrences(db, s, &rows).await;
+        for row in &rows {
+            changes::submit(Change::object(
+                org_id,
+                "object.create",
+                &actor.source_ref,
+                Value::Null,
+                &view(row, s),
+            ));
+        }
+    }
+    Ok(ids)
+}
+
+/// `update_in_with` for many objects on their `expected_version`
+/// (imports): one statement per batch. Claims and cases keep the
+/// one-by-one path (status rules, conclusion).
 pub async fn update_many_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    inputs: &[(Uuid, ObjectInput)],
+) -> Result<()> {
+    let mut rows: HashMap<Uuid, objects::Model> = HashMap::with_capacity(inputs.len());
     for chunk in inputs.chunks(BULK_CHUNK) {
+        rows.extend(super::links::refs(db, org_id, chunk.iter().map(|(id, _)| *id)).await?);
+    }
+    let mut checked: Vec<(
+        &objects::Model,
+        &ObjectTypeDef,
+        i32,
+        String,
+        Map<String, Value>,
+    )> = Vec::new();
+    for (id, input) in inputs {
+        let row = rows.get(id).ok_or(OntologyError::NotFound)?;
+        if row.valid_to.is_some() {
+            return Err(OntologyError::NotFound);
+        }
+        let Some(def) = s.object_type(&row.type_key) else {
+            return Err(OntologyError::NotFound);
+        };
+        require_role(def, actor)?;
+        let Some(expected) = input.expected_version else {
+            return Err(super::invalid("expected_version", FIELD_REQUIRED));
+        };
+        if def.key == CLAIM || def.key == KIND_CASE {
+            update_in_with(db, s, org_id, actor, *id, input).await?;
+            continue;
+        }
+        if row.version != expected {
+            return Err(OntologyError::VersionConflict {
+                current: row.version,
+            });
+        }
+        let title = if def.native() {
+            row.title.clone()
+        } else {
+            check_title(&input.title)?
+        };
+        let props = check_values(&def.properties, &input.properties)?;
+        checked.push((row, def, expected, title, props));
+    }
+    let docs: Vec<_> = checked.iter().map(|(_, d, _, _, p)| (*d, p)).collect();
+    check_refs_many(db, org_id, &docs).await?;
+    let docs: Vec<_> = checked
+        .iter()
+        .map(|(r, d, _, _, p)| (*d, p, Some(r.id)))
+        .collect();
+    check_unique_many(db, org_id, &docs).await?;
     for chunk in checked.chunks(BULK_CHUNK) {
+        let recs: Vec<Value> = chunk
+            .iter()
+            .map(|(row, def, expected, title, props)| {
+                serde_json::json!({
+                    "id": row.id,
+                    "version": expected,
+                    "title": title,
+                    "properties": props,
+                    "type_version": s.type_version(&def.key),
+                })
+            })
+            .collect();
             .from_raw_sql(bulk_stmt(
+                "UPDATE objects o SET title = u.title, properties = u.properties, \
+                   type_version = u.type_version, source_ref = $2, version = u.version + 1, \
+                   updated_at = now() \
                  FROM jsonb_to_recordset($3::jsonb) AS u(id uuid, version int, title text, \
+                   properties jsonb, type_version int) \
+                 WHERE o.org_id = $1 AND o.id = u.id AND o.version = u.version \
+                 RETURNING o.*",
+                vec![
+                    org_id.into(),
+                    actor.source_ref.clone().into(),
+                    Value::Array(recs).into(),
+                ],
+            ))
+            .all(db)
+            .await?;
+        if updated.len() != chunk.len() {
+            let done: std::collections::HashSet<Uuid> = updated.iter().map(|o| o.id).collect();
+            let row = chunk
+                .iter()
+                .map(|c| c.0);
+            return Err(OntologyError::VersionConflict {
+                current: row.map_or(0, |r| r.version),
+            });
+        }
+        refresh_recurrences(db, s, &updated).await;
+        for after in &updated {
+            let before = rows.get(&after.id).map(|b| view(b, s));
+            changes::submit(Change::object(
+                org_id,
+                "object.update",
+                &actor.source_ref,
+                serde_json::to_value(&before).unwrap_or_default(),
+                &view(after, s),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Colour of an object: its first coloured enum property that holds a
+/// value (account-mapping.md D339).
+pub fn color_of(s: &OrgSchema, o: &objects::Model) -> Option<String> {
+    s.object_type(&o.type_key)?
+        .properties
+        .iter()
+        .filter(|p| !p.colors.is_empty())
+        .find_map(|p| p.color_of(o.properties.get(&p.key)?))
+        .map(str::to_string)
+}
+
+/// Colour of each system object of `type_key` (by native id). Nothing is
+/// read when the type has no coloured property.
+pub async fn colors_of<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    type_key: &str,
+    native_ids: &[String],
+) -> Result<HashMap<String, String>> {
+    if native_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let s = schema(db, org_id).await?;
+    let colored = s
+        .object_type(type_key)
+        .is_some_and(|d| d.properties.iter().any(|p| !p.colors.is_empty()));
+    if !colored {
+        return Ok(HashMap::new());
+    }
+        .filter(objects::Column::OrgId.eq(org_id))
+        .filter(objects::Column::TypeKey.eq(type_key))
+        .filter(objects::Column::NativeId.is_in(native_ids.to_vec()))
+        .filter(objects::Column::ValidTo.is_null())
+        .all(db)
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|o| Some((o.native_id.clone(), color_of(&s, o)?)))
+        .collect())
+}

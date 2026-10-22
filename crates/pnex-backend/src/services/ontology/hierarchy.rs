@@ -5,7 +5,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pnex_core::ontology::api::{Hierarchy, HierarchyNode, HierarchyView};
+use pnex_core::ontology::api::{
+    Hierarchy, HierarchyNode, HierarchyView, MarkCount, NodeMark, PropertyTotal,
+};
 use sea_orm::prelude::DateTimeWithTimeZone;
 use sea_orm::{ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
@@ -44,8 +46,43 @@ pub async fn tree(
         .map(|(c, _)| *c)
         .chain([root])
         .collect();
-    let rows = links::refs(db, org_id, ids).await?;
+    let rows = links::refs(db, org_id, ids.clone()).await?;
     let title = |id: &Uuid| rows.get(id).map(|o| o.title.clone()).unwrap_or_default();
+    let s = super::schema(db, org_id).await?;
+    let marks = |id: &Uuid| -> Vec<NodeMark> {
+        let Some(row) = rows.get(id) else {
+            return Vec::new();
+        };
+        let Some(def) = s.object_type(&row.type_key) else {
+            return Vec::new();
+        };
+        def.properties
+            .iter()
+            .filter_map(|p| {
+                let v = row.properties.get(&p.key)?;
+                Some(NodeMark {
+                    property: p.key.clone(),
+                    value: v.as_str()?.to_string(),
+                    color: p.color_of(v)?.to_string(),
+                })
+            })
+            .collect()
+    };
+    let covered = covered(db, org_id, &h, &ids, at).await?;
+    let white = |id: &Uuid| {
+        h.coverage.as_ref().is_some_and(|c| {
+            *id != root
+                && !covered.contains(id)
+                && !rows.get(id).is_some_and(|r| {
+                    c.values.iter().any(|(k, vs)| {
+                        r.properties
+                            .get(k)
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|v| vs.iter().any(|x| x == v))
+                    })
+                })
+        })
+    };
     let mut parents: HashMap<Uuid, Vec<Uuid>> = HashMap::new();
     for (p, cs) in &children {
         for (c, _) in cs {
@@ -59,6 +96,8 @@ pub async fn tree(
         depth: 0,
         link: String::new(),
         also_under: Vec::new(),
+        marks: marks(&root),
+        white_space: false,
     }];
     // Depth first; a node already on the path is not expanded again (cycle).
     let mut stack: Vec<(Uuid, Uuid, String, u32, Vec<Uuid>)> = children
@@ -90,6 +129,8 @@ pub async fn tree(
                 .filter(|p| **p != parent)
                 .map(title)
                 .collect(),
+            marks: marks(&id),
+            white_space: white(&id),
         });
         if path.contains(&id) || depth >= DEPTH_MAX {
             continue;
@@ -102,12 +143,77 @@ pub async fn tree(
             }
         }
     }
+    // Coverage of the tree (D330): each node once, however many parents.
+    let mut once: HashSet<&str> = HashSet::new();
+    let distinct: Vec<&HierarchyNode> = nodes.iter().filter(|n| once.insert(&n.id)).collect();
+    let mut counts: Vec<MarkCount> = Vec::new();
+    for m in distinct.iter().flat_map(|n| &n.marks) {
+        match counts
+            .iter_mut()
+            .find(|c| c.property == m.property && c.value == m.value)
+        {
+            Some(c) => c.count += 1,
+            None => counts.push(MarkCount {
+                property: m.property.clone(),
+                value: m.value.clone(),
+                color: m.color.clone(),
+                count: 1,
+            }),
+        }
+    }
+    let totals = h
+        .sums
+        .iter()
+        .map(|k| PropertyTotal {
+            property: k.clone(),
+            total: distinct
+                .iter()
+                .filter_map(|n| Uuid::parse_str(&n.id).ok())
+                .filter_map(|id| rows.get(&id)?.properties.get(k)?.as_f64())
+                .sum(),
+        })
+        .collect();
+    let white_space = distinct.iter().filter(|n| n.white_space).count() as u32;
     Ok(HierarchyView {
         hierarchies,
+        has_coverage: h.coverage.is_some(),
         key: h.key,
         nodes,
         truncated: cut,
+        counts,
+        totals,
+        white_space,
     })
+}
+
+/// Nodes with an open link of a covering type (D330), at `at`.
+async fn covered(
+    db: &DatabaseConnection,
+    org_id: i64,
+    h: &Hierarchy,
+    ids: &HashSet<Uuid>,
+    at: DateTimeWithTimeZone,
+) -> Result<HashSet<Uuid>> {
+    let Some(c) = h.coverage.as_ref().filter(|c| !c.links.is_empty()) else {
+        return Ok(HashSet::new());
+    };
+    let ids: Vec<Uuid> = ids.iter().copied().collect();
+    let edges = resource_edges::Entity::find()
+        .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::Relation.is_in(c.links.clone()))
+        .filter(links::valid_at(at))
+        .filter(
+            Condition::any()
+                .add(resource_edges::Column::SourceObjectId.is_in(ids.clone()))
+                .add(resource_edges::Column::TargetObjectId.is_in(ids)),
+        )
+        .all(db)
+        .await?;
+    Ok(edges
+        .iter()
+        .flat_map(|e| [e.source_object_id, e.target_object_id])
+        .flatten()
+        .collect())
 }
 
 type Children = HashMap<Uuid, Vec<(Uuid, String)>>;

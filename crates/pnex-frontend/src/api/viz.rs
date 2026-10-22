@@ -89,6 +89,8 @@ pub struct ClusterItem {
     pub id: Option<String>,
     pub label: String,
     pub emoji: String,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

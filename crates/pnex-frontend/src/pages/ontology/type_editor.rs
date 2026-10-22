@@ -340,6 +340,7 @@ fn Editor(
                                             indexed: false,
                                             unique: false,
                                             pack: None,
+                                            colors: Default::default(),
                                         })
                                 });
                             },

@@ -386,3 +386,31 @@ Limites :
     l'API) ;
   - listes de salon (fichier + `org_resolve`) : pas encore faites.
 
+### CC1, fin — couleurs (D339) et couverture (D330) (2026-10-22, non commité)
+
+- **D339, noyau générique** : `PropertyDef.colors` (valeur d'énumération →
+  jeton de la palette fermée `green`, `amber`, `red`, `blue`, `violet`,
+  `gray`, `schema::COLORS`), refusé sur une autre sorte de propriété ou
+  pour une valeur inconnue. La couleur d'un objet est celle de sa première
+  propriété colorée renseignée (`objects::color_of`) :
+  - **Hiérarchie** : `HierarchyNode.marks` (pastille et valeur) ;
+  - **Graphe** de l'objet : `Neighborhood.colors` (contour du nœud) ;
+  - **Carte** : `color` sur les points isolés de `/pois/cluster` (anneau et
+    bord de l'étiquette dans `map.js`). Les grappes restent neutres.
+  `prospection_b2b` colore `statut_compte` et `statut_site`. La surcharge
+  par l'org n'est pas faite : elle modifierait une propriété qui
+  appartient au pack.
+- **D330, couverture lue à la volée** : une hiérarchie de pack peut
+  déclarer `sums` (propriétés nombre additionnées) et `coverage` (liens qui
+  couvrent, valeurs qui couvrent). `HierarchyView` rend `counts` (nœuds
+  distincts par valeur colorée), `totals`, `white_space` (nombre) et
+  `white_space` sur chaque nœud non couvert, racine exclue. `groupe_commercial` :
+  utilisateurs actuels et potentiels, couvert par `employs` ou un statut
+  `client`. Bandeau au-dessus de l'arbre, case « Espace blanc seulement ».
+  Mot ajouté au lexique (garde : « zone blanche » refusé).
+- Restent de D330 : contacts par persona et signaux ouverts (le type
+  signal arrive avec CC4).
+- Test : `partner_watch::group_coverage_and_status_colours` ;
+  unitaires `colours_name_enum_values_from_the_palette`,
+  `last_segment_takes_the_latest_key_or_element`.
+

@@ -416,9 +416,12 @@ async fn target_list_enters_new_accounts_as_targets() {
     .await;
 }
 
+/// account-mapping.md D330, D339: statuses carry their colour to the
+/// hierarchy, the graph and the map; the commercial group sums its users
 /// and lists the nodes with neither a contact nor a client status.
 #[tokio::test]
 #[serial]
+async fn group_coverage_and_status_colours() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "prospection_b2b").await;
@@ -442,6 +445,9 @@ async fn target_list_enters_new_accounts_as_targets() {
 
         let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
+        assert_eq!(node(&mother)["marks"], json!([{"property": "statut_compte", "value": "client", "color": "green"}]));
+        assert_eq!((node(&gap)["white_space"].clone(), node(&covered)["white_space"].clone()), (json!(true), Value::Null), "{h}");
+        assert_eq!((h["has_coverage"].clone(), h["white_space"].clone()), (json!(true), json!(1)));
         let totals: Vec<(String, f64)> = h["totals"].as_array().unwrap().iter()
             .map(|t| (t["property"].as_str().unwrap().to_string(), t["total"].as_f64().unwrap())).collect();
         assert_eq!(totals, [("utilisateurs_actuels".to_string(), 50.0), ("potentiel_utilisateurs".to_string(), 5800.0)]);
@@ -449,7 +455,9 @@ async fn target_list_enters_new_accounts_as_targets() {
 
         let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/graph"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{g}");
+        assert_eq!((g["colors"][&mother].clone(), g["colors"][&gap].clone()), (json!("green"), json!("blue")), "{g}");
 
+        // A site's status colours its pin on the map.
         let res = server.post("/api/v1/pois")
             .add_header("Authorization", format!("Bearer {}", env.alice))
             .add_header("X-Org-Id", org.to_string())

@@ -113,7 +113,16 @@ pub async fn neighborhood(
     let by_id = links::refs(db, org_id, ids).await?;
     let mut nodes: Vec<_> = by_id.values().map(links::object_ref).collect();
     nodes.sort_by(|a, b| a.title.cmp(&b.title));
-    Ok(Neighborhood { nodes, links })
+    let s = super::schema(db, org_id).await?;
+    let colors = by_id
+        .iter()
+        .filter_map(|(id, o)| Some((id.to_string(), super::objects::color_of(&s, o)?)))
+        .collect();
+    Ok(Neighborhood {
+        nodes,
+        links,
+        colors,
+    })
 }
 
 /// Shortest path between two objects (links in either direction), within

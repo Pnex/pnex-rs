@@ -142,6 +142,23 @@ pub struct PropertyDef {
     /// Pack that added this property to a type it does not own (D306).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<String>,
+    /// Enum only: value → colour of the map, hierarchy and graph
+    /// (account-mapping.md D339), one of [`COLORS`].
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub colors: std::collections::BTreeMap<String, String>,
+}
+
+/// Closed palette of property colours: design tokens, never raw CSS.
+pub const COLORS: &[&str] = &["green", "amber", "red", "blue", "violet", "gray"];
+
+impl PropertyDef {
+    /// Colour of `value` for this property, when it has one.
+    pub fn color_of(&self, value: &Value) -> Option<&str> {
+        value
+            .as_str()
+            .and_then(|v| self.colors.get(v))
+            .map(String::as_str)
+    }
 }
 
 impl<'de> Deserialize<'de> for PropertyDef {
@@ -164,6 +181,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             unique: bool,
             #[serde(default)]
             pack: Option<String>,
+            #[serde(default)]
+            colors: std::collections::BTreeMap<String, String>,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -241,6 +260,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             indexed: h.indexed || h.unique,
             unique: h.unique,
             pack: h.pack,
+            colors: h.colors,
         })
     }
 }
@@ -283,7 +303,14 @@ pub fn check_defs(
                 {
                     return Err(err(at("values"), FIELD_INVALID));
                 }
+                if d.colors
+                    .iter()
+                    .any(|(v, c)| !values.contains(v) || !COLORS.contains(&c.as_str()))
+                {
+                    return Err(err(at("colors"), FIELD_INVALID));
+                }
             }
+            _ if !d.colors.is_empty() => return Err(err(at("colors"), FIELD_INVALID)),
             PropertyKind::Ref { to_type } if !known_type(to_type) => {
                 return Err(err(at("to_type"), FIELD_INVALID));
             }
@@ -534,6 +561,7 @@ mod tests {
             indexed: false,
             unique: false,
             pack: None,
+            colors: Default::default(),
         }
     }
 
@@ -692,6 +720,43 @@ mod tests {
             let v = json!({"t": {"from": from, "to": to, "precision": p}});
             assert!(check_values(&d, v.as_object().unwrap()).is_ok(), "{p}");
         }
+    }
+
+    #[test]
+    fn colours_name_enum_values_from_the_palette() {
+        let known = |_: &str| true;
+        let status = |colors: &[(&str, &str)]| PropertyDef {
+            colors: colors
+                .iter()
+                .map(|(v, c)| (v.to_string(), c.to_string()))
+                .collect(),
+            ..def(
+                "statut",
+                PropertyKind::Enum {
+                    values: vec!["client".into(), "cible".into()],
+                },
+            )
+        };
+        assert!(check_defs(&[status(&[("client", "green")])], "p", &known).is_ok());
+        for bad in [
+            status(&[("client", "#00ff00")]),
+            status(&[("autre", "green")]),
+        ] {
+            assert_eq!(check_defs(&[bad], "p", &known).unwrap_err().0, "p.0.colors");
+        }
+        let text = PropertyDef {
+            colors: [("a".to_string(), "green".to_string())].into(),
+            ..def("t", PropertyKind::Text { max_len: None })
+        };
+        assert!(check_defs(&[text], "p", &known).is_err());
+        assert_eq!(
+            status(&[("client", "green")]).color_of(&json!("client")),
+            Some("green")
+        );
+        assert_eq!(
+            status(&[("client", "green")]).color_of(&json!("cible")),
+            None
+        );
     }
 
     #[test]
