@@ -133,6 +133,22 @@ pub fn ProposalsTable(
                 move |p: &ProposalView| {
                     let a = p.id.clone();
                     let (fix, rej) = (p.clone(), p.clone());
+                    // A voice is decided where it can be heard.
+                    if p.kind == ProposalKind::VoiceSpan {
+                        let id = p
+                            .values
+                            .get("media_asset_id")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        return rsx! {
+                            Link {
+                                class: "text-signal-700 hover:underline",
+                                to: Route::MediaReview { id },
+                                {t!("proposals-listen")}
+                            }
+                        };
+                    }
                     rsx! {
                         span { class: "flex gap-2",
                             button {
@@ -287,6 +303,21 @@ fn DecisionDialog(
 /// What the values column shows: a case detection by its detector and span
 /// (its key and members are internal; the members are in Objects).
 fn shown_values(p: &ProposalView) -> serde_json::Map<String, serde_json::Value> {
+    if p.kind == ProposalKind::VoiceSpan {
+        let clock = |k: &str| {
+            let s = p
+                .values
+                .get(k)
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0)
+                / 1_000;
+            format!("{}:{:02}:{:02}", s / 3_600, s / 60 % 60, s % 60)
+        };
+        let mut out = serde_json::Map::new();
+        out.insert("from".into(), clock("start_ms").into());
+        out.insert("to".into(), clock("end_ms").into());
+        return out;
+    }
     if p.kind != ProposalKind::CaseEvent {
         return p.values.clone();
     }
@@ -349,5 +380,14 @@ mod tests {
         );
         p.kind = ProposalKind::LinkCreate;
         assert_eq!(shown_values(&p), p.values);
+        p.kind = ProposalKind::VoiceSpan;
+        p.values = json!({"start_ms": 3_725_000, "end_ms": 3_790_500})
+            .as_object()
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            serde_json::Value::Object(shown_values(&p)),
+            json!({"from": "1:02:05", "to": "1:03:10"})
+        );
     }
 }

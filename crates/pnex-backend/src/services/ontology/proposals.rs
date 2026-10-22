@@ -102,6 +102,7 @@ pub async fn propose<C: ConnectionTrait>(
         ProposalKind::ObjectUpdate | ProposalKind::LinkUpdate | ProposalKind::LinkClose => {
             needs("target_id", &p.target_id)?
         }
+        ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
         ProposalKind::CaseEvent => {
             needs("target_id", &p.target_id)?;
             if p.values
@@ -240,6 +241,22 @@ pub async fn propose_accepted(
     Ok(Some(id))
 }
 
+/// What the inbox reads: the proposals, and the voices recognized on media
+/// (P3, read only: decided on the media review, where they are heard).
+const INBOX: &str = "(SELECT id, org_id, kind, status, type_key, target_id, source_id, \
+       link_target_id, title, vals, base_version, evidence, refs, origin, confidence, reason, \
+       applied, decided_by, decided_at, created_at FROM proposals \
+     UNION ALL \
+     SELECT s.id, s.org_id, 'voice_span', \
+       CASE s.status WHEN 'confirmed' THEN 'accepted' ELSE s.status END, 'person', \
+       s.media_asset_id::text, NULL, NULL, m.name, \
+       jsonb_build_object('media_asset_id', s.media_asset_id, 'start_ms', s.start_ms, \
+         'end_ms', s.end_ms), NULL, 'null'::jsonb, \
+       array_remove(ARRAY[s.object_id, m.object_id], NULL), 'voice', \
+       (s.confidence * 100)::float8, NULL, NULL, NULL, NULL, s.created_at \
+     FROM speech_attributions s JOIN media_assets m ON m.id = s.media_asset_id \
+     WHERE s.origin = 'voice')";
+
 /// Inbox filter.
 #[derive(Debug, Clone, Default)]
 pub struct Filter {
@@ -328,7 +345,7 @@ pub async fn list(
     };
     let count = db
         .query_one_raw(stmt(
-            &format!("SELECT count(*)::bigint AS n FROM proposals p WHERE {filter}"),
+            &format!("SELECT count(*)::bigint AS n FROM {INBOX} p WHERE {filter}"),
             args(vec![]),
         ))
         .await?
@@ -337,7 +354,7 @@ pub async fn list(
     let rows = db
         .query_all_raw(stmt(
             &format!(
-                "SELECT {COLUMNS} FROM proposals p LEFT JOIN users u ON u.id = p.decided_by \
+                "SELECT {COLUMNS} FROM {INBOX} p LEFT JOIN users u ON u.id = p.decided_by \
                  WHERE {filter} ORDER BY p.created_at DESC, p.id LIMIT $5 OFFSET $6"
             ),
             args(vec![(limit as i64).into(), (offset as i64).into()]),
@@ -443,6 +460,7 @@ async fn apply<C: ConnectionTrait>(
             .await?
             .id
             .to_string(),
+        ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
         ProposalKind::CaseEvent => {
             let case_id = text("target_id")
                 .and_then(|t| Uuid::parse_str(&t).ok())

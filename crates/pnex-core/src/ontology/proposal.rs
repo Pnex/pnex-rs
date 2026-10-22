@@ -23,16 +23,21 @@ pub enum ProposalKind {
     /// An event of an investigation case, from a detector on the members'
     /// tracks (P3): `target_id` is the case, `values.key` the detection.
     CaseEvent,
+    /// A voice recognized on a media (media-review.md D275), listed in the
+    /// inbox but decided on the media review, where it can be heard and its
+    /// span moved: never written to the proposals table.
+    VoiceSpan,
 }
 
 impl ProposalKind {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::ObjectCreate,
         Self::ObjectUpdate,
         Self::LinkCreate,
         Self::LinkUpdate,
         Self::LinkClose,
         Self::CaseEvent,
+        Self::VoiceSpan,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -43,6 +48,7 @@ impl ProposalKind {
             Self::LinkUpdate => "link_update",
             Self::LinkClose => "link_close",
             Self::CaseEvent => "case_event",
+            Self::VoiceSpan => "voice_span",
         }
     }
 
@@ -187,6 +193,8 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
             id(&p.source_id),
             id(&p.link_target_id)
         ),
+        // Not proposed through this table.
+        ProposalKind::VoiceSpan => return None,
         // One detection of one case: never in competition with another.
         ProposalKind::CaseEvent => format!(
             "{}|{}|{}",

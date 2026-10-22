@@ -18240,7 +18240,8 @@
           "link_create",
           "link_update",
           "link_close",
-          "case_event"
+          "case_event",
+          "voice_span"
         ],
         "type": "string"
       },
