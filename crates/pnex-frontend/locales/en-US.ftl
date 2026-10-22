@@ -5849,6 +5849,7 @@ proposals-kind-object_update = Change
 proposals-kind-link_create = New link
 proposals-kind-link_update = Link changed
 proposals-kind-link_close = Link closed
+proposals-kind-case_event = Case event
 proposals-col-what = Proposal
 proposals-col-objects = Objects
 proposals-col-values = Proposed values

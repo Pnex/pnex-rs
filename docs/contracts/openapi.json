@@ -18239,7 +18239,8 @@
           "object_update",
           "link_create",
           "link_update",
-          "link_close"
+          "link_close",
+          "case_event"
         ],
         "type": "string"
       },
@@ -31208,7 +31209,7 @@
     },
     "/api/v1/cases/{id}/proposals": {
       "get": {
-        "description": "Every detection proposed to the case: still proposed, retained (with the event it became) or rejected (with the reason). Any org member.",
+        "description": "Every detection proposed to the case: still proposed, retained (with the event it became) or rejected (with the reason). The same proposals are in the shared inbox (`GET /api/v1/proposals`, kind `case_event`). Any org member.",
         "operationId": "cases_proposals_list",
         "parameters": [
           {

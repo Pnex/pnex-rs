@@ -1,9 +1,10 @@
 //! Detections of a case (cases-workspace.md K30): the detectors of
 //! `pnex_core::track::detect` run on the members' tracks over a window and
-//! write proposals. A fingerprint (detector, members, start to the minute)
-//! makes a recomputation insert only what is new: a rejected proposal is
-//! never proposed again. Retaining makes an event in one transaction;
-//! retaining twice returns the same event (row lock). Nothing is ever added
+//! write proposals of kind `case_event` in the shared inbox (proposals.md
+//! P3). A key (detector, members, start to the minute) makes a
+//! recomputation insert only what is new: a rejected proposal is never
+//! proposed again. Retaining is the shared acceptance, which writes the
+//! event; retaining twice returns the same event. Nothing is ever added
 //! to the case without a human gesture. Thresholds are case properties set
 //! in the case frame, the defaults below when unset.
 
@@ -13,9 +14,10 @@ use pnex_core::ontology::api::{
     CaseAttachInput, CaseDetected, CaseEventInput, CaseProposal, CaseWorkspace, DetectQuery,
     ObjectRef, ProposalReject, ProposalRetain,
 };
+use pnex_core::ontology::proposal::{DecisionKind, ProposalDecision, ProposalInput, ProposalKind};
 use pnex_core::ontology::{
     CASE_COPRESENCE_DISTANCE_M, CASE_COPRESENCE_MIN_S, CASE_SIGNAL_GAP_S, CASE_STOP_DIAMETER_M,
-    CASE_STOP_MIN_S, EVENT_LOCATION, EVENT_NOTE,
+    CASE_STOP_MIN_S, EVENT_LOCATION, EVENT_NOTE, KIND_EVENT,
 };
 use pnex_core::resources::KIND_MAP_PIN;
 use pnex_core::track::detect::{
@@ -24,14 +26,12 @@ use pnex_core::track::detect::{
     DEFAULT_STOP_MIN_S as STOP_MIN_S,
 };
 use sea_orm::prelude::DateTimeWithTimeZone;
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement, TransactionTrait,
-};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::super::{invalid, links, parse_instant, ts, Actor, OntologyError, Result};
+use super::super::{invalid, links, parse_instant, proposals, ts, Actor, OntologyError, Result};
 use super::signals::events_span;
 use super::tracks::{load, MAX_SPAN_DAYS};
 use super::{create_event_in, membership, workspace, zones_of, T_PLACE};
@@ -42,7 +42,6 @@ const STOP: &str = "stop@1";
 const SIGNAL_LOSS: &str = "signal_loss@1";
 const ZONE: &str = "zone@1";
 const DEFAULT_SPAN_HOURS: i64 = 24;
-const REASON_MAX: usize = 500;
 
 /// Detector thresholds of a case: its properties, else the defaults.
 pub(super) struct Thresholds {
@@ -215,29 +214,38 @@ pub async fn detect(
     for f in found {
         let mut refs = f.refs.clone();
         refs.sort();
-        let r = db
-            .execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "INSERT INTO case_proposals \
-                   (id, org_id, case_id, kind, detector, params, fingerprint, t_start, t_end, refs, payload) \
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) \
-                 ON CONFLICT (case_id, fingerprint) DO NOTHING",
-                [
-                    Uuid::new_v4().into(),
-                    org_id.into(),
-                    case_id.into(),
-                    kind_of(f.detector).into(),
-                    f.detector.into(),
-                    f.params.into(),
-                    fingerprint(f.detector, &refs, f.from_ms).into(),
-                    instant(f.from_ms).into(),
-                    f.to_ms.map(instant).into(),
-                    refs.into(),
-                    f.payload.into(),
-                ],
-            ))
-            .await?;
-        inserted += r.rows_affected() as usize;
+        let names: Vec<String> = f
+            .refs
+            .iter()
+            .map(|r| {
+                members
+                    .get(r)
+                    .map_or_else(|| r.to_string(), |o| o.title.clone())
+            })
+            .collect();
+        let input = ProposalInput {
+            kind: Some(ProposalKind::CaseEvent),
+            type_key: KIND_EVENT.into(),
+            target_id: Some(case_id.to_string()),
+            title: Some(format!("{}: {}", kind_of(f.detector), names.join(" · "))),
+            values: json!({
+                "key": fingerprint(f.detector, &refs, f.from_ms),
+                "detector": f.detector,
+                "params": f.params,
+                "members": refs.iter().map(Uuid::to_string).collect::<Vec<_>>(),
+                "from_ms": f.from_ms,
+                "to_ms": f.to_ms,
+                "payload": f.payload,
+            })
+            .as_object()
+            .cloned()
+            .unwrap_or_default(),
+            origin: format!("detector:{}", f.detector),
+            ..Default::default()
+        };
+        if proposals::propose(db, org_id, &input).await?.is_some() {
+            inserted += 1;
+        }
     }
     Ok(CaseDetected {
         from: ts(&from),
@@ -248,33 +256,42 @@ pub async fn detect(
     })
 }
 
-const COLUMNS: &str = "id, kind, detector, params, t_start, t_end, refs, payload, status, \
-                       reject_reason, event_id";
-
-/// One row, members not yet resolved.
+/// A detection as the case shows it, members not yet resolved.
 fn row_of(r: &QueryResult) -> Option<(CaseProposal, Vec<Uuid>)> {
-    let refs: Vec<Uuid> = r.try_get("", "refs").ok()?;
-    let t_end: Option<DateTimeWithTimeZone> = r.try_get("", "t_end").ok()?;
-    let event_id: Option<Uuid> = r.try_get("", "event_id").ok()?;
+    let vals: Value = r.try_get("", "vals").ok()?;
+    let ms = |k: &str| vals.get(k).and_then(Value::as_i64);
+    let detector = vals.get("detector")?.as_str()?.to_string();
+    let refs: Vec<Uuid> = vals
+        .get("members")?
+        .as_array()?
+        .iter()
+        .filter_map(|m| Uuid::parse_str(m.as_str()?).ok())
+        .collect();
+    let status: String = r.try_get("", "status").ok()?;
     Some((
         CaseProposal {
             id: r.try_get::<Uuid>("", "id").ok()?.to_string(),
-            kind: r.try_get("", "kind").ok()?,
-            detector: r.try_get("", "detector").ok()?,
-            params: r.try_get("", "params").ok()?,
-            t_start: ts(&r.try_get("", "t_start").ok()?),
-            t_end: t_end.as_ref().map(ts),
+            kind: kind_of(&detector).to_string(),
+            params: vals.get("params").cloned().unwrap_or_default(),
+            t_start: ts(&instant(ms("from_ms")?)),
+            t_end: ms("to_ms").map(|t| ts(&instant(t))),
             refs: Vec::new(),
-            payload: r.try_get("", "payload").ok()?,
-            status: r.try_get("", "status").ok()?,
-            reject_reason: r.try_get("", "reject_reason").ok()?,
-            event_id: event_id.map(|u| u.to_string()),
+            payload: vals.get("payload").cloned().unwrap_or_default(),
+            // The case keeps its own words for an accepted detection.
+            status: if status == "accepted" {
+                "retained".into()
+            } else {
+                status
+            },
+            reject_reason: r.try_get("", "reason").ok()?,
+            event_id: r.try_get("", "applied").ok()?,
+            detector,
         },
         refs,
     ))
 }
 
-/// The proposals of a case, by start; members gone from the org are left out.
+/// The detections of a case, by start; members gone from the org are left out.
 pub async fn proposals(
     db: &DatabaseConnection,
     org_id: i64,
@@ -284,11 +301,11 @@ pub async fn proposals(
     let rows = db
         .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            format!(
-                "SELECT {COLUMNS} FROM case_proposals WHERE org_id = $1 AND case_id = $2 \
-                 ORDER BY t_start, id"
-            ),
-            [org_id.into(), case_id.into()],
+            "SELECT id, vals, status, reason, applied FROM proposals \
+             WHERE org_id = $1 AND kind = 'case_event' AND target_id = $2 \
+               AND status <> 'superseded' \
+             ORDER BY (vals ->> 'from_ms')::bigint, id",
+            [org_id.into(), case_id.to_string().into()],
         ))
         .await?;
     let rows: Vec<(CaseProposal, Vec<Uuid>)> = rows.iter().filter_map(row_of).collect();
@@ -305,47 +322,110 @@ pub async fn proposals(
         .collect())
 }
 
-/// The proposal row, locked for the review.
-async fn locked<C: ConnectionTrait>(
-    db: &C,
-    org_id: i64,
-    case_id: Uuid,
-    id: Uuid,
-) -> Result<(CaseProposal, Vec<Uuid>)> {
-    let r = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            format!(
-                "SELECT {COLUMNS} FROM case_proposals \
-                 WHERE id = $1 AND org_id = $2 AND case_id = $3 FOR UPDATE"
-            ),
-            [id.into(), org_id.into(), case_id.into()],
-        ))
-        .await?
-        .ok_or(OntologyError::NotFound)?;
-    row_of(&r).ok_or(OntologyError::NotFound)
-}
-
 /// `fuzzy_time` value of a detection span (bounds in UTC with `Z`).
-fn occurred(p: &CaseProposal) -> Value {
-    let z = |s: &str| {
-        chrono::DateTime::parse_from_rfc3339(s)
-            .map(|t| {
-                t.with_timezone(&chrono::Utc)
-                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-            })
+fn occurred(from_ms: i64, to_ms: Option<i64>) -> Value {
+    let z = |ms: i64| {
+        chrono::DateTime::from_timestamp_millis(ms)
             .unwrap_or_default()
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     };
-    let from = z(&p.t_start);
-    match p.t_end.as_deref().map(z) {
+    let from = z(from_ms);
+    match to_ms.map(z) {
         Some(to) if to != from => json!({ "from": from, "to": to, "precision": "range" }),
         _ => json!({ "from": from, "to": from, "precision": "instant" }),
     }
 }
 
-/// Retains a proposal: its event, the members attached as actors, the place
-/// and the detector cited in the note, provenance `detector:<key>@<version>`
-/// (D184). Idempotent.
+/// The event of an accepted detection (proposals.md P3): the members
+/// attached as actors, the place and the detector cited in the note.
+pub(crate) async fn event_of<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    actor: &Actor,
+    case_id: Uuid,
+    vals: &Map<String, Value>,
+    title: &str,
+) -> Result<Uuid> {
+    let refs: Vec<Uuid> = vals
+        .get("members")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|m| Uuid::parse_str(m.as_str()?).ok())
+        .collect();
+    let from_ms = vals
+        .get("from_ms")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid("values.from_ms", FIELD_INVALID))?;
+    let detector = vals
+        .get("detector")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let params = vals.get("params").cloned().unwrap_or_default();
+    let mut props = Map::new();
+    props.insert(EVENT_NOTE.into(), format!("{detector} {params}").into());
+    if let Some([lon, lat]) = vals.get("payload").and_then(|p| p.get("at")).and_then(|a| {
+        let a = a.as_array()?;
+        Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?])
+    }) {
+        props.insert(EVENT_LOCATION.into(), json!({ "lon": lon, "lat": lat }));
+    }
+    // Tracked members act; the area of a visit is context.
+    let types = links::refs(db, org_id, refs.iter().copied()).await?;
+    let event = CaseEventInput {
+        title: title.to_string(),
+        occurred: occurred(from_ms, vals.get("to_ms").and_then(Value::as_i64)),
+        origin: Some("detection".into()),
+        attach: refs
+            .iter()
+            .map(|r| {
+                let place = types
+                    .get(r)
+                    .is_some_and(|o| o.type_key == KIND_MAP_PIN || o.type_key == T_PLACE);
+                CaseAttachInput {
+                    object_id: r.to_string(),
+                    role: Some(if place { "context" } else { "actor" }.into()),
+                    ..Default::default()
+                }
+            })
+            .collect(),
+    };
+    create_event_in(db, org_id, actor, case_id, &event, props).await
+}
+
+/// A detection of this case, else not found (another case's id).
+async fn of_case(db: &DatabaseConnection, org_id: i64, case_id: Uuid, id: Uuid) -> Result<()> {
+    db.query_one_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT 1 AS one FROM proposals \
+         WHERE id = $1 AND org_id = $2 AND kind = 'case_event' AND target_id = $3",
+        [id.into(), org_id.into(), case_id.to_string().into()],
+    ))
+    .await?
+    .map(|_| ())
+    .ok_or(OntologyError::NotFound)
+}
+
+/// The shared decision (D373), in the case's words: deciding a detection
+/// the other way is `case-proposal-stale`.
+async fn decide_in_case(
+    db: &DatabaseConnection,
+    org_id: i64,
+    actor: &Actor,
+    case_id: Uuid,
+    id: Uuid,
+    d: &ProposalDecision,
+) -> Result<()> {
+    of_case(db, org_id, case_id, id).await?;
+    match proposals::decide(db, org_id, actor, id, d).await {
+        Ok(_) => Ok(()),
+        Err(OntologyError::ProposalDecided) => Err(OntologyError::CaseProposalStale),
+        Err(e) => Err(e),
+    }
+}
+
+/// Retains a detection: the proposal is accepted under the given title and
+/// its event written, provenance `proposal:<id>` (D184). Idempotent.
 pub async fn retain(
     db: &DatabaseConnection,
     org_id: i64,
@@ -354,70 +434,22 @@ pub async fn retain(
     id: Uuid,
     input: &ProposalRetain,
 ) -> Result<CaseWorkspace> {
-    crate::services::ontology::changes::deferred(async {
-        let txn = db.begin().await?;
-        let (p, refs) = locked(&txn, org_id, case_id, id).await?;
-        match p.status.as_str() {
-            "retained" => {
-                txn.commit().await?;
-                crate::services::ontology::changes::flush();
-                return workspace(db, org_id, case_id).await;
-            }
-            "rejected" => return Err(OntologyError::CaseProposalStale),
-            _ => {}
-        }
-        let mut props = Map::new();
-        props.insert(
-            EVENT_NOTE.into(),
-            format!("{} {}", p.detector, p.params).into(),
-        );
-        if let Some([lon, lat]) = p.payload.get("at").and_then(|a| {
-            let a = a.as_array()?;
-            Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?])
-        }) {
-            props.insert(EVENT_LOCATION.into(), json!({ "lon": lon, "lat": lat }));
-        }
-        // Tracked members act; the area of a visit is context.
-        let types = links::refs(&txn, org_id, refs.iter().copied()).await?;
-        let event = CaseEventInput {
-            title: input.title.clone(),
-            occurred: occurred(&p),
-            origin: Some("detection".into()),
-            attach: refs
-                .iter()
-                .map(|r| {
-                    let place = types
-                        .get(r)
-                        .is_some_and(|o| o.type_key == KIND_MAP_PIN || o.type_key == T_PLACE);
-                    CaseAttachInput {
-                        object_id: r.to_string(),
-                        role: Some(if place { "context" } else { "actor" }.into()),
-                        ..Default::default()
-                    }
-                })
-                .collect(),
-        };
-        let by = Actor {
-            source_ref: format!("detector:{}", p.detector),
-            ..actor.clone()
-        };
-        let event_id = create_event_in(&txn, org_id, &by, case_id, &event, props).await?;
-        txn.execute_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE case_proposals SET status = 'retained', event_id = $1, reviewed_by = $2, \
-         reviewed_at = now() WHERE id = $3",
-            [event_id.into(), actor.user_id.into(), id.into()],
-        ))
-        .await?;
-        txn.commit().await?;
-        crate::services::ontology::changes::flush();
-        workspace(db, org_id, case_id).await
-    })
-    .await
+    let d = ProposalDecision {
+        decision: DecisionKind::Accept,
+        reason: None,
+        values: Some(
+            json!({ "title": input.title })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+        ),
+    };
+    decide_in_case(db, org_id, actor, case_id, id, &d).await?;
+    workspace(db, org_id, case_id).await
 }
 
-/// Rejects a proposal, kept with its reason so it is never proposed again.
-/// Idempotent; a retained proposal is not rejected (remove its event instead).
+/// Rejects a detection, kept with its reason so it is never proposed again.
+/// Idempotent; a retained one is not rejected (remove its event instead).
 pub async fn reject(
     db: &DatabaseConnection,
     org_id: i64,
@@ -426,33 +458,13 @@ pub async fn reject(
     id: Uuid,
     input: &ProposalReject,
 ) -> Result<Vec<CaseProposal>> {
-    crate::services::ontology::changes::deferred(async {
-        let txn = db.begin().await?;
-        let (p, _) = locked(&txn, org_id, case_id, id).await?;
-        match p.status.as_str() {
-            "retained" => return Err(OntologyError::CaseProposalStale),
-            "rejected" => {}
-            _ => {
-                let reason: Option<String> = input
-                    .reason
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|r| !r.is_empty())
-                    .map(|r| r.chars().take(REASON_MAX).collect());
-                txn.execute_raw(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE case_proposals SET status = 'rejected', reject_reason = $1, \
-                 reviewed_by = $2, reviewed_at = now() WHERE id = $3",
-                    [reason.into(), actor.user_id.into(), id.into()],
-                ))
-                .await?;
-            }
-        }
-        txn.commit().await?;
-        crate::services::ontology::changes::flush();
-        proposals(db, org_id, case_id).await
-    })
-    .await
+    let d = ProposalDecision {
+        decision: DecisionKind::Reject,
+        reason: input.reason.clone(),
+        values: None,
+    };
+    decide_in_case(db, org_id, actor, case_id, id, &d).await?;
+    proposals(db, org_id, case_id).await
 }
 
 #[cfg(test)]

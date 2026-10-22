@@ -625,7 +625,8 @@ async fn case_tracks_window_isolation_and_unavailable_history() {
 
 /// Case detections (cases-workspace.md K30): without a readable position
 /// history nothing is proposed; a proposal is retained once (same event on a
-/// second retain, members attached as actors, provenance of the detector),
+/// second retain, members attached as actors, provenance of the proposal,
+/// listed in the shared inbox),
 /// a reviewed proposal is never reviewed the other way, a viewer only reads
 /// (R2) and another org sees nothing (R1).
 #[tokio::test]
@@ -645,15 +646,20 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
         assert_eq!(st, 200, "{d}");
         assert_eq!((d["available"].as_bool(), d["inserted"].as_u64()), (Some(false), Some(0)), "{d}");
 
-        // Two proposals as the detectors would write them.
+        // Two proposals as the detectors would write them (proposals.md P3).
         let mut pids = Vec::new();
-        for (kind, refs) in [("co_presence", format!("'{d1}', '{d2}'")), ("stop", format!("'{d1}'"))] {
+        let ms = |t: &str| chrono::DateTime::parse_from_rfc3339(t).unwrap().timestamp_millis();
+        for (kind, members) in [("co_presence", vec![d1.clone(), d2.clone()]), ("stop", vec![d1.clone()])] {
             let pid = uuid::Uuid::new_v4();
+            let vals = json!({"key": format!("{kind}-fp"), "detector": format!("{kind}@1"), "params": {"min_s": 120},
+                              "members": members, "from_ms": ms("2026-10-10T14:32:00Z"), "to_ms": ms("2026-10-10T14:40:00Z"),
+                              "payload": {"at": [2.35, 48.85]}});
+            let refs = members.iter().map(|m| format!("'{m}'")).collect::<Vec<_>>().join(", ");
             env.db
                 .execute_unprepared(&format!(
-                    "INSERT INTO case_proposals (id, org_id, case_id, kind, detector, params, fingerprint, t_start, t_end, refs, payload) \
-                     VALUES ('{pid}', {org}, '{cid}', '{kind}', '{kind}@1', '{{\"min_s\": 120}}', '{kind}-fp', \
-                             '2026-10-10T14:32:00Z', '2026-10-10T14:40:00Z', ARRAY[{refs}]::uuid[], '{{\"at\": [2.35, 48.85]}}')"
+                    "INSERT INTO proposals (id, org_id, kind, type_key, target_id, vals, refs, origin, slot, fingerprint) \
+                     VALUES ('{pid}', {org}, 'case_event', 'event', '{cid}', '{vals}', ARRAY['{cid}', {refs}]::uuid[], \
+                             'detector:{kind}@1', 'case_event|{cid}|{kind}-fp', '{kind}-{pid}')"
                 ))
                 .await
                 .unwrap();
@@ -673,7 +679,12 @@ async fn case_detections_are_proposed_and_reviewed_by_a_human() {
         assert_eq!(ev["event"]["properties"]["origin"], "detection");
         assert_eq!(ev["event"]["properties"]["location"], json!({"lon": 2.35, "lat": 48.85}));
         assert_eq!(ev["event"]["properties"]["occurred"]["precision"], "range");
-        assert_eq!(ev["event"]["source_ref"], "detector:co_presence@1");
+        assert_eq!(ev["event"]["source_ref"], format!("proposal:{}", pids[0]));
+        // One inbox: the retained detection is an accepted proposal of the case.
+        let (st, inbox) = call(&server, "GET", &format!("/api/v1/proposals?status=accepted&object_id={cid}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{inbox}");
+        assert_eq!((inbox["results"][0]["id"].as_str(), inbox["results"][0]["kind"].as_str()), (Some(pids[0].as_str()), Some("case_event")), "{inbox}");
+        assert_eq!(inbox["results"][0]["origin"], "detector:co_presence@1");
         assert_eq!(
             attached(&w, "Truck and badge together"),
             vec![("t-07".to_string(), "actor".to_string()), ("b-14".to_string(), "actor".to_string())]

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22** ; P3 à faire |
+| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22** ; P3 : dossiers livrés le 2026-10-23, voix à faire |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
 | Repose sur | ontologie (D176–D191), propositions des dossiers (`cases-workspace.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
@@ -29,7 +29,7 @@ Quatre mécanismes disent aujourd'hui « une machine pense que… » :
 
 Champs :
 - `org_id` ;
-- `kind` : `object_create`, `object_update`, `link_create`, `link_update`, `link_close` (liste fermée ; les dossiers ajouteront `case_event` en P3) ;
+- `kind` : `object_create`, `object_update`, `link_create`, `link_update`, `link_close`, `case_event` (liste fermée ; `case_event` depuis P3) ;
 - `target` : le type ou l'objet visé, le type de lien et ses deux extrémités ;
 - `diff` : propriétés ou attributs proposés, titre ;
 - `base_version` : version de l'objet lue, pour une mise à jour ;
@@ -143,7 +143,20 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
   - tests mis à jour : `partner_watch` (Wikidata accepté depuis la boîte,
     nœud qui propose), `pack_rules`.
 - Reste :
-  - P3 : dossiers et voix dans la même table ;
+  - P3, dossiers (2026-10-23) : les détections d'un dossier sont des
+    propositions `case_event` de la table commune (migration 000049,
+    données recopiées avec leur id et leur décision, `case_proposals`
+    supprimée). `target_id` = le dossier ; `values` = `key` (l'ancienne
+    empreinte : détecteur, membres triés, début à la minute), détecteur,
+    seuils, membres, `from_ms` / `to_ms`, `payload` ; empreinte =
+    `case_event|<dossier>|<key>`, donc un recalcul ne repropose rien.
+    Titre proposé : `<détecteur> : <membres>`. Accepter crée l'événement
+    (provenance `proposal:<id>`) ; « Corriger et accepter » choisit son
+    titre. Les routes du dossier gardent leur forme et passent par la
+    décision commune ; `cases_proposals_retain` et `…_reject` sortent du
+    MCP (« sign-off », D374). Test : `ontology`
+    `case_detections_are_proposed_and_reviewed_by_a_human` ;
+  - P3, voix : à faire ;
   - P4 : livré pour `link_upsert` (D377, voir plus haut) ; reste `object_upsert` et les imports ;
   - fait depuis : la même proposition reçue à nouveau avec des preuves
     (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves

@@ -5,7 +5,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::page_render::text;
-use pnex_core::ontology::proposal::{DecisionKind, ProposalStatus, ProposalView};
+use pnex_core::ontology::proposal::{DecisionKind, ProposalKind, ProposalStatus, ProposalView};
 
 use crate::api;
 use crate::app::Route;
@@ -91,8 +91,7 @@ pub fn ProposalsTable(
         Column::new(
             t!("proposals-col-values").to_string(),
             |p: &ProposalView| {
-                let pairs: Vec<String> = p
-                    .values
+                let pairs: Vec<String> = shown_values(p)
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k.replace('_', " "), text(v)))
                     .collect();
@@ -222,7 +221,7 @@ fn DecisionDialog(
     on_done: EventHandler<()>,
 ) -> Element {
     let mut reason = use_signal(String::new);
-    let initial = proposal.values.clone();
+    let initial = editable(&proposal);
     let mut values = use_signal(move || initial.clone());
     let mut busy = use_signal(|| false);
     let id = proposal.id.clone();
@@ -241,8 +240,7 @@ fn DecisionDialog(
         });
     };
     let reject = decision == DecisionKind::Reject;
-    let fields: Vec<(String, String)> = proposal
-        .values
+    let fields: Vec<(String, String)> = editable(&proposal)
         .iter()
         .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
         .collect();
@@ -286,6 +284,70 @@ fn DecisionDialog(
     }
 }
 
+/// What the values column shows: a case detection by its detector and span
+/// (its key and members are internal; the members are in Objects).
+fn shown_values(p: &ProposalView) -> serde_json::Map<String, serde_json::Value> {
+    if p.kind != ProposalKind::CaseEvent {
+        return p.values.clone();
+    }
+    let at = |k: &str| {
+        p.values
+            .get(k)
+            .and_then(serde_json::Value::as_i64)
+            .and_then(chrono::DateTime::from_timestamp_millis)
+            .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+    };
+    let mut out = serde_json::Map::new();
+    for (k, v) in [
+        ("detector", p.values.get("detector").cloned()),
+        ("from", at("from_ms").map(Into::into)),
+        ("to", at("to_ms").map(Into::into)),
+    ] {
+        if let Some(v) = v {
+            out.insert(k.into(), v);
+        }
+    }
+    out
+}
+
+/// What "Correct and accept" edits: the title of a case detection's event,
+/// else the proposed values.
+fn editable(p: &ProposalView) -> serde_json::Map<String, serde_json::Value> {
+    if p.kind != ProposalKind::CaseEvent {
+        return p.values.clone();
+    }
+    let mut out = serde_json::Map::new();
+    out.insert("title".into(), p.title.clone().unwrap_or_default().into());
+    out
+}
+
 fn set_value(values: &mut serde_json::Map<String, serde_json::Value>, key: &str, value: String) {
     values.insert(key.to_string(), serde_json::Value::String(value));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn a_case_detection_shows_its_span_and_edits_its_title() {
+        let mut p: ProposalView = serde_json::from_value(json!({
+            "id": "p", "kind": "case_event", "status": "proposed", "type_key": "event", "refs": [],
+            "title": "stop: T-07", "values": {"key": "k", "detector": "stop@1", "members": ["m"],
+            "from_ms": 0, "to_ms": 60_000}, "evidence": null, "origin": "detector:stop@1",
+            "created_at": "2026-10-23T00:00:00Z"
+        }))
+        .unwrap();
+        assert_eq!(
+            serde_json::Value::Object(shown_values(&p)),
+            json!({"detector": "stop@1", "from": "1970-01-01 00:00 UTC", "to": "1970-01-01 00:01 UTC"})
+        );
+        assert_eq!(
+            serde_json::Value::Object(editable(&p)),
+            json!({"title": "stop: T-07"})
+        );
+        p.kind = ProposalKind::LinkCreate;
+        assert_eq!(shown_values(&p), p.values);
+    }
 }

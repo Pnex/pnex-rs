@@ -56,8 +56,6 @@ pub const EXPOSED: &[&str] = &[
     "cases_open",
     "cases_pages_create",
     "cases_proposals_list",
-    "cases_proposals_reject",
-    "cases_proposals_retain",
     "cases_purge_candidates",
     "cases_reads",
     "cases_relations",
@@ -511,7 +509,12 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     ),
     (
         "sign-off: approving a document version or deciding a proposal is a human act",
-        &["docs_versions_approve", "proposals_decide"],
+        &[
+            "cases_proposals_reject",
+            "cases_proposals_retain",
+            "docs_versions_approve",
+            "proposals_decide",
+        ],
     ),
     (
         "assistant: conversations with the in-app assistant stay human",

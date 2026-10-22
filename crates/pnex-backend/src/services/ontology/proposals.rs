@@ -35,6 +35,18 @@ async fn refs_of<C: ConnectionTrait>(db: &C, org_id: i64, p: &ProposalInput) -> 
     let uuid = |o: &Option<String>| o.as_deref().and_then(|s| Uuid::parse_str(s.trim()).ok());
     Ok(match p.kind {
         Some(ProposalKind::ObjectUpdate) => uuid(&p.target_id).into_iter().collect(),
+        // The case, then the members the detection is about.
+        Some(ProposalKind::CaseEvent) => uuid(&p.target_id)
+            .into_iter()
+            .chain(
+                p.values
+                    .get("members")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|m| Uuid::parse_str(m.as_str()?).ok()),
+            )
+            .collect(),
         Some(ProposalKind::LinkCreate) => [uuid(&p.source_id), uuid(&p.link_target_id)]
             .into_iter()
             .flatten()
@@ -89,6 +101,16 @@ pub async fn propose<C: ConnectionTrait>(
         ProposalKind::ObjectCreate => {}
         ProposalKind::ObjectUpdate | ProposalKind::LinkUpdate | ProposalKind::LinkClose => {
             needs("target_id", &p.target_id)?
+        }
+        ProposalKind::CaseEvent => {
+            needs("target_id", &p.target_id)?;
+            if p.values
+                .get("key")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+            {
+                return Err(invalid("values.key", FIELD_REQUIRED));
+            }
         }
         ProposalKind::LinkCreate => {
             needs("source_id", &p.source_id)?;
@@ -421,6 +443,23 @@ async fn apply<C: ConnectionTrait>(
             .await?
             .id
             .to_string(),
+        ProposalKind::CaseEvent => {
+            let case_id = text("target_id")
+                .and_then(|t| Uuid::parse_str(&t).ok())
+                .ok_or_else(|| invalid("target_id", FIELD_INVALID))?;
+            // The detection stays as proposed; only its title is chosen.
+            let title = values
+                .get("title")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(str::to_string)
+                .or_else(|| p.title.clone())
+                .unwrap_or_else(|| p.type_key.clone());
+            super::cases::detect::event_of(db, org_id, actor, case_id, &p.values, &title)
+                .await?
+                .to_string()
+        }
     })
 }
 

@@ -318,7 +318,9 @@ Réponses aux questions ouvertes de la v0.1 : §15.
   | Arrêt | diamètre 25 m, durée ≥ 15 min | Détecteur d'arrêts MovingPandas (fenêtre glissante, diamètre strict, durée large), point = médiane |
   | Fin de signal | trou > 300 s ou trace qui s'arrête avant la fin de la fenêtre | Découpage au trou de signal |
 
-- Les détections sont écrites dans **`case_proposals`** (§7) avec une
+- Les détections sont écrites dans **`case_proposals`** (§7 ; depuis
+  proposals.md P3, dans la table commune `proposals`, `kind = case_event`,
+  migration 000049) avec une
   **empreinte** (détecteur, objets triés, début arrondi à la
   résolution). Recalculer ne fait qu'insérer ce qui est nouveau : un
   rejet n'est jamais reproposé.
@@ -690,7 +692,7 @@ Deux tables nouvelles, le reste dans l'ontologie :
 | `in_case` | existant ; sert aux événements du dossier et au bac (K22) | sens précisé |
 | `tracks` | lien système temporel device → `*` (K25) | lien noyau |
 | `geo_area` | type de propriété `pnex-core` (K29) | oui |
-| `case_proposals` | table Postgres (K30) | **oui** |
+| `case_proposals` | table Postgres (K30) ; remplacée par `proposals` (`case_event`, proposals.md P3) | **oui** |
 | `case_snapshots` | table Postgres (K33) | **oui** |
 | O2 `positions` | stream logs (K26) | oui |
 | O2 `case_reads` | stream logs (K38 ; prévu par `cases.md` K9) | oui |
