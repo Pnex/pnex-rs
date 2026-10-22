@@ -1338,6 +1338,7 @@ fn plan_object(
     }
     let mut defaults = Map::new();
     for (k, v) in &o.defaults {
+        if let Some(d) = def.properties.iter().find(|p| &p.key == k) {
             defaults.insert(k.clone(), cast(d, v.clone()).map_err(|t| (k.clone(), t))?);
         }
     }

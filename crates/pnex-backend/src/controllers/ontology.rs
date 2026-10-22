@@ -941,7 +941,9 @@ struct PathQuery {
     /// End object id (UUID).
     to: Option<String>,
     /// Link type keys the path may follow, comma-separated (at most 20);
+    /// all when absent. An introduction path follows the links between
     /// people: `knows,recommande,employs,dirige,member_of`.
+    links: Option<String>,
 }
 
 #[utoipa::path(
@@ -977,6 +979,7 @@ async fn path(
         .filter(|l| !l.is_empty())
         .map(String::from)
         .collect();
+    if links.len() > 20 || links.iter().any(|l| l.len() > 64) {
         return onto_error(onto::invalid("links", err_codes::FIELD_INVALID));
     }
     reply(
@@ -986,6 +989,7 @@ async fn path(
             parse_uuid(&from)?,
             parse_uuid(&to)?,
             depth,
+            &links,
         )
         .await
         .map(|path| pnex_core::ontology::api::ObjectPath { path }),

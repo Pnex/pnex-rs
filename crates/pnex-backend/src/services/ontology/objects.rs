@@ -513,6 +513,7 @@ async fn check_refs_many<C: ConnectionTrait>(
                 .iter()
                 .filter_map(|r| r.try_get::<Uuid>("", "id").ok())
                 .collect();
+            if let Some((_, key)) = chunk.iter().find(|(id, _)| !found.contains(id)) {
                 return Err(super::invalid(key.to_string(), FIELD_INVALID));
             }
         }
@@ -628,6 +629,7 @@ pub async fn create_many_with<C: ConnectionTrait>(
                 "properties": props,
             }));
         }
+        let rows = objects::Entity::find()
             .from_raw_sql(bulk_stmt(
                 "INSERT INTO objects (id, org_id, type_key, type_version, title, native_id, \
                    properties, source_ref, version) \
@@ -727,6 +729,7 @@ pub async fn update_many_with<C: ConnectionTrait>(
                 })
             })
             .collect();
+        let updated = objects::Entity::find()
             .from_raw_sql(bulk_stmt(
                 "UPDATE objects o SET title = u.title, properties = u.properties, \
                    type_version = u.type_version, source_ref = $2, version = u.version + 1, \
@@ -747,6 +750,7 @@ pub async fn update_many_with<C: ConnectionTrait>(
             let done: std::collections::HashSet<Uuid> = updated.iter().map(|o| o.id).collect();
             let row = chunk
                 .iter()
+                .find(|(r, ..)| !done.contains(&r.id))
                 .map(|c| c.0);
             return Err(OntologyError::VersionConflict {
                 current: row.map_or(0, |r| r.version),
@@ -796,6 +800,7 @@ pub async fn colors_of<C: ConnectionTrait>(
     if !colored {
         return Ok(HashMap::new());
     }
+    let rows = objects::Entity::find()
         .filter(objects::Column::OrgId.eq(org_id))
         .filter(objects::Column::TypeKey.eq(type_key))
         .filter(objects::Column::NativeId.is_in(native_ids.to_vec()))

@@ -230,6 +230,7 @@ async fn install_locked(
         }
     }
     for t in &pack.types {
+            .find(|(d, _, _)| d.key == t.key)
         let current = types::get(db, org_id, &t.key).await?.version;
         let def = match s.object_type(&t.key) {
             Some(local) => keep_org_additions(t, local),
@@ -717,6 +718,7 @@ mod tests {
                     assert!(links.contains(&s.link.as_str()), "{}: {}", h.key, s.link);
                 }
             }
+                        .find(|d| &d.key == l)
             // Shipped mappings fit the schema the pack installs: system,
             // required and own types, extended by the whole chain.
             let chain: Vec<&Pack> = deps.iter().copied().chain([p]).collect();

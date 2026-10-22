@@ -273,6 +273,14 @@ pub fn tone_hex(color: &str) -> &'static str {
 
 /// Display name of a property key, from the first type that has it.
 pub fn property_name(types: &[ObjectTypeView], key: &str) -> String {
+    types
+        .iter()
+        .flat_map(|t| t.def.properties.iter())
+        .find(|p| p.key == key)
+        .map(|p| tr(&p.name, &p.names))
+        .unwrap_or_else(|| key.to_string())
+}
+
 /// Display form of an enum value: its key is user data (`non_conforme`),
 /// shown as words (`Non conforme`); the stored value is unchanged.
 pub fn enum_label(value: &str) -> String {

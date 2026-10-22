@@ -20,12 +20,14 @@ use crate::models::_entities::resource_edges;
 const EDGES_MAX: i64 = 5_000;
 const TIMEOUT_MS: u32 = 3_000;
 
-/// Edge ids reachable from `start` within `depth` hops (both directions).
+/// Edge ids reachable from `start` within `depth` hops (both directions),
+/// along `relations` only when given (an introduction path, D338).
 async fn reachable_edges(
     db: &DatabaseConnection,
     org_id: i64,
     start: Uuid,
     depth: u32,
+    relations: &[String],
 ) -> Result<Vec<i64>> {
     let txn = db.begin().await?;
     // Scoped to this transaction: a runaway walk cannot hold the pool.
@@ -42,16 +44,19 @@ async fn reachable_edges(
                FROM walk w JOIN resource_edges e \
                  ON (e.source_object_id = w.node OR e.target_object_id = w.node) \
                WHERE e.org_id = $1 AND e.valid_to IS NULL AND w.depth < $3 \
+                 AND (cardinality($5::text[]) = 0 OR e.relation = ANY($5)) \
                  AND e.source_object_id IS NOT NULL AND e.target_object_id IS NOT NULL) \
              SELECT DISTINCT e.id FROM resource_edges e \
              JOIN walk w ON e.source_object_id = w.node OR e.target_object_id = w.node \
              WHERE e.org_id = $1 AND e.valid_to IS NULL AND w.depth < $3 \
+               AND (cardinality($5::text[]) = 0 OR e.relation = ANY($5)) \
              LIMIT $4",
             [
                 org_id.into(),
                 start.into(),
                 (depth as i32).into(),
                 EDGES_MAX.into(),
+                relations.to_vec().into(),
             ],
         ))
         .await?;
@@ -67,10 +72,11 @@ async fn load(
     org_id: i64,
     start: Uuid,
     depth: u32,
+    relations: &[String],
 ) -> Result<Vec<resource_edges::Model>> {
     use sea_orm::ColumnTrait;
     super::objects::find(db, org_id, start).await?;
-    let ids = reachable_edges(db, org_id, start, depth).await?;
+    let ids = reachable_edges(db, org_id, start, depth, relations).await?;
     if ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -102,7 +108,7 @@ pub async fn neighborhood(
     start: Uuid,
     depth: u32,
 ) -> Result<Neighborhood> {
-    let edges = load(db, org_id, start, depth.clamp(1, 2)).await?;
+    let edges = load(db, org_id, start, depth.clamp(1, 2), &[]).await?;
     let links = links::views(db, org_id, &edges).await?;
     let mut ids: BTreeSet<Uuid> = edges
         .iter()
@@ -133,9 +139,10 @@ pub async fn path(
     from: Uuid,
     to: Uuid,
     depth: u32,
+    relations: &[String],
 ) -> Result<Vec<pnex_core::ontology::api::ObjectRef>> {
     super::objects::find(db, org_id, to).await?;
-    let edges = load(db, org_id, from, depth).await?;
+    let edges = load(db, org_id, from, depth, relations).await?;
     let ids = subgraph(&edges)
         .shortest_path(&from.to_string(), &to.to_string())
         .ok_or(OntologyError::NotFound)?;
@@ -156,7 +163,7 @@ pub async fn impact(
     upstream: bool,
     depth: u32,
 ) -> Result<Vec<pnex_core::ontology::api::ObjectRef>> {
-    let edges = load(db, org_id, start, depth).await?;
+    let edges = load(db, org_id, start, depth, &[]).await?;
     let ids: Vec<Uuid> = subgraph(&edges)
         .impact(&start.to_string(), upstream)
         .iter()
