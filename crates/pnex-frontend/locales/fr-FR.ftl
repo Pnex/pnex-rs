@@ -4768,6 +4768,7 @@ onto-max = Max
 onto-max-len = Longueur max
 onto-enum-values = Valeurs, séparées par des virgules
 onto-enum-display = Libellé de chaque valeur ({ $lang }) et sa couleur ; la valeur elle-même ne change jamais.
+onto-link-values = Affichage des valeurs
 onto-color-none = Sans couleur
 onto-color-green = Vert
 onto-color-amber = Ambre
