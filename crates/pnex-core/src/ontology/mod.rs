@@ -14,6 +14,7 @@ pub mod import;
 pub mod layout;
 pub mod money;
 pub mod ownership;
+pub mod page_render;
 pub mod recurrence;
 pub mod schema;
 

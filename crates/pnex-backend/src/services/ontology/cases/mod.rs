@@ -12,7 +12,7 @@ mod export;
 mod graph;
 mod imports;
 mod layout;
-mod pages;
+pub mod pages;
 mod purge;
 mod reads;
 mod signals;
@@ -512,10 +512,14 @@ pub async fn attach(
     case_id: Uuid,
     input: &CaseAttachInput,
 ) -> Result<CaseWorkspace> {
-    let txn = db.begin().await?;
-    attach_in(&txn, org_id, actor, case_id, input).await?;
-    txn.commit().await?;
-    workspace(db, org_id, case_id).await
+    crate::services::ontology::changes::deferred(async {
+        let txn = db.begin().await?;
+        attach_in(&txn, org_id, actor, case_id, input).await?;
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        workspace(db, org_id, case_id).await
+    })
+    .await
 }
 
 /// Puts `id` among the undated pieces unless something still holds it.
@@ -540,46 +544,52 @@ pub async fn detach(
     case_id: Uuid,
     input: &CaseDetachInput,
 ) -> Result<CaseWorkspace> {
-    let obj_id = parse_id("object_id", &input.object_id)?;
-    let txn = db.begin().await?;
-    let m = membership(&txn, org_id, case_id).await?;
-    if let Some(raw) = &input.event_id {
-        let event_id = parse_id("event_id", raw)?;
-        let edge = m
-            .involves
-            .iter()
-            .find(|e| e.source_object_id == Some(event_id) && e.target_object_id == Some(obj_id))
-            .ok_or(OntologyError::NotFound)?;
-        links::close(&txn, org_id, actor, edge.id, None).await?;
-        keep_in_case(&txn, org_id, actor, case_id, obj_id).await?;
-    } else if let Some((edge, _)) = m.events.iter().find(|(_, o)| o.id == obj_id) {
-        // The event leaves the case; its pieces stay in it.
-        links::close(&txn, org_id, actor, edge.id, None).await?;
-        let pieces: Vec<Uuid> = m
-            .involves
-            .iter()
-            .filter(|e| e.source_object_id == Some(obj_id))
-            .filter_map(|e| e.target_object_id)
-            .collect();
-        for p in pieces {
-            keep_in_case(&txn, org_id, actor, case_id, p).await?;
+    crate::services::ontology::changes::deferred(async {
+        let obj_id = parse_id("object_id", &input.object_id)?;
+        let txn = db.begin().await?;
+        let m = membership(&txn, org_id, case_id).await?;
+        if let Some(raw) = &input.event_id {
+            let event_id = parse_id("event_id", raw)?;
+            let edge = m
+                .involves
+                .iter()
+                .find(|e| {
+                    e.source_object_id == Some(event_id) && e.target_object_id == Some(obj_id)
+                })
+                .ok_or(OntologyError::NotFound)?;
+            links::close(&txn, org_id, actor, edge.id, None).await?;
+            keep_in_case(&txn, org_id, actor, case_id, obj_id).await?;
+        } else if let Some((edge, _)) = m.events.iter().find(|(_, o)| o.id == obj_id) {
+            // The event leaves the case; its pieces stay in it.
+            links::close(&txn, org_id, actor, edge.id, None).await?;
+            let pieces: Vec<Uuid> = m
+                .involves
+                .iter()
+                .filter(|e| e.source_object_id == Some(obj_id))
+                .filter_map(|e| e.target_object_id)
+                .collect();
+            for p in pieces {
+                keep_in_case(&txn, org_id, actor, case_id, p).await?;
+            }
+        } else if let Some(edge) = m.undated_link(obj_id) {
+            links::close(&txn, org_id, actor, edge.id, None).await?;
+        } else if m.attached(obj_id) {
+            // Out of the case entirely: every attachment to its events closes.
+            for e in m
+                .involves
+                .iter()
+                .filter(|e| e.target_object_id == Some(obj_id))
+            {
+                links::close(&txn, org_id, actor, e.id, None).await?;
+            }
+        } else {
+            return Err(OntologyError::NotFound);
         }
-    } else if let Some(edge) = m.undated_link(obj_id) {
-        links::close(&txn, org_id, actor, edge.id, None).await?;
-    } else if m.attached(obj_id) {
-        // Out of the case entirely: every attachment to its events closes.
-        for e in m
-            .involves
-            .iter()
-            .filter(|e| e.target_object_id == Some(obj_id))
-        {
-            links::close(&txn, org_id, actor, e.id, None).await?;
-        }
-    } else {
-        return Err(OntologyError::NotFound);
-    }
-    txn.commit().await?;
-    workspace(db, org_id, case_id).await
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        workspace(db, org_id, case_id).await
+    })
+    .await
 }
 
 async fn create_event_in<C: ConnectionTrait>(
@@ -628,10 +638,14 @@ pub async fn create_event(
     case_id: Uuid,
     input: &CaseEventInput,
 ) -> Result<CaseWorkspace> {
-    let txn = db.begin().await?;
-    create_event_in(&txn, org_id, actor, case_id, input, Map::new()).await?;
-    txn.commit().await?;
-    workspace(db, org_id, case_id).await
+    crate::services::ontology::changes::deferred(async {
+        let txn = db.begin().await?;
+        create_event_in(&txn, org_id, actor, case_id, input, Map::new()).await?;
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        workspace(db, org_id, case_id).await
+    })
+    .await
 }
 
 /// `fuzzy_time` value of an exact instant (UTC, `Z` suffix).
@@ -651,112 +665,116 @@ pub async fn open(
     actor: &Actor,
     input: &CaseOpenInput,
 ) -> Result<ObjectView> {
-    const SOURCE_KINDS: [&str; 2] = ["notification", "event"];
-    let at = match &input.from {
-        Some(from) if !SOURCE_KINDS.contains(&from.kind.as_str()) => {
-            return Err(invalid("from.kind", FIELD_INVALID))
-        }
-        Some(from) => Some(
-            parse_instant("from.at", Some(&from.at))?
-                .ok_or_else(|| invalid("from.at", FIELD_REQUIRED))?,
-        ),
-        None => None,
-    };
-    let mut props = Map::new();
-    props.insert(CASE_STATUS.into(), "open".into());
-    // Sub-case (GS16): the parent is a live case of the org (R1); its legal
-    // basis is copied, so persons can join at once (K38).
-    let parent = match input.parent_id.as_deref() {
-        Some(raw) => match case_of(db, org_id, parse_id("parent_id", raw)?).await {
-            Ok(p) => Some(p),
-            Err(OntologyError::NotFound) => return Err(invalid("parent_id", FIELD_INVALID)),
-            Err(e) => return Err(e),
-        },
-        None => None,
-    };
-    if let Some(basis) = parent
-        .as_ref()
-        .and_then(|p| p.properties.get(CASE_LEGAL_BASIS))
-    {
-        props.insert(CASE_LEGAL_BASIS.into(), basis.clone());
-    }
-    let txn = db.begin().await?;
-    let case = objects::create(
-        &txn,
-        org_id,
-        actor,
-        &ObjectInput {
-            type_key: KIND_CASE.into(),
-            title: input.title.clone(),
-            properties: props,
-            expected_version: None,
-        },
-    )
-    .await?;
-    if let (Some(from), Some(t)) = (&input.from, at) {
-        let mut attach = Vec::new();
-        let flow = match from.flow_id {
-            Some(id) => {
-                match objects::find_by_native(&txn, org_id, KIND_FLOW, &id.to_string()).await {
-                    Ok(f) if f.valid_to.is_none() => Some(f),
-                    Ok(_) | Err(OntologyError::NotFound) => None,
-                    Err(e) => return Err(e),
-                }
+    crate::services::ontology::changes::deferred(async {
+        const SOURCE_KINDS: [&str; 2] = ["notification", "event"];
+        let at = match &input.from {
+            Some(from) if !SOURCE_KINDS.contains(&from.kind.as_str()) => {
+                return Err(invalid("from.kind", FIELD_INVALID))
             }
+            Some(from) => Some(
+                parse_instant("from.at", Some(&from.at))?
+                    .ok_or_else(|| invalid("from.at", FIELD_REQUIRED))?,
+            ),
             None => None,
         };
-        if let Some(flow) = flow {
-            attach.push(CaseAttachInput {
-                object_id: flow.id.to_string(),
-                ..Default::default()
-            });
-            // Devices it drives, objects it feeds, the POI it serves.
-            for l in links::for_object(db, org_id, flow.id, Some(t), false).await? {
-                let other = if l.source.id == flow.id.to_string() {
-                    &l.target
-                } else {
-                    &l.source
-                };
-                let live = objects::find(&txn, org_id, parse_id("id", &other.id)?)
-                    .await
-                    .is_ok_and(|o| o.valid_to.is_none());
-                if live
-                    && other.type_key != KIND_CASE
-                    && attach.iter().all(|a| a.object_id != other.id)
-                {
-                    attach.push(CaseAttachInput {
-                        object_id: other.id.clone(),
-                        role: Some("context".into()),
-                        ..Default::default()
-                    });
+        let mut props = Map::new();
+        props.insert(CASE_STATUS.into(), "open".into());
+        // Sub-case (GS16): the parent is a live case of the org (R1); its legal
+        // basis is copied, so persons can join at once (K38).
+        let parent = match input.parent_id.as_deref() {
+            Some(raw) => match case_of(db, org_id, parse_id("parent_id", raw)?).await {
+                Ok(p) => Some(p),
+                Err(OntologyError::NotFound) => return Err(invalid("parent_id", FIELD_INVALID)),
+                Err(e) => return Err(e),
+            },
+            None => None,
+        };
+        if let Some(basis) = parent
+            .as_ref()
+            .and_then(|p| p.properties.get(CASE_LEGAL_BASIS))
+        {
+            props.insert(CASE_LEGAL_BASIS.into(), basis.clone());
+        }
+        let txn = db.begin().await?;
+        let case = objects::create(
+            &txn,
+            org_id,
+            actor,
+            &ObjectInput {
+                type_key: KIND_CASE.into(),
+                title: input.title.clone(),
+                properties: props,
+                expected_version: None,
+            },
+        )
+        .await?;
+        if let (Some(from), Some(t)) = (&input.from, at) {
+            let mut attach = Vec::new();
+            let flow = match from.flow_id {
+                Some(id) => {
+                    match objects::find_by_native(&txn, org_id, KIND_FLOW, &id.to_string()).await {
+                        Ok(f) if f.valid_to.is_none() => Some(f),
+                        Ok(_) | Err(OntologyError::NotFound) => None,
+                        Err(e) => return Err(e),
+                    }
+                }
+                None => None,
+            };
+            if let Some(flow) = flow {
+                attach.push(CaseAttachInput {
+                    object_id: flow.id.to_string(),
+                    ..Default::default()
+                });
+                // Devices it drives, objects it feeds, the POI it serves.
+                for l in links::for_object(db, org_id, flow.id, Some(t), false).await? {
+                    let other = if l.source.id == flow.id.to_string() {
+                        &l.target
+                    } else {
+                        &l.source
+                    };
+                    let live = objects::find(&txn, org_id, parse_id("id", &other.id)?)
+                        .await
+                        .is_ok_and(|o| o.valid_to.is_none());
+                    if live
+                        && other.type_key != KIND_CASE
+                        && attach.iter().all(|a| a.object_id != other.id)
+                    {
+                        attach.push(CaseAttachInput {
+                            object_id: other.id.clone(),
+                            role: Some("context".into()),
+                            ..Default::default()
+                        });
+                    }
                 }
             }
+            let case_id = Uuid::parse_str(&case.id).map_err(|_| OntologyError::NotFound)?;
+            let event = CaseEventInput {
+                title: input.title.clone(),
+                occurred: instant(t),
+                origin: Some("signal".into()),
+                attach,
+            };
+            create_event_in(&txn, org_id, actor, case_id, &event, Map::new()).await?;
         }
-        let case_id = Uuid::parse_str(&case.id).map_err(|_| OntologyError::NotFound)?;
-        let event = CaseEventInput {
-            title: input.title.clone(),
-            occurred: instant(t),
-            origin: Some("signal".into()),
-            attach,
-        };
-        create_event_in(&txn, org_id, actor, case_id, &event, Map::new()).await?;
-    }
-    txn.commit().await?;
-    if let Some(p) = parent {
-        let parent_id = p.id.to_string();
-        containment::set_parent(
-            db,
-            org_id,
-            KIND_CASE,
-            &case.id,
-            Some((KIND_CASE, &parent_id)),
-            None,
-        )
-        .await
-        // A fresh case under a live case: only the database can fail here.
-        .map_err(|e| OntologyError::Db(DbErr::Custom(format!("case containment: {e:?}"))))?;
-    }
-    Ok(case)
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        if let Some(p) = parent {
+            let parent_id = p.id.to_string();
+            containment::set_parent(
+                db,
+                org_id,
+                KIND_CASE,
+                &case.id,
+                Some((KIND_CASE, &parent_id)),
+                None,
+            )
+            .await
+            // A fresh case under a live case: only the database can fail here.
+            .map_err(|e| OntologyError::Db(DbErr::Custom(format!("case containment: {e:?}"))))?;
+        }
+        Ok(case)
+    })
+    .await
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ pub mod graph_view;
 pub mod hierarchy;
 pub mod object_link;
 pub mod open_case;
+pub mod page_from_template;
 pub mod property_input;
 
 use dioxus::prelude::*;

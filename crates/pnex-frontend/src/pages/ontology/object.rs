@@ -150,6 +150,9 @@ pub fn OntologyObject(id: String) -> Element {
                 if can_write && !archived && o.type_key != pnex_core::ontology::KIND_CASE {
                     crate::components::ontology::add_to_case::AddToCase { object_id: o.id.clone() }
                 }
+                if can_write && !archived {
+                    crate::components::ontology::page_from_template::PageFromTemplate { object_id: o.id.clone(), type_key: o.type_key.clone() }
+                }
                 if can_write && !archived && !tv.def.native() {
                     button { class: DANGER_BTN, onclick: move |_| archiving.set(true), {t!("onto-archive")} }
                 }

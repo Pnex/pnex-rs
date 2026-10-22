@@ -100,6 +100,7 @@ pub const EXPOSED: &[&str] = &[
     "docs_comments_list",
     "docs_comments_update",
     "docs_create",
+    "ontology_objects_pages_create",
     "docs_get",
     "docs_list",
     "docs_rename",

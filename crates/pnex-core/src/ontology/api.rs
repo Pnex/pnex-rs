@@ -540,6 +540,25 @@ pub struct PageTemplate {
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub descriptions: super::Names,
     pub body: String,
+    /// Object type the template is filled from (`page_render`
+    /// placeholders, account-mapping.md D340); none = a blank page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    /// Link type from the page (`doc`) to that object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<String>,
+}
+
+/// `POST /ontology/objects/{id}/pages`: a page from a template, filled from
+/// the object.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ObjectPageInput {
+    /// Key of a page template whose subject is the object's type.
+    pub template: String,
+    /// Default: the template's name and the object's title.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// Objects to purge from an archived case (cases.md K16).

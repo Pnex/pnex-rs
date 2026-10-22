@@ -47,6 +47,7 @@ pub fn routes() -> Routes {
             get(get_object).put(update_object).delete(archive_object),
         )
         .add("/objects/{id}/links", get(object_links))
+        .add("/objects/{id}/pages", post(object_page))
         .add("/objects/{id}/graph", get(object_graph))
         .add("/objects/{id}/hierarchy", get(object_hierarchy))
         .add("/objects/{id}/impact", get(object_impact))
@@ -86,6 +87,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         update_link_type,
         delete_link_type,
         create_object,
+        object_page,
         invoke_action,
         get_object,
         update_object,
@@ -916,8 +918,11 @@ async fn object_impact(
     post,
     path = "/api/v1/ontology/objects/{id}/pages",
     tag = "ontology",
+    operation_id = "ontology_objects_pages_create",
     summary = "Create a page from a template, filled from an object",
+    description = "Creates a page from an installed pack's template whose subject is the object's type (an account plan, a competitor sheet, a meeting preparation): its placeholders are filled with the object, its open links and its hierarchies as of now, then the page is linked to the object. The page is a snapshot, edited freely afterwards. Needs the right to write pages, and to write the object's type for the link.",
     params(("id" = String, Path, format = "uuid", description = "Object id")),
+    request_body = pnex_core::ontology::api::ObjectPageInput,
     responses(
         (status = 201, body = pnex_core::pages::DocSummary),
         (status = 400, description = "Unknown template for this type, or title too long (`field-invalid`)", body = crate::openapi::ErrorDetail),
@@ -926,12 +931,14 @@ async fn object_impact(
     ),
     security(("bearer" = [], "org" = []))
 )]
+async fn object_page(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
     Json(input): Json<pnex_core::ontology::api::ObjectPageInput>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
+    created(onto::cases::pages::from_object(&ctx.db, org.org.id, &actor(&org), id, &input).await)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
