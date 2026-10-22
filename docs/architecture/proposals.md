@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **Conception — 2026-10-22** ; lot P0 en cours |
+| Statut | **P0 et P1 livrés le 2026-10-22** ; P2 en cours |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
 | Repose sur | ontologie (D176–D191), propositions des dossiers (`cases-workspace.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
@@ -100,3 +100,27 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
 - R4 : `decided_by` est rendu par le nom affiché, jamais par l'e-mail.
 - Une preuve citée (texte d'un site inconnu) est une donnée, jamais rendue en HTML (R11).
 - L'assistant ne décide pas.
+
+## 7. État
+
+- **P0** (`8776c7ff`) :
+  - table `proposals` (migration 000046), cœur `ontology::proposal`
+    (types, `slot`, texte d'empreinte haché en SHA-256 par le serveur) ;
+  - service `ontology::proposals` (`propose`, `list`, `get`, `decide`) ;
+  - routes `GET /api/v1/proposals`, `GET /api/v1/proposals/{id}`,
+    `POST /api/v1/proposals/{id}/decision` ;
+  - permissions `proposals:read` (lecteur) et `proposals:decide`
+    (membre) ; MCP : lecture exposée, décision sous « sign-off » ;
+  - code `proposal-decided` ;
+  - test `tests/proposals.rs`.
+- **P1** :
+  - page « À valider » (menu Connaissance, `/proposals`, filtre par
+    statut) ;
+  - section des propositions ouvertes en tête de la page d'un objet ;
+  - fiche `assistant-kb/proposals.md` ;
+  - ligne au lexique (« Proposition », la garde refuse « suggestion de
+    la machine »).
+- Reste :
+  - P1 : saisir un motif de rejet dans l'UI (l'API l'accepte) et
+    accepter avec correction depuis l'UI ;
+  - P2, P3, P4.

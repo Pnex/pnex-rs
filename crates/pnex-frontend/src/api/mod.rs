@@ -53,6 +53,7 @@ pub mod ontology;
 pub mod orgs;
 pub mod ota;
 pub mod pins;
+pub mod proposals;
 /// Couche d'organisation transverse (D42).
 pub mod resources;
 /// Global search typeahead (D69).
