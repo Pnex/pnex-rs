@@ -4782,6 +4782,7 @@ onto-pack-upgrade = Upgrade
 onto-pack-settings = Settings
 onto-pack-setting-default = Pack value: { $value }.
 onto-pack-done = Pack installed
+onto-pack-kept = Not updated, because your organization edited them: { $names }. They keep your version.
 onto-as-code = Schema as YAML
 onto-as-code-help = Export your types and link types, version them, import them into another organization.
 onto-export = Export YAML

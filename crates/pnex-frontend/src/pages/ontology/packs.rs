@@ -72,8 +72,11 @@ pub fn PacksTab(tabs: Element) -> Element {
                             let done = t!("onto-pack-done").to_string();
                             spawn(async move {
                                 match api::ontology::install_pack(&key).await {
-                                    Ok(_) => {
+                                    Ok(view) => {
                                         toasts::success(done);
+                                        if !view.kept.is_empty() {
+                                            toasts::info(kept_message(&view.kept));
+                                        }
                                         reload.with_mut(|r| *r += 1);
                                     }
                                     Err(e) => toasts::error(e),
@@ -175,6 +178,11 @@ pub fn PacksTab(tabs: Element) -> Element {
             }
         }
     }
+}
+
+/// The functions and flows the org edited, left as they are (D368).
+fn kept_message(kept: &[String]) -> String {
+    t!("onto-pack-kept", names : kept.join(", ")).to_string()
 }
 
 /// The org's values of a pack's settings (D368); a value equal to the

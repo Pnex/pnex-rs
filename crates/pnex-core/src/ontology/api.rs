@@ -679,6 +679,10 @@ pub struct PackView {
     /// Settings of an installed pack (D368), empty otherwise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PackSettingView>,
+    /// Answer of an install: the functions and flows the org edited, kept
+    /// as they are instead of the pack's version (D368).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kept: Vec<String>,
 }
 
 /// Opening a case: from scratch, or from a dated alert (cases-workspace.md
