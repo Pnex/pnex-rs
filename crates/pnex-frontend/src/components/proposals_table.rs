@@ -96,8 +96,21 @@ pub fn ProposalsTable(
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k.replace('_', " "), text(v)))
                     .collect();
+                // Evidence is untrusted text (a site, a model): shown as text only.
+                let evidence: Vec<String> = p
+                    .evidence
+                    .as_object()
+                    .map(|m| {
+                        m.iter()
+                            .map(|(k, v)| format!("{}: {}", k.replace('_', " "), text(v)))
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 rsx! {
                     span { class: "text-xs text-slate", "{pairs.join(\" · \")}" }
+                    for (i, e) in evidence.into_iter().enumerate() {
+                        p { key: "{i}", class: "mt-1 text-xs italic text-slate", "{e}" }
+                    }
                 }
             },
         ),

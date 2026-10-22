@@ -487,7 +487,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("link_type", "link type key, must exist at deploy"),
             ("close", "bool: close the open link instead of opening it; the message's attributes are merged first (a reason, who decided)"),
             ("skip_closed", "bool: when this pair has a closed link and none open, answer that closed link (valid_to set) instead of opening a new one — a candidate a human rejected is never proposed again"),
-            ("propose", "bool: a new link becomes a proposal on the To validate page instead of a live link (msg.payload.confidence 0..=100 kept with it); an open link still gets its attributes. Output msg.link = {proposed: true, proposal_id} (null when the same values were already proposed or rejected)"),
+            ("propose", "bool: a new link becomes a proposal on the To validate page instead of a live link (msg.payload.confidence 0..=100 and msg.payload.evidence, an object shown to the human, kept with it); an open link still gets its attributes. Output msg.link = {proposed: true, proposal_id} (null when the same values were already proposed or rejected; the same values sent again with evidence while still to validate refresh its evidence and confidence)"),
         ],
         notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link (valid_to set when skip_closed answered a closed one). Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
     },
@@ -542,7 +542,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("gap", "0..=100, default 10: lead the best candidate needs over the second one"),
             ("limit", "1..=5 candidates returned, default 5"),
         ],
-        notes: "Input: msg.payload = {name, city?, postcode?} (a string = the name). msg.payload becomes {query, siren (port 0 only), candidates: [{siren, name, score, city, postcode, naf, headcount_band, active}]}. Score: name likeness 70, same postcode 20 or same city 15, still active 10; a name alone tops at 80, so give a place whenever the list has one. A match is a proposal: write the link as to be validated (etat a_valider) and let a human confirm; send port 1 to a review list, never pick the first candidate yourself. Each message is one call to the register and counts against the org's daily cap (org-resolve-quota). On port 2 msg.error = {code, args}: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid.",
+        notes: "Input: msg.payload = {name, city?, postcode?} (a string = the name). msg.payload becomes {query, siren (port 0 only), candidates: [{siren, name, score, city, postcode, naf, headcount_band, active}]}. Score: name likeness 70, same postcode 20 or same city 15, still active 10; a name alone tops at 80, so give a place whenever the list has one. A match is a proposal: write the link with link_upsert propose: true and let a human confirm; send port 1 to a review list, never pick the first candidate yourself. Each message is one call to the register and counts against the org's daily cap (org-resolve-quota). On port 2 msg.error = {code, args}: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid.",
     },
     NodeDoc {
         kind: "control_source",

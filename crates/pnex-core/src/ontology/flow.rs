@@ -196,6 +196,10 @@ pub struct FlowLinkRequest {
     /// Confidence of a proposal (0..=100), from `msg.payload.confidence`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
+    /// Evidence of a proposal (quotes, a model's opinion), from
+    /// `msg.payload.evidence`.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub evidence: Value,
 }
 
 /// Answer of an upsert: the object, and whether it was created.
