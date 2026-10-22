@@ -136,6 +136,8 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("ontology:delete", Level::Member),
     ("ontology:read", Level::Viewer),
     ("ontology:write", Level::Member),
+    ("proposals:decide", Level::Member),
+    ("proposals:read", Level::Viewer),
     ("orgs.members:delete", Level::Admin),
     ("orgs.members:read", Level::Viewer),
     ("orgs.members:write", Level::Admin),
@@ -881,6 +883,9 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("ontology:write"),
     ),
     ("web_presence_candidates_list", Access::Org("ontology:read")),
+    ("proposals_decide", Access::Org("proposals:decide")),
+    ("proposals_get", Access::Org("proposals:read")),
+    ("proposals_list", Access::Org("proposals:read")),
     ("web_search_providers_test", Access::Org("web-search:test")),
     (
         "web_search_providers_update",

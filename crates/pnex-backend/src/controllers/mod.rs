@@ -54,6 +54,7 @@ pub mod ota;
 pub mod pagination;
 pub mod pins;
 pub mod pois;
+pub mod proposals;
 pub mod public_tours;
 /// Couche d'organisation transverse (D42) — endpoints kind-agnostiques.
 pub mod resources;

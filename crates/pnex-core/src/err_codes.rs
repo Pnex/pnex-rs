@@ -698,6 +698,8 @@ pub const WEB_VISIT_UNREACHABLE: &str = "web-visit-unreachable";
 pub const WEB_VISIT_BLOCKED: &str = "web-visit-blocked";
 /// The org passed its daily number of visits; `args.cap`.
 pub const WEB_VISIT_QUOTA: &str = "web-visit-quota";
+/// A proposal already decided the other way, or superseded (proposals.md D373).
+pub const PROPOSAL_DECIDED: &str = "proposal-decided";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -910,6 +912,7 @@ pub const ALL: &[&str] = &[
     WEB_VISIT_UNREACHABLE,
     WEB_VISIT_BLOCKED,
     WEB_VISIT_QUOTA,
+    PROPOSAL_DECIDED,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,

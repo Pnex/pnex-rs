@@ -175,6 +175,11 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::CASE_PROPOSAL_STALE,
             "This proposal was already reviewed the other way.",
         ),
+        OntologyError::ProposalDecided => coded(
+            StatusCode::CONFLICT,
+            err_codes::PROPOSAL_DECIDED,
+            "This proposal was already decided, or a newer one replaced it.",
+        ),
         OntologyError::TrackImport(code) => coded(
             StatusCode::UNPROCESSABLE_ENTITY,
             code,

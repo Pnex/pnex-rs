@@ -15,6 +15,7 @@ pub mod layout;
 pub mod money;
 pub mod ownership;
 pub mod page_render;
+pub mod proposal;
 pub mod recurrence;
 pub mod schema;
 
