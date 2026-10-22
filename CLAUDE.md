@@ -69,9 +69,9 @@ Ajouter un nœud de flow ou une fonctionnalité utilisateur **sans mettre l'assi
 
 Cause réelle, 5ᵉ fois : un build Rust lancé depuis un terminal vit dans le cgroup du terminal ; quand il sature la mémoire, `systemd-oomd` tue **tout le scope Warp** — tous les onglets, toutes les sessions (`journalctl --user | grep oomd`). Le même jour, le disque plein a fait planter le linker et affamé Postgres.
 
-- **Tout `cargo build|check|test|clippy|run`, `dx build|serve`, `docker buildx`, `pio run` passe par `scripts/guarded.sh <commande>`** (ou par une tâche `task` qui l'utilise déjà). Le garde : scope systemd dédié plafonné (`MemoryMax` 24G, sans swap) → seul le build est tué, jamais le terminal ; `nice`/`ionice` + score OOM élevé ; refus sous 25 Go de disque libre ; **un seul build lourd à la fois sur la machine** (verrou partagé entre sessions et worktrees, attente automatique).
+- **Tout `cargo build|check|test|clippy|run`, `dx build|serve`, `docker buildx`, `pio run` passe par `scripts/guarded.sh <commande>`** (ou par une tâche `task` qui l'utilise déjà). Le garde : scope systemd dédié plafonné (`MemoryMax` = mémoire disponible − 16 Go, 16G au plus, refus sous 8G ; sans swap ; oomd le tue à 10 % de pression) → seul le build est tué, jamais la session ; `nice`/`ionice` + score OOM élevé ; refus sous 25 Go de disque libre ; **un seul build lourd à la fois sur la machine** (verrou partagé entre sessions et worktrees, attente automatique).
 - Processus longs (serveur de dev, `dx serve`) : `PNEX_GUARD_NO_LOCK=1 scripts/guarded.sh …` après avoir compilé sous verrou.
-- `.cargo/config.toml` impose `jobs = 6` et `debug = "line-tables-only"` (binaires de test ÷ 3, link moins gourmand). Ne pas monter `CARGO_BUILD_JOBS` au-delà de 6.
+- `.cargo/config.toml` impose `jobs = 4` et `debug = "line-tables-only"` (binaires de test ÷ 3, link moins gourmand). Ne pas monter `CARGO_BUILD_JOBS` au-delà de 4. **Jamais `cargo test --workspace`** (≈ 60 binaires de test de 550 Mo liés en parallèle : session GNOME tuée le 2026-10-22) : tests ciblés par crate et par `--test`.
 - **Agents/sous-agents : jamais deux compilations en parallèle** (pas de sous-agent qui compile pendant qu'on compile) ; vérifier `df -h` avant une passe complète, nettoyer avec `task clean:incremental` puis `task clean:size`.
 
 ## Formatage (hygiène, bloquant en CI)
