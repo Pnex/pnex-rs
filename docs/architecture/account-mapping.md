@@ -497,3 +497,38 @@ Limites :
 - Limite : instantané, pas une vue vivante. Pour rafraîchir, on recrée
   la page.
 
+### Réunions : préparation, enregistrement, compte rendu, coaching (2026-10-22, non commité)
+
+- **Préparation** : modèle `preparation_rdv` (voir D340 ci-dessus), ouvert
+  depuis l'organisation.
+- **Objets** (pack `prospection_b2b`) :
+  - `rendez_vous` (date, objet, statut `prevu` / `tenu` / `annule` coloré,
+    lieu, suite) ;
+  - `critere_coaching` (la liste de l'org : description, persona visé,
+    actif) ;
+  - liens `rdv_avec` (→ organisation ou site), `participe_a` (personne →,
+    côté `interne` | `client`), `enregistrement_de` (média →), `couvre`
+    (→ critère, commentaire) ; `page_sur` admet `rendez_vous`.
+- **Enregistrement et résumé** : rien de nouveau dans les médias. On
+  dépose le fichier, puis transcription, locuteurs et voix connues comme
+  avant. Seul ajout générique : l'étape `summarize` accepte `focus`
+  (2 000 caractères au plus), saisi par l'utilisateur dans la carte
+  Analyses (« Ce que le résumé doit faire ressortir »).
+  - Le focus façonne la passe finale : une section `##` par point, « — »
+    si l'enregistrement n'en dit rien.
+  - Il vient de l'utilisateur, jamais du fichier, qui reste une donnée.
+- **Compte rendu** : modèle `debrief_rdv` sur `rendez_vous` (compte,
+  participants, enregistrement, critères abordés, puis sections à remplir
+  après relecture). Le résumé du LLM reste une page à part, à valider :
+  rien n'est recopié automatiquement.
+- **Coaching** : hiérarchie `coaching` (critère → rendez-vous qui l'ont
+  abordé → comptes). Le bandeau compte les rendez-vous par statut.
+  L'agrégat se lit par critère, jamais comme une note de personne (DA4).
+- Lexique : « Rendez-vous », « Critère du playbook » ; la garde refuse
+  « réunion commerciale ».
+- Tests : `meeting_debrief_and_coaching`, unitaire du prompt avec focus.
+- **Pas faits** :
+  - assistant pendant la réunion (hors périmètre) ;
+  - proposition automatique des critères abordés à partir de la
+    transcription (`text_decide` sur la liste de l'org) ;
+  - ratio de temps de parole par côté (diarisation).

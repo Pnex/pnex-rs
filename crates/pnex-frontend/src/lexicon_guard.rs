@@ -50,6 +50,15 @@ const RULES: &[Rule] = &[
         scope: Scope::Fr,
         term: "alerte commerciale",
         use_instead: "signal commercial (D335)",
+        allowed_keys: &[],
+    },
+    // Meetings with an account are « rendez-vous » (pack type and pages).
+    Rule {
+        scope: Scope::Fr,
+        term: "réunion commerciale",
+        use_instead: "rendez-vous",
+        allowed_keys: &[],
+    },
     // account-mapping.md D330: the uncovered part of a group.
     Rule {
         scope: Scope::Fr,

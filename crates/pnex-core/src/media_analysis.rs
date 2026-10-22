@@ -156,7 +156,14 @@ pub struct StartAnalyses {
     /// Voices compared by `identify` (D274).
     #[serde(default)]
     pub voice_scope: VoiceScope,
+    /// What the summary must bring out, written by the user (a sales
+    /// meeting: objections, next steps, decision criteria); empty = a
+    /// general summary. At most [`FOCUS_MAX`] characters.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub focus: String,
 }
+
+pub const FOCUS_MAX: usize = 2000;
 
 /// Profiles a voice identification compares with (media-review.md D274).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

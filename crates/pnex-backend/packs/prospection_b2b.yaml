@@ -122,9 +122,9 @@ link_types:
     from_types: [person]
     to_types: [rendez_vous]
     attributes:
-      - key: nature
-        name: Nature
-        names: {fr: "Nature"}
+      - key: cote
+        name: Side
+        names: {fr: "Côté"}
         kind: enum
         values: [interne, client]
   - key: rdv_avec
@@ -169,65 +169,418 @@ hierarchies:
       - { link: owns }
       - { link: etablissement_de, inverse: true }
     # Coverage (D330): users summed, a node with a contact or a client
+    # status is covered, the others are the account's white space.
     sums: [utilisateurs_actuels, potentiel_utilisateurs]
     coverage:
+      links: [employs]
+      values: { statut_site: [client], statut_compte: [client] }
+  # Coaching: from a playbook criterion, the meetings that covered it and
+  # their accounts; the band counts them by status.
+  - key: coaching
+    name: Coaching
+    names: {fr: "Coaching"}
     steps:
+      - { link: couvre, inverse: true }
+      - { link: rdv_avec }
+types:
+  - key: rendez_vous
+    name: Meeting
+    names: {fr: "Rendez-vous"}
+    icon: user
+    properties:
+      - { key: date, name: Date, names: {fr: "Date"}, kind: date_time, indexed: true }
+      - { key: objet, name: Purpose, names: {fr: "Objet"}, kind: text, max_len: 500 }
+      - key: statut
+        name: Status
+        names: {fr: "Statut"}
+        kind: enum
+        values: [prevu, tenu, annule]
         colors: { prevu: blue, tenu: green, annule: gray }
+        indexed: true
+      - { key: lieu, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
+      - { key: suite, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000 }
+  - key: critere_coaching
+    name: Playbook criterion
+    names: {fr: "Critère du playbook"}
+    icon: tag
+    properties:
+      - { key: description, name: Description, names: {fr: "Description"}, kind: text, max_len: 2000 }
+      - key: persona
+        name: Persona
+        names: {fr: "Persona"}
+        kind: enum
+        values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
+      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
   - key: signal_commercial
     name: Commercial signal
     names: {fr: "Signal commercial"}
     icon: flag
+    properties:
+      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - key: kind
+        name: Detected by
+        names: {fr: "Détecté par"}
+        kind: enum
+        values: [nouvel_etablissement, fermeture_etablissement, changement_dirigeant, annonce_legale, page_modifiee, changement_poste, autre]
+        required: true
+        indexed: true
+      - { key: theme, name: Theme, names: {fr: "Thème"}, kind: text, max_len: 64, indexed: true }
+      - { key: resume, name: Summary, names: {fr: "Résumé"}, kind: text, max_len: 1000 }
+      - { key: extrait, name: Quoted excerpt, names: {fr: "Extrait cité"}, kind: text, max_len: 4000 }
+      - { key: date, name: Date, names: {fr: "Date"}, kind: date, indexed: true }
+      - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
+      - key: etat
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [a_valider, retenu, ecarte]
         colors: { a_valider: amber, retenu: green, ecarte: gray }
+        indexed: true
       - { key: notifie_le, name: Notified on, names: {fr: "Notifié le"}, kind: date }
   - key: critere_ciblage
+    name: Targeting criterion
+    names: {fr: "Critère de ciblage"}
+    icon: tag
+    properties:
+      - key: propriete
+        name: Property
+        names: {fr: "Propriété"}
+        kind: text
+        max_len: 64
+        required: true
+      - key: operateur
+        name: Operator
+        names: {fr: "Opérateur"}
+        kind: enum
+        values: [egal, parmi, commence_par, au_moins, au_plus, renseigne]
+        required: true
+      - { key: valeur, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 1000 }
+      - { key: points, name: Points, names: {fr: "Points"}, kind: number, required: true }
+      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
+functions:
   - name: pb_criteres
+    language: starlark
+    description: Keeps the org's active targeting criteria on the message for the scoring that follows.
+    code: |
+      # The criteria (an array query) travel with the message: the next
+      # query sends one message per organization, each carrying them.
+      def handle(inputs, msg):
+          return {"payload": {}, "criteres": msg["payload"]}
   - name: pb_score
+    language: starlark
     description: "Target score of an organization: the points of each matching criterion, explained line by line (D336)."
+    code: |
       # Target score (D336): generic, it holds no criterion. Each criterion
+      # of msg.criteres ({title, properties: {propriete, operateur, valeur,
+      # points}}) that the organization meets adds its points (negative
+      # points exclude). Lists in `valeur` are comma-separated.
+      def number(v):
+          if type(v) == "dict":
+              v = v.get("amount")
+          if type(v) in ("int", "float"):
+              return float(v)
+          if type(v) == "string" and v.strip():
+              t = v.strip().replace(",", ".")
+              ok = len(t) > 0
+              for c in t.elems():
+                  if not (c.isdigit() or c in ".-"):
+                      ok = False
+              if ok:
+                  return float(t)
+          return None
+
+      def text(v):
+          if v == None:
+              return ""
+          if type(v) == "bool":
+              return "true" if v else "false"
+          if type(v) in ("int", "float"):
+              f = float(v)
+              return str(int(f)) if f == int(f) else str(f)
+          return str(v)
+
+      def meets(c, v):
+          op = c.get("operateur", "")
+          want = c.get("valeur", "") or ""
+          items = [w.strip() for w in want.split(",") if w.strip()]
+          if op == "renseigne":
+              return text(v) != ""
+          if op == "egal":
+              return text(v) == want.strip()
+          if op == "parmi":
+              return text(v) in items
+          if op == "commence_par":
+              return any([text(v).startswith(w) for w in items])
+          n = number(v)
+          w = number(want)
+          if n == None or w == None:
+              return False
+          if op == "au_moins":
+              return n >= w
+          if op == "au_plus":
+              return n <= w
+          return False
+
+      def handle(inputs, msg):
+          p = msg["payload"]
+          total = 0
+          lines = []
+          for c in msg.get("criteres", []):
+              props = c.get("properties", {})
+              if props.get("actif") == False:
+                  continue
+              if meets(props, p.get(props.get("propriete", ""))):
+                  pts = int(number(props.get("points", 0)) or 0)
+                  total += pts
+                  sign = "+" if pts >= 0 else ""
+                  lines.append(c.get("title", props.get("propriete", "")) + " : " + sign + str(pts))
+          return {
+              "payload": {
                   "score_cible": total,
                   "score_detail": "\n".join(lines),
                   "score_le": msg.get("today", ""),
+              },
+              "object_id": msg["object"]["id"],
+          }
   - name: pb_digest
+    language: starlark
     description: One text of the new commercial signals, for the org's notification node.
+    code: |
       # Daily digest (D335): one line per new signal, newest first.
+      # @output digest any "The digest (payload.texte), when there is a new signal"
+      # @output marquer any "Then mark them notified"
+      def handle(inputs, msg):
+          rows = msg["payload"]
+          if len(rows) == 0:
+              return None
+          rows = sorted(rows, key = lambda r: r["properties"].get("date", ""), reverse = True)
+          lines = []
+          for r in rows:
+              p = r["properties"]
+              lines.append("- " + p.get("date", "") + " " + r["title"] + " : " + p.get("resume", ""))
+          return [
+              {"payload": {"trigger": True, "nombre": len(rows), "texte": "\n".join(lines)}},
+              {"payload": {}},
+          ]
   - name: pb_notifie
+    language: starlark
+    description: Marks a signal notified today.
+    code: |
+      def handle(inputs, msg):
           return {"payload": {"notifie_le": msg.get("today", "")}, "object_id": msg["object"]["id"]}
+flows:
   - name: "Prospection · signals digest"
     note: "Each morning the commercial signals not yet notified make one digest (payload.texte, payload.nombre), then are marked notified. Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [new] }] }
+        - id: new
+          kind: ontology_query
+          config:
             object_type: signal_commercial
             filters: [{ key: notifie_le, op: missing }]
+            limit: 200
+            output: array
+          outputs: [{ port: 0, targets: [digest] }]
         - { id: digest, kind: pnex_function, config: { function_name: pb_digest, language: starlark }, outputs: [{ port: 1, targets: [each] }] }
+        - id: each
+          kind: ontology_query
+          config:
             object_type: signal_commercial
             filters: [{ key: notifie_le, op: missing }]
+            limit: 200
+          outputs: [{ port: 0, targets: [mark] }]
         - { id: mark, kind: pnex_function, config: { function_name: pb_notifie, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: signal_commercial, key: id } }
   - name: "Prospection · target score"
     note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [crit] }] }
+        - id: crit
+          kind: ontology_query
+          config:
             object_type: critere_ciblage
+            limit: 200
+            output: array
+          outputs: [{ port: 0, targets: [keep] }]
         - { id: keep, kind: pnex_function, config: { function_name: pb_criteres, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
+        - id: orgs
+          kind: ontology_query
+          config:
+            object_type: organization
             filters: [{ key: score_le, op: ne, value: "$today" }]
+            limit: 500
+          outputs: [{ port: 0, targets: [score] }]
         - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: organization, key: id } }
 page_templates:
   - key: plan_de_compte
     name: Account plan
+    names: {fr: "Plan de compte"}
     description: The account as of today, its group, coverage, white space, contacts, signals and competitors, then the next actions.
     descriptions: {fr: "Le compte au jour dit : groupe, couverture, espace blanc, contacts, signaux et concurrents, puis les prochaines actions."}
     subject: organization
     link: page_sur
+    body: |
+      # Plan de compte — {{title}}
+
+      Préparé le {{today}}.
+
+      ## Le compte
+
       - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
+      - Utilisateurs : {{prop:utilisateurs_actuels}} sur un potentiel de {{prop:potentiel_utilisateurs}}
+      - Activité : {{prop:code_activite}} · effectif : {{prop:effectif_min}} à {{prop:effectif_max}} · dernier CA : {{prop:ca_dernier}}
+
+      ## Groupe
+
+      {{tree:groupe_commercial}}
+
+      ## Couverture
+
       {{coverage:groupe_commercial}}
+
       ## Espace blanc
+
       {{white_space:groupe_commercial}}
+
+      ## Contacts
+
+      {{links:employs}}
+
+      ## Recommandations
+
+      {{links:recommande:in}}
+
+      ## Qui suit le compte
+
+      {{links:suit_le_compte:in}}
+
+      ## Signaux
+
       {{links:signal_sur:in}}
+
+      ## Solutions en place
+
+      {{links:utilise_solution}}
+
+      ## Prochaines actions
+
+      - À compléter
   - key: fiche_concurrent
+    name: Competitor sheet
+    names: {fr: "Fiche concurrent"}
+    description: A competitor, the accounts known to use it, what moved on it, and how to answer it.
+    descriptions: {fr: "Un concurrent, les comptes connus qui l'utilisent, ce qui a bougé chez lui et comment lui répondre."}
     subject: organization
     link: page_sur
+    body: |
+      # Fiche concurrent — {{title}}
+
+      Mise à jour le {{today}}.
+
+      ## Offre
+
+      Ce qu'il vend, à qui, à quel prix connu.
+
+      ## Comptes connus qui l'utilisent
+
+      {{links:utilise_solution:in}}
+
+      ## Signaux et pages modifiées
+
       {{links:signal_sur:in}}
+
+      ## Arguments de défense
+
+      - À compléter
   - key: preparation_rdv
+    name: Meeting preparation
+    names: {fr: "Préparation de rendez-vous"}
+    description: Before meeting an account, everything known about it on one page, and the questions by persona.
+    descriptions: {fr: "Avant de rencontrer un compte, tout ce qu'on en sait sur une page, et les questions par persona."}
     subject: organization
     link: page_sur
+    body: |
+      # Préparation de rendez-vous — {{title}}
+
+      Préparée le {{today}}. Date du rendez-vous : à compléter.
+
+      ## Le compte en bref
+
       Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
+
+      ## Groupe et couverture
+
       {{coverage:groupe_commercial}}
+
+      ## Interlocuteurs connus
+
+      {{links:employs}}
+
+      ## Qui peut nous introduire
+
+      {{links:recommande:in}}
+
+      ## Signaux récents
+
       {{links:signal_sur:in}}
+
+      ## Concurrence en place
+
+      {{links:utilise_solution}}
+
+      ## Objectif du rendez-vous
+
+      - À compléter
+
+      ## Questions par persona
+
+      - Décideur : enjeux, budget, calendrier
+      - Champion : irritants du terrain, ce qui le ferait gagner
+      - Sponsor : priorités de l'entreprise, critères de décision
+      - Utilisateur : usages actuels, ce qui manque
+  - key: debrief_rdv
+    name: Meeting debrief
+    names: {fr: "Compte rendu de rendez-vous"}
+    description: Who was there, with which account, the recording, the playbook criteria covered, then the summary, objections and next steps.
+    descriptions: {fr: "Qui était là, avec quel compte, l'enregistrement, les critères du playbook abordés, puis le résumé, les objections et la suite."}
     subject: rendez_vous
     link: page_sur
+    body: |
+      # Compte rendu — {{title}}
+
+      Rendez-vous du {{prop:date}} · statut {{prop:statut}} · {{prop:lieu}}
+
+      Objet : {{prop:objet}}
+
+      ## Compte
+
+      {{links:rdv_avec}}
+
+      ## Participants
+
+      {{links:participe_a:in}}
+
+      ## Enregistrement
+
+      {{links:enregistrement_de:in}}
+
+      Le résumé de l'enregistrement (analyses du média, « Résumer » avec ce qu'il doit faire ressortir) est une page à part : collez-en l'essentiel ici, après relecture.
+
+      ## Résumé (à valider)
+
+      - À compléter
+
+      ## Objections entendues
+
+      - À compléter
+
+      ## Prochaines étapes
+
+      - À compléter
+
+      ## Critères du playbook abordés
+
+      {{links:couvre}}
