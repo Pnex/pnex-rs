@@ -59,6 +59,7 @@ pub mod notify_recipients;
 pub mod notify_templates;
 pub mod ontology;
 pub mod openobserve;
+pub mod org_resolve;
 pub mod ota;
 pub mod ota_signing;
 pub mod pages;

@@ -38,6 +38,7 @@ use edgelink_macro::*;
 mod action;
 mod ingest;
 mod ontology;
+mod org_resolve;
 mod site_recipe;
 mod web_search;
 

@@ -520,6 +520,17 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("provider", "name of an org web search provider; empty = the org default"),
         ],
         notes: "The query is msg.payload when it is a string, else msg.payload.query (1 to 400 characters). msg.payload becomes {query, provider, results: [{url, title, snippet, rank, domain}]} (rank starts at 1 after exclusions). Each message is one paid call to the provider and counts against the org's daily web search cap (web-search-quota): feed it a bounded list (ontology_query with a limit), never a loop. On port 1 msg.error = {code, args}: web-search-no-provider, web-search-unavailable, web-search-quota, web-search-query-invalid. A search result is a candidate, not a fact: check it (visit, identifiers) before writing anything.",
+    },
+    NodeDoc {
+        kind: "org_resolve",
+        summary: "Finds the SIREN of a French company from its name (and city or postcode) in the public company register; writes nothing. Ports: 0 matched, 1 to review (ambiguous or nothing found), 2 failed.",
+        config: &[
+            ("threshold", "0..=100, default 80: score from which the best candidate is a match"),
+            ("gap", "0..=100, default 10: lead the best candidate needs over the second one"),
+            ("limit", "1..=5 candidates returned, default 5"),
+        ],
+        notes: "Input: msg.payload = {name, city?, postcode?} (a string = the name). msg.payload becomes {query, siren (port 0 only), candidates: [{siren, name, score, city, postcode, naf, headcount_band, active}]}. Score: name likeness 70, same postcode 20 or same city 15, still active 10; a name alone tops at 80, so give a place whenever the list has one. A match is a proposal: write the link as to be validated (etat a_valider) and let a human confirm; send port 1 to a review list, never pick the first candidate yourself. Each message is one call to the register and counts against the org's daily cap (org-resolve-quota). On port 2 msg.error = {code, args}: org-resolve-unavailable, org-resolve-quota, org-resolve-query-invalid.",
+    },
     NodeDoc {
         kind: "control_source",
         summary: "Event source fed by org controls operated from dashboards and annotations (switch, slider, button, number, select, stepper, command, colour). One output port per listed control.",

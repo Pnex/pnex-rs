@@ -51,6 +51,7 @@ mod m20261021_000041_prospection_oppositions;
 mod m20261022_000042_import_run_heartbeat;
 mod m20261022_000043_edge_ends_given;
 mod m20261022_000044_web_search_providers;
+mod m20261022_000045_import_per_object_cursor;
 
 pub struct Migrator;
 
@@ -98,6 +99,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261022_000042_import_run_heartbeat::Migration),
             Box::new(m20261022_000043_edge_ends_given::Migration),
             Box::new(m20261022_000044_web_search_providers::Migration),
+            Box::new(m20261022_000045_import_per_object_cursor::Migration),
         ]
     }
 }

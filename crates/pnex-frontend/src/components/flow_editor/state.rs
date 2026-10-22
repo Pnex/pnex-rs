@@ -57,6 +57,7 @@ pub enum PaletteKind {
     IngestCleanup,
     SiteRecipe,
     WebSearch,
+    OrgResolve,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -318,6 +319,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             },
             PaletteKind::WebSearch => FlowNodeKind::WebSearch {
                 config: pnex_core::web_search::WebSearchConfig::default(),
+            },
+            PaletteKind::OrgResolve => FlowNodeKind::OrgResolve {
+                config: pnex_core::org_resolve::OrgResolveConfig::default(),
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {
                 config: pnex_core::media_ingest::MediaSourceConfig::default(),

@@ -278,3 +278,72 @@ registre actif).
 
 Restent pour CC1 : couverture calculée et espace blanc (D330), coloration
 par valeur de propriété (D339).
+
+### CC0 — spike des sources (2026-10-22)
+
+Appels réels sur Safran (562082909) et Mecachrome France (429853351) :
+
+- **API Recherche d'entreprises** : aucune structure de groupe (ni mère ni
+  filiales) ; les seules personnes morales dirigeantes sont les commissaires
+  aux comptes. Elle donne CA (`finances`), tranche par SIREN et par site.
+  Recherche par nom bruitée (« safran » : 2 010 résultats) : D332 est un
+  préalable. Filtres de ciblage utilisables (`activite_principale`,
+  `tranche_effectif_salarie`, `section_activite_principale`) ; plafond
+  `page × per_page ≤ 10 000`. Ordres de grandeur : 8 codes NAF visés ×
+  ≥ 100 salariés = 330 unités légales ; section C × ≥ 100 = 4 353.
+- **GLEIF** : très bon sur une ETI (Mecachrome : mère MECA DEV, filiale
+  canadienne), presque aveugle sur un grand groupe (Safran : 7 filiales
+  directes déclarées ; Safran Aircraft Engines ne déclare aucune mère).
+  `registeredAs` contient parfois des espaces.
+- **Wikidata** : Safran = 20 filiales, dont 12 avec SIREN ; donne aussi
+  l'Agence des participations de l'État comme mère, d'où l'état « à
+  valider ».
+- Verdict : GLEIF **et** Wikidata, côte à côte (D331 confirmé) ; saisie
+  manuelle pour le reste. Le stock SIRENE complet est inutile pour un ICP :
+  l'API suffit (D337).
+
+### CC2 — liens de groupe et rapprochement (2026-10-22, non commité)
+
+- **`filiale_de` passe dans `entreprises` 1.1.0** (la structure de groupe
+  n'est pas propre à la vente), avec un attribut `etat` (`a_valider`,
+  `confirme`) ; `prospection_b2b` 1.1.0 ne la déclare plus (passation par
+  `hands_over`).
+- **`entreprises_fr` 2.1.0** livre trois imports API par objet :
+  - *Identifiants d'entité juridique (GLEIF)* : par SIREN, pose le LEI et
+    relie aux mères directe et ultime **déjà connues** par leur LEI
+    (`consolidation_directe` / `consolidation_ultime`, `confirme`) ; mère
+    directe = ultime → un seul lien ;
+  - *Sociétés mères (GLEIF)* : par LEI (`filter[owns]`), crée les mères
+    nommées (françaises par SIREN, étrangères par LEI + pays) ; le tour
+    suivant du premier import pose le lien ;
+  - *Mères et filiales (Wikidata)* : par SIREN (SPARQL, P1616 + P749/P355
+    dans les deux sens), seules les sociétés qui ont un SIREN, lien
+    `wikidata` toujours `a_valider`.
+- **Moteur d'import** (générique) :
+  - `per_object` sans `param` : la valeur remplace `{value}` dans l'URL
+    (chemin, texte SPARQL) ; seules les valeurs `[A-Za-z0-9._-]` y entrent ;
+  - **tour de rôle** : les objets sont pris par ordre de valeur à partir du
+    dernier interrogé par un run planifié ou manuel
+    (`object_imports.per_object_cursor`, migration 000045), puis on reboucle.
+    Avant, l'ordre « moins récemment modifié » rejouait sans fin les mêmes
+    200 SIREN quand la source ne connaissait pas la plupart ;
+  - un lot par objet vide n'est plus refusé comme « source perdue » ;
+  - `when` accepte `not: true`.
+- **Nœud `org_resolve`** (D332) : nom + ville / code postal → 0 à 5
+  candidats notés (nom 70, même code postal 20 ou même ville 15, active 10 ;
+  un nom seul plafonne à 80). Ports : *trouvée* (≥ seuil 80 et 10 points
+  d'avance), *à revoir*, *échec*. Un code postal sans résultat est relancé
+  sans lui. N'écrit rien ; plafond 2 000 appels par jour et par org
+  (`settings.org_resolve.daily_calls`) ; registre surchargeable par
+  `PNEX_COMPANY_SEARCH_URL` (tests). Fiche `assistant-kb/company-groups.md`.
+- Tests : `partner_watch::group_links_from_gleif_and_wikidata` (Mecachrome
+  par GLEIF, Safran par Wikidata, tour de rôle et rebouclage),
+  `org_resolve::node_scores_register_candidates`, unitaires du score.
+
+Limites :
+- Le curseur n'avance pas sur un aperçu suivi d'une application : seul un
+  run planifié ou « Lancer maintenant » le fait avancer.
+- Une mère créée par Wikidata ou GLEIF n'a que son nom, son SIREN ou son LEI
+  et son pays ; l'import du registre l'enrichit à son tour.
+- `org_resolve` n'est pas encore branché sur les listes de salon (D337).
+

@@ -216,6 +216,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         },
         FlowNodeKind::WebSearch { config } => rsx! {
             WebSearchForm { cx, initial: config.clone(), can_write }
+        },
+        FlowNodeKind::OrgResolve { config } => rsx! {
+            OrgResolveForm { cx, initial: config.clone(), can_write }
         FlowNodeKind::MediaSource { config } => rsx! {
             MediaSourceForm { cx, initial: config.clone(), can_write }
         },
@@ -285,6 +288,7 @@ mod media_source;
 mod memory;
 mod notify;
 mod ontology;
+mod org_resolve;
 mod page;
 mod predict;
 mod range_upsert;
@@ -320,6 +324,7 @@ use media_source::MediaSourceForm;
 use memory::{MemoryReadForm, MemoryWriteForm};
 use notify::NotifyForm;
 use ontology::{LinkUpsertForm, ObjectUpsertForm, OntologyQueryForm};
+use org_resolve::OrgResolveForm;
 use page::{PagePdfForm, PageWriteForm};
 use predict::{AnomalyForm, ForecastForm};
 use range_upsert::RangeUpsertForm;

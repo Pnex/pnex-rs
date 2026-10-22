@@ -75,6 +75,18 @@ pub async fn fetch_file(url: &str, m: &Mapping) -> Result<Vec<Value>, &'static s
         .unwrap_or(Err(UNREADABLE))
 }
 
+/// Placeholder of the per-object value in a source URL.
+pub const VALUE: &str = "{value}";
+
+/// An identifier safe to splice into a URL path or a query text (SIREN,
+/// LEI, Wikidata id): letters, digits, `-`, `_`, `.`.
+fn plain(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 64
+        && v.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
 /// Records of a JSON API queried once per value of `per_object` (a
 /// request that fails counts as no record: one unknown identifier must
 /// not stop the run).
@@ -90,8 +102,19 @@ pub async fn fetch_per_object(
     let mut rows = Vec::new();
     let mut failures = 0usize;
     for v in values {
-        let mut u = base.clone();
-        u.query_pairs_mut().append_pair(&p.param, v);
+        let u = if p.param.is_empty() {
+            // Inside a path or a query text: only plain identifiers go in
+            // (unreserved characters, nothing to encode).
+            if !plain(v) {
+                failures += 1;
+                continue;
+            }
+            check_url(&url.replace(VALUE, v)).map_err(|_| UNREACHABLE)?
+        } else {
+            let mut u = base.clone();
+            u.query_pairs_mut().append_pair(&p.param, v);
+            u
+        };
         match get(&u).await {
             Ok(bytes) => {
                 let doc: Value = serde_json::from_slice(&bytes).map_err(|_| UNREADABLE)?;

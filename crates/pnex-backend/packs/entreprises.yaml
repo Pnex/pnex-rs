@@ -16,10 +16,16 @@
 # officer across companies; no full birth date, no personal address.
 # Hierarchy (partner-watch.md D305): a tree computed on links (several
 # parents allowed), never containment.
+# Since 1.1.0 the group structure lives here (account-mapping.md D331):
+# `filiale_de` carries a control or consolidation relation as open sources
+# give it, without a share (`owns` stays for known holdings). Several
+# targets are allowed on purpose: a direct and an ultimate parent, or two
+# sources that disagree, live side by side with their provenance; a link
+# from a community source is `a_valider` and a human closes the wrong one.
 key: entreprises
 name: Companies
 names: {fr: "Entreprises"}
-version: "1.0.0"
+version: "1.1.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
@@ -77,6 +83,26 @@ link_types:
         kind: enum
         values: [president, directeur_general, dg_delegue, gerant, administrateur, membre_directoire, autre]
       - { key: qualite, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
+      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+  - key: filiale_de
+    name: is a subsidiary of
+    names: {fr: "est une filiale de"}
+    inverse_name: has as subsidiary
+    inverse_names: {fr: "a pour filiale"}
+    from_types: [organization]
+    to_types: [organization]
+    attributes:
+      - key: nature
+        name: Nature
+        names: {fr: "Nature"}
+        kind: enum
+        values: [consolidation_directe, consolidation_ultime, declaree, wikidata, saisie]
+      - key: etat
+        name: State
+        names: {fr: "État"}
+        kind: enum
+        values: [a_valider, confirme]
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
 hierarchies:

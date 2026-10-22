@@ -3596,6 +3596,15 @@ flows-web-search-lang = Language
 flows-web-search-exclude = Excluded domains (one per line)
 flows-web-search-port-ok = results
 flows-web-search-port-failed = failed
+flows-palette-org-resolve = Find a company
+flows-palette-org-resolve-help = Finds the SIREN of a French company from its name and city in the public register; writes nothing
+flows-org-resolve-help = Input: msg.payload = {"{"} name, city, postcode {"}"} (or the name alone). Score: name 70, same postcode 20 or same city 15, active company 10; without a city or postcode, 80 at most. A match is a proposal: write the link as to be validated.
+flows-org-resolve-threshold = Score of a match (0 to 100)
+flows-org-resolve-gap = Lead over the next candidate
+flows-org-resolve-limit = Candidates returned (1 to 5)
+flows-org-resolve-port-matched = matched
+flows-org-resolve-port-review = to review
+flows-org-resolve-port-failed = failed
 flows-ingest-entries = Files to extract (one pattern per line, empty = all)
 flows-ingest-entries-help = Patterns with * and ? on the file name, for example *Partenaires*.csv
 flows-ingest-entry = File read (pattern)
@@ -5930,6 +5939,9 @@ err-web-search-no-provider = No web search provider: add one on the Organisation
 err-web-search-unavailable = The web search provider did not answer the query.
 err-web-search-quota = Daily web search cap reached for this organisation.
 err-web-search-query-invalid = The search query is empty or longer than 400 characters.
+err-org-resolve-unavailable = The company register did not answer.
+err-org-resolve-quota = Daily cap of company lookups reached for this organisation.
+err-org-resolve-query-invalid = The company name is empty or too long (255 characters at most).
 web-sites-delete-recipe = Delete the rule
 web-sites-delete-confirm = The rule is deleted; its runs stay in the journal.
 iam-service-browser-endpoints = Browsers of the navigation rules

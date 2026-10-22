@@ -357,6 +357,23 @@ pub fn to_red_flows_json_with(
                 padded_ports = Some(crate::web_search::NODE_PORT_COUNT);
                 serde_json::json!({
                     "type": "pnex-web-search",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
+            // The backend reads the thresholds from the deployed graph (D332).
+            FlowNodeKind::OrgResolve { .. } => {
+                padded_ports = Some(crate::org_resolve::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-org-resolve",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);
