@@ -171,20 +171,33 @@ fn shipped_property(pack: &Pack, scope: &str, prop: &str) -> Option<PropertyDef>
 }
 
 /// What the org changed of a shipped enum property's labels and colours
-/// (D370): the entries that differ from the pack's, `None` when nothing.
+/// (D370): the entries that differ from the pack's, `null` for one the org
+/// removed; `None` when nothing.
 fn display_diff(org: &PropertyDef, pack: &PropertyDef) -> Option<Value> {
-    let labels: Map<String, Value> = org
+    let mut labels: Map<String, Value> = org
         .labels
         .iter()
         .filter(|(v, n)| pack.labels.get(*v) != Some(*n))
         .map(|(v, n)| (v.clone(), serde_json::to_value(n).unwrap_or_default()))
         .collect();
-    let colors: Map<String, Value> = org
+    labels.extend(
+        pack.labels
+            .keys()
+            .filter(|v| !org.labels.contains_key(*v))
+            .map(|v| (v.clone(), Value::Null)),
+    );
+    let mut colors: Map<String, Value> = org
         .colors
         .iter()
         .filter(|(v, c)| pack.colors.get(*v) != Some(*c))
         .map(|(v, c)| (v.clone(), Value::String(c.clone())))
         .collect();
+    colors.extend(
+        pack.colors
+            .keys()
+            .filter(|v| !org.colors.contains_key(*v))
+            .map(|v| (v.clone(), Value::Null)),
+    );
     (!labels.is_empty() || !colors.is_empty())
         .then(|| serde_json::json!({ "labels": labels, "colors": colors }))
 }
@@ -193,8 +206,6 @@ fn display_diff(org: &PropertyDef, pack: &PropertyDef) -> Option<Value> {
 /// set on the enum properties of `scope` (D370), so that an upgrade of the
 /// pack keeps them. Called by every write of a type or link type; a
 /// property no installed pack ships is the org's own and needs nothing.
-// shortcut: a pack colour the org removed comes back at the next upgrade;
-// store removals too if orgs ask to clear a pack's colours.
 pub async fn record_display(
     db: &DatabaseConnection,
     org_id: i64,
@@ -248,8 +259,8 @@ pub async fn record_display(
     Ok(())
 }
 
-/// The org's labels and colours laid over the pack's (D370); a value the
-/// pack no longer has is dropped.
+/// The org's labels and colours laid over the pack's (D370), `null`
+/// removing the pack's; a value the pack no longer has is dropped.
 fn apply_display(layer: &Value, scope: &str, props: &mut [PropertyDef]) {
     for p in props.iter_mut() {
         let Some(d) = layer.get(format!("{scope}/{}", p.key)) else {
@@ -265,7 +276,12 @@ fn apply_display(layer: &Value, scope: &str, props: &mut [PropertyDef]) {
             .into_iter()
             .flatten()
         {
-            if let (true, Ok(n)) = (values.contains(v), serde_json::from_value(n.clone())) {
+            if !values.contains(v) {
+                continue;
+            }
+            if n.is_null() {
+                p.labels.remove(v);
+            } else if let Ok(n) = serde_json::from_value(n.clone()) {
                 p.labels.insert(v.clone(), n);
             }
         }
@@ -275,9 +291,13 @@ fn apply_display(layer: &Value, scope: &str, props: &mut [PropertyDef]) {
             .into_iter()
             .flatten()
         {
-            if let (true, Some(c)) = (values.contains(v), c.as_str()) {
-                p.colors.insert(v.clone(), c.to_string());
+            if !values.contains(v) {
+                continue;
             }
+            match c.as_str() {
+                Some(c) => p.colors.insert(v.clone(), c.to_string()),
+                None => p.colors.remove(v),
+            };
         }
     }
 }
@@ -1011,6 +1031,25 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_org_removal_of_a_pack_colour_survives_the_upgrade() {
+        let def = |v: Value| -> PropertyDef { serde_json::from_value(v).unwrap() };
+        let pack = def(
+            serde_json::json!({"key": "etat", "kind": "enum", "values": ["ok", "ko"],
+            "colors": {"ok": "green", "ko": "red"}, "labels": {"ok": {"fr": "Bon"}}}),
+        );
+        let org = def(
+            serde_json::json!({"key": "etat", "kind": "enum", "values": ["ok", "ko"],
+            "colors": {"ko": "amber"}}),
+        );
+        let d = display_diff(&org, &pack).unwrap();
+        let layer = serde_json::json!({ "type:t/etat": d });
+        let mut props = vec![pack];
+        apply_display(&layer, "type:t", &mut props);
+        assert_eq!(props[0].colors, org.colors);
+        assert!(props[0].labels.is_empty());
+    }
 
     #[test]
     fn shipped_packs_are_valid() {

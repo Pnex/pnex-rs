@@ -644,6 +644,10 @@ pub struct ObjectPageInput {
     /// Default: the template's name and the object's title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Language of the enum value labels written in the page (`fr-FR`…);
+    /// default English.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 /// Objects to purge from an archived case (cases.md K16).

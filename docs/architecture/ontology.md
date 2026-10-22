@@ -838,16 +838,17 @@ confiance, auteur machine.
     ce qui diffère de la définition livrée par le pack propriétaire de la
     propriété (extensions D306 comprises) ; l'installation l'applique
     par-dessus la nouvelle version. Une valeur que le pack retire perd son
-    libellé.
+    libellé. Un libellé ou une couleur du pack que l'org a retiré est
+    noté `null` et reste retiré à la montée de version.
+  - Les pages générées (`page_render`) écrivent le libellé dans la langue
+    de l'interface de l'auteur (`ObjectPageInput.lang`, anglais par
+    défaut) : `{{prop:<clé>}}`, pastilles de `{{tree:…}}` et comptes de
+    `{{coverage:…}}`.
   - Les pastilles de la hiérarchie portent le libellé (`labels` de
     `NodeMark` / `MarkCount`).
   - Test : `partner_watch` presence_web (libellé et couleur gardés à la
     montée de version).
 - **Pas fait** :
-  - une couleur du pack que l'org a retirée revient à la montée de
-    version (seuls les ajouts et changements sont gardés) ;
-  - les pages générées (`page_render`) écrivent encore la clé en mots, pas
-    le libellé ;
   - l'éditeur de type de lien ne propose pas encore libellés et couleurs
     (la couche les garde s'ils sont écrits par l'API) ;
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la

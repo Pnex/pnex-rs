@@ -139,6 +139,18 @@ pub async fn from_object(
         }
     }
     let props = obj.properties.as_object().cloned().unwrap_or_default();
+    let defs = super::super::types::get(db, org_id, &obj.type_key)
+        .await
+        .map(|t| t.def.properties)
+        .unwrap_or_default();
+    // Bounded: a language tag is a few letters (`fr-FR`).
+    let lang: String = input
+        .lang
+        .as_deref()
+        .unwrap_or("en")
+        .chars()
+        .take(16)
+        .collect();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let id_text = id.to_string();
     let body = render(
@@ -147,6 +159,8 @@ pub async fn from_object(
             id: &id_text,
             title: &obj.title,
             properties: &props,
+            defs: &defs,
+            lang: &lang,
             today: &today,
             links: &open,
             trees: &trees,
