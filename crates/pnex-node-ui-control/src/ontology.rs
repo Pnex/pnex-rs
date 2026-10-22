@@ -371,6 +371,7 @@ fn link_request(node: FlowNodeRef, p: &Value) -> Option<FlowLinkRequest> {
         valid_from: s("valid_from"),
         confidence: p.get("confidence").and_then(Value::as_f64),
         evidence: p.get("evidence").cloned().unwrap_or_default(),
+        accept: s("accept").filter(|r| !r.trim().is_empty()),
     })
 }
 

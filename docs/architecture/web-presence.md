@@ -182,7 +182,7 @@ postal et voie comparés aux établissements SIRENE) → si score moyen,
 `llm_*` sur texte et capture (`Msg::UserImage`) → `object_upsert`
 (`site_web`) + `link_upsert` (`a_pour_site`, `skip_closed`).
 
-Seuils (réglage du pack) : ≥ 80 `confirme` directement, 40–79 `propose`
+Seuils (réglage du pack) : ≥ 80 proposition acceptée aussitôt par la règle de l'org (D377, `presence_web` 1.5.0), 40–79 `propose`
 (validation humaine), < 40 rien écrit. La capture de la visite est
 conservée comme asset média de l'org rattaché au `site_web` (Q-W4) : la
 page de validation l'affiche, la vision et le lab la reliront plus tard
@@ -292,7 +292,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
     webmails). Viennent ensuite `web_search` (3 résultats), `pw_resultats`
     (un message par résultat), `web_visit` et `pw_score`. Le score est
     déterministe : SIREN 60, NDA 30, domaine de ses e-mails 30, nom 10.
-    À partir de 80 le site est `confirme`, de 40 à 79 `propose`, en
+    À partir de 80 le site est accepté par la règle (D377), de 40 à 79 `propose`, en
     dessous rien n'est écrit. Enfin `object_upsert` crée le `site_web`
     par `domaine` et `link_upsert` pose `a_pour_site` avec `skip_closed`.
   - **Avis du modèle (`presence_web` 1.2.0)** : un score moyen est

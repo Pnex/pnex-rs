@@ -1342,6 +1342,19 @@ async fn flow_nodes_write_as_their_deployed_node() {
         let open_links = env.db.execute_unprepared(&format!(
             "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);
+        // D377: the same open proposal with an org rule is accepted without
+        // a human, the rule kept as the reason.
+        let mut req3 = req.clone();
+        req3["accept"] = json!("presence_web.seuil_confirme >= 80 (score 90)");
+        let (st, r3) = internal(&server, "link", req3).await;
+        assert_eq!((st, r3["proposal_id"].clone()), (200, r["proposal_id"].clone()), "{r3}");
+        let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", r["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!((got["status"].clone(), got["decided_by"].clone(), got["reason"].clone()),
+            (json!("accepted"), Value::Null, json!("presence_web.seuil_confirme >= 80 (score 90)")), "{got}");
+        assert!(got["decided_at"].is_string() && got["applied"].is_string(), "{got}");
+        let open_links = env.db.execute_unprepared(&format!(
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
+        assert_eq!(open_links.rows_affected(), 1);
 
         let (st, r) = internal(&server, "query", json!({"node": node("q"), "values": [["RNCP12345", "RS1"]]})).await;
         assert_eq!((st, r["count"].clone()), (200, json!(1)), "{r}");

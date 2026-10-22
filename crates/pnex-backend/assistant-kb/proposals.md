@@ -6,7 +6,7 @@ pages: /proposals
 nodes: 
 err_codes: proposal-decided, ontology-version-conflict
 tools: 
-tags: to validate, à valider, proposal, proposition, accept, accepter, reject, rejeter, inbox, review, machine, community data, wikidata, candidate, candidat, decided by, décidé par
+tags: automatic, automatique, rule, règle, to validate, à valider, proposal, proposition, accept, accepter, reject, rejeter, inbox, review, machine, community data, wikidata, candidate, candidat, decided by, décidé par
 ---
 Some writes come from a source that is not sure it is right: a group link from a community source, a website candidate, a value read by a model. They do not enter the ontology on their own. They wait as **proposals** on the **To validate** page (Knowledge menu), and on the page of each object concerned.
 
@@ -15,6 +15,7 @@ Some writes come from a source that is not sure it is right: a group link from a
 - **Accept** (members): the value is written in the ontology with the same checks as an edit by hand, and its history says it came from a proposal.
 - **Correct and accept** (proposals that carry text values): fix a value before it is written; the decision keeps the correction.
 - **Reject**: give a reason if you wish; the proposal is kept with it and the same value is never proposed again; another value would be a new proposal.
+- **Automatic** (in the Decided by column): a proposal accepted by a rule of the organization, without anyone deciding, for example a website whose score reaches the confirming score of the Web presence pack (Ontology › Packs › Settings). The rule and the score are shown; if it is wrong, close the link on the object page: the flow never opens it again.
 - Filter by status: to validate, accepted, rejected, replaced (a newer proposal for the same thing replaced it before anyone decided).
 
 Viewers read the proposals but do not decide. The assistant never decides: it can only list them.

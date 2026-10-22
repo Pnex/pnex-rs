@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **P0, P1 et P2 livrés le 2026-10-22** ; P3 et P4 à faire |
+| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22** ; P3 à faire |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
 | Repose sur | ontologie (D176–D191), propositions des dossiers (`cases-workspace.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
@@ -75,6 +75,8 @@ Au-dessus d'un seuil déclaré par le pack et surchargeable par l'org (D368), un
 
 Elle reste écrite comme proposition, `accepted` par `system` avec la règle citée : le journal des décisions est complet. Une source déclarée fiable (registre officiel) n'est jamais proposée : elle écrit directement, comme aujourd'hui.
 
+**Livré (P4)** : un nœud `link_upsert` `propose: true` reçoit `msg.payload.accept`, le texte de la règle (exemple : `presence_web.seuil_confirme >= 80 (score 92)`). Le service propose puis accepte aussitôt : `decided_by` vide, motif = la règle ; l'UI affiche « Automatique : <règle> ». La même valeur encore ouverte est acceptée ; une valeur déjà rejetée le reste (D372) ; une écriture refusée (cardinalité, validation) laisse la proposition ouverte pour un humain. Le seuil vit dans la fonction du pack, qui le lit par `pack_setting` (D368) : c'est elle qui pose `accept`. Le message vient du code du flow, qui pourrait aussi bien écrire sans proposer : `accept` n'ouvre aucun droit nouveau. Pas fait : `object_upsert` et les imports n'ont pas encore d'acceptation automatique.
+
 ## 4. Lots
 
 | Lot | Contenu | Prérequis |
@@ -142,7 +144,7 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
     nœud qui propose), `pack_rules`.
 - Reste :
   - P3 : dossiers et voix dans la même table ;
-  - P4 : acceptation automatique par règle d'org (D377, attend D368) ;
+  - P4 : livré pour `link_upsert` (D377, voir plus haut) ; reste `object_upsert` et les imports ;
   - fait depuis : la même proposition reçue à nouveau avec des preuves
     (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves
     et la nouvelle confiance ; la boîte affiche les preuves en texte ;

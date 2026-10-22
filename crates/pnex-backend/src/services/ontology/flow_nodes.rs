@@ -284,7 +284,10 @@ pub async fn link(
             evidence: req.evidence.clone(),
             ..Default::default()
         };
-        let id = super::proposals::propose(db, org, &input).await?;
+        let id = match req.accept.as_deref() {
+            Some(rule) => super::proposals::propose_accepted(db, org, &actor, &input, rule).await?,
+            None => super::proposals::propose(db, org, &input).await?,
+        };
         return Ok(serde_json::json!({ "proposed": true, "proposal_id": id }));
     }
     Ok(view(match (open, config.close) {

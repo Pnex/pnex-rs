@@ -164,7 +164,15 @@ pub fn ProposalsTable(
         columns.push(Column::new(
             t!("proposals-col-decided").to_string(),
             |p: &ProposalView| {
-                let by = p.decided_by.clone().unwrap_or_default();
+                // No user and a decision: accepted by an org rule (D377).
+                let by = match (&p.decided_by, &p.decided_at) {
+                    (Some(name), _) => name.clone(),
+                    (None, Some(_)) => {
+                        t!("proposals-decided-auto", rule : p.reason.clone().unwrap_or_default())
+                            .to_string()
+                    }
+                    (None, None) => String::new(),
+                };
                 rsx! {
                     span { class: "text-xs text-slate", "{by}" }
                 }
