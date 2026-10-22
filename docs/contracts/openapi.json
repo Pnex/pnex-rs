@@ -56129,6 +56129,7 @@
         "tags": [
           "ontology"
         ]
+        "description": "Starts a run in the background and answers it `running` (202); poll `GET …/runs/{run_id}`. An import with steps runs them (resolve, download, extract, inspect, filter), then applies the file they staged; a `url` or `api` import fetches its source. Checked like a scheduled run and applied at once with the author's role (no preview). A `file` import without steps has nothing to fetch (`ingest-entry-missing`): preview it with a file. Org writers.",
       }
     },
     "/api/v1/ontology/imports/{id}/runs/{run_id}": {

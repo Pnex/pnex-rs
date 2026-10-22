@@ -76,82 +76,86 @@ pub async fn import(
     actor: &Actor,
     doc: &CaseExport,
 ) -> Result<CaseImported> {
-    if doc.schema != SCHEMA {
-        return Err(invalid("schema", FIELD_INVALID));
-    }
-    let src = &doc.workspace.case;
-    let mut props = src.properties.clone();
-    props.remove(CASE_CONCLUSION_PAGE);
-    props.insert(CASE_STATUS.into(), "open".into());
-    let txn = db.begin().await?;
-    let case = objects::create(
-        &txn,
-        org_id,
-        actor,
-        &ObjectInput {
-            type_key: KIND_CASE.into(),
-            title: src.title.clone(),
-            properties: props,
-            expected_version: None,
-        },
-    )
-    .await?;
-    let case_id = Uuid::parse_str(&case.id).map_err(|_| OntologyError::NotFound)?;
-    let mut missing: Vec<ObjectRef> = Vec::new();
-    let mut miss = |r: &ObjectRef| {
-        if !missing.iter().any(|m| m.id == r.id) {
-            missing.push(r.clone());
+    crate::services::ontology::changes::deferred(async {
+        if doc.schema != SCHEMA {
+            return Err(invalid("schema", FIELD_INVALID));
         }
-    };
-    for e in &doc.workspace.events {
-        let mut attach = Vec::new();
-        for a in &e.attachments {
-            if live(&txn, org_id, &a.object).await? {
-                attach.push(CaseAttachInput {
-                    event_id: None,
-                    object_id: a.object.id.clone(),
-                    role: Some(a.role.clone()),
-                    detail: a.detail.clone(),
-                });
+        let src = &doc.workspace.case;
+        let mut props = src.properties.clone();
+        props.remove(CASE_CONCLUSION_PAGE);
+        props.insert(CASE_STATUS.into(), "open".into());
+        let txn = db.begin().await?;
+        let case = objects::create(
+            &txn,
+            org_id,
+            actor,
+            &ObjectInput {
+                type_key: KIND_CASE.into(),
+                title: src.title.clone(),
+                properties: props,
+                expected_version: None,
+            },
+        )
+        .await?;
+        let case_id = Uuid::parse_str(&case.id).map_err(|_| OntologyError::NotFound)?;
+        let mut missing: Vec<ObjectRef> = Vec::new();
+        let mut miss = |r: &ObjectRef| {
+            if !missing.iter().any(|m| m.id == r.id) {
+                missing.push(r.clone());
+            }
+        };
+        for e in &doc.workspace.events {
+            let mut attach = Vec::new();
+            for a in &e.attachments {
+                if live(&txn, org_id, &a.object).await? {
+                    attach.push(CaseAttachInput {
+                        event_id: None,
+                        object_id: a.object.id.clone(),
+                        role: Some(a.role.clone()),
+                        detail: a.detail.clone(),
+                    });
+                } else {
+                    miss(&a.object);
+                }
+            }
+            let p = &e.event.properties;
+            let input = CaseEventInput {
+                title: e.event.title.clone(),
+                occurred: p.get(EVENT_OCCURRED).cloned().unwrap_or(Value::Null),
+                origin: p
+                    .get(EVENT_ORIGIN)
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                attach,
+            };
+            let mut extra = p.clone();
+            extra.remove(EVENT_OCCURRED);
+            extra.remove(EVENT_ORIGIN);
+            create_event_in(&txn, org_id, actor, case_id, &input, extra).await?;
+        }
+        for u in &doc.workspace.undated {
+            if live(&txn, org_id, u).await? {
+                let a = CaseAttachInput {
+                    object_id: u.id.clone(),
+                    ..Default::default()
+                };
+                attach_in(&txn, org_id, actor, case_id, &a).await?;
             } else {
-                miss(&a.object);
+                miss(u);
             }
         }
-        let p = &e.event.properties;
-        let input = CaseEventInput {
-            title: e.event.title.clone(),
-            occurred: p.get(EVENT_OCCURRED).cloned().unwrap_or(Value::Null),
-            origin: p
-                .get(EVENT_ORIGIN)
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            attach,
-        };
-        let mut extra = p.clone();
-        extra.remove(EVENT_OCCURRED);
-        extra.remove(EVENT_ORIGIN);
-        create_event_in(&txn, org_id, actor, case_id, &input, extra).await?;
-    }
-    for u in &doc.workspace.undated {
-        if live(&txn, org_id, u).await? {
-            let a = CaseAttachInput {
-                object_id: u.id.clone(),
-                ..Default::default()
-            };
-            attach_in(&txn, org_id, actor, case_id, &a).await?;
-        } else {
-            miss(u);
-        }
-    }
-    txn.commit().await?;
-    Ok(CaseImported {
-        case: ObjectRef {
-            id: case.id,
-            type_key: case.type_key,
-            title: case.title,
-            native_id: case.native_id,
-        },
-        events: doc.workspace.events.len(),
-        missing,
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        Ok(CaseImported {
+            case: ObjectRef {
+                id: case.id,
+                type_key: case.type_key,
+                title: case.title,
+                native_id: case.native_id,
+            },
+            events: doc.workspace.events.len(),
+            missing,
+        })
     })
+    .await
 }

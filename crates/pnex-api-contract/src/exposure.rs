@@ -519,7 +519,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     ),
     (
         "bulk: writes many objects at once from a reviewed preview, a human act (D301)",
-        &["ontology_imports_apply"],
+        &["ontology_imports_apply", "ontology_imports_runs_start"],
     ),
     (
         "binary: the request or the answer is not JSON",

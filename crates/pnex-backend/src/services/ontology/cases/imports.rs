@@ -68,123 +68,127 @@ pub async fn import(
     case_id: Uuid,
     input: &TrackImportInput,
 ) -> Result<TrackImportPreview> {
-    let m = membership(db, org_id, case_id).await?;
-    let object_id = Uuid::parse_str(&input.object_id).map_err(|_| OntologyError::NotFound)?;
-    if !m.member_ids().contains(&object_id) {
-        return Err(OntologyError::NotFound);
-    }
-    let obj = objects::find(db, org_id, object_id).await?;
-    // K38: a person's movements are personal data, as its attachment is.
-    guard_person(&m.case, &obj)?;
-    let format = Format::parse(&input.format).ok_or_else(|| invalid("format", FIELD_INVALID))?;
-    let file_name = input.file_name.trim();
-    if file_name.is_empty() {
-        return Err(invalid("file_name", FIELD_REQUIRED));
-    }
-    if file_name.len() > 255 {
-        return Err(invalid("file_name", "max_length:255"));
-    }
-    if input.content.len() > MAX_BYTES {
-        return Err(invalid("content", format!("max_length:{MAX_BYTES}")));
-    }
-    let tz: Option<Tz> = match input
-        .time_zone
-        .as_deref()
-        .map(str::trim)
-        .filter(|z| !z.is_empty())
-    {
-        Some(z) => Some(z.parse().map_err(|_| invalid("time_zone", FIELD_INVALID))?),
-        None => None,
-    };
-    let sha256 = format!("{:x}", Sha256::digest(input.content.as_bytes()));
-    let parsed = track_import::parse(format, &input.content)
-        .map_err(|_| OntologyError::TrackImport(TRACK_IMPORT_UNREADABLE))?;
-    let needs_time_zone = parsed.needs_time_zone();
-    let (points, rejected) = match parsed.resolve(tz) {
-        Ok(r) => r,
-        Err(ImportError::TimezoneRequired) if input.dry_run => {
-            return Ok(TrackImportPreview {
-                needs_time_zone: true,
-                sha256,
-                ..Default::default()
-            })
+    crate::services::ontology::changes::deferred(async {
+        let m = membership(db, org_id, case_id).await?;
+        let object_id = Uuid::parse_str(&input.object_id).map_err(|_| OntologyError::NotFound)?;
+        if !m.member_ids().contains(&object_id) {
+            return Err(OntologyError::NotFound);
         }
-        Err(ImportError::TimezoneRequired) => {
-            return Err(OntologyError::TrackImport(TRACK_IMPORT_TIMEZONE_REQUIRED))
+        let obj = objects::find(db, org_id, object_id).await?;
+        // K38: a person's movements are personal data, as its attachment is.
+        guard_person(&m.case, &obj)?;
+        let format = Format::parse(&input.format).ok_or_else(|| invalid("format", FIELD_INVALID))?;
+        let file_name = input.file_name.trim();
+        if file_name.is_empty() {
+            return Err(invalid("file_name", FIELD_REQUIRED));
         }
-        Err(ImportError::Unreadable) => {
-            return Err(OntologyError::TrackImport(TRACK_IMPORT_UNREADABLE))
+        if file_name.len() > 255 {
+            return Err(invalid("file_name", "max_length:255"));
         }
-    };
-    if points.len() > MAX_POINTS {
-        return Err(invalid("content", format!("max_points:{MAX_POINTS}")));
-    }
-    let mut preview = TrackImportPreview {
-        points: points.len(),
-        rejected_count: rejected.len(),
-        rejected: rejected.iter().take(REJECTED_SHOWN).copied().collect(),
-        t_start: points.first().map(|p| ms_ts(p.t_ms)),
-        t_end: points.last().map(|p| ms_ts(p.t_ms)),
-        needs_time_zone,
-        sha256: sha256.clone(),
-        import: None,
-    };
-    if input.dry_run {
-        return Ok(preview);
-    }
-    let (Some(first), Some(last)) = (points.first(), points.last()) else {
-        return Err(OntologyError::TrackImport(TRACK_IMPORT_EMPTY));
-    };
-    let object = links::object_ref(&obj);
-    // Same file onto the same member: the existing import.
-    if let Some(r) = db
-        .query_one_raw(Statement::from_sql_and_values(
+        if input.content.len() > MAX_BYTES {
+            return Err(invalid("content", format!("max_length:{MAX_BYTES}")));
+        }
+        let tz: Option<Tz> = match input
+            .time_zone
+            .as_deref()
+            .map(str::trim)
+            .filter(|z| !z.is_empty())
+        {
+            Some(z) => Some(z.parse().map_err(|_| invalid("time_zone", FIELD_INVALID))?),
+            None => None,
+        };
+        let sha256 = format!("{:x}", Sha256::digest(input.content.as_bytes()));
+        let parsed = track_import::parse(format, &input.content)
+            .map_err(|_| OntologyError::TrackImport(TRACK_IMPORT_UNREADABLE))?;
+        let needs_time_zone = parsed.needs_time_zone();
+        let (points, rejected) = match parsed.resolve(tz) {
+            Ok(r) => r,
+            Err(ImportError::TimezoneRequired) if input.dry_run => {
+                return Ok(TrackImportPreview {
+                    needs_time_zone: true,
+                    sha256,
+                    ..Default::default()
+                })
+            }
+            Err(ImportError::TimezoneRequired) => {
+                return Err(OntologyError::TrackImport(TRACK_IMPORT_TIMEZONE_REQUIRED))
+            }
+            Err(ImportError::Unreadable) => {
+                return Err(OntologyError::TrackImport(TRACK_IMPORT_UNREADABLE))
+            }
+        };
+        if points.len() > MAX_POINTS {
+            return Err(invalid("content", format!("max_points:{MAX_POINTS}")));
+        }
+        let mut preview = TrackImportPreview {
+            points: points.len(),
+            rejected_count: rejected.len(),
+            rejected: rejected.iter().take(REJECTED_SHOWN).copied().collect(),
+            t_start: points.first().map(|p| ms_ts(p.t_ms)),
+            t_end: points.last().map(|p| ms_ts(p.t_ms)),
+            needs_time_zone,
+            sha256: sha256.clone(),
+            import: None,
+        };
+        if input.dry_run {
+            return Ok(preview);
+        }
+        let (Some(first), Some(last)) = (points.first(), points.last()) else {
+            return Err(OntologyError::TrackImport(TRACK_IMPORT_EMPTY));
+        };
+        let object = links::object_ref(&obj);
+        // Same file onto the same member: the existing import.
+        if let Some(r) = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!("SELECT {COLUMNS} FROM track_imports WHERE org_id = $1 AND object_id = $2 AND sha256 = $3"),
+                [org_id.into(), object_id.into(), sha256.clone().into()],
+            ))
+            .await?
+        {
+            preview.import = row_of(&r, object);
+            return Ok(preview);
+        }
+        let id = Uuid::new_v4();
+        let txn = db.begin().await?;
+        txn.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            format!("SELECT {COLUMNS} FROM track_imports WHERE org_id = $1 AND object_id = $2 AND sha256 = $3"),
-            [org_id.into(), object_id.into(), sha256.clone().into()],
+            "INSERT INTO track_imports (id, org_id, object_id, file_name, format, sha256, time_zone, \
+               point_count, rejected_count, t_start, t_end, imported_by) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10 / 1000.0), to_timestamp($11 / 1000.0), $12)",
+            [
+                id.into(),
+                org_id.into(),
+                object_id.into(),
+                file_name.into(),
+                input.format.clone().into(),
+                sha256.into(),
+                tz.map(|z| z.name().to_string()).into(),
+                (points.len() as i32).into(),
+                (rejected.len() as i32).into(),
+                first.t_ms.into(),
+                last.t_ms.into(),
+                actor.user_id.into(),
+            ],
         ))
-        .await?
-    {
+        .await?;
+        for chunk in points.chunks(CHUNK) {
+            insert_points(&txn, id, chunk).await?;
+        }
+        txn.commit().await?;
+            crate::services::ontology::changes::flush();
+        let r = db
+            .query_one_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!("SELECT {COLUMNS} FROM track_imports WHERE id = $1"),
+                [id.into()],
+            ))
+            .await?
+            .ok_or(OntologyError::NotFound)?;
         preview.import = row_of(&r, object);
-        return Ok(preview);
-    }
-    let id = Uuid::new_v4();
-    let txn = db.begin().await?;
-    txn.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "INSERT INTO track_imports (id, org_id, object_id, file_name, format, sha256, time_zone, \
-           point_count, rejected_count, t_start, t_end, imported_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, to_timestamp($10 / 1000.0), to_timestamp($11 / 1000.0), $12)",
-        [
-            id.into(),
-            org_id.into(),
-            object_id.into(),
-            file_name.into(),
-            input.format.clone().into(),
-            sha256.into(),
-            tz.map(|z| z.name().to_string()).into(),
-            (points.len() as i32).into(),
-            (rejected.len() as i32).into(),
-            first.t_ms.into(),
-            last.t_ms.into(),
-            actor.user_id.into(),
-        ],
-    ))
-    .await?;
-    for chunk in points.chunks(CHUNK) {
-        insert_points(&txn, id, chunk).await?;
-    }
-    txn.commit().await?;
-    let r = db
-        .query_one_raw(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            format!("SELECT {COLUMNS} FROM track_imports WHERE id = $1"),
-            [id.into()],
-        ))
-        .await?
-        .ok_or(OntologyError::NotFound)?;
-    preview.import = row_of(&r, object);
-    Ok(preview)
+        Ok(preview)
+    })
+    .await
 }
 
 /// One multi-row insert through arrays (a missing altitude travels as NaN).

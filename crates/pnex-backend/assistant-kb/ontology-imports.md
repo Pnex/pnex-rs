@@ -3,8 +3,8 @@ id: ontology-imports
 title: Ontology imports — sheets, files and APIs into objects
 kind: feature
 pages: /ontology
-err_codes: import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, ontology-unique-duplicates, ontology-version-conflict
-tags: import, imports, excel, xlsx, csv, json, xml, zip, api, sync, synchronisation, synchronization, mapping, correspondance, column, colonne, preview, aperçu, snapshot, liste complète, schedule, calendrier, siren, siret, unique, clé naturelle, natural key, register, registre, recherche d'entreprises, réseau, partenaires, habilitation, hierarchy, hiérarchie
+err_codes: ingest-entry-missing, import-source-unreadable, import-source-too-large, import-source-unreachable, import-schema-changed, import-suspicious-drop, import-has-errors, import-run-stale, ontology-unique-duplicates, ontology-version-conflict
+tags: import, imports, excel, xlsx, csv, json, xml, zip, api, sync, synchronisation, synchronization, mapping, correspondance, column, colonne, preview, aperçu, snapshot, liste complète, schedule, calendrier, siren, siret, unique, clé naturelle, natural key, register, registre, recherche d'entreprises, réseau, partenaires, habilitation, hierarchy, hiérarchie, run now, lancer maintenant, steps, étapes, pipeline, data.gouv
 ---
 Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an address (CSV, XML, JSON, possibly zipped) or a JSON API into objects and links. Nothing is written before you have seen the preview and pressed **Apply**.
 
@@ -26,7 +26,12 @@ Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an ad
 ## Schedules (file at an address, API)
 - A schedule (every day, week or month) runs the import at night and applies it without preview.
 - It is **refused without writing anything** when the source changed shape (*import-schema-changed*: missing columns, or no record while the last run had some) or, in *Full list* mode, when it lost more than 30 % of its records (*import-suspicious-drop*). You get an in-app notice; the history keeps every run with its counters.
-- *import-source-unreachable*: the address cannot be reached (refused internal address, network, server error). *import-source-unreadable*: the file is not in the expected format. *import-source-too-large*: over 200 MB once decompressed, 50,000 records or 500,000 objects (lists expanded) per run.
+- *import-source-unreachable*: the address cannot be reached (refused internal address, network, server error). *import-source-unreadable*: the file is not in the expected format. *import-source-too-large*: over 200 MB once decompressed, 250,000 records or 500,000 objects (lists expanded) per run.
+
+## Run now, and imports with their own steps
+- **Run now** (a writer, on an import that has something to fetch) starts a run at once, like a scheduled one: checked, then applied without preview, with the author's role. Follow it in **History**.
+- An import can carry its own **steps** in its YAML, under `steps:` (the same as the flow *Open-data ingestion* nodes: find the newest file of a data.gouv.fr dataset, download, extract an archive, inspect a table, filter rows). *Run now* runs them on the server, then applies the mapping to the file they leave. Large files are written in bulk: tens of thousands of rows take about a minute.
+- *ingest-entry-missing* on *Run now*: a sheet import has nothing to fetch; send its file with **Preview** instead, or give it steps.
 
 ## Hierarchy
 Objects of a pack with hierarchies (for example *French companies*: group › subsidiaries › establishments, and officers) have a **Hierarchy** tab: a tree computed on the links, at a date. A person who directs several companies appears under each one, marked "also under …".

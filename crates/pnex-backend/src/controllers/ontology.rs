@@ -568,12 +568,13 @@ async fn create_object(
     org: OrgContext,
     Json(input): Json<ObjectInput>,
 ) -> Result<Response> {
-    let r: onto::Result<_> = async {
+    let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let v = objects::create(&txn, org.org.id, &actor(&org), &input).await?;
         txn.commit().await?;
+        changes::flush();
         Ok(v)
-    }
+    })
     .await;
     created(r)
 }
@@ -711,12 +712,13 @@ async fn archive_object(
     Path(id): Path<String>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    let r: onto::Result<()> = async {
+    let r: onto::Result<()> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         objects::archive(&txn, org.org.id, &actor(&org), id).await?;
         txn.commit().await?;
+        changes::flush();
         Ok(())
-    }
+    })
     .await;
     match r {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
@@ -910,6 +912,27 @@ async fn object_impact(
     )
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects/{id}/pages",
+    tag = "ontology",
+    summary = "Create a page from a template, filled from an object",
+    params(("id" = String, Path, format = "uuid", description = "Object id")),
+    responses(
+        (status = 201, body = pnex_core::pages::DocSummary),
+        (status = 400, description = "Unknown template for this type, or title too long (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 403, description = "`access-denied`, or `ontology-write-forbidden` by the type's write role", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+) -> Result<Response> {
+    let id = parse_uuid(&id)?;
+}
+
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 struct PathQuery {
@@ -917,6 +940,8 @@ struct PathQuery {
     from: Option<String>,
     /// End object id (UUID).
     to: Option<String>,
+    /// Link type keys the path may follow, comma-separated (at most 20);
+    /// people: `knows,recommande,employs,dirige,member_of`.
 }
 
 #[utoipa::path(
@@ -943,6 +968,17 @@ async fn path(
     let (Some(from), Some(to)) = (q.from, q.to) else {
         return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED));
     };
+    let links: Vec<String> = q
+        .links
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect();
+        return onto_error(onto::invalid("links", err_codes::FIELD_INVALID));
+    }
     reply(
         graph::path(
             &ctx.db,
@@ -1121,12 +1157,13 @@ async fn create_link(
     org: OrgContext,
     Json(input): Json<LinkInput>,
 ) -> Result<Response> {
-    let r: onto::Result<_> = async {
+    let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let v = links::create(&txn, org.org.id, &actor(&org), &input).await?;
         txn.commit().await?;
+        changes::flush();
         Ok(v)
-    }
+    })
     .await;
     created(r)
 }
@@ -1154,12 +1191,13 @@ async fn update_link(
     Path(id): Path<i64>,
     Json(input): Json<LinkUpdate>,
 ) -> Result<Response> {
-    let r: onto::Result<_> = async {
+    let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let v = links::update(&txn, org.org.id, &actor(&org), id, &input.attributes).await?;
         txn.commit().await?;
+        changes::flush();
         Ok(v)
-    }
+    })
     .await;
     reply(r)
 }
@@ -1197,12 +1235,13 @@ async fn close_link(
         }
     };
     let valid_to = body.valid_to;
-    let r: onto::Result<_> = async {
+    let r: onto::Result<_> = changes::deferred(async {
         let txn = ctx.db.begin().await?;
         let v = links::close(&txn, org.org.id, &actor(&org), id, valid_to.as_deref()).await?;
         txn.commit().await?;
+        changes::flush();
         Ok(v)
-    }
+    })
     .await;
     reply(r)
 }

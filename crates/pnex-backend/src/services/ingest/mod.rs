@@ -11,6 +11,7 @@ mod archive;
 mod download;
 mod filter;
 mod import;
+pub mod pipeline;
 mod resolve;
 mod table;
 

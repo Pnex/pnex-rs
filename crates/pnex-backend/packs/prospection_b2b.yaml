@@ -108,3 +108,4 @@ hierarchies:
       - { link: filiale_de, inverse: true }
       - { link: owns }
       - { link: etablissement_de, inverse: true }
+    steps:

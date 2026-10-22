@@ -15,10 +15,14 @@ use super::schema::{check_values, valid_key, PropertyDef};
 use super::{localized, LinkTypeDef, Names, ObjectTypeDef, PropertyKind};
 use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH, FIELD_REQUIRED};
 
-/// Rows of one run.
-pub const ROWS_MAX: usize = 50_000;
+/// Rows of one run: 50,000 until the bulk write (data-pipelines.md D347),
+/// which applies FC networks of ~55k filtered rows in one go. Rows are
+/// held in memory, the 200 MB and `PLANNED_MAX` caps bound a run.
+pub const ROWS_MAX: usize = 250_000;
 /// Objects and links declared by one mapping.
 pub const ENTRIES_MAX: usize = 20;
+/// Pipeline steps of one import.
+pub const STEPS_MAX: usize = 10;
 /// Elements expanded by one `each` in one row (an RS sheet lists up to
 /// ~4,300 partners).
 pub const EACH_MAX: usize = 5_000;
@@ -424,6 +428,12 @@ pub struct Mapping {
     /// queried by identifier).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub per_object: Option<PerObject>,
+    /// Pipeline steps run by the server before the mapping (data-pipelines.md
+    /// D344): resolve, download, extract, inspect, filter; the records are
+    /// read from the file they leave staged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    pub steps: Vec<crate::ingest::IngestConfig>,
     #[serde(default)]
     pub objects: Vec<ObjectMap>,
     #[serde(default)]
@@ -520,6 +530,21 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
     }
     if m.rows.len() > PATH_MAX {
         return Err(ferr("rows", FIELD_INVALID));
+    }
+    if m.steps.len() > STEPS_MAX {
+        return Err(ferr("steps", format!("{FIELD_MAX_LENGTH}:{STEPS_MAX}")));
+    }
+    for (i, step) in m.steps.iter().enumerate() {
+        use crate::ingest::IngestStep;
+        // The import is the end of its pipeline; the staging is cleaned
+        // when the run ends.
+        let allowed = !matches!(
+            step.step,
+            IngestStep::OntologyImport | IngestStep::StagingCleanup
+        );
+        if !allowed || step.check_deployable().is_some() || m.per_object.is_some() {
+            return Err(ferr(format!("steps.{i}"), FIELD_INVALID));
+        }
     }
     if let Some(p) = &m.per_object {
         let known = s

@@ -307,6 +307,11 @@ pub async fn preview_import(
     .await
 }
 
+/// Starts a run now (steps, then application); answers it `running`.
+pub async fn start_import(id: &str) -> Result<ImportRunView, ApiError> {
+    client::request(Method::POST, &format!("{BASE}/imports/{id}/runs"), None).await
+}
+
 pub async fn apply_import(id: &str, input: &ImportApply) -> Result<ImportRunView, ApiError> {
     client::request(
         Method::POST,

@@ -149,70 +149,74 @@ pub async fn create(
     asset_id: Uuid,
     input: &AttributionInput,
 ) -> Result<Vec<SpeechAttribution>, AttributionError> {
-    if input.spans.is_empty()
-        || input.spans.len() > ATTRIBUTION_SPANS_MAX
-        || !input.spans.iter().all(span_ok)
-    {
-        return Err(AttributionError::Spans);
-    }
-    let txn = db.begin().await?;
-    check_asset(&txn, org_id, asset_id).await?;
-    if !is_person(&txn, org_id, input.object_id).await? {
-        return Err(AttributionError::NotPerson);
-    }
-    let mut spans = merge_spans(input.spans.clone());
-    // Confirmed spans of the same person touching the new ones join them.
-    let mine: Vec<(Uuid, i64, i64)> = Row::find_by_statement(stmt(
-        &format!(
-            "{SELECT} WHERE a.org_id = $1 AND a.media_asset_id = $2 AND a.object_id = $3
+    crate::services::ontology::changes::deferred(async {
+        if input.spans.is_empty()
+            || input.spans.len() > ATTRIBUTION_SPANS_MAX
+            || !input.spans.iter().all(span_ok)
+        {
+            return Err(AttributionError::Spans);
+        }
+        let txn = db.begin().await?;
+        check_asset(&txn, org_id, asset_id).await?;
+        if !is_person(&txn, org_id, input.object_id).await? {
+            return Err(AttributionError::NotPerson);
+        }
+        let mut spans = merge_spans(input.spans.clone());
+        // Confirmed spans of the same person touching the new ones join them.
+        let mine: Vec<(Uuid, i64, i64)> = Row::find_by_statement(stmt(
+            &format!(
+                "{SELECT} WHERE a.org_id = $1 AND a.media_asset_id = $2 AND a.object_id = $3
                AND a.status = 'confirmed'"
-        ),
-        vec![org_id.into(), asset_id.into(), input.object_id.into()],
-    ))
-    .all(&txn)
-    .await?
-    .into_iter()
-    .map(|r| (r.id, r.start_ms, r.end_ms))
-    .collect();
-    let touched: Vec<(Uuid, i64, i64)> = mine
-        .into_iter()
-        .filter(|(_, s, e)| spans.iter().any(|n| n.start_ms <= *e && *s <= n.end_ms))
-        .collect();
-    spans.extend(touched.iter().map(|(_, s, e)| MediaSpan {
-        start_ms: *s,
-        end_ms: *e,
-    }));
-    let spans = merge_spans(spans);
-    for (id, _, _) in &touched {
-        txn.execute_raw(stmt(
-            "DELETE FROM speech_attributions WHERE id = $1",
-            vec![(*id).into()],
+            ),
+            vec![org_id.into(), asset_id.into(), input.object_id.into()],
         ))
-        .await?;
-    }
-    for s in &spans {
-        txn.execute_raw(stmt(
-            "INSERT INTO speech_attributions (id, org_id, media_asset_id, object_id, start_ms,
+        .all(&txn)
+        .await?
+        .into_iter()
+        .map(|r| (r.id, r.start_ms, r.end_ms))
+        .collect();
+        let touched: Vec<(Uuid, i64, i64)> = mine
+            .into_iter()
+            .filter(|(_, s, e)| spans.iter().any(|n| n.start_ms <= *e && *s <= n.end_ms))
+            .collect();
+        spans.extend(touched.iter().map(|(_, s, e)| MediaSpan {
+            start_ms: *s,
+            end_ms: *e,
+        }));
+        let spans = merge_spans(spans);
+        for (id, _, _) in &touched {
+            txn.execute_raw(stmt(
+                "DELETE FROM speech_attributions WHERE id = $1",
+                vec![(*id).into()],
+            ))
+            .await?;
+        }
+        for s in &spans {
+            txn.execute_raw(stmt(
+                "INSERT INTO speech_attributions (id, org_id, media_asset_id, object_id, start_ms,
                 end_ms, origin, status, created_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            vec![
-                Uuid::new_v4().into(),
-                org_id.into(),
-                asset_id.into(),
-                input.object_id.into(),
-                s.start_ms.into(),
-                s.end_ms.into(),
-                AttributionOrigin::Manual.wire().into(),
-                AttributionStatus::Confirmed.wire().into(),
-                actor.user_id.into(),
-            ],
-        ))
-        .await?;
-    }
-    sync_appearance(&txn, org_id, actor, asset_id, input.object_id).await?;
-    let out = list(&txn, org_id, asset_id).await?;
-    txn.commit().await?;
-    Ok(out)
+                vec![
+                    Uuid::new_v4().into(),
+                    org_id.into(),
+                    asset_id.into(),
+                    input.object_id.into(),
+                    s.start_ms.into(),
+                    s.end_ms.into(),
+                    AttributionOrigin::Manual.wire().into(),
+                    AttributionStatus::Confirmed.wire().into(),
+                    actor.user_id.into(),
+                ],
+            ))
+            .await?;
+        }
+        sync_appearance(&txn, org_id, actor, asset_id, input.object_id).await?;
+        let out = list(&txn, org_id, asset_id).await?;
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        Ok(out)
+    })
+    .await
 }
 
 /// Confirms, rejects or moves an attribution written at `expected_version`.
@@ -368,28 +372,30 @@ pub async fn propose_voices(
     segments: &[pnex_core::media_review::ReviewSegment],
     matches: &[crate::services::voice_id::media::SpeakerMatch],
 ) -> Result<usize, AttributionError> {
-    let txn = db.begin().await?;
-    txn.execute_raw(stmt(
-        "DELETE FROM speech_attributions
+    crate::services::ontology::changes::deferred(async {
+        let txn = db.begin().await?;
+        txn.execute_raw(stmt(
+            "DELETE FROM speech_attributions
          WHERE org_id = $1 AND media_asset_id = $2 AND origin = 'voice' AND status = 'proposed'",
-        vec![org_id.into(), asset_id.into()],
-    ))
-    .await?;
-    let existing = list(&txn, org_id, asset_id).await?;
-    let mut count = 0;
-    for m in matches {
-        for span in pnex_core::media_review::label_spans(segments, &m.label) {
-            let overlaps =
-                |a: &SpeechAttribution| a.start_ms < span.end_ms && span.start_ms < a.end_ms;
-            let decided = existing.iter().any(|a| {
-                overlaps(a)
-                    && (a.status == AttributionStatus::Confirmed
-                        || (a.status == AttributionStatus::Rejected && a.object_id == m.object_id))
-            });
-            if decided || !span_ok(&span) {
-                continue;
-            }
-            txn.execute_raw(stmt(
+            vec![org_id.into(), asset_id.into()],
+        ))
+        .await?;
+        let existing = list(&txn, org_id, asset_id).await?;
+        let mut count = 0;
+        for m in matches {
+            for span in pnex_core::media_review::label_spans(segments, &m.label) {
+                let overlaps =
+                    |a: &SpeechAttribution| a.start_ms < span.end_ms && span.start_ms < a.end_ms;
+                let decided = existing.iter().any(|a| {
+                    overlaps(a)
+                        && (a.status == AttributionStatus::Confirmed
+                            || (a.status == AttributionStatus::Rejected
+                                && a.object_id == m.object_id))
+                });
+                if decided || !span_ok(&span) {
+                    continue;
+                }
+                txn.execute_raw(stmt(
                 "INSERT INTO speech_attributions (id, org_id, media_asset_id, object_id, start_ms,
                     end_ms, origin, confidence, status)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
@@ -406,11 +412,14 @@ pub async fn propose_voices(
                 ],
             ))
             .await?;
-            count += 1;
+                count += 1;
+            }
         }
-    }
-    txn.commit().await?;
-    Ok(count)
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        Ok(count)
+    })
+    .await
 }
 
 /// Persons expected in a media (D274): those appearing in it, its

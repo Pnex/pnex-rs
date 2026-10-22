@@ -354,61 +354,66 @@ pub async fn retain(
     id: Uuid,
     input: &ProposalRetain,
 ) -> Result<CaseWorkspace> {
-    let txn = db.begin().await?;
-    let (p, refs) = locked(&txn, org_id, case_id, id).await?;
-    match p.status.as_str() {
-        "retained" => {
-            txn.commit().await?;
-            return workspace(db, org_id, case_id).await;
+    crate::services::ontology::changes::deferred(async {
+        let txn = db.begin().await?;
+        let (p, refs) = locked(&txn, org_id, case_id, id).await?;
+        match p.status.as_str() {
+            "retained" => {
+                txn.commit().await?;
+                crate::services::ontology::changes::flush();
+                return workspace(db, org_id, case_id).await;
+            }
+            "rejected" => return Err(OntologyError::CaseProposalStale),
+            _ => {}
         }
-        "rejected" => return Err(OntologyError::CaseProposalStale),
-        _ => {}
-    }
-    let mut props = Map::new();
-    props.insert(
-        EVENT_NOTE.into(),
-        format!("{} {}", p.detector, p.params).into(),
-    );
-    if let Some([lon, lat]) = p.payload.get("at").and_then(|a| {
-        let a = a.as_array()?;
-        Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?])
-    }) {
-        props.insert(EVENT_LOCATION.into(), json!({ "lon": lon, "lat": lat }));
-    }
-    // Tracked members act; the area of a visit is context.
-    let types = links::refs(&txn, org_id, refs.iter().copied()).await?;
-    let event = CaseEventInput {
-        title: input.title.clone(),
-        occurred: occurred(&p),
-        origin: Some("detection".into()),
-        attach: refs
-            .iter()
-            .map(|r| {
-                let place = types
-                    .get(r)
-                    .is_some_and(|o| o.type_key == KIND_MAP_PIN || o.type_key == T_PLACE);
-                CaseAttachInput {
-                    object_id: r.to_string(),
-                    role: Some(if place { "context" } else { "actor" }.into()),
-                    ..Default::default()
-                }
-            })
-            .collect(),
-    };
-    let by = Actor {
-        source_ref: format!("detector:{}", p.detector),
-        ..actor.clone()
-    };
-    let event_id = create_event_in(&txn, org_id, &by, case_id, &event, props).await?;
-    txn.execute_raw(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE case_proposals SET status = 'retained', event_id = $1, reviewed_by = $2, \
+        let mut props = Map::new();
+        props.insert(
+            EVENT_NOTE.into(),
+            format!("{} {}", p.detector, p.params).into(),
+        );
+        if let Some([lon, lat]) = p.payload.get("at").and_then(|a| {
+            let a = a.as_array()?;
+            Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?])
+        }) {
+            props.insert(EVENT_LOCATION.into(), json!({ "lon": lon, "lat": lat }));
+        }
+        // Tracked members act; the area of a visit is context.
+        let types = links::refs(&txn, org_id, refs.iter().copied()).await?;
+        let event = CaseEventInput {
+            title: input.title.clone(),
+            occurred: occurred(&p),
+            origin: Some("detection".into()),
+            attach: refs
+                .iter()
+                .map(|r| {
+                    let place = types
+                        .get(r)
+                        .is_some_and(|o| o.type_key == KIND_MAP_PIN || o.type_key == T_PLACE);
+                    CaseAttachInput {
+                        object_id: r.to_string(),
+                        role: Some(if place { "context" } else { "actor" }.into()),
+                        ..Default::default()
+                    }
+                })
+                .collect(),
+        };
+        let by = Actor {
+            source_ref: format!("detector:{}", p.detector),
+            ..actor.clone()
+        };
+        let event_id = create_event_in(&txn, org_id, &by, case_id, &event, props).await?;
+        txn.execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE case_proposals SET status = 'retained', event_id = $1, reviewed_by = $2, \
          reviewed_at = now() WHERE id = $3",
-        [event_id.into(), actor.user_id.into(), id.into()],
-    ))
-    .await?;
-    txn.commit().await?;
-    workspace(db, org_id, case_id).await
+            [event_id.into(), actor.user_id.into(), id.into()],
+        ))
+        .await?;
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        workspace(db, org_id, case_id).await
+    })
+    .await
 }
 
 /// Rejects a proposal, kept with its reason so it is never proposed again.
@@ -421,29 +426,33 @@ pub async fn reject(
     id: Uuid,
     input: &ProposalReject,
 ) -> Result<Vec<CaseProposal>> {
-    let txn = db.begin().await?;
-    let (p, _) = locked(&txn, org_id, case_id, id).await?;
-    match p.status.as_str() {
-        "retained" => return Err(OntologyError::CaseProposalStale),
-        "rejected" => {}
-        _ => {
-            let reason: Option<String> = input
-                .reason
-                .as_deref()
-                .map(str::trim)
-                .filter(|r| !r.is_empty())
-                .map(|r| r.chars().take(REASON_MAX).collect());
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "UPDATE case_proposals SET status = 'rejected', reject_reason = $1, \
+    crate::services::ontology::changes::deferred(async {
+        let txn = db.begin().await?;
+        let (p, _) = locked(&txn, org_id, case_id, id).await?;
+        match p.status.as_str() {
+            "retained" => return Err(OntologyError::CaseProposalStale),
+            "rejected" => {}
+            _ => {
+                let reason: Option<String> = input
+                    .reason
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|r| !r.is_empty())
+                    .map(|r| r.chars().take(REASON_MAX).collect());
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "UPDATE case_proposals SET status = 'rejected', reject_reason = $1, \
                  reviewed_by = $2, reviewed_at = now() WHERE id = $3",
-                [reason.into(), actor.user_id.into(), id.into()],
-            ))
-            .await?;
+                    [reason.into(), actor.user_id.into(), id.into()],
+                ))
+                .await?;
+            }
         }
-    }
-    txn.commit().await?;
-    proposals(db, org_id, case_id).await
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        proposals(db, org_id, case_id).await
+    })
+    .await
 }
 
 #[cfg(test)]

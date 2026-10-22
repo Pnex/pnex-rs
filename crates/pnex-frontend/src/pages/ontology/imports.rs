@@ -110,8 +110,32 @@ pub fn ImportsTab(tabs: Element) -> Element {
             t!("common-actions").to_string(),
             move |i: &ObjectImportView| {
                 let (a, b, c, d) = (i.clone(), i.clone(), i.clone(), i.clone());
+                // Something to fetch: a URL or API source, or its own steps.
+                let runnable = i.source != ImportSource::File
+                    || i.mapping.lines().any(|l| l.starts_with("steps:"));
+                let id = i.id.clone();
                 rsx! {
                     div { class: "flex flex-wrap gap-2",
+                        if can_write && runnable {
+                            button {
+                                class: BTN_SECONDARY_SM,
+                                "data-testid": "onto-imp-run-now",
+                                onclick: move |_| {
+                                    let id = id.clone();
+                                    let mut reload = reload;
+                                    spawn(async move {
+                                        match api::ontology::start_import(&id).await {
+                                            Ok(_) => {
+                                                toasts::success(t!("onto-imp-run-started"));
+                                                reload.with_mut(|r| *r += 1);
+                                            }
+                                            Err(e) => toasts::error(e),
+                                        }
+                                    });
+                                },
+                                {t!("onto-imp-run-now")}
+                            }
+                        }
                         if can_write {
                             button {
                                 class: BTN_SECONDARY_SM,

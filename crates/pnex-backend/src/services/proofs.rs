@@ -401,89 +401,93 @@ async fn seal(
     proof: &ProofRow,
     parts: &serde_json::Map<String, Value>,
 ) -> Result<(), ExtensionError> {
-    let txn = ctx.db.begin().await?;
-    txn.execute_raw(stmt(
-        "SELECT pg_advisory_xact_lock(hashtext('web-proofs'), $1::int)",
-        vec![((agent.org_id % i64::from(i32::MAX)) as i32).into()],
-    ))
-    .await?;
-    let prev = txn
-        .query_one_raw(stmt(
-            "SELECT seq, manifest_sha256 FROM web_proofs WHERE org_id = $1 AND state = 'sealed' \
-             ORDER BY seq DESC LIMIT 1",
-            vec![agent.org_id.into()],
-        ))
-        .await?;
-    let (seq, prev_sha) = match prev {
-        Some(r) => (
-            r.try_get::<i64>("", "seq").unwrap_or(0) + 1,
-            r.try_get::<Option<String>>("", "manifest_sha256")
-                .ok()
-                .flatten(),
-        ),
-        None => (1, None),
-    };
-    let captured_at = chrono::Utc::now();
-    let part_of = |p: ProofPart| parts.get(p.wire()).cloned().unwrap_or(Value::Null);
-    let manifest = json!({
-        "version": 1,
-        "org": agent.org_id,
-        "proof_id": proof.id.to_string(),
-        "seq": seq,
-        "requested_url": proof.url,
-        "final_url": parts.get("final_url").cloned().unwrap_or(Value::Null),
-        "agent": agent.device_id,
-        "mission_id": mission_id.to_string(),
-        "captured_at": captured_at.to_rfc3339(),
-        "parts": {
-            "screenshot": part_of(ProofPart::Screenshot),
-            "html": part_of(ProofPart::Html),
-            "text": part_of(ProofPart::Text),
-        },
-        "prev_manifest_sha256": prev_sha,
-    });
-    let sha = sha256_hex(&manifest_bytes(&manifest));
-    txn.execute_raw(stmt(
-        "UPDATE web_proofs SET state = 'sealed', seq = $2, manifest = $3, manifest_sha256 = $4, \
-           prev_sha256 = $5, captured_at = $6 WHERE id = $1",
-        vec![
-            proof.id.into(),
-            seq.into(),
-            manifest.into(),
-            sha.clone().into(),
-            prev_sha.into(),
-            DateTimeWithTimeZone::from(captured_at).into(),
-        ],
-    ))
-    .await?;
-    // The page is captured as it was read; the task is done.
-    if let Some(page) = proof.site_page_id {
+    crate::services::ontology::changes::deferred(async {
+        let txn = ctx.db.begin().await?;
         txn.execute_raw(stmt(
-            "UPDATE site_pages SET state = CASE WHEN state = 'gone' THEN state ELSE 'captured' END, \
-               captured_hash = text_hash, last_proof_id = $2 WHERE id = $1",
-            vec![page.into(), proof.id.into()],
+            "SELECT pg_advisory_xact_lock(hashtext('web-proofs'), $1::int)",
+            vec![((agent.org_id % i64::from(i32::MAX)) as i32).into()],
         ))
         .await?;
-    }
-    txn.execute_raw(stmt(
-        "UPDATE extension_missions SET enabled = false, state = 'idle', state_code = NULL \
-         WHERE id = $1",
-        vec![mission_id.into()],
-    ))
-    .await?;
-    txn.commit().await?;
-    if let Some(page) = proof.site_page_id {
-        link_parts(
-            &ctx.db,
-            agent.org_id,
-            page,
-            parts,
-            &captured_at.to_rfc3339(),
-            &sha,
-        )
-        .await;
-    }
-    Ok(())
+        let prev = txn
+            .query_one_raw(stmt(
+                "SELECT seq, manifest_sha256 FROM web_proofs WHERE org_id = $1 AND state = 'sealed' \
+                 ORDER BY seq DESC LIMIT 1",
+                vec![agent.org_id.into()],
+            ))
+            .await?;
+        let (seq, prev_sha) = match prev {
+            Some(r) => (
+                r.try_get::<i64>("", "seq").unwrap_or(0) + 1,
+                r.try_get::<Option<String>>("", "manifest_sha256")
+                    .ok()
+                    .flatten(),
+            ),
+            None => (1, None),
+        };
+        let captured_at = chrono::Utc::now();
+        let part_of = |p: ProofPart| parts.get(p.wire()).cloned().unwrap_or(Value::Null);
+        let manifest = json!({
+            "version": 1,
+            "org": agent.org_id,
+            "proof_id": proof.id.to_string(),
+            "seq": seq,
+            "requested_url": proof.url,
+            "final_url": parts.get("final_url").cloned().unwrap_or(Value::Null),
+            "agent": agent.device_id,
+            "mission_id": mission_id.to_string(),
+            "captured_at": captured_at.to_rfc3339(),
+            "parts": {
+                "screenshot": part_of(ProofPart::Screenshot),
+                "html": part_of(ProofPart::Html),
+                "text": part_of(ProofPart::Text),
+            },
+            "prev_manifest_sha256": prev_sha,
+        });
+        let sha = sha256_hex(&manifest_bytes(&manifest));
+        txn.execute_raw(stmt(
+            "UPDATE web_proofs SET state = 'sealed', seq = $2, manifest = $3, manifest_sha256 = $4, \
+               prev_sha256 = $5, captured_at = $6 WHERE id = $1",
+            vec![
+                proof.id.into(),
+                seq.into(),
+                manifest.into(),
+                sha.clone().into(),
+                prev_sha.into(),
+                DateTimeWithTimeZone::from(captured_at).into(),
+            ],
+        ))
+        .await?;
+        // The page is captured as it was read; the task is done.
+        if let Some(page) = proof.site_page_id {
+            txn.execute_raw(stmt(
+                "UPDATE site_pages SET state = CASE WHEN state = 'gone' THEN state ELSE 'captured' END, \
+                   captured_hash = text_hash, last_proof_id = $2 WHERE id = $1",
+                vec![page.into(), proof.id.into()],
+            ))
+            .await?;
+        }
+        txn.execute_raw(stmt(
+            "UPDATE extension_missions SET enabled = false, state = 'idle', state_code = NULL \
+             WHERE id = $1",
+            vec![mission_id.into()],
+        ))
+        .await?;
+        txn.commit().await?;
+            crate::services::ontology::changes::flush();
+        if let Some(page) = proof.site_page_id {
+            link_parts(
+                &ctx.db,
+                agent.org_id,
+                page,
+                parts,
+                &captured_at.to_rfc3339(),
+                &sha,
+            )
+            .await;
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// The crawl's `record.proof_link`: page object → each part's media.
