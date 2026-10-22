@@ -108,6 +108,7 @@ pub(super) async fn start_analyses(
         &input.locale,
         input.confirm_large,
         input.voice_scope,
+        &input.focus,
     )
     .await
     {

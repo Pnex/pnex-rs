@@ -20656,6 +20656,8 @@
             "description": "The user accepted a step over [`LARGE_CALLS`] calls.",
             "type": "boolean"
           },
+          "focus": {
+            "description": "What the summary must bring out, written by the user (a sales\nmeeting: objections, next steps, decision criteria); empty = a\ngeneral summary. At most [`FOCUS_MAX`] characters.",
             "type": "string"
           },
           "locale": {

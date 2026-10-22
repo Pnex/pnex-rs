@@ -95,6 +95,8 @@ pub(super) fn AnalysesCard(asset_id: String, can_write: bool) -> Element {
     let mut busy = use_signal(|| false);
     // Steps waiting for the large-file confirmation, with the estimate.
     let mut pending_large = use_signal(|| None::<(Vec<AnalysisStep>, u32)>);
+    // What the summary must bring out (a sales meeting: objections…).
+    let mut focus = use_signal(String::new);
     let id_for_poll = asset_id.clone();
     // Loads once, then refetches while a step is in flight. No reactive
     // read in the loop (peek): a refetch must not restart it.
@@ -128,6 +130,7 @@ pub(super) fn AnalysesCard(asset_id: String, can_write: bool) -> Element {
                 // shortcut: expected persons only (every profile when none);
                 // add the "every profile" choice when an org asks for it.
                 voice_scope: Default::default(),
+                focus: focus.peek().trim().to_string(),
             };
             match api::media::start_analyses(&id, &input).await {
                 Ok(next) => {
@@ -202,6 +205,19 @@ pub(super) fn AnalysesCard(asset_id: String, can_write: bool) -> Element {
                             let mut request = request.clone();
                             move |step: AnalysisStep| request(vec![step])
                         },
+                    }
+                }
+            }
+            if can_write && runnable.contains(&AnalysisStep::Summarize) {
+                label { class: "mt-2 block text-xs text-gray-600",
+                    {t!("media-analysis-focus")}
+                    textarea {
+                        class: "mt-1 w-full rounded-lg border border-gray-300 px-2 py-1 text-sm",
+                        rows: "2",
+                        maxlength: "{pnex_core::media_analysis::FOCUS_MAX}",
+                        placeholder: t!("media-analysis-focus-placeholder").to_string(),
+                        value: "{focus}",
+                        oninput: move |e| focus.set(e.value()),
                     }
                 }
             }
