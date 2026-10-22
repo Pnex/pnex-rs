@@ -553,6 +553,9 @@ pub struct NodeMark {
     pub value: String,
     /// One of the palette tokens (`green`, `amber`…).
     pub color: String,
+    /// Label of the value by language (D370), empty = the value itself.
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub labels: super::Names,
 }
 
 /// How many distinct nodes of the tree hold a coloured value.
@@ -562,6 +565,9 @@ pub struct MarkCount {
     pub property: String,
     pub value: String,
     pub color: String,
+    /// Label of the value by language (D370), empty = the value itself.
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub labels: super::Names,
     pub count: u32,
 }
 

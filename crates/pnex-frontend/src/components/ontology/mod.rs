@@ -293,6 +293,22 @@ pub fn enum_label(value: &str) -> String {
     }
 }
 
+/// Display form of an enum value of `def`: its label in the UI language
+/// (D370), else the value as words.
+pub fn value_label(def: &pnex_core::ontology::PropertyDef, value: &str) -> String {
+    def.label_of(value, &crate::i18n::current_tag())
+        .map(str::to_string)
+        .unwrap_or_else(|| enum_label(value))
+}
+
+/// Display form of a mark's value: its label, else the value as words.
+pub fn mark_label(value: &str, labels: &pnex_core::ontology::Names) -> String {
+    if labels.is_empty() {
+        return enum_label(value);
+    }
+    tr(&enum_label(value), labels)
+}
+
 /// Field errors of a `field-invalid` body.
 pub fn field_errors(
     e: &crate::api::error::ApiError,

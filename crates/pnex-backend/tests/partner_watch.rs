@@ -599,9 +599,23 @@ async fn presence_web_takes_websites_over() {
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
+        // D370: the org names and colours a value of a pack's enum.
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
+        let mut def = t["def"].clone();
+        for p in def["properties"].as_array_mut().unwrap() {
+            if p["key"] == "etat_collecte" {
+                p["labels"] = json!({"bloque": {"fr": "Bloqué par le site"}});
+                p["colors"] = json!({"bloque": "red"});
+            }
+        }
+        let (st, t2) = call(&server, "PUT", "/api/v1/ontology/types/site_web", &env.alice, org, Some(json!({"def": def, "expected_version": t["version"]}))).await;
+        assert_eq!(st, 200, "{t2}");
         env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'presence_web'")).await.unwrap();
         let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/presence_web/install", &env.alice, org, None).await;
         assert_eq!((st, up["kept"].clone()), (200, json!(["pw_lien"])), "the org's own version is named");
+        let (_, t3) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
+        let etat = t3["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == "etat_collecte").unwrap().clone();
+        assert_eq!((etat["labels"]["bloque"]["fr"].clone(), etat["colors"]["bloque"].clone()), (json!("Bloqué par le site"), json!("red")), "kept across the upgrade: {etat}");
         let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "presence_web").unwrap();
         let code_of = |name: &str| shipped.functions.iter().find(|f| f.name == name).unwrap().code.clone();
         let latest = |sql: String| {

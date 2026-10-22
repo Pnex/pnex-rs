@@ -13,7 +13,7 @@ use pnex_core::ontology::api::{
     LinkTypeInput, ObjectTypeInput, Pack, PackSettingView, PackSettingsInput, PackView,
     PageTemplate,
 };
-use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, TypeSet};
+use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, PropertyDef, TypeSet};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     QueryOrder, Set,
@@ -144,6 +144,155 @@ pub async fn org_settings(db: &DatabaseConnection, org_id: i64) -> Result<Map<St
         }
     }
     Ok(out)
+}
+
+/// The shipped definition of a property `pack` owns in `scope`
+/// (`type:<key>`, its extensions included, or `link:<key>`).
+fn shipped_property(pack: &Pack, scope: &str, prop: &str) -> Option<PropertyDef> {
+    let find = |props: &[PropertyDef]| props.iter().find(|p| p.key == prop).cloned();
+    if let Some(t) = scope.strip_prefix("type:") {
+        pack.types
+            .iter()
+            .find(|d| d.key == t)
+            .and_then(|d| find(&d.properties))
+            .or_else(|| {
+                pack.extends
+                    .iter()
+                    .find(|e| e.type_key == t)
+                    .and_then(|e| find(&e.properties))
+            })
+    } else {
+        let l = scope.strip_prefix("link:")?;
+        pack.link_types
+            .iter()
+            .find(|d| d.key == l)
+            .and_then(|d| find(&d.attributes))
+    }
+}
+
+/// What the org changed of a shipped enum property's labels and colours
+/// (D370): the entries that differ from the pack's, `None` when nothing.
+fn display_diff(org: &PropertyDef, pack: &PropertyDef) -> Option<Value> {
+    let labels: Map<String, Value> = org
+        .labels
+        .iter()
+        .filter(|(v, n)| pack.labels.get(*v) != Some(*n))
+        .map(|(v, n)| (v.clone(), serde_json::to_value(n).unwrap_or_default()))
+        .collect();
+    let colors: Map<String, Value> = org
+        .colors
+        .iter()
+        .filter(|(v, c)| pack.colors.get(*v) != Some(*c))
+        .map(|(v, c)| (v.clone(), Value::String(c.clone())))
+        .collect();
+    (!labels.is_empty() || !colors.is_empty())
+        .then(|| serde_json::json!({ "labels": labels, "colors": colors }))
+}
+
+/// Records in the owning pack's org layer the labels and colours the org
+/// set on the enum properties of `scope` (D370), so that an upgrade of the
+/// pack keeps them. Called by every write of a type or link type; a
+/// property no installed pack ships is the org's own and needs nothing.
+// shortcut: a pack colour the org removed comes back at the next upgrade;
+// store removals too if orgs ask to clear a pack's colours.
+pub async fn record_display(
+    db: &DatabaseConnection,
+    org_id: i64,
+    scope: &str,
+    owner: Option<&str>,
+    props: &[PropertyDef],
+) -> Result<()> {
+    let mut by_pack: std::collections::BTreeMap<String, Vec<&PropertyDef>> = Default::default();
+    for p in props {
+        if let Some(k) = p.pack.as_deref().or(owner) {
+            by_pack.entry(k.to_string()).or_default().push(p);
+        }
+    }
+    for (key, props) in by_pack {
+        let Some(pack) = shipped().into_iter().find(|p| p.key == key) else {
+            continue;
+        };
+        let row = db
+            .query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT display FROM packs WHERE org_id = $1 AND key = $2",
+                vec![org_id.into(), key.clone().into()],
+            ))
+            .await?;
+        let Some(mut layer) = row
+            .and_then(|r| r.try_get::<Value>("", "display").ok())
+            .map(|v| v.as_object().cloned().unwrap_or_default())
+        else {
+            continue;
+        };
+        let before = layer.clone();
+        for p in props {
+            let Some(shipped) = shipped_property(&pack, scope, &p.key) else {
+                continue;
+            };
+            let at = format!("{scope}/{}", p.key);
+            match display_diff(p, &shipped) {
+                Some(d) => layer.insert(at, d),
+                None => layer.remove(&at),
+            };
+        }
+        if layer != before {
+            db.execute_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "UPDATE packs SET display = $3, updated_at = now() WHERE org_id = $1 AND key = $2",
+                vec![org_id.into(), key.into(), Value::Object(layer).into()],
+            ))
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+/// The org's labels and colours laid over the pack's (D370); a value the
+/// pack no longer has is dropped.
+fn apply_display(layer: &Value, scope: &str, props: &mut [PropertyDef]) {
+    for p in props.iter_mut() {
+        let Some(d) = layer.get(format!("{scope}/{}", p.key)) else {
+            continue;
+        };
+        let pnex_core::ontology::PropertyKind::Enum { values } = &p.kind else {
+            continue;
+        };
+        let values = values.clone();
+        for (v, n) in d
+            .get("labels")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            if let (true, Ok(n)) = (values.contains(v), serde_json::from_value(n.clone())) {
+                p.labels.insert(v.clone(), n);
+            }
+        }
+        for (v, c) in d
+            .get("colors")
+            .and_then(Value::as_object)
+            .into_iter()
+            .flatten()
+        {
+            if let (true, Some(c)) = (values.contains(v), c.as_str()) {
+                p.colors.insert(v.clone(), c.to_string());
+            }
+        }
+    }
+}
+
+/// The org's display layer of `pack_key` (D370), `{}` when not installed.
+async fn display_layer(db: &DatabaseConnection, org_id: i64, pack_key: &str) -> Result<Value> {
+    Ok(db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT display FROM packs WHERE org_id = $1 AND key = $2",
+            vec![org_id.into(), pack_key.into()],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<Value>("", "display").ok())
+        .unwrap_or_else(|| serde_json::json!({})))
 }
 
 /// Sets the org's values for settings of an installed pack; `null` returns
@@ -324,6 +473,7 @@ async fn install_locked(
             return Err(OntologyError::KeyTaken);
         }
     }
+    let display = display_layer(db, org_id, &pack.key).await?;
     // Create the missing types first with an empty schema so that types of
     // the pack may reference each other, then write every definition.
     for t in &pack.types {
@@ -348,10 +498,11 @@ async fn install_locked(
             types::set_pack(db, org_id, &t.key, &pack.key).await?;
         }
         let current = types::get(db, org_id, &t.key).await?.version;
-        let def = match s.object_type(&t.key) {
+        let mut def = match s.object_type(&t.key) {
             Some(local) => keep_org_additions(t, local),
             None => t.clone(),
         };
+        apply_display(&display, &format!("type:{}", t.key), &mut def.properties);
         types::update(
             db,
             org_id,
@@ -422,8 +573,10 @@ async fn install_extensions(
         return Ok(());
     }
     let s = schema(db, org_id).await?;
+    let display = display_layer(db, org_id, &pack.key).await?;
     for (i, e) in pack.extends.iter().enumerate() {
-        let props = extended_properties(&s, pack, i)?;
+        let mut props = extended_properties(&s, pack, i)?;
+        apply_display(&display, &format!("type:{}", e.type_key), &mut props);
         let Some((target, version, _)) = s.types.iter().find(|(t, _, _)| t.key == e.type_key)
         else {
             return Err(invalid(format!("extends.{i}.type"), FIELD_INVALID));
@@ -759,12 +912,15 @@ async fn install_link(
             link_types::create(db, org_id, l, Some(pack_key)).await?;
         }
         Some((local, v, Some(pk))) if pk == pack_key || hands_over(pk, pack_key) => {
+            let mut def = keep_org_link_additions(l, local);
+            let display = display_layer(db, org_id, pack_key).await?;
+            apply_display(&display, &format!("link:{}", l.key), &mut def.attributes);
             link_types::update(
                 db,
                 org_id,
                 &l.key,
                 &LinkTypeInput {
-                    def: keep_org_link_additions(l, local),
+                    def,
                     expected_version: Some(*v),
                 },
             )

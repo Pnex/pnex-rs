@@ -223,6 +223,14 @@ pub async fn update(
     }
     insert_version(&txn, org_id, row.id, next, &input.def, user_id).await?;
     txn.commit().await?;
+    let owner = s
+        .types
+        .iter()
+        .find(|(d, _, _)| d.key == key)
+        .and_then(|(_, _, p)| p.clone());
+    let scope = format!("type:{key}");
+    super::packs::record_display(db, org_id, &scope, owner.as_deref(), &input.def.properties)
+        .await?;
     get(db, org_id, key).await
 }
 
@@ -276,6 +284,8 @@ async fn extend_system(
         }
     }
     txn.commit().await?;
+    let scope = format!("type:{}", def.key);
+    super::packs::record_display(db, org_id, &scope, None, &def.properties).await?;
     get(db, org_id, &def.key).await
 }
 

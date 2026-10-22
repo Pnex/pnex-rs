@@ -825,9 +825,31 @@ confiance, auteur machine.
     redéployer (D123). La réponse de l'installation nomme ce qui a été
     gardé (`kept`) et l'UI l'affiche après la mise à jour. Test :
     `partner_watch` presence_web.
+- **Livré, deuxième partie (2026-10-23)** : les **libellés et couleurs
+  des valeurs d'énumération** (D370).
+  - `PropertyDef.labels` : valeur → libellé par langue, à côté de
+    `colors` ; validés (valeurs connues seulement, 8 langues au plus). Sans
+    libellé, l'UI affiche la clé en mots.
+  - L'éditeur de type montre, pour chaque valeur, son libellé dans la
+    langue de l'interface et sa couleur (palette fermée).
+  - Couche de l'org = colonne `packs.display` (migration 000050) :
+    `{"type:<clé>/<propriété>" | "link:<clé>/<attribut>": {labels,
+    colors}}`. Chaque écriture d'un type ou d'un type de lien y enregistre
+    ce qui diffère de la définition livrée par le pack propriétaire de la
+    propriété (extensions D306 comprises) ; l'installation l'applique
+    par-dessus la nouvelle version. Une valeur que le pack retire perd son
+    libellé.
+  - Les pastilles de la hiérarchie portent le libellé (`labels` de
+    `NodeMark` / `MarkCount`).
+  - Test : `partner_watch` presence_web (libellé et couleur gardés à la
+    montée de version).
 - **Pas fait** :
-  - libellés et couleurs des valeurs d'énumération surchargés par l'org
-    (D370) ;
+  - une couleur du pack que l'org a retirée revient à la montée de
+    version (seuls les ajouts et changements sont gardés) ;
+  - les pages générées (`page_render`) écrivent encore la clé en mots, pas
+    le libellé ;
+  - l'éditeur de type de lien ne propose pas encore libellés et couleurs
+    (la couche les garde s'ils sont écrits par l'API) ;
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la
     nouvelle version du pack : l'org garde sa version (nommée après la
     mise à jour), sans moyen dans l'UI de prendre celle du pack ;

@@ -274,6 +274,7 @@ mod tests {
                 property: "statut_compte".into(),
                 value: "client".into(),
                 color: "green".into(),
+                labels: Default::default(),
             }],
             white_space: white,
         };
@@ -286,6 +287,7 @@ mod tests {
                 property: "statut_compte".into(),
                 value: "client".into(),
                 color: "green".into(),
+                labels: Default::default(),
                 count: 2,
             }],
             totals: vec![PropertyTotal {
