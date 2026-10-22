@@ -20,15 +20,19 @@ pub enum ProposalKind {
     LinkCreate,
     LinkUpdate,
     LinkClose,
+    /// An event of an investigation case, from a detector on the members'
+    /// tracks (P3): `target_id` is the case, `values.key` the detection.
+    CaseEvent,
 }
 
 impl ProposalKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::ObjectCreate,
         Self::ObjectUpdate,
         Self::LinkCreate,
         Self::LinkUpdate,
         Self::LinkClose,
+        Self::CaseEvent,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -38,6 +42,7 @@ impl ProposalKind {
             Self::LinkCreate => "link_create",
             Self::LinkUpdate => "link_update",
             Self::LinkClose => "link_close",
+            Self::CaseEvent => "case_event",
         }
     }
 
@@ -182,6 +187,16 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
             id(&p.source_id),
             id(&p.link_target_id)
         ),
+        // One detection of one case: never in competition with another.
+        ProposalKind::CaseEvent => format!(
+            "{}|{}|{}",
+            kind.as_str(),
+            id(&p.target_id),
+            p.values
+                .get("key")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        ),
     })
 }
 
@@ -189,6 +204,11 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
 /// into the fingerprint: a rejected fingerprint is never proposed again,
 /// another value is a new proposal.
 pub fn fingerprint_text(p: &ProposalInput) -> Option<String> {
+    // A detection is identified by its key (detector, members, start), not
+    // by its measures, which move with the window it was computed on.
+    if p.kind == Some(ProposalKind::CaseEvent) {
+        return slot(p);
+    }
     let mut values = p.values.clone();
     values.remove("source");
     Some(format!("{}|{}", slot(p)?, Value::Object(values)))

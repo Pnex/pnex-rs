@@ -450,7 +450,7 @@ async fn detect(
     tag = "cases",
     operation_id = "cases_proposals_list",
     summary = "List the detection proposals of a case",
-    description = "Every detection proposed to the case: still proposed, retained (with the event it became) or rejected (with the reason). Any org member.",
+    description = "Every detection proposed to the case: still proposed, retained (with the event it became) or rejected (with the reason). The same proposals are in the shared inbox (`GET /api/v1/proposals`, kind `case_event`). Any org member.",
     params(("id" = String, Path, format = "uuid", description = "Case object id (UUID)"), PageQuery),
     responses(
         (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::CaseProposal>),
