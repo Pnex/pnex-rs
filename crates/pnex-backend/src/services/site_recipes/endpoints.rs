@@ -591,6 +591,36 @@ async fn visit(tab: &Tab, url: &str) -> Result<(), String> {
     Err("the page did not load".into())
 }
 
+/// JPEG of `url` taken by the org's own default browser (never the
+/// platform one), requests guarded as in a run. `Err` = no capture.
+pub async fn capture(
+    db: &DatabaseConnection,
+    ring: Option<&Keyring>,
+    org_id: i64,
+    url: &str,
+) -> Result<Vec<u8>, String> {
+    let rows = list(db, org_id).await.map_err(|e| e.to_string())?;
+    let row = rows.iter().find(|r| r.is_default).ok_or("no org browser")?;
+    let t = target_of(db, ring.ok_or("secrets keyring unavailable")?, org_id, row).await?;
+    let host = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .ok_or("invalid address")?;
+    let _slot = slot(&t).await;
+    let (cdp, _) = connect(&t).await?;
+    let tab = tokio::time::timeout(Duration::from_secs(20), Tab::open(cdp))
+        .await
+        .map_err(|_| "timed out")??;
+    let shot = async {
+        super::browser::guard_page(&tab, &host).await?;
+        visit(&tab, url).await?;
+        tab.screenshot().await
+    }
+    .await;
+    tab.close().await;
+    shot
+}
+
 /// The Test button: `/json/version` with the token, a fresh context, a
 /// public page with a screenshot, and an internal address refused.
 pub async fn test(t: &Target) -> BrowserTestResult {

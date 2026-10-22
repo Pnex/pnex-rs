@@ -276,8 +276,13 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   permis), la page, puis les mentions légales (premier lien interne dont le
   chemin est dans `LEGAL_PATHS`). Un plancher de 2 s par hôte est tenu par
   processus. Quota `settings.web_visit.daily_calls` (1 000 par jour).
-  Quatre codes `web-visit-*`. Test `tests/web_visit.rs`. **Capture non
-  faite** (Q-W4) : elle reste à brancher sur CDP et l'asset média.
+  Quatre codes `web-visit-*`. Test `tests/web_visit.rs`. **Capture (Q-W4,
+  2026-10-22)** : option `screenshot` du nœud ; le navigateur **par défaut
+  de l'org** seulement (jamais celui de la plateforme), requêtes gardées
+  comme un parcours (`guard_page`), image JPEG gardée comme asset média
+  `image` de l'org (`metadata.source = web_visit`), id rendu dans
+  `screenshot_asset_id`. Pas de navigateur ou échec : visite sans capture.
+  `presence_web` 1.3.0 l'active et écrit l'id dans `site_web.capture`.
 - **W4** : opérateur de filtre `missing` (propriété absente) pour
   `ontology_query`.
   - Flow « Web presence · find websites » livré en brouillon. Chaque nuit,
@@ -298,7 +303,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
     fournisseur d'IA, la proposition reste sans avis. Le texte du site est
     passé comme donnée. Le choix de `llm_text` plutôt que `text_decide` :
     le modèle de décision n'est pas installé partout et un échec perdrait
-    la proposition. La capture (Q-W4) reste à faire.
+    la proposition. Le modèle ne lit que le texte, pas la capture.
   - Section **« Sites à valider »** en tête de la page Sites web, appuyée
     sur `GET /api/v1/web-presence/candidates` (lecture `ontology:read`,
     exposé au MCP) et `POST …/{id}/decision` (`confirme` | `rejete`,

@@ -3611,6 +3611,7 @@ flows-palette-web-visit = Website visit
 flows-palette-web-visit-help = Reads a candidate website's page and its legal notice once to identify it; never a crawl, writes nothing
 flows-web-visit-help = The address is msg.payload (text) or msg.payload.url. Three requests at most on the site (robots.txt, the page, the legal notice), robots.txt obeyed, 2 s between two requests. The text comes from an unknown site: give it to a model as data, never as instructions.
 flows-web-visit-legal = Also read the legal notice when the page links to it
+flows-web-visit-screenshot = Capture the page with the organization's browser (image kept in Media › Library)
 flows-web-visit-port-ok = read
 flows-web-visit-port-failed = failed
 flows-ingest-entries = Files to extract (one pattern per line, empty = all)
