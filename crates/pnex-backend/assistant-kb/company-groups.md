@@ -57,6 +57,15 @@ New companies enter with the account status **cible**; a company you already kno
 ## Target score
 The score of an organization is the sum of the points of the **Targeting criteria** it meets. Each criterion is an object you create: **Property** (a property key such as `code_activite`, `effectif_min`, `ca_dernier`, `pays`, `statut_compte`), **Operator** (*egal*, *parmi* and *commence_par* take a comma-separated list, *au_moins*, *au_plus*, *renseigne*), **Value**, **Points** (negative to push down, e.g. existing clients) and **Active**. The flow model **Prospection · target score** writes *Target score*, *Score detail* (one line per criterion met) and *Scored on*: deploy it once your criteria exist. It scores up to 500 organizations not yet scored today every 15 minutes. Sites are not scored: filter them on their own headcount in the explorer.
 
+## Trade show and association lists
+The **B2B account mapping, France** pack adds the import **Trade show or association list (file)**: a CSV with the columns `liste`, `nom`, `poste`, `societe`, `ville`, `code_postal`, `email`, `persona`. Each row becomes a **List contact**. The flow model **Prospection · list contacts to companies** looks each company up in the public register (**Find a company**): a match creates or finds the organization by its SIREN and proposes the link **is a contact at** on the **To validate** page; an ambiguous name marks the contact *a_revoir* with the candidates, nothing found marks it *introuvable*. Check the *a_revoir* contacts by hand.
+
+## Watched pages
+A **Watched page** is a news or careers page you follow (address, the account it belongs to). The site crawl stores its text and marks it *changed* when the text differs from the last visit. The flow model **Prospection · watched pages to signals** reads the changed pages every hour, asks your organization's model whether the change is about a topic that matters (new site, hiring, investment, management change, new product, partnership) and, if so, writes a **Commercial signal** *page_modifiee* to triage on the account. It needs an AI provider in Settings.
+
+## Who can introduce me
+On an object's page, **Who can introduce me? Starting from** a link type (for instance the one that says who follows an account) shows the shortest chain of links between people (knows, recommends, employs, manages, member of), at most 4 links, from anyone at the source of that link type to this object. "No path" means nobody in reach: add who knows whom.
+
 ## Good to know
 - *org-resolve-unavailable*: the register did not answer; try later.
 - *org-resolve-quota*: the organization reached its daily number of lookups; the counter resets at midnight UTC.

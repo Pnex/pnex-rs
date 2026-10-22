@@ -27,6 +27,11 @@
 # from a model is always `a_valider`; a human retains or dismisses it. The
 # daily digest flow prepares one text of the new signals: add the org's
 # notification node on its first port, then deploy.
+# Watched pages (D335, news, careers, competitors' offers): a crawl of the
+# page with a `record` into `page_suivie` keeps its text and flags it when
+# the text changed; a flow asks the org's LLM which topic of the org's list
+# the page announces and writes a `page_modifiee` signal (to validate)
+# about the account, quoting the sentence.
 # Page templates (D340) are filled from the account they are opened on
 # (placeholders of `page_render`): account plan, competitor sheet, meeting
 # preparation. A snapshot of the day, then free text.
@@ -183,6 +188,16 @@ hierarchies:
       - { link: couvre, inverse: true }
       - { link: rdv_avec }
 types:
+  - key: page_suivie
+    name: Watched page
+    names: {fr: "Page suivie"}
+    icon: newspaper
+    properties:
+      - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 2048, required: true, unique: true }
+      - { key: texte, name: Text, names: {fr: "Texte"}, kind: text, max_len: 20000 }
+      - { key: modifiee, name: Changed, names: {fr: "Modifiée"}, kind: bool, indexed: true }
+      - { key: compte, name: Account (id), names: {fr: "Compte (id)"}, kind: text, max_len: 36 }
+      - { key: derniere_vue, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
   - key: rendez_vous
     name: Meeting
     names: {fr: "Rendez-vous"}
@@ -362,6 +377,55 @@ functions:
               {"payload": {"trigger": True, "nombre": len(rows), "texte": "\n".join(lines)}},
               {"payload": {}},
           ]
+  - name: ps_preparer
+    language: starlark
+    description: A changed watched page, its text for the model and the page kept aside.
+    code: |
+      def handle(inputs, msg):
+          p = msg["payload"]
+          return {"payload": {"texte": p.get("texte", "")},
+                  "page": {"id": msg["object"]["id"], "url": p.get("url", ""),
+                           "titre": msg["object"]["title"], "compte": p.get("compte", "")}}
+  - name: ps_signal
+    language: starlark
+    description: "The model's answer about a watched page: a signal when it names a topic of the list, and the page cleared."
+    code: |
+      # The org's topics (D335): edit this list to the org's own, the
+      # prompt of the LLM node names the same keys.
+      # @output signal any "A signal about the account (to validate)"
+      # @output lu any "The page, marked read"
+      THEMES = ["ouverture_site", "investissement", "recrutement", "nouvelle_ligne", "rachat",
+                "retraites", "qualite", "multi_sites", "ecole", "nouvelle_offre", "prix"]
+
+      def handle(inputs, msg):
+          page = msg.get("page", {})
+          lines = [l.strip() for l in msg["payload"].get("text", "").strip().split("\n") if l.strip()]
+          theme = lines[0].strip("`*. ").lower() if lines else "aucun"
+          read = {"payload": {"modifiee": False}, "object_id": page.get("id")}
+          if theme not in THEMES or not page.get("compte"):
+              return [None, read]
+          quote = lines[1][:4000] if len(lines) > 1 else ""
+          day = msg.get("today", "")
+          signal = {
+              "payload": {
+                  "cle": "page:" + page.get("url", "") + ":" + day,
+                  "kind": "page_modifiee",
+                  "theme": theme,
+                  "resume": page.get("titre", ""),
+                  "extrait": quote,
+                  "date": day,
+                  "source_url": page.get("url", ""),
+                  "etat": "a_valider",
+              },
+              "title": theme.replace("_", " ") + " · " + page.get("titre", ""),
+          }
+          return [signal, read]
+  - name: ps_lien
+    language: starlark
+    description: Link payload from the signal just written to the account of the page.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["page"]["compte"]}}
   - name: pb_notifie
     language: starlark
     description: Marks a signal notified today.
@@ -369,6 +433,31 @@ functions:
       def handle(inputs, msg):
           return {"payload": {"notifie_le": msg.get("today", "")}, "object_id": msg["object"]["id"]}
 flows:
+  - name: "Prospection · watched pages to signals"
+    note: "Every hour, up to 50 watched pages whose text changed are read by the organization's LLM: a page announcing a topic of the list (new site, investment, hiring, ramp-up, takeover, retirements, quality problem, multi-site, in-house school, new offer, prices) becomes a commercial signal about the account, to validate, quoting the sentence. Edit the topics in the function ps_signal and in the prompt together. Watch a page with a site crawl whose record writes type page_suivie (url, texte, changed → modifiee, link_to → compte). Needs an AI provider."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "0 * * * *" }, outputs: [{ port: 0, targets: [changed] }] }
+        - id: changed
+          kind: ontology_query
+          config:
+            object_type: page_suivie
+            filters: [{ key: modifiee, op: eq, value: true }]
+            limit: 50
+          outputs: [{ port: 0, targets: [prep] }]
+        - { id: prep, kind: pnex_function, config: { function_name: ps_preparer, language: starlark }, outputs: [{ port: 0, targets: [read] }] }
+        - id: read
+          kind: llm_text
+          config:
+            data_field: texte
+            max_chars: 600
+            prompt: "This is the text of a company web page (news, careers, offers). If it announces one of these topics, answer on the first line with the topic key only, then on the second line quote word for word the sentence that says it. Otherwise answer only: aucun. Topics: ouverture_site (a new plant, site or establishment), investissement (an investment), recrutement (a hiring wave), nouvelle_ligne (a new production line or a ramp-up), rachat (a takeover or a merger), retraites (retirements, generational change), qualite (a quality problem or a recall), multi_sites (a multi-site rollout), ecole (an in-house school or academy), nouvelle_offre (a new product or service), prix (prices or plans)."
+          outputs: [{ port: 0, targets: [decide] }]
+        - { id: decide, kind: pnex_function, config: { function_name: ps_signal, language: starlark }, outputs: [{ port: 0, targets: [signal] }, { port: 1, targets: [done] }] }
+        - { id: signal, kind: object_upsert, config: { object_type: signal_commercial, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
+        - { id: about, kind: pnex_function, config: { function_name: ps_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: signal_sur } }
+        - { id: done, kind: object_upsert, config: { object_type: page_suivie, key: id } }
   - name: "Prospection · signals digest"
     note: "Each morning the commercial signals not yet notified make one digest (payload.texte, payload.nombre), then are marked notified. Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
     graph:
