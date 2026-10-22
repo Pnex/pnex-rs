@@ -16572,6 +16572,8 @@
         ],
         "type": "object"
       },
+      "Paginated_WebSearchProvider": {
+              "$ref": "#/components/schemas/WebSearchProvider"
       "Paginated_WebSite": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -19179,7 +19181,8 @@
           "llm-provider",
           "media-stream",
           "geo-provider",
-          "browser-endpoint"
+          "browser-endpoint",
+          "web-search-provider"
         ],
         "type": "string"
       },
@@ -23627,6 +23630,14 @@
         ],
         "type": "object"
       },
+      "WebSearchKind": {
+          "serper",
+          "searxng"
+      "WebSearchProvider": {
+            "$ref": "#/components/schemas/WebSearchKind"
+      "WebSearchProviderInput": {
+            "$ref": "#/components/schemas/WebSearchKind"
+      "WebSearchTestResult": {
       "WebSite": {
         "description": "A web site of the org: the recipes anchored on it and its last run.",
         "properties": {
@@ -69775,6 +69786,43 @@
         ]
       }
     },
+    "/api/v1/web-search/providers": {
+        "description": "Search providers the organization's web_search flow nodes query, with the default. The key is a vault reference, never its value. The platform provides none. Any member.",
+        "operationId": "web_search_providers_list",
+                  "$ref": "#/components/schemas/Paginated_WebSearchProvider"
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:read`): the caller's role does not grant it"
+        "summary": "List web search providers",
+          "web-search"
+        "description": "Registers a provider: `serper` (key required, default address) or `searxng` (address of the instance, JSON output enabled, key optional, sent as a bearer token). The address must pass the egress policy. A typed `api_key` value is stored in the org vault. The first provider, or one with `is_default`, becomes the org default. Owner or admin only.",
+        "operationId": "web_search_providers_create",
+                "$ref": "#/components/schemas/WebSearchProviderInput"
+                  "$ref": "#/components/schemas/WebSearchProvider"
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
+            "description": "`web-search-provider-name-taken`"
+        "summary": "Create a web search provider",
+          "web-search"
+    "/api/v1/web-search/providers/{id}": {
+        "description": "Deletes the provider and its dedicated key. Flow nodes that named it fail with `web-search-no-provider` until edited. Owner or admin only.",
+        "operationId": "web_search_providers_delete",
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:delete`): the caller's role does not grant it"
+            "description": "`web-search-provider-not-found`"
+        "summary": "Delete a web search provider",
+          "web-search"
+        "operationId": "web_search_providers_update",
+                "$ref": "#/components/schemas/WebSearchProviderInput"
+                  "$ref": "#/components/schemas/WebSearchProvider"
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
+            "description": "`web-search-provider-not-found`"
+            "description": "`web-search-provider-name-taken`"
+        "summary": "Replace a web search provider",
+          "web-search"
+    "/api/v1/web-search/providers/{id}/test": {
+        "operationId": "web_search_providers_test",
+                  "$ref": "#/components/schemas/WebSearchTestResult"
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:test`): the caller's role does not grant it"
+            "description": "`web-search-provider-not-found`"
+        "summary": "Test a web search provider",
+          "web-search"
     "/api/v1/web-sites": {
       "get": {
         "description": "Web sites of the organization: one per normalised host carrying a navigation recipe, with the recipe count and the last run. Most recently run first. Any member.",

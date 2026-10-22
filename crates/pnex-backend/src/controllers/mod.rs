@@ -73,6 +73,7 @@ pub mod user_info;
 pub mod visualization;
 pub mod viz_widgets;
 pub mod voice_id;
+pub mod web_search;
 /// Camera uplink + browser live view (camera-video.md D73/D75).
 pub mod ws_camera;
 pub mod ws_device;

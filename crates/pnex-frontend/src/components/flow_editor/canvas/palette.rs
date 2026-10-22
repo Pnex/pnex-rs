@@ -44,6 +44,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 50] = [
     PaletteKind::IngestImport,
     PaletteKind::IngestCleanup,
     PaletteKind::SiteRecipe,
+    PaletteKind::WebSearch,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
     PaletteKind::EventLog,
@@ -104,6 +105,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::IngestImport => "ingest-import",
         PaletteKind::IngestCleanup => "ingest-cleanup",
         PaletteKind::SiteRecipe => "site-recipe",
+        PaletteKind::WebSearch => "web-search",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -170,6 +172,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::IngestImport => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
         PaletteKind::IngestCleanup => (PaletteIcon::History, "bg-cyan-50 text-cyan-700"),
         PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
+        PaletteKind::WebSearch => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -231,6 +234,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
             pnex_core::ingest::IngestStep::StagingCleanup => PaletteKind::IngestCleanup,
         },
         FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
+        FlowNodeKind::WebSearch { .. } => PaletteKind::WebSearch,
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -309,7 +313,10 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         | PaletteKind::IngestFilter
         | PaletteKind::IngestImport
         | PaletteKind::IngestCleanup
-        | PaletteKind::SiteRecipe => PaletteCategory::Ingestion,
+        | PaletteKind::SiteRecipe
+        | PaletteKind::WebSearch
+        | PaletteKind::OrgResolve
+        | PaletteKind::WebVisit => PaletteCategory::Ingestion,
         PaletteKind::VisionDetect
         | PaletteKind::VisionTrack
         | PaletteKind::VisionZone
@@ -547,6 +554,9 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
             t!("flows-palette-site-recipe").to_string(),
             t!("flows-palette-site-recipe-help").to_string(),
         ),
+        PaletteKind::WebSearch => (
+            t!("flows-palette-web-search").to_string(),
+            t!("flows-palette-web-search-help").to_string(),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),
             t!("flows-palette-media-source-help").to_string(),

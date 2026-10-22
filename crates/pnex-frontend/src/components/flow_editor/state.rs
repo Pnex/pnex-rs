@@ -56,6 +56,7 @@ pub enum PaletteKind {
     IngestImport,
     IngestCleanup,
     SiteRecipe,
+    WebSearch,
     MediaSource,
     TopicClassify,
     RangeUpsert,
@@ -315,6 +316,8 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::SiteRecipe => FlowNodeKind::SiteRecipe {
                 config: pnex_core::site_recipe::SiteRecipeNodeConfig::default(),
             },
+            PaletteKind::WebSearch => FlowNodeKind::WebSearch {
+                config: pnex_core::web_search::WebSearchConfig::default(),
             // No stream picked yet: the violation banner guides the user.
             PaletteKind::MediaSource => FlowNodeKind::MediaSource {
                 config: pnex_core::media_ingest::MediaSourceConfig::default(),

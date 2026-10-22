@@ -416,6 +416,11 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         crate::components::browser_endpoints::BrowserEndpoints { can_manage: can_write }
                     }
 
+                    // Web search providers of web_search flow nodes (D360).
+                    div { class: "p-4 md:p-6",
+                        crate::components::web_search_providers::WebSearchProviders { can_manage: can_write }
+                    }
+
                 }
 
                 if confirm_delete() {

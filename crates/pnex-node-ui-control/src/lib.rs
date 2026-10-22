@@ -39,6 +39,7 @@ mod action;
 mod ingest;
 mod ontology;
 mod site_recipe;
+mod web_search;
 
 use pnex_core::ui_control::{
     control_channel, control_value_key, ControlEvent, ControlSourceConfig,

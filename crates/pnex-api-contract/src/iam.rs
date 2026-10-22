@@ -179,6 +179,10 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("voice-id:read", Level::Viewer),
     ("voice-id:test", Level::Member),
     ("voice-id:write", Level::Admin),
+    ("web-search:delete", Level::Admin),
+    ("web-search:read", Level::Viewer),
+    ("web-search:test", Level::Admin),
+    ("web-search:write", Level::Admin),
 ];
 
 /// Every operationId of the spec, with who may call it.
@@ -863,13 +867,21 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("voice_id_samples_from_media", Access::Org("voice-id:write")),
     ("voice_id_test", Access::Org("voice-id:test")),
     (
+        "web_search_providers_create",
+        Access::Org("web-search:write"),
     ),
     (
+        "web_search_providers_delete",
+        Access::Org("web-search:delete"),
     ),
+    ("web_search_providers_list", Access::Org("web-search:read")),
     (
         Access::Org("ontology:write"),
     ),
+    ("web_search_providers_test", Access::Org("web-search:test")),
     (
+        "web_search_providers_update",
+        Access::Org("web-search:write"),
     ),
     ("web_sites_list", Access::Org("site-recipes:read")),
     ("well_known_not_found", Access::Public),

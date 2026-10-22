@@ -96,3 +96,4 @@ pub mod transport;
 pub mod ui;
 /// Consented voice profiles of persons (voice-id.md).
 pub mod voice_id;
+pub mod web_search_providers;

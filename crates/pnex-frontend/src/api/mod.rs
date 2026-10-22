@@ -75,5 +75,6 @@ pub mod tours;
 pub mod user;
 pub mod viz;
 pub mod voice_id;
+pub mod web_search;
 /// Référentiel WiFi (wizard device).
 pub mod wifi;

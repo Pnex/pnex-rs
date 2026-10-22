@@ -37,6 +37,7 @@ fn usage_route(kind: SecretConsumerKind) -> Route {
         SecretConsumerKind::MediaStream => Route::Streams {},
         SecretConsumerKind::GeoProvider => Route::OrgsCurrent {},
         SecretConsumerKind::BrowserEndpoint => Route::OrgsCurrent {},
+        SecretConsumerKind::WebSearchProvider => Route::OrgsCurrent {},
     }
 }
 
@@ -50,6 +51,7 @@ fn usage_label(u: &SecretUsage) -> String {
         SecretConsumerKind::MediaStream => t!("secrets-usage-media-stream"),
         SecretConsumerKind::GeoProvider => t!("secrets-usage-geo-provider"),
         SecretConsumerKind::BrowserEndpoint => t!("secrets-usage-browser-endpoint"),
+        SecretConsumerKind::WebSearchProvider => t!("secrets-usage-web-search-provider"),
     };
     let target = u.label.clone().unwrap_or_else(|| u.consumer_id.clone());
     format!("{kind} · {target}")

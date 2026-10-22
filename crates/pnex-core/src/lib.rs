@@ -178,6 +178,8 @@ pub mod text_diff;
 /// Site navigation rules played by the server browser (site-recipes.md D323–D326).
 pub mod site_recipe;
 
+/// Web search providers and the `web_search` node (web-presence.md D360–D361).
+pub mod web_search;
 /// Readers of ontology import sources (partner-watch.md D301).
 #[cfg(feature = "doc-extract")]
 pub mod import_read;

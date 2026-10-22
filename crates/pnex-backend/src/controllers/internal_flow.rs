@@ -64,6 +64,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ingest", post(flow_ingest))
         // Website navigation rules played by flows (site-recipes.md D327).
         .add("/internal/flow/site-recipe", post(flow_site_recipe))
+        // Web search candidates of web_search nodes (web-presence.md D361).
+        .add("/internal/flow/web-search", post(flow_web_search))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -756,6 +758,30 @@ async fn flow_site_recipe(
     }
 }
 
+/// `POST /internal/flow/web-search` — one query of a deployed `web_search`
+/// node is refused.
+async fn flow_web_search(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::web_search::WebSearchNodeRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    match crate::services::web_search::run(&ctx, &req).await {
+        Err(NodeError::NotDeployed) => {
+            tracing::warn!(
+                org_id = req.node.org_id,
+                "flow web search refused: node not deployed"
+            )
+                .into_response())
+        }
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow web search failed");
 async fn flow_ontology_link(
     State(ctx): State<AppContext>,
     headers: HeaderMap,

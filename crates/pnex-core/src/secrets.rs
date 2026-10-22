@@ -146,6 +146,8 @@ pub enum SecretConsumerKind {
     GeoProvider,
     /// Token of an org browser endpoint (site-recipes.md D325).
     BrowserEndpoint,
+    /// Key of an org web search provider (web-presence.md D360).
+    WebSearchProvider,
 }
 
 impl SecretConsumerKind {
@@ -158,6 +160,7 @@ impl SecretConsumerKind {
             Self::MediaStream => "media-stream",
             Self::GeoProvider => "geo-provider",
             Self::BrowserEndpoint => "browser-endpoint",
+            Self::WebSearchProvider => "web-search-provider",
         }
     }
 
@@ -170,6 +173,7 @@ impl SecretConsumerKind {
             "media-stream" => Self::MediaStream,
             "geo-provider" => Self::GeoProvider,
             "browser-endpoint" => Self::BrowserEndpoint,
+            "web-search-provider" => Self::WebSearchProvider,
             _ => return None,
         })
     }
