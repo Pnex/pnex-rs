@@ -114,6 +114,8 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
   - code `proposal-decided` ;
   - test `tests/proposals.rs`.
 - **P1** :
+  - motif de rejet et « Corriger et accepter » (valeurs texte) dans
+    l'UI ;
   - page « À valider » (menu Connaissance, `/proposals`, filtre par
     statut) ;
   - section des propositions ouvertes en tête de la page d'un objet ;
@@ -139,8 +141,6 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
   - tests mis à jour : `partner_watch` (Wikidata accepté depuis la boîte,
     nœud qui propose), `pack_rules`.
 - Reste :
-  - P1 : saisir un motif de rejet dans l'UI (l'API l'accepte) et
-    accepter avec correction depuis l'UI ;
   - P3 : dossiers et voix dans la même table ;
   - P4 : acceptation automatique par règle d'org (D377, attend D368) ;
   - producteurs d'objets (`object_upsert` `propose`, entrée d'objet d'un
