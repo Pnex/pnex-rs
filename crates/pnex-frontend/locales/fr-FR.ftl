@@ -3595,6 +3595,15 @@ flows-web-search-lang = Langue
 flows-web-search-exclude = Domaines exclus (un par ligne)
 flows-web-search-port-ok = résultats
 flows-web-search-port-failed = échec
+flows-palette-org-resolve = Retrouver une société
+flows-palette-org-resolve-help = Cherche le SIREN d'une société française d'après son nom et sa ville dans le registre public ; n'écrit rien
+flows-org-resolve-help = Entrée : msg.payload = {"{"} name, city, postcode {"}"} (ou le nom seul). Score : nom 70, même code postal 20 ou même ville 15, société active 10 ; sans ville ni code postal, 80 au plus. Une correspondance est une proposition : écrivez le lien « à valider ».
+flows-org-resolve-threshold = Score d'une correspondance (0 à 100)
+flows-org-resolve-gap = Avance sur le candidat suivant
+flows-org-resolve-limit = Candidats rendus (1 à 5)
+flows-org-resolve-port-matched = trouvée
+flows-org-resolve-port-review = à revoir
+flows-org-resolve-port-failed = échec
 flows-ingest-entries = Fichiers à extraire (un motif par ligne, vide = tous)
 flows-ingest-entries-help = Motifs avec * et ? sur le nom du fichier, par exemple *Partenaires*.csv
 flows-ingest-entry = Fichier lu (motif)
@@ -5926,6 +5935,9 @@ err-web-search-no-provider = Aucun fournisseur de recherche web : ajoutez-en un 
 err-web-search-unavailable = Le fournisseur de recherche web n'a pas répondu à la requête.
 err-web-search-quota = Plafond quotidien de recherches web atteint pour cette organisation.
 err-web-search-query-invalid = La requête de recherche est vide ou dépasse 400 caractères.
+err-org-resolve-unavailable = Le registre des entreprises n'a pas répondu.
+err-org-resolve-quota = Plafond quotidien de recherches de sociétés atteint pour cette organisation.
+err-org-resolve-query-invalid = Le nom de la société est vide ou trop long (255 caractères au plus).
 web-sites-delete-recipe = Supprimer la règle
 web-sites-delete-confirm = La règle est supprimée ; ses passages restent au journal.
 iam-service-browser-endpoints = Navigateurs des règles de navigation

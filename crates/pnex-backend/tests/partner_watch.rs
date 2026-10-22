@@ -168,9 +168,10 @@ async fn natural_keys_extensions_and_hierarchy() {
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
             4
         );
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 3);
-        // SIRENE, the partner sheet and the five France Compétences imports.
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 7);
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 4);
+        // SIRENE, GLEIF ×2, Wikidata, the partner sheet and the five France
+        // Compétences imports.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 10);
 
         // D302: one live organization per SIREN.
         let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789"})).await;
@@ -278,9 +279,12 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
     .await;
 }
 
+/// account-mapping.md D331: group links from GLEIF (LEI, declared parents,
+/// confirmed) and Wikidata (parents and subsidiaries with a SIREN, to be
 /// validated); per-object imports take the companies in turn.
 #[tokio::test]
 #[serial]
+async fn group_links_from_gleif_and_wikidata() {
     with_app(|server, env| async move {
         use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
@@ -288,6 +292,7 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
         install(&server, &env.alice, org, "prospection_b2b").await;
         let base = mock_registers().await;
         let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
+        for (from, to) in [("https://api.gleif.org/api/v1", format!("{base}/gleif")), ("https://query.wikidata.org", format!("{base}/wd"))] {
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
         }
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351"})).await;
@@ -313,10 +318,16 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
         };
 
         // The LEI first; the parent is not known yet, no link.
+        let lei = run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(props_of(&env.db, org, "organization", "siren", "429853351").await["lei"], "969500YMMRBQ5N157D72");
+        assert!(!filiales(meca["id"].as_str().unwrap()).await.contains("filiale_de"));
+        // The parents GLEIF names are created (French: by SIREN).
+        run("Parent companies (GLEIF)").await;
         let mere = props_of(&env.db, org, "organization", "siren", "513149161").await;
         assert_eq!((mere["lei"].as_str(), mere["pays"].as_str()), (Some("969500ST98AQCLGNQS21"), Some("FR")), "{mere}");
         // Next turn: one link, direct and ultimate parent being the same.
+        run("Legal entity identifiers (GLEIF)").await;
+        let edges = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'filiale_de' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(edges.rows_affected(), 1);
         let l = filiales(meca["id"].as_str().unwrap()).await;
         assert!(l.contains("consolidation_directe") && l.contains("confirme"), "{l}");
@@ -324,13 +335,18 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
         // Turns: the cursor stops at the last company queried, then wraps.
         let cursor = || async {
             env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT per_object_cursor AS c FROM object_imports WHERE id = '{lei}'")))
                 .await.unwrap().unwrap().try_get::<Option<String>>("", "c").unwrap()
         };
         assert_eq!(cursor().await.as_deref(), Some("562082909"));
         sql(format!("UPDATE object_imports SET max_pages = 1 WHERE id = '{lei}'")).await.unwrap();
+        run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(cursor().await.as_deref(), Some("429853351"));
+        run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(cursor().await.as_deref(), Some("513149161"));
 
+        // Wikidata: subsidiaries and parents with a SIREN, all to validate.
+        run("Parents and subsidiaries (Wikidata)").await;
         let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
         assert_eq!(sae["pays"], "FR", "{sae}");
         let l = filiales(safran["id"].as_str().unwrap()).await;
@@ -414,6 +430,7 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
         let gap = mk("Filiale nue", json!({"statut_compte": "cible", "potentiel_utilisateurs": 800})).await;
         let (_, p) = object(&server, &env.alice, org, "person", "Contact", json!({})).await;
         let link = |kind: &str, from: &str, to: &str| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": {}});
+        for body in [link("filiale_de", &covered, &mother), link("filiale_de", &gap, &mother), link("employs", &covered, p["id"].as_str().unwrap())] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
         }
@@ -624,6 +641,7 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
     .await;
 }
 
+/// GLEIF and Wikidata, answering for the reference companies only.
 async fn mock_registers() -> String {
     use axum::extract::Query;
     use axum::routing::get;
@@ -636,6 +654,8 @@ async fn mock_registers() -> String {
     let record = |lei: &str, name: &str, siren: &str, rels: Value| {
         json!({
         "type": "lei-records", "id": lei,
+        "attributes": {"lei": lei, "entity": {"legalName": {"name": name}, "registeredAs": siren,
+            "jurisdiction": "FR", "legalAddress": {"country": "FR"}}},
         "relationships": rels})
     };
     let meca_dev = record(
@@ -650,9 +670,11 @@ async fn mock_registers() -> String {
         "429853351",
         json!({"direct-parent": parent("969500ST98AQCLGNQS21"), "ultimate-parent": parent("969500ST98AQCLGNQS21")}),
     );
+    let gleif = move |Query(q): Query<HashMap<String, String>>| {
         let (meca, meca_dev) = (meca.clone(), meca_dev.clone());
         async move {
             let data = match (
+                q.get("filter[entity.registeredAs]").map(String::as_str),
                 q.get("filter[owns]").map(String::as_str),
             ) {
                 (Some("429853351"), _) => vec![meca],
@@ -678,6 +700,7 @@ async fn mock_registers() -> String {
         };
     };
     let app = axum::Router::new()
+        .route("/gleif/lei-records", get(gleif))
         .route("/wd/sparql", get(wd));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base

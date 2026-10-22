@@ -68,10 +68,12 @@ struct ImportRow {
     created_by: Option<i64>,
     created_at: DateTimeWithTimeZone,
     updated_at: DateTimeWithTimeZone,
+    per_object_cursor: Option<String>,
 }
 
 const IMPORT_COLUMNS: &str = "id, org_id, name, mapping_yaml, pack_key, source, source_url, mode, \
-     recurrence, next_run_at, max_pages, version, created_by, created_at, updated_at";
+     recurrence, next_run_at, max_pages, version, created_by, created_at, updated_at, \
+     per_object_cursor";
 
 impl ImportRow {
     fn source(&self) -> ImportSource {
@@ -197,10 +199,13 @@ async fn check_input<C: ConnectionTrait>(
     if m.per_object.is_some() && input.source != ImportSource::Api {
         return Err(invalid("mapping.per_object", FIELD_INVALID));
     }
+    // Without a parameter the value goes in place of `{value}` in the URL.
     if m.per_object.as_ref().is_some_and(|p| {
+        p.param.is_empty()
             && !input
                 .source_url
                 .as_deref()
+                .is_some_and(|u| u.contains(source::VALUE))
     }) {
         return Err(invalid("source_url", FIELD_INVALID));
     }
@@ -522,7 +527,7 @@ async fn records<C: ConnectionTrait>(
             match &m.per_object {
                 None => source::fetch_api(url, m, pages).await,
                 Some(p) => {
-                    let values = per_object_values(db, imp.org_id, p, pages)
+                    let values = per_object_values(db, imp, p, pages)
                         .await
                         .map_err(|_| source::UNREACHABLE)?;
                     source::fetch_per_object(url, m, &values).await
@@ -551,6 +556,7 @@ async fn per_object_values<C: ConnectionTrait>(
                 p.type_key.clone().into(),
                 p.property.clone().into(),
                 (max as i64).into(),
+                imp.per_object_cursor.clone().into(),
                     .as_ref()
                     .map(|o| o.values.clone())
                     .unwrap_or_default()
@@ -1149,7 +1155,9 @@ pub async fn run_from_flow(
     progress(db, run.id, rows.len(), None).await;
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(&m, &rows);
-    if (rows.is_empty() && previous > 0) || (!rows.is_empty() && !missing.is_empty()) {
+    // A per-object batch may find nothing: not a lost source.
+    let lost = rows.is_empty() && previous > 0 && m.per_object.is_none();
+    if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
         } else {
@@ -1372,7 +1380,9 @@ async fn scheduled(
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(m, &rows);
     // D303: an unexpected shape writes nothing.
-    if (rows.is_empty() && previous > 0) || (!rows.is_empty() && !missing.is_empty()) {
+    // A per-object batch may find nothing: not a lost source.
+    let lost = rows.is_empty() && previous > 0 && m.per_object.is_none();
+    if lost || (!rows.is_empty() && !missing.is_empty()) {
         let columns = if missing.is_empty() {
             "—".to_string()
         } else {
@@ -1434,12 +1444,14 @@ async fn scheduled(
     d.errors = errors;
     if let Some(p) = &m.per_object {
         let pages = imp.max_pages.map_or(DEFAULT_PAGES, |n| n as u32);
+        if let Some(last) = per_object_values(db, imp, p, pages)
             .await
             .ok()
             .and_then(|v| v.last().cloned())
         {
             let _ = db
                 .execute_raw(stmt(
+                    "UPDATE object_imports SET per_object_cursor = $2 WHERE id = $1",
                     vec![imp.id.into(), last.into()],
                 ))
                 .await;

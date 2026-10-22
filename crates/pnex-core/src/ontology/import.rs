@@ -268,8 +268,9 @@ impl utoipa::PartialSchema for Convert {
 impl utoipa::ToSchema for Convert {}
 
 /// One API request per live object of `type` whose `property` is set, its
-/// value sent as the query parameter `param` (the least recently updated
-/// objects first, `max_pages` requests per run).
+/// value sent as the query parameter `param`, or put in place of `{value}`
+/// in the source URL when `param` is empty (a path segment, a SPARQL
+/// literal). The objects are taken in turn, `max_pages` requests per run.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(deny_unknown_fields)]
@@ -277,6 +278,7 @@ pub struct PerObject {
     #[serde(rename = "type")]
     pub type_key: String,
     pub property: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub param: String,
 }
 
@@ -346,6 +348,9 @@ pub struct ObjectMap {
 pub struct When {
     pub from: String,
     pub equals: String,
+    /// `true`: the records where the path does NOT equal the value.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub not: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -550,7 +555,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         let known = s
             .object_type(&p.type_key)
             .is_some_and(|t| t.properties.iter().any(|d| d.key == p.property));
-        if !known || p.param.trim().is_empty() || p.param.len() > 64 {
+        if !known || p.param.trim() != p.param || p.param.len() > 64 {
             return Err(ferr("per_object", FIELD_INVALID));
         }
     }
@@ -1296,7 +1301,7 @@ fn plan_object(
 ) -> Result<Option<PlannedObject>, (String, String)> {
     if let Some(w) = &o.when {
         let v = at_path(row, elem, &w.from).as_ref().and_then(text_of);
-        if v.as_deref().map(str::trim) != Some(w.equals.as_str()) {
+        if (v.as_deref().map(str::trim) == Some(w.equals.as_str())) == w.not {
             return Ok(None);
         }
     }

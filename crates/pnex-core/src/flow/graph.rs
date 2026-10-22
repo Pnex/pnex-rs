@@ -216,6 +216,12 @@ pub enum FlowNodeKind {
     WebSearch {
         #[serde(default)]
         config: crate::web_search::WebSearchConfig,
+    },
+    /// Company name → SIREN candidates from the public register; writes
+    /// nothing (account-mapping.md D332).
+    OrgResolve {
+        #[serde(default)]
+        config: crate::org_resolve::OrgResolveConfig,
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -395,6 +401,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "web_search" => Ok(Self::WebSearch {
+                    config: opt_config(config)?,
+                }),
+                "org_resolve" => Ok(Self::OrgResolve {
                 "media_source" => Ok(Self::MediaSource {
                     config: req_config(config)?,
                 }),

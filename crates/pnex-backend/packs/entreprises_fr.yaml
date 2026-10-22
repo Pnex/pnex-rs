@@ -13,10 +13,17 @@
 # recurrence is set on it): legal unit fields, head office and matching
 # establishments on the map, officers and holdings. Only known legal units
 # are enriched; a mandate that ended is not closed by it (incremental).
+# Since 2.1.0 the group structure comes from two worldwide sources
+# (account-mapping.md D331), each import taking the known companies in
+# turn: GLEIF gives the LEI of a SIREN and its declared direct and ultimate
+# parents (`filiale_de`, confirmed), and creates the parents it names
+# (French ones by SIREN, others by LEI); Wikidata gives parents and
+# subsidiaries that have a SIREN (`filiale_de` of nature `wikidata`,
+# always `a_valider`: community data). Sources are never merged.
 key: entreprises_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "2.0.0"
+version: "2.1.0"
 requires: [entreprises]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -135,3 +142,136 @@ imports:
           from: holding
           to: ul
           attributes: *mandate
+  - name: Legal entity identifiers (GLEIF)
+    source: api
+    source_url: "https://api.gleif.org/api/v1/lei-records?include=direct-parent,ultimate-parent"
+    max_pages: 200
+    mapping:
+      key: gleif_lei
+      name: Legal entity identifiers
+      names: {fr: "Identifiants d'entité juridique (GLEIF)"}
+      format: json
+      rows: data
+      per_object: { type: organization, property: siren, param: "filter[entity.registeredAs]" }
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          create: false
+          update: true
+          missing: skip
+          when: { from: attributes.entity.jurisdiction, equals: FR }
+          properties:
+            siren: { from: attributes.entity.registeredAs, convert: [digits] }
+            lei: id
+        - as: directe
+          type: organization
+          key: lei
+          create: false
+          missing: skip
+          when: { from: relationships.direct-parent.data.type, equals: lei-records }
+          properties:
+            lei: relationships.direct-parent.data.id
+        - as: ultime
+          type: organization
+          key: lei
+          create: false
+          missing: skip
+          when: { from: relationships.ultimate-parent.data.type, equals: lei-records }
+          properties:
+            lei: relationships.ultimate-parent.data.id
+      links:
+        - type: filiale_de
+          from: ul
+          to: directe
+          attributes:
+            nature: { value: consolidation_directe }
+            etat: { value: confirme }
+            source: { value: "gleif.org" }
+          on_conflict: { nature: consolidation_directe }
+        - type: filiale_de
+          from: ul
+          to: ultime
+          attributes:
+            nature: { value: consolidation_ultime }
+            etat: { value: confirme }
+            source: { value: "gleif.org" }
+          on_conflict: { nature: consolidation_directe }
+  - name: Parent companies (GLEIF)
+    source: api
+    source_url: "https://api.gleif.org/api/v1/lei-records"
+    max_pages: 200
+    mapping:
+      key: gleif_parents
+      name: Parent companies
+      names: {fr: "Sociétés mères (GLEIF)"}
+      format: json
+      rows: data
+      per_object: { type: organization, property: lei, param: "filter[owns]" }
+      objects:
+        - as: mere_fr
+          type: organization
+          key: siren
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR }
+          properties:
+            siren: { from: attributes.entity.registeredAs, convert: [digits] }
+            lei: id
+            pays: { value: FR }
+        - as: mere_monde
+          type: organization
+          key: lei
+          title: attributes.entity.legalName.name
+          when: { from: attributes.entity.jurisdiction, equals: FR, not: true }
+          properties:
+            lei: id
+            pays: attributes.entity.legalAddress.country
+  - name: Parents and subsidiaries (Wikidata)
+    source: api
+    source_url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Fdir%20%3Fself_siren%20%3Fother_siren%20%3FotherLabel%20WHERE%20%7B%20BIND%28%22{value}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20%7B%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20%3Fother%20wdt%3AP1616%20%3Fother_siren%20.%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20%7D%20%7D"
+    max_pages: 200
+    mapping:
+      key: wikidata_groupe
+      name: Parents and subsidiaries
+      names: {fr: "Mères et filiales (Wikidata)"}
+      format: json
+      rows: results.bindings
+      per_object: { type: organization, property: siren }
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          create: false
+          missing: skip
+          properties:
+            siren: self_siren.value
+        - as: mere
+          type: organization
+          key: siren
+          title: otherLabel.value
+          update: false
+          when: { from: dir.value, equals: parent }
+          properties:
+            siren: other_siren.value
+            pays: { value: FR }
+        - as: filiale
+          type: organization
+          key: siren
+          title: otherLabel.value
+          update: false
+          when: { from: dir.value, equals: child }
+          properties:
+            siren: other_siren.value
+            pays: { value: FR }
+      links:
+        - type: filiale_de
+          from: ul
+          to: mere
+          attributes: &wikidata
+            nature: { value: wikidata }
+            etat: { value: a_valider }
+            source: { value: "wikidata.org" }
+        - type: filiale_de
+          from: filiale
+          to: ul
+          attributes: *wikidata

@@ -3,11 +3,8 @@
 # country; country packs add their registers), extended
 # with its commercial status and coverage; no "company" or "account" type
 # next to it (D304), so the graph stays one.
-# `filiale_de` carries a control or consolidation relation as open sources
-# give it, without a share: `owns` stays for known holdings. Several
-# targets are allowed on purpose: a direct and an ultimate parent, or two
-# sources that disagree, live side by side with their provenance and a
-# human closes the wrong one (D331).
+# `filiale_de` (group structure, D331) moved to `entreprises` 1.1.0 in
+# 1.1.0: it is not specific to selling.
 # `ca_dernier` is the latest known revenue and `ca_exercice` its fiscal
 # year: the core has no per-year scalar property (D178 temporal = O2
 # series or events), past years stay in the object history.
@@ -18,8 +15,8 @@
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.0.0"
-requires: [entreprises]
+version: "1.1.0"
+requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
 extends:
@@ -75,21 +72,56 @@ link_types:
     to_types: [organization]
     attributes:
       - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
-  - key: filiale_de
-    name: is a subsidiary of
-    names: {fr: "est une filiale de"}
-    inverse_name: has as subsidiary
-    inverse_names: {fr: "a pour filiale"}
-    from_types: [organization]
-    to_types: [organization]
+  - key: signal_sur
+    name: is about
+    names: {fr: "porte sur"}
+    inverse_name: has as signal
+    inverse_names: {fr: "a pour signal"}
+    from_types: [signal_commercial]
+    to_types: [organization, map_pin, person]
+  - key: page_sur
+    name: is a page about
+    names: {fr: "est une page sur"}
+    inverse_name: has as page
+    inverse_names: {fr: "a pour page"}
+    from_types: [doc]
+    to_types: [organization, rendez_vous]
+  - key: participe_a
+    name: takes part in
+    names: {fr: "participe à"}
+    inverse_name: has as participant
+    inverse_names: {fr: "a pour participant"}
+    from_types: [person]
+    to_types: [rendez_vous]
     attributes:
       - key: nature
         name: Nature
         names: {fr: "Nature"}
         kind: enum
-        values: [consolidation_directe, consolidation_ultime, declaree, wikidata, saisie]
-      - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
-      - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
+        values: [interne, client]
+  - key: rdv_avec
+    name: is a meeting with
+    names: {fr: "est un rendez-vous avec"}
+    inverse_name: has as meeting
+    inverse_names: {fr: "a pour rendez-vous"}
+    from_types: [rendez_vous]
+    to_types: [organization, map_pin]
+  - key: enregistrement_de
+    name: is the recording of
+    names: {fr: "est l'enregistrement de"}
+    inverse_name: has as recording
+    inverse_names: {fr: "a pour enregistrement"}
+    from_types: [media_asset]
+    to_types: [rendez_vous]
+  - key: couvre
+    name: covered
+    names: {fr: "a abordé"}
+    inverse_name: was covered in
+    inverse_names: {fr: "abordé lors de"}
+    from_types: [rendez_vous]
+    to_types: [critere_coaching]
+    attributes:
+      - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 1000 }
   - key: utilise_solution
     name: uses the solution of
     names: {fr: "utilise la solution de"}

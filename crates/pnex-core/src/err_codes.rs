@@ -684,6 +684,12 @@ pub const WEB_SEARCH_UNAVAILABLE: &str = "web-search-unavailable";
 pub const WEB_SEARCH_QUOTA: &str = "web-search-quota";
 /// The query is empty or longer than 400 characters.
 pub const WEB_SEARCH_QUERY_INVALID: &str = "web-search-query-invalid";
+/// The company register did not answer an `org_resolve` lookup.
+pub const ORG_RESOLVE_UNAVAILABLE: &str = "org-resolve-unavailable";
+/// The org passed its daily number of company lookups; `args.cap`.
+pub const ORG_RESOLVE_QUOTA: &str = "org-resolve-quota";
+/// The company name is empty or longer than 255 characters.
+pub const ORG_RESOLVE_QUERY_INVALID: &str = "org-resolve-query-invalid";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -889,6 +895,9 @@ pub const ALL: &[&str] = &[
     WEB_SEARCH_UNAVAILABLE,
     WEB_SEARCH_QUOTA,
     WEB_SEARCH_QUERY_INVALID,
+    ORG_RESOLVE_UNAVAILABLE,
+    ORG_RESOLVE_QUOTA,
+    ORG_RESOLVE_QUERY_INVALID,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,
