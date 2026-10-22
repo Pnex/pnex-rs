@@ -48,6 +48,7 @@ struct Agg {
     title: String,
     titled: bool,
     properties: Map<String, Value>,
+    defaults: Map<String, Value>,
     location: Option<(f64, f64)>,
     create: bool,
     update: bool,
@@ -172,6 +173,9 @@ pub async fn compute<C: ConnectionTrait>(
                         a.title = o.title;
                         a.titled = true;
                     }
+                    for (p, v) in o.defaults {
+                        a.defaults.entry(p).or_insert(v);
+                    }
                     a.location = a.location.or(o.location);
                     a.create |= o.create;
                     a.update |= o.update;
@@ -189,6 +193,7 @@ pub async fn compute<C: ConnectionTrait>(
                         title: o.title,
                         titled: o.titled,
                         properties: o.properties,
+                        defaults: o.defaults,
                         location: o.location,
                         create: o.create,
                         update: o.update,
@@ -314,8 +319,10 @@ pub async fn compute<C: ConnectionTrait>(
             }
             None => {
                 // A creation carries the whole document: `required` now.
+                let mut doc = a.defaults.clone();
+                doc.extend(a.properties.clone());
                 let full = def
-                    .map(|d| check_values(&d.properties, &a.properties))
+                    .map(|d| check_values(&d.properties, &doc))
                     .unwrap_or(Ok(Map::new()));
                 let pin = a.type_key == pnex_core::resources::KIND_MAP_PIN;
                 let issue = match (&full, pin && a.location.is_none()) {
@@ -338,7 +345,7 @@ pub async fn compute<C: ConnectionTrait>(
                     key_prop: a.key_prop.clone(),
                     key: a.key.clone(),
                     title: a.title.clone(),
-                    properties: a.properties.clone(),
+                    properties: doc,
                     location: a.location.map(|(lat, lon)| [lat, lon]),
                 });
             }

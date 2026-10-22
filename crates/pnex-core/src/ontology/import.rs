@@ -324,6 +324,11 @@ pub struct ObjectMap {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub properties: BTreeMap<String, FieldSpec>,
+    /// over an existing one (a new target enters as `cible`, a client stays
+    /// a client).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub defaults: BTreeMap<String, Value>,
     /// Snapshot mode: archive the objects of this import absent from the
     /// run.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -582,6 +587,15 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             }
             check_field(&at(&format!("properties.{k}")), f)?;
         }
+        for k in o.defaults.keys() {
+            let known = t
+                .properties
+                .iter()
+                .any(|d| &d.key == k && !d.kind.is_temporal());
+            if !known || *k == o.key || !o.create {
+                return Err(ferr(at(&format!("defaults.{k}")), FIELD_INVALID));
+            }
+        }
         for (name, f) in [("each", &o.each), ("title", &o.title)] {
             if let Some(f) = f {
                 check_field(&at(name), f)?;
@@ -688,11 +702,17 @@ pub fn get_path<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
         return Some(found);
     }
     path.split('.').try_fold(v, |cur, seg| match cur {
+        // `@last`: the greatest key (the latest year of `{"2024": …, "2025": …}`).
+        Value::Object(o) if seg == LAST => o.iter().max_by(|a, b| a.0.cmp(b.0)).map(|(_, v)| v),
         Value::Object(o) => o.get(seg),
+        Value::Array(a) if seg == LAST => a.last(),
         Value::Array(a) => a.get(seg.parse::<usize>().ok()?),
         _ => None,
     })
 }
+
+/// Path segment naming the last entry of an object (by key) or an array.
+pub const LAST: &str = "@last";
 
 /// The records of a JSON document at `path` (an array, or a lone object).
 pub fn json_rows(doc: &Value, path: &str) -> Option<Vec<Value>> {
@@ -788,6 +808,7 @@ pub struct PlannedObject {
     /// update leaves the current title alone).
     pub titled: bool,
     pub properties: Map<String, Value>,
+    pub defaults: Map<String, Value>,
     pub location: Option<(f64, f64)>,
     pub create: bool,
     pub update: bool,
@@ -1315,6 +1336,11 @@ fn plan_object(
             props.insert(k.clone(), cast(d, v).map_err(|t| (col, t))?);
         }
     }
+    let mut defaults = Map::new();
+    for (k, v) in &o.defaults {
+            defaults.insert(k.clone(), cast(d, v.clone()).map_err(|t| (k.clone(), t))?);
+        }
+    }
     // `required` is checked on creation only, against the merged document
     // (an update may map a few properties).
     let loose: Vec<PropertyDef> = def
@@ -1383,6 +1409,7 @@ fn plan_object(
         title,
         titled,
         properties: props,
+        defaults,
         location,
         create: o.create,
         update: o.update.unwrap_or(o.create),
@@ -1729,6 +1756,31 @@ pub struct ImportApply {
 
 #[cfg(test)]
 mod tests {
+        assert_eq!(
+            convert(v, &c),
+            Ok(Some(serde_json::json!("modification du capital")))
+        );
+        assert_eq!(
+            convert(Some(serde_json::json!("pas du json")), &c),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn last_segment_takes_the_latest_key_or_element() {
+        let v =
+            serde_json::json!({"finances": {"2024": {"ca": 1}, "2025": {"ca": 2}}, "a": [1, 2, 3]});
+        assert_eq!(
+            super::get_path(&v, "finances.@last.ca"),
+            Some(&serde_json::json!(2))
+        );
+        assert_eq!(super::get_path(&v, "a.@last"), Some(&serde_json::json!(3)));
+        assert_eq!(
+            super::get_path(&serde_json::json!({"finances": {}}), "finances.@last.ca"),
+            None
+        );
+    }
+
     use super::*;
     use serde_json::json;
 

@@ -359,19 +359,23 @@ async fn group_links_from_gleif_and_wikidata() {
     .await;
 }
 
+/// account-mapping.md D337: a saved search of the company register, paged,
 /// brings new targets (`cible`) and leaves known accounts' status alone.
 #[tokio::test]
 #[serial]
+async fn target_list_enters_new_accounts_as_targets() {
     with_app(|server, env| async move {
         use axum::extract::Query;
         use axum::routing::get;
         use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospection_fr").await;
         let hit = |siren: &str, name: &str| json!({
             "siren": siren, "nom_complet": name, "nature_juridique": "5710",
             "activite_principale": "25.62B", "etat_administratif": "A",
             "date_creation": "2000-01-01", "tranche_effectif_salarie": "42",
+            "finances": {"2024": {"ca": 300000000}, "2025": {"ca": 343838577}},
             "siege": {"siret": format!("{siren}00011"), "latitude": "47.41", "longitude": "0.98",
                       "etat_administratif": "A", "tranche_effectif_salarie": "41"}});
         let pages = vec![
@@ -394,6 +398,7 @@ async fn group_links_from_gleif_and_wikidata() {
         let (st, c) = object(&server, &env.alice, org, "organization", "Mecachrome France", json!({"siren": "429853351", "statut_compte": "client"})).await;
         assert_eq!(st, 201, "{c}");
 
+        let (id, _) = import_named(&server, &env.alice, org, "Target list (company register search)").await;
         let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
         assert_eq!(st, 202, "{r}");
         let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
@@ -551,6 +556,7 @@ async fn group_links_from_gleif_and_wikidata() {
         use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospection_fr").await;
         let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let seen = asked.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

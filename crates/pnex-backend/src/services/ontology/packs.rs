@@ -33,6 +33,7 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/entreprises_fr.yaml"),
     include_str!("../../../packs/quali_watch.yaml"),
     include_str!("../../../packs/prospection_b2b.yaml"),
+    include_str!("../../../packs/prospection_fr.yaml"),
 ];
 
 pub fn shipped() -> Vec<Pack> {
