@@ -3604,6 +3604,12 @@ flows-org-resolve-limit = Candidats rendus (1 à 5)
 flows-org-resolve-port-matched = trouvée
 flows-org-resolve-port-review = à revoir
 flows-org-resolve-port-failed = échec
+flows-palette-web-visit = Visite d'un site
+flows-palette-web-visit-help = Lit une fois la page d'un site candidat et ses mentions légales pour l'identifier ; jamais un parcours, n'écrit rien
+flows-web-visit-help = L'adresse est msg.payload (texte) ou msg.payload.url. Trois requêtes au plus sur le site (robots.txt, la page, les mentions légales), robots.txt respecté, 2 s entre deux requêtes. Le texte vient d'un site inconnu : donnez-le à un modèle comme une donnée, jamais comme une consigne.
+flows-web-visit-legal = Lire aussi les mentions légales quand la page y renvoie
+flows-web-visit-port-ok = lue
+flows-web-visit-port-failed = échec
 flows-ingest-entries = Fichiers à extraire (un motif par ligne, vide = tous)
 flows-ingest-entries-help = Motifs avec * et ? sur le nom du fichier, par exemple *Partenaires*.csv
 flows-ingest-entry = Fichier lu (motif)
@@ -3658,6 +3664,7 @@ flows-object-upsert-skip-existing = Créer seulement : laisser tel quel un objet
 flows-link-upsert-help = msg.payload = source_id, target_id (identifiants d'objets), et au besoin attributes et valid_from.
 flows-link-upsert-type = Type de lien
 flows-link-upsert-close = Fermer le lien au lieu de l'ouvrir
+flows-link-upsert-skip-closed = Ne jamais rouvrir un lien déjà fermé pour ces deux objets (un candidat rejeté n'est pas reproposé)
 flows-action-trigger-help = Un message par déclenchement : payload = les paramètres, msg.object = l'objet, msg.action = qui et quand.
 flows-action-trigger-action = Action
 flows-action-trigger-none = Aucune action n'est encore déclarée dans l'ontologie : ajoutez-en une à un type (ou installez le pack Maintenance).
@@ -5812,6 +5819,14 @@ toast-access-secret-copied = Clé copiée
 
 ## Web sites and navigation rules (site-recipes.md D323–D326)
 nav-web-sites = Sites web
+site-candidates-title = Sites à valider ({ $count })
+site-candidates-help = Sites proposés par le flow « Présence web » pour une organisation. Confirmer en fait son site (il pourra être parcouru) ; rejeter le ferme pour de bon, il ne sera plus proposé.
+site-candidates-score = score { $score }
+site-candidates-proof-siren = SIREN trouvé
+site-candidates-proof-nda = NDA trouvé
+site-candidates-from-email = domaine de ses e-mails
+site-candidates-confirm = Confirmer
+site-candidates-reject = Rejeter
 web-sites-title = Sites web
 web-sites-subtitle = Les sites parcourus par des règles de navigation, et leur dernier passage.
 web-sites-add = Ajouter un site web
@@ -5941,6 +5956,10 @@ err-web-search-query-invalid = La requête de recherche est vide ou dépasse 400
 err-org-resolve-unavailable = Le registre des entreprises n'a pas répondu.
 err-org-resolve-quota = Plafond quotidien de recherches de sociétés atteint pour cette organisation.
 err-org-resolve-query-invalid = Le nom de la société est vide ou trop long (255 caractères au plus).
+err-web-visit-url-invalid = L'adresse à visiter n'est pas une adresse web publique (http ou https).
+err-web-visit-unreachable = Le site candidat n'a pas répondu par une page.
+err-web-visit-blocked = Le robots.txt du site interdit de lire cette page.
+err-web-visit-quota = Plafond quotidien de visites de sites atteint pour cette organisation.
 web-sites-delete-recipe = Supprimer la règle
 web-sites-delete-confirm = La règle est supprimée ; ses passages restent au journal.
 iam-service-browser-endpoints = Navigateurs des règles de navigation

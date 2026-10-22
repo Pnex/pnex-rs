@@ -1,3 +1,5 @@
+# Since 1.3.0 `site_web` and `a_pour_site` belong to `presence_web`
+# (web-presence.md D363), taken over on upgrade without moving any data.
 # Business pack "Partner network watch" (partner-watch.md D300–D316, product
 # Quali-Watch): a certifier watches the training organizations it accredits.
 # Nothing of it enters the core (D190): certifications, observed pages, CPF
@@ -38,8 +40,8 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.2.0"
-requires: [entreprises_fr]
+version: "1.3.0"
+requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
     properties:
@@ -70,18 +72,6 @@ types:
       - { key: nb_certifies, name: Graduates (last year), names: {fr: "Certifiés (dernière année)"}, kind: number, min: 0 }
       # The register gives a title here as often as a link: text.
       - { key: url_description, name: Certifier description, names: {fr: "Descriptif du certificateur"}, kind: text, max_len: 2048 }
-  - key: site_web
-    name: Website
-    names: {fr: "Site web"}
-    icon: globe
-    may_be_contained_in: [folder]
-    properties:
-      - { key: url_racine, name: Root URL, names: {fr: "URL racine"}, kind: url, required: true }
-      - { key: domaine, name: Domain, names: {fr: "Domaine"}, kind: text, max_len: 255, unique: true }
-      - { key: dernier_crawl, name: Last crawl, names: {fr: "Dernier parcours"}, kind: date_time }
-      - { key: pages_listees, name: Listed pages, names: {fr: "Pages listées"}, kind: number, min: 0 }
-      - { key: pages_pertinentes, name: Relevant pages, names: {fr: "Pages pertinentes"}, kind: number, min: 0 }
-      - { key: etat_collecte, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, bloque, inaccessible, vide], indexed: true }
   - key: page_observee
     name: Observed page
     names: {fr: "Page observée"}
@@ -288,13 +278,6 @@ link_types:
       - { key: etat_fc, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [actif, inactif] }
       - { key: date_actif, name: Active since, names: {fr: "Actif depuis"}, kind: date }
       - { key: date_etat, name: State changed on, names: {fr: "État modifié le"}, kind: date }
-  - key: a_pour_site
-    name: has as website
-    names: {fr: "a pour site"}
-    inverse_name: is the website of
-    inverse_names: {fr: "est le site de"}
-    from_types: [organization]
-    to_types: [site_web]
   - key: page_de
     name: is a page of
     names: {fr: "est une page de"}

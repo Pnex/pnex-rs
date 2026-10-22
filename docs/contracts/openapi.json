@@ -6144,6 +6144,7 @@
           "gte",
           "contains",
           "exists",
+          "missing",
           "in"
         ],
         "type": "string"
@@ -15768,6 +15769,8 @@
         ],
         "type": "object"
       },
+      "Paginated_SiteCandidate": {
+              "$ref": "#/components/schemas/SiteCandidate"
       "Paginated_SitePage": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -19716,6 +19719,11 @@
         ],
         "type": "object"
       },
+      "SiteCandidate": {
+        "description": "A website candidate waiting for a human (web-presence.md D366): an open\n`a_pour_site` link and what proved it. No identifier of a person (R4).",
+      "SiteDecision": {
+            "$ref": "#/components/schemas/SiteDecisionKind"
+      "SiteDecisionKind": {
       "SitePage": {
         "description": "A page of the site registry (D309).",
         "properties": {
@@ -56168,6 +56176,8 @@
           "ontology"
         ]
         "description": "Starts a run in the background and answers it `running` (202); poll `GET …/runs/{run_id}`. An import with steps runs them (resolve, download, extract, inspect, filter), then applies the file they staged; a `url` or `api` import fetches its source. Checked like a scheduled run and applied at once with the author's role (no preview). A `file` import without steps has nothing to fetch (`ingest-entry-missing`): preview it with a file. Org writers.",
+            "description": "Missing, invalid or expired bearer token"
+            "description": "`ingest-entry-missing` (a file import without steps)"
       }
     },
     "/api/v1/ontology/imports/{id}/runs/{run_id}": {
@@ -58034,6 +58044,7 @@
         ]
       }
     },
+            "description": "Missing, invalid or expired bearer token"
     "/api/v1/ontology/objects/{id}/series/{property}": {
       "get": {
         "description": "Recomposes a `series` property over the window from the telemetry of every device that measured it (`measures` links), segment by segment, so a sensor replacement does not break the curve. Empty points when telemetry is unavailable. Any org member.",
@@ -58370,7 +58381,7 @@
                 }
               }
             },
-            "description": "Missing `from` or `to` (`field-invalid`)"
+            "description": "Missing `from` or `to`, or more than 20 `links` (`field-invalid`)"
           },
           "401": {
             "content": {
@@ -69814,11 +69825,23 @@
         ]
       }
     },
+    "/api/v1/web-presence/candidates": {
+        "description": "Open `a_pour_site` links of a status (`propose` by default, or `confirme`), best score first, with what proved them (SIREN, declaration number), where they came from and the organization. Any member.",
+        "operationId": "web_presence_candidates_list",
+                  "$ref": "#/components/schemas/Paginated_SiteCandidate"
+            "description": "Missing, invalid or expired bearer token"
+          "web-presence"
+    "/api/v1/web-presence/candidates/{id}/decision": {
         "description": "`confirme` marks the open `a_pour_site` link confirmed (the site may then be crawled); `rejete` marks it rejected and closes it, so a flow never proposes it again. `valide_par` takes the user's display name. Needs the right to write the ontology.",
+        "operationId": "web_presence_candidates_decide",
+                "$ref": "#/components/schemas/SiteDecision"
+            "description": "Missing, invalid or expired bearer token"
+          "web-presence"
     "/api/v1/web-search/providers": {
         "description": "Search providers the organization's web_search flow nodes query, with the default. The key is a vault reference, never its value. The platform provides none. Any member.",
         "operationId": "web_search_providers_list",
                   "$ref": "#/components/schemas/Paginated_WebSearchProvider"
+            "description": "Missing, invalid or expired bearer token"
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:read`): the caller's role does not grant it"
         "summary": "List web search providers",
           "web-search"
@@ -69826,6 +69849,7 @@
         "operationId": "web_search_providers_create",
                 "$ref": "#/components/schemas/WebSearchProviderInput"
                   "$ref": "#/components/schemas/WebSearchProvider"
+            "description": "Missing, invalid or expired bearer token"
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
             "description": "`web-search-provider-name-taken`"
         "summary": "Create a web search provider",
@@ -69833,6 +69857,7 @@
     "/api/v1/web-search/providers/{id}": {
         "description": "Deletes the provider and its dedicated key. Flow nodes that named it fail with `web-search-no-provider` until edited. Owner or admin only.",
         "operationId": "web_search_providers_delete",
+            "description": "Missing, invalid or expired bearer token"
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:delete`): the caller's role does not grant it"
             "description": "`web-search-provider-not-found`"
         "summary": "Delete a web search provider",
@@ -69840,6 +69865,7 @@
         "operationId": "web_search_providers_update",
                 "$ref": "#/components/schemas/WebSearchProviderInput"
                   "$ref": "#/components/schemas/WebSearchProvider"
+            "description": "Missing, invalid or expired bearer token"
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
             "description": "`web-search-provider-not-found`"
             "description": "`web-search-provider-name-taken`"
@@ -69848,6 +69874,7 @@
     "/api/v1/web-search/providers/{id}/test": {
         "operationId": "web_search_providers_test",
                   "$ref": "#/components/schemas/WebSearchTestResult"
+            "description": "Missing, invalid or expired bearer token"
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:test`): the caller's role does not grant it"
             "description": "`web-search-provider-not-found`"
         "summary": "Test a web search provider",

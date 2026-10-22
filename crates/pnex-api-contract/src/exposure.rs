@@ -341,6 +341,7 @@ pub const EXPOSED: &[&str] = &[
     "voice_id_profiles_update",
     "voice_id_samples_from_media",
     "web_search_providers_list",
+    "web_presence_candidates_list",
     "web_sites_list",
 ];
 
@@ -506,8 +507,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         ],
     ),
     (
-        "sign-off: approving a document version is a human act",
-        &["docs_versions_approve"],
+        "sign-off: approving a document version or validating a website candidate is a human act",
+        &["docs_versions_approve", "web_presence_candidates_decide"],
     ),
     (
         "assistant: conversations with the in-app assistant stay human",

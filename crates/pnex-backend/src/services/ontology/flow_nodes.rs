@@ -17,7 +17,7 @@ use pnex_core::ontology::flow::{
     FlowLinkRequest, FlowNodeRef, FlowQueryRequest, FlowUpsertAck, FlowUpsertRequest,
     WRITES_PER_MINUTE,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -229,7 +229,9 @@ pub async fn upsert(
 }
 
 /// `link_upsert`: open (or update the attributes of the open link), or
-/// close it.
+/// close it after merging the message's attributes (a reason, who
+/// decided). With `skip_closed`, a pair closed before answers its last
+/// closed link instead of opening a new one (web-presence.md D362).
 pub async fn link(
     db: &DatabaseConnection,
     req: &FlowLinkRequest,
@@ -256,8 +258,31 @@ pub async fn link(
         .filter(resource_edges::Column::ValidTo.is_null())
         .one(db)
         .await?;
+    if open.is_none() && config.skip_closed && !config.close {
+        let closed = resource_edges::Entity::find()
+            .filter(resource_edges::Column::OrgId.eq(org))
+            .filter(resource_edges::Column::Relation.eq(&config.link_type))
+            .filter(resource_edges::Column::SourceObjectId.eq(src))
+            .filter(resource_edges::Column::TargetObjectId.eq(tgt))
+            .order_by_desc(resource_edges::Column::ValidTo)
+            .one(db)
+            .await?;
+        if let Some(e) = closed {
+            return Ok(links::views(db, org, &[e]).await?.remove(0));
+        }
+    }
     Ok(match (open, config.close) {
-        (Some(e), true) => links::close(db, org, &actor, e.id, req.valid_from.as_deref()).await?,
+        (Some(e), true) => {
+            // shortcut: two writes, not one transaction (each journals on its
+            // own); a failure between them leaves the link open with its new
+            // attributes, and the next message closes it.
+            if !req.attributes.is_empty() {
+                let mut attrs = e.attributes.as_object().cloned().unwrap_or_default();
+                attrs.extend(req.attributes.clone());
+                links::update(db, org, &actor, e.id, &attrs).await?;
+            }
+            links::close(db, org, &actor, e.id, req.valid_from.as_deref()).await?
+        }
         (None, true) => return Err(OntologyError::NotFound.into()),
         (Some(e), false) => {
             let mut attrs = e.attributes.as_object().cloned().unwrap_or_default();

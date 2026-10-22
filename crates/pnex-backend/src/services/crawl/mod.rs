@@ -519,15 +519,15 @@ fn http() -> &'static reqwest::Client {
     })
 }
 
-struct Fetched {
-    url: reqwest::Url,
-    status: u16,
-    content_type: String,
-    body: String,
+pub(crate) struct Fetched {
+    pub(crate) url: reqwest::Url,
+    pub(crate) status: u16,
+    pub(crate) content_type: String,
+    pub(crate) body: String,
 }
 
 /// GET with same-origin redirects only (5 hops), size capped.
-async fn fetch(origin: &str, url: &reqwest::Url) -> Result<Fetched, &'static str> {
+pub(crate) async fn fetch(origin: &str, url: &reqwest::Url) -> Result<Fetched, &'static str> {
     let mut current = url.clone();
     for _ in 0..=5 {
         if pnex_core::egress::check_url(&current).is_some() {

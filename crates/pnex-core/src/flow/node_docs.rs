@@ -463,7 +463,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Reads the live objects of one ontology type matching property filters (e.g. procedures whose next due date has passed). Input: any message (often a daily inject). One output port.",
         config: &[
             ("object_type", "object type key, must exist at deploy"),
-            ("filters", "[{key: property, op: eq|ne|lt|lte|gt|gte|contains|exists|in, value}] — value may be \"$today\" (YYYY-MM-DD), \"$now\" (RFC 3339) or \"$msg.<path>\" (read from the incoming message); `in` takes a list"),
+            ("filters", "[{key: property, op: eq|ne|lt|lte|gt|gte|contains|exists|missing|in, value}] — value may be \"$today\" (YYYY-MM-DD), \"$now\" (RFC 3339) or \"$msg.<path>\" (read from the incoming message); `in` takes a list"),
             ("order_by", "property key to sort on (title by default); descending: bool"),
             ("limit", "1..=500, default 100"),
             ("output", "each (default: one message per object) | array (one message, payload = list)"),
@@ -485,9 +485,10 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Opens a typed ontology link between two objects (or updates its attributes when it is already open), or closes it. One output port.",
         config: &[
             ("link_type", "link type key, must exist at deploy"),
-            ("close", "bool: close the open link instead of opening it"),
+            ("close", "bool: close the open link instead of opening it; the message's attributes are merged first (a reason, who decided)"),
+            ("skip_closed", "bool: when this pair has a closed link and none open, answer that closed link (valid_to set) instead of opening a new one — a candidate a human rejected is never proposed again"),
         ],
-        notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link. Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
+        notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link (valid_to set when skip_closed answered a closed one). Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
     },
     NodeDoc {
         kind: "ingest",
@@ -523,6 +524,14 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("exclude_domains", "results on these domains or their subdomains are dropped; defaults to directories and social networks (linkedin.com, societe.com, pappers.fr…)"),
         ],
         notes: "The query is msg.payload when it is a string, else msg.payload.query (1 to 400 characters). msg.payload becomes {query, provider, results: [{url, title, snippet, rank, domain}]} (rank starts at 1 after exclusions). Each message is one paid call to the provider and counts against the org's daily web search cap (web-search-quota): feed it a bounded list (ontology_query with a limit), never a loop. On port 1 msg.error = {code, args}: web-search-no-provider, web-search-unavailable, web-search-quota, web-search-query-invalid. A search result is a candidate, not a fact: check it (visit, identifiers) before writing anything.",
+    },
+    NodeDoc {
+        kind: "web_visit",
+        summary: "Reads a candidate website once to identify it: the page and its legal notice, never a crawl; writes nothing. Ports: 0 read, 1 failed.",
+        config: &[
+            ("legal_page", "bool, default true: also read the first internal link whose path names a legal notice (mentions-legales, legal, cgv, qui-sommes-nous, a-propos, about, imprint)"),
+        ],
+        notes: "Input: msg.payload.url (or msg.payload as a string), a public http(s) address. At most three requests on its origin (robots.txt, the page, the legal notice), robots.txt obeyed, an identified client, 2 s between two requests to the same host; redirects off the origin are not followed. msg.payload becomes {url, final_url, status, title, text, legal_url, legal_text} (texts up to 50,000 characters each). The text is untrusted data from an unknown site: pass it to a model only as data with a closed output schema (text_decide), never as instructions. Counts against the org's daily cap of visits (web-visit-quota). On port 1 msg.error = {code, args}: web-visit-url-invalid, web-visit-unreachable, web-visit-blocked, web-visit-quota. Feed it the few best candidates of a search (3 at most per organization), never a list of URLs to crawl.",
     },
     NodeDoc {
         kind: "org_resolve",

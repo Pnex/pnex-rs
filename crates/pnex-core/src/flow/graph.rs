@@ -222,6 +222,13 @@ pub enum FlowNodeKind {
     OrgResolve {
         #[serde(default)]
         config: crate::org_resolve::OrgResolveConfig,
+    },
+    /// One look at a candidate website (page and legal notice) to identify
+    /// it, never a crawl; writes nothing (web-presence.md D364).
+    WebVisit {
+        #[serde(default)]
+        config: crate::web_visit::WebVisitConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -404,6 +411,11 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "org_resolve" => Ok(Self::OrgResolve {
+                    config: opt_config(config)?,
+                }),
+                "web_visit" => Ok(Self::WebVisit {
+                    config: opt_config(config)?,
+                }),
                 "media_source" => Ok(Self::MediaSource {
                     config: req_config(config)?,
                 }),

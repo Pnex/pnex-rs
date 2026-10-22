@@ -690,6 +690,14 @@ pub const ORG_RESOLVE_UNAVAILABLE: &str = "org-resolve-unavailable";
 pub const ORG_RESOLVE_QUOTA: &str = "org-resolve-quota";
 /// The company name is empty or longer than 255 characters.
 pub const ORG_RESOLVE_QUERY_INVALID: &str = "org-resolve-query-invalid";
+/// A `web_visit` URL that is not a public http(s) address.
+pub const WEB_VISIT_URL_INVALID: &str = "web-visit-url-invalid";
+/// The candidate site did not answer, or not with a page.
+pub const WEB_VISIT_UNREACHABLE: &str = "web-visit-unreachable";
+/// The site's `robots.txt` forbids reading the page.
+pub const WEB_VISIT_BLOCKED: &str = "web-visit-blocked";
+/// The org passed its daily number of visits; `args.cap`.
+pub const WEB_VISIT_QUOTA: &str = "web-visit-quota";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -898,6 +906,10 @@ pub const ALL: &[&str] = &[
     ORG_RESOLVE_UNAVAILABLE,
     ORG_RESOLVE_QUOTA,
     ORG_RESOLVE_QUERY_INVALID,
+    WEB_VISIT_URL_INVALID,
+    WEB_VISIT_UNREACHABLE,
+    WEB_VISIT_BLOCKED,
+    WEB_VISIT_QUOTA,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,

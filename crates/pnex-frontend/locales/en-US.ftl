@@ -3605,6 +3605,12 @@ flows-org-resolve-limit = Candidates returned (1 to 5)
 flows-org-resolve-port-matched = matched
 flows-org-resolve-port-review = to review
 flows-org-resolve-port-failed = failed
+flows-palette-web-visit = Website visit
+flows-palette-web-visit-help = Reads a candidate website's page and its legal notice once to identify it; never a crawl, writes nothing
+flows-web-visit-help = The address is msg.payload (text) or msg.payload.url. Three requests at most on the site (robots.txt, the page, the legal notice), robots.txt obeyed, 2 s between two requests. The text comes from an unknown site: give it to a model as data, never as instructions.
+flows-web-visit-legal = Also read the legal notice when the page links to it
+flows-web-visit-port-ok = read
+flows-web-visit-port-failed = failed
 flows-ingest-entries = Files to extract (one pattern per line, empty = all)
 flows-ingest-entries-help = Patterns with * and ? on the file name, for example *Partenaires*.csv
 flows-ingest-entry = File read (pattern)
@@ -3659,6 +3665,7 @@ flows-object-upsert-skip-existing = Create only: leave an existing object as it 
 flows-link-upsert-help = msg.payload = source_id, target_id (object ids), and optionally attributes and valid_from.
 flows-link-upsert-type = Link type
 flows-link-upsert-close = Close the link instead of opening it
+flows-link-upsert-skip-closed = Never reopen a link already closed between these two objects (a rejected candidate is not proposed again)
 flows-action-trigger-help = One message per invocation: payload = the parameters, msg.object = the object, msg.action = who and when.
 flows-action-trigger-action = Action
 flows-action-trigger-none = No action is declared in the ontology yet: add one to a type (or install the Maintenance pack).
@@ -5816,6 +5823,14 @@ toast-access-secret-copied = Key copied
 
 ## Web sites and navigation rules (site-recipes.md D323–D326)
 nav-web-sites = Websites
+site-candidates-title = Websites to validate ({ $count })
+site-candidates-help = Websites the « Web presence » flow proposed for an organization. Confirm makes it its website (it may then be crawled); reject closes it for good, it will not be proposed again.
+site-candidates-score = score { $score }
+site-candidates-proof-siren = SIREN found
+site-candidates-proof-nda = declaration number found
+site-candidates-from-email = domain of its e-mails
+site-candidates-confirm = Confirm
+site-candidates-reject = Reject
 web-sites-title = Websites
 web-sites-subtitle = Sites walked by navigation rules, and their last run.
 web-sites-add = Add a website
@@ -5945,6 +5960,10 @@ err-web-search-query-invalid = The search query is empty or longer than 400 char
 err-org-resolve-unavailable = The company register did not answer.
 err-org-resolve-quota = Daily cap of company lookups reached for this organisation.
 err-org-resolve-query-invalid = The company name is empty or too long (255 characters at most).
+err-web-visit-url-invalid = The address to visit is not a public web address (http or https).
+err-web-visit-unreachable = The candidate site did not answer with a page.
+err-web-visit-blocked = The site's robots.txt forbids reading this page.
+err-web-visit-quota = Daily cap of website visits reached for this organisation.
 web-sites-delete-recipe = Delete the rule
 web-sites-delete-confirm = The rule is deleted; its runs stay in the journal.
 iam-service-browser-endpoints = Browsers of the navigation rules

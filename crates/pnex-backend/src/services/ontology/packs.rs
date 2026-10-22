@@ -31,6 +31,7 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/media_coverage.yaml"),
     include_str!("../../../packs/entreprises.yaml"),
     include_str!("../../../packs/entreprises_fr.yaml"),
+    include_str!("../../../packs/presence_web.yaml"),
     include_str!("../../../packs/quali_watch.yaml"),
     include_str!("../../../packs/prospection_b2b.yaml"),
     include_str!("../../../packs/prospection_fr.yaml"),
@@ -202,8 +203,11 @@ async fn install_locked(
     }
     let s = schema(db, org_id).await?;
     check(&s, pack)?;
+    // A type of a pack that now builds on this one is taken over (D363).
     let owned_by_other = |key: &str, pk: Option<&String>| {
-        s.knows(key) && pk.map(String::as_str) != Some(pack.key.as_str())
+        s.knows(key)
+            && pk.map(String::as_str) != Some(pack.key.as_str())
+            && !pk.is_some_and(|o| hands_over(o, &pack.key))
     };
     for t in &pack.types {
         let pk = s
@@ -230,7 +234,14 @@ async fn install_locked(
         }
     }
     for t in &pack.types {
+        let owner = s
+            .types
+            .iter()
             .find(|(d, _, _)| d.key == t.key)
+            .and_then(|(_, _, p)| p.clone());
+        if owner.is_some_and(|o| o != pack.key) {
+            types::set_pack(db, org_id, &t.key, &pack.key).await?;
+        }
         let current = types::get(db, org_id, &t.key).await?.version;
         let def = match s.object_type(&t.key) {
             Some(local) => keep_org_additions(t, local),
@@ -718,7 +729,20 @@ mod tests {
                     assert!(links.contains(&s.link.as_str()), "{}: {}", h.key, s.link);
                 }
             }
+            for t in &p.page_templates {
+                if let Some(l) = &t.link {
+                        .as_deref()
+                    let def = deps
+                        .iter()
+                        .flat_map(|d| d.link_types.iter())
+                        .chain(p.link_types.iter())
                         .find(|d| &d.key == l)
+                        .unwrap_or_else(|| panic!("{}: template {} link {l}", p.key, t.key));
+                    assert!(
+                        p.key
+                    );
+                }
+            }
             // Shipped mappings fit the schema the pack installs: system,
             // required and own types, extended by the whole chain.
             let chain: Vec<&Pack> = deps.iter().copied().chain([p]).collect();
