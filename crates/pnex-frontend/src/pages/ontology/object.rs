@@ -158,6 +158,11 @@ pub fn OntologyObject(id: String) -> Element {
                 }
             },
             div { class: "space-y-4",
+                crate::components::proposals_table::ProposalsTable {
+                    object_id: Some(o.id.clone()),
+                    status: pnex_core::ontology::proposal::ProposalStatus::Proposed,
+                    hide_empty: true,
+                }
                 div { class: "flex flex-wrap items-center gap-2 text-sm",
                     TypeIcon { icon, class: "h-5 w-5 text-signal-600" }
                     span { class: "rounded bg-signal-50 px-2 py-0.5 text-signal-700",

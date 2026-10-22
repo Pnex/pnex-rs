@@ -52,6 +52,13 @@ const RULES: &[Rule] = &[
         use_instead: "signal commercial (D335)",
         allowed_keys: &[],
     },
+    // proposals.md D371: a machine's pending write is a « proposition ».
+    Rule {
+        scope: Scope::Fr,
+        term: "suggestion de la machine",
+        use_instead: "proposition (D371)",
+        allowed_keys: &[],
+    },
     // Meetings with an account are « rendez-vous » (pack type and pages).
     Rule {
         scope: Scope::Fr,

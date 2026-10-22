@@ -11,6 +11,7 @@
 use crate::pages::access::Access;
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
+use crate::pages::proposals::Proposals;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
     self, AdminStatus, Annotations, AuthCallback, Calendar, Cameras, CaseWorkspace, Cases, Catalog,
@@ -122,6 +123,10 @@ pub enum Route {
 
         #[route("/ontology/types/:type_key")]
         OntologyType { type_key: String },
+
+        // What machines proposed, waiting for a human (proposals.md D374).
+        #[route("/proposals")]
+        Proposals {},
 
         #[route("/devices")]
         Devices {},

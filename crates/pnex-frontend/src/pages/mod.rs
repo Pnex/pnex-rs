@@ -46,6 +46,8 @@ pub mod notifications;
 pub mod ontology;
 pub mod orgs;
 pub mod profile;
+/// Web sites and their navigation studio (site-recipes.md D323–D326).
+pub mod proposals;
 pub mod secrets;
 pub mod server_url;
 pub mod share;
@@ -60,7 +62,6 @@ pub mod system;
 pub mod trust_ca;
 pub mod visualisation;
 pub mod voice_id;
-/// Web sites and their navigation studio (site-recipes.md D323–D326).
 pub mod web_sites;
 
 pub use admin_status::AdminStatus;
