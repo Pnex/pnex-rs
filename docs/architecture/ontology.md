@@ -830,8 +830,9 @@ confiance, auteur machine.
   - `PropertyDef.labels` : valeur → libellé par langue, à côté de
     `colors` ; validés (valeurs connues seulement, 8 langues au plus). Sans
     libellé, l'UI affiche la clé en mots.
-  - L'éditeur de type montre, pour chaque valeur, son libellé dans la
-    langue de l'interface et sa couleur (palette fermée).
+  - L'éditeur de type montre, pour chaque valeur, son libellé en
+    français et en anglais (langue de l'interface en premier) et sa
+    couleur (palette fermée).
   - Couche de l'org = colonne `packs.display` (migration 000050) :
     `{"type:<clé>/<propriété>" | "link:<clé>/<attribut>": {labels,
     colors}}`. Chaque écriture d'un type ou d'un type de lien y enregistre

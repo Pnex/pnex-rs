@@ -590,8 +590,12 @@ pub(super) fn EnumDisplay(prop: PropertyDef, on_change: Callback<PropertyDef>) -
     let PropertyKind::Enum { values } = &p.kind else {
         return rsx! {};
     };
-    let tag = crate::i18n::current_tag();
-    let lang = tag.split(['-', '_']).next().unwrap_or("en").to_string();
+    // Both UI languages, the current one first.
+    let langs = if crate::i18n::current_tag().starts_with("fr") {
+        ["fr", "en"]
+    } else {
+        ["en", "fr"]
+    };
     let edit = {
         let p = p.clone();
         move |f: Box<dyn FnOnce(&mut PropertyDef)>| {
@@ -602,21 +606,25 @@ pub(super) fn EnumDisplay(prop: PropertyDef, on_change: Callback<PropertyDef>) -
     };
     rsx! {
         div { class: "space-y-1", "data-testid": "onto-enum-display",
-            p { class: "text-xs text-gray-600", {t!("onto-enum-display", lang : lang.clone())} }
+            p { class: "text-xs text-gray-600", {t!("onto-enum-display")} }
             for v in values.clone() {
-                div { key: "{v}", class: "grid grid-cols-3 items-center gap-2",
+                div { key: "{v}", class: "grid grid-cols-4 items-center gap-2",
                     span { class: "font-mono text-xs text-gray-700", "{v}" }
-                    input {
-                        class: INPUT,
-                        placeholder: crate::components::ontology::enum_label(&v),
-                        value: p.labels.get(&v).and_then(|n| n.get(&lang)).cloned().unwrap_or_default(),
-                        oninput: {
-                            let (v, lang, edit) = (v.clone(), lang.clone(), edit.clone());
-                            move |e: FormEvent| {
-                                let (v, lang, text) = (v.clone(), lang.clone(), e.value());
-                                edit(Box::new(move |p| set_label(p, &v, &lang, &text)));
-                            }
-                        },
+                    for lang in langs {
+                        input {
+                            key: "{lang}",
+                            class: INPUT,
+                            title: "{lang}",
+                            placeholder: format!("{lang} · {}", crate::components::ontology::enum_label(&v)),
+                            value: p.labels.get(&v).and_then(|n| n.get(lang)).cloned().unwrap_or_default(),
+                            oninput: {
+                                let (v, edit) = (v.clone(), edit.clone());
+                                move |e: FormEvent| {
+                                    let (v, text) = (v.clone(), e.value());
+                                    edit(Box::new(move |p| set_label(p, &v, lang, &text)));
+                                }
+                            },
+                        }
                     }
                     select {
                         class: INPUT,
