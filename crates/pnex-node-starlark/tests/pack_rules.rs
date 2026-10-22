@@ -242,6 +242,7 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     };
     let msg =
         json!({"payload": [row("ACME · Modif", "2026-10-01"), row("BETA · Vente", "2026-10-20")]});
+    let r = execute(&code_in(PROSPECTION, "pb_digest"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -256,6 +257,7 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     assert!(text.starts_with("- 2026-10-20 BETA · Vente"), "{text}");
     assert_eq!(text.lines().count(), 2);
     assert!(execute(
+        &code_in(PROSPECTION, "pb_digest"),
         &json!({"payload": []}),
         2000
     )

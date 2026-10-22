@@ -157,6 +157,9 @@ pub enum Convert {
     MaxBy(String),
     /// A field of an element (after `max_by`).
     Field(String),
+    /// A text holding JSON, decoded (then `field:` reads into it): some
+    /// APIs ship a structure as a string (BODACC).
+    Json,
     /// `scheme://host` of a URL or a bare domain (`https` by default).
     UrlOrigin,
     /// Host of a URL or a bare domain, lower case, without `www.`.
@@ -187,6 +190,7 @@ impl Convert {
             ("luhn", "") => Self::Luhn,
             ("email", "") => Self::Email,
             ("domain", "") => Self::Domain,
+            ("json", "") => Self::Json,
             ("left", n) => Self::Left(n.parse().ok().filter(|n| *n > 0)?),
             ("date", f) if !f.is_empty() && f.len() <= 32 => Self::Date(f.into()),
             ("money", c) if c.len() == 3 && c.bytes().all(|b| b.is_ascii_uppercase()) => {
@@ -212,6 +216,7 @@ impl Convert {
             Self::Lower => "lower".into(),
             Self::UrlOrigin => "url_origin".into(),
             Self::Domain => "domain".into(),
+            Self::Json => "json".into(),
             Self::Luhn => "luhn".into(),
             Self::Email => "email".into(),
             Self::Left(n) => format!("left:{n}"),
@@ -259,7 +264,7 @@ impl utoipa::PartialSchema for Convert {
     fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
         utoipa::openapi::schema::ObjectBuilder::new()
             .description(Some(
-                "A conversion: `trim`, `digits`, `upper`, `lower`, `left:<n>`, `date:<format>`, `money:<currency>`, `split:<sep>`, `before:<sep>`, `url_origin`, `domain`, `luhn`, `email`, or `{enum: {source: target, \"*\": other}}`.",
+                "A conversion: `trim`, `digits`, `upper`, `lower`, `left:<n>`, `date:<format>`, `money:<currency>`, `split:<sep>`, `before:<sep>`, `after:<sep>`, `max_by:<field>`, `field:<path>`, `json`, `url_origin`, `domain`, `luhn`, `email`, or `{enum: {source: target, \"*\": other}}`.",
             ))
             .into()
     }
@@ -280,6 +285,18 @@ pub struct PerObject {
     pub property: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub param: String,
+    /// Only the objects whose property holds one of these values (the
+    /// accounts followed, not every company known).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only: Option<PerObjectOnly>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct PerObjectOnly {
+    pub property: String,
+    pub values: Vec<String>,
 }
 
 /// Latitude and longitude of a `map_pin` created by the import.
@@ -324,6 +341,7 @@ pub struct ObjectMap {
     #[serde(default)]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub properties: BTreeMap<String, FieldSpec>,
+    /// Constants written only when the import creates the object, never
     /// over an existing one (a new target enters as `cible`, a client stays
     /// a client).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -562,6 +580,14 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             .is_some_and(|t| t.properties.iter().any(|d| d.key == p.property));
         if !known || p.param.trim() != p.param || p.param.len() > 64 {
             return Err(ferr("per_object", FIELD_INVALID));
+        }
+        if let Some(o) = &p.only {
+            let known = s
+                .object_type(&p.type_key)
+                .is_some_and(|t| t.properties.iter().any(|d| d.key == o.property));
+            if !known || o.values.is_empty() || o.values.len() > 50 {
+                return Err(ferr("per_object.only", FIELD_INVALID));
+            }
         }
     }
     for (i, o) in m.objects.iter().enumerate() {
@@ -808,6 +834,7 @@ pub struct PlannedObject {
     /// update leaves the current title alone).
     pub titled: bool,
     pub properties: Map<String, Value>,
+    /// Written on creation only, under `properties`.
     pub defaults: Map<String, Value>,
     pub location: Option<(f64, f64)>,
     pub create: bool,
@@ -897,6 +924,16 @@ pub fn convert(v: Option<Value>, convs: &[Convert]) -> Result<Option<Value>, Str
                 }
                 continue;
             }
+            Convert::Json => {
+                if let Value::String(t) = &cur {
+                    // Not JSON: no value rather than a refused record.
+                    let Ok(v) = serde_json::from_str::<Value>(t) else {
+                        return Ok(None);
+                    };
+                    cur = v;
+                }
+                continue;
+            }
             _ => {}
         }
         let s = match text_of(&cur) {
@@ -905,7 +942,7 @@ pub fn convert(v: Option<Value>, convs: &[Convert]) -> Result<Option<Value>, Str
             None => return Err(FIELD_INVALID.into()),
         };
         cur = match c {
-            Convert::MaxBy(_) | Convert::Field(_) => unreachable!("handled above"),
+            Convert::MaxBy(_) | Convert::Field(_) | Convert::Json => unreachable!("handled above"),
             Convert::Trim => Value::String(s.trim().to_string()),
             Convert::Digits => Value::String(s.chars().filter(char::is_ascii_digit).collect()),
             Convert::Upper => Value::String(s.to_uppercase()),
@@ -1757,6 +1794,13 @@ pub struct ImportApply {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn json_text_is_decoded_then_read() {
+        use super::{convert, Convert};
+        let v = Some(serde_json::json!(
+            "{\"descriptif\": \"modification du capital\"}"
+        ));
+        let c = [Convert::Json, Convert::Field("descriptif".into())];
         assert_eq!(
             convert(v, &c),
             Ok(Some(serde_json::json!("modification du capital")))
