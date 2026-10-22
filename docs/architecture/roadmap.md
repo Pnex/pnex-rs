@@ -1040,6 +1040,62 @@ lecture ; liens de groupe GLEIF et Wikidata ; rapprochement nom → SIREN
 (amende D261) ; signaux commerciaux ; score explicable ; coloration par
 valeur de propriété au noyau (D339). Pas de CRM. Socle mondial `entreprises` + un pack par pays, France d'abord (D343, 2026-10-21). Lots CC0 → CC6 ; CC3
 (données personnelles) attend D341.
+Suite et état au 2026-10-22 : **P2.28**.
+
+### P2.28 — Outillage commercial : prospection, veille, cartographie des comptes (ajout 2026-10-22) — **9 blocs codés en local, à commiter**
+
+Docs : `account-mapping.md` §10 et `web-presence.md`. Décisions de
+pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
+
+**Décisions de cadre (voir `ontology.md` §11)**
+
+| # | Décision | Priorité |
+|---|---|---|
+| D367 | La proposition devient un objet du noyau (généralise les propositions des dossiers) : une boîte « à valider », un journal des décisions ; les packs cessent de déclarer `etat a_valider` ; migration des 4 packs existants | 1, à coder en premier |
+| D368 | Contrat pack + couche d'org : réglages déclarés par le pack, surcharge par l'org, fusion pack ⊕ couche ⊕ ajouts | 2 |
+| D369 | `external_ref` de premier rang + événements de changement sortants (D356 généralisé) ; écritures chiffrées dans des tables dédiées en ajout seul, à côté de l'ontologie | principe acté, code au démarrage CRM/ERP |
+| D370 | Clé d'énumération stable, jamais renommée ; libellé séparé | règle immédiate |
+
+**Livré en local (2026-10-22, non commité)**
+
+| Bloc | Contenu | État |
+|---|---|---|
+| CC2 | Liens de groupe GLEIF + Wikidata (`filiale_de` passe dans `entreprises`), nœud `org_resolve` | codé, à commiter |
+| D337 / D336 | Liste de ciblage par recherche enregistrée (`prospection_fr`), score de ciblage par critères d'org | codé, à commiter |
+| D339 / D330 | Couleurs par valeur (carte, hiérarchie, graphe), couverture et espace blanc | codé, à commiter |
+| D338 | Chemin d'introduction (liens entre personnes) | codé, à commiter |
+| W2–W4 | `link_upsert` `skip_closed`, pack `presence_web`, nœud `web_visit`, flow d'identification, « Sites à valider » | codé, à commiter |
+| CC4 | `signal_commercial`, annonces BODACC des comptes suivis, flow de résumé | codé, à commiter |
+| D340 | Pages remplies depuis un objet : plan de compte, fiche concurrent, préparation de rendez-vous | codé, à commiter |
+| Réunions | `rendez_vous`, `critere_coaching`, compte rendu, coaching par critère, `focus` du résumé de média | codé, à commiter |
+| Personas | Correspondance des personas d'un client vers la liste du pack | donnée d'org, hors dépôt |
+
+**Suites identifiées**
+- Chemin d'introduction à départs multiples (tout le réseau interne + les contacts des comptes clients).
+- Pack de veille autonome : thèmes d'org, page ou actualité → `text_decide` → signal, envoi par suiveur, dédoublonnage, tableau de bord.
+- Pages actualités et carrières par le parcours D307.
+- Diff des pages concurrentes (D311).
+- Signal « nouvel établissement » tiré de la synchro SIRET.
+- Étape LLM pour les scores moyens de présence web + capture (Q-W4).
+- Proposition automatique des critères abordés depuis la transcription + temps de parole par côté.
+- Listes de salon et d'associations (fichier + `org_resolve`).
+- Fournisseurs par pays (`org_resolve`, registre, annonces ; Royaume-Uni d'abord) + identifiants d'import au coffre (D352).
+- Quotas par org ou par offre + affichage du coût.
+- Libellés d'énumération et i18n des corps de modèles (D370).
+- Pages vivantes.
+- Droits par objet (ACL).
+- Règles côté serveur par ensembles / L2 pour plus de 100 000 objets.
+- Écriture par les flows des types système (`map_pin` → score de site).
+- Clé naturelle composée.
+- Pourcentage de détention sur `filiale_de`.
+- Connecteurs CRM/ERP génériques (après D369).
+- Assistant en direct pendant un rendez-vous (projet séparé).
+- Vision CRM/ERP : interventions terrain, planification des techniciens, mouvements et déploiements d'équipements, réparations et tarifs.
+
+**Point ouvert** — La suite `partner_watch` complète est passée de 165 s à
+772 s, et `imports_apply_thousands_of_records_quickly` y dépasse son
+budget (il passe seul en 112 s). À relancer sur une machine au repos avant
+le push, à profiler si l'écart demeure.
 
 ## P3 — Horizons (décisions de phase explicites)
 
@@ -1393,3 +1449,11 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   ponctuelle de profil. Amende D261 (`extension-collector.md`, mode
   `once`) et avance le mapping BODACC prévu en V2 par D304. Pack écrit
   (CC1, D329).
+- **2026-10-22** — Outillage commercial (P2.28) : 9 blocs codés en
+  local (groupes GLEIF/Wikidata, `org_resolve`, ciblage et score,
+  couleurs et couverture, chemin d'introduction, présence web W2–W4,
+  signaux BODACC, pages remplies depuis un objet, rendez-vous et coaching).
+  Décisions de pérennité D367 (proposition au noyau, priorité 1), D368
+  (contrat pack + couche d'org, priorité 2), D369 (identité externe et
+  frontière des transactions, principe) et D370 (clé d'énumération stable)
+  inscrites dans `ontology.md` §11.

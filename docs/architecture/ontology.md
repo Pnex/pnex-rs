@@ -761,6 +761,71 @@ clés, lisible en YAML.
   déprécié), `CONTRACT` inchangé : les routes `/ontology/*` sont
   additives.
 
+## 11. Décisions de pérennité (2026-10-22)
+
+Prises au vu de l'outillage commercial (`account-mapping.md`,
+`web-presence.md`) et de l'horizon CRM/ERP. Critère : ce qui deviendrait
+un piège de migration si on attendait. Le reste s'ajoute plus tard sans
+rien casser.
+
+### D367 — La proposition est un objet du noyau (priorité 1)
+
+Toute écriture produite par une machine peut arriver comme **proposition**
+au lieu d'être écrite comme donnée vivante : imports de sources
+communautaires, LLM, règles de flow, `org_resolve`, recherche web. Champs :
+cible (objet, lien ou création), différence proposée, preuves, source,
+confiance, auteur machine.
+
+- On **généralise les propositions des dossiers** (détection → proposition
+  → retenue ou rejetée) au lieu d'inventer un second mécanisme.
+- **Une seule boîte « à valider »** et **un seul journal des décisions**
+  (qui, quand, pourquoi). Accepter applique la différence par le service
+  partagé avec l'UI : mêmes contrôles, mêmes 409.
+- Les packs **cessent de déclarer** un état `a_valider` par type.
+- **Migration** des champs existants : `filiale_de.etat`,
+  `a_pour_site.statut`, `signal_commercial.etat`, constats de
+  `quali_watch`. Elle reste bon marché tant que ces données sont peu
+  nombreuses.
+- À coder en premier.
+
+### D368 — Contrat pack + couche d'org (priorité 2)
+
+- Un pack **déclare ses points réglables** : réglages (seuils, poids),
+  couleurs et libellés des valeurs d'énumération, modèles de pages
+  copiables, hiérarchies.
+- Une org ne surcharge **que ces points**, dans sa propre couche ; elle
+  garde le droit d'ajouter des propriétés et des actions
+  (`keep_org_additions`).
+- À la mise à jour d'un pack, la fusion est fixe : **pack ⊕ couche d'org
+  ⊕ ajouts de l'org**. La passation entre packs (`hands_over`) s'applique
+  avant.
+- Sans ce contrat, la première adaptation d'un client devient une copie du
+  pack, et les montées de version ne fusionnent plus.
+
+### D369 — Identité externe et frontière des transactions (principe acté, code au démarrage CRM/ERP)
+
+- **`external_ref` de premier rang** sur les objets et les liens :
+  système, identifiant externe, version ou etag, dernière synchro, sens.
+  Les identifiants existants (SIREN, LEI…) s'expriment comme des
+  références. Aucun pack ne crée de champ `<outil>_id`.
+- **Événements de changement sortants** : D356 (`import.applied`)
+  généralisé à toute écriture. Une synchro bidirectionnelle arbitre ses
+  conflits par la version (concurrence optimiste déjà en place).
+- **Écritures chiffrées = tables dédiées en ajout seul**, à côté de
+  l'ontologie et référencées par elle : mouvements de stock, lignes de
+  facture, temps passés. Elles ne sont pas des objets jsonb. L'ontologie
+  reste le graphe des choses ; les transactions vivent à côté.
+
+### D370 — Clé d'énumération stable, libellé séparé
+
+- La **clé** d'une valeur d'énumération (`client`, `cible`, `a_valider`…)
+  est un identifiant stable, **jamais renommé**, pas même pour la
+  traduire.
+- Le **libellé affiché** est séparé, par langue et surchargeable par
+  l'org (D368).
+- Renommer une clé est une migration de données, jamais une retouche
+  d'affichage.
+
 ## Annexe B — Calendrier GMAO : étude de l'existant (pré-PRD, 2026-10-13)
 
 > Statut : brouillon v0.1, phase de recherche. Aucun code, aucun numéro
