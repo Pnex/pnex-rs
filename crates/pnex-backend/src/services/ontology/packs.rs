@@ -16,7 +16,7 @@ use pnex_core::ontology::api::{
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, TypeSet};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    Set,
+    QueryOrder, Set,
 };
 use serde_json::{Map, Value};
 use uuid::Uuid;
@@ -515,8 +515,10 @@ fn extended_properties(
 }
 
 /// D316: the pack's functions and flow models, created when the org has
-/// none of that name (never overwritten: the org may have edited them).
-/// Flows are drafts: deploying them stays a human act (D123).
+/// none of that name. On an upgrade, one the org never edited (its latest
+/// version is still the pack's) takes the new pack version; one the org
+/// edited is left alone. Flows are drafts: deploying them stays a human
+/// act (D123), so an upgraded flow runs at its next deploy.
 async fn install_automation(
     db: &DatabaseConnection,
     org_id: i64,
@@ -538,10 +540,35 @@ async fn install_automation(
             .filter(functions::Column::Name.eq(f.name.trim()))
             .one(db)
             .await?;
+        let note = format!("pack {} {}", pack.key, pack.version);
         let (id, version) = match existing {
             Some(row) => {
                 let v = crate::services::functions::latest_version(db, row.id).await?;
-                (row.id, v)
+                let pristine = v
+                    .as_ref()
+                    .is_some_and(|v| v.code != f.code && pack_wrote(v.note.as_deref(), &pack.key));
+                if !pristine {
+                    (row.id, v)
+                } else {
+                    let id = row.id;
+                    let (_, saved) = crate::services::functions::save_new_version(
+                        db,
+                        row,
+                        &pnex_core::SaveFunctionVersion {
+                            expected_version_number: v.map_or(0, |v| v.version_number),
+                            code: Some(f.code.clone()),
+                            name: None,
+                            description: None,
+                            note: Some(note),
+                        },
+                    )
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!(pack = %pack.key, function = %f.name, error = %e, "pack function upgrade refused");
+                        invalid(format!("functions.{i}"), FIELD_INVALID)
+                    })?;
+                    (id, saved)
+                }
             }
             None => {
                 let (row, v) = crate::services::functions::create_function(
@@ -552,7 +579,7 @@ async fn install_automation(
                         language: f.language,
                         description: Some(f.description.clone()).filter(|d| !d.is_empty()),
                         code: f.code.clone(),
-                        note: Some(format!("pack {} {}", pack.key, pack.version)),
+                        note: Some(note),
                     },
                 )
                 .await
@@ -578,14 +605,35 @@ async fn install_automation(
         .iter()
         .filter_map(|r| Some((r.try_get("", "name").ok()?, r.try_get("", "id").ok()?)))
         .collect();
+    let author = format!("pack:{}", pack.key);
+    let writer = crate::services::secrets::flow::GraphWriter {
+        ring: None,
+        user_id,
+        can_write_secrets: false,
+    };
     for (i, f) in pack.flows.iter().enumerate() {
-        let exists = flows::Entity::find()
+        let existing = flows::Entity::find()
             .filter(flows::Column::OrgId.eq(org_id))
             .filter(flows::Column::Name.eq(f.name.trim()))
             .one(db)
-            .await?
-            .is_some();
-        if exists {
+            .await?;
+        let latest = match &existing {
+            Some(row) => {
+                crate::models::_entities::flow_versions::Entity::find()
+                    .filter(crate::models::_entities::flow_versions::Column::FlowId.eq(row.id))
+                    .order_by_desc(crate::models::_entities::flow_versions::Column::VersionNumber)
+                    .one(db)
+                    .await?
+            }
+            None => None,
+        };
+        // An existing flow is upgraded only while its latest version is
+        // still the pack's own (a human save takes its author away).
+        if existing.is_some()
+            && !latest
+                .as_ref()
+                .is_some_and(|v| v.author.as_deref() == Some(author.as_str()))
+        {
             continue;
         }
         let mut graph = f.graph.clone();
@@ -597,27 +645,51 @@ async fn install_automation(
         resolve_imports(&mut graph, |name| imports.get(name).cloned());
         let graph: pnex_core::FlowGraph = serde_json::from_value(graph)
             .map_err(|_| invalid(format!("flows.{i}.graph"), FIELD_INVALID))?;
-        crate::services::flow::create_flow(
-            db,
-            org_id,
-            &f.name,
-            &graph,
-            None,
-            Some(format!("pack:{}", pack.key)),
-            Some(f.note.clone()).filter(|n| !n.is_empty()),
-            &crate::services::secrets::flow::GraphWriter {
-                ring: None,
-                user_id,
-                can_write_secrets: false,
-            },
-        )
-        .await
-        .map_err(|e| {
+        let note = Some(f.note.clone()).filter(|n| !n.is_empty());
+        let written = match (existing, latest) {
+            (Some(row), Some(v)) => {
+                if serde_json::to_value(&graph).ok().as_ref() == Some(&v.graph) {
+                    continue;
+                }
+                crate::services::flow::append_version(
+                    db,
+                    &row,
+                    v.version_number,
+                    &graph,
+                    None,
+                    Some(author.clone()),
+                    note,
+                    &writer,
+                )
+                .await
+            }
+            _ => {
+                crate::services::flow::create_flow(
+                    db,
+                    org_id,
+                    &f.name,
+                    &graph,
+                    None,
+                    Some(author.clone()),
+                    note,
+                    &writer,
+                )
+                .await
+            }
+        };
+        written.map_err(|e| {
             tracing::warn!(pack = %pack.key, flow = %f.name, error = ?e, "pack flow refused");
             invalid(format!("flows.{i}"), FIELD_INVALID)
         })?;
     }
     Ok(())
+}
+
+/// Whether a version note was written by `key`'s install (`pack <key> <v>`).
+fn pack_wrote(note: Option<&str>, key: &str) -> bool {
+    note.and_then(|n| n.strip_prefix("pack "))
+        .and_then(|n| n.strip_prefix(key))
+        .is_some_and(|rest| rest.starts_with(' '))
 }
 
 /// Function nodes naming a function (`function_name`, no id) get the id,
@@ -901,6 +973,20 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{}: import {}: {e:?}", p.key, i.name));
             }
         }
+    }
+
+    #[test]
+    fn only_the_packs_own_note_counts_as_unedited() {
+        assert!(super::pack_wrote(
+            Some("pack presence_web 1.2.0"),
+            "presence_web"
+        ));
+        assert!(!super::pack_wrote(
+            Some("pack presence_webx 1.0.0"),
+            "presence_web"
+        ));
+        assert!(!super::pack_wrote(Some("my fix"), "presence_web"));
+        assert!(!super::pack_wrote(None, "presence_web"));
     }
 
     #[test]

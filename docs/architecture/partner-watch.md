@@ -492,7 +492,8 @@ diff, du robots.txt, du nettoyage HTML.
   envoi ; activation du canal réservée aux propriétaires et admins ;
   porte de deploy si un canal du nœud ne l'autorise pas.
 - **D316** : un pack livre `functions` et `flows` (brouillons, fonctions
-  résolues par nom à l'installation, jamais écrasés). quali_watch livre
+  résolues par nom à l'installation ; une montée de version ne réécrit
+  que ceux que l'org n'a pas modifiés, D368). quali_watch livre
   les règles `qw_relance_suivante`, `qw_regle_adm_01`, `qw_lien`, les
   modèles « Quali-Watch · reminders » et « Quali-Watch · rule ADM-01 », et
   les modèles de page « Constat d'écart » et « Rapport partenaire ». Les
