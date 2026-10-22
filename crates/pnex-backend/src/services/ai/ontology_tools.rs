@@ -85,6 +85,11 @@ fn onto_error(e: OntologyError) -> ToolError {
             "a person can be attached to this case only once the user has filled in its processing basis".into(),
             None,
         ),
+        OntologyError::ProposalDecided => coded(
+            c::PROPOSAL_DECIDED,
+            "this proposal is already decided; only a person decides proposals".into(),
+            None,
+        ),
         OntologyError::CaseProposalStale => coded(
             c::CASE_PROPOSAL_STALE,
             "this proposal was already reviewed by the user; only the user retains or rejects proposals".into(),

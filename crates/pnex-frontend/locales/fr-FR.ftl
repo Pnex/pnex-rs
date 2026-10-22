@@ -5729,6 +5729,7 @@ iam-verb-download = Télécharger
 iam-verb-connect = Suivre en direct
 iam-verb-moderate = Modérer
 iam-verb-broadcast = Diffuser à des destinataires dynamiques
+iam-verb-decide = Accepter ou rejeter
 iam-verb-usage = Voir les usages
 
 ## Access page (iam.md §9)
@@ -5966,10 +5967,12 @@ err-web-visit-url-invalid = L'adresse à visiter n'est pas une adresse web publi
 err-web-visit-unreachable = Le site candidat n'a pas répondu par une page.
 err-web-visit-blocked = Le robots.txt du site interdit de lire cette page.
 err-web-visit-quota = Plafond quotidien de visites de sites atteint pour cette organisation.
+err-proposal-decided = Cette proposition a déjà été tranchée, ou une plus récente l'a remplacée.
 web-sites-delete-recipe = Supprimer la règle
 web-sites-delete-confirm = La règle est supprimée ; ses passages restent au journal.
 iam-service-browser-endpoints = Navigateurs des règles de navigation
 iam-service-web-search = Fournisseurs de recherche web
+iam-service-proposals = Propositions à valider
 iam-service-site-recipes = Règles de navigation des sites web
 web-sites-actions = Actions
 web-sites-add-step = Ajouter une étape

@@ -152,6 +152,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::site_recipes::routes())
         .add_route(controllers::web_search::routes())
         .add_route(controllers::web_presence::routes())
+        .add_route(controllers::proposals::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
         .add_route(controllers::ontology_imports::routes())

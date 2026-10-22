@@ -20,6 +20,7 @@ pub mod link_types;
 pub mod links;
 pub mod objects;
 pub mod packs;
+pub mod proposals;
 pub mod query;
 pub mod recurrence;
 pub mod series;
@@ -67,6 +68,9 @@ pub enum OntologyError {
     /// The proposal was already reviewed the other way (K30).
     #[error("case proposal stale")]
     CaseProposalStale,
+    /// The proposal was already decided the other way, or superseded (D373).
+    #[error("proposal decided")]
+    ProposalDecided,
     /// A track file that cannot be imported (`err_codes::TRACK_IMPORT_*`).
     #[error("track import: {0}")]
     TrackImport(&'static str),
