@@ -206,6 +206,8 @@ Q9 du PRD).
   Proposition : attribut `sirets` + périmètre le plus
   large, ou lien depuis `map_pin` en V2.
 - **Q-I3** — Volume : un gros réseau (> 50 000 lignes filtrées) reste refusé.
+  **Close le 2026-10-22** : écriture en bloc (`data-pipelines.md` D347),
+  `ROWS_MAX` porté à 250 000.
   Mesuré sur dev (org #4 chargée à la main, toutes fiches actives) : une
   application de 17 000 liens ≈ 10 min en une transaction ; les partenaires
   FC de toutes les fiches ≈ 104 000 liens après dédoublonnage SIREN. Au-delà

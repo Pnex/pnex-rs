@@ -197,6 +197,13 @@ async fn check_input<C: ConnectionTrait>(
     if m.per_object.is_some() && input.source != ImportSource::Api {
         return Err(invalid("mapping.per_object", FIELD_INVALID));
     }
+    if m.per_object.as_ref().is_some_and(|p| {
+            && !input
+                .source_url
+                .as_deref()
+    }) {
+        return Err(invalid("source_url", FIELD_INVALID));
+    }
     // A per-object run covers a share of the objects: a snapshot would
     // close what the others hold.
     if m.per_object.is_some() && input.mode == ImportMode::Snapshot {
@@ -465,9 +472,22 @@ async fn finish_run<C: ConnectionTrait>(
             code.map(str::to_string).into(),
             (diff.map_or(0, |d| d.rows) as i32).into(),
             serde_json::to_value(&counts).unwrap_or_default().into(),
-            diff.filter(|_| keep_diff)
-                .map(|d| serde_json::to_value(d).unwrap_or_default())
-                .into(),
+            diff.map(|d| {
+                if keep_diff {
+                    serde_json::to_value(d)
+                } else {
+                    // Applied or failed: the rows in error stay readable,
+                    // the rest of the difference is not kept.
+                    serde_json::to_value(ImportDiff {
+                        rows: d.rows,
+                        errors: d.errors.iter().take(PREVIEW_SAMPLE).cloned().collect(),
+                        warnings: d.warnings.iter().take(PREVIEW_SAMPLE).cloned().collect(),
+                        ..Default::default()
+                    })
+                }
+                .unwrap_or_default()
+            })
+            .into(),
         ],
     ))
     .await?;
@@ -512,10 +532,12 @@ async fn records<C: ConnectionTrait>(
     }
 }
 
-/// Values of `per_object` to query: the least recently updated first.
+/// Values of `per_object` to query: in value order, starting after the
+/// last one a scheduled run queried and wrapping around, so every object
+/// gets its turn even when the source knows nothing about most of them.
 async fn per_object_values<C: ConnectionTrait>(
     db: &C,
-    org_id: i64,
+    imp: &ImportRow,
     p: &imp::PerObject,
     max: u32,
 ) -> std::result::Result<Vec<String>, sea_orm::DbErr> {
@@ -525,10 +547,14 @@ async fn per_object_values<C: ConnectionTrait>(
              WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
              ORDER BY updated_at ASC LIMIT $4",
             vec![
-                org_id.into(),
+                imp.org_id.into(),
                 p.type_key.clone().into(),
                 p.property.clone().into(),
                 (max as i64).into(),
+                    .as_ref()
+                    .map(|o| o.values.clone())
+                    .unwrap_or_default()
+                    .into(),
             ],
         ))
         .await?;
@@ -719,113 +745,121 @@ async fn write(
     actor: &Actor,
     diff: &ImportDiff,
 ) -> Result<()> {
-    use super::{links, objects};
-    let txn = db.begin().await?;
-    // Loaded once: per write it costs a query per object type.
-    let s = schema(&txn, org_id).await?;
-    // Created meanwhile by someone else: the preview is stale.
-    if keys_taken(&txn, org_id, &diff.created).await? {
-        return Err(OntologyError::KeyTaken);
-    }
-    let mut created: Vec<Uuid> = Vec::with_capacity(diff.created.len());
-    for c in &diff.created {
-        let id = if c.type_key == pnex_core::resources::KIND_MAP_PIN {
-            create_pin(&txn, &s, org_id, actor, c).await?
-        } else {
-            objects::create_with(
-                &txn,
-                &s,
-                org_id,
-                actor,
-                &ObjectInput {
-                    type_key: c.type_key.clone(),
-                    title: c.title.clone(),
-                    properties: c.properties.clone(),
-                    expected_version: None,
+    crate::services::ontology::changes::deferred(async {
+        use super::{links, objects};
+        let txn = db.begin().await?;
+        // Loaded once: per write it costs a query per object type.
+        let s = schema(&txn, org_id).await?;
+        // Created meanwhile by someone else: the preview is stale.
+        if keys_taken(&txn, org_id, &diff.created).await? {
+            return Err(OntologyError::KeyTaken);
+        }
+        // Bulk paths (D347): a few statements per batch, not per row. A
+        // `map_pin` goes through its POI, one by one.
+        let mut created: Vec<Uuid> = vec![Uuid::nil(); diff.created.len()];
+        let mut plain: Vec<(usize, ObjectInput)> = Vec::new();
+        for (i, c) in diff.created.iter().enumerate() {
+            if c.type_key == pnex_core::resources::KIND_MAP_PIN {
+                created[i] = create_pin(&txn, &s, org_id, actor, c).await?;
+            } else {
+                plain.push((
+                    i,
+                    ObjectInput {
+                        type_key: c.type_key.clone(),
+                        title: c.title.clone(),
+                        properties: c.properties.clone(),
+                        expected_version: None,
+                    },
+                ));
+            }
+        }
+        let inputs: Vec<ObjectInput> = plain.iter().map(|(_, o)| o.clone()).collect();
+        let ids = objects::create_many_with(&txn, &s, org_id, actor, &inputs).await?;
+        for ((i, _), id) in plain.iter().zip(ids) {
+            created[*i] = id;
+        }
+        let mut current = std::collections::HashMap::new();
+        for chunk in diff.updated.chunks(objects::BULK_CHUNK) {
+            let ids = chunk
+                .iter()
+                .map(|u| Uuid::parse_str(&u.id).map_err(|_| OntologyError::NotFound))
+                .collect::<Result<Vec<_>>>()?;
+            current.extend(links::refs(&txn, org_id, ids).await?);
+        }
+        let mut updates = Vec::with_capacity(diff.updated.len());
+        for u in &diff.updated {
+            let id = Uuid::parse_str(&u.id).map_err(|_| OntologyError::NotFound)?;
+            let row = current.get(&id).ok_or(OntologyError::NotFound)?;
+            if row.version != u.version || row.valid_to.is_some() {
+                return Err(OntologyError::VersionConflict {
+                    current: row.version,
+                });
+            }
+            let mut props = row.properties.as_object().cloned().unwrap_or_default();
+            for (k, ch) in &u.changes {
+                props.insert(k.clone(), ch.to.clone());
+            }
+            updates.push((
+                id,
+                ObjectInput {
+                    type_key: row.type_key.clone(),
+                    title: u.new_title.clone().unwrap_or(row.title.clone()),
+                    properties: props,
+                    expected_version: Some(u.version),
                 },
-            )
-            .await?
-            .id
-            .parse()
-            .map_err(|_| OntologyError::NotFound)?
+            ));
+        }
+        objects::update_many_with(&txn, &s, org_id, actor, &updates).await?;
+        let end = |e: &imp::DiffEnd| -> Result<String> {
+            match (&e.id, e.created) {
+                (Some(id), _) => Ok(id.clone()),
+                (None, Some(i)) => created
+                    .get(i)
+                    .map(Uuid::to_string)
+                    .ok_or(OntologyError::NotFound),
+                _ => Err(OntologyError::NotFound),
+            }
         };
-        created.push(id);
-    }
-    for u in &diff.updated {
-        let id = Uuid::parse_str(&u.id).map_err(|_| OntologyError::NotFound)?;
-        let row = objects::find(&txn, org_id, id).await?;
-        if row.version != u.version || row.valid_to.is_some() {
-            return Err(OntologyError::VersionConflict {
-                current: row.version,
-            });
-        }
-        let mut props = row.properties.as_object().cloned().unwrap_or_default();
-        for (k, ch) in &u.changes {
-            props.insert(k.clone(), ch.to.clone());
-        }
-        objects::update_in_with(
-            &txn,
-            &s,
-            org_id,
-            actor,
-            id,
-            &ObjectInput {
-                type_key: row.type_key.clone(),
-                title: u.new_title.clone().unwrap_or(row.title.clone()),
-                properties: props,
-                expected_version: Some(u.version),
-            },
-        )
-        .await?;
-    }
-    let end = |e: &imp::DiffEnd| -> Result<String> {
-        match (&e.id, e.created) {
-            (Some(id), _) => Ok(id.clone()),
-            (None, Some(i)) => created
-                .get(i)
-                .map(Uuid::to_string)
-                .ok_or(OntologyError::NotFound),
-            _ => Err(OntologyError::NotFound),
-        }
-    };
-    for l in &diff.links_opened {
-        links::create_with(
-            &txn,
-            &s,
-            org_id,
-            actor,
-            &LinkInput {
-                link_type: l.link_type.clone(),
-                source_id: end(&l.from)?,
-                target_id: end(&l.to)?,
-                attributes: l.attributes.clone(),
-                // A start in the future is refused: such a link opens now.
-                valid_from: l
-                    .valid_from
-                    .clone()
-                    .filter(|v| v.as_str() <= chrono::Utc::now().to_rfc3339().as_str()),
-                valid_to: None,
-            },
-        )
-        .await?;
-    }
-    for l in &diff.links_updated {
-        links::update_with(&txn, &s, org_id, actor, l.id, &l.attributes).await?;
-    }
-    for c in &diff.closed {
-        match c.kind.as_str() {
-            "object" => {
-                let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
-                objects::archive(&txn, org_id, actor, id).await?;
-            }
-            _ => {
-                let id: i64 = c.id.parse().map_err(|_| OntologyError::NotFound)?;
-                links::close(&txn, org_id, actor, id, None).await?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let opened = diff
+            .links_opened
+            .iter()
+            .map(|l| {
+                Ok(LinkInput {
+                    link_type: l.link_type.clone(),
+                    source_id: end(&l.from)?,
+                    target_id: end(&l.to)?,
+                    attributes: l.attributes.clone(),
+                    // A start in the future is refused: such a link opens now.
+                    valid_from: l.valid_from.clone().filter(|v| v.as_str() <= now.as_str()),
+                    valid_to: None,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        links::create_many_with(&txn, &s, org_id, actor, &opened).await?;
+        let changed: Vec<(i64, serde_json::Map<String, Value>)> = diff
+            .links_updated
+            .iter()
+            .map(|l| (l.id, l.attributes.clone()))
+            .collect();
+        links::update_many_with(&txn, &s, org_id, actor, &changed).await?;
+        for c in &diff.closed {
+            match c.kind.as_str() {
+                "object" => {
+                    let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
+                    objects::archive(&txn, org_id, actor, id).await?;
+                }
+                _ => {
+                    let id: i64 = c.id.parse().map_err(|_| OntologyError::NotFound)?;
+                    links::close(&txn, org_id, actor, id, None).await?;
+                }
             }
         }
-    }
-    txn.commit().await?;
-    Ok(())
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        Ok(())
+    })
+    .await
 }
 
 /// True when a live object already holds the key of one to create; one
@@ -953,26 +987,75 @@ async fn previous_rows<C: ConnectionTrait>(db: &C, import_id: Uuid) -> Result<us
         .max(0) as usize)
 }
 
-/// A scheduled (or manual) run: fetch, plan, check, apply at once.
-pub async fn run_now(
+/// Starts a run in the background and returns it `running` (manual
+/// launch or schedule): an import with its own steps runs them, then
+/// applies the file they staged (data-pipelines.md D344); a URL or API
+/// import fetches its source. Checked and applied with the author's role
+/// (D303). A file import has nothing to fetch: it is previewed with a file.
+pub async fn start(
     db: &DatabaseConnection,
-    imp_id: Uuid,
+    store: Option<crate::services::artifact_store::S3Store>,
     org_id: i64,
+    id: Uuid,
+    user_id: Option<i64>,
     trigger: &str,
 ) -> Result<ImportRunView> {
-    let imp = find_row(db, org_id, imp_id).await?;
+    let imp = find_row(db, org_id, id).await?;
     let m = imp.mapping()?;
-    let run = open_run(db, &imp, trigger, None).await?;
-    let outcome = scheduled(db, &imp, &m, run.number).await;
-    let (state, code, diff) = match outcome {
-        Ok(d) => ("applied", None, Some(d)),
-        Err((state, code, args, d)) => {
-            notify_refused(db, &imp, code, args).await;
-            (state, Some(code), d.map(|d| *d))
+    if m.steps.is_empty() && imp.source() == ImportSource::File {
+        return Err(coded(err_codes::INGEST_ENTRY_MISSING));
+    }
+    let run = open_run(db, &imp, trigger, user_id).await?;
+    let view = run.view();
+    let db = db.clone();
+    tokio::spawn(async move {
+        let work = async {
+            if m.steps.is_empty() {
+                let outcome = scheduled(&db, &imp, &m, run.number).await;
+                let (state, code, diff) = match outcome {
+                    Ok(d) => ("applied", None, Some(d)),
+                    Err((state, code, args, d)) => {
+                        notify_refused(&db, &imp, code, args).await;
+                        (state, Some(code), d.map(|d| *d))
+                    }
+                };
+                finish_run(&db, run.id, state, code, diff.as_ref(), false).await?;
+                return Ok(());
+            }
+            let Some(store) = store else {
+                return fail_flow_run(&db, run.id, err_codes::INGEST_STAGING_UNAVAILABLE).await;
+            };
+            let steps = crate::services::ingest::pipeline::run(
+                &db, &store, imp.org_id, imp.id, run.id, &m.steps,
+            )
+            .await;
+            match steps {
+                Ok(file) => {
+                    let pct = pnex_core::ingest::IngestConfig::default().max_closures_pct();
+                    run_from_flow(&db, imp.org_id, imp.id, run.id, Some(file), true, pct)
+                        .await
+                        .map(|_| ())
+                }
+                Err((code, _)) => fail_flow_run(&db, run.id, &code).await,
+            }
+        };
+        // The run beats while it works: a pod gone leaves it stale, not running.
+        let beat = async {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                beat(&db, run.id).await;
+            }
+        };
+        let out: Result<()> = tokio::select! {
+            out = work => out,
+            _ = beat => Ok(()),
+        };
+        if let Err(e) = out {
+            tracing::warn!(import = %imp.id, run = %run.id, error = %e, "import run failed");
+            let _ = fail_flow_run(&db, run.id, err_codes::IMPORT_SOURCE_UNREADABLE).await;
         }
-    };
-    finish_run(db, run.id, state, code, diff.as_ref(), false).await?;
-    load_run(db, imp.id, run.id).await.map(|(r, _)| r.view())
+    });
+    Ok(view)
 }
 
 /// What a flow `ontology_import` step got (ingestion.md D322).
@@ -1349,6 +1432,19 @@ async fn scheduled(
         return Err(("failed", error_code(&e), Value::Null, Some(Box::new(d))));
     }
     d.errors = errors;
+    if let Some(p) = &m.per_object {
+        let pages = imp.max_pages.map_or(DEFAULT_PAGES, |n| n as u32);
+            .await
+            .ok()
+            .and_then(|v| v.last().cloned())
+        {
+            let _ = db
+                .execute_raw(stmt(
+                    vec![imp.id.into(), last.into()],
+                ))
+                .await;
+        }
+    }
     Ok(d)
 }
 
@@ -1397,11 +1493,14 @@ const SWEEP_EVERY: Duration = Duration::from_secs(60);
 /// Due scheduled imports, run one after the other on one pod.
 pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     let db = ctx.db.clone();
+    let store = crate::services::artifact_store::S3Config::from_config(&ctx.config)
+        .store()
+        .ok();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(120)).await;
         loop {
             if crate::services::singleton::my_turn(&db, "object-imports", SWEEP_EVERY).await {
-                if let Err(e) = sweep(&db).await {
+                if let Err(e) = sweep(&db, store.as_ref()).await {
                     tracing::warn!("import schedule sweep failed: {e}");
                 }
             }
@@ -1410,7 +1509,11 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     });
 }
 
-async fn sweep(db: &DatabaseConnection) -> Result<()> {
+async fn sweep(
+    db: &DatabaseConnection,
+    store: Option<&crate::services::artifact_store::S3Store>,
+) -> Result<()> {
+    let store = store.cloned();
     // Runs lost with their pod. An application still writing holds the
     // org's import lock (it dies with its connection): such a run is not lost.
     db.execute_raw(stmt(
@@ -1438,9 +1541,11 @@ async fn sweep(db: &DatabaseConnection) -> Result<()> {
             vec![imp.id.into(), next_run(imp.recurrence.as_ref()).into()],
         ))
         .await?;
-        match run_now(db, imp.id, imp.org_id, "schedule").await {
-            Ok(r) => tracing::info!(import = %imp.id, state = %r.state, "scheduled import run"),
-            Err(e) => tracing::warn!(import = %imp.id, error = %e, "scheduled import run failed"),
+        match start(db, store.clone(), imp.org_id, imp.id, None, "schedule").await {
+            Ok(r) => tracing::info!(import = %imp.id, run = %r.id, "scheduled import run started"),
+            Err(e) => {
+                tracing::warn!(import = %imp.id, error = %e, "scheduled import run not started")
+            }
         }
     }
     Ok(())

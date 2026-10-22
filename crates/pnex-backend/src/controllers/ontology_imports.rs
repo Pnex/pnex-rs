@@ -25,7 +25,7 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/ontology/imports")
         .add("/", get(list).post(create))
         .add("/{id}", get(one).put(update).delete(remove))
-        .add("/{id}/runs", get(runs))
+        .add("/{id}/runs", get(runs).post(start))
         .add("/{id}/runs/{run_id}", get(run))
         .add(
             "/{id}/dry-run",
@@ -37,7 +37,7 @@ pub fn routes() -> Routes {
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(list, create, one, update, remove, runs, run, dry_run, apply))]
+    #[openapi(paths(list, create, one, update, remove, runs, start, run, dry_run, apply))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }
@@ -211,6 +211,44 @@ async fn runs(
         &[],
         &q,
         imports::runs(&ctx.db, org.org.id, id).await,
+    )
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/imports/{id}/runs",
+    tag = "ontology",
+    operation_id = "ontology_imports_runs_start",
+    summary = "Run an import now",
+    description = "Starts a run in the background and answers it `running` (202); poll `GET …/runs/{run_id}`. An import with steps runs them (resolve, download, extract, inspect, filter), then applies the file they staged; a `url` or `api` import fetches its source. Checked like a scheduled run and applied at once with the author's role (no preview). A `file` import without steps has nothing to fetch (`ingest-entry-missing`): preview it with a file. Org writers.",
+    params(("id" = String, Path, format = "uuid", description = "Import id")),
+    responses(
+        (status = 202, body = pnex_core::ontology::import::ImportRunView),
+        (status = 403, description = "`access-denied` (no `ontology:write`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`ingest-entry-missing` (a file import without steps)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn start(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+) -> Result<Response> {
+    let store = crate::services::artifact_store::S3Config::from_config(&ctx.config)
+        .store()
+        .ok();
+    reply(
+        StatusCode::ACCEPTED,
+        imports::start(
+            &ctx.db,
+            store,
+            org.org.id,
+            parse_uuid(&id)?,
+            Some(org.auth.user.id),
+            "manual",
+        )
+        .await,
     )
 }
 

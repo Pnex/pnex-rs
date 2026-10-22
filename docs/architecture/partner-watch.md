@@ -92,7 +92,7 @@ Entité org `object_imports` (CRUD `can_write`, API annotée D238) :
   (`expected_version`, sinon 409).
 - **Provenance** D184 : `import:<import_id>@<run>` sur chaque fait écrit ;
   fiche objet « venu de l'import X le … ».
-- Plafonds : 50 000 lignes par run, 200 Mo de fichier décompressé, durée
+- Plafonds : 50 000 lignes par run (250 000 depuis l’écriture en bloc, D347), 200 Mo de fichier décompressé, durée
   bornée ; travail exécuté hors requête HTTP, par le worker du backend
   (la fabric de `worker-fabric.md` plus tard, Q-PW3).
 - Assistant : l'outil d'aperçu peut être proposé, l'application jamais

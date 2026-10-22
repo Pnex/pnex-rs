@@ -87,52 +87,56 @@ pub async fn purge(
     case_id: Uuid,
     ids: &[String],
 ) -> Result<usize> {
-    let case = objects::find(db, org_id, case_id).await?;
-    if case.properties.get(CASE_STATUS).and_then(Value::as_str) != Some("archived") {
-        return Err(invalid(CASE_STATUS, FIELD_INVALID));
-    }
-    let s = schema(db, org_id).await?;
-    let picked: Vec<ObjectRef> = candidates(db, org_id, case_id)
-        .await?
-        .into_iter()
-        .filter(|c| ids.contains(&c.id))
-        .collect();
-    for c in &picked {
-        let allowed = s
-            .object_type(&c.type_key)
-            .is_some_and(|d| role_allows(&actor.role, d.write_role));
-        if !allowed {
-            return Err(OntologyError::WriteForbidden);
+    crate::services::ontology::changes::deferred(async {
+        let case = objects::find(db, org_id, case_id).await?;
+        if case.properties.get(CASE_STATUS).and_then(Value::as_str) != Some("archived") {
+            return Err(invalid(CASE_STATUS, FIELD_INVALID));
         }
-    }
-    for c in &picked {
-        let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
-        let txn = db.begin().await?;
-        for sql in [
-            "DELETE FROM resource_edges WHERE org_id = $1 AND (source_object_id = $2 OR target_object_id = $2)",
-            "DELETE FROM time_ranges WHERE org_id = $1 AND scope_kind = 'object' AND scope_id = $2::text",
-            "DELETE FROM objects WHERE org_id = $1 AND id = $2",
-        ] {
-            txn.execute_raw(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                sql,
-                [org_id.into(), id.into()],
-            ))
-            .await?;
+        let s = schema(db, org_id).await?;
+        let picked: Vec<ObjectRef> = candidates(db, org_id, case_id)
+            .await?
+            .into_iter()
+            .filter(|c| ids.contains(&c.id))
+            .collect();
+        for c in &picked {
+            let allowed = s
+                .object_type(&c.type_key)
+                .is_some_and(|d| role_allows(&actor.role, d.write_role));
+            if !allowed {
+                return Err(OntologyError::WriteForbidden);
+            }
         }
-        super::snapshots::forget(&txn, org_id, id).await?;
-        txn.commit().await?;
-        crate::services::resources::purge_for(db, org_id, &c.type_key, &c.native_id).await?;
-        // The journal records the purge, never the purged data again.
-        changes::submit(Change {
-            org_id,
-            action: "object.purge".into(),
-            object_id: c.id.clone(),
-            type_key: c.type_key.clone(),
-            source_ref: actor.source_ref.clone(),
-            before: Value::Null,
-            after: Value::Null,
-        });
-    }
-    Ok(picked.len())
+        for c in &picked {
+            let id = Uuid::parse_str(&c.id).map_err(|_| OntologyError::NotFound)?;
+            let txn = db.begin().await?;
+            for sql in [
+                "DELETE FROM resource_edges WHERE org_id = $1 AND (source_object_id = $2 OR target_object_id = $2)",
+                "DELETE FROM time_ranges WHERE org_id = $1 AND scope_kind = 'object' AND scope_id = $2::text",
+                "DELETE FROM objects WHERE org_id = $1 AND id = $2",
+            ] {
+                txn.execute_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    sql,
+                    [org_id.into(), id.into()],
+                ))
+                .await?;
+            }
+            super::snapshots::forget(&txn, org_id, id).await?;
+            txn.commit().await?;
+                crate::services::ontology::changes::flush();
+            crate::services::resources::purge_for(db, org_id, &c.type_key, &c.native_id).await?;
+            // The journal records the purge, never the purged data again.
+            changes::submit(Change {
+                org_id,
+                action: "object.purge".into(),
+                object_id: c.id.clone(),
+                type_key: c.type_key.clone(),
+                source_ref: actor.source_ref.clone(),
+                before: Value::Null,
+                after: Value::Null,
+            });
+        }
+        Ok(picked.len())
+    })
+    .await
 }

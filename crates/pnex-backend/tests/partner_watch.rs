@@ -166,7 +166,7 @@ async fn natural_keys_extensions_and_hierarchy() {
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 3);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
-            3
+            4
         );
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 3);
         // SIRENE, the partner sheet and the five France Compétences imports.
@@ -278,6 +278,411 @@ async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
     .await;
 }
 
+/// validated); per-object imports take the companies in turn.
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "entreprises_fr").await;
+        install(&server, &env.alice, org, "prospection_b2b").await;
+        let base = mock_registers().await;
+        let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
+            sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
+        }
+        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351"})).await;
+        let (_, safran) = object(&server, &env.alice, org, "organization", "SAFRAN", json!({"siren": "562082909"})).await;
+        let run = |name: &'static str| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (id, _) = import_named(server, &token, org, name).await;
+                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
+                assert_eq!(st, 202, "{r}");
+                let r = settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 300).await;
+                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+                id
+            }
+        };
+        let filiales = |id: &str| {
+            let (server, token, id) = (&server, env.alice.clone(), id.to_string());
+            async move {
+                let (st, l) = call(server, "GET", &format!("/api/v1/ontology/objects/{id}/links"), &token, org, None).await;
+                assert_eq!(st, 200, "{l}");
+                l.to_string()
+            }
+        };
+
+        // The LEI first; the parent is not known yet, no link.
+        assert_eq!(props_of(&env.db, org, "organization", "siren", "429853351").await["lei"], "969500YMMRBQ5N157D72");
+        let mere = props_of(&env.db, org, "organization", "siren", "513149161").await;
+        assert_eq!((mere["lei"].as_str(), mere["pays"].as_str()), (Some("969500ST98AQCLGNQS21"), Some("FR")), "{mere}");
+        // Next turn: one link, direct and ultimate parent being the same.
+        assert_eq!(edges.rows_affected(), 1);
+        let l = filiales(meca["id"].as_str().unwrap()).await;
+        assert!(l.contains("consolidation_directe") && l.contains("confirme"), "{l}");
+
+        // Turns: the cursor stops at the last company queried, then wraps.
+        let cursor = || async {
+            env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+                .await.unwrap().unwrap().try_get::<Option<String>>("", "c").unwrap()
+        };
+        assert_eq!(cursor().await.as_deref(), Some("562082909"));
+        sql(format!("UPDATE object_imports SET max_pages = 1 WHERE id = '{lei}'")).await.unwrap();
+        assert_eq!(cursor().await.as_deref(), Some("429853351"));
+        assert_eq!(cursor().await.as_deref(), Some("513149161"));
+
+        let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
+        assert_eq!(sae["pays"], "FR", "{sae}");
+        let l = filiales(safran["id"].as_str().unwrap()).await;
+        assert!(l.contains("Safran Aircraft Engines") && l.contains("Agence des participations"), "{l}");
+        assert!(l.contains("a_valider") && !l.contains("confirme"), "{l}");
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=groupe_commercial", safran["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{h}");
+        assert!(h.to_string().contains("Safran Aircraft Engines"), "{h}");
+    })
+    .await;
+}
+
+/// brings new targets (`cible`) and leaves known accounts' status alone.
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        use axum::extract::Query;
+        use axum::routing::get;
+        use sea_orm::Statement;
+        use std::collections::HashMap;
+        let org = personal_org(&server, &env.alice).await;
+        let hit = |siren: &str, name: &str| json!({
+            "siren": siren, "nom_complet": name, "nature_juridique": "5710",
+            "activite_principale": "25.62B", "etat_administratif": "A",
+            "date_creation": "2000-01-01", "tranche_effectif_salarie": "42",
+            "siege": {"siret": format!("{siren}00011"), "latitude": "47.41", "longitude": "0.98",
+                      "etat_administratif": "A", "tranche_effectif_salarie": "41"}});
+        let pages = vec![
+            vec![hit("429853351", "MECACHROME FRANCE"), hit("329936793", "MECACHROME TOULOUSE")],
+            vec![hit("931711311", "MECACHROME SAINT ANDRE")],
+        ];
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let search = move |Query(q): Query<HashMap<String, String>>| {
+            let pages = pages.clone();
+            async move {
+                assert_eq!(q.get("section_activite_principale").map(String::as_str), Some("C"));
+                let n: usize = q.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+            }
+        };
+        let app = axum::Router::new().route("/search", get(search));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "UPDATE object_imports SET source_url = replace(source_url, 'https://recherche-entreprises.api.gouv.fr', '{base}') WHERE org_id = {org}"))).await.unwrap();
+        let (st, c) = object(&server, &env.alice, org, "organization", "Mecachrome France", json!({"siren": "429853351", "statut_compte": "client"})).await;
+        assert_eq!(st, 201, "{c}");
+
+        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+        assert_eq!(st, 202, "{r}");
+        let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
+        assert_eq!((r["run"]["state"].as_str(), r["run"]["rows"].as_u64()), (Some("applied"), Some(3)), "{r}");
+        let client = props_of(&env.db, org, "organization", "siren", "429853351").await;
+        assert_eq!((client["statut_compte"].as_str(), client["effectif_min"].as_f64()), (Some("client"), Some(1000.0)), "{client}");
+        assert_eq!(client["ca_dernier"]["amount"].as_f64(), Some(343838577.0), "{client}");
+        for siren in ["329936793", "931711311"] {
+            let o = props_of(&env.db, org, "organization", "siren", siren).await;
+            assert_eq!((o["statut_compte"].as_str(), o["code_activite"].as_str()), (Some("cible"), Some("25.62")), "{o}");
+        }
+        let pin = props_of(&env.db, org, "map_pin", "siret", "93171131100011").await;
+        assert_eq!(pin["effectif_min"].as_f64(), Some(500.0), "{pin}");
+    })
+    .await;
+}
+
+/// and lists the nodes with neither a contact nor a client status.
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospection_b2b").await;
+        let mk = |title: &'static str, props: Value| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (st, o) = object(server, &token, org, "organization", title, props).await;
+                assert_eq!(st, 201, "{o}");
+                o["id"].as_str().unwrap().to_string()
+            }
+        };
+        let mother = mk("Groupe", json!({"statut_compte": "client", "utilisateurs_actuels": 50, "potentiel_utilisateurs": 5000})).await;
+        let covered = mk("Filiale suivie", json!({"statut_compte": "prospect"})).await;
+        let gap = mk("Filiale nue", json!({"statut_compte": "cible", "potentiel_utilisateurs": 800})).await;
+        let (_, p) = object(&server, &env.alice, org, "person", "Contact", json!({})).await;
+        let link = |kind: &str, from: &str, to: &str| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": {}});
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
+            assert_eq!(st, 201, "{r}");
+        }
+
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{h}");
+        let totals: Vec<(String, f64)> = h["totals"].as_array().unwrap().iter()
+            .map(|t| (t["property"].as_str().unwrap().to_string(), t["total"].as_f64().unwrap())).collect();
+        assert_eq!(totals, [("utilisateurs_actuels".to_string(), 50.0), ("potentiel_utilisateurs".to_string(), 5800.0)]);
+        assert_eq!(h["counts"].as_array().unwrap().len(), 3, "{h}");
+
+        let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/graph"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{g}");
+
+        let res = server.post("/api/v1/pois")
+            .add_header("Authorization", format!("Bearer {}", env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .json(&json!({"label": "Usine", "latitude": 47.4, "longitude": 0.98}))
+            .await;
+        assert_eq!(res.status_code().as_u16(), 201, "{}", res.text());
+        let pin = res.json::<Value>()["id"].as_str().unwrap().to_string();
+        let row = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "SELECT id::text AS id, version FROM objects WHERE org_id = {org} AND type_key = 'map_pin' AND native_id = '{pin}'"))).await.unwrap().unwrap();
+        let (oid, version) = (row.try_get::<String>("", "id").unwrap(), row.try_get::<i32>("", "version").unwrap());
+        let (st, r) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{oid}"), &env.alice, org,
+            Some(json!({"properties": {"statut_site": "client"}, "expected_version": version}))).await;
+        assert_eq!(st, 200, "{r}");
+        let (st, c) = call(&server, "GET", "/api/v1/pois/cluster?bbox=0.0,46.0,2.0,48.0&zoom=10", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{c}");
+        assert_eq!(c["items"][0]["color"], "green", "{c}");
+
+        let (_, me) = object(&server, &env.alice, org, "person", "Moi", json!({})).await;
+        let me = me["id"].as_str().unwrap().to_string();
+        let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
+            Some(link("knows", &me, p["id"].as_str().unwrap()))).await;
+        assert_eq!(st, 201, "{r}");
+        let path = |to: &str, links: &str| {
+            let (server, token, url) = (&server, env.alice.clone(), format!("/api/v1/ontology/path?from={me}&to={to}&links={links}"));
+            async move { call(server, "GET", &url, &token, org, None).await }
+        };
+        let (st, r) = path(&covered, &people).await;
+        assert_eq!(st, 200, "{r}");
+        let titles: Vec<&str> = r["path"].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
+        assert_eq!(titles, ["Moi", "Contact", "Filiale suivie"]);
+        assert_eq!(path(&mother, &people).await.0, 404);
+        assert_eq!(path(&mother, "").await.0, 200);
+
+        let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{mother}/pages"), &env.alice, org,
+        assert_eq!(st, 201, "{page}");
+        let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
+            .try_get::<Vec<u8>>("", "snapshot").unwrap();
+        let text = String::from_utf8_lossy(&snap);
+        for want in ["Plan de compte — Groupe", "Filiale nue", "utilisateurs actuels 50", "potentiel utilisateurs 5800"] {
+        }
+        assert!(!text.contains("{{"), "every placeholder filled");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/links"), &env.alice, org, None).await;
+        // A template of another type is refused.
+        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/objects/{}/pages", p["id"].as_str().unwrap()), &env.alice, org,
+        assert_eq!(st, 400);
+    })
+    .await;
+}
+
+/// over from an org on `quali_watch` 1.2.0, objects and links in place.
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let (st, site) = object(&server, &env.alice, org, "site_web", "of.fr", json!({"url_racine": "https://of.fr/", "domaine": "of.fr"})).await;
+        assert_eq!(st, 201, "{site}");
+        // Back to the 1.2.0 layout: the two keys owned by `quali_watch`.
+        for sql in [
+            format!("UPDATE object_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'site_web'"),
+            format!("UPDATE packs SET version = '1.2.0' WHERE org_id = {org} AND key = 'quali_watch'"),
+        ] {
+            env.db.execute_unprepared(&sql).await.unwrap();
+        }
+        install(&server, &env.alice, org, "quali_watch").await;
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
+        let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
+        assert!(site_link["def"]["attributes"].to_string().contains("valide_par"), "{site_link}");
+        let (st, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", site["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!((st, o["properties"]["domaine"].as_str()), (200, Some("of.fr")), "{o}");
+
+        let (_, of) = object(&server, &env.alice, org, "organization", "OF Formation", json!({})).await;
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({
+            "attributes": {"statut": "propose", "score": 60, "preuve_siren": true, "source": "recherche", "requete": "OF Formation", "rang": 1}}))).await;
+        assert_eq!(st, 201, "{l}");
+        assert_eq!((st, c["count"].clone()), (200, json!(1)), "{c}");
+        assert_eq!((c["results"][0]["domain"].as_str(), c["results"][0]["proof_siren"].clone()), (Some("of.fr"), json!(true)));
+        personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
+            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st == 200 || st == 201);
+        assert_eq!(st, 200);
+        let (st, _) = call(&server, "POST", &decide, &env.bob, org, Some(json!({"decision": "rejete"}))).await;
+        assert_eq!(st, 403);
+        let (st, d) = call(&server, "POST", &decide, &env.alice, org, Some(json!({"decision": "rejete"}))).await;
+        assert_eq!(st, 200, "{d}");
+        assert!(d["valid_to"].is_string(), "{d}");
+        assert_eq!(d["attributes"]["statut"], "rejete");
+        assert!(d["attributes"]["valide_par"].as_str().is_some_and(|n| !n.is_empty() && !n.contains('@')), "{d}");
+        assert_eq!(c["count"], 0);
+        let (st, _) = call(&server, "POST", &decide, &env.alice, org, Some(json!({"decision": "confirme"}))).await;
+        assert_eq!(st, 404, "a closed link is no longer a candidate");
+    })
+    .await;
+}
+
+/// become signals linked to them, decoded, never reset once decided.
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        use axum::extract::Query;
+        use axum::routing::get;
+        use sea_orm::Statement;
+        use std::collections::HashMap;
+        let org = personal_org(&server, &env.alice).await;
+        let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = asked.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let records = move |Query(q): Query<HashMap<String, String>>| {
+            let seen = seen.clone();
+            async move {
+                let w = q.get("where").cloned().unwrap_or_default();
+                seen.lock().unwrap().push(w.clone());
+                let results = if w.contains("\"429853351\"") {
+                    vec![
+                        json!({"id": "B20260114713", "registre": ["429853351", "429 853 351"], "commercant": "MECACHROME FRANCE",
+                               "familleavis": "modification", "familleavis_lib": "Modifications diverses", "typeavis_lib": "Avis initial",
+                               "modificationsgenerales": "{\"descriptif\": \"modification survenue sur le capital (augmentation)\"}",
+                               "jugement": null, "acte": null}),
+                        json!({"id": "A2026000001", "registre": ["429853351"], "commercant": "MECACHROME FRANCE",
+                               "familleavis": "creation", "familleavis_lib": "Créations", "typeavis_lib": "Avis initial",
+                               "modificationsgenerales": null, "jugement": null, "acte": null}),
+                    ]
+                } else {
+                    vec![]
+                };
+            }
+        };
+        let app = axum::Router::new().route("/records", get(records));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "UPDATE object_imports SET source_url = replace(source_url, \
+             WHERE org_id = {org}"))).await.unwrap();
+        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "statut_compte": "client"})).await;
+        object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;
+
+        let run = || async {
+            let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
+            assert_eq!(st, 202, "{r}");
+            let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
+            assert_eq!(r["run"]["state"], "applied", "{r}");
+        };
+        run().await;
+        assert_eq!(asked.lock().unwrap().len(), 1, "{:?}", asked.lock().unwrap());
+        assert_eq!((modif["kind"].as_str(), modif["etat"].as_str()), (Some("annonce_legale"), Some("a_valider")), "{modif}");
+        assert_eq!(modif["extrait"], "modification survenue sur le capital (augmentation)");
+        assert_eq!(modif["resume"], "Modifications diverses — Avis initial");
+        assert_eq!(opening["kind"], "nouvel_etablissement", "{opening}");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", meca["id"].as_str().unwrap()), &env.alice, org, None).await;
+
+        // A human retains it; the next run leaves that alone.
+        env.db.execute_unprepared(&format!(
+            "UPDATE objects SET properties = properties || '{{\"etat\": \"retenu\"}}' WHERE org_id = {org} AND properties ->> 'cle' = 'B20260114713'")).await.unwrap();
+        run().await;
+        assert_eq!(modif["etat"], "retenu");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "prospection_b2b").await;
+        let mk = |t: &'static str, title: &'static str, props: Value| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (st, o) = object(server, &token, org, t, title, props).await;
+                assert_eq!(st, 201, "{o}");
+                o["id"].as_str().unwrap().to_string()
+            }
+        };
+        let account = mk("organization", "Usine Nord", json!({"statut_compte": "prospect"})).await;
+        let director = mk("person", "Directrice d'usine", json!({"persona": "decideur"})).await;
+        let link = |kind: &str, from: &str, to: &str, attrs: Value| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": attrs});
+        for body in [
+        ] {
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        assert_eq!(st, 201, "{page}");
+        let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
+            "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
+            .try_get::<Vec<u8>>("", "snapshot").unwrap();
+        let text = String::from_utf8_lossy(&snap);
+        }
+        assert_eq!(st, 200, "{h}");
+        let titles: Vec<&str> = h["nodes"].as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap()).collect();
+        assert_eq!(titles, ["Faire parler du turnover", "Découverte Usine Nord", "Usine Nord"]);
+        assert!(h["counts"].to_string().contains("\"tenu\""), "{h}");
+    })
+    .await;
+}
+
+async fn mock_registers() -> String {
+    use axum::extract::Query;
+    use axum::routing::get;
+    use std::collections::HashMap;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let none =
+        |rel: &str| json!({"data": {"type": "reporting-exceptions", "id": format!("x|{rel}")}});
+    let parent = |lei: &str| json!({"data": {"type": "lei-records", "id": lei}});
+    let record = |lei: &str, name: &str, siren: &str, rels: Value| {
+        json!({
+        "type": "lei-records", "id": lei,
+        "relationships": rels})
+    };
+    let meca_dev = record(
+        "969500ST98AQCLGNQS21",
+        "MECA DEV",
+        "513 149 161",
+        json!({"direct-parent": none("d"), "ultimate-parent": none("u")}),
+    );
+    let meca = record(
+        "969500YMMRBQ5N157D72",
+        "MECACHROME FRANCE",
+        "429853351",
+        json!({"direct-parent": parent("969500ST98AQCLGNQS21"), "ultimate-parent": parent("969500ST98AQCLGNQS21")}),
+    );
+        let (meca, meca_dev) = (meca.clone(), meca_dev.clone());
+        async move {
+            let data = match (
+                q.get("filter[owns]").map(String::as_str),
+            ) {
+                (Some("429853351"), _) => vec![meca],
+                (Some("513149161"), _) => vec![meca_dev.clone()],
+                (_, Some("969500YMMRBQ5N157D72")) => vec![meca_dev],
+                _ => vec![],
+            };
+        }
+    };
+    let b = |dir: &str, siren: &str, label: &str| {
+        json!({
+        "dir": {"value": dir}, "self_siren": {"value": "562082909"},
+        "other_siren": {"value": siren}, "otherLabel": {"value": label}})
+    };
+    let wd = move |Query(q): Query<HashMap<String, String>>| async move {
+        let rows = if q.get("query").is_some_and(|t| t.contains("\"562082909\"")) {
+            vec![
+                b("child", "414815217", "Safran Aircraft Engines"),
+                b("parent", "130004989", "Agence des participations de l'État"),
+            ]
+        } else {
+            vec![]
+        };
+    };
+    let app = axum::Router::new()
+        .route("/wd/sparql", get(wd));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
 /// account-mapping.md D329: the B2B pack extends the company types and its
 /// commercial group follows subsidiaries, under each of their parents.
 #[tokio::test]
@@ -359,7 +764,7 @@ async fn preview(
         .await;
     assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
     let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-    settle(server, token, org, id, &run).await
+    settle_within(server, token, org, id, &run, 600).await
 }
 
 /// Polls a run until it leaves `running`.
@@ -523,12 +928,13 @@ async fn imports_preview_apply_and_close_missing_links() {
 
 /// A few thousand records apply in seconds: the write loads the schema
 /// once, not per object and per link (an N+1 that made a 42k-row file
-/// outlast its flow step).
+/// outlast its flow step), and in bulk (D347): above the old 50,000-row
+/// cap, creations then updates.
 #[tokio::test]
 #[serial]
 async fn imports_apply_thousands_of_records_quickly() {
     with_app(|server, env| async move {
-        const ROWS: usize = 2_000;
+        const ROWS: usize = 60_000;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
         for i in 0..20 {
@@ -540,10 +946,14 @@ async fn imports_apply_thousands_of_records_quickly() {
             Some(json!({"name": "Bulk", "mapping": MAPPING, "mode": "incremental"}))).await;
         assert_eq!(st, 201, "{imp}");
         let id = imp["id"].as_str().unwrap().to_string();
-        let mut csv = String::from("siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n");
-        for i in 0..ROWS {
-            csv.push_str(&format!("{}00012;Org {i};RNCP{:05};les_deux;01/02/2024;oui\n", 100_000_000 + i, i % 20));
-        }
+        let csv_of = |name: &str| {
+            let mut csv = String::from("siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n");
+            for i in 0..ROWS {
+                csv.push_str(&format!("{}00012;{name} {i};RNCP{:05};les_deux;01/02/2024;oui\n", 100_000_000 + i, i % 20));
+            }
+            csv
+        };
+        let csv = csv_of("Org");
         let res = server
             .post(&format!("/api/v1/ontology/imports/{id}/dry-run?filename=bulk.csv"))
             .add_header("Authorization", format!("Bearer {}", env.alice))
@@ -566,7 +976,108 @@ async fn imports_apply_thousands_of_records_quickly() {
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{r}");
         eprintln!("applied {ROWS} records + {ROWS} links in {took:?}");
-        assert!(took < std::time::Duration::from_secs(30), "apply took {took:?}");
+        // Debug build on a shared machine: ~60 s; one write per row took 340 s.
+        assert!(took < std::time::Duration::from_secs(120), "apply took {took:?}");
+
+        // Every title changes: one bulk update.
+        let p = preview(&server, &env.alice, org, &id, &csv_of("Firm")).await;
+        assert_eq!(p["run"]["counts"]["updated"], ROWS, "{}", p["run"]);
+        let started = std::time::Instant::now();
+        let run = p["run"]["id"].as_str().unwrap();
+        let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/apply"), &env.alice, org,
+            Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
+        assert_eq!(st, 202, "{r}");
+        let r = settle_within(&server, &env.alice, org, &id, run, 600).await;
+        let took = started.elapsed();
+        assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
+        eprintln!("updated {ROWS} records in {took:?}");
+        assert!(took < std::time::Duration::from_secs(120), "update took {took:?}");
+        let row = env.db.query_one_raw(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
+                     AND title LIKE 'Firm %' AND version = 2 AND valid_to IS NULL"),
+        )).await.unwrap().unwrap();
+        assert_eq!(row.try_get::<i64>("", "n").unwrap(), ROWS as i64);
+    })
+    .await;
+}
+
+/// An import with its own steps runs them on "Run now" (data-pipelines.md
+/// D344): no flow, the zip fetched, extracted, filtered, then applied.
+#[tokio::test]
+#[serial]
+async fn import_runs_its_own_steps() {
+    with_app(|server, env| async move {
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
+        let base = mock_datagouv(zip.clone()).await;
+        unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
+        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
+
+        // The steps of the pack's flow, moved onto the certifications import.
+        let graph = q(format!("SELECT v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
+            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
+            .await.unwrap().expect("pack flow").try_get::<Value>("", "graph").unwrap();
+        let config = |id: &str| graph["nodes"].as_array().unwrap().iter()
+            .find(|n| n["id"] == id).map(|n| n["config"].clone()).unwrap();
+        let mut steps = vec![config("resolve"), config("download"), config("extract"), config("inspect_c"), config("filter_c")];
+        steps[0]["dataset"] = json!("fc");
+        steps[4]["values"] = json!(["80259488700019"]);
+        let import_id = config("import_c")["import_id"].as_str().unwrap().to_string();
+        let (st, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{imp}");
+
+        // Nothing to fetch yet: a file import runs from a preview.
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
+        assert_eq!((st, e["error"].as_str()), (409, Some("ingest-entry-missing")), "{e}");
+
+        // YAML takes JSON: one step per line.
+        let mut mapping = imp["mapping"].as_str().unwrap().trim_end().to_string();
+        mapping.push_str("\nsteps:\n");
+        for s in &steps {
+            mapping.push_str(&format!("  - {s}\n"));
+        }
+        let (st, imp) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org,
+            Some(json!({"name": imp["name"], "mapping": mapping, "source": "file", "mode": imp["mode"],
+                        "expected_version": imp["version"]}))).await;
+        assert_eq!(st, 200, "{imp}");
+
+        // R2: a viewer starts nothing.
+        personal_org(&server, &env.bob).await;
+        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
+            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
+        assert!(st == 200 || st == 201);
+        let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.bob, org, None).await;
+        assert_eq!(st, 403);
+
+        let (st, run) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
+        assert_eq!((st, run["state"].as_str(), run["trigger"].as_str()), (202, Some("running"), Some("manual")), "{run}");
+        let r = settle_within(&server, &env.alice, org, &import_id, run["id"].as_str().unwrap(), 600).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        assert_eq!(r["run"]["rows"], 2, "the client's certifications only: {r}");
+        let links = format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
+            AND relation = 'porte' AND valid_to IS NULL");
+        assert_eq!(count(q(links).await.unwrap()), 2);
+        // Journaled under the run, the staging emptied at its end.
+        let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
+            AND node_id = 'import:{import_id}' AND run_id = '{}'", run["id"].as_str().unwrap());
+        assert_eq!(count(q(steps).await.unwrap()), 5);
+        let live = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
+            AND node_id = 'import:{import_id}' AND purged_at IS NULL AND keys <> '[]'::jsonb \
+            AND (keep_until IS NULL OR keep_until <= now())");
+        assert_eq!(count(q(live).await.unwrap()), 0);
+        // The raw download stays its retention; expired here so the next
+        // test reusing this org id finds an empty staging.
+        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+            format!("UPDATE ingest_steps SET created_at = now() - interval '8 days', keep_until = NULL WHERE org_id = {org}"))).await.unwrap();
+        let store = pnex_backend::services::artifact_store::S3Config::from_config(
+            &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap()).store().unwrap();
+        pnex_backend::services::ingest::purge(&env.db, &store).await.unwrap();
+        let left = store.list_prefix(&format!("org_{org}/staging/")).await.unwrap();
+        assert!(left.is_empty(), "{left:?}");
+        unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
     .await;
 }
@@ -657,6 +1168,20 @@ async fn flow_nodes_write_as_their_deployed_node() {
         let (st, l2) = internal(&server, "link", again).await;
         assert_eq!((st, l2["id"].clone()), (200, l1["id"].clone()), "an open link is updated, not doubled");
         assert_eq!(l2["attributes"]["perimetre"], "les_deux");
+
+        let (st, site) = object(&server, &env.alice, org, "site_web", "acme.fr", json!({"url_racine": "https://acme.fr/", "domaine": "acme.fr"})).await;
+        assert_eq!(st, 201, "{site}");
+        let pair = |id: &str, attrs: Value| json!({"node": node(id), "source_id": a["object"]["id"], "target_id": site["id"], "attributes": attrs});
+        let (st, open) = internal(&server, "link", pair("s", json!({"statut": "propose", "score": 55}))).await;
+        assert_eq!((st, open["valid_to"].clone()), (200, Value::Null), "{open}");
+        let (st, closed) = internal(&server, "link", pair("c", json!({"statut": "rejete", "valide_par": "Alice"}))).await;
+        assert_eq!(st, 200, "{closed}");
+        assert!(closed["valid_to"].is_string(), "{closed}");
+        assert_eq!((closed["attributes"]["statut"].as_str(), closed["attributes"]["score"].as_f64()), (Some("rejete"), Some(55.0)));
+        let (st, again) = internal(&server, "link", pair("s", json!({"statut": "propose"}))).await;
+        assert_eq!((st, again["id"].clone(), again["attributes"]["statut"].clone()), (200, closed["id"].clone(), json!("rejete")), "{again}");
+        let open_links = env.db.execute_unprepared(&format!(
+        assert_eq!(open_links.rows_affected(), 0);
 
         let (st, r) = internal(&server, "query", json!({"node": node("q"), "values": [["RNCP12345", "RS1"]]})).await;
         assert_eq!((st, r["count"].clone()), (200, json!(1)), "{r}");
@@ -1080,7 +1605,8 @@ async fn open_data_ingestion_chain() {
         pnex_backend::services::ingest::purge(&env.db, &store).await.unwrap();
         assert_eq!(count(q(format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
             AND purged_at IS NULL AND bytes > 0")).await.unwrap()), 0);
-        assert!(store.list_prefix(&format!("org_{org}/staging/")).await.unwrap().is_empty());
+        let left = store.list_prefix(&format!("org_{org}/staging/")).await.unwrap();
+        assert!(left.is_empty(), "{left:?}");
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })

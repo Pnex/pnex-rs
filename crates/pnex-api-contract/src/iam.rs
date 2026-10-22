@@ -653,6 +653,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("ontology_imports_list", Access::Org("ontology:read")),
     ("ontology_imports_runs_get", Access::Org("ontology:read")),
     ("ontology_imports_runs_list", Access::Org("ontology:read")),
+    ("ontology_imports_runs_start", Access::Org("ontology:write")),
     ("ontology_imports_update", Access::Org("ontology:write")),
     (
         "ontology_link_types_create",
@@ -861,6 +862,15 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("voice_id_samples_delete", Access::Org("voice-id:delete")),
     ("voice_id_samples_from_media", Access::Org("voice-id:write")),
     ("voice_id_test", Access::Org("voice-id:test")),
+    (
+    ),
+    (
+    ),
+    (
+        Access::Org("ontology:write"),
+    ),
+    (
+    ),
     ("web_sites_list", Access::Org("site-recipes:read")),
     ("well_known_not_found", Access::Public),
     ("ws_ticket_issue", Access::Org("realtime:connect")),

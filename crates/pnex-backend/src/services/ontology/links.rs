@@ -82,7 +82,15 @@ pub async fn views<C: ConnectionTrait>(
         .flatten()
         .collect();
     let by_id = refs(db, org_id, ids).await?;
-    Ok(edges
+    Ok(views_from(edges, &by_id))
+}
+
+/// `views` with the ends already loaded.
+fn views_from(
+    edges: &[resource_edges::Model],
+    by_id: &HashMap<Uuid, objects::Model>,
+) -> Vec<LinkView> {
+    edges
         .iter()
         .map(|e| LinkView {
             id: e.id,
@@ -94,7 +102,7 @@ pub async fn views<C: ConnectionTrait>(
             valid_to: e.valid_to.map(|t| t.to_rfc3339()),
             source_ref: e.source_ref.clone(),
         })
-        .collect())
+        .collect()
 }
 
 /// Validity at `t`: started at or before `t`, not closed at `t`.
@@ -435,3 +443,224 @@ pub async fn close<C: ConnectionTrait>(
 }
 
 use sea_orm::sea_query::IntoCondition;
+
+// ─────────────────────────── bulk (data-pipelines.md D347) ───────────────────────────
+
+const BULK_CHUNK: usize = super::objects::BULK_CHUNK;
+
+fn bulk_stmt(sql: &str, values: Vec<sea_orm::Value>) -> sea_orm::Statement {
+    sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres, sql, values)
+}
+
+/// Open links of `relation` among `ids` on one side (`column` =
+/// `source_object_id` or `target_object_id`).
+async fn open_on<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    relation: &str,
+    column: &str,
+    ids: Vec<Uuid>,
+) -> Result<bool> {
+    for chunk in ids.chunks(BULK_CHUNK) {
+        let hit = db
+            .query_one_raw(bulk_stmt(
+                &format!(
+                    "SELECT 1 AS hit FROM resource_edges WHERE org_id = $1 AND relation = $2 \
+                       AND valid_to IS NULL AND {column} = ANY($3) LIMIT 1"
+                ),
+                vec![org_id.into(), relation.into(), chunk.to_vec().into()],
+            ))
+            .await?;
+        if hit.is_some() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// `create_with` for many open links (imports): the same checks, ends
+/// loaded and cardinalities checked per batch. `measures`, `depicts` and
+/// links given a `valid_to` keep the one-by-one path.
+pub async fn create_many_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    inputs: &[LinkInput],
+) -> Result<()> {
+    let mut parsed = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        parsed.push((
+            parse_id("source_id", &input.source_id)?,
+            parse_id("target_id", &input.target_id)?,
+        ));
+    }
+    let mut ends: HashMap<Uuid, objects::Model> = HashMap::new();
+    let mut all: Vec<Uuid> = parsed.iter().flat_map(|(a, b)| [*a, *b]).collect();
+    all.sort_unstable();
+    all.dedup();
+    for chunk in all.chunks(BULK_CHUNK) {
+        ends.extend(refs(db, org_id, chunk.iter().copied()).await?);
+    }
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    let mut recs: Vec<Value> = Vec::with_capacity(inputs.len());
+    // Ends bound by a one-target / one-source type, per relation.
+    let mut one: HashMap<(&str, &str), Vec<Uuid>> = HashMap::new();
+    for (input, (sid, tid)) in inputs.iter().zip(&parsed) {
+        let Some(lt) = s.link_type(&input.link_type) else {
+            return Err(super::invalid("link_type", FIELD_INVALID));
+        };
+        if lt.key == REL_MEASURES || lt.key == REL_DEPICTS || input.valid_to.is_some() {
+            create_with(db, s, org_id, actor, input).await?;
+            continue;
+        }
+        let (Some(src), Some(tgt)) = (ends.get(sid), ends.get(tid)) else {
+            return Err(OntologyError::NotFound);
+        };
+        if src.valid_to.is_some() || tgt.valid_to.is_some() {
+            return Err(OntologyError::NotFound);
+        }
+        if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
+            return Err(OntologyError::LinkNotAllowed);
+        }
+        for t in [&src.type_key, &tgt.type_key] {
+            if let Some(def) = s.object_type(t) {
+                if !role_allows(&actor.role, def.write_role) {
+                    return Err(OntologyError::WriteForbidden);
+                }
+            }
+        }
+        let attrs = check_values(&lt.attributes, &input.attributes)
+            .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+        let from = parse_instant("valid_from", input.valid_from.as_deref())?.unwrap_or(now);
+        if from > now {
+            return Err(super::invalid("valid_from", FIELD_INVALID));
+        }
+        if lt.one_target {
+            one.entry((lt.key.as_str(), "source_object_id"))
+                .or_default()
+                .push(src.id);
+        }
+        if lt.one_source {
+            one.entry((lt.key.as_str(), "target_object_id"))
+                .or_default()
+                .push(tgt.id);
+        }
+        recs.push(serde_json::json!({
+            "relation": lt.key,
+            "source_kind": src.type_key,
+            "source_id": src.native_id,
+            "target_kind": tgt.type_key,
+            "target_id": tgt.native_id,
+            "source_object_id": src.id,
+            "target_object_id": tgt.id,
+            "attributes": attrs,
+            "valid_from": from.to_rfc3339(),
+        }));
+    }
+    for ((relation, column), mut ids) in one {
+        let n = ids.len();
+        ids.sort_unstable();
+        ids.dedup();
+        if ids.len() != n || open_on(db, org_id, relation, column, ids).await? {
+            return Err(OntologyError::LinkCardinality);
+        }
+    }
+    for chunk in recs.chunks(BULK_CHUNK) {
+        let rows = resource_edges::Entity::find()
+            .from_raw_sql(bulk_stmt(
+                "INSERT INTO resource_edges (org_id, relation, source_kind, source_id, \
+                   target_kind, target_id, source_object_id, target_object_id, attributes, \
+                   valid_from, source_ref) \
+                 SELECT $1, u.relation, u.source_kind, u.source_id, u.target_kind, u.target_id, \
+                   u.source_object_id, u.target_object_id, u.attributes, u.valid_from, $2 \
+                 FROM jsonb_to_recordset($3::jsonb) AS u(relation text, source_kind text, \
+                   source_id text, target_kind text, target_id text, source_object_id uuid, \
+                   target_object_id uuid, attributes jsonb, valid_from timestamptz) \
+                 RETURNING *",
+                vec![
+                    org_id.into(),
+                    actor.source_ref.clone().into(),
+                    Value::Array(chunk.to_vec()).into(),
+                ],
+            ))
+            .all(db)
+            .await
+            .map_err(|e| match e.sql_err() {
+                Some(sea_orm::SqlErr::UniqueConstraintViolation(_)) => OntologyError::KeyTaken,
+                _ => e.into(),
+            })?;
+        for v in views_from(&rows, &ends) {
+            for c in Change::link(org_id, "link.open", &actor.source_ref, &v) {
+                changes::submit(c);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `update_with` for many links (imports): attributes replaced in one
+/// statement per batch.
+pub async fn update_many_with<C: ConnectionTrait>(
+    db: &C,
+    s: &OrgSchema,
+    org_id: i64,
+    actor: &Actor,
+    inputs: &[(i64, Map<String, Value>)],
+) -> Result<()> {
+    for chunk in inputs.chunks(BULK_CHUNK) {
+        let ids: Vec<i64> = chunk.iter().map(|(id, _)| *id).collect();
+        let rows: HashMap<i64, resource_edges::Model> = resource_edges::Entity::find()
+            .filter(resource_edges::Column::OrgId.eq(org_id))
+            .filter(resource_edges::Column::Id.is_in(ids))
+            .all(db)
+            .await?
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect();
+        let mut recs = Vec::with_capacity(chunk.len());
+        let mut before_rows = Vec::with_capacity(chunk.len());
+        for (id, attributes) in chunk {
+            let row = rows.get(id).ok_or(OntologyError::NotFound)?;
+            for t in [&row.source_kind, &row.target_kind] {
+                if let Some(def) = s.object_type(t) {
+                    if !role_allows(&actor.role, def.write_role) {
+                        return Err(OntologyError::WriteForbidden);
+                    }
+                }
+            }
+            let Some(lt) = s.link_type(&row.relation) else {
+                return Err(OntologyError::NotFound);
+            };
+            if lt.key == REL_MEASURES || lt.key == REL_DEPICTS {
+                return Err(super::invalid("attributes", FIELD_INVALID));
+            }
+            let attrs = check_values(&lt.attributes, attributes)
+                .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+            recs.push(serde_json::json!({ "id": id, "attributes": attrs }));
+            before_rows.push(row.clone());
+        }
+        let before: HashMap<i64, Value> = views(db, org_id, &before_rows)
+            .await?
+            .into_iter()
+            .map(|v| (v.id, serde_json::to_value(&v).unwrap_or_default()))
+            .collect();
+        let updated = resource_edges::Entity::find()
+            .from_raw_sql(bulk_stmt(
+                "UPDATE resource_edges e SET attributes = u.attributes, updated_at = now() \
+                 FROM jsonb_to_recordset($2::jsonb) AS u(id bigint, attributes jsonb) \
+                 WHERE e.org_id = $1 AND e.id = u.id \
+                 RETURNING e.*",
+                vec![org_id.into(), Value::Array(recs).into()],
+            ))
+            .all(db)
+            .await?;
+        for v in views(db, org_id, &updated).await? {
+            for mut c in Change::link(org_id, "link.update", &actor.source_ref, &v) {
+                c.before = before.get(&v.id).cloned().unwrap_or_default();
+                changes::submit(c);
+            }
+        }
+    }
+    Ok(())
+}

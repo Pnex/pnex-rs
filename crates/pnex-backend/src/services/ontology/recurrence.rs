@@ -29,7 +29,7 @@ pub const HORIZON_DAYS: u64 = 90;
 const SWEEP_EVERY: Duration = Duration::from_secs(6 * 3600);
 const KEY_PREFIX: &str = "rec:";
 
-fn recurrence_keys(def: &ObjectTypeDef) -> Vec<&str> {
+pub(super) fn recurrence_keys(def: &ObjectTypeDef) -> Vec<&str> {
     def.properties
         .iter()
         .filter(|p| matches!(p.kind, PropertyKind::Recurrence))

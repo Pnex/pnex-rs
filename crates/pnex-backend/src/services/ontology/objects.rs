@@ -302,14 +302,18 @@ pub async fn update(
     id: Uuid,
     input: &ObjectInput,
 ) -> Result<ObjectView> {
-    // One transaction: a failure after the write leaves nothing behind its error.
-    let txn = db.begin().await?;
-    let (view, conclusion) = update_in(&txn, org_id, actor, id, input).await?;
-    txn.commit().await?;
-    if let Some(page) = conclusion {
-        super::cases::on_concluded(db, org_id, actor, &page).await;
-    }
-    Ok(view)
+    crate::services::ontology::changes::deferred(async {
+        // One transaction: a failure after the write leaves nothing behind its error.
+        let txn = db.begin().await?;
+        let (view, conclusion) = update_in(&txn, org_id, actor, id, input).await?;
+        txn.commit().await?;
+        crate::services::ontology::changes::flush();
+        if let Some(page) = conclusion {
+            super::cases::on_concluded(db, org_id, actor, &page).await;
+        }
+        Ok(view)
+    })
+    .await
 }
 
 /// `update` inside a transaction; returns the conclusion page of a case
@@ -452,3 +456,19 @@ pub async fn archive<C: ConnectionTrait>(
     });
     Ok(())
 }
+// ─────────────────────────── bulk (data-pipelines.md D347) ───────────────────────────
+/// Rows per bulk statement (one JSON parameter each).
+pub(super) const BULK_CHUNK: usize = 5_000;
+fn bulk_stmt(sql: &str, values: Vec<sea_orm::Value>) -> sea_orm::Statement {
+        for chunk in refs.chunks(BULK_CHUNK) {
+                .query_all_raw(bulk_stmt(
+                .query_all_raw(bulk_stmt(
+pub async fn create_many_with<C: ConnectionTrait>(
+    for chunk in checked.chunks(BULK_CHUNK) {
+            .from_raw_sql(bulk_stmt(
+                 FROM jsonb_to_recordset($3::jsonb) AS u(id uuid, type_key text, type_version int, \
+pub async fn update_many_with<C: ConnectionTrait>(
+    for chunk in inputs.chunks(BULK_CHUNK) {
+    for chunk in checked.chunks(BULK_CHUNK) {
+            .from_raw_sql(bulk_stmt(
+                 FROM jsonb_to_recordset($3::jsonb) AS u(id uuid, version int, title text, \
