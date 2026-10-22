@@ -11,7 +11,31 @@
 # `persona` is the role in the buying committee, not a job title (the
 # title stays on `employs.position`). Several people may follow one account,
 # each with the role the org gives it (`suit_le_compte.role`, free text).
-# Coverage and white space are computed at read time (D330), never stored.
+# Coverage and white space are computed at read time (D330), never stored:
+# the commercial group sums the users and lists the nodes without a
+# contact or a client status. Statuses carry a colour (D339) for the map,
+# the hierarchy and the graph.
+# Target score (D336): the pack ships the scoring function and its flow,
+# never a criterion. Criteria are objects of the org (`critere_ciblage`:
+# property, operator, value, points), so the profile of an ideal customer
+# stays the org's data; the score is explained line by line in
+# `score_detail`. Organizations only: sites are system objects a flow does
+# not write, the explorer filters them on their own headcount.
+# Commercial signals (D335): something that moved on an account, kept with
+# where it came from and the words quoted. `kind` says how it was detected
+# (closed list), `theme` what it is about (the org's own list). A signal
+# from a model is always `a_valider`; a human retains or dismisses it. The
+# daily digest flow prepares one text of the new signals: add the org's
+# notification node on its first port, then deploy.
+# Page templates (D340) are filled from the account they are opened on
+# (placeholders of `page_render`): account plan, competitor sheet, meeting
+# preparation. A snapshot of the day, then free text.
+# Meetings: a `rendez_vous` with an account, its participants (ours and
+# theirs), its recording (a media: transcription and summary with a focus
+# are the media analyses), its debrief page, and the criteria of the org's
+# sales playbook it covered (`critere_coaching`, the org's own list). The
+# coaching reads per criterion how many meetings covered it: aggregates of
+# the team's practice, never a score of a person.
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
@@ -32,7 +56,9 @@ extends:
       - { key: potentiel_utilisateurs, name: Potential users, names: {fr: "Utilisateurs potentiels"}, kind: number, min: 0 }
       - { key: ca_dernier, name: Latest revenue, names: {fr: "Dernier chiffre d'affaires"}, kind: money }
       - { key: ca_exercice, name: Revenue fiscal year, names: {fr: "Exercice du chiffre d'affaires"}, kind: number, min: 1900, max: 2100 }
-      - { key: score_cible, name: Target score, names: {fr: "Score de ciblage"}, kind: number }
+      - { key: score_cible, name: Target score, names: {fr: "Score de ciblage"}, kind: number, indexed: true }
+      - { key: score_detail, name: Score detail, names: {fr: "Détail du score"}, kind: text, max_len: 4000 }
+      - { key: score_le, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
   - type: map_pin
     properties:
       - key: statut_site
@@ -141,3 +167,19 @@ hierarchies:
       - { link: owns }
       - { link: etablissement_de, inverse: true }
     steps:
+  - key: critere_ciblage
+  - name: pb_criteres
+  - name: pb_score
+    description: "Target score of an organization: the points of each matching criterion, explained line by line (D336)."
+      # Target score (D336): generic, it holds no criterion. Each criterion
+                  "score_cible": total,
+                  "score_detail": "\n".join(lines),
+                  "score_le": msg.get("today", ""),
+  - name: "Prospection · target score"
+    note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
+            object_type: critere_ciblage
+        - { id: keep, kind: pnex_function, config: { function_name: pb_criteres, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
+            filters: [{ key: score_le, op: ne, value: "$today" }]
+        - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+      - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
+      Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.

@@ -518,6 +518,9 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Searches the web through a search provider of the organisation (Organisation page, Web search) and returns candidates; writes nothing. Ports: 0 results (possibly an empty list), 1 failed.",
         config: &[
             ("provider", "name of an org web search provider; empty = the org default"),
+            ("limit", "1..=20 results kept after exclusions, default 10"),
+            ("country, lang", "two-letter codes (fr, fr) passed to the provider; empty = its choice"),
+            ("exclude_domains", "results on these domains or their subdomains are dropped; defaults to directories and social networks (linkedin.com, societe.com, pappers.fr…)"),
         ],
         notes: "The query is msg.payload when it is a string, else msg.payload.query (1 to 400 characters). msg.payload becomes {query, provider, results: [{url, title, snippet, rank, domain}]} (rank starts at 1 after exclusions). Each message is one paid call to the provider and counts against the org's daily web search cap (web-search-quota): feed it a bounded list (ontology_query with a limit), never a loop. On port 1 msg.error = {code, args}: web-search-no-provider, web-search-unavailable, web-search-quota, web-search-query-invalid. A search result is a candidate, not a fact: check it (visit, identifiers) before writing anything.",
     },

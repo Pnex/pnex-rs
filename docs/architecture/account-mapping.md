@@ -347,3 +347,42 @@ Limites :
   et son pays ; l'import du registre l'enrichit à son tour.
 - `org_resolve` n'est pas encore branché sur les listes de salon (D337).
 
+### CC5, première partie — listes de ciblage et score (2026-10-22, non commité)
+
+- **Pack `prospection_fr` 1.0.0** (`requires: [entreprises_fr, prospection_b2b]`) :
+  le croisement pays × prospection (D343) ; ni `entreprises_fr` ni
+  `prospection_b2b` n'a à connaître l'autre. Il porte l'import **Liste de
+  ciblage** (D337) : une recherche de l'API Recherche d'entreprises
+  paginée (`page_param: page`, 25 par page, 400 pages = le plafond de
+  10 000 de l'API). URL livrée = exemple (section C, ≥ 100 salariés,
+  actives) que l'org remplace par son ICP. Écrit l'unité légale (tranche,
+  effectif min/max, NACE, dernier CA publié) et son siège ; les autres
+  établissements viennent de l'import du registre, société par société
+  (l'API ne renvoie aucun établissement sans `q`).
+- **Moteur d'import** :
+  - `defaults` sur une entrée d'objet : constantes écrites seulement quand
+    l'import **crée** l'objet. C'est ce qui fait entrer un nouveau SIREN en
+    `statut_compte = cible` sans jamais toucher le statut d'un compte connu ;
+  - segment de chemin `@last` : la plus grande clé d'un objet ou le dernier
+    élément d'un tableau (`finances.@last.ca` = CA du dernier exercice
+    publié).
+- **Score de ciblage (D336)** dans `prospection_b2b` 1.1.0 :
+  - type `critere_ciblage` (propriété, opérateur `egal` / `parmi` /
+    `commence_par` / `au_moins` / `au_plus` / `renseigne`, valeur, points,
+    actif) : les critères sont des **objets de l'org**, le pack n'en livre
+    aucun ;
+  - fonctions Starlark `pb_criteres` et `pb_score` ; `organization` gagne
+    `score_detail` (une ligne par critère rempli) et `score_le` ;
+  - modèle de flow « Prospection · target score », non déployé à
+    l'installation : toutes les 15 minutes, jusqu'à 500 organisations non
+    notées du jour (`score_le ne $today`) ;
+  - test : `pnex-node-starlark/tests/pack_rules.rs`.
+- Limites :
+  - pas de score par site : `map_pin` est un type système qu'un flow
+    n'écrit pas ; on filtre les sites sur leur effectif dans l'explorateur ;
+  - 600 écritures par minute et par org (garde des nœuds ontologie) :
+    4 300 comptes demandent environ 2 h de tours de 15 minutes ;
+  - `ca_exercice` n'est pas rempli par la liste (l'année reste une clé de
+    l'API) ;
+  - listes de salon (fichier + `org_resolve`) : pas encore faites.
+

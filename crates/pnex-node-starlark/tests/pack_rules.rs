@@ -1,17 +1,24 @@
 //! The Starlark rules shipped by the `quali_watch` pack (partner-watch.md
-//! D314, D316) run as the flow runtime runs them.
+//! D314, D316) and the target score of `prospection_b2b`
+//! (account-mapping.md D336) run as the flow runtime runs them.
 
 use pnex_node_starlark::executor::execute;
 use serde_json::json;
 
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
+const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospection_b2b.yaml");
+
+/// The `code: |` block of the `quali_watch` function `name`.
+fn code_of(name: &str) -> String {
+    code_in(PACK, name)
+}
 
 /// The `code: |` block of the pack function `name` (6-space indent).
-fn code_of(name: &str) -> String {
-    let start = PACK
+fn code_in(pack: &str, name: &str) -> String {
+    let start = pack
         .find(&format!("- name: {name}\n"))
         .unwrap_or_else(|| panic!("function {name}"));
-    let rest = &PACK[start..];
+    let rest = &pack[start..];
     let body = &rest[rest.find("code: |\n").expect("code block") + 8..];
     body.lines()
         .take_while(|l| l.is_empty() || l.starts_with("      "))
@@ -85,5 +92,167 @@ fn adm_01_finding_and_link_payload() {
         .unwrap();
     assert_eq!(l["payload"], json!({"source_id": "e1", "target_id": "o1"}));
 }
+
+#[test]
+fn target_score_adds_the_points_of_the_criteria_met() {
+    let crit = |title: &str, prop: &str, op: &str, value: &str, points: i64| json!({"title": title, "properties": {"propriete": prop, "operateur": op, "valeur": value, "points": points}});
+    let criteria = json!([
+        crit("Industrie visée", "code_activite", "commence_par", "25, 30.3, 21", 30),
+        crit("ETI et plus", "effectif_min", "au_moins", "1000", 20),
+        crit("CA > 10 M€", "ca_dernier", "au_moins", "10000000", 15),
+        crit("Déjà client", "statut_compte", "egal", "client", -100),
+        crit("Pays", "pays", "parmi", "FR,BE", 5),
+        {"title": "Inactif", "properties": {"propriete": "pays", "operateur": "renseigne", "points": 99, "actif": false}},
+    ]);
+    let msg = json!({
+        "payload": {"code_activite": "25.62", "effectif_min": 1000, "pays": "FR",
+                    "ca_dernier": {"amount": 343838577.0, "currency": "EUR", "estimated": false},
+                    "statut_compte": "cible"},
+        "object": {"id": "o1", "title": "MECACHROME FRANCE", "version": 4},
+        "criteres": criteria,
+        "today": "2026-10-22"
+    });
+    let r = execute(&code_in(PROSPECTION, "pb_score"), &msg, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["score_cible"], 70);
+    assert_eq!(r["payload"]["score_le"], "2026-10-22");
+    assert_eq!(r["object_id"], "o1");
+    let detail = r["payload"]["score_detail"].as_str().unwrap();
+    assert_eq!(detail.lines().count(), 4, "{detail}");
+    assert!(detail.contains("ETI et plus : +20"), "{detail}");
+    let mut client = msg.clone();
+    client["payload"] = json!({"statut_compte": "client", "pays": "BE"});
+    let r = execute(&code_in(PROSPECTION, "pb_score"), &client, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["score_cible"], -95);
+    // The criteria travel with the message.
+    let keep = execute(
+        &code_in(PROSPECTION, "pb_criteres"),
+        &json!({"payload": [1, 2]}),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(keep["criteres"], json!([1, 2]));
+}
+
+#[test]
+fn website_search_prepares_a_query_and_an_email_candidate() {
+    let run = |code: &str, msg: serde_json::Value| {
+        execute(&code_in(PRESENCE, code), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let msg = json!({
+        "payload": {"siren": "123456789", "contact_conformite_email": "Qualite@ACME-Formation.fr", "autre": "x@gmail.com"},
+        "object": {"id": "o1", "title": "ACME Formation", "version": 2},
+        "today": "2026-10-22"
+    });
+    assert_eq!(r[0]["payload"], "ACME Formation");
+    assert_eq!(r[0]["org"]["siren"], "123456789");
+    assert_eq!(
+        (
+            r[1]["object_id"].clone(),
+        ),
+        (json!("o1"), json!("2026-10-22"))
+    );
+    assert_eq!(r[2]["payload"]["url"], "https://acme-formation.fr/");
+    assert_eq!(r[2]["candidat"]["source"], "email");
+    // A webmail names no website.
+    let r = run(
+        json!({"payload": {"mail": "jean@orange.fr"}, "object": {"id": "o", "title": "T", "version": 1}}),
+    );
+    assert!(r[2].is_null(), "{r}");
+
+    let r = run(
         json!({"payload": {"query": "ACME", "provider": "serper",
+        "results": [{"url": "https://acme.fr/", "rank": 1}, {"url": "https://b.fr/", "rank": 2}]}}),
+    );
+    assert_eq!(
+        (
+            r[0]["payload"]["url"].clone(),
+            r[1]["candidat"]["rang"].clone()
+        ),
+        (json!("https://acme.fr/"), json!(2))
+    );
+    assert!(r[2].is_null());
+}
+
+#[test]
+fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
+    let score = |text: &str, source: &str| {
+        let msg = json!({
+            "payload": {"url": "https://www.acme.fr/", "final_url": "https://www.acme.fr/accueil",
+                        "title": "Accueil", "text": "", "legal_text": text},
+            "org": {"id": "o1", "title": "ACME Formation", "siren": "123456789", "nda": "84691234569"},
             "candidat": {"source": source, "requete": "ACME", "rang": 2, "fournisseur": "serper"}
+        });
+            .unwrap()
+            .return_json
+    };
+    let r = score(
+        "ACME Formation SAS, SIREN 123 456 789, NDA 84 69 12345 69",
+        "recherche",
+    )
+    .unwrap();
+    assert_eq!(
+        r[0]["payload"],
+        json!({"url_racine": "https://www.acme.fr/", "domaine": "acme.fr"})
+    );
+    assert_eq!(r[0]["lien"]["statut"], "confirme");
+    assert_eq!(r[0]["lien"]["score"], 100);
+    assert_eq!(
+        (
+            r[0]["lien"]["preuve_siren"].clone(),
+            r[0]["lien"]["rang"].clone()
+        ),
+        (json!(true), json!(2))
+    );
+    // The name and the org's own e-mail domain: for a human to check.
+    let r = score("ACME Formation, organisme à Lyon", "email").unwrap();
+    assert_eq!(
+        (
+            r[0]["lien"]["statut"].clone(),
+            r[0]["lien"]["score"].clone()
+        ),
+        (json!("propose"), json!(40))
+    );
+    // The name alone: nothing written.
+    assert!(score("ACME Formation", "recherche").is_none());
+}
+
+#[test]
+fn signals_digest_lists_the_new_ones_newest_first() {
+    let row = |title: &str, date: &str| {
+        json!({"id": title, "title": title, "version": 1,
+        "properties": {"date": date, "resume": "Modifications diverses"}})
+    };
+    let msg =
+        json!({"payload": [row("ACME · Modif", "2026-10-01"), row("BETA · Vente", "2026-10-20")]});
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (
+            r[0]["payload"]["trigger"].clone(),
+            r[0]["payload"]["nombre"].clone()
+        ),
+        (json!(true), json!(2))
+    );
+    let text = r[0]["payload"]["texte"].as_str().unwrap();
+    assert!(text.starts_with("- 2026-10-20 BETA · Vente"), "{text}");
+    assert_eq!(text.lines().count(), 2);
+    assert!(execute(
+        &json!({"payload": []}),
+        2000
+    )
+    .unwrap()
+    .return_json
+    .is_none());
+}
