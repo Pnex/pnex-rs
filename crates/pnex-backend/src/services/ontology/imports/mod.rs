@@ -830,9 +830,23 @@ async fn write(
             }
         };
         let now = chrono::Utc::now().to_rfc3339();
+        // Proposed links wait for a human (proposals.md D375).
+        for l in diff.links_opened.iter().filter(|l| l.propose) {
+            let input = pnex_core::ontology::proposal::ProposalInput {
+                kind: Some(pnex_core::ontology::proposal::ProposalKind::LinkCreate),
+                type_key: l.link_type.clone(),
+                source_id: Some(end(&l.from)?),
+                link_target_id: Some(end(&l.to)?),
+                values: l.attributes.clone(),
+                origin: actor.source_ref.clone(),
+                ..Default::default()
+            };
+            super::proposals::propose(&txn, org_id, &input).await?;
+        }
         let opened = diff
             .links_opened
             .iter()
+            .filter(|l| !l.propose)
             .map(|l| {
                 Ok(LinkInput {
                     link_type: l.link_type.clone(),

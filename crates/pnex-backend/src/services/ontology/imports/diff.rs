@@ -430,6 +430,7 @@ pub async fn compute<C: ConnectionTrait>(
             to: t,
             valid_from,
             attributes,
+            propose: m.links.get(entry).is_some_and(|l| l.propose),
         });
     }
 

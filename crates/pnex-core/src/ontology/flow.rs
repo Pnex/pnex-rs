@@ -75,6 +75,10 @@ pub struct LinkUpsertConfig {
     /// (web-presence.md D362).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_closed: bool,
+    /// A new link is a proposal waiting for a human (proposals.md D375);
+    /// an open link still gets its attributes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propose: bool,
 }
 
 fn bad(code: &'static str, message: &str) -> Option<(&'static str, String)> {
@@ -189,6 +193,9 @@ pub struct FlowLinkRequest {
     pub attributes: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub valid_from: Option<String>,
+    /// Confidence of a proposal (0..=100), from `msg.payload.confidence`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
 }
 
 /// Answer of an upsert: the object, and whether it was created.
@@ -255,6 +262,7 @@ mod tests {
             link_type: "Bad".into(),
             close: false,
             skip_closed: false,
+            propose: false,
         }
         .check()
         .is_some());

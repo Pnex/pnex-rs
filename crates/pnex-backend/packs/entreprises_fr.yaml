@@ -18,12 +18,13 @@
 # turn: GLEIF gives the LEI of a SIREN and its declared direct and ultimate
 # parents (`filiale_de`, confirmed), and creates the parents it names
 # (French ones by SIREN, others by LEI); Wikidata gives parents and
-# subsidiaries that have a SIREN (`filiale_de` of nature `wikidata`,
-# always `a_valider`: community data). Sources are never merged.
+# subsidiaries that have a SIREN (`filiale_de` of nature `wikidata`, as
+# proposals on the To validate page since 2.2.0: community data). Sources
+# are never merged.
 key: entreprises_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "2.1.0"
+version: "2.2.0"
 requires: [entreprises]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
@@ -186,7 +187,6 @@ imports:
           to: directe
           attributes:
             nature: { value: consolidation_directe }
-            etat: { value: confirme }
             source: { value: "gleif.org" }
           on_conflict: { nature: consolidation_directe }
         - type: filiale_de
@@ -194,7 +194,6 @@ imports:
           to: ultime
           attributes:
             nature: { value: consolidation_ultime }
-            etat: { value: confirme }
             source: { value: "gleif.org" }
           on_conflict: { nature: consolidation_directe }
   - name: Parent companies (GLEIF)
@@ -267,11 +266,12 @@ imports:
         - type: filiale_de
           from: ul
           to: mere
+          propose: true
           attributes: &wikidata
             nature: { value: wikidata }
-            etat: { value: a_valider }
             source: { value: "wikidata.org" }
         - type: filiale_de
           from: filiale
           to: ul
+          propose: true
           attributes: *wikidata

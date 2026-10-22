@@ -20,12 +20,13 @@
 # `filiale_de` carries a control or consolidation relation as open sources
 # give it, without a share (`owns` stays for known holdings). Several
 # targets are allowed on purpose: a direct and an ultimate parent, or two
-# sources that disagree, live side by side with their provenance; a link
-# from a community source is `a_valider` and a human closes the wrong one.
+# sources that disagree, live side by side with their provenance. Since
+# 1.2.0 a link from a community source is a proposal (proposals.md D375):
+# it enters the graph once a human accepts it.
 key: entreprises
 name: Companies
 names: {fr: "Entreprises"}
-version: "1.1.0"
+version: "1.2.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
@@ -98,11 +99,6 @@ link_types:
         names: {fr: "Nature"}
         kind: enum
         values: [consolidation_directe, consolidation_ultime, declaree, wikidata, saisie]
-      - key: etat
-        name: State
-        names: {fr: "État"}
-        kind: enum
-        values: [a_valider, confirme]
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
 hierarchies:

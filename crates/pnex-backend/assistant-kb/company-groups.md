@@ -11,9 +11,9 @@ tags: meeting, rendez-vous, debrief, compte rendu, playbook, coaching, participa
 A company's group is built from two public sources, side by side, never merged. Install the **French companies** pack (and **B2B account mapping** for account statuses): it adds three imports next to the company register one, on the **Imports** tab of the ontology.
 
 ## Group links
-- **Legal entity identifiers (GLEIF)**: for each known SIREN, the LEI and the parents the company declares (direct and ultimate). The link **is a subsidiary of** gets the nature *consolidation_directe* or *consolidation_ultime* and the state *confirme*. When the direct and the ultimate parent are the same company, one link is kept.
+- **Legal entity identifiers (GLEIF)**: for each known SIREN, the LEI and the parents the company declares (direct and ultimate). The link **is a subsidiary of** gets the nature *consolidation_directe* or *consolidation_ultime*. When the direct and the ultimate parent are the same company, one link is kept.
 - **Parent companies (GLEIF)**: creates the parents GLEIF names. A French parent is created by its SIREN, a foreign one by its LEI with its country. The next run of the first import then links the subsidiary to it.
-- **Parents and subsidiaries (Wikidata)**: parents and subsidiaries that have a SIREN in Wikidata. The link has the nature *wikidata* and is always *a_valider*: it is community data (a state agency can show up as the parent of a listed company). Open the link and set its state, or close it when it is wrong.
+- **Parents and subsidiaries (Wikidata)**: parents and subsidiaries that have a SIREN in Wikidata. Each link (nature *wikidata*) is a **proposal** on the **To validate** page: it is community data (a state agency can show up as the parent of a listed company). Accept it and it enters the group; reject it and it is never proposed again.
 
 Each import takes the known companies in turn, up to its page budget per run: a large list is covered over several runs. Run them with **Run now**, or set a recurrence. A run that finds nothing for its batch is normal.
 

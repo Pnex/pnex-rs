@@ -331,7 +331,7 @@ async fn group_links_from_gleif_and_wikidata() {
         let edges = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'filiale_de' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(edges.rows_affected(), 1);
         let l = filiales(meca["id"].as_str().unwrap()).await;
-        assert!(l.contains("consolidation_directe") && l.contains("confirme"), "{l}");
+        assert!(l.contains("consolidation_directe"), "{l}");
 
         // Turns: the cursor stops at the last company queried, then wraps.
         let cursor = || async {
@@ -346,13 +346,25 @@ async fn group_links_from_gleif_and_wikidata() {
         run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(cursor().await.as_deref(), Some("513149161"));
 
-        // Wikidata: subsidiaries and parents with a SIREN, all to validate.
+        // Wikidata: subsidiaries and parents with a SIREN, as proposals
+        // (proposals.md D375): nothing enters the graph before a human.
         run("Parents and subsidiaries (Wikidata)").await;
         let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
         assert_eq!(sae["pays"], "FR", "{sae}");
-        let l = filiales(safran["id"].as_str().unwrap()).await;
-        assert!(l.contains("Safran Aircraft Engines") && l.contains("Agence des participations"), "{l}");
-        assert!(l.contains("a_valider") && !l.contains("confirme"), "{l}");
+        let sid = safran["id"].as_str().unwrap();
+        assert!(!filiales(sid).await.contains("filiale_de"));
+        let (st, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
+        assert_eq!((st, p["count"].clone()), (200, json!(2)), "{p}");
+        assert!(p.to_string().contains("Agence des participations"), "{p}");
+        let to_sae = p["results"].as_array().unwrap().iter()
+            .find(|r| r.to_string().contains("Safran Aircraft Engines")).cloned().unwrap();
+        let (st, _) = call(&server, "POST", &format!("/api/v1/proposals/{}/decision", to_sae["id"].as_str().unwrap()),
+            &env.alice, org, Some(json!({"decision": "accept"}))).await;
+        assert_eq!(st, 200);
+        // Proposed again by the next run: nothing new.
+        run("Parents and subsidiaries (Wikidata)").await;
+        let (_, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
+        assert_eq!(p["count"], 1, "{p}");
         let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=groupe_commercial", safran["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         assert!(h.to_string().contains("Safran Aircraft Engines"), "{h}");
@@ -549,33 +561,8 @@ async fn presence_web_takes_websites_over() {
         let (st, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", site["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!((st, o["properties"]["domaine"].as_str()), (200, Some("of.fr")), "{o}");
 
-        // D366: the proposed website waits for a human, a viewer only reads.
-        let (_, of) = object(&server, &env.alice, org, "organization", "OF Formation", json!({})).await;
-        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({
-            "link_type": "a_pour_site", "source_id": of["id"], "target_id": site["id"],
-            "attributes": {"statut": "propose", "score": 60, "preuve_siren": true, "source": "recherche", "requete": "OF Formation", "rang": 1}}))).await;
-        assert_eq!(st, 201, "{l}");
-        let (st, c) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.alice, org, None).await;
-        assert_eq!((st, c["count"].clone()), (200, json!(1)), "{c}");
-        assert_eq!((c["results"][0]["domain"].as_str(), c["results"][0]["proof_siren"].clone()), (Some("of.fr"), json!(true)));
-        personal_org(&server, &env.bob).await;
-        let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
-            Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
-        assert!(st == 200 || st == 201);
-        let decide = format!("/api/v1/web-presence/candidates/{}/decision", l["id"]);
-        let (st, _) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.bob, org, None).await;
-        assert_eq!(st, 200);
-        let (st, _) = call(&server, "POST", &decide, &env.bob, org, Some(json!({"decision": "rejete"}))).await;
-        assert_eq!(st, 403);
-        let (st, d) = call(&server, "POST", &decide, &env.alice, org, Some(json!({"decision": "rejete"}))).await;
-        assert_eq!(st, 200, "{d}");
-        assert!(d["valid_to"].is_string(), "{d}");
-        assert_eq!(d["attributes"]["statut"], "rejete");
-        assert!(d["attributes"]["valide_par"].as_str().is_some_and(|n| !n.is_empty() && !n.contains('@')), "{d}");
-        let (_, c) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.alice, org, None).await;
-        assert_eq!(c["count"], 0);
-        let (st, _) = call(&server, "POST", &decide, &env.alice, org, Some(json!({"decision": "confirme"}))).await;
-        assert_eq!(st, 404, "a closed link is no longer a candidate");
+        // D376: the candidate status left the link: a candidate is a proposal.
+        assert!(!site_link["def"]["attributes"].to_string().contains("\"statut\""), "{site_link}");
     })
     .await;
 }
@@ -1193,6 +1180,7 @@ async fn deploy_ontology_nodes(db: &DatabaseConnection, org: i64) -> i64 {
             {"id": "u", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren"}},
             {"id": "l", "kind": "link_upsert", "config": {"link_type": "habilite_pour"}},
             {"id": "s", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true}},
+            {"id": "p", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true, "propose": true}},
             {"id": "c", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "close": true}}
         ] })),
         ..Default::default()
@@ -1265,14 +1253,23 @@ async fn flow_nodes_write_as_their_deployed_node() {
         let (st, site) = object(&server, &env.alice, org, "site_web", "acme.fr", json!({"url_racine": "https://acme.fr/", "domaine": "acme.fr"})).await;
         assert_eq!(st, 201, "{site}");
         let pair = |id: &str, attrs: Value| json!({"node": node(id), "source_id": a["object"]["id"], "target_id": site["id"], "attributes": attrs});
-        let (st, open) = internal(&server, "link", pair("s", json!({"statut": "propose", "score": 55}))).await;
+        let (st, open) = internal(&server, "link", pair("s", json!({"score": 55}))).await;
         assert_eq!((st, open["valid_to"].clone()), (200, Value::Null), "{open}");
-        let (st, closed) = internal(&server, "link", pair("c", json!({"statut": "rejete", "valide_par": "Alice"}))).await;
+        let (st, closed) = internal(&server, "link", pair("c", json!({"valide_par": "Alice"}))).await;
         assert_eq!(st, 200, "{closed}");
         assert!(closed["valid_to"].is_string(), "{closed}");
-        assert_eq!((closed["attributes"]["statut"].as_str(), closed["attributes"]["score"].as_f64()), (Some("rejete"), Some(55.0)));
-        let (st, again) = internal(&server, "link", pair("s", json!({"statut": "propose"}))).await;
-        assert_eq!((st, again["id"].clone(), again["attributes"]["statut"].clone()), (200, closed["id"].clone(), json!("rejete")), "{again}");
+        assert_eq!((closed["attributes"]["valide_par"].as_str(), closed["attributes"]["score"].as_f64()), (Some("Alice"), Some(55.0)));
+        let (st, again) = internal(&server, "link", pair("s", json!({"score": 90}))).await;
+        assert_eq!((st, again["id"].clone(), again["attributes"]["score"].clone()), (200, closed["id"].clone(), json!(55)), "{again}");
+        let open_links = env.db.execute_unprepared(&format!(
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
+        assert_eq!(open_links.rows_affected(), 0);
+        // D375: a proposing node writes no link, it proposes one.
+        let (_, site2) = object(&server, &env.alice, org, "site_web", "acme2.fr", json!({"url_racine": "https://acme2.fr/", "domaine": "acme2.fr"})).await;
+        let req = json!({"node": node("p"), "source_id": a["object"]["id"], "target_id": site2["id"], "attributes": {"score": 60}, "confidence": 60});
+        let (st, r) = internal(&server, "link", req).await;
+        assert_eq!((st, r["proposed"].clone()), (200, json!(true)), "{r}");
+        assert!(r["proposal_id"].is_string(), "{r}");
         let open_links = env.db.execute_unprepared(&format!(
             "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);

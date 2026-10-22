@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **P0 et P1 livrés le 2026-10-22** ; P2 en cours |
+| Statut | **P0, P1 et P2 livrés le 2026-10-22** ; P3 et P4 à faire |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
 | Repose sur | ontologie (D176–D191), propositions des dossiers (`cases-workspace.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
@@ -120,7 +120,28 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
   - fiche `assistant-kb/proposals.md` ;
   - ligne au lexique (« Proposition », la garde refuse « suggestion de
     la machine »).
+- **P2** :
+  - `propose: true` sur une entrée de lien d'un mapping (le diff
+    l'indique, l'écriture crée la proposition dans la même transaction) ;
+  - option `propose` du nœud `link_upsert` (`msg.payload.confidence`
+    gardé ; réponse `{proposed, proposal_id}`) ;
+  - packs : `entreprises` 1.2.0 (sans `filiale_de.etat`),
+    `entreprises_fr` 2.2.0 (Wikidata propose ses liens) et
+    `presence_web` 1.1.0 (sans `a_pour_site.statut` ; le flow écrit à
+    partir de 80 et propose de 40 à 79) ;
+  - la section « Sites à valider » et ses deux routes
+    `/web-presence/candidates` sont retirées : la boîte commune les
+    remplace ;
+  - migration 000047 (D376) : les liens en attente deviennent des
+    propositions (empreinte `migration:<id>`, remplacée par une nouvelle
+    proposition du même lien) et sont fermés ; les attributs d'état
+    disparaissent ;
+  - tests mis à jour : `partner_watch` (Wikidata accepté depuis la boîte,
+    nœud qui propose), `pack_rules`.
 - Reste :
   - P1 : saisir un motif de rejet dans l'UI (l'API l'accepte) et
     accepter avec correction depuis l'UI ;
-  - P2, P3, P4.
+  - P3 : dossiers et voix dans la même table ;
+  - P4 : acceptation automatique par règle d'org (D377, attend D368) ;
+  - producteurs d'objets (`object_upsert` `propose`, entrée d'objet d'un
+    mapping), à faire quand un cas réel le demande.

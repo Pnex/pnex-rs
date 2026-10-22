@@ -99,7 +99,6 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::time_ranges::openapi(),
         controllers::site_recipes::openapi(),
         controllers::web_search::openapi(),
-        controllers::web_presence::openapi(),
         controllers::proposals::openapi(),
         controllers::thermo::openapi(),
         controllers::fluid_mixtures::openapi(),

@@ -212,8 +212,10 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
         r[0]["payload"],
         json!({"url_racine": "https://www.acme.fr/", "domaine": "acme.fr"})
     );
-    assert_eq!(r[0]["lien"]["statut"], "confirme");
+    // Port 0: written; port 1 (proposed) empty.
+    assert!(r[1].is_null(), "{r}");
     assert_eq!(r[0]["lien"]["score"], 100);
+    assert_eq!(r[0]["confidence"], 100);
     assert_eq!(
         (
             r[0]["lien"]["preuve_siren"].clone(),
@@ -223,13 +225,8 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     );
     // The name and the org's own e-mail domain: for a human to check.
     let r = score("ACME Formation, organisme à Lyon", "email").unwrap();
-    assert_eq!(
-        (
-            r[0]["lien"]["statut"].clone(),
-            r[0]["lien"]["score"].clone()
-        ),
-        (json!("propose"), json!(40))
-    );
+    assert!(r[0].is_null(), "{r}");
+    assert_eq!(r[1]["lien"]["score"], json!(40));
     // The name alone: nothing written.
     assert!(score("ACME Formation", "recherche").is_none());
 }
