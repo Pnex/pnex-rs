@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 50] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 53] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -46,6 +46,7 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 50] = [
     PaletteKind::SiteRecipe,
     PaletteKind::WebSearch,
     PaletteKind::OrgResolve,
+    PaletteKind::WebVisit,
     PaletteKind::PageWrite,
     PaletteKind::PagePdf,
     PaletteKind::EventLog,
@@ -108,6 +109,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::SiteRecipe => "site-recipe",
         PaletteKind::WebSearch => "web-search",
         PaletteKind::OrgResolve => "org-resolve",
+        PaletteKind::WebVisit => "web-visit",
         PaletteKind::Weather => "weather",
         PaletteKind::Anomaly => "anomaly",
         PaletteKind::Forecast => "forecast",
@@ -176,6 +178,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
         PaletteKind::WebSearch => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
         PaletteKind::OrgResolve => (PaletteIcon::Database, "bg-cyan-50 text-cyan-800"),
+        PaletteKind::WebVisit => (PaletteIcon::Eye, "bg-cyan-50 text-cyan-800"),
         PaletteKind::Weather => (
             PaletteIcon::Home("home-partly-cloudy"),
             "bg-sky-50 text-sky-600",
@@ -239,6 +242,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
         FlowNodeKind::WebSearch { .. } => PaletteKind::WebSearch,
         FlowNodeKind::OrgResolve { .. } => PaletteKind::OrgResolve,
+        FlowNodeKind::WebVisit { .. } => PaletteKind::WebVisit,
         FlowNodeKind::Weather { .. } => PaletteKind::Weather,
         FlowNodeKind::Anomaly { .. } => PaletteKind::Anomaly,
         FlowNodeKind::Forecast { .. } => PaletteKind::Forecast,
@@ -565,6 +569,11 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::OrgResolve => (
             t!("flows-palette-org-resolve").to_string(),
             t!("flows-palette-org-resolve-help").to_string(),
+        ),
+        PaletteKind::WebVisit => (
+            t!("flows-palette-web-visit").to_string(),
+            t!("flows-palette-web-visit-help").to_string(),
+        ),
         PaletteKind::MediaSource => (
             t!("flows-palette-media-source").to_string(),
             t!("flows-palette-media-source-help").to_string(),

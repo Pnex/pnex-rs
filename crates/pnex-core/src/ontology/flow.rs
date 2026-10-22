@@ -70,6 +70,11 @@ pub struct LinkUpsertConfig {
     pub link_type: String,
     #[serde(default)]
     pub close: bool,
+    /// A link of this pair closed before is answered as is, never opened
+    /// again: a candidate a human rejected is not proposed twice
+    /// (web-presence.md D362).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub skip_closed: bool,
 }
 
 fn bad(code: &'static str, message: &str) -> Option<(&'static str, String)> {
@@ -248,7 +253,8 @@ mod tests {
         assert!(u.check_deployable().is_none());
         assert!(LinkUpsertConfig {
             link_type: "Bad".into(),
-            close: false
+            close: false,
+            skip_closed: false,
         }
         .check()
         .is_some());

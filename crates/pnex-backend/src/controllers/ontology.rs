@@ -956,7 +956,7 @@ struct PathQuery {
     params(PathQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectPath),
-        (status = 400, description = "Missing `from` or `to` (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Missing `from` or `to`, or more than 20 `links` (`field-invalid`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (malformed or unknown id, or no path)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))

@@ -365,3 +365,20 @@ pub async fn delete(db: &DatabaseConnection, org_id: i64, key: &str) -> Result<(
     txn.commit().await?;
     Ok(())
 }
+
+/// Gives a type over to another pack (`hands_over`, web-presence.md D363):
+/// same key, same objects, a new owner.
+pub async fn set_pack(
+    db: &sea_orm::DatabaseConnection,
+    org_id: i64,
+    key: &str,
+    pack_key: &str,
+) -> Result<()> {
+    object_types::Entity::update_many()
+        .col_expr(object_types::Column::PackKey, Expr::value(pack_key))
+        .filter(object_types::Column::OrgId.eq(org_id))
+        .filter(object_types::Column::Key.eq(key))
+        .exec(db)
+        .await?;
+    Ok(())
+}

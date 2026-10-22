@@ -163,7 +163,8 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 3);
+        // quali_watch 3 + presence_web 4 functions; 3 + 1 flows.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 7);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
             4
@@ -502,6 +503,7 @@ async fn group_coverage_and_status_colours() {
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
         for want in ["Plan de compte — Groupe", "Filiale nue", "utilisateurs actuels 50", "potentiel utilisateurs 5800"] {
+            assert!(text.contains(want), "{want} missing");
         }
         assert!(!text.contains("{{"), "every placeholder filled");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/links"), &env.alice, org, None).await;
@@ -512,9 +514,11 @@ async fn group_coverage_and_status_colours() {
     .await;
 }
 
+/// web-presence.md D363: `presence_web` takes `site_web` and `a_pour_site`
 /// over from an org on `quali_watch` 1.2.0, objects and links in place.
 #[tokio::test]
 #[serial]
+async fn presence_web_takes_websites_over() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
@@ -523,28 +527,37 @@ async fn group_coverage_and_status_colours() {
         // Back to the 1.2.0 layout: the two keys owned by `quali_watch`.
         for sql in [
             format!("UPDATE object_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'site_web'"),
+            format!("UPDATE link_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'a_pour_site'"),
+            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'presence_web'"),
             format!("UPDATE packs SET version = '1.2.0' WHERE org_id = {org} AND key = 'quali_watch'"),
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
         install(&server, &env.alice, org, "quali_watch").await;
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
+        assert_eq!(t["pack_key"], "presence_web", "{t}");
         let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
         let site_link = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "a_pour_site").cloned().unwrap();
+        assert_eq!(site_link["pack_key"], "presence_web");
         assert!(site_link["def"]["attributes"].to_string().contains("valide_par"), "{site_link}");
         let (st, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", site["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!((st, o["properties"]["domaine"].as_str()), (200, Some("of.fr")), "{o}");
 
+        // D366: the proposed website waits for a human, a viewer only reads.
         let (_, of) = object(&server, &env.alice, org, "organization", "OF Formation", json!({})).await;
         let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(json!({
+            "link_type": "a_pour_site", "source_id": of["id"], "target_id": site["id"],
             "attributes": {"statut": "propose", "score": 60, "preuve_siren": true, "source": "recherche", "requete": "OF Formation", "rang": 1}}))).await;
         assert_eq!(st, 201, "{l}");
+        let (st, c) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.alice, org, None).await;
         assert_eq!((st, c["count"].clone()), (200, json!(1)), "{c}");
         assert_eq!((c["results"][0]["domain"].as_str(), c["results"][0]["proof_siren"].clone()), (Some("of.fr"), json!(true)));
         personal_org(&server, &env.bob).await;
         let (st, _) = call(&server, "POST", &format!("/api/v1/orgs/{org}/members"), &env.alice, org,
             Some(json!({"email": "bob@example.com", "role": "viewer"}))).await;
         assert!(st == 200 || st == 201);
+        let decide = format!("/api/v1/web-presence/candidates/{}/decision", l["id"]);
+        let (st, _) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.bob, org, None).await;
         assert_eq!(st, 200);
         let (st, _) = call(&server, "POST", &decide, &env.bob, org, Some(json!({"decision": "rejete"}))).await;
         assert_eq!(st, 403);
@@ -553,6 +566,7 @@ async fn group_coverage_and_status_colours() {
         assert!(d["valid_to"].is_string(), "{d}");
         assert_eq!(d["attributes"]["statut"], "rejete");
         assert!(d["attributes"]["valide_par"].as_str().is_some_and(|n| !n.is_empty() && !n.contains('@')), "{d}");
+        let (_, c) = call(&server, "GET", "/api/v1/web-presence/candidates", &env.alice, org, None).await;
         assert_eq!(c["count"], 0);
         let (st, _) = call(&server, "POST", &decide, &env.alice, org, Some(json!({"decision": "confirme"}))).await;
         assert_eq!(st, 404, "a closed link is no longer a candidate");
@@ -651,6 +665,7 @@ async fn group_coverage_and_status_colours() {
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
+            assert!(text.contains(want), "{want} missing");
         }
         assert_eq!(st, 200, "{h}");
         let titles: Vec<&str> = h["nodes"].as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap()).collect();
@@ -1144,7 +1159,9 @@ async fn deploy_ontology_nodes(db: &DatabaseConnection, org: i64) -> i64 {
             {"id": "q", "kind": "ontology_query", "config": {"object_type": "certification",
               "filters": [{"key": "code", "op": "in", "value": "$msg.payload.codes"}]}},
             {"id": "u", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren"}},
-            {"id": "l", "kind": "link_upsert", "config": {"link_type": "habilite_pour"}}
+            {"id": "l", "kind": "link_upsert", "config": {"link_type": "habilite_pour"}},
+            {"id": "s", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true}},
+            {"id": "c", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "close": true}}
         ] })),
         ..Default::default()
     }
@@ -1211,6 +1228,8 @@ async fn flow_nodes_write_as_their_deployed_node() {
         assert_eq!((st, l2["id"].clone()), (200, l1["id"].clone()), "an open link is updated, not doubled");
         assert_eq!(l2["attributes"]["perimetre"], "les_deux");
 
+        // web-presence.md D362: a rejected candidate is closed with its
+        // reason, and a skip_closed node never opens it again.
         let (st, site) = object(&server, &env.alice, org, "site_web", "acme.fr", json!({"url_racine": "https://acme.fr/", "domaine": "acme.fr"})).await;
         assert_eq!(st, 201, "{site}");
         let pair = |id: &str, attrs: Value| json!({"node": node(id), "source_id": a["object"]["id"], "target_id": site["id"], "attributes": attrs});
@@ -1223,6 +1242,7 @@ async fn flow_nodes_write_as_their_deployed_node() {
         let (st, again) = internal(&server, "link", pair("s", json!({"statut": "propose"}))).await;
         assert_eq!((st, again["id"].clone(), again["attributes"]["statut"].clone()), (200, closed["id"].clone(), json!("rejete")), "{again}");
         let open_links = env.db.execute_unprepared(&format!(
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);
 
         let (st, r) = internal(&server, "query", json!({"node": node("q"), "values": [["RNCP12345", "RS1"]]})).await;

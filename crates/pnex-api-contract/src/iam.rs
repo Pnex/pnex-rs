@@ -876,8 +876,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ),
     ("web_search_providers_list", Access::Org("web-search:read")),
     (
+        "web_presence_candidates_decide",
         Access::Org("ontology:write"),
     ),
+    ("web_presence_candidates_list", Access::Org("ontology:read")),
     ("web_search_providers_test", Access::Org("web-search:test")),
     (
         "web_search_providers_update",

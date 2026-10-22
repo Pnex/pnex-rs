@@ -41,6 +41,7 @@ mod ontology;
 mod org_resolve;
 mod site_recipe;
 mod web_search;
+mod web_visit;
 
 use pnex_core::ui_control::{
     control_channel, control_value_key, ControlEvent, ControlSourceConfig,

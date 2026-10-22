@@ -69,6 +69,7 @@ fn filter_sql(
     };
     Ok(match f.op {
         FilterOp::Exists => format!("o.properties ? '{k}'"),
+        FilterOp::Missing => format!("NOT (o.properties ? '{k}')"),
         FilterOp::In => {
             let Some(values) = f.value.as_array().filter(|a| a.len() <= 500) else {
                 return Err(invalid(field("value"), FIELD_INVALID));

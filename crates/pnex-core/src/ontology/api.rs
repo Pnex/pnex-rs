@@ -195,6 +195,8 @@ pub enum FilterOp {
     /// Case-insensitive substring of a text property.
     Contains,
     Exists,
+    /// The property is not set (an object never processed).
+    Missing,
     /// One of the values of a list (texts as stored).
     In,
 }

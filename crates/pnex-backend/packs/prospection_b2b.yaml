@@ -182,6 +182,8 @@ hierarchies:
                   "score_cible": total,
                   "score_detail": "\n".join(lines),
                   "score_le": msg.get("today", ""),
+            filters: [{ key: notifie_le, op: missing }]
+            filters: [{ key: notifie_le, op: missing }]
   - name: "Prospection · target score"
     note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
             object_type: critere_ciblage

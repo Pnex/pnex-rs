@@ -302,6 +302,8 @@ pub(super) fn LinkUpsertForm(
     };
     let mut p1 = patch;
     let b1 = base.clone();
+    let mut p2 = patch;
+    let b2 = base.clone();
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-link-upsert-help")} }
@@ -339,6 +341,20 @@ pub(super) fn LinkUpsertForm(
                     },
                 }
                 {t!("flows-link-upsert-close")}
+            }
+            label { class: "flex items-center gap-2 text-sm text-gray-700",
+                input {
+                    r#type: "checkbox",
+                    disabled: !can_write || initial.close,
+                    checked: initial.skip_closed,
+                    onchange: move |e| {
+                        p2(LinkUpsertConfig {
+                            skip_closed: e.checked(),
+                            ..b2.clone()
+                        });
+                    },
+                }
+                {t!("flows-link-upsert-skip-closed")}
             }
         }
     }

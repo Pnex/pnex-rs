@@ -111,6 +111,11 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_WEB_SEARCH_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/web-search"),
             )
+            // One look at a candidate website (web-presence.md D364).
+            .env(
+                "PNEX_FLOW_WEB_VISIT_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/web-visit"),
+            )
             // Company name → SIREN (account-mapping.md D332).
             .env(
                 "PNEX_FLOW_ORG_RESOLVE_URL",

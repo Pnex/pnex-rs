@@ -181,6 +181,8 @@ pub mod site_recipe;
 /// Web search providers and the `web_search` node (web-presence.md D360–D361).
 pub mod org_resolve;
 pub mod web_search;
+pub mod web_visit;
+
 /// Readers of ontology import sources (partner-watch.md D301).
 #[cfg(feature = "doc-extract")]
 pub mod import_read;

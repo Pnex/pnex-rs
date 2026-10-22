@@ -7,6 +7,7 @@ use serde_json::json;
 
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
 const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospection_b2b.yaml");
+const PRESENCE: &str = include_str!("../../pnex-backend/packs/presence_web.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
 fn code_of(name: &str) -> String {
@@ -122,6 +123,7 @@ fn target_score_adds_the_points_of_the_criteria_met() {
     let detail = r["payload"]["score_detail"].as_str().unwrap();
     assert_eq!(detail.lines().count(), 4, "{detail}");
     assert!(detail.contains("ETI et plus : +20"), "{detail}");
+    // A client loses its points; a missing property meets nothing.
     let mut client = msg.clone();
     client["payload"] = json!({"statut_compte": "client", "pays": "BE"});
     let r = execute(&code_in(PROSPECTION, "pb_score"), &client, 2000)
@@ -154,11 +156,13 @@ fn website_search_prepares_a_query_and_an_email_candidate() {
         "object": {"id": "o1", "title": "ACME Formation", "version": 2},
         "today": "2026-10-22"
     });
+    let r = run("pw_preparer", msg);
     assert_eq!(r[0]["payload"], "ACME Formation");
     assert_eq!(r[0]["org"]["siren"], "123456789");
     assert_eq!(
         (
             r[1]["object_id"].clone(),
+            r[1]["payload"]["site_recherche_le"].clone()
         ),
         (json!("o1"), json!("2026-10-22"))
     );
@@ -166,11 +170,13 @@ fn website_search_prepares_a_query_and_an_email_candidate() {
     assert_eq!(r[2]["candidat"]["source"], "email");
     // A webmail names no website.
     let r = run(
+        "pw_preparer",
         json!({"payload": {"mail": "jean@orange.fr"}, "object": {"id": "o", "title": "T", "version": 1}}),
     );
     assert!(r[2].is_null(), "{r}");
 
     let r = run(
+        "pw_resultats",
         json!({"payload": {"query": "ACME", "provider": "serper",
         "results": [{"url": "https://acme.fr/", "rank": 1}, {"url": "https://b.fr/", "rank": 2}]}}),
     );
@@ -193,6 +199,7 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
             "org": {"id": "o1", "title": "ACME Formation", "siren": "123456789", "nda": "84691234569"},
             "candidat": {"source": source, "requete": "ACME", "rang": 2, "fournisseur": "serper"}
         });
+        execute(&code_in(PRESENCE, "pw_score"), &msg, 2000)
             .unwrap()
             .return_json
     };

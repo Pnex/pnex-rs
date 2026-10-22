@@ -67,6 +67,7 @@ pub fn routes() -> Routes {
         // Web search candidates of web_search nodes (web-presence.md D361).
         .add("/internal/flow/web-search", post(flow_web_search))
         .add("/internal/flow/org-resolve", post(flow_org_resolve))
+        .add("/internal/flow/web-visit", post(flow_web_visit))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -812,6 +813,41 @@ async fn flow_org_resolve(
         }
         Err(e) => {
             tracing::warn!(org_id = req.node.org_id, error = ?e, "flow org resolve failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+/// `POST /internal/flow/web-visit` — one visit of a deployed `web_visit`
+/// node (web-presence.md D364). A failed visit answers 200 on port 1; only
+/// a forged or stale node is refused.
+async fn flow_web_visit(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::web_visit::WebVisitNodeRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    match crate::services::web_visit::run(&ctx, &req).await {
+        Err(NodeError::NotDeployed) => {
+            tracing::warn!(
+                org_id = req.node.org_id,
+                "flow web visit refused: node not deployed"
+            )
+                .into_response())
+        }
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow web visit failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
 async fn flow_ontology_link(
     State(ctx): State<AppContext>,
     headers: HeaderMap,

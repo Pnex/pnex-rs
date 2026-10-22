@@ -136,6 +136,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::WebSearch { .. } => (pnex_core::web_search::NODE_PORT_COUNT, 0),
         // Company lookup: matched, to review, failed.
         FlowNodeKind::OrgResolve { .. } => (pnex_core::org_resolve::NODE_PORT_COUNT, 0),
+        // Website visit: read, failed.
+        FlowNodeKind::WebVisit { .. } => (pnex_core::web_visit::NODE_PORT_COUNT, 0),
         _ => (1, 0),
     }
 }
@@ -212,6 +214,11 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-org-resolve-port-matched").to_string(),
             t!("flows-org-resolve-port-review").to_string(),
             t!("flows-org-resolve-port-failed").to_string(),
+        ],
+        FlowNodeKind::WebVisit { .. } => vec![
+            t!("flows-web-visit-port-ok").to_string(),
+            t!("flows-web-visit-port-failed").to_string(),
+        ],
         _ => Vec::new(),
     }
 }

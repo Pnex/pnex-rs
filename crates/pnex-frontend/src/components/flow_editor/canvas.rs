@@ -405,6 +405,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::SiteRecipe { .. } => kind_labels(PaletteKind::SiteRecipe),
         pnex_core::FlowNodeKind::WebSearch { .. } => kind_labels(PaletteKind::WebSearch),
         pnex_core::FlowNodeKind::OrgResolve { .. } => kind_labels(PaletteKind::OrgResolve),
+        pnex_core::FlowNodeKind::WebVisit { .. } => kind_labels(PaletteKind::WebVisit),
         pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
@@ -1369,6 +1370,10 @@ fn node_subtitle(node: &FlowNode) -> String {
             format!("{} · {} max", config.provider, config.limit)
         }
         pnex_core::FlowNodeKind::OrgResolve { config } => {
+            format!("≥ {} · +{}", config.threshold, config.gap)
+        }
+        pnex_core::FlowNodeKind::WebVisit { config } if config.legal_page => "+ legal".into(),
+        pnex_core::FlowNodeKind::WebVisit { .. } => String::new(),
         pnex_core::FlowNodeKind::SiteRecipe { config } if config.recipe_id.is_empty() => "—".into(),
         pnex_core::FlowNodeKind::SiteRecipe { config } => config
             .params

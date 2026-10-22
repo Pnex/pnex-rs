@@ -185,6 +185,12 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                 }
             }
             FlowNodeKind::OrgResolve { config } => {
+                if let Some((code, message)) = config.check() {
+                    v.push(FlowViolation::new(Some(&n.id), code, message));
+                }
+            }
+            // Nothing to check: one bool.
+            FlowNodeKind::WebVisit { .. } => {}
             FlowNodeKind::Weather { config } => {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
