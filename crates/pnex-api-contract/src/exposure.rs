@@ -247,6 +247,7 @@ pub const EXPOSED: &[&str] = &[
     "ontology_packs_install",
     "ontology_packs_list",
     "ontology_packs_settings_update",
+    "ontology_packs_take",
     "ontology_path",
     "ontology_query",
     "ontology_resolve",

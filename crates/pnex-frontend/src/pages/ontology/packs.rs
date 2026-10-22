@@ -3,7 +3,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::{PackSettingKind, PackSettingsInput, PackView};
+use pnex_core::ontology::api::{PackSettingKind, PackSettingsInput, PackTakeInput, PackView};
 use serde_json::{Map, Value};
 
 use crate::api;
@@ -28,8 +28,11 @@ pub fn PacksTab(tabs: Element) -> Element {
     // Pack whose settings are open (D368).
     let mut setting = use_signal(|| None::<PackView>);
     let columns = vec![
-        Column::new(t!("onto-packs").to_string(), |pack: &PackView| {
+        Column::new(t!("onto-packs").to_string(), move |pack: &PackView| {
             let installed = pack.installed_version.clone();
+            // Taking the pack's version needs the pack at its shipped one.
+            let can_take = admin && installed.as_deref() == Some(pack.version.as_str());
+            let key = pack.key.clone();
             rsx! {
                 div { "data-pack": "{pack.key}",
                     div { class: "flex flex-wrap items-center gap-2",
@@ -42,6 +45,43 @@ pub fn PacksTab(tabs: Element) -> Element {
                         }
                     }
                     p { class: "text-xs text-gray-600", {tr(&pack.description, &pack.descriptions)} }
+                    if !pack.kept.is_empty() {
+                        div {
+                            class: "mt-1 flex flex-wrap items-center gap-2 text-xs text-amber-700",
+                            "data-testid": "onto-pack-edited",
+                            span { {t!("onto-pack-edited")} }
+                            for name in pack.kept.clone() {
+                                span { key: "{name}", class: "inline-flex items-center gap-1",
+                                    code { "{name}" }
+                                    if can_take {
+                                        button {
+                                            class: "underline hover:text-amber-900",
+                                            r#type: "button",
+                                            "data-testid": "onto-pack-take",
+                                            onclick: {
+                                                let (key, name) = (key.clone(), name.clone());
+                                                move |_| {
+                                                    let (key, name) = (key.clone(), name.clone());
+                                                    let done = t!("onto-pack-taken", name : name.clone()).to_string();
+                                                    spawn(async move {
+                                                        let input = PackTakeInput { names: vec![name] };
+                                                        match api::ontology::take_pack_version(&key, &input).await {
+                                                            Ok(_) => {
+                                                                toasts::success(done);
+                                                                reload.with_mut(|r| *r += 1);
+                                                            }
+                                                            Err(e) => toasts::error(e),
+                                                        }
+                                                    });
+                                                }
+                                            },
+                                            {t!("onto-pack-take")}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }),

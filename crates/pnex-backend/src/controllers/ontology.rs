@@ -63,6 +63,7 @@ pub fn routes() -> Routes {
         .add("/query", post(run_query))
         .add("/packs", get(list_packs))
         .add("/packs/{key}/install", post(install_pack))
+        .add("/packs/{key}/take", post(take_pack_version))
         .add(
             "/packs/{key}/settings",
             axum::routing::patch(update_pack_settings),
@@ -111,6 +112,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         run_query,
         list_packs,
         install_pack,
+        take_pack_version,
         update_pack_settings,
         export,
         import
@@ -1348,6 +1350,31 @@ async fn install_pack(
         return onto_error(OntologyError::NotFound);
     };
     reply(packs::install(&ctx.db, org.org.id, Some(org.auth.user.id), &pack).await)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/packs/{key}/take",
+    tag = "ontology",
+    operation_id = "ontology_packs_take",
+    summary = "Take the pack's version of edited functions and flows",
+    description = "Writes the installed pack's version of functions and flows the org edited (names listed in the pack's `kept`) as a new version over the org's, which stays in their history. A flow runs it at its next deploy. Org owner or admin only.",
+    params(("key" = String, Path, description = "Pack key")),
+    request_body = pnex_core::ontology::api::PackTakeInput,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::PackView),
+        (status = 400, description = "A name the org did not edit, or the pack is not at its shipped version (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (unknown or not installed pack)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn take_pack_version(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(key): Path<String>,
+    Json(input): Json<pnex_core::ontology::api::PackTakeInput>,
+) -> Result<Response> {
+    reply(packs::take(&ctx.db, org.org.id, Some(org.auth.user.id), &key, &input).await)
 }
 
 #[utoipa::path(

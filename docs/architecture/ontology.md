@@ -840,6 +840,13 @@ confiance, auteur machine.
     par-dessus la nouvelle version. Une valeur que le pack retire perd son
     libellé. Un libellé ou une couleur du pack que l'org a retiré est
     noté `null` et reste retiré à la montée de version.
+  - Modifications de l'org (D368) : `PackView.kept` est calculé à chaque
+    lecture (fonctions et flows que le pack a écrits puis que l'org a
+    modifiés ; un homonyme que le pack n'a jamais écrit n'y figure pas).
+    L'onglet Packs les liste sous le pack ; « reprendre la version du
+    pack » (`POST /ontology/packs/{key}/take`, `ontology.schema:write`,
+    pack à sa version livrée) écrit la version du pack par-dessus, celle
+    de l'org reste dans l'historique.
   - Types de lien : l'action « Affichage des valeurs » de l'onglet Types
     de lien règle libellés et couleurs des attributs en liste de valeurs
     (même composant que l'éditeur de type).
@@ -853,8 +860,7 @@ confiance, auteur machine.
     montée de version).
 - **Pas fait** :
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la
-    nouvelle version du pack : l'org garde sa version (nommée après la
-    mise à jour), sans moyen dans l'UI de prendre celle du pack ;
+    nouvelle version du pack : c'est l'une ou l'autre ;
   - le nœud JavaScript ne lit pas les réglages (aucune fonction de pack
     n'est en JavaScript).
 

@@ -689,10 +689,18 @@ pub struct PackView {
     /// Settings of an installed pack (D368), empty otherwise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PackSettingView>,
-    /// Answer of an install: the functions and flows the org edited, kept
-    /// as they are instead of the pack's version (D368).
+    /// Functions and flows of an installed pack the org edited since the
+    /// pack wrote them: an upgrade keeps the org's version (D368).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kept: Vec<String>,
+}
+
+/// `POST /ontology/packs/{key}/take`: the pack's version of functions and
+/// flows the org edited (names from `PackView.kept`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackTakeInput {
+    pub names: Vec<String>,
 }
 
 /// Opening a case: from scratch, or from a dated alert (cases-workspace.md

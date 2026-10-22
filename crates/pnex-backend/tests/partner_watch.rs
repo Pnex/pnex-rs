@@ -594,7 +594,7 @@ async fn presence_web_takes_websites_over() {
         let flow_id = format!("SELECT id FROM flows WHERE org_id = {org} AND name = 'Web presence · find websites'");
         for sql in [
             format!("UPDATE function_versions SET code = code || E'\\n# older' WHERE function_id = ({})", fv("pw_score")),
-            format!("UPDATE function_versions SET code = code || E'\\n# mine', note = 'my fix' WHERE function_id = ({})", fv("pw_lien")),
+            format!("INSERT INTO function_versions (created_at, updated_at, function_id, org_id, version_number, code, inputs, outputs, note) SELECT now(), now(), function_id, org_id, version_number + 1, code || E'\\n# mine', inputs, outputs, 'my fix' FROM function_versions WHERE function_id = ({}) ORDER BY version_number DESC LIMIT 1", fv("pw_lien")),
             format!("UPDATE flow_versions SET graph = jsonb_set(graph, '{{nodes}}', '[]') WHERE flow_id = ({flow_id})"),
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
@@ -638,6 +638,23 @@ async fn presence_web_takes_websites_over() {
         assert_eq!((st, get(&p, "seuil_confirme")["value"].clone(), get(&p, "seuil_confirme")["overridden"].clone()), (200, json!(80), json!(false)));
         let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/maintenance/settings", &env.alice, org, Some(json!({"values": {}}))).await;
         assert_eq!(st, 404, "not installed");
+        // The org's edits stay listed, and it can take the pack's version.
+        let (_, list) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
+        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "presence_web").unwrap().clone();
+        assert_eq!(pw["kept"], json!(["pw_lien"]), "{pw}");
+        let take = "/api/v1/ontology/packs/presence_web/take";
+        let (st, e) = call(&server, "POST", take, &env.alice, org, Some(json!({"names": ["pw_score"]}))).await;
+        assert_eq!(st, 400, "not edited: {e}");
+        let (st, p) = call(&server, "POST", take, &env.alice, org, Some(json!({"names": ["pw_lien"]}))).await;
+        assert_eq!((st, p.get("kept").cloned()), (200, None), "{p}");
+        assert_eq!(latest(last_fn("pw_lien")).await.1, code_of("pw_lien"), "the pack's version");
+        // A function of the org that only shares a pack function's name is
+        // its own: never listed as edited.
+        let fid: i64 = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, fv("pw_lien"))).await.unwrap().unwrap().try_get("", "id").unwrap();
+        env.db.execute_unprepared(&format!("UPDATE function_versions SET note = 'mine', code = code || 'x' WHERE function_id = {fid}")).await.unwrap();
+        let (_, list) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
+        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "presence_web").unwrap().clone();
+        assert_eq!(pw.get("kept"), None, "{pw}");
     })
     .await;
 }
