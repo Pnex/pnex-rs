@@ -685,4 +685,36 @@ mod tests {
         .await
         .expect("cleanup");
     }
+
+    /// Starlark entries get the settings of their own org's installed packs
+    /// (the org's value, else the pack's default); other entries get none.
+    #[tokio::test]
+    async fn pack_settings_are_stamped_for_the_entry_org_only() {
+        let db = crate::services::db_lock::migrated_test_db().await;
+        let (own, other) = (987_011_i64, 987_012_i64);
+        db.execute_unprepared(&format!(
+            "DELETE FROM organizations WHERE id IN ({own}, {other}); \
+             INSERT INTO organizations (id, name) VALUES ({own}, 'set-own'), ({other}, 'set-other'); \
+             INSERT INTO packs (org_id, key, version, settings) \
+             VALUES ({own}, 'presence_web', '1', '{{\"seuil_confirme\": 90}}')"
+        ))
+        .await
+        .expect("orgs");
+        let entry = |kind: &str, org: i64| serde_json::json!({"type": kind, "pnex_org_id": org});
+        let mut entries = vec![
+            entry("pnex-starlark", own),
+            entry("pnex-starlark", other),
+            entry("pnex-js", own),
+        ];
+        stamp_pack_settings(&db, &mut entries).await.expect("stamp");
+        assert_eq!(entries[0]["settings"]["presence_web.seuil_confirme"], 90);
+        assert!(entries[0]["settings"]["presence_web.seuil_propose"].is_number());
+        assert_eq!(entries[1]["settings"], serde_json::json!({}));
+        assert!(entries[2].get("settings").is_none());
+        db.execute_unprepared(&format!(
+            "DELETE FROM organizations WHERE id IN ({own}, {other})"
+        ))
+        .await
+        .expect("cleanup");
+    }
 }
