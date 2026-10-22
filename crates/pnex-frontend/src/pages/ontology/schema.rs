@@ -5,7 +5,7 @@
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 use pnex_core::ontology::api::{LinkTypeView, ObjectTypeView};
-use pnex_core::ontology::{LinkTypeDef, TypeSet};
+use pnex_core::ontology::{LinkTypeDef, PropertyKind, TypeSet};
 use serde_json::{Map, Value};
 
 use crate::api;
@@ -20,6 +20,8 @@ use crate::components::ontology::{
     field_errors, icon_of, link_label, type_label, type_label_of, TypeIcon,
 };
 use crate::state::toasts;
+
+use super::type_editor::EnumDisplay;
 
 const INPUT: &str = crate::components::ui::INPUT;
 const LABEL: &str = crate::components::ui::FIELD_LABEL;
@@ -162,6 +164,7 @@ pub fn LinkTypesTab(tabs: Element) -> Element {
     let rows = page_slice(&all, page());
     let mut delete_link = use_signal(|| None::<String>);
     let mut new_link = use_signal(|| false);
+    let mut shown = use_signal(|| None::<LinkTypeView>);
     let known: Vec<ObjectTypeView> = types.read().clone().unwrap_or_default();
     let columns = vec![
         Column::new(t!("onto-col-type").to_string(), |l: &LinkTypeView| {
@@ -184,10 +187,24 @@ pub fn LinkTypesTab(tabs: Element) -> Element {
         Column::new(t!("common-actions").to_string(), move |l: &LinkTypeView| {
             let key = l.def.key.clone();
             let system = l.def.system;
+            let has_enum = l
+                .def
+                .attributes
+                .iter()
+                .any(|a| matches!(a.kind, PropertyKind::Enum { .. }));
+            let view = l.clone();
             rsx! {
                 if system {
                     span { class: "rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600", {t!("onto-system")} }
                 } else if admin {
+                    if has_enum {
+                        button {
+                            class: "text-xs text-gray-700 hover:underline",
+                            "data-testid": "onto-link-values",
+                            onclick: move |_| shown.set(Some(view.clone())),
+                            {t!("onto-link-values")}
+                        }
+                    }
                     DeleteButton { value: key, on_delete: move |k| delete_link.set(Some(k)) }
                 }
             }
@@ -221,6 +238,16 @@ pub fn LinkTypesTab(tabs: Element) -> Element {
                 on_close: move |_| new_link.set(false),
                 on_saved: move |_| {
                     new_link.set(false);
+                    reload.with_mut(|r| *r += 1);
+                },
+            }
+        }
+        if let Some(view) = shown() {
+            LinkValuesForm {
+                view,
+                on_close: move |_| shown.set(None),
+                on_saved: move |_| {
+                    shown.set(None);
                     reload.with_mut(|r| *r += 1);
                 },
             }
@@ -381,6 +408,69 @@ fn LinkTypeForm(
                         onchange: move |e| one_source.set(e.checked()),
                     }
                     {t!("onto-one-source")}
+                }
+            }
+        }
+    }
+}
+
+/// How the values of a link type's enum attributes are shown (D370):
+/// labels and colours, the values themselves unchanged.
+#[component]
+fn LinkValuesForm(view: LinkTypeView, on_close: Callback<()>, on_saved: Callback<()>) -> Element {
+    let mut def = use_signal(|| view.def.clone());
+    let mut busy = use_signal(|| false);
+    let version = view.version;
+    let on_submit = move |_| {
+        let input = pnex_core::ontology::api::LinkTypeInput {
+            def: def(),
+            expected_version: Some(version),
+        };
+        busy.set(true);
+        spawn(async move {
+            let res = api::ontology::update_link_type(&input.def.key, &input).await;
+            busy.set(false);
+            match res {
+                Ok(_) => on_saved.call(()),
+                Err(e) => toasts::error(e),
+            }
+        });
+    };
+    let attrs: Vec<(usize, pnex_core::ontology::PropertyDef)> = def
+        .read()
+        .attributes
+        .iter()
+        .cloned()
+        .enumerate()
+        .filter(|(_, a)| matches!(a.kind, PropertyKind::Enum { .. }))
+        .collect();
+    rsx! {
+        FormDialog {
+            title: format!(
+                "{} — {}",
+                t!("onto-link-values"),
+                link_label(Some(&view.def), &view.def.key, false),
+            ),
+            submit_label: t!("common-save").to_string(),
+            busy: busy(),
+            valid: true,
+            on_close: move |_| on_close.call(()),
+            on_submit,
+            div { class: "space-y-4",
+                for (i, a) in attrs {
+                    div { key: "{a.key}", class: "space-y-1",
+                        p { class: LABEL, {crate::components::ontology::tr(&a.name, &a.names)} }
+                        EnumDisplay {
+                            prop: a,
+                            on_change: move |p| {
+                                def.with_mut(|d| {
+                                    if let Some(slot) = d.attributes.get_mut(i) {
+                                        *slot = p;
+                                    }
+                                })
+                            },
+                        }
+                    }
                 }
             }
         }

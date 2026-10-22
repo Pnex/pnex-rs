@@ -840,6 +840,9 @@ confiance, auteur machine.
     par-dessus la nouvelle version. Une valeur que le pack retire perd son
     libellé. Un libellé ou une couleur du pack que l'org a retiré est
     noté `null` et reste retiré à la montée de version.
+  - Types de lien : l'action « Affichage des valeurs » de l'onglet Types
+    de lien règle libellés et couleurs des attributs en liste de valeurs
+    (même composant que l'éditeur de type).
   - Les pages générées (`page_render`) écrivent le libellé dans la langue
     de l'interface de l'auteur (`ObjectPageInput.lang`, anglais par
     défaut) : `{{prop:<clé>}}`, pastilles de `{{tree:…}}` et comptes de
@@ -849,8 +852,6 @@ confiance, auteur machine.
   - Test : `partner_watch` presence_web (libellé et couleur gardés à la
     montée de version).
 - **Pas fait** :
-  - l'éditeur de type de lien ne propose pas encore libellés et couleurs
-    (la couche les garde s'ils sont écrits par l'API) ;
   - fusion d'une fonction ou d'un flow que l'org a modifié avec la
     nouvelle version du pack : l'org garde sa version (nommée après la
     mise à jour), sans moyen dans l'UI de prendre celle du pack ;

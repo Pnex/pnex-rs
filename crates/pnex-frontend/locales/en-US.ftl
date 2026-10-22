@@ -4769,6 +4769,7 @@ onto-max = Max
 onto-max-len = Max length
 onto-enum-values = Values, comma separated
 onto-enum-display = How each value is shown ({ $lang }) and its colour; the value itself never changes.
+onto-link-values = Value display
 onto-color-none = No colour
 onto-color-green = Green
 onto-color-amber = Amber

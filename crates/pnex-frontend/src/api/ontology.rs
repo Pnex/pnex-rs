@@ -57,6 +57,18 @@ pub async fn create_link_type(def: &LinkTypeDef) -> Result<LinkTypeView, ApiErro
     client::request(Method::POST, &format!("{BASE}/link-types"), body(def)).await
 }
 
+pub async fn update_link_type(
+    key: &str,
+    input: &pnex_core::ontology::api::LinkTypeInput,
+) -> Result<LinkTypeView, ApiError> {
+    client::request(
+        Method::PUT,
+        &format!("{BASE}/link-types/{}", urlencode(key)),
+        body(input),
+    )
+    .await
+}
+
 pub async fn delete_link_type(key: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(
         Method::DELETE,

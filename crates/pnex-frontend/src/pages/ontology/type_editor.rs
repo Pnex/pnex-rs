@@ -565,29 +565,40 @@ fn PropertyRow(
                 }
             }
             KindConfig { index, def, choices }
-            EnumDisplay { index, def }
+            if let Some(prop) = def.read().properties.get(index).cloned() {
+                EnumDisplay {
+                    prop,
+                    on_change: move |p| {
+                        def.with_mut(|d| {
+                            if let Some(slot) = d.properties.get_mut(index) {
+                                *slot = p;
+                            }
+                        })
+                    },
+                }
+            }
         }
     }
 }
 
 /// How each value of an enum is shown (D370): its text in the UI language
-/// and its colour. The value itself stays the stored key.
+/// and its colour. The value itself stays the stored key. Shared by the
+/// type editor and the link types' attributes.
 #[component]
-fn EnumDisplay(index: usize, def: Signal<ObjectTypeDef>) -> Element {
-    let Some(p) = def.read().properties.get(index).cloned() else {
-        return rsx! {};
-    };
+pub(super) fn EnumDisplay(prop: PropertyDef, on_change: Callback<PropertyDef>) -> Element {
+    let p = prop;
     let PropertyKind::Enum { values } = &p.kind else {
         return rsx! {};
     };
     let tag = crate::i18n::current_tag();
     let lang = tag.split(['-', '_']).next().unwrap_or("en").to_string();
-    let mut edit = move |f: Box<dyn FnOnce(&mut PropertyDef)>| {
-        def.with_mut(|d| {
-            if let Some(p) = d.properties.get_mut(index) {
-                f(p);
-            }
-        });
+    let edit = {
+        let p = p.clone();
+        move |f: Box<dyn FnOnce(&mut PropertyDef)>| {
+            let mut p = p.clone();
+            f(&mut p);
+            on_change.call(p);
+        }
     };
     rsx! {
         div { class: "space-y-1", "data-testid": "onto-enum-display",
@@ -600,7 +611,7 @@ fn EnumDisplay(index: usize, def: Signal<ObjectTypeDef>) -> Element {
                         placeholder: crate::components::ontology::enum_label(&v),
                         value: p.labels.get(&v).and_then(|n| n.get(&lang)).cloned().unwrap_or_default(),
                         oninput: {
-                            let (v, lang) = (v.clone(), lang.clone());
+                            let (v, lang, edit) = (v.clone(), lang.clone(), edit.clone());
                             move |e: FormEvent| {
                                 let (v, lang, text) = (v.clone(), lang.clone(), e.value());
                                 edit(Box::new(move |p| set_label(p, &v, &lang, &text)));
@@ -610,7 +621,7 @@ fn EnumDisplay(index: usize, def: Signal<ObjectTypeDef>) -> Element {
                     select {
                         class: INPUT,
                         onchange: {
-                            let v = v.clone();
+                            let (v, edit) = (v.clone(), edit.clone());
                             move |e: FormEvent| {
                                 let (v, c) = (v.clone(), e.value());
                                 edit(Box::new(move |p| set_color(p, &v, &c)));
