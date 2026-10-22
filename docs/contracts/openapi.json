@@ -58329,7 +58329,7 @@
     },
     "/api/v1/ontology/path": {
       "get": {
-        "description": "Shortest chain of open links, followed in either direction, within 4 hops of `from`: the objects along it, ends included. 404 when there is no such path. Any org member.",
+        "description": "Shortest chain of open links, followed in either direction, within 4 hops of `from`, along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
         "operationId": "ontology_path",
         "parameters": [
           {
@@ -69862,6 +69862,7 @@
             "description": "`web-search-provider-not-found`"
         "summary": "Delete a web search provider",
           "web-search"
+        "description": "Full replacement; an absent `api_key` keeps the current one. Owner or admin only.",
         "operationId": "web_search_providers_update",
                 "$ref": "#/components/schemas/WebSearchProviderInput"
                   "$ref": "#/components/schemas/WebSearchProvider"
@@ -69872,6 +69873,7 @@
         "summary": "Replace a web search provider",
           "web-search"
     "/api/v1/web-search/providers/{id}/test": {
+        "description": "From the server: sends one real query (it may be billed by the provider) and answers whether it worked, the number of results and the latency; nothing is stored. Owner or admin only.",
         "operationId": "web_search_providers_test",
                   "$ref": "#/components/schemas/WebSearchTestResult"
             "description": "Missing, invalid or expired bearer token"

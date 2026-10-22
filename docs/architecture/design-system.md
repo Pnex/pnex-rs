@@ -288,6 +288,7 @@ les règles plus anciennes qui les contredisent.
 | Écran « qui peut faire quoi » (iam.md §9) | Accès | Access | pas « Partager » (lien public d'un tour) |
 | Service externe qui répond à une requête de recherche sur le web (web-presence.md D360) | Fournisseur de recherche web | Web search provider | pas « moteur de recherche » (le service tiers), pas « recherche » seule (= recherche globale D69) |
 | Filiales et sites d'un groupe sans contact ni statut client (account-mapping.md D330) | Espace blanc | White space | pas « zone blanche » (couverture réseau), pas « trou » |
+| Ce qui a bougé sur un compte suivi : annonce légale, nouvel établissement, page modifiée (account-mapping.md D335) | Signal commercial | Commercial signal | pas « alerte » (= notification envoyée), pas « signal » seul (= signaux d'un dossier) |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :

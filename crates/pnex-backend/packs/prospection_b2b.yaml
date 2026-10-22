@@ -173,7 +173,12 @@ hierarchies:
     coverage:
     steps:
         colors: { prevu: blue, tenu: green, annule: gray }
+  - key: signal_commercial
+    name: Commercial signal
+    names: {fr: "Signal commercial"}
+    icon: flag
         colors: { a_valider: amber, retenu: green, ecarte: gray }
+      - { key: notifie_le, name: Notified on, names: {fr: "Notifié le"}, kind: date }
   - key: critere_ciblage
   - name: pb_criteres
   - name: pb_score
@@ -182,8 +187,20 @@ hierarchies:
                   "score_cible": total,
                   "score_detail": "\n".join(lines),
                   "score_le": msg.get("today", ""),
+  - name: pb_digest
+    description: One text of the new commercial signals, for the org's notification node.
+      # Daily digest (D335): one line per new signal, newest first.
+  - name: pb_notifie
+          return {"payload": {"notifie_le": msg.get("today", "")}, "object_id": msg["object"]["id"]}
+  - name: "Prospection · signals digest"
+    note: "Each morning the commercial signals not yet notified make one digest (payload.texte, payload.nombre), then are marked notified. Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
+            object_type: signal_commercial
             filters: [{ key: notifie_le, op: missing }]
+        - { id: digest, kind: pnex_function, config: { function_name: pb_digest, language: starlark }, outputs: [{ port: 1, targets: [each] }] }
+            object_type: signal_commercial
             filters: [{ key: notifie_le, op: missing }]
+        - { id: mark, kind: pnex_function, config: { function_name: pb_notifie, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: signal_commercial, key: id } }
   - name: "Prospection · target score"
     note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
             object_type: critere_ciblage
@@ -196,5 +213,8 @@ hierarchies:
       {{coverage:groupe_commercial}}
       ## Espace blanc
       {{white_space:groupe_commercial}}
+      {{links:signal_sur:in}}
+      {{links:signal_sur:in}}
       Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
       {{coverage:groupe_commercial}}
+      {{links:signal_sur:in}}

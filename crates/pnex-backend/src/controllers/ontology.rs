@@ -929,6 +929,7 @@ async fn object_impact(
     State(ctx): State<AppContext>,
     org: OrgContext,
     Path(id): Path<String>,
+    Json(input): Json<pnex_core::ontology::api::ObjectPageInput>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
 }
@@ -952,7 +953,7 @@ struct PathQuery {
     tag = "ontology",
     operation_id = "ontology_path",
     summary = "Find a path between two objects",
-    description = "Shortest chain of open links, followed in either direction, within 4 hops of `from`: the objects along it, ends included. 404 when there is no such path. Any org member.",
+    description = "Shortest chain of open links, followed in either direction, within 4 hops of `from`, along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
     params(PathQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectPath),

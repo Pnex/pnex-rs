@@ -132,7 +132,8 @@ pub async fn neighborhood(
 }
 
 /// Shortest path between two objects (links in either direction), within
-/// `depth` hops of `from`: the objects along it.
+/// `depth` hops of `from`, along `relations` only when given: the objects
+/// along it.
 pub async fn path(
     db: &DatabaseConnection,
     org_id: i64,

@@ -154,11 +154,31 @@ pub async fn graph(id: &str, depth: u32) -> Result<Neighborhood, ApiError> {
     .await
 }
 
-/// Shortest chain of links between two objects (both directions, bounded).
-pub async fn path(from: &str, to: &str) -> Result<Vec<ObjectRef>, ApiError> {
+/// `POST /ontology/objects/{id}/pages`: a page from a template, filled
+/// from the object (D340).
+pub async fn page_from_template(
+    id: &str,
+    input: &pnex_core::ontology::api::ObjectPageInput,
+) -> Result<pnex_core::pages::DocSummary, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("{BASE}/objects/{id}/pages"),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
+/// Shortest chain of links between two objects (both directions, bounded),
+/// along `links` only when not empty.
+pub async fn path(from: &str, to: &str, links: &[&str]) -> Result<Vec<ObjectRef>, ApiError> {
+    let only = if links.is_empty() {
+        String::new()
+    } else {
+        format!("&links={}", links.join(","))
+    };
     let found: ObjectPath = client::request(
         Method::GET,
-        &format!("{BASE}/path?from={from}&to={to}"),
+        &format!("{BASE}/path?from={from}&to={to}{only}"),
         None,
     )
     .await?;

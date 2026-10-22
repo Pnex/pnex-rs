@@ -431,3 +431,41 @@ Limites :
   comptes client » à la fois (un chemin à plusieurs départs). Aujourd'hui,
   le départ est un objet du dossier.
 
+### CC4, première partie — signaux et BODACC (2026-10-22, non commité)
+
+- **`signal_commercial`** dans `prospection_b2b` :
+  - propriétés : `cle` unique, `kind` (liste fermée D335), `theme`
+    (texte, la liste de l'org), `resume`, `extrait`, `date`, `source_url`,
+    `etat` (`a_valider` / `retenu` / `ecarte`, coloré) et `notifie_le` ;
+  - lien **`signal_sur`** (→ organisation, site, personne). Le nom
+    `concerne` était déjà pris par `quali_watch`, avec une seule cible et
+    un départ `ecart`.
+- **Import « Annonces légales (BODACC) »** dans `prospection_fr` :
+  - API opendatasoft de la DILA, par SIREN, `familleavis != dpc` (les
+    dépôts de comptes sont du bruit) ;
+  - seulement les comptes suivis : nouveau filtre générique
+    `per_object.only` (propriété ∈ valeurs), ici `statut_compte` ∈ client,
+    prospect, cible ;
+  - `kind` : *Créations* → `nouvel_etablissement`, *Radiations* →
+    `fermeture_etablissement`, le reste → `annonce_legale` ;
+  - `extrait` décodé selon la famille : `modificationsgenerales`,
+    `jugement` ou `acte`. Ces champs sont du JSON dans une chaîne, d'où la
+    nouvelle conversion générique `json` (puis `field:`) ;
+  - `etat` = `a_valider` posé par `defaults` (à la création seulement) :
+    une décision humaine n'est jamais écrasée ;
+  - testé contre une imitation : `legal_announcements_become_signals`.
+- **Flow « Prospection · signals digest »** (brouillon) : chaque matin,
+  `pb_digest` fait un texte des signaux non notifiés, puis `pb_notifie`
+  pose `notifie_le`. Le nœud Notification est à ajouter par l'org (canal
+  et modèle sont les siens, comme les relances de `quali_watch`).
+- Ligne au lexique « Signal commercial » ; la garde refuse « alerte
+  commerciale ».
+- **Pas faits** :
+  - signal « nouvel établissement » tiré d'un SIRET apparu lors d'une
+    synchro ;
+  - pages actualités et carrières (parcours D307 + `text_decide` sur les
+    thèmes de l'org) ;
+  - diff des pages concurrentes (D311) ;
+  - envoi à chaque suiveur (`suit_le_compte`) : le résumé part sur les
+    canaux choisis par l'org.
+

@@ -390,6 +390,7 @@ async fn target_list_enters_new_accounts_as_targets() {
             async move {
                 assert_eq!(q.get("section_activite_principale").map(String::as_str), Some("C"));
                 let n: usize = q.get("page").and_then(|p| p.parse().ok()).unwrap_or(1);
+                axum::Json(json!({"results": pages.get(n - 1).cloned().unwrap_or_default()}))
             }
         };
         let app = axum::Router::new().route("/search", get(search));
@@ -574,9 +575,11 @@ async fn presence_web_takes_websites_over() {
     .await;
 }
 
+/// account-mapping.md D335: the legal announcements of followed accounts
 /// become signals linked to them, decoded, never reset once decided.
 #[tokio::test]
 #[serial]
+async fn legal_announcements_become_signals() {
     with_app(|server, env| async move {
         use axum::extract::Query;
         use axum::routing::get;
@@ -597,25 +600,30 @@ async fn presence_web_takes_websites_over() {
                     vec![
                         json!({"id": "B20260114713", "registre": ["429853351", "429 853 351"], "commercant": "MECACHROME FRANCE",
                                "familleavis": "modification", "familleavis_lib": "Modifications diverses", "typeavis_lib": "Avis initial",
+                               "dateparution": "2026-06-18", "url_complete": "https://www.bodacc.fr/a/B20260114713",
                                "modificationsgenerales": "{\"descriptif\": \"modification survenue sur le capital (augmentation)\"}",
                                "jugement": null, "acte": null}),
                         json!({"id": "A2026000001", "registre": ["429853351"], "commercant": "MECACHROME FRANCE",
                                "familleavis": "creation", "familleavis_lib": "Créations", "typeavis_lib": "Avis initial",
+                               "dateparution": "2026-09-01", "url_complete": "https://www.bodacc.fr/a/A2026000001",
                                "modificationsgenerales": null, "jugement": null, "acte": null}),
                     ]
                 } else {
                     vec![]
                 };
+                axum::Json(json!({"total_count": results.len(), "results": results}))
             }
         };
         let app = axum::Router::new().route("/records", get(records));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "UPDATE object_imports SET source_url = replace(source_url, \
+             'https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records', '{base}/records') \
              WHERE org_id = {org}"))).await.unwrap();
         let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "statut_compte": "client"})).await;
         object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;
 
+        let (id, _) = import_named(&server, &env.alice, org, "Legal announcements (BODACC)").await;
         let run = || async {
             let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &env.alice, org, None).await;
             assert_eq!(st, 202, "{r}");
@@ -623,17 +631,22 @@ async fn presence_web_takes_websites_over() {
             assert_eq!(r["run"]["state"], "applied", "{r}");
         };
         run().await;
+        // Followed accounts only: the unknown company is not asked about.
         assert_eq!(asked.lock().unwrap().len(), 1, "{:?}", asked.lock().unwrap());
+        let modif = props_of(&env.db, org, "signal_commercial", "cle", "B20260114713").await;
         assert_eq!((modif["kind"].as_str(), modif["etat"].as_str()), (Some("annonce_legale"), Some("a_valider")), "{modif}");
         assert_eq!(modif["extrait"], "modification survenue sur le capital (augmentation)");
         assert_eq!(modif["resume"], "Modifications diverses — Avis initial");
+        let opening = props_of(&env.db, org, "signal_commercial", "cle", "A2026000001").await;
         assert_eq!(opening["kind"], "nouvel_etablissement", "{opening}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", meca["id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!(l.to_string().matches("signal_sur").count() >= 2, true, "{l}");
 
         // A human retains it; the next run leaves that alone.
         env.db.execute_unprepared(&format!(
             "UPDATE objects SET properties = properties || '{{\"etat\": \"retenu\"}}' WHERE org_id = {org} AND properties ->> 'cle' = 'B20260114713'")).await.unwrap();
         run().await;
+        let modif = props_of(&env.db, org, "signal_commercial", "cle", "B20260114713").await;
         assert_eq!(modif["etat"], "retenu");
     })
     .await;
@@ -716,6 +729,7 @@ async fn mock_registers() -> String {
                 (_, Some("969500YMMRBQ5N157D72")) => vec![meca_dev],
                 _ => vec![],
             };
+            axum::Json(json!({"data": data}))
         }
     };
     let b = |dir: &str, siren: &str, label: &str| {
@@ -732,6 +746,7 @@ async fn mock_registers() -> String {
         } else {
             vec![]
         };
+        axum::Json(json!({"results": {"bindings": rows}}))
     };
     let app = axum::Router::new()
         .route("/gleif/lei-records", get(gleif))

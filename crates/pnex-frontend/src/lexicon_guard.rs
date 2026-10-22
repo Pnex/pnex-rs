@@ -44,6 +44,12 @@ const RULES: &[Rule] = &[
         use_instead: "web search provider (D360)",
         allowed_keys: &[],
     },
+    // account-mapping.md D335: what moved on an account is a « signal
+    // commercial »; an « alerte » is a notification sent.
+    Rule {
+        scope: Scope::Fr,
+        term: "alerte commerciale",
+        use_instead: "signal commercial (D335)",
     // account-mapping.md D330: the uncovered part of a group.
     Rule {
         scope: Scope::Fr,

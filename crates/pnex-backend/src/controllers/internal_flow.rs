@@ -761,6 +761,7 @@ async fn flow_site_recipe(
 }
 
 /// `POST /internal/flow/web-search` — one query of a deployed `web_search`
+/// node. A failed search answers 200 on port 1; only a forged or stale
 /// node is refused.
 async fn flow_web_search(
     State(ctx): State<AppContext>,
@@ -775,10 +776,15 @@ async fn flow_web_search(
         return Ok(r);
     }
     match crate::services::web_search::run(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
         Err(NodeError::NotDeployed) => {
             tracing::warn!(
                 org_id = req.node.org_id,
                 "flow web search refused: node not deployed"
+            );
+            Ok((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
             )
                 .into_response())
         }
@@ -791,6 +797,7 @@ async fn flow_web_search(
 
 /// `POST /internal/flow/org-resolve` — one lookup of a deployed
 /// `org_resolve` node (account-mapping.md D332). A failed lookup answers
+/// 200 on port 2; only a forged or stale node is refused.
 async fn flow_org_resolve(
     State(ctx): State<AppContext>,
     headers: HeaderMap,
@@ -804,10 +811,15 @@ async fn flow_org_resolve(
         return Ok(r);
     }
     match crate::services::org_resolve::run(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
         Err(NodeError::NotDeployed) => {
             tracing::warn!(
                 org_id = req.node.org_id,
                 "flow org resolve refused: node not deployed"
+            );
+            Ok((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
             )
                 .into_response())
         }
@@ -834,10 +846,15 @@ async fn flow_web_visit(
         return Ok(r);
     }
     match crate::services::web_visit::run(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
         Err(NodeError::NotDeployed) => {
             tracing::warn!(
                 org_id = req.node.org_id,
                 "flow web visit refused: node not deployed"
+            );
+            Ok((
+                StatusCode::FORBIDDEN,
+                axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
             )
                 .into_response())
         }

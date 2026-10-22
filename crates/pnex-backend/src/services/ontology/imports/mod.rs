@@ -550,13 +550,16 @@ async fn per_object_values<C: ConnectionTrait>(
         .query_all_raw(stmt(
             "SELECT properties ->> $3 AS v FROM objects \
              WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
-             ORDER BY updated_at ASC LIMIT $4",
+               AND ($6::text IS NULL OR properties ->> $6 = ANY($7)) \
+             ORDER BY (properties ->> $3) <= coalesce($5, ''), properties ->> $3 LIMIT $4",
             vec![
                 imp.org_id.into(),
                 p.type_key.clone().into(),
                 p.property.clone().into(),
                 (max as i64).into(),
                 imp.per_object_cursor.clone().into(),
+                p.only.as_ref().map(|o| o.property.clone()).into(),
+                p.only
                     .as_ref()
                     .map(|o| o.values.clone())
                     .unwrap_or_default()

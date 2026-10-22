@@ -572,6 +572,7 @@ async fn check_unique_many<C: ConnectionTrait>(
     Ok(())
 }
 
+/// Recurrence occurrences only exist for types with a recurrence property.
 // shortcut: an updated object of a type that lost its recurrence property
 // keeps its old occurrences until the daily sweep; per-row refresh if it matters.
 async fn refresh_recurrences<C: ConnectionTrait>(db: &C, s: &OrgSchema, rows: &[objects::Model]) {
