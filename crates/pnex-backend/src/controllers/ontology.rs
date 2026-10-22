@@ -63,6 +63,10 @@ pub fn routes() -> Routes {
         .add("/query", post(run_query))
         .add("/packs", get(list_packs))
         .add("/packs/{key}/install", post(install_pack))
+        .add(
+            "/packs/{key}/settings",
+            axum::routing::patch(update_pack_settings),
+        )
         .add("/export", get(export))
         .add(
             "/import",
@@ -107,6 +111,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         run_query,
         list_packs,
         install_pack,
+        update_pack_settings,
         export,
         import
     ))]
@@ -1343,6 +1348,31 @@ async fn install_pack(
         return onto_error(OntologyError::NotFound);
     };
     reply(packs::install(&ctx.db, org.org.id, Some(org.auth.user.id), &pack).await)
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/v1/ontology/packs/{key}/settings",
+    tag = "ontology",
+    operation_id = "ontology_packs_settings_update",
+    summary = "Set the org's values of a pack's settings",
+    description = "Overrides settings an installed pack declares (thresholds, weights) in the org's own layer, kept across pack upgrades; `null` returns a setting to the pack's default. Pack functions read the values in force at the next deploy of their flow. Org owner or admin only.",
+    params(("key" = String, Path, description = "Pack key")),
+    request_body = pnex_core::ontology::api::PackSettingsInput,
+    responses(
+        (status = 200, body = pnex_core::ontology::api::PackView),
+        (status = 400, description = "A key the pack does not declare, or a value of the wrong kind or out of bounds (`field-invalid`, `field-max-length`)", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found` (unknown or not installed pack)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn update_pack_settings(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(key): Path<String>,
+    Json(input): Json<pnex_core::ontology::api::PackSettingsInput>,
+) -> Result<Response> {
+    reply(packs::set_settings(&ctx.db, org.org.id, &key, &input).await)
 }
 
 #[utoipa::path(

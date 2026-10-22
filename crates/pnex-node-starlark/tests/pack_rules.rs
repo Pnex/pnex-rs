@@ -230,6 +230,24 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     assert_eq!(r[1]["lien"]["score"], json!(40));
     // The name alone: nothing written.
     assert!(score("ACME Formation", "recherche").is_none());
+    // D368: the org lowered the confirming score to 40.
+    let msg = json!({
+        "payload": {"url": "https://acme.fr/", "title": "", "text": "", "legal_text": "ACME Formation, Lyon"},
+        "org": {"id": "o1", "title": "ACME Formation"},
+        "candidat": {"source": "email"}
+    });
+    let mut settings = serde_json::Map::new();
+    settings.insert("presence_web.seuil_confirme".into(), json!(40));
+    let r = pnex_node_starlark::executor::execute_with(
+        &code_in(PRESENCE, "pw_score"),
+        &msg,
+        2000,
+        &settings,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert!(r[1].is_null() && r[0]["lien"]["score"] == 40, "{r}");
 }
 
 #[test]

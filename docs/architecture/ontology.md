@@ -801,6 +801,34 @@ confiance, auteur machine.
   avant.
 - Sans ce contrat, la première adaptation d'un client devient une copie du
   pack, et les montées de version ne fusionnent plus.
+- **Livré, première partie (2026-10-22)** : les **réglages**.
+  - Le pack déclare `settings` (`key`, nom, description, `kind`
+    `number` / `text` / `bool`, `default`, `min` / `max`).
+  - La couche de l'org = colonne `packs.settings` (migration 000048) : ses
+    valeurs seulement. Valeur en vigueur = la sienne, sinon celle du pack.
+    Une réinstallation ou une montée de version ne la touche pas.
+  - `PATCH /api/v1/ontology/packs/{key}/settings` (`ontology.schema:write`,
+    exposé au MCP) ; `null` rend un réglage au pack ; clé inconnue ou
+    valeur hors bornes = 400. `GET …/packs` rend les réglages d'un pack
+    installé.
+  - Les fonctions Starlark lisent `pack_setting("<pack>.<clé>", défaut)`
+    (dans une fonction, pas au niveau du module). Le déploiement tamponne
+    la carte en vigueur dans chaque nœud Starlark de l'org : un changement
+    s'applique au prochain déploiement, geste humain (D123).
+  - UI : bouton « Réglages » sur la ligne d'un pack installé.
+  - Premier usage : `presence_web` 1.4.0 (`seuil_confirme`, `seuil_propose`).
+- **Pas fait** :
+  - libellés et couleurs des valeurs d'énumération surchargés par l'org
+    (D370) ;
+  - mise à jour des fonctions et des flows d'un pack déjà installés :
+    l'installation ne réécrit jamais une fonction ni un flow de même nom
+    (l'org a pu les modifier). Une montée de version n'atteint donc pas
+    le code des règles ; seuls les réglages passent. Il faudra une fusion
+    à trois voies (version du pack d'origine, celle de l'org, nouvelle
+    version) ou une copie « à revoir » ;
+  - le nœud JavaScript ne lit pas les réglages ;
+  - le tamponnage n'a pas de test d'intégration (fonction interne au
+    crate) ; il est couvert par le test unitaire de l'exécuteur.
 
 ### D369 — Identité externe et frontière des transactions (principe acté, code au démarrage CRM/ERP)
 

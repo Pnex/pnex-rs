@@ -285,6 +285,7 @@ pub(crate) async fn reproject_candidate(
     // ── Snapshot notify (D50) : résolution batch sur tout le lot ────────
     let stale = resolve_notify_snapshots(db, &mut entries).await?;
     stamp_taxonomies(db, &mut entries).await?;
+    stamp_pack_settings(db, &mut entries).await?;
 
     Ok((
         serde_json::Value::Array(entries),
@@ -331,6 +332,33 @@ async fn stamp_taxonomies(
         }
         entry["topics"] = topics;
         entry["taxonomy_version"] = label.into();
+    }
+    Ok(())
+}
+
+/// Stamps the org's pack settings in force (ontology.md D368) into each
+/// Starlark entry: what `pack_setting` reads. A change applies at the next
+/// deploy.
+async fn stamp_pack_settings(
+    db: &DatabaseConnection,
+    entries: &mut [serde_json::Value],
+) -> Result<()> {
+    let mut by_org: std::collections::HashMap<i64, serde_json::Value> = Default::default();
+    for entry in entries.iter_mut() {
+        if entry.get("type").and_then(|t| t.as_str()) != Some("pnex-starlark") {
+            continue;
+        }
+        let org_id = entry
+            .get("pnex_org_id")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        if !by_org.contains_key(&org_id) {
+            let settings = crate::services::ontology::packs::org_settings(db, org_id)
+                .await
+                .map_err(|_| Error::InternalServerError)?;
+            by_org.insert(org_id, serde_json::Value::Object(settings));
+        }
+        entry["settings"] = by_org[&org_id].clone();
     }
     Ok(())
 }

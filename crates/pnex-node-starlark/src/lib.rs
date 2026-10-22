@@ -49,6 +49,9 @@ pub(crate) struct StarlarkNodeConfig {
     /// Deadline wall-time par message (borne anti boucle infinie).
     #[serde(default = "default_timeout_ms")]
     timeout_ms: u64,
+    /// The org's pack settings (D368), stamped at deploy.
+    #[serde(default)]
+    settings: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug)]
@@ -99,8 +102,9 @@ impl StarlarkNode {
         let code = self.config.code.clone();
         let incoming_exec = incoming.clone();
         let timeout_ms = self.config.timeout_ms;
+        let settings = self.config.settings.clone();
         let exec = tokio::task::spawn_blocking(move || {
-            executor::execute(&code, &incoming_exec, timeout_ms)
+            executor::execute_with(&code, &incoming_exec, timeout_ms, &settings)
         });
         let outcome = tokio::select! {
             res = exec => res.map_err(|e| {

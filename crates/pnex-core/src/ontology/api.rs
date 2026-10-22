@@ -378,6 +378,85 @@ pub struct Pack {
     /// node names its function by `function_name` (resolved at install).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flows: Vec<PackFlow>,
+    /// Points the org may set in its own layer (D368): thresholds, weights.
+    /// Pack functions read them with `pack_setting("<pack>.<key>", default)`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub settings: Vec<PackSetting>,
+}
+
+/// A point of a pack the org may set (ontology.md D368).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackSetting {
+    pub key: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub names: super::Names,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub descriptions: super::Names,
+    pub kind: PackSettingKind,
+    /// The pack's value, used while the org sets none.
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub default: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum PackSettingKind {
+    Number,
+    Text,
+    Bool,
+}
+
+/// Longest text setting.
+pub const PACK_SETTING_TEXT_MAX: usize = 2000;
+
+impl PackSetting {
+    /// Machine code of what is wrong with `v` for this setting, if anything.
+    pub fn check(&self, v: &Value) -> Option<String> {
+        use crate::err_codes::{FIELD_INVALID, FIELD_MAX_LENGTH};
+        match (self.kind, v) {
+            (PackSettingKind::Number, Value::Number(n)) => {
+                let n = n.as_f64()?;
+                (self.min.is_some_and(|m| n < m) || self.max.is_some_and(|m| n > m))
+                    .then(|| FIELD_INVALID.to_string())
+            }
+            (PackSettingKind::Text, Value::String(s)) => (s.chars().count()
+                > PACK_SETTING_TEXT_MAX)
+                .then(|| format!("{FIELD_MAX_LENGTH}:{PACK_SETTING_TEXT_MAX}")),
+            (PackSettingKind::Bool, Value::Bool(_)) => None,
+            _ => Some(FIELD_INVALID.to_string()),
+        }
+    }
+}
+
+/// A setting as the org sees it: the pack's definition and the value in
+/// force (the org's, else the pack's default).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackSettingView {
+    #[serde(flatten)]
+    pub def: PackSetting,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub value: Value,
+    /// The org set its own value.
+    pub overridden: bool,
+}
+
+/// The org's values for some settings of a pack; `null` returns a setting
+/// to the pack's default.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct PackSettingsInput {
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub values: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -597,6 +676,9 @@ pub struct PackView {
     pub descriptions: super::Names,
     #[serde(default)]
     pub installed_version: Option<String>,
+    /// Settings of an installed pack (D368), empty otherwise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub settings: Vec<PackSettingView>,
 }
 
 /// Opening a case: from scratch, or from a dated alert (cases-workspace.md

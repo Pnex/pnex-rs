@@ -62,13 +62,19 @@ pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
     diagnostics
 }
 
+/// Stand-in of the driver's `pack_setting` for the checks.
+const SETTING_STUB: &str = "def pack_setting(key, default = None):\n    return default\n";
+
 /// Évalue le module (defs uniquement — Starlark sans I/O) et exige `handle`.
 /// Appelé au **build du nœud** : une erreur ici = rejet du tab au pré-flight
 /// `--check` du deploy (400 `engine_load`).
 pub fn compile_check(code: &str) -> Result<(), String> {
     let sig = pnex_core::parse_directives(code).map_err(|e| format!("directives : {e}"))?;
     let _ = sig;
-    let ast = AstModule::parse("pnex_function.star", code.to_owned(), &Dialect::Standard)
+    // `pack_setting` exists at run time (driver): declared here too, after the
+    // code so positions are unchanged.
+    let script = format!("{}\n{SETTING_STUB}", code.trim_end());
+    let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
         .map_err(|e| format!("syntaxe : {e}"))?;
     let globals = Globals::extended_by(&[LibraryExtension::Json]);
     Module::with_temp_heap(|module| {
@@ -100,10 +106,21 @@ pub fn execute(
     msg: &serde_json::Value,
     timeout_ms: u64,
 ) -> anyhow::Result<ExecOutcome> {
+    execute_with(code, msg, timeout_ms, &serde_json::Map::new())
+}
+
+/// [`execute`] with the org's pack settings (D368), read by the code with
+/// `pack_setting("pack.key", default)` inside its functions.
+pub fn execute_with(
+    code: &str,
+    msg: &serde_json::Value,
+    timeout_ms: u64,
+    settings: &serde_json::Map<String, serde_json::Value>,
+) -> anyhow::Result<ExecOutcome> {
     let started = Instant::now();
     let sig = pnex_core::parse_directives(code)?;
     let inputs_obj = pnex_core::build_inputs(&sig.inputs, msg);
-    let script = build_script(code, &inputs_obj, msg);
+    let script = build_script(code, &inputs_obj, msg, settings);
 
     let timeout = Duration::from_millis(timeout_ms);
     let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
@@ -141,12 +158,19 @@ fn build_script(
     code: &str,
     inputs_obj: &serde_json::Map<String, serde_json::Value>,
     msg: &serde_json::Value,
+    settings: &serde_json::Map<String, serde_json::Value>,
 ) -> String {
     let inputs_lit =
         starlark_str_lit(&serde_json::to_string(&inputs_obj).unwrap_or_else(|_| "{}".into()));
     let msg_lit = starlark_str_lit(&serde_json::to_string(msg).unwrap_or_else(|_| "{}".into()));
+    let settings_lit =
+        starlark_str_lit(&serde_json::to_string(settings).unwrap_or_else(|_| "{}".into()));
+    // After the user code so its line numbers stay those of the editor:
+    // `pack_setting` is called from inside functions, resolved at call time.
     format!(
         "{}\n# ── PNEX driver (généré) ──\n\
+         pnex_settings = json.decode({settings_lit})\n\
+         def pack_setting(key, default = None):\n    return pnex_settings.get(key, default)\n\
          pnex_inputs = json.decode({inputs_lit})\n\
          pnex_msg = json.decode({msg_lit})\n\
          pnex_r = handle(pnex_inputs, pnex_msg)\n\
@@ -386,6 +410,18 @@ mod tests {
         .unwrap();
         let ret = out.return_json.expect("retour attendu");
         assert_eq!(ret["v"], 41);
+    }
+
+    #[test]
+    fn setting_reads_the_org_value_or_the_default() {
+        let code = "def handle(inputs, msg):\n    return {\"c\": pack_setting(\"p.confirm\", 80), \"o\": pack_setting(\"p.other\", 1)}";
+        compile_check(code).unwrap();
+        let mut s = serde_json::Map::new();
+        s.insert("p.confirm".into(), serde_json::json!(70));
+        let r = execute_with(code, &serde_json::json!({}), 1000, &s).unwrap();
+        assert_eq!(r.return_json, Some(serde_json::json!({"c": 70, "o": 1})));
+        let r = execute(code, &serde_json::json!({}), 1000).unwrap();
+        assert_eq!(r.return_json, Some(serde_json::json!({"c": 80, "o": 1})));
     }
 
     #[test]

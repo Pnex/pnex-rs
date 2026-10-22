@@ -274,6 +274,19 @@ pub async fn packs() -> Result<Vec<PackView>, ApiError> {
     client::request_all(&format!("{BASE}/packs")).await
 }
 
+/// The org's values of a pack's settings (D368); `null` = the pack's default.
+pub async fn update_pack_settings(
+    key: &str,
+    input: &pnex_core::ontology::api::PackSettingsInput,
+) -> Result<PackView, ApiError> {
+    client::request(
+        Method::PATCH,
+        &format!("{BASE}/packs/{}/settings", urlencode(key)),
+        Some(serde_json::to_value(input).unwrap_or_default()),
+    )
+    .await
+}
+
 pub async fn install_pack(key: &str) -> Result<PackView, ApiError> {
     client::request(
         Method::POST,
