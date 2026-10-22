@@ -9,12 +9,16 @@
 //! actions, link attributes, source/target types) survives the upgrade
 //! (2026-10-18): the pack wins on what it declares, the org keeps the rest.
 
-use pnex_core::ontology::api::{LinkTypeInput, ObjectTypeInput, Pack, PackView, PageTemplate};
+use pnex_core::ontology::api::{
+    LinkTypeInput, ObjectTypeInput, Pack, PackSettingView, PackSettingsInput, PackView,
+    PageTemplate,
+};
 use pnex_core::ontology::{LinkTypeDef, ObjectTypeDef, TypeSet};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait, QueryFilter,
     Set,
 };
+use serde_json::{Map, Value};
 use uuid::Uuid;
 
 use pnex_core::err_codes::FIELD_INVALID;
@@ -70,21 +74,119 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
         .filter(packs::Column::OrgId.eq(org_id))
         .all(db)
         .await?;
+    let layers = layers(db, org_id).await?;
     Ok(shipped()
         .into_iter()
-        .map(|p| PackView {
-            descriptions: p.descriptions.clone(),
-            names: p.names.clone(),
-            installed_version: installed
+        .map(|p| {
+            let installed_version = installed
                 .iter()
                 .find(|i| i.key == p.key)
-                .map(|i| i.version.clone()),
-            key: p.key,
-            name: p.name,
-            version: p.version,
-            description: p.description,
+                .map(|i| i.version.clone());
+            let settings = match installed_version {
+                Some(_) => settings_view(&p, layers.get(&p.key).unwrap_or(&Value::Null)),
+                None => Vec::new(),
+            };
+            PackView {
+                descriptions: p.descriptions.clone(),
+                names: p.names.clone(),
+                installed_version,
+                settings,
+                key: p.key,
+                name: p.name,
+                version: p.version,
+                description: p.description,
+            }
         })
         .collect())
+}
+
+/// The org's layer of each installed pack (D368): its own setting values.
+async fn layers(db: &DatabaseConnection, org_id: i64) -> Result<Map<String, Value>> {
+    Ok(db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT key, settings FROM packs WHERE org_id = $1",
+            vec![org_id.into()],
+        ))
+        .await?
+        .iter()
+        .filter_map(|r| Some((r.try_get("", "key").ok()?, r.try_get("", "settings").ok()?)))
+        .collect())
+}
+
+/// The pack's settings with the value in force: the org's, else the pack's.
+pub fn settings_view(pack: &Pack, layer: &Value) -> Vec<PackSettingView> {
+    pack.settings
+        .iter()
+        .map(|s| {
+            let own = layer.get(&s.key).filter(|v| !v.is_null());
+            PackSettingView {
+                def: s.clone(),
+                value: own.cloned().unwrap_or_else(|| s.default.clone()),
+                overridden: own.is_some(),
+            }
+        })
+        .collect()
+}
+
+/// Every setting in force for the org, keyed `<pack>.<key>`: what pack
+/// functions read with `pack_setting` (stamped at deploy).
+pub async fn org_settings(db: &DatabaseConnection, org_id: i64) -> Result<Map<String, Value>> {
+    let layers = layers(db, org_id).await?;
+    let mut out = Map::new();
+    for p in shipped() {
+        let Some(layer) = layers.get(&p.key) else {
+            continue;
+        };
+        for s in settings_view(&p, layer) {
+            out.insert(format!("{}.{}", p.key, s.def.key), s.value);
+        }
+    }
+    Ok(out)
+}
+
+/// Sets the org's values for settings of an installed pack; `null` returns
+/// one to the pack's default. Unknown keys and wrong values are refused.
+pub async fn set_settings(
+    db: &DatabaseConnection,
+    org_id: i64,
+    key: &str,
+    input: &PackSettingsInput,
+) -> Result<PackView> {
+    let pack = shipped()
+        .into_iter()
+        .find(|p| p.key == key)
+        .ok_or(OntologyError::NotFound)?;
+    let mut layer = match layers(db, org_id).await?.remove(key) {
+        Some(Value::Object(m)) => m,
+        Some(_) => Map::new(),
+        None => return Err(OntologyError::NotFound),
+    };
+    for (k, v) in &input.values {
+        let Some(def) = pack.settings.iter().find(|s| &s.key == k) else {
+            return Err(invalid(format!("values.{k}"), FIELD_INVALID));
+        };
+        if v.is_null() {
+            layer.remove(k);
+            continue;
+        }
+        if let Some(code) = def.check(v) {
+            return Err(invalid(format!("values.{k}"), code));
+        }
+        layer.insert(k.clone(), v.clone());
+    }
+    let layer = Value::Object(layer);
+    db.execute_raw(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "UPDATE packs SET settings = $3, updated_at = now() WHERE org_id = $1 AND key = $2",
+        vec![org_id.into(), key.into(), layer.clone().into()],
+    ))
+    .await?;
+    list(db, org_id)
+        .await?
+        .into_iter()
+        .find(|p| p.key == key)
+        .ok_or(OntologyError::NotFound)
 }
 
 /// Page templates of the shipped packs the org installed.
@@ -185,6 +287,7 @@ async fn install_locked(
             version: pack.version.clone(),
             description: pack.description.clone(),
             installed_version: Some(pack.version.clone()),
+            settings: Vec::new(),
         });
     }
     for key in &pack.requires {
@@ -299,6 +402,7 @@ async fn install_locked(
         version: pack.version.clone(),
         description: pack.description.clone(),
         installed_version: Some(pack.version.clone()),
+        settings: Vec::new(),
     })
 }
 
@@ -661,6 +765,7 @@ pub async fn export(db: &DatabaseConnection, org_id: i64) -> Result<String> {
         imports: Vec::new(),
         functions: Vec::new(),
         flows: Vec::new(),
+        settings: Vec::new(),
     };
     serde_saphyr::to_string(&pack)
         .map_err(|e| OntologyError::Db(sea_orm::DbErr::Custom(e.to_string())))

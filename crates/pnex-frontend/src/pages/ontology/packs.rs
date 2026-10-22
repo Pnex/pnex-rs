@@ -3,12 +3,15 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::ontology::api::PackView;
+use pnex_core::ontology::api::{PackSettingKind, PackSettingsInput, PackView};
+use serde_json::{Map, Value};
 
 use crate::api;
+use crate::components::crud::form::FormDialog;
 use crate::components::crud::layout::{ListLayout, PRIMARY_BTN};
 use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::ontology::tr;
+use crate::components::ui::{BTN_SECONDARY_SM, FIELD_HELP, FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
 #[component]
@@ -22,6 +25,8 @@ pub fn PacksTab(tabs: Element) -> Element {
     let rows: Vec<PackView> = packs.read().clone().unwrap_or_default();
     // Pack being installed (one at a time): disables its button.
     let mut installing = use_signal(|| None::<String>);
+    // Pack whose settings are open (D368).
+    let mut setting = use_signal(|| None::<PackView>);
     let columns = vec![
         Column::new(t!("onto-packs").to_string(), |pack: &PackView| {
             let installed = pack.installed_version.clone();
@@ -45,7 +50,17 @@ pub fn PacksTab(tabs: Element) -> Element {
             let up_to_date = pack.installed_version.as_deref() == Some(pack.version.as_str());
             let key = pack.key.clone();
             let busy = installing().is_some();
+            let with_settings = (!pack.settings.is_empty()).then(|| pack.clone());
             rsx! {
+                if let Some(p) = with_settings.filter(|_| admin) {
+                    button {
+                        class: BTN_SECONDARY_SM,
+                        r#type: "button",
+                        "data-testid": "onto-pack-settings",
+                        onclick: move |_| setting.set(Some(p.clone())),
+                        {t!("onto-pack-settings")}
+                    }
+                }
                 if admin && !up_to_date {
                     button {
                         class: "{PRIMARY_BTN} disabled:opacity-40",
@@ -86,6 +101,17 @@ pub fn PacksTab(tabs: Element) -> Element {
             can_write: admin,
             subtitle: Some(t!("onto-packs-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
+            if let Some(p) = setting() {
+                SettingsDialog {
+                    pack: p,
+                    on_close: move |saved: bool| {
+                        setting.set(None);
+                        if saved {
+                            reload.with_mut(|r| *r += 1);
+                        }
+                    },
+                }
+            }
             div { class: "space-y-6",
                 DataTable {
                     columns,
@@ -148,5 +174,137 @@ pub fn PacksTab(tabs: Element) -> Element {
                 }
             }
         }
+    }
+}
+
+/// The org's values of a pack's settings (D368); a value equal to the
+/// pack's default is sent as `null` so the pack keeps owning it.
+#[component]
+fn SettingsDialog(pack: PackView, on_close: EventHandler<bool>) -> Element {
+    let initial: Map<String, Value> = pack
+        .settings
+        .iter()
+        .map(|s| (s.def.key.clone(), s.value.clone()))
+        .collect();
+    let mut values = use_signal(move || initial.clone());
+    let mut busy = use_signal(|| false);
+    let defs = pack.settings.clone();
+    let key = pack.key.clone();
+    let submit = move |_| {
+        let sent: Map<String, Value> = defs
+            .iter()
+            .map(|s| {
+                let v = values().get(&s.def.key).cloned().unwrap_or(Value::Null);
+                let v = if v == s.def.default { Value::Null } else { v };
+                (s.def.key.clone(), v)
+            })
+            .collect();
+        let key = key.clone();
+        busy.set(true);
+        spawn(async move {
+            match api::ontology::update_pack_settings(&key, &PackSettingsInput { values: sent })
+                .await
+            {
+                Ok(_) => on_close.call(true),
+                Err(e) => toasts::error(e),
+            }
+            busy.set(false);
+        });
+    };
+    rsx! {
+        FormDialog {
+            title: t!("onto-pack-settings").to_string(),
+            submit_label: t!("common-save").to_string(),
+            on_close: move |_| on_close.call(false),
+            on_submit: submit,
+            busy: busy(),
+            valid: true,
+            div { class: "space-y-4",
+                for s in pack.settings.clone() {
+                    div { key: "{s.def.key}",
+                        label {
+                            class: FIELD_LABEL,
+                            r#for: "pack-setting-{s.def.key}",
+                            {tr(&s.def.name, &s.def.names)}
+                        }
+                        SettingInput {
+                            key_name: s.def.key.clone(),
+                            kind: s.def.kind,
+                            value: values().get(&s.def.key).cloned().unwrap_or(Value::Null),
+                            on_change: move |(k, v): (String, Value)| values.with_mut(|m| set(m, &k, v)),
+                        }
+                        p { class: FIELD_HELP,
+                            {tr(&s.def.description, &s.def.descriptions)}
+                            " "
+                            {t!("onto-pack-setting-default", value : s.def.default.to_string())}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn set(values: &mut Map<String, Value>, key: &str, v: Value) {
+    values.insert(key.to_string(), v);
+}
+
+#[component]
+fn SettingInput(
+    key_name: String,
+    kind: PackSettingKind,
+    value: Value,
+    on_change: EventHandler<(String, Value)>,
+) -> Element {
+    let id = format!("pack-setting-{key_name}");
+    let k = key_name.clone();
+    let emit = move |v: Value| on_change.call((k.clone(), v));
+    match kind {
+        PackSettingKind::Bool => rsx! {
+            input {
+                id,
+                r#type: "checkbox",
+                checked: value.as_bool().unwrap_or(false),
+                onchange: move |e| emit(Value::Bool(e.checked())),
+            }
+        },
+        PackSettingKind::Number => rsx! {
+            input {
+                id,
+                r#type: "number",
+                class: INPUT,
+                value: "{value}",
+                oninput: move |e| emit(number(&e.value())),
+            }
+        },
+        PackSettingKind::Text => rsx! {
+            input {
+                id,
+                r#type: "text",
+                class: INPUT,
+                value: "{value.as_str().unwrap_or_default()}",
+                oninput: move |e| emit(Value::String(e.value())),
+            }
+        },
+    }
+}
+
+/// A typed number (a whole one as an integer, so it equals the pack's
+/// default), `null` when it is not one.
+fn number(raw: &str) -> Value {
+    match raw.trim().parse::<f64>() {
+        Ok(n) if n.fract() == 0.0 && n.abs() < 1e15 => Value::from(n as i64),
+        Ok(n) => serde_json::Number::from_f64(n).map_or(Value::Null, Value::Number),
+        Err(_) => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn whole_numbers_equal_the_pack_default() {
+        assert_eq!(super::number("80"), serde_json::json!(80));
+        assert_eq!(super::number(" 0.5 "), serde_json::json!(0.5));
+        assert!(super::number("abc").is_null());
     }
 }

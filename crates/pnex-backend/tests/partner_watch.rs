@@ -82,6 +82,7 @@ async fn call(
         "GET" => server.get(path),
         "POST" => server.post(path),
         "PUT" => server.put(path),
+        "PATCH" => server.patch(path),
         "DELETE" => server.delete(path),
         _ => unreachable!(),
     }
@@ -574,6 +575,26 @@ async fn presence_web_takes_websites_over() {
 
         // D376: the candidate status left the link: a candidate is a proposal.
         assert!(!site_link["def"]["attributes"].to_string().contains("\"statut\""), "{site_link}");
+
+        // D368: the org's layer over the pack's settings, kept by reinstall.
+        let url = "/api/v1/ontology/packs/presence_web/settings";
+        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"seuil_confirme": 70}}))).await;
+        assert_eq!(st, 200, "{p}");
+        let get = |p: &Value, k: &str| p["settings"].as_array().unwrap().iter().find(|s| s["key"] == k).cloned().unwrap();
+        assert_eq!((get(&p, "seuil_confirme")["value"].clone(), get(&p, "seuil_confirme")["overridden"].clone()), (json!(70), json!(true)), "{p}");
+        assert_eq!(get(&p, "seuil_propose")["value"], json!(40));
+        for bad in [json!({"inconnu": 1}), json!({"seuil_confirme": 500}), json!({"seuil_confirme": "70"})] {
+            let (st, e) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": bad}))).await;
+            assert_eq!(st, 400, "{e}");
+        }
+        env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'presence_web'")).await.unwrap();
+        install(&server, &env.alice, org, "presence_web").await;
+        let in_force = pnex_backend::services::ontology::packs::org_settings(&env.db, org).await.unwrap();
+        assert_eq!(in_force["presence_web.seuil_confirme"], json!(70), "kept across the upgrade");
+        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"seuil_confirme": null}}))).await;
+        assert_eq!((st, get(&p, "seuil_confirme")["value"].clone(), get(&p, "seuil_confirme")["overridden"].clone()), (200, json!(80), json!(false)));
+        let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/maintenance/settings", &env.alice, org, Some(json!({"values": {}}))).await;
+        assert_eq!(st, 404, "not installed");
     })
     .await;
 }

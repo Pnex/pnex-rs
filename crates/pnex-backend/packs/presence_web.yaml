@@ -18,7 +18,7 @@
 key: presence_web
 name: Web presence
 names: {fr: "Présence web"}
-version: "1.3.0"
+version: "1.4.0"
 requires: [entreprises]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
@@ -26,6 +26,28 @@ extends:
   - type: organization
     properties:
       - { key: site_recherche_le, name: Website searched on, names: {fr: "Site recherché le"}, kind: date }
+# D368: what an org may set in its own layer (Ontology › Packs), kept across
+# upgrades; read by the functions at the next deploy of their flow.
+settings:
+  - key: seuil_confirme
+    name: Score that confirms a website
+    names: {fr: "Score qui confirme un site"}
+    description: From this score a website is written without a human.
+    descriptions: {fr: "À partir de ce score, un site est écrit sans validation humaine."}
+    kind: number
+    default: 80
+    min: 1
+    max: 100
+  - key: seuil_propose
+    name: Score that proposes a website
+    names: {fr: "Score qui propose un site"}
+    description: From this score (and below the confirming one) a website is proposed on the To validate page; below, it is dropped.
+    descriptions: {fr: "À partir de ce score (et sous celui qui confirme), un site est proposé dans « À valider » ; en dessous, il est ignoré."}
+    kind: number
+    default: 40
+    min: 1
+    max: 100
+
 types:
   - key: site_web
     name: Website
@@ -161,7 +183,8 @@ functions:
           if named:
               score += 10
           score = min(score, 100)
-          if score < PROPOSE:
+          confirm = pack_setting("presence_web.seuil_confirme", CONFIRM)
+          if score < pack_setting("presence_web.seuil_propose", PROPOSE):
               return None
           root = origin(p.get("final_url", "") or p.get("url", ""))
           host = root.split("//")[-1].split(":")[0]
@@ -188,7 +211,7 @@ functions:
                   "source": cand.get("source", "recherche"),
               },
           }
-          return [site, None] if score >= CONFIRM else [None, site]
+          return [site, None] if score >= confirm else [None, site]
   - name: pw_lien_avis
     language: starlark
     description: The proposed link, and what the org's model is asked about it.

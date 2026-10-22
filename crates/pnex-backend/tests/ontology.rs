@@ -409,6 +409,8 @@ async fn isolation_roles_and_yaml_round_trip() {
         assert_eq!(st, 403);
         let (st, e) = call(&server, "POST", "/api/v1/ontology/packs/maintenance/install", &env.bob, org_a, None).await;
         assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")));
+        let (st, e) = call(&server, "PATCH", "/api/v1/ontology/packs/maintenance/settings", &env.bob, org_a, Some(json!({"values": {}}))).await;
+        assert_eq!((st, e["error"].as_str()), (403, Some("access-denied")));
 
         // A type locked to admins refuses a member.
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site", &env.alice, org_a, None).await;

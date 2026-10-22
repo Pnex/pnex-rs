@@ -12944,6 +12944,98 @@
         ],
         "type": "object"
       },
+      "PackSetting": {
+        "description": "A point of a pack the org may set (ontology.md D368).",
+        "properties": {
+          "default": {
+            "description": "The pack's value, used while the org sets none.",
+            "type": "object"
+          },
+          "description": {
+            "type": "string"
+          },
+          "descriptions": {
+            "$ref": "#/components/schemas/BTreeMap"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PackSettingKind"
+          },
+          "max": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "names": {
+            "$ref": "#/components/schemas/BTreeMap"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "kind",
+          "default"
+        ],
+        "type": "object"
+      },
+      "PackSettingKind": {
+        "enum": [
+          "number",
+          "text",
+          "bool"
+        ],
+        "type": "string"
+      },
+      "PackSettingView": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PackSetting"
+          },
+          {
+            "properties": {
+              "overridden": {
+                "description": "The org set its own value.",
+                "type": "boolean"
+              },
+              "value": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "value",
+              "overridden"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A setting as the org sees it: the pack's definition and the value in\nforce (the org's, else the pack's default)."
+      },
+      "PackSettingsInput": {
+        "description": "The org's values for some settings of a pack; `null` returns a setting\nto the pack's default.",
+        "properties": {
+          "values": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "type": "object"
+      },
       "PackView": {
         "description": "A pack the server offers, and whether the org installed it.",
         "properties": {
@@ -12967,6 +13059,13 @@
           },
           "names": {
             "$ref": "#/components/schemas/BTreeMap"
+          },
+          "settings": {
+            "description": "Settings of an installed pack (D368), empty otherwise.",
+            "items": {
+              "$ref": "#/components/schemas/PackSettingView"
+            },
+            "type": "array"
           },
           "version": {
             "type": "string"
@@ -58979,6 +59078,104 @@
           }
         ],
         "summary": "Install a shipped pack",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/packs/{key}/settings": {
+      "patch": {
+        "description": "Overrides settings an installed pack declares (thresholds, weights) in the org's own layer, kept across pack upgrades; `null` returns a setting to the pack's default. Pack functions read the values in force at the next deploy of their flow. Org owner or admin only.",
+        "operationId": "ontology_packs_settings_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Pack key",
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackSettingsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "A key the pack does not declare, or a value of the wrong kind or out of bounds (`field-invalid`, `field-max-length`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology.schema:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found` (unknown or not installed pack)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the org's values of a pack's settings",
         "tags": [
           "ontology"
         ]
