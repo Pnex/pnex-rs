@@ -299,6 +299,18 @@ pub async fn update_pack_settings(
     .await
 }
 
+pub async fn take_pack_version(
+    key: &str,
+    input: &pnex_core::ontology::api::PackTakeInput,
+) -> Result<PackView, ApiError> {
+    client::request(
+        Method::POST,
+        &format!("{BASE}/packs/{}/take", urlencode(key)),
+        body(input),
+    )
+    .await
+}
+
 pub async fn install_pack(key: &str) -> Result<PackView, ApiError> {
     client::request(
         Method::POST,

@@ -75,30 +75,124 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
         .all(db)
         .await?;
     let layers = layers(db, org_id).await?;
-    Ok(shipped()
-        .into_iter()
-        .map(|p| {
-            let installed_version = installed
-                .iter()
-                .find(|i| i.key == p.key)
-                .map(|i| i.version.clone());
-            let settings = match installed_version {
-                Some(_) => settings_view(&p, layers.get(&p.key).unwrap_or(&Value::Null)),
-                None => Vec::new(),
-            };
-            PackView {
-                descriptions: p.descriptions.clone(),
-                names: p.names.clone(),
-                installed_version,
-                settings,
-                kept: Vec::new(),
-                key: p.key,
-                name: p.name,
-                version: p.version,
-                description: p.description,
-            }
+    let mut out = Vec::new();
+    for p in shipped() {
+        let installed_version = installed
+            .iter()
+            .find(|i| i.key == p.key)
+            .map(|i| i.version.clone());
+        let (settings, kept) = match installed_version {
+            Some(_) => (
+                settings_view(&p, layers.get(&p.key).unwrap_or(&Value::Null)),
+                edited(db, org_id, &p).await?,
+            ),
+            None => (Vec::new(), Vec::new()),
+        };
+        out.push(PackView {
+            descriptions: p.descriptions.clone(),
+            names: p.names.clone(),
+            installed_version,
+            settings,
+            kept,
+            key: p.key,
+            name: p.name,
+            version: p.version,
+            description: p.description,
+        });
+    }
+    Ok(out)
+}
+
+/// The pack's functions and flows the org edited since the pack wrote them
+/// (D368): they keep the org's version at an upgrade. One of the same name
+/// the pack never wrote is the org's own, not listed.
+async fn edited(db: &DatabaseConnection, org_id: i64, pack: &Pack) -> Result<Vec<String>> {
+    if pack.functions.is_empty() && pack.flows.is_empty() {
+        return Ok(Vec::new());
+    }
+    let names = |it: Vec<&str>| Value::from(it.into_iter().map(str::trim).collect::<Vec<_>>());
+    let note = format!("pack {} ", pack.key);
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT f.name, l.code FROM functions f \
+             JOIN LATERAL (SELECT code, note FROM function_versions v WHERE v.function_id = f.id \
+                           ORDER BY version_number DESC LIMIT 1) l ON true \
+             WHERE f.org_id = $1 AND f.name IN (SELECT jsonb_array_elements_text($2)) \
+               AND left(coalesce(l.note, ''), length($3)) <> $3 \
+               AND EXISTS (SELECT 1 FROM function_versions v WHERE v.function_id = f.id \
+                           AND left(v.note, length($3)) = $3)",
+            vec![
+                org_id.into(),
+                names(pack.functions.iter().map(|f| f.name.as_str()).collect()).into(),
+                note.into(),
+            ],
+        ))
+        .await?;
+    let mut out: Vec<String> = rows
+        .iter()
+        .filter_map(|r| {
+            let name: String = r.try_get("", "name").ok()?;
+            let code: String = r.try_get("", "code").ok()?;
+            let f = pack.functions.iter().find(|f| f.name.trim() == name)?;
+            (f.code != code).then_some(name)
         })
-        .collect())
+        .collect();
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT f.name FROM flows f \
+             JOIN LATERAL (SELECT author FROM flow_versions v WHERE v.flow_id = f.id \
+                           ORDER BY version_number DESC LIMIT 1) l ON true \
+             WHERE f.org_id = $1 AND f.name IN (SELECT jsonb_array_elements_text($2)) \
+               AND l.author IS DISTINCT FROM $3 \
+               AND EXISTS (SELECT 1 FROM flow_versions v WHERE v.flow_id = f.id AND v.author = $3)",
+            vec![
+                org_id.into(),
+                names(pack.flows.iter().map(|f| f.name.as_str()).collect()).into(),
+                format!("pack:{}", pack.key).into(),
+            ],
+        ))
+        .await?;
+    out.extend(rows.iter().filter_map(|r| r.try_get("", "name").ok()));
+    Ok(out)
+}
+
+/// The pack's version of the org's edited functions and flows `names`
+/// (D368): a new version over the org's, which stays in the history.
+pub async fn take(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: Option<i64>,
+    key: &str,
+    input: &pnex_core::ontology::api::PackTakeInput,
+) -> Result<PackView> {
+    let pack = shipped()
+        .into_iter()
+        .find(|p| p.key == key)
+        .ok_or(OntologyError::NotFound)?;
+    let installed = packs::Entity::find()
+        .filter(packs::Column::OrgId.eq(org_id))
+        .filter(packs::Column::Key.eq(key))
+        .one(db)
+        .await?
+        .ok_or(OntologyError::NotFound)?;
+    // Taking an older pack's code would undo the upgrade it never had.
+    if installed.version != pack.version {
+        return Err(invalid("version", FIELD_INVALID));
+    }
+    let edited = edited(db, org_id, &pack).await?;
+    for (i, n) in input.names.iter().enumerate() {
+        if !edited.contains(n) {
+            return Err(invalid(format!("names.{i}"), FIELD_INVALID));
+        }
+    }
+    install_automation(db, org_id, user_id, &pack, &input.names).await?;
+    list(db, org_id)
+        .await?
+        .into_iter()
+        .find(|p| p.key == key)
+        .ok_or(OntologyError::NotFound)
 }
 
 /// The org's layer of each installed pack (D368): its own setting values.
@@ -540,7 +634,8 @@ async fn install_locked(
         install_link(db, org_id, &s, &pack.key, l).await?;
     }
     super::imports::install_from_pack(db, org_id, user_id, pack).await?;
-    let kept = install_automation(db, org_id, user_id, pack).await?;
+    install_automation(db, org_id, user_id, pack, &[]).await?;
+    let kept = edited(db, org_id, pack).await?;
     let row = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
         .filter(packs::Column::Key.eq(&pack.key))
@@ -692,8 +787,9 @@ fn extended_properties(
 
 /// D316: the pack's functions and flow models, created when the org has
 /// none of that name. On an upgrade, one the org never edited (its latest
-/// version is still the pack's) takes the new pack version; one the org
-/// edited is left alone and named in the answer. Flows are drafts:
+/// version is still the pack's) takes the new pack version, as do those
+/// named in `take`; one the org edited is left alone (see `edited`). Flows
+/// are drafts:
 /// deploying them stays a human act (D123), so an upgraded flow runs at its
 /// next deploy.
 async fn install_automation(
@@ -701,11 +797,11 @@ async fn install_automation(
     org_id: i64,
     user_id: Option<i64>,
     pack: &Pack,
-) -> Result<Vec<String>> {
+    take: &[String],
+) -> Result<()> {
     use crate::models::_entities::{flows, functions};
-    let mut kept = Vec::new();
     if pack.functions.is_empty() && pack.flows.is_empty() {
-        return Ok(kept);
+        return Ok(());
     }
     // name → (id, version, inputs, outputs) of the org's functions.
     let mut known: std::collections::HashMap<
@@ -722,13 +818,11 @@ async fn install_automation(
         let (id, version) = match existing {
             Some(row) => {
                 let v = crate::services::functions::latest_version(db, row.id).await?;
-                let pristine = v
-                    .as_ref()
-                    .is_some_and(|v| v.code != f.code && pack_wrote(v.note.as_deref(), &pack.key));
+                let pristine = v.as_ref().is_some_and(|v| {
+                    v.code != f.code
+                        && (pack_wrote(v.note.as_deref(), &pack.key) || take.contains(&f.name))
+                });
                 if !pristine {
-                    if v.as_ref().is_some_and(|v| v.code != f.code) {
-                        kept.push(f.name.clone());
-                    }
                     (row.id, v)
                 } else {
                     let id = row.id;
@@ -811,11 +905,11 @@ async fn install_automation(
         // An existing flow is upgraded only while its latest version is
         // still the pack's own (a human save takes its author away).
         if existing.is_some()
+            && !take.contains(&f.name)
             && !latest
                 .as_ref()
                 .is_some_and(|v| v.author.as_deref() == Some(author.as_str()))
         {
-            kept.push(f.name.clone());
             continue;
         }
         let mut graph = f.graph.clone();
@@ -864,7 +958,7 @@ async fn install_automation(
             invalid(format!("flows.{i}"), FIELD_INVALID)
         })?;
     }
-    Ok(kept)
+    Ok(())
 }
 
 /// Whether a version note was written by `key`'s install (`pack <key> <v>`).
