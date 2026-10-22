@@ -21,7 +21,7 @@
     "gsplat": "^1.2.0",
     "lib0": "0.2.119",
     "maplibre-gl": "^6.10.0",
-    "markdown-it": "15.0.2",
+    "markdown-it": "15.0.3",
     "pannellum": "2.5.7",
     "prosemirror-commands": "1.7.2",
     "prosemirror-inputrules": "1.5.1",
