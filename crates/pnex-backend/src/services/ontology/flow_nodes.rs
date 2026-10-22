@@ -235,7 +235,7 @@ pub async fn upsert(
 pub async fn link(
     db: &DatabaseConnection,
     req: &FlowLinkRequest,
-) -> std::result::Result<pnex_core::ontology::api::LinkView, NodeError> {
+) -> std::result::Result<Value, NodeError> {
     let FlowNodeKind::LinkUpsert { config } = deployed(db, &req.node).await? else {
         return Err(NodeError::NotDeployed);
     };
@@ -268,10 +268,25 @@ pub async fn link(
             .one(db)
             .await?;
         if let Some(e) = closed {
-            return Ok(links::views(db, org, &[e]).await?.remove(0));
+            return Ok(view(links::views(db, org, &[e]).await?.remove(0)));
         }
     }
-    Ok(match (open, config.close) {
+    // D375: a new link is proposed, never written by the flow itself.
+    if open.is_none() && config.propose && !config.close {
+        let input = pnex_core::ontology::proposal::ProposalInput {
+            kind: Some(pnex_core::ontology::proposal::ProposalKind::LinkCreate),
+            type_key: config.link_type.clone(),
+            source_id: Some(src.to_string()),
+            link_target_id: Some(tgt.to_string()),
+            values: req.attributes.clone(),
+            origin: actor.source_ref.clone(),
+            confidence: req.confidence.map(|c| c.clamp(0.0, 100.0)),
+            ..Default::default()
+        };
+        let id = super::proposals::propose(db, org, &input).await?;
+        return Ok(serde_json::json!({ "proposed": true, "proposal_id": id }));
+    }
+    Ok(view(match (open, config.close) {
         (Some(e), true) => {
             // shortcut: two writes, not one transaction (each journals on its
             // own); a failure between them leaves the link open with its new
@@ -305,7 +320,11 @@ pub async fn link(
             )
             .await?
         }
-    })
+    }))
+}
+
+fn view(l: pnex_core::ontology::api::LinkView) -> Value {
+    serde_json::to_value(l).unwrap_or(Value::Null)
 }
 
 /// What a node needs in the org schema.

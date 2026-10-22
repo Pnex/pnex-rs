@@ -96,56 +96,6 @@ pub struct WebVisitNodeReply {
     pub args: serde_json::Value,
 }
 
-/// A website candidate waiting for a human (web-presence.md D366): an open
-/// `a_pour_site` link and what proved it. No identifier of a person (R4).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SiteCandidate {
-    pub link_id: i64,
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub organization_id: String,
-    pub organization: String,
-    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
-    pub site_id: String,
-    pub domain: String,
-    pub url: String,
-    pub status: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub score: Option<f64>,
-    #[serde(default)]
-    pub proof_siren: bool,
-    #[serde(default)]
-    pub proof_nda: bool,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub source: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub query: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rank: Option<f64>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub opinion: String,
-    /// When the candidate was proposed.
-    #[cfg_attr(feature = "openapi", schema(format = "date-time"))]
-    pub since: String,
-}
-
-/// What a human decides on a candidate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum SiteDecisionKind {
-    /// The site is the organization's: it may be crawled.
-    Confirme,
-    /// Not its site: the link is closed and never proposed again.
-    Rejete,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct SiteDecision {
-    pub decision: SiteDecisionKind,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

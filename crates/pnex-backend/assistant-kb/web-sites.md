@@ -6,7 +6,7 @@ pages: /web-sites, /web-sites/:site
 nodes: site_recipe
 err_codes: site-recipe-invalid, site-recipe-not-found, site-recipe-version-conflict, site-recipe-run-not-found, site-recipe-param-missing, site-recipe-unavailable, browser-endpoint-not-found, browser-endpoint-name-taken
 tools: list_site_recipes, get_site_recipe, try_site_recipe, get_site_recipe_run, propose_site_recipe
-tags: websites to validate, sites à valider, candidate, candidat, confirm, confirmer, reject, rejeter, presence web, présence web, website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal
+tags: website candidate, candidat, presence web, présence web, website, site web, navigation rule, règle, studio, play, lecture, step, étape, screenshot, capture, retention, conservation, media, médias, extract, extrait, pdf, programme, scraping, collecte, browser, navigateur, obscura, journal
 ---
 The Websites page (Sources menu) lists the websites walked by navigation rules or crawled by a browser mission (Crawl a site), with their rules, crawled pages and last run. A crawled site without a rule opens in the studio with a starter rule. Opening a website shows its studio: the rules of the site, the run step by step, what it extracted and the run journal.
 
@@ -49,5 +49,5 @@ The assistant can list and read the rules (list_site_recipes, get_site_recipe), 
 
 A failed run never closes or changes anything: it is only a red line in the journal.
 
-## Websites to validate
-With the **Web presence** pack, the flow model **Web presence · find websites** looks for the website of organizations that have none: the domain of their e-mails, then the org's web search, each candidate visited once and scored on what it says about itself (SIREN 60, training declaration number 30, the organization's own e-mail domain 30, its name 10). From 80 the site is confirmed on its own; from 40 to 79 it shows at the top of the Websites page under **Websites to validate**, with its score and the proofs found. **Confirm** makes it the organization's website; **Reject** closes the link for good and the flow never proposes it again. *Validated by* takes your display name. Reading needs ontology read access, deciding ontology write access. The flow is installed as a draft: add a web search provider (Organisation page), then deploy it; each night it handles up to 50 organizations.
+## Finding the website of organizations
+With the **Web presence** pack, the flow model **Web presence · find websites** looks for the website of organizations that have none: the domain of their e-mails, then the org's web search, each candidate visited once and scored on what it says about itself (SIREN 60, training declaration number 30, the organization's own e-mail domain 30, its name 10). From 80 the site is written on its own; from 40 to 79 it is proposed on the **To validate** page (Knowledge menu) with its score and the proofs found: **Accept** makes it the organization's website, **Reject** keeps the refusal and the flow never proposes it again. The flow is installed as a draft: add a web search provider (Organisation page), then deploy it; each night it handles up to 50 organizations.

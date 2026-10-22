@@ -320,3 +320,9 @@ Tranchées par Shan le 2026-10-22 :
 - **Q-W3** — Validation : **page « Sites à valider »**, `valide_par` = nom
   affiché.
 - **Q-W4** — Capture : **asset média de l'org**, rattaché au `site_web`.
+
+**2026-10-22 — bascule vers les propositions (proposals.md D375–D376)** :
+l'attribut `a_pour_site.statut` et la section « Sites à valider » sont
+retirés. Un site moyen (40–79) est une proposition sur la page « À
+valider » ; le refus garde son motif et n'est jamais reproposé.
+`presence_web` passe en 1.1.0.

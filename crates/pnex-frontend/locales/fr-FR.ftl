@@ -3667,6 +3667,7 @@ flows-link-upsert-help = msg.payload = source_id, target_id (identifiants d'obje
 flows-link-upsert-type = Type de lien
 flows-link-upsert-close = Fermer le lien au lieu de l'ouvrir
 flows-link-upsert-skip-closed = Ne jamais rouvrir un lien déjà fermé pour ces deux objets (un candidat rejeté n'est pas reproposé)
+flows-link-upsert-propose = Proposer le lien à un humain (page « À valider ») au lieu de l'écrire
 flows-action-trigger-help = Un message par déclenchement : payload = les paramètres, msg.object = l'objet, msg.action = qui et quand.
 flows-action-trigger-action = Action
 flows-action-trigger-none = Aucune action n'est encore déclarée dans l'ontologie : ajoutez-en une à un type (ou installez le pack Maintenance).
@@ -5849,14 +5850,6 @@ proposals-accept = Accepter
 proposals-reject = Rejeter
 proposals-on-object = { $count } proposition(s) à valider sur cet objet
 nav-proposals = À valider
-site-candidates-title = Sites à valider ({ $count })
-site-candidates-help = Sites proposés par le flow « Présence web » pour une organisation. Confirmer en fait son site (il pourra être parcouru) ; rejeter le ferme pour de bon, il ne sera plus proposé.
-site-candidates-score = score { $score }
-site-candidates-proof-siren = SIREN trouvé
-site-candidates-proof-nda = NDA trouvé
-site-candidates-from-email = domaine de ses e-mails
-site-candidates-confirm = Confirmer
-site-candidates-reject = Rejeter
 web-sites-title = Sites web
 web-sites-subtitle = Les sites parcourus par des règles de navigation, et leur dernier passage.
 web-sites-add = Ajouter un site web

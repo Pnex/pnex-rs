@@ -144,7 +144,6 @@ pub fn WebSites() -> Element {
                 host.set(String::new());
                 adding.set(true);
             },
-            crate::components::site_candidates::SiteCandidates {}
             div { class: "space-y-0",
                 FilterBar {
                     SearchInput {

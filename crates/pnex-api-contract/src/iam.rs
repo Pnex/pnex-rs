@@ -878,11 +878,6 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("web-search:delete"),
     ),
     ("web_search_providers_list", Access::Org("web-search:read")),
-    (
-        "web_presence_candidates_decide",
-        Access::Org("ontology:write"),
-    ),
-    ("web_presence_candidates_list", Access::Org("ontology:read")),
     ("proposals_decide", Access::Org("proposals:decide")),
     ("proposals_get", Access::Org("proposals:read")),
     ("proposals_list", Access::Org("proposals:read")),

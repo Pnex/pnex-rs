@@ -369,6 +369,7 @@ fn link_request(node: FlowNodeRef, p: &Value) -> Option<FlowLinkRequest> {
             .cloned()
             .unwrap_or_default(),
         valid_from: s("valid_from"),
+        confidence: p.get("confidence").and_then(Value::as_f64),
     })
 }
 

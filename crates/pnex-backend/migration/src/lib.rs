@@ -53,6 +53,7 @@ mod m20261022_000043_edge_ends_given;
 mod m20261022_000044_web_search_providers;
 mod m20261022_000045_import_per_object_cursor;
 mod m20261022_000046_proposals;
+mod m20261022_000047_pending_links_to_proposals;
 
 pub struct Migrator;
 
@@ -102,6 +103,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261022_000044_web_search_providers::Migration),
             Box::new(m20261022_000045_import_per_object_cursor::Migration),
             Box::new(m20261022_000046_proposals::Migration),
+            Box::new(m20261022_000047_pending_links_to_proposals::Migration),
         ]
     }
 }

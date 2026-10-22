@@ -411,6 +411,10 @@ pub struct LinkMap {
     /// `false`: only an open link gets the attributes, none is opened.
     #[serde(default = "yes")]
     pub create: bool,
+    /// A new link is a proposal waiting for a human, not a live link
+    /// (community data; proposals.md D375).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propose: bool,
     /// Several records of one pair disagreeing on an attribute: it takes
     /// this value (`perimetre: les_deux` merges preparation and
     /// evaluation). Without it the first record wins, with a warning.
@@ -1714,6 +1718,9 @@ pub struct DiffLink {
     pub valid_from: Option<String>,
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub attributes: Map<String, Value>,
+    /// Written as a proposal, not as a link (D375).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propose: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

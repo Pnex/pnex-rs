@@ -3668,6 +3668,7 @@ flows-link-upsert-help = msg.payload = source_id, target_id (object ids), and op
 flows-link-upsert-type = Link type
 flows-link-upsert-close = Close the link instead of opening it
 flows-link-upsert-skip-closed = Never reopen a link already closed between these two objects (a rejected candidate is not proposed again)
+flows-link-upsert-propose = Propose the link to a human (To validate page) instead of writing it
 flows-action-trigger-help = One message per invocation: payload = the parameters, msg.object = the object, msg.action = who and when.
 flows-action-trigger-action = Action
 flows-action-trigger-none = No action is declared in the ontology yet: add one to a type (or install the Maintenance pack).
@@ -5853,14 +5854,6 @@ proposals-accept = Accept
 proposals-reject = Reject
 proposals-on-object = { $count } proposal(s) to validate on this object
 nav-proposals = To validate
-site-candidates-title = Websites to validate ({ $count })
-site-candidates-help = Websites the « Web presence » flow proposed for an organization. Confirm makes it its website (it may then be crawled); reject closes it for good, it will not be proposed again.
-site-candidates-score = score { $score }
-site-candidates-proof-siren = SIREN found
-site-candidates-proof-nda = declaration number found
-site-candidates-from-email = domain of its e-mails
-site-candidates-confirm = Confirm
-site-candidates-reject = Reject
 web-sites-title = Websites
 web-sites-subtitle = Sites walked by navigation rules, and their last run.
 web-sites-add = Add a website
