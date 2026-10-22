@@ -156,6 +156,56 @@ pub async fn path(
         .collect())
 }
 
+/// Starts considered by [`path_from_any`] at most.
+const STARTS_MAX: i64 = 500;
+
+/// Shortest path to `to` from the nearest object at the source of an open
+/// link of `start_links` (the team following accounts, D338), within
+/// `depth` hops, along `relations` when given.
+pub async fn path_from_any(
+    db: &DatabaseConnection,
+    org_id: i64,
+    start_links: &[String],
+    to: Uuid,
+    depth: u32,
+    relations: &[String],
+) -> Result<Vec<pnex_core::ontology::api::ObjectRef>> {
+    let starts: Vec<String> = db
+        .query_all_raw(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT DISTINCT source_object_id::text AS id FROM resource_edges \
+             WHERE org_id = $1 AND relation = ANY($2) AND valid_to IS NULL \
+               AND source_object_id IS NOT NULL LIMIT $3",
+            [
+                org_id.into(),
+                start_links.to_vec().into(),
+                STARTS_MAX.into(),
+            ],
+        ))
+        .await?
+        .iter()
+        .filter_map(|r| r.try_get::<String>("", "id").ok())
+        .collect();
+    super::objects::find(db, org_id, to).await?;
+    // Walked from the target: every start within reach is in the subgraph.
+    let edges = load(db, org_id, to, depth, relations).await?;
+    let g = subgraph(&edges);
+    let target = to.to_string();
+    let ids = starts
+        .iter()
+        .filter(|s| **s != target)
+        .filter_map(|s| g.shortest_path(s, &target))
+        .min_by_key(Vec::len)
+        .ok_or(OntologyError::NotFound)?;
+    let uuids: Vec<Uuid> = ids.iter().filter_map(|i| Uuid::parse_str(i).ok()).collect();
+    let by_id = links::refs(db, org_id, uuids.clone()).await?;
+    Ok(uuids
+        .iter()
+        .filter_map(|i| by_id.get(i))
+        .map(links::object_ref)
+        .collect())
+}
+
 /// Cascading impact: objects downstream (or upstream) of `start`.
 pub async fn impact(
     db: &DatabaseConnection,

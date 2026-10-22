@@ -163,6 +163,9 @@ pub fn OntologyObject(id: String) -> Element {
                     status: pnex_core::ontology::proposal::ProposalStatus::Proposed,
                     hide_empty: true,
                 }
+                if !archived && !all_links.is_empty() {
+                    IntroFinder { id: o.id.clone(), link_types: all_links.clone() }
+                }
                 div { class: "flex flex-wrap items-center gap-2 text-sm",
                     TypeIcon { icon, class: "h-5 w-5 text-signal-600" }
                     span { class: "rounded bg-signal-50 px-2 py-0.5 text-signal-700",
@@ -1050,6 +1053,78 @@ fn BindSensor(
             close_first,
             on_close,
             on_saved,
+        }
+    }
+}
+
+/// "Who can introduce me?" (D338): the shortest chain of links between
+/// people from anyone at the source of the chosen link type (the team
+/// following accounts) to this object.
+#[component]
+fn IntroFinder(id: String, link_types: Vec<LinkTypeView>) -> Element {
+    let mut start = use_signal(String::new);
+    let mut found = use_signal(|| None::<Vec<pnex_core::ontology::api::ObjectRef>>);
+    let mut find = move |key: String| {
+        start.set(key.clone());
+        found.set(None);
+        if key.is_empty() {
+            return;
+        }
+        let to = id.clone();
+        spawn(async move {
+            let links = pnex_core::ontology::api::INTRODUCTION_LINKS;
+            match api::ontology::path_from_links(&[key.as_str()], &to, links).await {
+                Ok(p) => found.set(Some(p)),
+                Err(e) if e.status == Some(404) => found.set(Some(Vec::new())),
+                Err(e) => toasts::error(e),
+            }
+        });
+    };
+    let result = match found() {
+        Some(p) if p.is_empty() => rsx! {
+            span { class: "text-gray-500",
+                {t!("cw-path-none", hops : pnex_core::ontology::api::MAX_HOPS)}
+            }
+        },
+        Some(p) => rsx! {
+            ol {
+                class: "flex flex-wrap items-center gap-1",
+                "data-testid": "intro-path",
+                for (i, step) in p.into_iter().enumerate() {
+                    li { key: "{i}",
+                        if i > 0 {
+                            span { class: "text-gray-400", "→ " }
+                        }
+                        Link {
+                            class: "text-signal-700 hover:underline",
+                            to: Route::OntologyObject {
+                                id: step.id.clone(),
+                            },
+                            "{step.title}"
+                        }
+                    }
+                }
+            }
+        },
+        None => rsx! {},
+    };
+    rsx! {
+        div { class: "flex flex-wrap items-center gap-2 text-sm",
+            label { class: "text-gray-600", r#for: "intro-from", {t!("onto-intro-from")} }
+            select {
+                id: "intro-from",
+                class: INPUT,
+                "data-testid": "intro-from",
+                value: "{start}",
+                onchange: move |e| find(e.value()),
+                option { value: "", "—" }
+                for lt in link_types {
+                    option { key: "{lt.def.key}", value: "{lt.def.key}",
+                        {link_label(Some(&lt.def), &lt.def.key, false)}
+                    }
+                }
+            }
+            {result}
         }
     }
 }

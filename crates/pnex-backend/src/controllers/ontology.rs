@@ -957,6 +957,10 @@ struct PathQuery {
     /// all when absent. An introduction path follows the links between
     /// people: `knows,recommande,employs,dirige,member_of`.
     links: Option<String>,
+    /// Instead of `from`: every object at the source of an open link of
+    /// these types, comma-separated (`suit_le_compte` = the team that
+    /// follows accounts); the shortest path from any of them wins (D338).
+    from_links: Option<String>,
 }
 
 #[utoipa::path(
@@ -965,11 +969,11 @@ struct PathQuery {
     tag = "ontology",
     operation_id = "ontology_path",
     summary = "Find a path between two objects",
-    description = "Shortest chain of open links, followed in either direction, within 4 hops of `from`, along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
+    description = "Shortest chain of open links, followed in either direction, within 4 hops, from `from` or from the nearest object at the source of an open link of a `from_links` type (several starts), along the given link types only when `links` is set: the objects along it, ends included. 404 when there is no such path. Any org member.",
     params(PathQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ObjectPath),
-        (status = 400, description = "Missing `from` or `to`, or more than 20 `links` (`field-invalid`)", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "Missing `from` (or `from_links`) or `to`, or more than 20 `links` (`field-invalid`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (malformed or unknown id, or no path)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
@@ -980,33 +984,35 @@ async fn path(
     Query(q): Query<PathQuery>,
 ) -> Result<Response> {
     let depth = pnex_core::ontology::api::MAX_HOPS as u32;
-    let (Some(from), Some(to)) = (q.from, q.to) else {
-        return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED));
+    let keys = |raw: &Option<String>| -> Vec<String> {
+        raw.as_deref()
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect()
     };
-    let links: Vec<String> = q
-        .links
-        .as_deref()
-        .unwrap_or_default()
-        .split(',')
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(String::from)
-        .collect();
-    if links.len() > 20 || links.iter().any(|l| l.len() > 64) {
-        return onto_error(onto::invalid("links", err_codes::FIELD_INVALID));
+    let (links, from_links) = (keys(&q.links), keys(&q.from_links));
+    for (field, list) in [("links", &links), ("from_links", &from_links)] {
+        if list.len() > 20 || list.iter().any(|l| l.len() > 64) {
+            return onto_error(onto::invalid(field, err_codes::FIELD_INVALID));
+        }
     }
-    reply(
-        graph::path(
-            &ctx.db,
-            org.org.id,
-            parse_uuid(&from)?,
-            parse_uuid(&to)?,
-            depth,
-            &links,
-        )
-        .await
-        .map(|path| pnex_core::ontology::api::ObjectPath { path }),
-    )
+    let Some(to) = q.to else {
+        return onto_error(onto::invalid("to", err_codes::FIELD_REQUIRED));
+    };
+    let to = parse_uuid(&to)?;
+    let found = match (q.from, from_links.is_empty()) {
+        (Some(from), _) => {
+            graph::path(&ctx.db, org.org.id, parse_uuid(&from)?, to, depth, &links).await
+        }
+        (None, false) => {
+            graph::path_from_any(&ctx.db, org.org.id, &from_links, to, depth, &links).await
+        }
+        (None, true) => return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED)),
+    };
+    reply(found.map(|path| pnex_core::ontology::api::ObjectPath { path }))
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
