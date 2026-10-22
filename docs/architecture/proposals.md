@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22** ; P3 : dossiers livrés le 2026-10-23, voix à faire |
+| Statut | **P0, P1, P2 et P4 livrés le 2026-10-22, P3 le 2026-10-23** |
 | Décision mère | D367 (`ontology.md` §11) : la proposition est un objet du noyau, priorité 1 |
 | Repose sur | ontologie (D176–D191), propositions des dossiers (`cases-workspace.md` K30, K33), attributions vocales (`media-review.md` D275), packs (D190, D368) |
 | Numérotation | **D371…D377**, lots **P0…P4** |
@@ -29,7 +29,7 @@ Quatre mécanismes disent aujourd'hui « une machine pense que… » :
 
 Champs :
 - `org_id` ;
-- `kind` : `object_create`, `object_update`, `link_create`, `link_update`, `link_close`, `case_event` (liste fermée ; `case_event` depuis P3) ;
+- `kind` : `object_create`, `object_update`, `link_create`, `link_update`, `link_close`, `case_event` (liste fermée ; `case_event` depuis P3). La boîte montre aussi `voice_span`, lu depuis la relecture média sans être stocké ici ;
 - `target` : le type ou l'objet visé, le type de lien et ses deux extrémités ;
 - `diff` : propriétés ou attributs proposés, titre ;
 - `base_version` : version de l'objet lue, pour une mise à jour ;
@@ -91,7 +91,7 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
 
 - **Q-P1** : statuts de tri (signal retenu ou écarté, constats) : propriétés métier, pas des propositions. **Défaut : oui.** On ne migre que ce qui dit « est-ce vrai ? ».
 - **Q-P2** : données communautaires (Wikidata) en propositions, plutôt qu'en liens vivants à fermer. **Défaut : oui.** Le graphe vivant reste propre.
-- **Q-P3** : dossiers et voix unifiés dans la même table (P3) ou fédérés en lecture. **Défaut : même table.**
+- **Q-P3** : dossiers et voix unifiés dans la même table (P3) ou fédérés en lecture. **Retenu : même table pour les dossiers, lecture fédérée pour la voix.** Une voix se décide en l'écoutant, et on ajuste souvent son intervalle avant de la confirmer : cela reste dans la relecture du média. Ses propositions sont aussi régénérées à chaque analyse, ce que la règle « jamais reproposé » de la table ne permet pas.
 - **Q-P4** : une proposition sans réponse expire-t-elle ? **Défaut : non** ; filtre « ancienneté » dans la boîte.
 - **Q-P5** : une décision humaine peut-elle modifier la valeur proposée avant d'accepter (« accepter avec correction ») ? **Défaut : oui pour les propriétés**, la correction est tracée dans la décision.
 
@@ -156,7 +156,13 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
     décision commune ; `cases_proposals_retain` et `…_reject` sortent du
     MCP (« sign-off », D374). Test : `ontology`
     `case_detections_are_proposed_and_reviewed_by_a_human` ;
-  - P3, voix : à faire ;
+  - P3, voix (2026-10-23) : la boîte lit aussi `speech_attributions`
+    d'origine `voice` (union dans `proposals::list`, `kind = voice_span`,
+    confirmé = `accepted`, valeurs = média et intervalle, confiance × 100,
+    objets = la personne et le média). En lecture seule : la décision
+    reste dans la relecture du média (lien « Écouter et décider »), et
+    `POST /proposals/{id}/decision` sur une voix répond 404. Test :
+    `media_review` `voice_proposals_respect_what_people_decided` ;
   - P4 : livré pour `link_upsert` (D377, voir plus haut) ; reste `object_upsert` et les imports ;
   - fait depuis : la même proposition reçue à nouveau avec des preuves
     (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves

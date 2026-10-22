@@ -496,6 +496,39 @@ async fn voice_proposals_respect_what_people_decided() {
         assert_eq!(proposed[0]["origin"], "voice");
         assert_eq!(proposed[0]["start_ms"], 40_000);
         assert!((proposed[0]["confidence"].as_f64().unwrap() - 0.71).abs() < 1e-3);
+        // proposals.md P3: the shared inbox lists it, read only.
+        let (st, inbox) = call(
+            &server,
+            "GET",
+            "/api/v1/proposals?origin=voice",
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        assert_eq!(st, 200, "{inbox}");
+        assert_eq!(inbox["count"], 1, "{inbox}");
+        let v = &inbox["results"][0];
+        assert_eq!(
+            (v["kind"].as_str(), v["values"]["start_ms"].as_i64()),
+            (Some("voice_span"), Some(40_000)),
+            "{v}"
+        );
+        assert_eq!(v["values"]["media_asset_id"], asset.to_string());
+        assert!(
+            (v["confidence"].as_f64().unwrap() - 71.0).abs() < 0.1,
+            "{v}"
+        );
+        let (st, _) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/proposals/{}/decision", v["id"].as_str().unwrap()),
+            &env.alice,
+            org,
+            Some(json!({"decision": "accept"})),
+        )
+        .await;
+        assert_eq!(st, 404, "decided on the media review only");
     })
     .await;
 }
