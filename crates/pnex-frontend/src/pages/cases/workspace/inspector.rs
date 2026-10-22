@@ -767,6 +767,33 @@ fn AmountField(current: Option<Value>, disabled: bool, on_save: EventHandler<Val
 fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
     let ws = use_context::<Ws>();
     let mut none = use_signal(|| false);
+    let mut target = use_signal(String::new);
+    // D338: an introduction follows the links between people only.
+    let mut people_only = use_signal(|| false);
+    let find = move |from: String| {
+        let to = target();
+        let mut p = ws.path;
+        none.set(false);
+        if to.is_empty() {
+            p.set(Vec::new());
+            return;
+        }
+        let links: &[&str] = if people_only() {
+            pnex_core::ontology::api::INTRODUCTION_LINKS
+        } else {
+            &[]
+        };
+        ws.spawn(async move {
+            match crate::api::ontology::path(&from, &to, links).await {
+                Ok(steps) => p.set(steps),
+                Err(e) if e.status == Some(404) => {
+                    p.set(Vec::new());
+                    none.set(true);
+                }
+                Err(e) => crate::state::toasts::error(e),
+            }
+        });
+    };
     let mut members: Vec<(String, String)> = workspace
         .events
         .iter()
@@ -787,30 +814,32 @@ fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
                 "data-testid": "cw-path-to",
                 onchange: {
                     let from = id.clone();
+                    let mut find = find.clone();
                     move |e: FormEvent| {
-                        let (from, to) = (from.clone(), e.value());
-                        let mut p = ws.path;
-                        none.set(false);
-                        if to.is_empty() {
-                            p.set(Vec::new());
-                            return;
-                        }
-                        ws.spawn(async move {
-                            match crate::api::ontology::path(&from, &to).await {
-                                Ok(steps) => p.set(steps),
-                                Err(e) if e.status == Some(404) => {
-                                    p.set(Vec::new());
-                                    none.set(true);
-                                }
-                                Err(e) => crate::state::toasts::error(e),
-                            }
-                        });
+                        target.set(e.value());
+                        find(from.clone());
                     }
                 },
                 option { value: "", {t!("cw-path-to")} }
                 for (oid, title) in members {
                     option { key: "{oid}", value: "{oid}", "{title}" }
                 }
+            }
+            label { class: "inline-flex items-center gap-1 text-xs text-slate",
+                input {
+                    r#type: "checkbox",
+                    "data-testid": "cw-path-people",
+                    checked: people_only(),
+                    onchange: {
+                        let from = id.clone();
+                        let mut find = find.clone();
+                        move |e: FormEvent| {
+                            people_only.set(e.checked());
+                            find(from.clone());
+                        }
+                    },
+                }
+                {t!("cw-path-people")}
             }
             if none() {
                 p { class: "text-xs text-slate",

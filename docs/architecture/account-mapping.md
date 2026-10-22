@@ -414,3 +414,20 @@ Limites :
   unitaires `colours_name_enum_values_from_the_palette`,
   `last_segment_takes_the_latest_key_or_element`.
 
+### CC5, D338 — chemin d'introduction (2026-10-22, non commité)
+
+- `GET /api/v1/ontology/path` prend `links` (types de liens séparés par des
+  virgules, 20 au plus). Le filtre s'applique **dans** la marche récursive,
+  avant le plafond de 5 000 liens : un graphe chargé de liens de registre
+  (`dirige`, `etablissement_de`) ne coupe pas un chemin entre personnes.
+- `pnex_core::ontology::api::INTRODUCTION_LINKS` = `knows`, `recommande`,
+  `employs`, `dirige`, `member_of` ; profondeur 4 (MAX_HOPS).
+- UI : case « Chemin d'introduction » dans « Comment est-il relié à… » de
+  l'inspecteur de dossier. Le chemin trouvé est surligné dans le graphe
+  Sigma comme avant.
+- Test : `partner_watch::group_coverage_and_status_colours`, partie D338 :
+  le lien de groupe n'est pas un lien humain, d'où le 404.
+- Non fait : partir de « toutes les personnes internes et les contacts des
+  comptes client » à la fois (un chemin à plusieurs départs). Aujourd'hui,
+  le départ est un objet du dossier.
+

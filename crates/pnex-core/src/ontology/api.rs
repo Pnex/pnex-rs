@@ -8,6 +8,11 @@ use super::{LinkTypeDef, ObjectTypeDef};
 
 /// Maximum hops of a query traversal (D185: the API stays bounded).
 pub const MAX_HOPS: usize = 4;
+
+/// Links between people an introduction path follows (account-mapping.md
+/// D338): who knows, recommends, employs or directs whom, and who belongs
+/// to a professional group.
+pub const INTRODUCTION_LINKS: &[&str] = &["knows", "recommande", "employs", "dirige", "member_of"];
 pub const QUERY_LIMIT_MAX: u64 = 500;
 pub const TITLE_MAX: usize = 255;
 

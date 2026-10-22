@@ -445,6 +445,7 @@ async fn group_coverage_and_status_colours() {
 
         let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
+        let node = |id: &str| h["nodes"].as_array().unwrap().iter().find(|n| n["id"] == id).cloned().unwrap();
         assert_eq!(node(&mother)["marks"], json!([{"property": "statut_compte", "value": "client", "color": "green"}]));
         assert_eq!((node(&gap)["white_space"].clone(), node(&covered)["white_space"].clone()), (json!(true), Value::Null), "{h}");
         assert_eq!((h["has_coverage"].clone(), h["white_space"].clone()), (json!(true), json!(1)));
@@ -475,11 +476,13 @@ async fn group_coverage_and_status_colours() {
         assert_eq!(st, 200, "{c}");
         assert_eq!(c["items"][0]["color"], "green", "{c}");
 
+        // D338: an introduction path follows the links between people only.
         let (_, me) = object(&server, &env.alice, org, "person", "Moi", json!({})).await;
         let me = me["id"].as_str().unwrap().to_string();
         let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
             Some(link("knows", &me, p["id"].as_str().unwrap()))).await;
         assert_eq!(st, 201, "{r}");
+        let people = pnex_core::ontology::api::INTRODUCTION_LINKS.join(",");
         let path = |to: &str, links: &str| {
             let (server, token, url) = (&server, env.alice.clone(), format!("/api/v1/ontology/path?from={me}&to={to}&links={links}"));
             async move { call(server, "GET", &url, &token, org, None).await }
@@ -488,6 +491,7 @@ async fn group_coverage_and_status_colours() {
         assert_eq!(st, 200, "{r}");
         let titles: Vec<&str> = r["path"].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
         assert_eq!(titles, ["Moi", "Contact", "Filiale suivie"]);
+        // The group link is not a link between people: no introduction there.
         assert_eq!(path(&mother, &people).await.0, 404);
         assert_eq!(path(&mother, "").await.0, 200);
 
@@ -526,6 +530,7 @@ async fn group_coverage_and_status_colours() {
         install(&server, &env.alice, org, "quali_watch").await;
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
         let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
+        let site_link = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "a_pour_site").cloned().unwrap();
         assert!(site_link["def"]["attributes"].to_string().contains("valide_par"), "{site_link}");
         let (st, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", site["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!((st, o["properties"]["domaine"].as_str()), (200, Some("of.fr")), "{o}");

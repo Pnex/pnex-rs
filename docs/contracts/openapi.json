@@ -58348,6 +58348,7 @@
             "schema": {
               "type": "string"
             }
+            "description": "Link type keys the path may follow, comma-separated (at most 20);\nall when absent. An introduction path follows the links between\npeople: `knows,recommande,employs,dirige,member_of`.",
           }
         ],
         "responses": {

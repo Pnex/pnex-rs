@@ -5645,6 +5645,7 @@ cw-graph-family = { $family ->
 } ({ $count })
 cw-path-to = Comment est-il relié à…
 cw-path-none = Aucun chemin en { $hops } liens au plus.
+cw-path-people = Chemin d'introduction : liens entre personnes seulement
 cw-path-clear = Effacer le chemin
 cw-own-held-by = Détenu par
 cw-own-holds = Détient
