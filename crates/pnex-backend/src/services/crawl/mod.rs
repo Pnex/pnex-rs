@@ -274,7 +274,9 @@ pub async fn register(
     }
     if let Some(record) = &c.params.record {
         if relevant || row.object_id.is_some() {
-            row.object_id = record_object(db, c, record, &row, relevant)
+            // A first visit is the baseline, not a change.
+            let changed = changed && existing.is_some();
+            row.object_id = record_object(db, c, record, &row, relevant, &seen.text, changed)
                 .await
                 .or(row.object_id);
         }
@@ -356,14 +358,22 @@ async fn keep_text(
     Ok(asset.id)
 }
 
+/// Characters of a page's text a record may keep.
+const RECORD_TEXT_MAX: usize = 20_000;
+
 /// Writes the page as an object of the record type (upsert on the
-/// property `url` maps to), and opens its link once.
+/// property `url` maps to), and opens its link once. Fields: `url`,
+/// `title`, `first_seen`, `last_seen`, `text_hash`, `relevant`, `state`,
+/// and for a watch flow `text` (readable text, clipped), `changed` (its
+/// text differs from the last crawl) and `link_to` (the record's target).
 async fn record_object(
     db: &DatabaseConnection,
     c: &CrawlRef<'_>,
     record: &PageRecord,
     row: &PageRow,
     relevant: bool,
+    text: &str,
+    changed: bool,
 ) -> Option<Uuid> {
     use crate::services::ontology::{links, objects, Actor};
     use pnex_core::ontology::api::{LinkInput, ObjectInput};
@@ -381,6 +391,12 @@ async fn record_object(
             "text_hash" => row.text_hash.clone()?.into(),
             "relevant" => relevant.into(),
             "state" => row.state.clone().into(),
+            "text" => text
+                .chars()
+                .take(RECORD_TEXT_MAX)
+                .collect::<String>()
+                .into(),
+            "link_to" => record.link_to.clone()?.into(),
             _ => return None,
         })
     };
@@ -389,6 +405,10 @@ async fn record_object(
         if let Some(v) = value(field) {
             props.insert(key.clone(), v);
         }
+    }
+    // Set only when the text changed: the watch flow clears it once read.
+    if let Some(key) = record.properties.get("changed").filter(|_| changed) {
+        props.insert(key.clone(), true.into());
     }
     let url_key = record.properties.get("url")?;
     let title = if row.title.is_empty() {

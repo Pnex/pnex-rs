@@ -427,9 +427,11 @@ Limites :
   Sigma comme avant.
 - Test : `partner_watch::group_coverage_and_status_colours`, partie D338 :
   le lien de groupe n'est pas un lien humain, d'où le 404.
-- Non fait : partir de « toutes les personnes internes et les contacts des
-  comptes client » à la fois (un chemin à plusieurs départs). Aujourd'hui,
-  le départ est un objet du dossier.
+- **Plusieurs départs** : `from_links` remplace `from` ; les départs sont
+  les sources des liens ouverts de ces types (500 au plus), le plus court
+  chemin l'emporte. La marche part de la cible, une seule fois. UI : « Qui
+  peut me présenter ? En partant de » sur la page d'un objet (choix du type
+  de lien, par exemple `suit_le_compte`). Testé dans le même test.
 
 ### CC4, première partie — signaux et BODACC (2026-10-22, non commité)
 
@@ -463,11 +465,34 @@ Limites :
 - **Pas faits** :
   - signal « nouvel établissement » tiré d'un SIRET apparu lors d'une
     synchro ;
-  - pages actualités et carrières (parcours D307 + `text_decide` sur les
-    thèmes de l'org) ;
-  - diff des pages concurrentes (D311) ;
+  - fait depuis : voir « Pages suivies » ci-dessous ;
   - envoi à chaque suiveur (`suit_le_compte`) : le résumé part sur les
     canaux choisis par l'org.
+
+### CC4, suite — listes de salon et pages suivies (2026-10-22)
+
+- **Listes de salon** (`prospection_fr` 1.1.0) :
+  - type `contact_liste` (clé `liste|nom|societe`, `rapprochement`
+    `trouve` / `a_revoir` / `introuvable` coloré, `siren_trouve`,
+    `candidats`) et lien `contact_de` (→ organisation, une cible) ;
+  - import fichier « Trade show or association list (file) » ;
+  - flow « Prospection · list contacts to companies » : `org_resolve` ;
+    trouvé → organisation par SIREN + lien `contact_de` **proposé** ;
+    ambigu ou introuvable → le contact est marqué.
+- **Pages suivies** (`prospection_b2b`) :
+  - le crawl écrit dans l'enregistrement d'une page trois nouveaux champs :
+    `text` (20 000 caractères au plus), `changed` (posé à vrai seulement
+    quand le texte a changé depuis une visite précédente : la première
+    visite est la référence) et `link_to` ;
+  - type `page_suivie` (`url` unique, `texte`, `modifiee`, `compte`) ;
+  - flow « Prospection · watched pages to signals » : toutes les heures,
+    les pages `modifiee` → `llm_text` (thèmes de l'org) → `ps_signal` →
+    `signal_commercial` `page_modifiee` à valider + `signal_sur`, puis
+    `modifiee` remis à faux ;
+  - les pages d'un concurrent (D311) passent par le même chemin : une page
+    suivie dont le `compte` est le concurrent.
+- Tests : `pack_rules` (fonctions Starlark des deux packs) ; la chaîne
+  crawl → signal n'a pas de test de bout en bout (LLM réel).
 
 ### CC6, D340 — pages remplies depuis un objet (2026-10-22, non commité)
 

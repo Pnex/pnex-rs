@@ -8,6 +8,7 @@ use serde_json::json;
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
 const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospection_b2b.yaml");
 const PRESENCE: &str = include_str!("../../pnex-backend/packs/presence_web.yaml");
+const PROSPECTION_FR: &str = include_str!("../../pnex-backend/packs/prospection_fr.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
 fn code_of(name: &str) -> String {
@@ -261,4 +262,108 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     .unwrap()
     .return_json
     .is_none());
+}
+
+#[test]
+fn list_contacts_ask_their_company_and_keep_the_candidates() {
+    let run = |f: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTION_FR, f), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let r = run(
+        "pl_preparer",
+        json!({
+        "payload": {"societe": "Mecachrome", "ville": "Amboise", "code_postal": "37530"},
+        "object": {"id": "c1", "title": "Jeanne Martin", "version": 1}}),
+    );
+    assert_eq!(
+        r["payload"],
+        json!({"name": "Mecachrome", "city": "Amboise", "postcode": "37530"})
+    );
+    assert_eq!(r["contact"]["id"], "c1");
+    let found = json!({"payload": {"siren": "429853351",
+        "candidates": [{"siren": "429853351", "name": "MECACHROME FRANCE", "city": "AMBOISE", "score": 95}]},
+        "contact": {"id": "c1"}});
+    let r = run("pl_trouve", found.clone());
+    assert_eq!(
+        (r[0]["payload"]["siren"].clone(), r[0]["title"].clone()),
+        (json!("429853351"), json!("MECACHROME FRANCE"))
+    );
+    assert_eq!(
+        (
+            r[1]["object_id"].clone(),
+            r[1]["payload"]["rapprochement"].clone()
+        ),
+        (json!("c1"), json!("trouve"))
+    );
+    let r = run("pl_revoir", found);
+    assert_eq!(r["payload"]["rapprochement"], "a_revoir");
+    assert_eq!(
+        r["payload"]["candidats"],
+        "MECACHROME FRANCE (429853351, AMBOISE, 95)"
+    );
+    let r = run(
+        "pl_revoir",
+        json!({"payload": {"candidates": []}, "contact": {"id": "c2"}}),
+    );
+    assert_eq!(r["payload"]["rapprochement"], "introuvable");
+}
+
+#[test]
+fn a_changed_page_becomes_a_signal_only_on_a_listed_topic() {
+    let run = |f: &str, msg: serde_json::Value| {
+        execute(&code_in(PROSPECTION, f), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let prep = run(
+        "ps_preparer",
+        json!({
+        "payload": {"url": "https://acme.fr/actus", "texte": "ACME ouvre une usine à Lyon.", "compte": "org-1"},
+        "object": {"id": "p1", "title": "Actualités", "version": 2}}),
+    );
+    assert_eq!(prep["payload"]["texte"], "ACME ouvre une usine à Lyon.");
+    let page = prep["page"].clone();
+    let r = run(
+        "ps_signal",
+        json!({"payload": {"text": "ouverture_site\n« ACME ouvre une usine à Lyon. »"},
+        "page": page, "today": "2026-10-22"}),
+    );
+    assert_eq!(r[0]["payload"]["theme"], "ouverture_site");
+    assert_eq!(
+        r[0]["payload"]["cle"],
+        "page:https://acme.fr/actus:2026-10-22"
+    );
+    assert_eq!(r[0]["payload"]["etat"], "a_valider");
+    assert_eq!(
+        r[0]["payload"]["extrait"],
+        "« ACME ouvre une usine à Lyon. »"
+    );
+    assert_eq!(
+        (
+            r[1]["object_id"].clone(),
+            r[1]["payload"]["modifiee"].clone()
+        ),
+        (json!("p1"), json!(false))
+    );
+    // Nothing announced, or a topic off the list: only marked read.
+    for answer in ["aucun", "météo", ""] {
+        let r = run(
+            "ps_signal",
+            json!({"payload": {"text": answer}, "page": page}),
+        );
+        assert!(r[0].is_null(), "{answer}: {r}");
+        assert_eq!(r[1]["payload"]["modifiee"], false);
+    }
+    let link = run(
+        "ps_lien",
+        json!({"payload": {}, "object": {"id": "s1"}, "page": page}),
+    );
+    assert_eq!(
+        link["payload"],
+        json!({"source_id": "s1", "target_id": "org-1"})
+    );
 }
