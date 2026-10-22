@@ -95,4 +95,5 @@ pub mod video_annotations;
 pub mod vision;
 pub mod visualization;
 pub mod voice_id;
+pub mod web_search;
 pub mod ws_ticket;

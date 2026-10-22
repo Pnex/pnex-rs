@@ -671,6 +671,19 @@ pub const SITE_RECIPE_UNAVAILABLE: &str = "site-recipe-unavailable";
 pub const BROWSER_ENDPOINT_NOT_FOUND: &str = "browser-endpoint-not-found";
 /// A browser endpoint of the org already has this name.
 pub const BROWSER_ENDPOINT_NAME_TAKEN: &str = "browser-endpoint-name-taken";
+/// Web search provider not found (or not in the org).
+pub const WEB_SEARCH_PROVIDER_NOT_FOUND: &str = "web-search-provider-not-found";
+/// A web search provider of the org already has this name.
+pub const WEB_SEARCH_PROVIDER_NAME_TAKEN: &str = "web-search-provider-name-taken";
+/// A `web_search` node found no provider (named one missing, or no
+/// default); `args.provider` when one was named.
+pub const WEB_SEARCH_NO_PROVIDER: &str = "web-search-no-provider";
+/// The provider refused or failed the query; `args.status` when it answered.
+pub const WEB_SEARCH_UNAVAILABLE: &str = "web-search-unavailable";
+/// The org passed its daily number of web searches; `args.cap`.
+pub const WEB_SEARCH_QUOTA: &str = "web-search-quota";
+/// The query is empty or longer than 400 characters.
+pub const WEB_SEARCH_QUERY_INVALID: &str = "web-search-query-invalid";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
 pub const ONTOLOGY_UNIQUE_DUPLICATES: &str = "ontology-unique-duplicates";
 /// A person is attached to a case only once its processing basis is declared
@@ -870,6 +883,12 @@ pub const ALL: &[&str] = &[
     SITE_RECIPE_UNAVAILABLE,
     BROWSER_ENDPOINT_NOT_FOUND,
     BROWSER_ENDPOINT_NAME_TAKEN,
+    WEB_SEARCH_PROVIDER_NOT_FOUND,
+    WEB_SEARCH_PROVIDER_NAME_TAKEN,
+    WEB_SEARCH_NO_PROVIDER,
+    WEB_SEARCH_UNAVAILABLE,
+    WEB_SEARCH_QUOTA,
+    WEB_SEARCH_QUERY_INVALID,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
     CASE_PROPOSAL_STALE,

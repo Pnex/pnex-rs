@@ -85,3 +85,5 @@ fn adm_01_finding_and_link_payload() {
         .unwrap();
     assert_eq!(l["payload"], json!({"source_id": "e1", "target_id": "o1"}));
 }
+        json!({"payload": {"query": "ACME", "provider": "serper",
+            "candidat": {"source": source, "requete": "ACME", "rang": 2, "fournisseur": "serper"}

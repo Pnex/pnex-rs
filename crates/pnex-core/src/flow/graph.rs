@@ -211,6 +211,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::site_recipe::SiteRecipeNodeConfig,
     },
+    /// Candidates of a web search on an org provider; writes nothing
+    /// (web-presence.md D361).
+    WebSearch {
+        #[serde(default)]
+        config: crate::web_search::WebSearchConfig,
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -389,6 +394,7 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 "site_recipe" => Ok(Self::SiteRecipe {
                     config: opt_config(config)?,
                 }),
+                "web_search" => Ok(Self::WebSearch {
                 "media_source" => Ok(Self::MediaSource {
                     config: req_config(config)?,
                 }),

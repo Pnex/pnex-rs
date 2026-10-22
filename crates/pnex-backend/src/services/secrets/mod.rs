@@ -10,6 +10,7 @@ pub mod media;
 pub mod notify;
 pub mod rekey;
 pub mod store;
+pub mod web_search;
 pub mod wifi;
 
 pub use crypto::{Keyring, KeyringError, Sealed, SecretCryptoError};

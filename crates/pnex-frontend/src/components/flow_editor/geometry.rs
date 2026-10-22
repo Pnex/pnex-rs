@@ -132,6 +132,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::Ingest { config } => (config.port_count(), 0),
         // Site rule: passed, failed, broke.
         FlowNodeKind::SiteRecipe { .. } => (pnex_core::site_recipe::NODE_PORT_COUNT, 0),
+        // Web search: results, failed.
+        FlowNodeKind::WebSearch { .. } => (pnex_core::web_search::NODE_PORT_COUNT, 0),
         _ => (1, 0),
     }
 }
@@ -200,6 +202,9 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
             t!("flows-site-recipe-port-failed").to_string(),
             t!("flows-site-recipe-port-broke").to_string(),
         ],
+        FlowNodeKind::WebSearch { .. } => vec![
+            t!("flows-web-search-port-ok").to_string(),
+            t!("flows-web-search-port-failed").to_string(),
         _ => Vec::new(),
     }
 }

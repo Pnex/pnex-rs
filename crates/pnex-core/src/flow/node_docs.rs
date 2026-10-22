@@ -514,6 +514,13 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "Trigger it from an inject node with a cron (the studio lists those next runs). msg.payload = {extract name: text}; msg.manifest = {site, recipe, version, run, status, failed_step?, outputs: [{name, kind, sha256, chars, changed, from?, media?, media_version?}]} where changed compares with the previous run that brought the same extract back. On a passing run each extract is also a document of the media library (media = its id; one document per rule, parameters and extract, a new version only when the content changed; a PDF extract is the PDF file). A run takes up to 10 minutes and the node handles one message at a time. A failure concludes nothing: never close or delete records on port 1 or 2. A missing rule or parameter answers on port 1 with msg.error = {code, args}.",
     },
     NodeDoc {
+        kind: "web_search",
+        summary: "Searches the web through a search provider of the organisation (Organisation page, Web search) and returns candidates; writes nothing. Ports: 0 results (possibly an empty list), 1 failed.",
+        config: &[
+            ("provider", "name of an org web search provider; empty = the org default"),
+        ],
+        notes: "The query is msg.payload when it is a string, else msg.payload.query (1 to 400 characters). msg.payload becomes {query, provider, results: [{url, title, snippet, rank, domain}]} (rank starts at 1 after exclusions). Each message is one paid call to the provider and counts against the org's daily web search cap (web-search-quota): feed it a bounded list (ontology_query with a limit), never a loop. On port 1 msg.error = {code, args}: web-search-no-provider, web-search-unavailable, web-search-quota, web-search-query-invalid. A search result is a candidate, not a fact: check it (visit, identifiers) before writing anything.",
+    NodeDoc {
         kind: "control_source",
         summary: "Event source fed by org controls operated from dashboards and annotations (switch, slider, button, number, select, stepper, command, colour). One output port per listed control.",
         config: &[

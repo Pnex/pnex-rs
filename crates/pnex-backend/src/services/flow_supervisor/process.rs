@@ -106,6 +106,10 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_SITE_RECIPE_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/site-recipe"),
             )
+            // Web search candidates (web-presence.md D361).
+            .env(
+                "PNEX_FLOW_WEB_SEARCH_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/web-search"),
             // Pages written by page-write nodes (D209).
             .env(
                 "PNEX_FLOW_PAGE_URL",

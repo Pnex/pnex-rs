@@ -352,6 +352,11 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            // The backend reads the provider and options from the deployed graph (D361).
+            FlowNodeKind::WebSearch { .. } => {
+                padded_ports = Some(crate::web_search::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-web-search",
             FlowNodeKind::Weather { config } => {
                 // Ports: current, daily, hourly.
                 padded_ports = Some(crate::weather::WEATHER_PORT_COUNT);

@@ -30,6 +30,18 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // web-presence.md D360: what an org plugs in to search the web is a
+    // « fournisseur de recherche web »; the engine behind it is not ours.
+    Rule {
+        scope: Scope::Fr,
+        term: "moteur de recherche",
+        use_instead: "fournisseur de recherche web (D360)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "search engine",
+        use_instead: "web search provider (D360)",
     // iam.md §3: members grouped for access are a « team » (« Groupe »
     // already names cold groups, company groups, node groups), and a role
     // given to a member or a team is an « attribution ».

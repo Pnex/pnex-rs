@@ -340,6 +340,7 @@ pub const EXPOSED: &[&str] = &[
     "voice_id_profiles_list",
     "voice_id_profiles_update",
     "voice_id_samples_from_media",
+    "web_search_providers_list",
     "web_sites_list",
 ];
 
@@ -350,6 +351,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
         &[
             "ai_conversations_delete",
             "ontology_imports_delete",
+            "web_search_providers_delete",
             "ai_conversations_delete_all",
             "ai_providers_delete",
             "annotation_layers_delete",
@@ -442,6 +444,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "iam_access_keys_create",
             "ai_providers_create",
             "ai_providers_update",
+            "web_search_providers_create",
+            "web_search_providers_update",
             "devices_agent_enrollment_create",
             "edge_wifi_update",
             "edge_wifi_upsert",
@@ -498,6 +502,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "notify_channels_test_draft",
             "site_recipes_runs_create",
             "tours_share_create",
+            "web_search_providers_test",
         ],
     ),
     (
