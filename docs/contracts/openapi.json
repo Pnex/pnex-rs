@@ -3610,7 +3610,13 @@
       "ClusterItemDto": {
         "description": "Cluster answer item: single POI (`count == 1`, `id` set) or numbered\ncluster (centroid + sample label).",
         "properties": {
+          "color": {
             "description": "Colour token of the pin's coloured status (`green`, `amber`…).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "count": {
             "format": "int32",
             "minimum": 0,
@@ -7746,6 +7752,7 @@
           "coverage": {
             "$ref": "#/components/schemas/HierarchyCoverage",
             "description": "What makes a node of the tree covered; the others are its white\nspace (D330)."
+          },
           "key": {
             "type": "string"
           },
@@ -7760,8 +7767,13 @@
               "$ref": "#/components/schemas/HierarchyStep"
             },
             "type": "array"
+          },
           "sums": {
             "description": "Number properties summed over the tree's nodes, each node once\n(account-mapping.md D330: current and potential users).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -7772,6 +7784,30 @@
         "type": "object"
       },
       "HierarchyCoverage": {
+        "description": "A node is covered when it has an open link of one of `links` (a contact\nworks there) or one of the `values` of a property (a client site).",
+        "properties": {
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "values": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Property key → values that cover.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
       "HierarchyNode": {
         "description": "A node of a computed hierarchy, flat in depth-first order.",
         "properties": {
@@ -7797,14 +7833,20 @@
           },
           "marks": {
             "description": "Its values of coloured properties (D339).",
+            "items": {
               "$ref": "#/components/schemas/NodeMark"
+            },
+            "type": "array"
+          },
           "title": {
             "type": "string"
           },
           "type_key": {
             "type": "string"
+          },
           "white_space": {
             "description": "Not covered, when the hierarchy declares a coverage (D330).",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7835,10 +7877,17 @@
       "HierarchyView": {
         "description": "`GET /ontology/objects/{id}/hierarchy`: the hierarchies of the installed\npacks, and the tree of the one asked (the first by default).",
         "properties": {
+          "counts": {
             "description": "Coverage of the tree, computed at read time, never stored (D330).",
+            "items": {
               "$ref": "#/components/schemas/MarkCount"
+            },
+            "type": "array"
+          },
           "has_coverage": {
             "description": "Distinct nodes not covered (`white_space` on each of them).",
+            "type": "boolean"
+          },
           "hierarchies": {
             "items": {
               "$ref": "#/components/schemas/Hierarchy"
@@ -7855,11 +7904,20 @@
             },
             "type": "array"
           },
+          "totals": {
+            "items": {
               "$ref": "#/components/schemas/PropertyTotal"
+            },
+            "type": "array"
+          },
           "truncated": {
             "description": "The depth or node cap cut the tree.",
             "type": "boolean"
+          },
           "white_space": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -9839,6 +9897,30 @@
       },
       "MarkCount": {
         "description": "How many distinct nodes of the tree hold a coloured value.",
+        "properties": {
+          "color": {
+            "type": "string"
+          },
+          "count": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "property": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "property",
+          "value",
+          "color",
+          "count"
+        ],
+        "type": "object"
+      },
       "MatchKind": {
         "description": "How a relevance rule reads the page text (closed list, D307).",
         "enum": [
@@ -11400,7 +11482,15 @@
         "description": "Local graph of an object (D186): nodes and the links among them.",
         "properties": {
           "colors": {
+            "additionalProperties": {
+              "type": "string"
+            },
             "description": "Object id → colour token of its coloured status (D339).",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "links": {
             "items": {
               "$ref": "#/components/schemas/LinkView"
@@ -11422,6 +11512,25 @@
       },
       "NodeMark": {
         "description": "A value of a coloured enum property (account-mapping.md D339).",
+        "properties": {
+          "color": {
+            "description": "One of the palette tokens (`green`, `amber`…).",
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "property",
+          "value",
+          "color"
+        ],
+        "type": "object"
+      },
       "NotifyChannel": {
         "description": "Notification channel (destination). The `secret` fields of `config`\nare **never** returned (D54): `secrets_set` lists which are set.",
         "properties": {
@@ -11981,6 +12090,26 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "ObjectPageInput": {
+        "description": "`POST /ontology/objects/{id}/pages`: a page from a template, filled from\nthe object.",
+        "properties": {
+          "template": {
+            "description": "Key of a page template whose subject is the object's type.",
+            "type": "string"
+          },
+          "title": {
+            "description": "Default: the template's name and the object's title.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "template"
+        ],
         "type": "object"
       },
       "ObjectPath": {
@@ -12947,11 +13076,25 @@
           "key": {
             "type": "string"
           },
+          "link": {
+            "description": "Link type from the page (`doc`) to that object.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
           "names": {
             "$ref": "#/components/schemas/BTreeMap"
+          },
+          "subject": {
+            "description": "Object type the template is filled from (`page_render`\nplaceholders, account-mapping.md D340); none = a blank page.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -15770,7 +15913,41 @@
         "type": "object"
       },
       "Paginated_SiteCandidate": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
               "$ref": "#/components/schemas/SiteCandidate"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_SitePage": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -16600,7 +16777,41 @@
         "type": "object"
       },
       "Paginated_WebSearchProvider": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
               "$ref": "#/components/schemas/WebSearchProvider"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_WebSite": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -17520,7 +17731,15 @@
           {
             "properties": {
               "colors": {
+                "additionalProperties": {
+                  "type": "string"
+                },
                 "description": "Enum only: value → colour of the map, hierarchy and graph\n(account-mapping.md D339), one of [`COLORS`].",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
               "indexed": {
                 "description": "Backed by the GIN index of `objects.properties` in queries.",
                 "type": "boolean"
@@ -17854,6 +18073,22 @@
         ]
       },
       "PropertyTotal": {
+        "description": "A summed number property over the tree.",
+        "properties": {
+          "property": {
+            "type": "string"
+          },
+          "total": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "property",
+          "total"
+        ],
+        "type": "object"
+      },
       "ProposalReject": {
         "description": "Rejecting a proposal, with an optional reason (K45).",
         "properties": {
@@ -19721,9 +19956,97 @@
       },
       "SiteCandidate": {
         "description": "A website candidate waiting for a human (web-presence.md D366): an open\n`a_pour_site` link and what proved it. No identifier of a person (R4).",
+        "properties": {
+          "domain": {
+            "type": "string"
+          },
+          "link_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "opinion": {
+            "type": "string"
+          },
+          "organization": {
+            "type": "string"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "proof_nda": {
+            "type": "boolean"
+          },
+          "proof_siren": {
+            "type": "boolean"
+          },
+          "query": {
+            "type": "string"
+          },
+          "rank": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "score": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "since": {
+            "description": "When the candidate was proposed.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "site_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "link_id",
+          "organization_id",
+          "organization",
+          "site_id",
+          "domain",
+          "url",
+          "status",
+          "since"
+        ],
+        "type": "object"
+      },
       "SiteDecision": {
+        "properties": {
+          "decision": {
             "$ref": "#/components/schemas/SiteDecisionKind"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "type": "object"
+      },
       "SiteDecisionKind": {
+        "description": "What a human decides on a candidate.",
+        "enum": [
+          "confirme",
+          "rejete"
+        ],
+        "type": "string"
+      },
       "SitePage": {
         "description": "A page of the site registry (D309).",
         "properties": {
@@ -20332,6 +20655,8 @@
           "confirm_large": {
             "description": "The user accepted a step over [`LARGE_CALLS`] calls.",
             "type": "boolean"
+          },
+            "type": "string"
           },
           "locale": {
             "description": "UI locale (`fr-FR`, `en-US`): language of the page title.",
@@ -23666,13 +23991,106 @@
         "type": "object"
       },
       "WebSearchKind": {
+        "description": "Closed list of provider kinds; one module each on the server.",
+        "enum": [
           "serper",
           "searxng"
+        ],
+        "type": "string"
+      },
       "WebSearchProvider": {
+        "description": "Read model; the key is a vault reference, never its value (R4, R16).",
+        "properties": {
+          "api_key": {
+            "$ref": "#/components/schemas/SecretFieldView"
+          },
+          "base_url": {
+            "description": "Empty = the kind's default address.",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "kind": {
             "$ref": "#/components/schemas/WebSearchKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "base_url",
+          "is_default",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "WebSearchProviderInput": {
+        "description": "Create or replace a provider; `api_key: None` keeps the current key.",
+        "properties": {
+          "api_key": {
+            "$ref": "#/components/schemas/SecretFieldInput"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "kind": {
             "$ref": "#/components/schemas/WebSearchKind"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
       "WebSearchTestResult": {
+        "description": "Outcome of a provider test: one real query, nothing stored.",
+        "properties": {
+          "detail": {
+            "description": "Diagnostic as is, not translated.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latency_ms": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "results": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ok",
+          "latency_ms",
+          "results"
+        ],
+        "type": "object"
+      },
       "WebSite": {
         "description": "A web site of the org: the recipes anchored on it and its last run.",
         "properties": {
@@ -56175,9 +56593,93 @@
         "tags": [
           "ontology"
         ]
+      },
+      "post": {
         "description": "Starts a run in the background and answers it `running` (202); poll `GET …/runs/{run_id}`. An import with steps runs them (resolve, download, extract, inspect, filter), then applies the file they staged; a `url` or `api` import fetches its source. Checked like a scheduled run and applied at once with the author's role (no preview). A `file` import without steps has nothing to fetch (`ingest-entry-missing`): preview it with a file. Org writers.",
+        "operationId": "ontology_imports_runs_start",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Import id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRunView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied` (no `ontology:write`) · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`ingest-entry-missing` (a file import without steps)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run an import now",
+        "tags": [
+          "ontology"
+        ]
       }
     },
     "/api/v1/ontology/imports/{id}/runs/{run_id}": {
@@ -58044,7 +58546,105 @@
         ]
       }
     },
+    "/api/v1/ontology/objects/{id}/pages": {
+      "post": {
+        "description": "Creates a page from an installed pack's template whose subject is the object's type (an account plan, a competitor sheet, a meeting preparation): its placeholders are filled with the object, its open links and its hierarchies as of now, then the page is linked to the object. The page is a snapshot, edited freely afterwards. Needs the right to write pages, and to write the object's type for the link.",
+        "operationId": "ontology_objects_pages_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectPageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocSummary"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unknown template for this type, or title too long (`field-invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, or `ontology-write-forbidden` by the type's write role · `access-denied` (`args.permission` = `docs:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a page from a template, filled from an object",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
     "/api/v1/ontology/objects/{id}/series/{property}": {
       "get": {
         "description": "Recomposes a `series` property over the window from the telemetry of every device that measured it (`measures` links), segment by segment, so a sensor replacement does not break the curve. Empty points when telemetry is unavailable. Any org member.",
@@ -58359,7 +58959,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
             "description": "Link type keys the path may follow, comma-separated (at most 20);\nall when absent. An introduction path follows the links between\npeople: `knows,recommande,employs,dirige,member_of`.",
+            "in": "query",
+            "name": "links",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -69826,61 +70434,622 @@
       }
     },
     "/api/v1/web-presence/candidates": {
+      "get": {
         "description": "Open `a_pour_site` links of a status (`propose` by default, or `confirme`), best score first, with what proved them (SIREN, declaration number), where they came from and the organization. Any member.",
         "operationId": "web_presence_candidates_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "`propose` (default) or `confirme`.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/Paginated_SiteCandidate"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Unknown `status` (`field-invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List website candidates",
+        "tags": [
           "web-presence"
+        ]
+      }
+    },
     "/api/v1/web-presence/candidates/{id}/decision": {
+      "post": {
         "description": "`confirme` marks the open `a_pour_site` link confirmed (the site may then be crawled); `rejete` marks it rejected and closes it, so a flow never proposes it again. `valide_par` takes the user's display name. Needs the right to write the ontology.",
         "operationId": "web_presence_candidates_decide",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Link id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
                 "$ref": "#/components/schemas/SiteDecision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Malformed body (`field-invalid`)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`access-denied`, or `ontology-write-forbidden` by the type's write role · `access-denied` (`args.permission` = `ontology:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`: no open website link with this id"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirm or reject a website candidate",
+        "tags": [
           "web-presence"
+        ]
+      }
+    },
     "/api/v1/web-search/providers": {
+      "get": {
         "description": "Search providers the organization's web_search flow nodes query, with the default. The key is a vault reference, never its value. The platform provides none. Any member.",
         "operationId": "web_search_providers_list",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/Paginated_WebSearchProvider"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:read`): the caller's role does not grant it"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "List web search providers",
+        "tags": [
           "web-search"
+        ]
+      },
+      "post": {
         "description": "Registers a provider: `serper` (key required, default address) or `searxng` (address of the instance, JSON output enabled, key optional, sent as a bearer token). The address must pass the egress policy. A typed `api_key` value is stored in the org vault. The first provider, or one with `is_default`, becomes the org default. Owner or admin only.",
         "operationId": "web_search_providers_create",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
                 "$ref": "#/components/schemas/WebSearchProviderInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/WebSearchProvider"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` maps the field to a token"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`web-search-provider-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Create a web search provider",
+        "tags": [
           "web-search"
+        ]
+      }
+    },
     "/api/v1/web-search/providers/{id}": {
+      "delete": {
         "description": "Deletes the provider and its dedicated key. Flow nodes that named it fail with `web-search-no-provider` until edited. Owner or admin only.",
         "operationId": "web_search_providers_delete",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Web search provider id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`web-search-provider-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Delete a web search provider",
+        "tags": [
           "web-search"
+        ]
+      },
+      "put": {
         "description": "Full replacement; an absent `api_key` keeps the current one. Owner or admin only.",
         "operationId": "web_search_providers_update",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Web search provider id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
                 "$ref": "#/components/schemas/WebSearchProviderInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/WebSearchProvider"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid`: `errors.fields` maps the field to a token"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`web-search-provider-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`web-search-provider-name-taken`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Replace a web search provider",
+        "tags": [
           "web-search"
+        ]
+      }
+    },
     "/api/v1/web-search/providers/{id}/test": {
+      "post": {
         "description": "From the server: sends one real query (it may be billed by the provider) and answers whether it worked, the number of results and the latency; nothing is stored. Owner or admin only.",
         "operationId": "web_search_providers_test",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Web search provider id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
                   "$ref": "#/components/schemas/WebSearchTestResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `web-search:test`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
             "description": "`web-search-provider-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "Test a web search provider",
+        "tags": [
           "web-search"
+        ]
+      }
+    },
     "/api/v1/web-sites": {
       "get": {
         "description": "Web sites of the organization: one per normalised host carrying a navigation recipe, with the recipe count and the last run. Most recently run first. Any member.",

@@ -497,8 +497,11 @@ async fn group_coverage_and_status_colours() {
         assert_eq!(path(&mother, &people).await.0, 404);
         assert_eq!(path(&mother, "").await.0, 200);
 
+        // D340: an account plan filled from the account, linked to it.
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{mother}/pages"), &env.alice, org,
+            Some(json!({"template": "plan_de_compte"}))).await;
         assert_eq!(st, 201, "{page}");
+        assert_eq!(page["title"], "Account plan — Groupe");
         let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
@@ -508,8 +511,10 @@ async fn group_coverage_and_status_colours() {
         }
         assert!(!text.contains("{{"), "every placeholder filled");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/links"), &env.alice, org, None).await;
+        assert!(l.to_string().contains("page_sur"), "{l}");
         // A template of another type is refused.
         let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/objects/{}/pages", p["id"].as_str().unwrap()), &env.alice, org,
+            Some(json!({"template": "plan_de_compte"}))).await;
         assert_eq!(st, 400);
     })
     .await;

@@ -91,3 +91,92 @@ pub async fn on_concluded(db: &DatabaseConnection, org_id: i64, actor: &Actor, p
         tracing::warn!(doc_id = %doc, error = %e, "cases: conclusion page not versioned");
     }
 }
+
+/// A page from a pack template, filled from the object `id` (account-mapping.md
+/// D340): the template's placeholders read the object, its open links and
+/// its hierarchies today; the page is then linked to the object by the
+/// template's link. A snapshot of the day, edited freely afterwards.
+pub async fn from_object(
+    db: &DatabaseConnection,
+    org_id: i64,
+    actor: &Actor,
+    id: Uuid,
+    input: &pnex_core::ontology::api::ObjectPageInput,
+) -> Result<DocSummary> {
+    use pnex_core::ontology::page_render::{hierarchies, render, RenderCtx};
+    let obj = objects::find(db, org_id, id).await?;
+    if obj.valid_to.is_some() {
+        return Err(super::super::OntologyError::NotFound);
+    }
+    let t = templates(db, org_id)
+        .await?
+        .into_iter()
+        .find(|t| t.key == input.template && t.subject.as_deref() == Some(obj.type_key.as_str()))
+        .ok_or_else(|| invalid("template", FIELD_INVALID))?;
+    let title = match input
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
+        Some(t) => t.to_string(),
+        None => format!("{} — {}", t.name, obj.title),
+    };
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(invalid(
+            "title",
+            format!("{FIELD_MAX_LENGTH}:{MAX_TITLE_CHARS}"),
+        ));
+    }
+    let open = links::for_object(db, org_id, id, None, false).await?;
+    let mut trees = std::collections::HashMap::new();
+    for k in hierarchies(&t.body) {
+        // A hierarchy the org lacks leaves its placeholder as written.
+        if let Ok(v) = super::super::hierarchy::tree(db, org_id, id, Some(&k), None).await {
+            if v.key == k {
+                trees.insert(k, v);
+            }
+        }
+    }
+    let props = obj.properties.as_object().cloned().unwrap_or_default();
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let id_text = id.to_string();
+    let body = render(
+        &t.body,
+        &RenderCtx {
+            id: &id_text,
+            title: &obj.title,
+            properties: &props,
+            today: &today,
+            links: &open,
+            trees: &trees,
+        },
+    );
+    let row = docs::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        org_id: Set(org_id),
+        title: Set(title),
+        snapshot: Set(Some(pages::seed::from_markdown(&body))),
+        snapshot_seq: Set(0),
+        created_by: Set(actor.user_id),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    if let Some(link_type) = &t.link {
+        let page = objects::find_by_native(db, org_id, KIND_DOC, &row.id.to_string()).await?;
+        let input = pnex_core::ontology::api::LinkInput {
+            link_type: link_type.clone(),
+            source_id: page.id.to_string(),
+            target_id: id.to_string(),
+            ..Default::default()
+        };
+        links::create(db, org_id, actor, &input).await?;
+    }
+    Ok(DocSummary {
+        id: row.id,
+        title: row.title,
+        created_at: row.created_at.to_rfc3339(),
+        updated_at: row.updated_at.to_rfc3339(),
+    })
+}

@@ -469,3 +469,31 @@ Limites :
   - envoi à chaque suiveur (`suit_le_compte`) : le résumé part sur les
     canaux choisis par l'org.
 
+### CC6, D340 — pages remplies depuis un objet (2026-10-22, non commité)
+
+- **Noyau générique** (`pnex_core::ontology::page_render`) : un modèle de
+  page de pack peut déclarer `subject` (type d'objet) et `link` (lien
+  `doc` → objet). Son corps accepte des balises remplies à la création :
+  `{{title}}`, `{{today}}`, `{{prop:<clé>}}`, `{{links:<type>}}` et
+  `{{links:<type>:in}}` (liens ouverts et leurs attributs), `{{tree:<h>}}`,
+  `{{coverage:<h>}}` et `{{white_space:<h>}}` (hiérarchie D305 et
+  couverture D330). Une balise inconnue reste écrite telle quelle. Les
+  `_` des clés deviennent des espaces, sinon le Markdown de la page les
+  lirait comme de l'italique. Le métier reste dans le pack (D190).
+- **Route** `POST /api/v1/ontology/objects/{id}/pages` (`docs:write`,
+  exposée au MCP comme `docs_create`) : crée la page, instantané du jour,
+  puis la relie à l'objet. Le droit d'écrire le type est vérifié au
+  moment de poser le lien.
+- **Pack `prospection_b2b`** : lien `page_sur` (`doc` → `organization`) et
+  trois modèles sur `organization`, `plan_de_compte`, `fiche_concurrent`
+  et `preparation_rdv` (fiche de préparation de rendez-vous, utilisée par
+  le bloc réunions). La validation des packs vérifie que le lien d'un
+  modèle admet `doc` → son type.
+- **UI** : bouton « Nouvelle page » sur la page d'un objet, quand un
+  modèle existe pour son type ; la page créée s'ouvre dans l'éditeur.
+- Test : `group_coverage_and_status_colours`, partie D340 (texte rendu
+  dans l'instantané, lien `page_sur`, 400 pour un modèle d'un autre
+  type) ; test unitaire du rendu.
+- Limite : instantané, pas une vue vivante. Pour rafraîchir, on recrée
+  la page.
+

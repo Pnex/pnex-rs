@@ -394,6 +394,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("docs_comments_list", Access::Org("docs:read")),
     ("docs_comments_update", Access::Org("docs:write")),
     ("docs_create", Access::Org("docs:write")),
+    ("ontology_objects_pages_create", Access::Org("docs:write")),
     ("docs_delete", Access::Org("docs:delete")),
     ("docs_get", Access::Org("docs:read")),
     ("docs_list", Access::Org("docs:read")),

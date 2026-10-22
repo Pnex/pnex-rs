@@ -207,14 +207,27 @@ hierarchies:
         - { id: keep, kind: pnex_function, config: { function_name: pb_criteres, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
             filters: [{ key: score_le, op: ne, value: "$today" }]
         - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+page_templates:
+  - key: plan_de_compte
+    name: Account plan
     description: The account as of today, its group, coverage, white space, contacts, signals and competitors, then the next actions.
     descriptions: {fr: "Le compte au jour dit : groupe, couverture, espace blanc, contacts, signaux et concurrents, puis les prochaines actions."}
+    subject: organization
+    link: page_sur
       - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
       {{coverage:groupe_commercial}}
       ## Espace blanc
       {{white_space:groupe_commercial}}
       {{links:signal_sur:in}}
+  - key: fiche_concurrent
+    subject: organization
+    link: page_sur
       {{links:signal_sur:in}}
+  - key: preparation_rdv
+    subject: organization
+    link: page_sur
       Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
       {{coverage:groupe_commercial}}
       {{links:signal_sur:in}}
+    subject: rendez_vous
+    link: page_sur

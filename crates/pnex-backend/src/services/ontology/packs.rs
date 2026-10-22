@@ -729,9 +729,13 @@ mod tests {
                     assert!(links.contains(&s.link.as_str()), "{}: {}", h.key, s.link);
                 }
             }
+            // A template filled from an object links back to it (D340).
             for t in &p.page_templates {
                 if let Some(l) = &t.link {
+                    let subject = t
+                        .subject
                         .as_deref()
+                        .expect("a linked template has a subject");
                     let def = deps
                         .iter()
                         .flat_map(|d| d.link_types.iter())
@@ -739,6 +743,8 @@ mod tests {
                         .find(|d| &d.key == l)
                         .unwrap_or_else(|| panic!("{}: template {} link {l}", p.key, t.key));
                     assert!(
+                        def.allows(l, "doc", subject),
+                        "{}: {l} doc → {subject}",
                         p.key
                     );
                 }
