@@ -36,8 +36,8 @@
 # Tunables (env): PNEX_GUARD_MEM_MAX (fixed ceiling, skips the computed
 # one), PNEX_GUARD_RESERVE_GB (16), PNEX_GUARD_MIN_DISK_GB (25),
 # PNEX_GUARD_NO_LOCK, CARGO_BUILD_JOBS.
-# Without a systemd user session (CI, containers) it runs the command with
-# the priority settings only.
+# On CI or without a systemd user session (containers) it runs the command
+# with the priority settings only.
 set -euo pipefail
 
 if [ "$#" -eq 0 ]; then
@@ -95,7 +95,8 @@ size_build() {
 
 run() {
   size_build
-  if command -v systemd-run >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
+  # CI: no desktop to protect, and the reserve can leave a negative ceiling.
+  if [ -z "${CI:-}" ] && command -v systemd-run >/dev/null && systemctl --user show-environment >/dev/null 2>&1; then
     exec systemd-run --user --scope --quiet --collect \
       --unit="pnex-build-$$" \
       -p MemoryMax="$mem_max" -p MemorySwapMax=0 \
