@@ -39,7 +39,6 @@ pub const PREVIEW_SAMPLE: usize = 500;
 pub const IMPORTS_MAX: i64 = 200;
 const DEFAULT_PAGES: u32 = 50;
 /// A run still `running` after this is considered lost (pod restart).
-const RUN_LOST_AFTER_MIN: i64 = 60;
 /// Scheduled runs start at this hour (UTC) of their day.
 const RUN_HOUR: u32 = 3;
 
@@ -677,7 +676,8 @@ pub async fn apply(
     // Claim the preview: a second apply of the same run finds it taken.
     let claimed = db
         .execute_raw(stmt(
-            "UPDATE object_import_runs SET state = 'running' WHERE id = $1 AND state = 'preview'",
+            "UPDATE object_import_runs SET state = 'running', heartbeat_at = now() \
+             WHERE id = $1 AND state = 'preview'",
             vec![run_id.into()],
         ))
         .await?;
@@ -709,8 +709,20 @@ pub async fn apply(
         if let Err(e) = finish_run(&db, run.id, state, code, Some(&diff), false).await {
             tracing::warn!(run = %run.id, error = %e, "import run not recorded");
         }
+        drop(diff);
+        release_memory();
     });
     Ok(view)
+}
+
+/// Gives the heap a large run freed back to the system: glibc keeps it
+/// otherwise, and the pod stays at the run's peak.
+pub fn release_memory() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    // SAFETY: malloc_trim only returns the allocator's free pages.
+    unsafe {
+        libc::malloc_trim(0);
+    }
 }
 
 /// Machine code journaled for a failed application.
@@ -766,26 +778,24 @@ async fn write(
         // Bulk paths (D347): a few statements per batch, not per row. A
         // `map_pin` goes through its POI, one by one.
         let mut created: Vec<Uuid> = vec![Uuid::nil(); diff.created.len()];
-        let mut plain: Vec<(usize, ObjectInput)> = Vec::new();
+        let (mut at, mut inputs) = (Vec::new(), Vec::new());
         for (i, c) in diff.created.iter().enumerate() {
             if c.type_key == pnex_core::resources::KIND_MAP_PIN {
                 created[i] = create_pin(&txn, &s, org_id, actor, c).await?;
             } else {
-                plain.push((
-                    i,
-                    ObjectInput {
-                        type_key: c.type_key.clone(),
-                        title: c.title.clone(),
-                        properties: c.properties.clone(),
-                        expected_version: None,
-                    },
-                ));
+                at.push(i);
+                inputs.push(ObjectInput {
+                    type_key: c.type_key.clone(),
+                    title: c.title.clone(),
+                    properties: c.properties.clone(),
+                    expected_version: None,
+                });
             }
         }
-        let inputs: Vec<ObjectInput> = plain.iter().map(|(_, o)| o.clone()).collect();
         let ids = objects::create_many_with(&txn, &s, org_id, actor, &inputs).await?;
-        for ((i, _), id) in plain.iter().zip(ids) {
-            created[*i] = id;
+        drop(inputs);
+        for (i, id) in at.into_iter().zip(ids) {
+            created[i] = id;
         }
         let mut current = std::collections::HashMap::new();
         for chunk in diff.updated.chunks(objects::BULK_CHUNK) {
@@ -1073,6 +1083,7 @@ pub async fn start(
             out = work => out,
             _ = beat => Ok(()),
         };
+        release_memory();
         if let Err(e) = out {
             tracing::warn!(import = %imp.id, run = %run.id, error = %e, "import run failed");
             let _ = fail_flow_run(&db, run.id, err_codes::IMPORT_SOURCE_UNREADABLE).await;
@@ -1203,6 +1214,8 @@ pub async fn run_from_flow(
         }
         Err(_) => return end("failed", Some(source::UNREADABLE), Value::Null, None, false).await,
     };
+    // The records are planned: only the difference is written.
+    drop(rows);
     progress(db, run.id, d.rows, Some(&d)).await;
     if snapshot && !d.errors.is_empty() {
         return end(
@@ -1249,7 +1262,7 @@ pub async fn run_from_flow(
     }
 }
 
-/// A flow run without a heartbeat for this long lost its server.
+/// A run without a heartbeat for this long lost its server.
 const FLOW_RUN_STALE: &str = "10 minutes";
 
 /// Opens the run of one `ontology_import` step (pass `ingest_run`, node
@@ -1543,15 +1556,19 @@ async fn sweep(
     store: Option<&crate::services::artifact_store::S3Store>,
 ) -> Result<()> {
     let store = store.cloned();
-    // Runs lost with their pod. An application still writing holds the
-    // org's import lock (it dies with its connection): such a run is not lost.
+    // Runs lost with their pod: no heartbeat any more. An application
+    // still writing holds the org's import lock (it dies with its
+    // connection): such a run is not lost.
     db.execute_raw(stmt(
         &format!(
-            "UPDATE object_import_runs SET state = 'failed', finished_at = now() \
-             WHERE state = 'running' AND started_at < now() - interval '{RUN_LOST_AFTER_MIN} minutes' \
+            "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now() \
+             WHERE state = 'running' AND heartbeat_at < now() - interval '{FLOW_RUN_STALE}' \
              AND pg_try_advisory_xact_lock($1, (org_id % 2147483647)::int)"
         ),
-        vec![crate::services::db_lock::ns::ONTOLOGY_IMPORT.into()],
+        vec![
+            crate::services::db_lock::ns::ONTOLOGY_IMPORT.into(),
+            err_codes::IMPORT_RUN_INTERRUPTED.into(),
+        ],
     ))
     .await?;
     let due = ImportRow::find_by_statement(stmt(

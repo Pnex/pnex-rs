@@ -132,8 +132,8 @@ pub async fn purge(
                 object_id: c.id.clone(),
                 type_key: c.type_key.clone(),
                 source_ref: actor.source_ref.clone(),
-                before: Value::Null,
-                after: Value::Null,
+                before: Value::Null.into(),
+                after: Value::Null.into(),
             });
         }
         Ok(picked.len())
