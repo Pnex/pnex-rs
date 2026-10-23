@@ -101,7 +101,9 @@ séparateur (`;` `,` tabulation `|`), lignes exactes, par colonne
 ### D321 — `rows_filter`
 
 Avant le plafond de l'import. `equals`, `in`, `in_objects`
-(`{object_type, property}` : valeurs des objets vivants de l'org) ;
+(`{object_type, property}` : valeurs des objets vivants de l'org,
+restreints par `only: {property, values}` — p. ex. certifications
+`statut: actif` pour les partenaires) ;
 conversions D301 sur la colonne avant comparaison (`digits` pour les SIRET
 précédés d'une tabulation). Écrit un CSV filtré en staging (même
 séparateur). Manifeste `{rows_in, rows_out, distinct_kept, staging_key}`.

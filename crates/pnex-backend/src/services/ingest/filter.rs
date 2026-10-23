@@ -7,25 +7,41 @@ use std::collections::HashSet;
 
 use pnex_core::err_codes;
 use pnex_core::ingest::{FilterOp, IngestConfig, IngestMsg, StagedEntry};
-use pnex_core::ontology::import::convert;
+use pnex_core::ontology::import::{convert, PerObjectOnly};
 use sea_orm::ConnectionTrait;
 use serde_json::{json, Value};
 
 use super::table::{load, Table};
 use super::{stmt, unavailable, Cx, Outcome};
 
-/// Values of `property` on the live objects of `type_key`.
+/// Values of `property` on the live objects of `type_key` (those whose
+/// `only` property holds one of its values, when set).
 async fn object_values(
     cx: &Cx<'_>,
     type_key: &str,
     property: &str,
+    only: Option<&PerObjectOnly>,
 ) -> Result<HashSet<String>, Box<Outcome>> {
     let rows = cx
         .db
         .query_all_raw(stmt(
             "SELECT DISTINCT properties ->> $3 AS v FROM objects \
-             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3",
-            vec![cx.node.org_id.into(), type_key.into(), property.into()],
+             WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
+               AND ($4::text IS NULL OR properties ->> $4 = ANY($5))",
+            vec![
+                cx.node.org_id.into(),
+                type_key.into(),
+                property.into(),
+                only.map(|o| o.property.trim().to_string()).into(),
+                only.map(|o| {
+                    o.values
+                        .iter()
+                        .map(|v| v.trim().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into(),
+            ],
         ))
         .await
         .map_err(|_| Box::new(unavailable()))?;
@@ -109,10 +125,12 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
         FilterOp::Equals | FilterOp::In => {
             cfg.values.iter().map(|v| v.trim().to_string()).collect()
         }
-        FilterOp::InObjects => match object_values(cx, &cfg.object_type, &cfg.property).await {
-            Ok(v) => v,
-            Err(o) => return *o,
-        },
+        FilterOp::InObjects => {
+            match object_values(cx, &cfg.object_type, &cfg.property, cfg.only.as_ref()).await {
+                Ok(v) => v,
+                Err(o) => return *o,
+            }
+        }
     };
     let (rows, distinct) = keep(&table, index, cfg, &allowed);
     let csv = to_csv(&table.columns, &rows, table.delimiter.unwrap_or(';'));
@@ -140,6 +158,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
         "entry": input.name,
         "column": column,
         "op": cfg.op,
+        "only": cfg.only,
         "allowed_values": allowed.len(),
         "rows_in": table.rows.len(),
         "rows_out": rows.len(),
