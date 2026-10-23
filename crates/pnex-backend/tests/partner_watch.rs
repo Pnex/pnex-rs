@@ -1144,8 +1144,8 @@ async fn imports_apply_thousands_of_records_quickly() {
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{r}");
         eprintln!("applied {ROWS} records + {ROWS} links in {took:?}");
-        // Debug build on a shared machine: ~60 s; one write per row took 340 s.
-        assert!(took < std::time::Duration::from_secs(120), "apply took {took:?}");
+        // Debug build: ~60 s locally, 191 s seen on a loaded CI runner; one write per row took 340 s.
+        assert!(took < std::time::Duration::from_secs(300), "apply took {took:?}");
 
         // Every title changes: one bulk update.
         let p = preview(&server, &env.alice, org, &id, &csv_of("Firm")).await;
@@ -1159,7 +1159,7 @@ async fn imports_apply_thousands_of_records_quickly() {
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
         eprintln!("updated {ROWS} records in {took:?}");
-        assert!(took < std::time::Duration::from_secs(120), "update took {took:?}");
+        assert!(took < std::time::Duration::from_secs(300), "update took {took:?}");
         let row = env.db.query_one_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
