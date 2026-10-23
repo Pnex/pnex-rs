@@ -556,6 +556,117 @@ elle seule l'incident. L0 et L1 sont donc le plus petit lot utile. La file
 de jobs et la reprise (L2) viennent ensuite, quand le pipeline sort du
 flow.
 
+## 7 bis. Retour du 2026-10-23 (retest France Compétences, dev.pnex.io, org 4)
+
+Le flow 9 est supprimé : les cinq imports FC tournent sur leurs propres
+étapes, appliquées en snapshot avec `invalid: skip`, zéro erreur. Ce qui a
+coûté du temps, avec ce que je propose pour chaque point. Rien n'est codé
+au-delà de la récurrence (point 6). Tout le reste est à arbitrer.
+
+1. **Un run meurt avec son pod.** C'est arrivé deux fois : un `helm upgrade`
+   a remplacé les pods API en plein run, puis un « Lancer maintenant » est
+   tombé sur un ancien pod en `Terminating` juste après `rollout status`.
+   Chaque déploiement met en danger un import en cours. Depuis le 23, un
+   tel run passe `failed` + `import-run-interrupted` au bout de 10 min sans
+   battement, mais il faut le relancer à la main.
+   → **Faire L2 (`import_jobs` + reprise par étape, D345–D346) avant L4 et
+   L6.** En attendant, un arrêt propre : sur SIGTERM, le pod ne prend plus de
+   run, et `terminationGracePeriodSeconds` laisse finir celui en cours
+   (borné, un run FC dure moins de 2 min).
+2. **Deux versions côte à côte.** Seule l'API a été redémarrée sur la
+   nouvelle image. Le flow-worker (même binaire) est resté sur l'ancienne et
+   tenait le singleton `object-imports` : la nouvelle logique de balayage ne
+   tournait pas, et rien ne montre qui tient un singleton ni dans quelle
+   version.
+   → Journaliser la version à la prise du bail (`singleton::my_turn`), et
+   lister dans `system_status` (page Système) chaque singleton avec son pod,
+   sa version et l'âge de son bail. Côté procédure, l'image `latest`
+   redémarre l'API **et** le flow-worker ensemble : une ligne dans le
+   runbook de dev.
+3. **Des erreurs sans contexte.** `import-source-too-large` avec 0 ligne et
+   sans `args` ; le premier run tué par OOM passé `failed` sans code une
+   heure après (corrigé le 23 : `import-run-interrupted`). Il a fallu
+   deviner, puis reproduire en local.
+   → Ajouter une colonne `state_args jsonb` à `object_import_runs`
+   (migration), alimentée par tous les refus (le chemin des étapes jette
+   aujourd'hui ses `args`). `ReadError::TooLarge` porte `{rows, max}` et
+   `{bytes, max}`. L'historique affiche le message rendu (`err-*` avec ses
+   arguments). Taille S, une demi-heure gagnée dès la première fois.
+4. **Mémoire.** 1 Gi ne suffisait pas pour 400 k lignes. Corrigé le 23
+   (0e58824e) : pic de 1,6 Go ramené à ~340 Mio en prod (≈ 0,95 Go mesuré
+   en debug pour 100 k objets + 140 k liens), mémoire rendue après le run.
+   Le diff reste construit en entier en mémoire, et les étapes `table_inspect`
+   et `rows_filter` lisent la table entière.
+   → Rien tant qu'aucune source ne grossit. Le seuil à surveiller : 500 k
+   lignes après filtre ou un pic au-delà de 50 % de la limite du pod. Le
+   remède est alors un diff et une écriture par lots de clés, plus des
+   étapes en flux (lecture CSV ligne à ligne). Le banc
+   `partners_import_memory` (ignoré) sert de mesure.
+5. **Snapshot et données ouvertes sales.** Cinq valeurs fausses côté France
+   Compétences (deux SIREN, trois descriptions trop longues) refusaient tout
+   le run. Corrigé par `invalid: skip` (3d086a8e).
+   → Règle de pack : un import d'une source publique livre `invalid: skip`
+   dès le premier jour, sur sa clé et sur ses textes libres. À écrire dans la
+   doc des packs, et à vérifier en revue de pack plutôt que par une garde,
+   car « source publique » ne se déduit pas du YAML. Limite connue : une
+   ligne écartée par sa clé fige les fermetures de liens de l'autre
+   extrémité pour ce run (la certification).
+6. **Planification.** La récurrence était refusée sur une import fichier à
+   étapes (corrigé le 23, non commité). `RUN_HOUR` est fixe à 03:00 pour
+   tous et il n'y a pas d'enchaînement : les cinq imports sont étalés sur la
+   semaine (certificateurs lundi … RS vendredi) pour garder leur ordre.
+   → C'est le travail de L4 (`import.applied` → `import_trigger`) : on n'y
+   ajoute rien avant. Si L4 tarde, une heure par import dans la récurrence
+   est le plus petit palliatif.
+7. **Visibilité.** Aucun écran ne montre les étapes d'un run :
+   `ingest_steps` existe, mais rien ne l'affiche. Shan cherchait un menu
+   « Pipelines ».
+   → Avant le studio (L6) : dans Ontologie › Imports › Historique, déplier
+   un run montre ses étapes (`ingest_steps` du run : statut, durée, lignes
+   entrées et sorties, code). Réutilise le panneau « Derniers passages » des
+   nœuds d'ingestion. Taille S.
+8. **Outillage.** Le MCP ne crée, ne modifie, ne lance ni ne supprime une
+   import (`EXCLUDED`, 415) : tout est passé par `pnex raw` et des scripts
+   Python. `pnex raw` imprime du JSON avec des caractères de contrôle bruts
+   (lecture en `strict=False`).
+   → Corriger la sortie de `pnex raw` (JSON échappé). Ajouter
+   `pnex import run <id> --wait`, qui lance le run, suit son état et rend le
+   code de sortie. Création et modification d'une import via le MCP :
+   envisageable (lecture et écriture JSON, droits de l'appelant), mais le
+   lancement reste exclu (motif « bulk »).
+9. **Limites croisées.** `FILTER_VALUES_MAX` = 1 000 bloquait un filtre
+   `in` sur ~7 500 codes actifs, contourné par `only` (859d2b89). `left:9`
+   doit précéder `luhn`, sinon la clé de contrôle du SIRET compte (corrigé
+   dans le pack).
+   → Documenter `only` comme la réponse aux longues listes de valeurs. Pas
+   de hausse de la limite.
+
+**Ordre proposé** : 1 (arrêt propre tout de suite, L2 ensuite), 3, 2, 7, 8,
+puis L4 pour 6 ; 4 et 5 sont des règles à tenir, 9 est fait.
+
+**Fait le 2026-10-23 (go de Shan)** :
+
+- **Point 1, arrêt propre** (`imports/stop.rs`). Sur SIGTERM (`on_shutdown`),
+  le pod ne lance plus de run : 503 `import-server-stopping` sur
+  « Lancer maintenant », l'aperçu et l'application ; balayage suspendu,
+  pour ne pas avancer `next_run_at` sans lancer ; une étape de flow répond
+  `pending` et sera reprise ailleurs. Les runs du pod ont
+  `PNEX_SHUTDOWN_GRACE_SECS` (270 s par défaut) pour finir, puis passent
+  `failed` + `import-run-interrupted` ; sans run en cours, l'arrêt est
+  immédiat. `terminationGracePeriodSeconds` : **300** pour l'API et le
+  flow-worker, qui lance les runs planifiés (chart pnex-deploy).
+- **Point 3, `state_args`** (migration 000051). Remplie par chaque refus ou
+  échec qui a des arguments : `{rows, max}` ou `{bytes, max}` pour
+  `import-source-too-large` (lecture du fichier, staging, téléchargement),
+  `{columns}` pour `import-schema-changed`, `{previous, rows}` pour
+  `import-suspicious-drop`, `{closed, held, max_pct}` pour les fermetures
+  suspectes. Les sources URL et API gardent le code seul. L'historique
+  rend le message avec ses chiffres (FR + EN).
+- **Point 7, étapes dans l'historique**. `GET …/runs/{run_id}` renvoie
+  `steps`, les `ingest_steps` du run dans l'ordre. Dans Ontologie › Imports
+  › Historique, « Étapes » déplie chaque étape avec son statut, sa durée,
+  les lignes lues et gardées, et son code.
+
 ## 8. Questions tranchées (Shan, 2026-10-22)
 
 - **Q-P1** — Rétention de `object_changes` : **3 650 jours par défaut,
