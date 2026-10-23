@@ -1097,6 +1097,18 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 budget (il passe seul en 112 s). À relancer sur une machine au repos avant
 le push, à profiler si l'écart demeure.
 
+### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **PRD proposé, rien d'implémenté**
+
+Doc : `autonomous-agents.md` (D378–D401, lots A0–A5) ; infrastructure dans
+`worker-fabric.md` §14. Trois niveaux (interne, hébergé, libre), agent =
+compte de service configurable (placement, moteur, rôle, compétences),
+politique par tâche, runs journalisés et arrêtables,
+passerelle LLM unique budgétée par usage, runners par cluster sans
+identifiant de cluster dans PneX, délégation atténuante, runs reprenables,
+déclencheurs par événement, évaluation avant promotion, audit chaîné.
+Premier lot :
+A0 (passerelle LLM), qui ne dépend que de D212.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe

@@ -148,3 +148,44 @@ Les deux écrivent via l'API Loco → aucune dérive entre config déclarée et 
 - **Tuning du lease** sur jobs longs : trop court = faux zombies requeue ; trop long = zombie réel qui traîne.
 - **Ne pas glisser vers un fleet manager** : la fabric enregistre et route, elle ne provisionne pas.
 - **Découverte/adressage du compute** : réduire « rien / LAN / on-prem / partagé » à **un seul champ de config + fallback gracieux** quand aucun compute n'est joignable (sinon 4 chemins de code).
+
+## 14. Exécuteur de bacs à sable (ajout 2026-10-23, `autonomous-agents.md` D386–D388)
+
+Nouveau profil de worker : le **runner**, qui ne fait pas le travail
+lui-même mais crée, pour chaque run d'agent hébergé, un **bac à sable**
+éphémère dans le cluster où il est installé. C'est le modèle du runner
+GitLab avec l'exécuteur Kubernetes.
+
+**Ce qui ne change pas** : join token (§7), poll sortant (§6), lease et
+heartbeat (§8), source de vérité en base (§9). Le runner annonce ses
+capabilities (`executor:sandbox`, `isolation:pod|vm`, `runtime:gvisor|kata`,
+`arch`, `gpu`, quotas disponibles) ; le run exige, le scheduler matche.
+
+**Ce qui est nouveau**
+
+| Sujet | Règle |
+|---|---|
+| Accès au cluster | Aucun kubeconfig dans PneX (D386). Le runner tourne dans le cluster avec un ServiceAccount limité à **son** namespace (création/suppression de pods, PVC, NetworkPolicy, Secrets) ; manifeste et chart générés par le générateur §7.1 |
+| Provisionnement | Le runner crée et détruit des **bacs à sable**, pas des workers ni des nœuds : la règle « la fabric ne provisionne pas » (§13) reste vraie pour la flotte |
+| Isolation (D387) | `pod` : RuntimeClass gVisor ou Kata, `runAsNonRoot`, sans capabilities, sans privilèges, rootfs en lecture seule hors espace de travail, aucun montage de socket de l'hôte ; `vm` : KubeVirt dans un cluster, Firecracker ou libvirt sur machine nue |
+| Images de toolchain | Catalogue d'images par org (base Chainguard/Wolfi, cf. `container-images.md`) : rust, node, pio, buildah rootless pour construire des images ; épinglées par digest |
+| Espace de travail | Volume éphémère par run ; caches de dépendances par org (PVC dédié), jamais partagés entre orgs |
+| Secrets du run | Livrés par PneX au runner au claim (git limité à un dépôt, registre limité à un dépôt d'images), durée = durée du run, montés en fichier, jamais en variable d'environnement visible des sous-processus du LLM |
+| Egress | NetworkPolicy par bac : seulement l'API PneX, la passerelle LLM, et la liste blanche de la politique (forge, registre, miroirs de paquets) |
+| Ressources | Requests/limits du run (CPU, mémoire, disque, GPU), durée murale max ; quotas par org côté PneX, ResourceQuota côté namespace |
+| Fin de vie | Bac détruit en fin de run ou à l'arrêt ; reaper du runner : tout bac sans run vivant au-delà du bail est détruit ; artefacts remontés au MediaStore avant destruction |
+
+**Modèle de données (ajout)** : `job.kind = agent_run` porte
+`agent_run_id` ; `worker.capabilities` gagne les clés ci-dessus ;
+`sandboxes` (`id`, `org_id`, `agent_run_id`, `worker_id`, `isolation`,
+`state`, `created_at`, `destroyed_at`) pour l'audit et le reaper.
+
+**Risques propres**
+
+- Évasion de conteneur : seul gVisor/Kata ou une VM est une frontière
+  pour du code non fiable ; un runner sans RuntimeClass durcie refuse
+  l'isolation `pod` au lieu de retomber sur runc.
+- Coût des VM : KubeVirt exige la virtualisation imbriquée ou du bare
+  metal ; `vm` reste optionnel (capability annoncée ou non).
+- Caches empoisonnés : un cache par org, jamais par plateforme ; purge
+  manuelle depuis l'UI.
