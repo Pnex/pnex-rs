@@ -1238,6 +1238,9 @@ async fn import_runs_its_own_steps() {
         let r = settle_within(&server, &env.alice, org, &import_id, run["id"].as_str().unwrap(), 600).await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
         assert_eq!(r["run"]["rows"], 2, "the client's certifications only: {r}");
+        // History shows the run's steps, in order.
+        let names: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|s| s["step"].as_str().unwrap()).collect();
+        assert_eq!(names, ["source_resolve", "file_download", "archive_extract", "table_inspect", "rows_filter"], "{r}");
         let links = format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
             AND relation = 'porte' AND valid_to IS NULL");
         assert_eq!(count(q(links).await.unwrap()), 2);
@@ -1249,6 +1252,18 @@ async fn import_runs_its_own_steps() {
             AND node_id = 'import:{import_id}' AND purged_at IS NULL AND keys <> '[]'::jsonb \
             AND (keep_until IS NULL OR keep_until <= now())");
         assert_eq!(count(q(live).await.unwrap()), 0);
+
+        // A failed step: the run keeps its code and arguments, and shows
+        // where it stopped.
+        *zip.lock().unwrap() = fc_zip_of(FC_STANDARD, &FC_CERTIFIERS.replace("Nom_Certificateur", "Nom"), &fc_partners(&[]));
+        let (st, run) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
+        assert_eq!(st, 202, "{run}");
+        let r = settle_within(&server, &env.alice, org, &import_id, run["id"].as_str().unwrap(), 600).await;
+        assert_eq!((r["run"]["state"].as_str(), r["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r}");
+        assert!(r["run"]["state_args"]["columns"].as_str().unwrap().contains("Nom_Certificateur"), "{r}");
+        let last = r["steps"].as_array().unwrap().last().unwrap();
+        assert_eq!((last["step"].as_str(), last["port"].as_u64()), (Some("table_inspect"), Some(1)), "{r}");
+
         // The raw download stays its retention; expired here so the next
         // test reusing this org id finds an empty staging.
         env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,

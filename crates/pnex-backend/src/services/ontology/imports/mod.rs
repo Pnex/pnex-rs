@@ -12,6 +12,7 @@
 
 pub mod diff;
 pub mod source;
+pub mod stop;
 
 use std::time::Duration;
 
@@ -120,6 +121,7 @@ struct RunRow {
     number: i32,
     state: String,
     state_code: Option<String>,
+    state_args: Option<Value>,
     trigger: String,
     import_version: i32,
     rows: i32,
@@ -128,7 +130,8 @@ struct RunRow {
     finished_at: Option<DateTimeWithTimeZone>,
 }
 
-const RUN_COLUMNS: &str = "id, number, state, state_code, trigger, import_version, rows, \
+const RUN_COLUMNS: &str =
+    "id, number, state, state_code, state_args, trigger, import_version, rows, \
      counts, started_at, finished_at";
 
 impl RunRow {
@@ -138,6 +141,7 @@ impl RunRow {
             number: self.number,
             state: self.state.clone(),
             state_code: self.state_code.clone(),
+            state_args: self.state_args.clone(),
             trigger: self.trigger.clone(),
             import_version: self.import_version,
             rows: self.rows.max(0) as usize,
@@ -401,9 +405,11 @@ pub async fn run(
 ) -> Result<ImportPreview> {
     find_row(db, org_id, id).await?;
     let (row, diff) = load_run(db, id, run_id).await?;
+    let steps = crate::services::ingest::run_steps(db, org_id, id, run_id).await?;
     Ok(ImportPreview {
         run: row.view(),
         diff: diff.map(|d| d.sample(PREVIEW_SAMPLE)).unwrap_or_default(),
+        steps,
     })
 }
 
@@ -462,13 +468,15 @@ async fn finish_run<C: ConnectionTrait>(
     run_id: Uuid,
     state: &str,
     code: Option<&str>,
+    args: &Value,
     diff: Option<&ImportDiff>,
     keep_diff: bool,
 ) -> Result<()> {
     let counts = diff.map(ImportDiff::counts).unwrap_or_default();
     db.execute_raw(stmt(
         "UPDATE object_import_runs SET state = $2, state_code = $3, rows = $4, counts = $5, \
-           diff = $6, finished_at = CASE WHEN $2 = 'preview' THEN NULL ELSE now() END, \
+           diff = $6, state_args = $7, \
+           finished_at = CASE WHEN $2 = 'preview' THEN NULL ELSE now() END, \
            heartbeat_at = now() \
          WHERE id = $1",
         vec![
@@ -493,6 +501,7 @@ async fn finish_run<C: ConnectionTrait>(
                 .unwrap_or_default()
             })
             .into(),
+            (!args.is_null()).then(|| args.clone()).into(),
         ],
     ))
     .await?;
@@ -505,32 +514,38 @@ async fn records<C: ConnectionTrait>(
     imp: &ImportRow,
     m: &Mapping,
     file: Option<(&[u8], &str)>,
-) -> std::result::Result<Vec<Value>, &'static str> {
+) -> std::result::Result<Vec<Value>, (&'static str, Value)> {
+    let coded = |code: &'static str| (code, Value::Null);
     match (imp.source(), file) {
         // Hostile input (R8 §5): parsed on a blocking thread, where a parser
         // panic only fails this run.
         (ImportSource::File, Some((bytes, name))) => {
             let (bytes, name, m) = (bytes.to_vec(), name.to_string(), m.clone());
             tokio::task::spawn_blocking(move || {
-                pnex_core::import_read::read_records(&bytes, &name, &m).map_err(source::read_error)
+                pnex_core::import_read::read_records(&bytes, &name, &m)
+                    .map_err(source::read_refusal)
             })
             .await
-            .unwrap_or(Err(source::UNREADABLE))
+            .unwrap_or(Err(coded(source::UNREADABLE)))
         }
-        (ImportSource::File, None) => Err(source::UNREADABLE),
+        (ImportSource::File, None) => Err(coded(source::UNREADABLE)),
         (ImportSource::Url, _) => {
-            source::fetch_file(imp.source_url.as_deref().unwrap_or_default(), m).await
+            source::fetch_file(imp.source_url.as_deref().unwrap_or_default(), m)
+                .await
+                .map_err(coded)
         }
         (ImportSource::Api, _) => {
             let url = imp.source_url.as_deref().unwrap_or_default();
             let pages = imp.max_pages.map_or(DEFAULT_PAGES, |p| p as u32);
             match &m.per_object {
-                None => source::fetch_api(url, m, pages).await,
+                None => source::fetch_api(url, m, pages).await.map_err(coded),
                 Some(p) => {
                     let values = per_object_values(db, imp, p, pages)
                         .await
-                        .map_err(|_| source::UNREACHABLE)?;
-                    source::fetch_per_object(url, m, &values).await
+                        .map_err(|_| coded(source::UNREACHABLE))?;
+                    source::fetch_per_object(url, m, &values)
+                        .await
+                        .map_err(coded)
                 }
             }
         }
@@ -598,10 +613,14 @@ pub async fn dry_run(
         return Err(invalid("file", FIELD_REQUIRED));
     }
     let m = imp.mapping()?;
+    if stop::stopping() {
+        return Err(coded(err_codes::IMPORT_SERVER_STOPPING));
+    }
     let run = open_run(db, &imp, "preview", user_id).await?;
     let view = run.view();
     let db = db.clone();
     tokio::spawn(async move {
+        let _held = stop::hold(run.id);
         let name = file.as_ref().map(|(_, n)| n.clone()).unwrap_or_default();
         let outcome = match records(
             &db,
@@ -615,7 +634,7 @@ pub async fn dry_run(
             Ok(rows) => {
                 let s = schema(&db, imp.org_id).await;
                 match s {
-                    Err(_) => Err(err_codes::IMPORT_SOURCE_UNREADABLE),
+                    Err(_) => Err((err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null)),
                     Ok(s) => diff::compute(
                         &db,
                         imp.org_id,
@@ -628,18 +647,20 @@ pub async fn dry_run(
                     )
                     .await
                     .map_err(|e| match e {
-                        OntologyError::Import { code, .. } => code,
+                        OntologyError::Import { code, .. } => (code, Value::Null),
                         e => {
                             tracing::warn!(import = %imp.id, error = %e, "import preview failed");
-                            err_codes::IMPORT_SOURCE_UNREADABLE
+                            (err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null)
                         }
                     }),
                 }
             }
         };
         let r = match &outcome {
-            Ok(d) => finish_run(&db, run.id, "preview", None, Some(d), true).await,
-            Err(code) => finish_run(&db, run.id, "failed", Some(code), None, false).await,
+            Ok(d) => finish_run(&db, run.id, "preview", None, &Value::Null, Some(d), true).await,
+            Err((code, args)) => {
+                finish_run(&db, run.id, "failed", Some(code), args, None, false).await
+            }
         };
         if let Err(e) = r {
             tracing::warn!(run = %run.id, error = %e, "import run not recorded");
@@ -671,6 +692,9 @@ pub async fn apply(
     else {
         return Err(coded(err_codes::IMPORT_RUN_STALE));
     };
+    if stop::stopping() {
+        return Err(coded(err_codes::IMPORT_SERVER_STOPPING));
+    }
     if !diff.errors.is_empty() {
         return Err(coded(err_codes::IMPORT_HAS_ERRORS));
     }
@@ -696,6 +720,7 @@ pub async fn apply(
     };
     let db = db.clone();
     tokio::spawn(async move {
+        let _held = stop::hold(run.id);
         let outcome = write_locked(&db, &imp, &actor, &diff).await;
         let (state, code) = match &outcome {
             Ok(()) => ("applied", None),
@@ -707,7 +732,8 @@ pub async fn apply(
                 ("failed", Some(error_code(e)))
             }
         };
-        if let Err(e) = finish_run(&db, run.id, state, code, Some(&diff), false).await {
+        if let Err(e) = finish_run(&db, run.id, state, code, &Value::Null, Some(&diff), false).await
+        {
             tracing::warn!(run = %run.id, error = %e, "import run not recorded");
         }
         drop(diff);
@@ -1039,25 +1065,30 @@ pub async fn start(
     if m.steps.is_empty() && imp.source() == ImportSource::File {
         return Err(coded(err_codes::INGEST_ENTRY_MISSING));
     }
+    if stop::stopping() {
+        return Err(coded(err_codes::IMPORT_SERVER_STOPPING));
+    }
     let run = open_run(db, &imp, trigger, user_id).await?;
     let view = run.view();
     let db = db.clone();
     tokio::spawn(async move {
+        let _held = stop::hold(run.id);
         let work = async {
             if m.steps.is_empty() {
                 let outcome = scheduled(&db, &imp, &m, run.number).await;
-                let (state, code, diff) = match outcome {
-                    Ok(d) => ("applied", None, Some(d)),
+                let (state, code, args, diff) = match outcome {
+                    Ok(d) => ("applied", None, Value::Null, Some(d)),
                     Err((state, code, args, d)) => {
-                        notify_refused(&db, &imp, code, args).await;
-                        (state, Some(code), d.map(|d| *d))
+                        notify_refused(&db, &imp, code, args.clone()).await;
+                        (state, Some(code), args, d.map(|d| *d))
                     }
                 };
-                finish_run(&db, run.id, state, code, diff.as_ref(), false).await?;
+                finish_run(&db, run.id, state, code, &args, diff.as_ref(), false).await?;
                 return Ok(());
             }
             let Some(store) = store else {
-                return fail_flow_run(&db, run.id, err_codes::INGEST_STAGING_UNAVAILABLE).await;
+                let code = err_codes::INGEST_STAGING_UNAVAILABLE;
+                return fail_flow_run(&db, run.id, code, Value::Null).await;
             };
             let steps = crate::services::ingest::pipeline::run(
                 &db, &store, imp.org_id, imp.id, run.id, &m.steps,
@@ -1070,7 +1101,7 @@ pub async fn start(
                         .await
                         .map(|_| ())
                 }
-                Err((code, _)) => fail_flow_run(&db, run.id, &code).await,
+                Err((code, args)) => fail_flow_run(&db, run.id, &code, args).await,
             }
         };
         // The run beats while it works: a pod gone leaves it stale, not running.
@@ -1087,7 +1118,8 @@ pub async fn start(
         release_memory();
         if let Err(e) = out {
             tracing::warn!(import = %imp.id, run = %run.id, error = %e, "import run failed");
-            let _ = fail_flow_run(&db, run.id, err_codes::IMPORT_SOURCE_UNREADABLE).await;
+            let code = err_codes::IMPORT_SOURCE_UNREADABLE;
+            let _ = fail_flow_run(&db, run.id, code, Value::Null).await;
         }
     });
     Ok(view)
@@ -1139,7 +1171,8 @@ pub async fn run_from_flow(
     let m = match imp.mapping() {
         Ok(m) => m,
         Err(e) => {
-            finish_run(db, run.id, "failed", Some(error_code(&e)), None, false).await?;
+            let code = Some(error_code(&e));
+            finish_run(db, run.id, "failed", code, &Value::Null, None, false).await?;
             return Err(e);
         }
     };
@@ -1148,12 +1181,13 @@ pub async fn run_from_flow(
         (Some((bytes, name)), None, _) => {
             let (bytes, name, m2) = (bytes.clone(), name.clone(), m.clone());
             tokio::task::spawn_blocking(move || {
-                pnex_core::import_read::read_records(&bytes, &name, &m2).map_err(source::read_error)
+                pnex_core::import_read::read_records(&bytes, &name, &m2)
+                    .map_err(source::read_refusal)
             })
             .await
-            .unwrap_or(Err(source::UNREADABLE))
+            .unwrap_or(Err((source::UNREADABLE, Value::Null)))
         }
-        (None, None, ImportSource::File) => Err(err_codes::INGEST_ENTRY_MISSING),
+        (None, None, ImportSource::File) => Err((err_codes::INGEST_ENTRY_MISSING, Value::Null)),
         _ => records(db, &imp, &m, None).await,
     };
     let end = |state: &'static str,
@@ -1164,7 +1198,7 @@ pub async fn run_from_flow(
         let run_id = run.id;
         let imp = imp.clone();
         async move {
-            finish_run(db, run_id, state, code, d.as_ref(), keep).await?;
+            finish_run(db, run_id, state, code, &args, d.as_ref(), keep).await?;
             if state == "refused" {
                 notify_refused(db, &imp, code.unwrap_or_default(), args.clone()).await;
             }
@@ -1179,7 +1213,7 @@ pub async fn run_from_flow(
     };
     let rows = match rows {
         Ok(r) => r,
-        Err(code) => return end("failed", Some(code), Value::Null, None, false).await,
+        Err((code, args)) => return end("failed", Some(code), args, None, false).await,
     };
     progress(db, run.id, rows.len(), None).await;
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
@@ -1382,11 +1416,20 @@ pub async fn flow_run_of(
 
 /// Fails a flow run whose server is gone (or whose file could not be
 /// read); a run that finished meanwhile keeps its outcome.
-pub async fn fail_flow_run(db: &DatabaseConnection, run_id: Uuid, code: &str) -> Result<()> {
+pub async fn fail_flow_run(
+    db: &DatabaseConnection,
+    run_id: Uuid,
+    code: &str,
+    args: Value,
+) -> Result<()> {
     db.execute_raw(stmt(
-        "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now(), \
-           heartbeat_at = now() WHERE id = $1 AND state = 'running'",
-        vec![run_id.into(), code.into()],
+        "UPDATE object_import_runs SET state = 'failed', state_code = $2, state_args = $3, \
+           finished_at = now(), heartbeat_at = now() WHERE id = $1 AND state = 'running'",
+        vec![
+            run_id.into(),
+            code.into(),
+            (!args.is_null()).then_some(args).into(),
+        ],
     ))
     .await?;
     Ok(())
@@ -1406,7 +1449,7 @@ async fn scheduled(
     };
     let rows = match records(db, imp, m, None).await {
         Ok(r) => r,
-        Err(code) => return Err(("failed", code, Value::Null, None)),
+        Err((code, args)) => return Err(("failed", code, args, None)),
     };
     let previous = previous_rows(db, imp.id).await.unwrap_or(0);
     let missing = imp::missing_columns(m, &rows);
@@ -1542,7 +1585,10 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(120)).await;
         loop {
-            if crate::services::singleton::my_turn(&db, "object-imports", SWEEP_EVERY).await {
+            // A stopping pod lets the lease go: another pod sweeps.
+            if !stop::stopping()
+                && crate::services::singleton::my_turn(&db, "object-imports", SWEEP_EVERY).await
+            {
                 if let Err(e) = sweep(&db, store.as_ref()).await {
                     tracing::warn!("import schedule sweep failed: {e}");
                 }
@@ -1572,6 +1618,10 @@ async fn sweep(
         ],
     ))
     .await?;
+    // A stopping pod starts nothing: the next pod takes the due runs.
+    if stop::stopping() {
+        return Ok(());
+    }
     let due = ImportRow::find_by_statement(stmt(
         &format!(
             "SELECT {IMPORT_COLUMNS} FROM object_imports \

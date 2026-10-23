@@ -69,12 +69,22 @@ pub(super) async fn step(
         }
         // Its server is gone: the run's outcome is the step's.
         let run_id = Uuid::parse_str(&st.run.id).unwrap_or_default();
-        imports::fail_flow_run(cx.db, run_id, err_codes::IMPORT_RUN_INTERRUPTED).await?;
+        imports::fail_flow_run(
+            cx.db,
+            run_id,
+            err_codes::IMPORT_RUN_INTERRUPTED,
+            Value::Null,
+        )
+        .await?;
         let out = match imports::flow_run_of(cx.db, org, cx.run_id, node_id).await? {
             Some(st) => outcome_of(id, &st.run, msg.clone()),
             None => not_found(),
         };
         return Ok(finish(cx, cfg, msg, out).await?);
+    }
+    // A stopping pod starts nothing: the node polls again, another pod runs it.
+    if imports::stop::stopping() {
+        return Ok(pending(msg));
     }
     let import_run = match imports::open_from_flow(cx.db, org, id, cx.run_id, node_id).await {
         Ok(Some(r)) => r,
@@ -99,6 +109,7 @@ pub(super) async fn step(
             node: &node,
             run_id: ingest_run,
         };
+        let _held = imports::stop::hold(import_run);
         let work = run(&cx, &cfg, msg.clone(), id, import_run);
         tokio::pin!(work);
         let mut tick = tokio::time::interval(BEAT);
@@ -178,7 +189,7 @@ fn manifest_of(id: Uuid, run: &ImportRunView) -> Value {
     })
 }
 
-/// A finished run read back from its row (its refusal args are lost).
+/// A finished run read back from its row.
 fn outcome_of(id: Uuid, run: &ImportRunView, msg: IngestMsg) -> Outcome {
     let manifest = manifest_of(id, run);
     match run.state.as_str() {
@@ -189,7 +200,7 @@ fn outcome_of(id: Uuid, run: &ImportRunView, msg: IngestMsg) -> Outcome {
                 .as_deref()
                 .and_then(|c| err_codes::ALL.iter().find(|k| **k == c).copied())
                 .unwrap_or(err_codes::IMPORT_RUN_INTERRUPTED);
-            let mut out = Outcome::fail(code, Value::Null);
+            let mut out = Outcome::fail(code, run.state_args.clone().unwrap_or_default());
             out.manifest = manifest;
             out
         }
@@ -199,7 +210,7 @@ fn outcome_of(id: Uuid, run: &ImportRunView, msg: IngestMsg) -> Outcome {
 async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg, id: Uuid, run_id: Uuid) -> Outcome {
     // A run left `running` by an error is closed with its code.
     let failed = |code: &'static str, args: Value| async move {
-        if let Err(e) = imports::fail_flow_run(cx.db, run_id, code).await {
+        if let Err(e) = imports::fail_flow_run(cx.db, run_id, code, args.clone()).await {
             tracing::warn!(run = %run_id, error = %e, "flow import run not closed");
         }
         Outcome::fail(code, args)
@@ -208,7 +219,8 @@ async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg, id: Uuid, run_id: 
     let file = match input_of(cfg, &msg) {
         Ok(input) => match cx.store.size(&input.staging_key).await {
             Ok(Some(n)) if n > UNZIPPED_MAX => {
-                return failed(err_codes::IMPORT_SOURCE_TOO_LARGE, Value::Null).await
+                let args = json!({ "bytes": n, "max": UNZIPPED_MAX });
+                return failed(err_codes::IMPORT_SOURCE_TOO_LARGE, args).await;
             }
             Ok(Some(_)) => match cx.store.get_bytes(&input.staging_key).await {
                 Ok(Some(b)) => Some((b, input.name)),

@@ -19,15 +19,39 @@ const XML_DEPTH_MAX: usize = 32;
 pub enum ReadError {
     /// Not the expected format, or broken.
     Malformed,
-    TooLarge,
+    TooLarge(Limit),
     /// The format cannot be told (no mapping format, no known extension).
     UnknownFormat,
+}
+
+/// The limit a source went over: `what` (`rows`, `bytes`, `entries`,
+/// `depth`), what was found, the maximum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limit {
+    pub what: &'static str,
+    pub found: u64,
+    pub max: u64,
+}
+
+impl Limit {
+    fn of(what: &'static str, found: usize, max: usize) -> ReadError {
+        ReadError::TooLarge(Self {
+            what,
+            found: found as u64,
+            max: max as u64,
+        })
+    }
+
+    /// `{<what>: found, max}`, the arguments of `import-source-too-large`.
+    pub fn args(&self) -> Value {
+        serde_json::json!({ self.what: self.found, "max": self.max })
+    }
 }
 
 fn zip_guard(bytes: &[u8]) -> Result<zip::ZipArchive<Cursor<&[u8]>>, ReadError> {
     let mut z = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| ReadError::Malformed)?;
     if z.len() > ZIP_ENTRIES_MAX {
-        return Err(ReadError::TooLarge);
+        return Err(Limit::of("entries", z.len(), ZIP_ENTRIES_MAX));
     }
     let mut total = 0u64;
     for i in 0..z.len() {
@@ -35,7 +59,7 @@ fn zip_guard(bytes: &[u8]) -> Result<zip::ZipArchive<Cursor<&[u8]>>, ReadError> 
         total = total.saturating_add(f.size());
     }
     if total > UNZIPPED_MAX {
-        return Err(ReadError::TooLarge);
+        return Err(Limit::of("bytes", total as usize, UNZIPPED_MAX as usize));
     }
     Ok(z)
 }
@@ -57,7 +81,7 @@ fn unzip(bytes: &[u8], want: Option<SourceFormat>) -> Result<(Vec<u8>, SourceFor
             .read_to_end(&mut out)
             .map_err(|_| ReadError::Malformed)?;
         if out.len() as u64 > UNZIPPED_MAX {
-            return Err(ReadError::TooLarge);
+            return Err(Limit::of("bytes", out.len(), UNZIPPED_MAX as usize));
         }
         return Ok((out, fmt));
     }
@@ -97,7 +121,7 @@ pub fn read_records(bytes: &[u8], name: &str, m: &Mapping) -> Result<Vec<Value>,
         SourceFormat::Xml => xml_rows(&text_of(bytes), &m.rows)?,
     };
     if rows.len() > ROWS_MAX {
-        return Err(ReadError::TooLarge);
+        return Err(Limit::of("rows", rows.len(), ROWS_MAX));
     }
     Ok(rows)
 }
@@ -201,7 +225,7 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
             Event::DocType(_) => return Err(ReadError::Malformed),
             Event::Start(e) => {
                 if stack.len() >= XML_DEPTH_MAX {
-                    return Err(ReadError::TooLarge);
+                    return Err(Limit::of("depth", stack.len() + 1, XML_DEPTH_MAX));
                 }
                 let name = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
                 stack.push((name, attrs(&e)?, String::new()));
@@ -274,7 +298,7 @@ fn xml_rows(text: &str, path: &str) -> Result<Vec<Value>, ReadError> {
             })
             .collect();
         if level.len() > ROWS_MAX {
-            return Err(ReadError::TooLarge);
+            return Err(Limit::of("rows", level.len(), ROWS_MAX));
         }
     }
     Ok(level)
@@ -335,10 +359,14 @@ mod tests {
             w.write_all(&chunk).unwrap();
         }
         let bomb = w.finish().unwrap().into_inner();
-        assert_eq!(
-            read_records(&bomb, "b.zip", &mapping(None, "")),
-            Err(ReadError::TooLarge)
-        );
+        match read_records(&bomb, "b.zip", &mapping(None, "")) {
+            Err(ReadError::TooLarge(l)) => {
+                assert_eq!((l.what, l.max), ("bytes", UNZIPPED_MAX));
+                assert_eq!(l.args()["max"], UNZIPPED_MAX);
+                assert!(l.args()["bytes"].as_u64() > Some(UNZIPPED_MAX));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

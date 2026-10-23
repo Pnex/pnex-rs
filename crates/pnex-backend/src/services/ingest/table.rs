@@ -47,8 +47,8 @@ fn cell_text(v: &Value) -> String {
 
 /// Parses a staged file: CSV without the record cap (filtering comes
 /// before it), the other formats through the D301 readers.
-pub(crate) fn read_table(bytes: &[u8], name: &str) -> Result<Table, &'static str> {
-    let unreadable = err_codes::IMPORT_SOURCE_UNREADABLE;
+pub(crate) fn read_table(bytes: &[u8], name: &str) -> Result<Table, (&'static str, Value)> {
+    let unreadable = (err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null);
     let trimmed = bytes
         .iter()
         .position(|b| !b.is_ascii_whitespace())
@@ -95,11 +95,9 @@ pub(crate) fn read_table(bytes: &[u8], name: &str) -> Result<Table, &'static str
     }
     let m: Mapping =
         serde_json::from_value(json!({ "key": "inspect", "name": "inspect", "format": fmt }))
-            .map_err(|_| unreadable)?;
-    let records = read_records(bytes, name, &m).map_err(|e| match e {
-        pnex_core::import_read::ReadError::TooLarge => err_codes::IMPORT_SOURCE_TOO_LARGE,
-        _ => unreadable,
-    })?;
+            .map_err(|_| unreadable.clone())?;
+    let records = read_records(bytes, name, &m)
+        .map_err(crate::services::ontology::imports::source::read_refusal)?;
     let mut columns: Vec<String> = Vec::new();
     for r in &records {
         for k in r.as_object().into_iter().flat_map(Map::keys) {
@@ -207,7 +205,7 @@ pub(crate) async fn load(
         Ok(Some(n)) if n > UNZIPPED_MAX => {
             return Err(Box::new(Outcome::fail(
                 err_codes::IMPORT_SOURCE_TOO_LARGE,
-                Value::Null,
+                json!({ "bytes": n, "max": UNZIPPED_MAX }),
             )))
         }
         Ok(Some(_)) => {}
@@ -225,8 +223,8 @@ pub(crate) async fn load(
     let name = input.name.clone();
     let table = tokio::task::spawn_blocking(move || read_table(&bytes, &name))
         .await
-        .unwrap_or(Err(err_codes::IMPORT_SOURCE_UNREADABLE))
-        .map_err(|code| Box::new(Outcome::fail(code, Value::Null)))?;
+        .unwrap_or(Err((err_codes::IMPORT_SOURCE_UNREADABLE, Value::Null)))
+        .map_err(|(code, args)| Box::new(Outcome::fail(code, args)))?;
     Ok((input, table))
 }
 

@@ -61,8 +61,27 @@ fn state_label(r: &ImportRunView) -> String {
         _ => t!("onto-imp-state-failed"),
     };
     match &r.state_code {
-        Some(code) => format!("{state} — {}", localize_code(code, None, code)),
+        Some(code) => format!("{state} — {}", run_message(code, r.state_args.as_ref())),
         None => state.to_string(),
+    }
+}
+
+/// The message of a run's code, with what a source too large held.
+fn run_message(code: &str, args: Option<&serde_json::Value>) -> String {
+    let num = |k: &str| {
+        args.and_then(|a| a.get(k))
+            .and_then(serde_json::Value::as_u64)
+    };
+    let too_large = code == pnex_core::err_codes::IMPORT_SOURCE_TOO_LARGE;
+    match (num("rows"), num("bytes"), num("max")) {
+        (Some(found), _, Some(max)) if too_large => {
+            t!("onto-imp-too-large-rows", found : found, max : max).to_string()
+        }
+        (_, Some(found), Some(max)) if too_large => {
+            let mb = |b: u64| b.div_ceil(1_000_000);
+            t!("onto-imp-too-large-bytes", found : mb(found), max : mb(max)).to_string()
+        }
+        _ => localize_code(code, args, code),
     }
 }
 
@@ -620,6 +639,7 @@ fn IssueList(title: String, issues: Vec<RowIssue>, tone: String) -> Element {
 
 #[component]
 fn RunsDialog(import: ObjectImportView, on_close: EventHandler<()>) -> Element {
+    let open = use_signal(|| None::<String>);
     let id = import.id.clone();
     let runs = use_resource(move || {
         let id = id.clone();
@@ -637,10 +657,11 @@ fn RunsDialog(import: ObjectImportView, on_close: EventHandler<()>) -> Element {
             ul { class: "divide-y divide-gray-100 text-sm",
                 for r in rows {
                     li { key: "{r.id}", class: "py-2",
-                        div { class: "flex flex-wrap gap-2",
+                        div { class: "flex flex-wrap items-center gap-2",
                             span { class: "font-medium", "#{r.number}" }
                             span { {state_label(&r)} }
                             span { class: "text-xs text-gray-500", {short_time(&r.started_at)} }
+                            StepsToggle { run: r.id.clone(), open }
                         }
                         p { class: "text-xs text-gray-600",
                             {
@@ -651,8 +672,117 @@ fn RunsDialog(import: ObjectImportView, on_close: EventHandler<()>) -> Element {
                                 )
                             }
                         }
+                        if open().as_deref() == Some(r.id.as_str()) {
+                            RunSteps { import: import.id.clone(), run: r.clone() }
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+#[component]
+fn StepsToggle(run: String, open: Signal<Option<String>>) -> Element {
+    let shown = open().as_deref() == Some(run.as_str());
+    rsx! {
+        button {
+            class: "text-xs text-signal-600 hover:underline",
+            "data-testid": "import-run-steps",
+            onclick: move |_| open.set((!shown).then(|| run.clone())),
+            {t!("onto-imp-steps")}
+        }
+    }
+}
+
+/// The steps of a run (an import with `steps:`): outcome, duration, rows.
+#[component]
+fn RunSteps(import: String, run: ImportRunView) -> Element {
+    let run_id = run.id.clone();
+    let detail = use_resource(move || {
+        let (import, run_id) = (import.clone(), run_id.clone());
+        async move { api::ontology::import_run(&import, &run_id).await.ok() }
+    });
+    let steps = detail
+        .read()
+        .clone()
+        .flatten()
+        .map(|p| p.steps)
+        .unwrap_or_default();
+    let at = |t: &str| chrono::DateTime::parse_from_rfc3339(t).ok();
+    // A step's duration runs from the end of the one before (the run's start).
+    let mut before = at(&run.started_at);
+    let lines: Vec<(pnex_core::ingest::IngestStepView, String)> = steps
+        .into_iter()
+        .map(|s| {
+            let end = at(&s.created_at);
+            let took = match (before, end) {
+                (Some(a), Some(b)) => {
+                    format!("{:.1} s", (b - a).num_milliseconds() as f64 / 1000.0)
+                }
+                _ => String::new(),
+            };
+            before = end;
+            (s, took)
+        })
+        .collect();
+    rsx! {
+        div {
+            class: "mt-2 ml-4 space-y-1",
+            "data-testid": "import-run-step-list",
+            if lines.is_empty() {
+                p { class: "text-xs text-gray-500", {t!("onto-imp-steps-empty")} }
+            }
+            for (s, took) in lines {
+                StepLine { key: "{s.id}", step: s, took }
+            }
+        }
+    }
+}
+
+fn step_name(step: &str) -> String {
+    match step {
+        "source_resolve" => t!("flows-palette-ingest-resolve"),
+        "file_download" => t!("flows-palette-ingest-download"),
+        "archive_extract" => t!("flows-palette-ingest-extract"),
+        "table_inspect" => t!("flows-palette-ingest-inspect"),
+        "rows_filter" => t!("flows-palette-ingest-filter"),
+        "ontology_import" => t!("flows-palette-ingest-import"),
+        _ => t!("flows-palette-ingest-cleanup"),
+    }
+    .to_string()
+}
+
+#[component]
+fn StepLine(step: pnex_core::ingest::IngestStepView, took: String) -> Element {
+    let (badge, label) = match step.port {
+        0 => ("bg-green-50 text-green-700", t!("flows-ingest-port-ok")),
+        2 => (
+            "bg-gray-100 text-gray-600",
+            t!("flows-ingest-port-unchanged"),
+        ),
+        _ => ("bg-red-50 text-red-700", t!("flows-ingest-port-error")),
+    };
+    let m = &step.manifest;
+    let num = |k: &str| m.get(k).and_then(serde_json::Value::as_u64);
+    let rows = match (num("rows_in"), num("rows_out"), num("rows")) {
+        (Some(i), Some(o), _) => {
+            t!("onto-imp-step-rows-in-out", rows_in : i, rows_out : o).to_string()
+        }
+        (_, _, Some(n)) => t!("onto-imp-step-rows", rows : n).to_string(),
+        _ => String::new(),
+    };
+    let error = step.code.as_deref().map(|c| run_message(c, m.get("args")));
+    rsx! {
+        div { class: "text-xs", "data-step": "{step.step}",
+            div { class: "flex flex-wrap items-center gap-2",
+                span { class: "font-medium text-gray-800", {step_name(&step.step)} }
+                span { class: "px-1.5 py-0.5 rounded {badge}", "{label}" }
+                span { class: "text-gray-500", "{took}" }
+                span { class: "text-gray-600", "{rows}" }
+            }
+            if let Some(e) = error {
+                p { class: "text-red-600", "{e}" }
             }
         }
     }

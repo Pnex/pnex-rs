@@ -192,7 +192,8 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
     // access); stream tar/gz from S3 if bigger sources show up.
     match cx.store.size(&input.staging_key).await {
         Ok(Some(n)) if n > UNZIPPED_MAX => {
-            return Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, Value::Null)
+            let args = serde_json::json!({ "bytes": n, "max": UNZIPPED_MAX });
+            return Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args);
         }
         Ok(Some(_)) => {}
         Ok(None) => {
