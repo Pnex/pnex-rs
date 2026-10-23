@@ -44,7 +44,7 @@
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.1.0"
+version: "1.2.0"
 requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -146,7 +146,7 @@ link_types:
     inverse_names: {fr: "a pour enregistrement"}
     from_types: [media_asset]
     to_types: [rendez_vous]
-  - key: couvre
+  - key: aborde
     name: covered
     names: {fr: "a abordé"}
     inverse_name: was covered in
@@ -185,7 +185,7 @@ hierarchies:
     name: Coaching
     names: {fr: "Coaching"}
     steps:
-      - { link: couvre, inverse: true }
+      - { link: aborde, inverse: true }
       - { link: rdv_avec }
 types:
   - key: page_suivie
@@ -672,4 +672,4 @@ page_templates:
 
       ## Critères du playbook abordés
 
-      {{links:couvre}}
+      {{links:aborde}}

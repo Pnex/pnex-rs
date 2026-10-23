@@ -1148,6 +1148,16 @@ mod tests {
     #[test]
     fn shipped_packs_are_valid() {
         let all = shipped();
+        // A key belongs to one pack: two packs defining it cannot both install.
+        let mut owner = std::collections::HashMap::new();
+        for p in &all {
+            let keys = p.types.iter().map(|t| &t.key);
+            for k in keys.chain(p.link_types.iter().map(|l| &l.key)) {
+                if let Some(other) = owner.insert(k.clone(), &p.key) {
+                    panic!("{k}: defined by {other} and {}", p.key);
+                }
+            }
+        }
         for p in &all {
             // A pack sees its own types and those of the packs it requires,
             // directly or not.

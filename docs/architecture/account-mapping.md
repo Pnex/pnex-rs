@@ -534,7 +534,7 @@ Limites :
   - `critere_coaching` (la liste de l'org : description, persona visé,
     actif) ;
   - liens `rdv_avec` (→ organisation ou site), `participe_a` (personne →,
-    côté `interne` | `client`), `enregistrement_de` (média →), `couvre`
+    côté `interne` | `client`), `enregistrement_de` (média →), `aborde`
     (→ critère, commentaire) ; `page_sur` admet `rendez_vous`.
 - **Enregistrement et résumé** : rien de nouveau dans les médias. On
   dépose le fichier, puis transcription, locuteurs et voix connues comme
