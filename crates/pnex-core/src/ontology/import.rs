@@ -83,6 +83,12 @@ pub struct FieldSpec {
     pub sep: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub convert: Vec<Convert>,
+    /// On an object property, `skip`: a value its conversion or the schema
+    /// refuses is a warning, not an error. The property is left out of the
+    /// row (the object keeps its value); for the object's key, the object
+    /// and its links are left out of the row.
+    #[serde(default, skip_serializing_if = "Missing::is_error")]
+    pub invalid: Missing,
 }
 
 /// A field is written either as a bare column path or as a full spec.
@@ -101,6 +107,8 @@ impl<'de> Deserialize<'de> for FieldSpec {
             sep: Option<String>,
             #[serde(default)]
             convert: Vec<Convert>,
+            #[serde(default)]
+            invalid: Missing,
         }
         #[derive(Deserialize)]
         #[serde(untagged)]
@@ -115,6 +123,7 @@ impl<'de> Deserialize<'de> for FieldSpec {
                 concat: Vec::new(),
                 sep: None,
                 convert: Vec::new(),
+                invalid: Missing::Error,
             },
             Repr::Full(f) => Self {
                 from: f.from,
@@ -122,6 +131,7 @@ impl<'de> Deserialize<'de> for FieldSpec {
                 concat: f.concat,
                 sep: f.sep,
                 convert: f.convert,
+                invalid: f.invalid,
             },
         })
     }
@@ -863,6 +873,20 @@ pub struct PlannedLink {
 pub struct RowPlan {
     pub objects: Vec<PlannedObject>,
     pub links: Vec<PlannedLink>,
+    /// Values left out under `invalid: skip`.
+    pub warnings: Vec<RowIssue>,
+    /// Links of the row whose other end was left out by its key: their
+    /// existing links on this end are kept as they are.
+    pub held: Vec<HeldEnd>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeldEnd {
+    pub link_type: String,
+    /// Index in `objects` of the end the row still knows.
+    pub end: usize,
+    /// That end is the link's source.
+    pub is_source: bool,
 }
 
 /// Text form of a scalar read from a record.
@@ -1164,6 +1188,9 @@ pub fn plan_row(
     };
     // Indexes in `plan.objects` of each entry (one, or one per element).
     let mut produced: Vec<Vec<usize>> = Vec::new();
+    let mut warnings = Vec::new();
+    // Entries left out by an invalid key (`invalid: skip`).
+    let mut skipped = vec![false; m.objects.len()];
     // The `each` element of every planned object, with its position.
     let mut elems: Vec<Option<(Value, usize)>> = Vec::new();
     for (i, o) in m.objects.iter().enumerate() {
@@ -1207,7 +1234,7 @@ pub fn plan_row(
         };
         for item in items {
             let elem = item.as_ref().map(|(v, n)| (v, *n));
-            match plan_object(i, o, def, row, elem) {
+            match plan_object(i, o, def, row, elem, &mut warnings, &mut skipped[i]) {
                 Ok(Some(mut p)) => {
                     p.needs = needs.clone();
                     mine.push(plan.objects.len());
@@ -1230,6 +1257,25 @@ pub fn plan_row(
         };
         let froms = &produced[fi];
         let tos = &produced[ti];
+        if skipped[fi] || skipped[ti] {
+            // One end left out by its key: the links the other end already
+            // has stay as they are.
+            if !(skipped[fi] && skipped[ti]) {
+                let (known, is_source) = if skipped[fi] {
+                    (tos, false)
+                } else {
+                    (froms, true)
+                };
+                for &end in known {
+                    plan.held.push(HeldEnd {
+                        link_type: l.link_type.clone(),
+                        end,
+                        is_source,
+                    });
+                }
+            }
+            continue;
+        }
         // One side may be an `each`: one link per element.
         let pairs: Vec<(usize, usize)> = if fi == ti {
             Vec::new()
@@ -1286,6 +1332,7 @@ pub fn plan_row(
         }
     }
     if issues.is_empty() {
+        plan.warnings = warnings.into_iter().map(issue).collect();
         Ok(plan)
     } else {
         Err(issues)
@@ -1354,12 +1401,16 @@ fn link_values(
 
 /// One object of an entry; `Ok(None)` when its key is empty (nothing to
 /// upsert: an optional site column left blank).
+/// `warnings` gets the values left out under `invalid: skip`; `skipped` is
+/// set when the key itself was.
 fn plan_object(
     entry: usize,
     o: &ObjectMap,
     def: &ObjectTypeDef,
     row: &Value,
     elem: Elem,
+    warnings: &mut Vec<(String, String)>,
+    skipped: &mut bool,
 ) -> Result<Option<PlannedObject>, (String, String)> {
     if let Some(w) = &o.when {
         let v = at_path(row, elem, &w.from).as_ref().and_then(text_of);
@@ -1372,9 +1423,22 @@ fn plan_object(
         let Some(d) = def.properties.iter().find(|p| &p.key == k) else {
             continue;
         };
-        if let Some(v) = read(row, elem, f)? {
-            let col = f.from.clone().unwrap_or_else(|| k.clone());
-            props.insert(k.clone(), cast(d, v).map_err(|t| (col, t))?);
+        let col = f.from.clone().unwrap_or_else(|| k.clone());
+        let v = read(row, elem, f)
+            .and_then(|v| v.map(|v| cast(d, v).map_err(|t| (col, t))).transpose());
+        match v {
+            Ok(Some(v)) => {
+                props.insert(k.clone(), v);
+            }
+            Ok(None) => {}
+            Err(e) if f.invalid == Missing::Skip => {
+                warnings.push(e);
+                if *k == o.key {
+                    *skipped = true;
+                    return Ok(None);
+                }
+            }
+            Err(e) => return Err(e),
         }
     }
     let mut defaults = Map::new();
@@ -1393,15 +1457,23 @@ fn plan_object(
             ..p.clone()
         })
         .collect();
-    let props = check_values(&loose, &props).map_err(|(k, t)| {
-        (
-            o.properties
-                .get(&k)
-                .and_then(|f| f.from.clone())
-                .unwrap_or(k),
-            t,
-        )
-    })?;
+    let props = loop {
+        let (k, t) = match check_values(&loose, &props) {
+            Ok(p) => break p,
+            Err(e) => e,
+        };
+        let f = o.properties.get(&k);
+        let col = f.and_then(|f| f.from.clone()).unwrap_or_else(|| k.clone());
+        // Left out under `invalid: skip`, then the rest is checked again.
+        if !f.is_some_and(|f| f.invalid == Missing::Skip) || props.remove(&k).is_none() {
+            return Err((col, t));
+        }
+        warnings.push((col, t));
+        if k == o.key {
+            *skipped = true;
+            return Ok(None);
+        }
+    };
     let Some(key) = props.get(&o.key).and_then(text_of) else {
         return Ok(None);
     };
@@ -2089,6 +2161,55 @@ mod tests {
              "properties": {"siren": {"from": "siret", "convert": ["left:9"]}}}]}))
         .unwrap();
         assert!(plan_row(&m, &s, 1, &row).unwrap().objects.is_empty());
+    }
+
+    #[test]
+    fn invalid_skip_leaves_values_out() {
+        let (t, l) = (types(), links());
+        let s = Schema {
+            types: &t,
+            links: &l,
+        };
+        let mapping = |invalid: &str| {
+            from_value(json!({"key": "p", "name": "p", "objects": [
+                {"as": "org", "type": "organization", "key": "siren", "properties": {
+                    "siren": {"from": "siret", "convert": ["digits", "left:9", "luhn"], "invalid": invalid},
+                    "qualiopi": {"from": "q", "invalid": invalid}}},
+                {"as": "cert", "type": "certification", "key": "code", "properties": {"code": "code"}}],
+                "links": [{"type": "habilite_pour", "from": "org", "to": "cert"}]}))
+            .unwrap()
+        };
+        // The key fails: the object and its link are left out, the other end
+        // keeps what it has.
+        let row = json!({"siret": "30540504800785", "code": "RS1", "q": "oui"});
+        let p = plan_row(&mapping("skip"), &s, 4, &row).unwrap();
+        assert_eq!(p.objects.len(), 1);
+        assert!(p.links.is_empty());
+        assert_eq!(
+            (
+                p.warnings.len(),
+                p.warnings[0].row,
+                p.warnings[0].column.as_str()
+            ),
+            (1, 4, "siret")
+        );
+        assert_eq!(
+            p.held,
+            [HeldEnd {
+                link_type: "habilite_pour".into(),
+                end: 0,
+                is_source: false
+            }]
+        );
+        assert!(plan_row(&mapping("error"), &s, 4, &row).is_err());
+        // Another property fails: only it is left out.
+        let row = json!({"siret": "73282932000074", "code": "RS1", "q": "peut-être"});
+        let p = plan_row(&mapping("skip"), &s, 5, &row).unwrap();
+        assert_eq!((p.objects.len(), p.links.len()), (2, 1));
+        assert!(!p.objects[0].properties.contains_key("qualiopi"));
+        assert_eq!(p.warnings[0].column, "q");
+        assert!(p.held.is_empty());
+        assert!(plan_row(&mapping("error"), &s, 5, &row).is_err());
     }
 
     #[test]
