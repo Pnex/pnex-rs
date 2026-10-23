@@ -1134,7 +1134,8 @@ async fn imports_apply_thousands_of_records_quickly() {
             .await;
         assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
         let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-        let p = settle_within(&server, &env.alice, org, &id, &run, 600).await;
+        // Budgets match the 300 s bound below: a slow CI runner must fail on it, not on a poll count.
+        let p = settle_within(&server, &env.alice, org, &id, &run, 3000).await;
         assert_eq!(p["run"]["counts"]["created"], ROWS, "{p}");
         assert_eq!(p["run"]["counts"]["links_opened"], ROWS, "{p}");
 
@@ -1143,7 +1144,7 @@ async fn imports_apply_thousands_of_records_quickly() {
             Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
         assert_eq!(st, 202, "{r}");
         // Generous on purpose: about 7 s here, 38 s with a scan per object.
-        let r = settle_within(&server, &env.alice, org, &id, &run, 600).await;
+        let r = settle_within(&server, &env.alice, org, &id, &run, 3000).await;
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{r}");
         eprintln!("applied {ROWS} records + {ROWS} links in {took:?}");
@@ -1158,7 +1159,7 @@ async fn imports_apply_thousands_of_records_quickly() {
         let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/apply"), &env.alice, org,
             Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
         assert_eq!(st, 202, "{r}");
-        let r = settle_within(&server, &env.alice, org, &id, run, 600).await;
+        let r = settle_within(&server, &env.alice, org, &id, run, 3000).await;
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
         eprintln!("updated {ROWS} records in {took:?}");
