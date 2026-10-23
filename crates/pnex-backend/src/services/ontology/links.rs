@@ -392,7 +392,7 @@ pub async fn update_with<C: ConnectionTrait>(
         .ok_or(OntologyError::NotFound)?;
     let v = views(db, org_id, &[row]).await?.remove(0);
     for mut c in Change::link(org_id, "link.update", &actor.source_ref, &v) {
-        c.before = before.clone();
+        c.before = before.clone().into();
         changes::submit(c);
     }
     Ok(v)
@@ -478,6 +478,20 @@ async fn open_on<C: ConnectionTrait>(
     Ok(false)
 }
 
+/// A row of a bulk link insert; a `Value` per link costs several times it.
+#[derive(serde::Serialize)]
+struct NewEdge<'a> {
+    relation: &'a str,
+    source_kind: &'a str,
+    source_id: &'a str,
+    target_kind: &'a str,
+    target_id: &'a str,
+    source_object_id: Uuid,
+    target_object_id: Uuid,
+    attributes: Map<String, Value>,
+    valid_from: String,
+}
+
 /// `create_with` for many open links (imports): the same checks, ends
 /// loaded and cardinalities checked per batch. `measures`, `depicts` and
 /// links given a `valid_to` keep the one-by-one path.
@@ -500,63 +514,37 @@ pub async fn create_many_with<C: ConnectionTrait>(
     all.sort_unstable();
     all.dedup();
     for chunk in all.chunks(BULK_CHUNK) {
-        ends.extend(refs(db, org_id, chunk.iter().copied()).await?);
+        // Only the ends' identity is read: their properties are not kept.
+        ends.extend(
+            refs(db, org_id, chunk.iter().copied())
+                .await?
+                .into_iter()
+                .map(|(id, mut o)| {
+                    o.properties = Value::Null;
+                    (id, o)
+                }),
+        );
     }
-    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
-    let mut recs: Vec<Value> = Vec::with_capacity(inputs.len());
-    // Ends bound by a one-target / one-source type, per relation.
+    // Cardinalities first, on the ids alone: checked once the links of the
+    // run are inserted, they would find themselves.
     let mut one: HashMap<(&str, &str), Vec<Uuid>> = HashMap::new();
     for (input, (sid, tid)) in inputs.iter().zip(&parsed) {
         let Some(lt) = s.link_type(&input.link_type) else {
             return Err(super::invalid("link_type", FIELD_INVALID));
         };
         if lt.key == REL_MEASURES || lt.key == REL_DEPICTS || input.valid_to.is_some() {
-            create_with(db, s, org_id, actor, input).await?;
             continue;
-        }
-        let (Some(src), Some(tgt)) = (ends.get(sid), ends.get(tid)) else {
-            return Err(OntologyError::NotFound);
-        };
-        if src.valid_to.is_some() || tgt.valid_to.is_some() {
-            return Err(OntologyError::NotFound);
-        }
-        if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
-            return Err(OntologyError::LinkNotAllowed);
-        }
-        for t in [&src.type_key, &tgt.type_key] {
-            if let Some(def) = s.object_type(t) {
-                if !role_allows(&actor.role, def.write_role) {
-                    return Err(OntologyError::WriteForbidden);
-                }
-            }
-        }
-        let attrs = check_values(&lt.attributes, &input.attributes)
-            .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
-        let from = parse_instant("valid_from", input.valid_from.as_deref())?.unwrap_or(now);
-        if from > now {
-            return Err(super::invalid("valid_from", FIELD_INVALID));
         }
         if lt.one_target {
             one.entry((lt.key.as_str(), "source_object_id"))
                 .or_default()
-                .push(src.id);
+                .push(*sid);
         }
         if lt.one_source {
             one.entry((lt.key.as_str(), "target_object_id"))
                 .or_default()
-                .push(tgt.id);
+                .push(*tid);
         }
-        recs.push(serde_json::json!({
-            "relation": lt.key,
-            "source_kind": src.type_key,
-            "source_id": src.native_id,
-            "target_kind": tgt.type_key,
-            "target_id": tgt.native_id,
-            "source_object_id": src.id,
-            "target_object_id": tgt.id,
-            "attributes": attrs,
-            "valid_from": from.to_rfc3339(),
-        }));
     }
     for ((relation, column), mut ids) in one {
         let n = ids.len();
@@ -566,7 +554,57 @@ pub async fn create_many_with<C: ConnectionTrait>(
             return Err(OntologyError::LinkCardinality);
         }
     }
-    for chunk in recs.chunks(BULK_CHUNK) {
+    // Then batch by batch: checked, inserted, journaled (only a batch of
+    // rows is held at a time; the caller's transaction keeps it all or
+    // nothing).
+    let now: DateTimeWithTimeZone = chrono::Utc::now().into();
+    for (batch, ids) in inputs.chunks(BULK_CHUNK).zip(parsed.chunks(BULK_CHUNK)) {
+        let mut recs: Vec<NewEdge> = Vec::with_capacity(batch.len());
+        for (input, (sid, tid)) in batch.iter().zip(ids) {
+            let Some(lt) = s.link_type(&input.link_type) else {
+                return Err(super::invalid("link_type", FIELD_INVALID));
+            };
+            if lt.key == REL_MEASURES || lt.key == REL_DEPICTS || input.valid_to.is_some() {
+                create_with(db, s, org_id, actor, input).await?;
+                continue;
+            }
+            let (Some(src), Some(tgt)) = (ends.get(sid), ends.get(tid)) else {
+                return Err(OntologyError::NotFound);
+            };
+            if src.valid_to.is_some() || tgt.valid_to.is_some() {
+                return Err(OntologyError::NotFound);
+            }
+            if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
+                return Err(OntologyError::LinkNotAllowed);
+            }
+            for t in [&src.type_key, &tgt.type_key] {
+                if let Some(def) = s.object_type(t) {
+                    if !role_allows(&actor.role, def.write_role) {
+                        return Err(OntologyError::WriteForbidden);
+                    }
+                }
+            }
+            let attrs = check_values(&lt.attributes, &input.attributes)
+                .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
+            let from = parse_instant("valid_from", input.valid_from.as_deref())?.unwrap_or(now);
+            if from > now {
+                return Err(super::invalid("valid_from", FIELD_INVALID));
+            }
+            recs.push(NewEdge {
+                relation: &lt.key,
+                source_kind: &src.type_key,
+                source_id: &src.native_id,
+                target_kind: &tgt.type_key,
+                target_id: &tgt.native_id,
+                source_object_id: src.id,
+                target_object_id: tgt.id,
+                attributes: attrs,
+                valid_from: from.to_rfc3339(),
+            });
+        }
+        if recs.is_empty() {
+            continue;
+        }
         let rows = resource_edges::Entity::find()
             .from_raw_sql(bulk_stmt(
                 "INSERT INTO resource_edges (org_id, relation, source_kind, source_id, \
@@ -581,7 +619,7 @@ pub async fn create_many_with<C: ConnectionTrait>(
                 vec![
                     org_id.into(),
                     actor.source_ref.clone().into(),
-                    Value::Array(chunk.to_vec()).into(),
+                    serde_json::to_value(&recs).unwrap_or_default().into(),
                 ],
             ))
             .all(db)
@@ -657,7 +695,7 @@ pub async fn update_many_with<C: ConnectionTrait>(
             .await?;
         for v in views(db, org_id, &updated).await? {
             for mut c in Change::link(org_id, "link.update", &actor.source_ref, &v) {
-                c.before = before.get(&v.id).cloned().unwrap_or_default();
+                c.before = before.get(&v.id).cloned().unwrap_or_default().into();
                 changes::submit(c);
             }
         }

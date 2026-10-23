@@ -144,13 +144,14 @@ pub async fn invoke(
         object_id: object_id.to_string(),
         type_key: row.type_key,
         source_ref: actor.source_ref.clone(),
-        before: Value::Null,
+        before: Value::Null.into(),
         after: serde_json::json!({
             "action": event.action,
             "invocation_id": event.invocation_id,
             "params": event.params,
             "flows": out.flows,
-        }),
+        })
+        .into(),
     });
     Ok(out)
 }

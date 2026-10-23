@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use loco_rs::prelude::*;
@@ -35,8 +35,35 @@ pub struct Change {
     pub object_id: String,
     pub type_key: String,
     pub source_ref: String,
-    pub before: Value,
-    pub after: Value,
+    pub before: Doc,
+    pub after: Doc,
+}
+
+/// A change document kept as JSON text: an import holds thousands of them
+/// until it commits, and a `Value` tree costs several times its text.
+#[derive(Debug, Clone)]
+pub struct Doc(Arc<str>);
+
+impl Doc {
+    pub fn of<T: serde::Serialize>(v: &T) -> Self {
+        Self(
+            serde_json::to_string(v)
+                .unwrap_or_else(|_| "null".into())
+                .into(),
+        )
+    }
+}
+
+impl From<Value> for Doc {
+    fn from(v: Value) -> Self {
+        Self(v.to_string().into())
+    }
+}
+
+impl std::fmt::Display for Doc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 impl Change {
@@ -53,19 +80,15 @@ impl Change {
             object_id: after.id.clone(),
             type_key: after.type_key.clone(),
             source_ref: source_ref.into(),
-            before,
-            after: serde_json::to_value(after).unwrap_or_default(),
+            before: before.into(),
+            after: Doc::of(after),
         }
     }
 
     /// The two entries of a link change, one per end.
     pub fn link(org_id: i64, action: &str, source_ref: &str, link: &LinkView) -> [Self; 2] {
-        let doc = serde_json::to_value(link).unwrap_or_default();
-        let (before, after) = if action == "link.close" {
-            (Value::Null, doc)
-        } else {
-            (Value::Null, doc)
-        };
+        // Both ends share one document.
+        let (before, after) = (Doc::from(Value::Null), Doc::of(link));
         [&link.source, &link.target].map(|end| Self {
             org_id,
             action: action.into(),
@@ -162,7 +185,16 @@ where
 pub fn submit(change: Change) {
     let mut change = Some(change);
     if PENDING
-        .try_with(|p| p.borrow_mut().extend(change.take()))
+        .try_with(|p| {
+            let mut p = p.borrow_mut();
+            // The writer's queue takes no more than this at once: a large
+            // import drops the rest now instead of holding it to its commit.
+            match change.take() {
+                Some(c) if p.len() < QUEUE_MAX => p.push(c),
+                Some(_) => dropped(),
+                None => {}
+            }
+        })
         .is_ok()
     {
         return;
@@ -188,10 +220,14 @@ fn queue(change: Change) {
     };
     let at = chrono::Utc::now().timestamp_micros();
     if tx.try_send((change, at)).is_err() {
-        let n = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
-        if n == 1 || n % 10_000 == 0 {
-            tracing::warn!(dropped = n, "object changes queue full, changes dropped");
-        }
+        dropped();
+    }
+}
+
+fn dropped() {
+    let n = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
+    if n == 1 || n % 10_000 == 0 {
+        tracing::warn!(dropped = n, "object changes queue full, changes dropped");
     }
 }
 
@@ -372,8 +408,8 @@ mod tests {
             object_id: id.into(),
             type_key: "pump".into(),
             source_ref: "manual:7".into(),
-            before: Value::Null,
-            after: Value::Null,
+            before: Value::Null.into(),
+            after: Value::Null.into(),
         }
     }
 
@@ -422,8 +458,8 @@ mod tests {
             object_id: "o1".into(),
             type_key: "pump".into(),
             source_ref: "manual:7".into(),
-            before: serde_json::json!({"title": "P1"}),
-            after: serde_json::json!({"title": "P12"}),
+            before: serde_json::json!({"title": "P1"}).into(),
+            after: serde_json::json!({"title": "P12"}).into(),
         };
         let v = change_of(&document_of(&c, 1_700_000_000_000_000));
         assert_eq!(v.action, "object.update");

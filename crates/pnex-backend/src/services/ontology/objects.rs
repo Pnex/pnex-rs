@@ -453,8 +453,8 @@ pub async fn archive<C: ConnectionTrait>(
         object_id: row.id.to_string(),
         type_key: row.type_key.clone(),
         source_ref: actor.source_ref.clone(),
-        before: serde_json::to_value(&before).unwrap_or_default(),
-        after: Value::Null,
+        before: changes::Doc::of(&before),
+        after: Value::Null.into(),
     });
     Ok(())
 }

@@ -110,6 +110,7 @@ pub(super) async fn step(
                 _ = tick.tick() => imports::beat(&db, import_run).await,
             }
         };
+        imports::release_memory();
         let reply = finish(&cx, &cfg, msg.clone(), out).await;
         if let Err(e) = &reply {
             tracing::warn!(run = %import_run, error = %e, "flow import step not journaled");
