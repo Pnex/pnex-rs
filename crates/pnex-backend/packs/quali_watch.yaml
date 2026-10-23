@@ -40,7 +40,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.3.0"
+version: "1.3.1"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -435,7 +435,7 @@ imports:
           key: siren
           title: raison_sociale
           properties:
-            siren: { from: siret, convert: [digits, luhn, "left:9"] }
+            siren: { from: siret, convert: [digits, "left:9", luhn] }
             nda: { from: nda, convert: [digits] }
             contact_conformite_email: { from: contact_conformite_email, convert: [email] }
             contact_conformite_nom: contact_conformite_nom
@@ -481,7 +481,7 @@ imports:
           key: siren
           title: { from: Nom_Certificateur, convert: [trim] }
           properties:
-            siren: { from: Siret_Certificateur, convert: [digits, luhn, "left:9"] }
+            siren: { from: Siret_Certificateur, convert: [digits, "left:9", luhn], invalid: skip }
         - as: cert
           type: certification
           key: code
@@ -529,7 +529,7 @@ imports:
           key: siren
           title: { from: Nom_Partenaire, convert: [trim] }
           properties:
-            siren: { from: Siret_Partenaire, convert: [digits, luhn, "left:9"] }
+            siren: { from: Siret_Partenaire, convert: [digits, "left:9", luhn], invalid: skip }
         - as: cert
           type: certification
           key: code
@@ -600,7 +600,7 @@ imports:
             jury: { concat: [SI_JURY_FC.COMPOSITION, SI_JURY_FI.COMPOSITION, SI_JURY_VAE.COMPOSITION, SI_JURY_CQ.COMPOSITION, SI_JURY_CL.COMPOSITION], sep: "|", convert: ["before:|"] }
             # The latest year: the register lists them in no set order.
             nb_certifies: { from: STATISTIQUES_PROMOTIONS.STATISTIQUES_PROMOTION, convert: ["max_by:ANNEE", "field:NOMBRE_CERTIFIES"] }
-            url_description: { from: LIEN_URL_DESCRIPTION, convert: [trim] }
+            url_description: { from: LIEN_URL_DESCRIPTION, convert: [trim], invalid: skip }
         - as: comp
           type: competence
           key: cle

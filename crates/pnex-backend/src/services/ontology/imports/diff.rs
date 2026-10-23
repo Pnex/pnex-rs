@@ -135,6 +135,9 @@ pub async fn compute<C: ConnectionTrait>(
     let mut planned_links: Vec<PlannedPair> = Vec::new();
     let mut seen_links: HashMap<(String, usize, usize), usize> = HashMap::new();
     let mut planned = 0usize;
+    // (link type, object, it is the source) of rows that left the other end
+    // out by its key.
+    let mut held: Vec<(String, usize, bool)> = Vec::new();
     for (i, row) in rows.iter().enumerate() {
         let row_no = first_row + i;
         let plan = match plan_row(m, &schema, row_no, row) {
@@ -144,6 +147,7 @@ pub async fn compute<C: ConnectionTrait>(
                 continue;
             }
         };
+        diff.warnings.extend(plan.warnings);
         planned += plan.objects.len();
         if planned > pnex_core::ontology::import::PLANNED_MAX {
             return Err(OntologyError::Import {
@@ -205,6 +209,11 @@ pub async fn compute<C: ConnectionTrait>(
             };
             local.push(idx);
         }
+        held.extend(
+            plan.held
+                .into_iter()
+                .map(|h| (h.link_type, local[h.end], h.is_source)),
+        );
         for l in plan.links {
             let (from, to) = (local[l.from], local[l.to]);
             let Some(&at) = seen_links.get(&(l.link_type.clone(), from, to)) else {
@@ -268,7 +277,8 @@ pub async fn compute<C: ConnectionTrait>(
     }
 
     let mut ends: Vec<End> = Vec::with_capacity(objs.len());
-    for a in &objs {
+    // Consumed: a creation takes the planned document, not a copy.
+    for a in objs.iter_mut() {
         let def = s.object_type(&a.type_key);
         let label = format!("{} {}", a.type_key, a.key);
         // Needs an object that resolved to none (a skipped lookup): left out.
@@ -319,8 +329,8 @@ pub async fn compute<C: ConnectionTrait>(
             }
             None => {
                 // A creation carries the whole document: `required` now.
-                let mut doc = a.defaults.clone();
-                doc.extend(a.properties.clone());
+                let mut doc = std::mem::take(&mut a.defaults);
+                doc.extend(std::mem::take(&mut a.properties));
                 let full = def
                     .map(|d| check_values(&d.properties, &doc))
                     .unwrap_or(Ok(Map::new()));
@@ -351,6 +361,8 @@ pub async fn compute<C: ConnectionTrait>(
             }
         }
     }
+
+    drop((objs, live));
 
     // Open links among the existing ends of the run.
     let existing: Vec<Uuid> = ends
@@ -434,8 +446,11 @@ pub async fn compute<C: ConnectionTrait>(
         });
     }
 
+    drop(open);
     if snapshot {
-        close_missing(db, org_id, import_id, m, &ends, &kept, &mut diff).await?;
+        let (edges, others) = held_links(db, org_id, import_id, &held, &ends).await?;
+        kept.extend(edges);
+        close_missing(db, org_id, import_id, m, &ends, &others, &kept, &mut diff).await?;
     }
     Ok(diff)
 }
@@ -447,13 +462,70 @@ struct Gone {
     label: String,
 }
 
-/// Snapshot: what this import wrote before and the run no longer holds.
+/// Links this import wrote on the ends rows still know when they left the
+/// other end out by its key (`invalid: skip`), and those other ends: the
+/// run cannot tell them gone.
+async fn held_links<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    import_id: Uuid,
+    held: &[(String, usize, bool)],
+    ends: &[End],
+) -> Result<(Vec<i64>, Vec<Uuid>)> {
+    let mut groups: BTreeMap<(&str, bool), Vec<Uuid>> = BTreeMap::new();
+    for (link_type, at, is_source) in held {
+        if let Some(End::Existing(id, _)) = ends.get(*at) {
+            groups
+                .entry((link_type.as_str(), *is_source))
+                .or_default()
+                .push(*id);
+        }
+    }
+    let (mut edges, mut others) = (Vec::new(), Vec::new());
+    for ((relation, is_source), mut ids) in groups {
+        ids.sort_unstable();
+        ids.dedup();
+        let (known, other) = if is_source {
+            ("source_object_id", "target_object_id")
+        } else {
+            ("target_object_id", "source_object_id")
+        };
+        for chunk in ids.chunks(BATCH) {
+            let rows = db
+                .query_all_raw(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    format!(
+                        "SELECT id, {other} AS other FROM resource_edges \
+                         WHERE org_id = $1 AND valid_to IS NULL AND relation = $2 \
+                           AND source_ref LIKE $3 AND {known} = ANY($4)"
+                    ),
+                    [
+                        org_id.into(),
+                        relation.into(),
+                        source_like(import_id).into(),
+                        chunk.to_vec().into(),
+                    ],
+                ))
+                .await?;
+            for r in rows {
+                edges.push(r.try_get::<i64>("", "id")?);
+                others.extend(r.try_get::<Option<Uuid>>("", "other")?);
+            }
+        }
+    }
+    Ok((edges, others))
+}
+
+/// Snapshot: what this import wrote before and the run no longer holds
+/// (`held`: objects kept whatever the run holds).
+#[allow(clippy::too_many_arguments)]
 async fn close_missing<C: ConnectionTrait>(
     db: &C,
     org_id: i64,
     import_id: Uuid,
     m: &Mapping,
     ends: &[End],
+    held: &[Uuid],
     kept: &HashSet<i64>,
     diff: &mut ImportDiff,
 ) -> Result<()> {
@@ -463,6 +535,7 @@ async fn close_missing<C: ConnectionTrait>(
             End::Existing(id, _) => Some(*id),
             _ => None,
         })
+        .chain(held.iter().copied())
         .collect();
     let types: Vec<String> = m
         .objects

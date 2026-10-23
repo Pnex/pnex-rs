@@ -743,7 +743,10 @@ async fn legal_announcements_become_signals() {
 async fn meeting_debrief_and_coaching() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
+        // Installs beside the partner watch, whose `couvre` is another link.
+        install(&server, &env.alice, org, "quali_watch").await;
         install(&server, &env.alice, org, "prospection_b2b").await;
+        install(&server, &env.alice, org, "prospection_fr").await;
         let mk = |t: &'static str, title: &'static str, props: Value| {
             let (server, token) = (&server, env.alice.clone());
             async move {
@@ -760,7 +763,7 @@ async fn meeting_debrief_and_coaching() {
         for body in [
             link("rdv_avec", &meeting, &account, json!({})),
             link("participe_a", &director, &meeting, json!({"cote": "client"})),
-            link("couvre", &meeting, &criterion, json!({"commentaire": "abordé en fin de rendez-vous"})),
+            link("aborde", &meeting, &criterion, json!({"commentaire": "abordé en fin de rendez-vous"})),
         ] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
@@ -1179,6 +1182,7 @@ async fn import_runs_its_own_steps() {
         use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
+        empty_staging(org).await;
         let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
         let base = mock_datagouv(zip.clone()).await;
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
@@ -1581,6 +1585,9 @@ fn fc_partners(drop: &[&str]) -> String {
             "HABILITATION_ORGANISER",
         ),
         ("RNCP1", "AILLEURS", "13002526500013", "HABILITATION_FORMER"),
+        // As shipped by France Compétences: its SIREN (305405046) fails the
+        // Luhn check; `invalid: skip` leaves the row out with a warning.
+        ("RS6765", "AFTRAL", "30540504602419", "HABILITATION_FORMER"),
     ];
     let mut out = String::from(
         "\"Numero_Fiche\";\"Nom_Partenaire\";\"Siret_Partenaire\";\"Habilitation_Partenaire\"\n",
@@ -1594,6 +1601,10 @@ fn fc_partners(drop: &[&str]) -> String {
 }
 
 fn fc_zip(partners: &str) -> Vec<u8> {
+    fc_zip_of(FC_STANDARD, FC_CERTIFIERS, partners)
+}
+
+fn fc_zip_of(standard: &str, certifiers: &str, partners: &str) -> Vec<u8> {
     use std::io::Write;
     let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for (name, body) in [
@@ -1601,10 +1612,10 @@ fn fc_zip(partners: &str) -> Vec<u8> {
             "export_fiches_CSV_Ancienne_Nouvelle_Certification_2026_10_20.csv",
             "Numero_Fiche\n",
         ),
-        ("export_fiches_CSV_Standard_2026_10_20.csv", FC_STANDARD),
+        ("export_fiches_CSV_Standard_2026_10_20.csv", standard),
         (
             "export_fiches_CSV_Certificateurs_2026_10_20.csv",
-            FC_CERTIFIERS,
+            certifiers,
         ),
         ("export_fiches_CSV_Partenaires_2026_10_20.csv", partners),
     ] {
@@ -1652,6 +1663,22 @@ async fn ingest(server: &axum_test::TestServer, node: Value, msg: &Value) -> Val
     res.json::<Value>()
 }
 
+/// Empties the staging of `org` (a failed earlier test may have left files).
+async fn empty_staging(org: i64) {
+    let store = pnex_backend::services::artifact_store::S3Config::from_config(
+        &loco_rs::config::Config::new(&loco_rs::environment::Environment::Test).unwrap(),
+    )
+    .store()
+    .unwrap();
+    for (key, _, _) in store
+        .list_prefix(&format!("org_{org}/staging/"))
+        .await
+        .unwrap()
+    {
+        store.delete_key(&key).await.unwrap();
+    }
+}
+
 fn count(db_row: Option<sea_orm::QueryResult>) -> i64 {
     db_row.unwrap().try_get::<i64>("", "n").unwrap()
 }
@@ -1663,6 +1690,7 @@ async fn open_data_ingestion_chain() {
         use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
+        empty_staging(org).await;
         let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
         let base = mock_datagouv(zip.clone()).await;
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
@@ -1735,7 +1763,7 @@ async fn open_data_ingestion_chain() {
         assert_eq!((r["filter_c"]["manifest"]["rows_in"].clone(), r["filter_c"]["manifest"]["rows_out"].clone()), (json!(3), json!(2)));
         assert_eq!(r["import_c"]["manifest"]["state"], "applied", "{}", r["import_c"]);
         assert_eq!(r["filter_s"]["manifest"]["rows_out"], 2, "only the client's sheets");
-        assert_eq!(r["filter_p"]["manifest"]["rows_out"], 5, "{}", r["filter_p"]);
+        assert_eq!(r["filter_p"]["manifest"]["rows_out"], 6, "{}", r["filter_p"]);
         assert_eq!(r["import_p"]["manifest"]["state"], "applied", "{}", r["import_p"]);
         assert!(r["cleanup"]["manifest"]["deleted_keys"].as_array().unwrap().len() >= 5, "{}", r["cleanup"]);
 
@@ -1755,6 +1783,11 @@ async fn open_data_ingestion_chain() {
             AND relation = '{relation}' AND valid_to IS NULL");
         assert_eq!(count(q(links("porte")).await.unwrap()), 2);
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
+        // A SIREN failing its check digit: the row is a warning, not an error.
+        assert_eq!(r["import_p"]["manifest"]["warnings"], 1, "{}", r["import_p"]);
+        let aftral = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
+            AND type_key = 'organization' AND properties ->> 'siren' = '305405046'");
+        assert_eq!(count(q(aftral).await.unwrap()), 0);
         let scope = q(format!("SELECT e.attributes AS a FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
             WHERE e.org_id = {org} AND e.relation = 'habilite_pour' AND o.properties ->> 'siren' = '333333334'"))
             .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
@@ -1776,6 +1809,17 @@ async fn open_data_ingestion_chain() {
         assert_eq!(r2["download"]["port"], 2, "{}", r2["download"]);
         assert!(!r2.contains_key("extract"));
 
+        // A known partner whose SIREN turns invalid in the export: left out
+        // with a warning, its accreditation neither closed nor updated.
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&[])
+            .replace("11111111800001", "11111111900001")
+            .replace("11111111800019", "11111111900019"));
+        let rk = run(true).await;
+        let m = &rk["import_p"]["manifest"];
+        assert_eq!((rk["import_p"]["port"].clone(), m["warnings"].clone(), m["closed"].clone()),
+            (json!(0), json!(3), json!(0)), "{}", rk["import_p"]);
+        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3);
+
         // A partner gone from the open data: its accreditation closes.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["333"]));
         let r3 = run(true).await;
@@ -1783,7 +1827,8 @@ async fn open_data_ingestion_chain() {
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
 
         // Most of the network gone at once: refused, nothing closed.
-        *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222"]));
+        // (AFTRAL out too: a row left out by its key keeps its sheet's links.)
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222", "305"]));
         let r4 = run(true).await;
         assert_eq!(r4["import_p"]["port"], 1, "{}", r4["import_p"]);
         assert_eq!(r4["import_p"]["code"], "ingest-suspicious-closures");
@@ -1794,6 +1839,21 @@ async fn open_data_ingestion_chain() {
         let r5 = run(true).await;
         assert_eq!(r5["inspect_p"]["code"], "import-schema-changed", "{}", r5["inspect_p"]);
         assert!(!r5.contains_key("import_p"));
+
+        // Partners of active certifications only: `only` narrows the objects
+        // an `in_objects` filter reads (RS6766 is inactive).
+        let mut g = q(format!("SELECT graph FROM flow_versions WHERE id = {vid}"))
+            .await.unwrap().unwrap().try_get::<Value>("", "graph").unwrap();
+        for n in g["nodes"].as_array_mut().unwrap() {
+            if n["id"] == "filter_p" {
+                n["config"]["only"] = json!({"property": "statut", "values": ["actif"]});
+            }
+        }
+        env.db.execute_raw(Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
+            "UPDATE flow_versions SET graph = $1 WHERE id = $2", vec![g.into(), vid.into()])).await.unwrap();
+        *zip.lock().unwrap() = fc_zip(&fc_partners(&[]));
+        let r6 = run(false).await;
+        assert_eq!(r6["filter_p"]["manifest"]["rows_out"], 5, "{}", r6["filter_p"]);
 
         // A forged node is refused; a key of another org is never read.
         let res = server.post("/internal/flow/ingest").add_header("x-pnex-flow-token", "tok-pw-1")
@@ -2115,11 +2175,151 @@ async fn france_competences_sheet_content() {
         assert_eq!((of("111111111").1, of("222222222").1), (json!("actif"), json!("inactif")), "{states:?}");
         assert_eq!(of("222222222").2, json!("2026-05-12"));
 
+        // A description over its 2,048 characters (`invalid: skip`): a
+        // warning, the sheet keeps its value, the run is not refused.
+        let long = RS_XML.replace(
+            "▷ Certification « Piloter le référencement d'un site »",
+            &"x".repeat(3_000),
+        );
+        let p = preview(&server, &env.alice, org, &id, &long).await;
+        assert!(p["diff"]["errors"].as_array().unwrap().is_empty(), "{p}");
+        let w = p["diff"]["warnings"].as_array().unwrap();
+        assert!(w.iter().any(|w| w["column"] == "LIEN_URL_DESCRIPTION" && w["token"] == "max_length:2048"), "{p}");
+        assert_eq!((p["run"]["counts"]["updated"].clone(), p["run"]["counts"]["closed"].clone()), (json!(0), json!(0)), "{p}");
+
         // Same file again: nothing to do.
         let p = preview(&server, &env.alice, org, &id, RS_XML).await;
         let c = &p["run"]["counts"];
         assert_eq!((c["created"].clone(), c["updated"].clone(), c["links_opened"].clone(), c["links_updated"].clone(), c["closed"].clone()),
             (json!(0), json!(0), json!(0), json!(0), json!(0)), "{p}");
+    })
+    .await;
+}
+
+/// `prefix` completed with its Luhn check digit.
+fn with_luhn(prefix: &str) -> String {
+    let sum: u32 = prefix
+        .bytes()
+        .rev()
+        .enumerate()
+        .map(|(i, b)| {
+            let d = (b - b'0') as u32;
+            if i % 2 == 0 {
+                let x = d * 2;
+                x / 10 + x % 10
+            } else {
+                d
+            }
+        })
+        .sum();
+    format!("{prefix}{}", (10 - sum % 10) % 10)
+}
+
+/// Memory of a partner import at the size of the real France Compétences
+/// export (401,650 rows, 35 % on active certifications), run with its own
+/// steps as *Run now* does. Prints the process peak RSS of the run:
+/// `cargo test --test partner_watch partners_import_memory -- --ignored --nocapture`.
+#[tokio::test]
+#[serial]
+#[ignore]
+async fn partners_import_memory() {
+    with_app(|server, env| async move {
+        use sea_orm::Statement;
+        const FICHES: usize = 4_000;
+        const ROWS: usize = 401_650;
+        const PARTNERS: usize = 100_000;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let mut standard = String::from("\"Id_Fiche\";\"Numero_Fiche\";\"Intitule\";\"Nomenclature_Europe_Niveau\";\"Date_Decision\";\"Date_Fin_Enregistrement\";\"Date_Effet\";\"Actif\"\n");
+        let mut certifiers = String::from("\"Numero_Fiche\";\"Siret_Certificateur\";\"Nom_Certificateur\"\n");
+        for i in 0..FICHES {
+            let state = if i % 20 < 7 { "ACTIVE" } else { "INACTIVE" };
+            standard.push_str(&format!("\"{i}\";\"RS{}\";\"Fiche {i}\";\"\";\"15/01/2024\";\"15/01/2027\";\"\";\"{state}\"\n", 10_000 + i));
+            certifiers.push_str(&format!("\"RS{}\";\"\t80259488700019\";\"TELEPILOTE\"\n", 10_000 + i));
+        }
+        // `shift` turns the scopes: a second run updates the links.
+        let partners = |shift: usize| {
+            let habs = ["HABILITATION_ORGA_FORM", "HABILITATION_FORMER", "HABILITATION_ORGANISER"];
+            let mut out = String::from("\"Numero_Fiche\";\"Nom_Partenaire\";\"Siret_Partenaire\";\"Habilitation_Partenaire\"\n");
+            for i in 0..ROWS {
+                // Pairs of partner and sheet nearly all distinct, as in the export.
+                let (p, fiche) = ((i * 7_919) % PARTNERS, (i / 7) % FICHES);
+                let siret = with_luhn(&format!("{}0001", with_luhn(&format!("{}", 10_000_000 + p))));
+                out.push_str(&format!("\"RS{}\";\"PARTENAIRE {p}\";\"\t{siret}\";\"{}\"\n", 10_000 + fiche, habs[(i + shift) % 3]));
+            }
+            out
+        };
+        let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip_of(&standard, &certifiers, &partners(0))));
+        let base = mock_datagouv(zip.clone()).await;
+        unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
+        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
+        let graph = q(format!("SELECT v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
+            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
+            .await.unwrap().expect("pack flow").try_get::<Value>("", "graph").unwrap();
+        let config = |id: &str| graph["nodes"].as_array().unwrap().iter()
+            .find(|n| n["id"] == id).map(|n| n["config"].clone()).unwrap();
+        let fetch = || {
+            let mut r = config("resolve");
+            r["dataset"] = json!("fc");
+            vec![r, config("download"), config("extract")]
+        };
+        // Moves `steps` onto the import of node `node`, runs it; returns the run.
+        let run = |node: &'static str, steps: Vec<Value>| {
+            let server = &server;
+            let token = env.alice.clone();
+            let import_id = config(node)["import_id"].as_str().unwrap().to_string();
+            async move {
+                let (_, imp) = call(server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &token, org, None).await;
+                let mapping = imp["mapping"].as_str().unwrap();
+                let mut mapping = mapping.split("\nsteps:\n").next().unwrap().trim_end().to_string();
+                mapping.push_str("\nsteps:\n");
+                for s in &steps {
+                    mapping.push_str(&format!("  - {s}\n"));
+                }
+                let (st, imp) = call(server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &token, org,
+                    Some(json!({"name": imp["name"], "mapping": mapping, "source": "file", "mode": imp["mode"],
+                                "expected_version": imp["version"]}))).await;
+                assert_eq!(st, 200, "{imp}");
+                let (st, run) = call(server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &token, org, None).await;
+                assert_eq!(st, 202, "{run}");
+                settle_within(server, &token, org, &import_id, run["id"].as_str().unwrap(), 6_000).await
+            }
+        };
+        let mut c = config("filter_c");
+        c["values"] = json!(["80259488700019"]);
+        let r = run("import_c", [fetch(), vec![config("inspect_c"), c]].concat()).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        let r = run("import_s", [fetch(), vec![config("inspect_s"), config("filter_s")]].concat()).await;
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+
+        let mut p = config("filter_p");
+        p["only"] = json!({"property": "statut", "values": ["actif"]});
+        let hwm = || {
+            std::fs::read_to_string("/proc/self/status").unwrap().lines()
+                .filter(|l| l.starts_with("VmHWM:") || l.starts_with("VmRSS:"))
+                .collect::<Vec<_>>().join(" ")
+        };
+        // Resets the peak (VmHWM) to the current RSS.
+        std::fs::write("/proc/self/clear_refs", "5").unwrap();
+        println!("before partners: {}", hwm());
+        let t = std::time::Instant::now();
+        let r = run("import_p", [fetch(), vec![config("inspect_p"), p.clone()]].concat()).await;
+        println!("partners run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
+        println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+
+        // The next export: same partners, other scopes.
+        *zip.lock().unwrap() = fc_zip_of(&standard, &certifiers, &partners(1));
+        std::fs::write("/proc/self/clear_refs", "5").unwrap();
+        println!("before update: {}", hwm());
+        let t = std::time::Instant::now();
+        let r = run("import_p", [fetch(), vec![config("inspect_p"), p.clone()]].concat()).await;
+        println!("update run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
+        println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
+        assert_eq!(r["run"]["state"], "applied", "{r}");
+        // The org id comes back in the next test: its staging is emptied.
+        empty_staging(org).await;
+        unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
     })
     .await;
 }
