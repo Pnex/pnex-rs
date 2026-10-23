@@ -3,6 +3,7 @@ use super::*;
 
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::ingest::{FilterOp, ImportAction, IngestConfig, IngestStep, ResolveMode};
+use pnex_core::ontology::import::PerObjectOnly;
 
 // ─────────────── ingestion nodes (ingestion.md D317–D322) ───────────────
 
@@ -250,6 +251,16 @@ fn FilterFields(cx: EditorCx, initial: IngestConfig, off: bool) -> Element {
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect::<Vec<_>>()
         .join(", ");
+    let only_property = initial
+        .only
+        .as_ref()
+        .map(|o| o.property.clone())
+        .unwrap_or_default();
+    let only_values = initial
+        .only
+        .as_ref()
+        .map(|o| o.values.clone())
+        .unwrap_or_default();
     rsx! {
         EntryField { cx, value: initial.entry.clone(), off }
         LineField {
@@ -299,6 +310,26 @@ fn FilterFields(cx: EditorCx, initial: IngestConfig, off: bool) -> Element {
                     }
                 }
             }
+            div { class: "grid grid-cols-2 gap-2",
+                div {
+                    LineField {
+                        label: t!("flows-ingest-only-property").to_string(),
+                        value: only_property,
+                        testid: "ingest-only-property",
+                        disabled: off,
+                        on_commit: move |v| edit(cx, move |c| set_only(c, Some(v), None)),
+                    }
+                }
+                div {
+                    ListField {
+                        label: t!("flows-ingest-only-values").to_string(),
+                        value: only_values,
+                        testid: "ingest-only-values",
+                        disabled: off,
+                        on_commit: move |v| edit(cx, move |c| set_only(c, None, Some(v))),
+                    }
+                }
+            }
         } else {
             ListField {
                 label: t!("flows-ingest-values").to_string(),
@@ -310,6 +341,21 @@ fn FilterFields(cx: EditorCx, initial: IngestConfig, off: bool) -> Element {
         }
         ConvertField { cx, value: convert, off }
     }
+}
+
+/// One side of the `in_objects` subset; both sides empty = no subset.
+fn set_only(c: &mut IngestConfig, property: Option<String>, values: Option<Vec<String>>) {
+    let mut o = c.only.take().unwrap_or(PerObjectOnly {
+        property: String::new(),
+        values: Vec::new(),
+    });
+    if let Some(p) = property {
+        o.property = p;
+    }
+    if let Some(v) = values {
+        o.values = v;
+    }
+    c.only = (!o.property.trim().is_empty() || !o.values.is_empty()).then_some(o);
 }
 
 /// Conversions written `digits, trim, left:9` (D301 names).

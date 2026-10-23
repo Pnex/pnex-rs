@@ -160,6 +160,10 @@ pub struct IngestConfig {
     pub object_type: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub property: String,
+    /// `in_objects`: only the objects whose property holds one of these
+    /// values (the active certifications, not every one known).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only: Option<crate::ontology::import::PerObjectOnly>,
     /// D301 conversions applied to the column before comparing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub convert: Vec<Convert>,
@@ -234,6 +238,14 @@ impl IngestConfig {
             IngestStep::RowsFilter if self.op == FilterOp::Equals && self.values.len() > 1 => {
                 bad("equals takes one value")
             }
+            IngestStep::RowsFilter
+                if self
+                    .only
+                    .as_ref()
+                    .is_some_and(|o| o.values.len() > FILTER_VALUES_MAX) =>
+            {
+                bad("1,000 values at most")
+            }
             IngestStep::OntologyImport
                 if !self.import_id.trim().is_empty()
                     && uuid::Uuid::parse_str(self.import_id.trim()).is_err() =>
@@ -273,6 +285,14 @@ impl IngestConfig {
                     if self.object_type.trim().is_empty() || self.property.trim().is_empty() =>
                 {
                     unset("in_objects needs a type and a property")
+                }
+                FilterOp::InObjects
+                    if self.only.as_ref().is_some_and(|o| {
+                        o.property.trim().is_empty()
+                            || !o.values.iter().any(|v| !v.trim().is_empty())
+                    }) =>
+                {
+                    unset("in_objects only needs a property and its values")
                 }
                 _ => None,
             },
@@ -478,6 +498,29 @@ mod tests {
             ..f
         };
         assert!(f.check_deployable().is_none());
+        let only = |property: &str, values: &[&str]| IngestConfig {
+            only: Some(crate::ontology::import::PerObjectOnly {
+                property: property.into(),
+                values: values.iter().map(|v| v.to_string()).collect(),
+            }),
+            ..f.clone()
+        };
+        assert!(only("statut", &["actif"]).check_deployable().is_none());
+        assert!(
+            only("", &["actif"]).check_deployable().is_some(),
+            "no property"
+        );
+        assert!(
+            only("statut", &[" "]).check_deployable().is_some(),
+            "no value"
+        );
+        let parsed: IngestConfig = serde_json::from_value(serde_json::json!({
+            "step": "rows_filter", "column": "Numero_Fiche", "op": "in_objects",
+            "object_type": "certification", "property": "code",
+            "only": {"property": "statut", "values": ["actif"]},
+        }))
+        .unwrap();
+        assert_eq!(parsed, only("statut", &["actif"]));
         let empty_in = IngestConfig {
             op: FilterOp::In,
             ..f
