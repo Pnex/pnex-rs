@@ -24,8 +24,8 @@ Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an ad
 - **Add and update**: creates and updates, never closes anything.
 - **Full list**: in addition, what this import wrote and the source no longer holds is **closed** (a link gets an end date, an object is archived): a partner removed from the sheet loses its accreditation at the import date. Nothing is ever deleted.
 
-## Schedules (file at an address, API)
-- A schedule (every day, week or month) runs the import at night and applies it without preview.
+## Schedules (file at an address, API, or an import with its own steps)
+- A schedule (every day, week or month) runs the import at night and applies it without preview. An import of a sent file can be scheduled once it has its own steps (it then fetches its file itself); without steps it cannot.
 - It is **refused without writing anything** when the source changed shape (*import-schema-changed*: missing columns, or no record while the last run had some) or, in *Full list* mode, when it lost more than 30 % of its records (*import-suspicious-drop*). You get an in-app notice; the history keeps every run with its counters.
 - *import-source-unreachable*: the address cannot be reached (refused internal address, network, server error). *import-source-unreadable*: the file is not in the expected format. *import-source-too-large*: over 200 MB once decompressed, 250,000 records or 500,000 objects (lists expanded) per run.
 

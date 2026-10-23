@@ -1205,7 +1205,15 @@ async fn import_runs_its_own_steps() {
         let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
         assert_eq!((st, e["error"].as_str()), (409, Some("ingest-entry-missing")), "{e}");
 
-        // YAML takes JSON: one step per line.
+        // A file import without steps has nothing to fetch on schedule.
+        let start = (chrono::Utc::now().date_naive() + chrono::Days::new(7)).to_string();
+        let weekly = json!({"start": start, "every": 1, "unit": "week"});
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org,
+            Some(json!({"name": imp["name"], "mapping": imp["mapping"], "source": "file", "mode": imp["mode"],
+                        "recurrence": weekly, "expected_version": imp["version"]}))).await;
+        assert_eq!((st, e["errors"]["fields"]["recurrence"].as_str()), (400, Some("invalid")), "{e}");
+
+        // YAML takes JSON: one step per line. With its steps it is scheduled.
         let mut mapping = imp["mapping"].as_str().unwrap().trim_end().to_string();
         mapping.push_str("\nsteps:\n");
         for s in &steps {
@@ -1213,8 +1221,9 @@ async fn import_runs_its_own_steps() {
         }
         let (st, imp) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org,
             Some(json!({"name": imp["name"], "mapping": mapping, "source": "file", "mode": imp["mode"],
-                        "expected_version": imp["version"]}))).await;
+                        "recurrence": weekly, "expected_version": imp["version"]}))).await;
         assert_eq!(st, 200, "{imp}");
+        assert!(imp["next_run_at"].as_str().is_some_and(|t| t.starts_with(&start)), "{imp}");
 
         // R2: a viewer starts nothing.
         personal_org(&server, &env.bob).await;

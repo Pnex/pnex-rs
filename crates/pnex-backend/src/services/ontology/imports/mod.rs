@@ -186,7 +186,8 @@ async fn check_input<C: ConnectionTrait>(
     .map_err(|(f, t)| invalid(format!("mapping.{f}"), t))?;
     match (input.source, input.source_url.as_deref()) {
         (ImportSource::File, _) => {
-            if input.recurrence.is_some() {
+            // Only steps give a file import something to fetch on schedule.
+            if input.recurrence.is_some() && m.steps.is_empty() {
                 return Err(invalid("recurrence", FIELD_INVALID));
             }
         }
