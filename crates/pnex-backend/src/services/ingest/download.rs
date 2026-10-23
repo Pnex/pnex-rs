@@ -82,8 +82,9 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
             return unreachable();
         }
     };
-    if resp.content_length().is_some_and(|n| n > cap) {
-        return Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, Value::Null);
+    if let Some(n) = resp.content_length().filter(|n| *n > cap) {
+        let args = serde_json::json!({ "bytes": n, "max": cap });
+        return Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args);
     }
     let name = resp
         .url()
@@ -107,10 +108,9 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
             Ok(Some(chunk)) => {
                 bytes += chunk.len() as u64;
                 if bytes > cap {
-                    break Some(Outcome::fail(
-                        err_codes::IMPORT_SOURCE_TOO_LARGE,
-                        Value::Null,
-                    ));
+                    // Counted up to the cap: the source holds at least that.
+                    let args = serde_json::json!({ "bytes": bytes, "max": cap });
+                    break Some(Outcome::fail(err_codes::IMPORT_SOURCE_TOO_LARGE, args));
                 }
                 if bytes > room {
                     break Some(Outcome::fail(err_codes::INGEST_STAGING_QUOTA, Value::Null));

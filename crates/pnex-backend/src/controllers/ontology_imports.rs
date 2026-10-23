@@ -226,7 +226,8 @@ async fn runs(
         (status = 202, body = pnex_core::ontology::import::ImportRunView),
         (status = 403, description = "`access-denied` (no `ontology:write`)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ingest-entry-missing` (a file import without steps)", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ingest-entry-missing` (a file import without steps)", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`import-server-stopping` (the server is restarting: try again)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -258,7 +259,7 @@ async fn start(
     tag = "ontology",
     operation_id = "ontology_imports_runs_get",
     summary = "Get a run and its difference",
-    description = "A run and, while it is a preview, its difference: objects created, updated (old → new), closed, links opened or updated, errors and warnings by row and column (each list cut to 500 entries; the counters hold the totals). Any org member.",
+    description = "A run and, while it is a preview, its difference: objects created, updated (old → new), closed, links opened or updated, errors and warnings by row and column (each list cut to 500 entries; the counters hold the totals). A run of an import with steps also lists them, in order (outcome, code, manifest). Any org member.",
     params(
         ("id" = String, Path, format = "uuid", description = "Import id"),
         ("run_id" = String, Path, format = "uuid", description = "Run id")
@@ -301,7 +302,8 @@ struct DryRunQuery {
         (status = 202, body = pnex_core::ontology::import::ImportRunView),
         (status = 400, description = "`file` required for a file import (field → token)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
-        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`import-server-stopping` (the server is restarting: try again)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -340,7 +342,8 @@ async fn dry_run(
         (status = 400, description = "Invalid `run_id` (field → token)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden` (viewer)", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ontology-version-conflict`, `import-run-stale`, `import-has-errors`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ontology-version-conflict`, `import-run-stale`, `import-has-errors`", body = crate::openapi::ErrorDetail),
+        (status = 503, description = "`import-server-stopping` (the server is restarting: try again)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]

@@ -101,7 +101,8 @@ async fn steps_then_file(
     };
     match cx.store.size(&msg.staging_key).await {
         Ok(Some(n)) if n > UNZIPPED_MAX => {
-            return Err((err_codes::IMPORT_SOURCE_TOO_LARGE.to_string(), Value::Null))
+            let args = serde_json::json!({ "bytes": n, "max": UNZIPPED_MAX });
+            return Err((err_codes::IMPORT_SOURCE_TOO_LARGE.to_string(), args));
         }
         Ok(Some(_)) => {}
         Ok(None) => return Err(missing()),

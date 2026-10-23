@@ -371,8 +371,17 @@ impl Hooks for App {
     }
 
     async fn on_shutdown(ctx: &AppContext) {
-        // Hand the orgs of the local flow worker over before exiting (D106).
-        crate::services::flow_cluster::shutdown().await;
+        // Side by side, within the pod's grace period: hand the orgs of the
+        // local flow worker over (D106); let the import runs finish, none
+        // starting any more, the late ones failed `import-run-interrupted`
+        // (data-pipelines.md §7 bis).
+        tokio::join!(
+            crate::services::flow_cluster::shutdown(),
+            crate::services::ontology::imports::stop::shutdown(
+                &ctx.db,
+                crate::services::ontology::imports::stop::grace(),
+            ),
+        );
         // Flush buffered writers (O2 telemetry batches, notify journal):
         // their senders live in statics, the channels never close by
         // themselves. Bounded: the pod's grace period is finite.

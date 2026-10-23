@@ -219,6 +219,7 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
                 err_codes::IMPORT_SOURCE_UNREADABLE
                 | err_codes::IMPORT_SOURCE_TOO_LARGE
                 | err_codes::IMPORT_SOURCE_UNREACHABLE => StatusCode::UNPROCESSABLE_ENTITY,
+                err_codes::IMPORT_SERVER_STOPPING => StatusCode::SERVICE_UNAVAILABLE,
                 _ => StatusCode::CONFLICT,
             },
             code,

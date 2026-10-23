@@ -41,9 +41,14 @@ pub fn check_url(raw: &str) -> Result<reqwest::Url, &'static str> {
 }
 
 pub fn read_error(e: ReadError) -> &'static str {
+    read_refusal(e).0
+}
+
+/// The code of a read error and its arguments (`{rows, max}`…).
+pub fn read_refusal(e: ReadError) -> (&'static str, Value) {
     match e {
-        ReadError::TooLarge => TOO_LARGE,
-        ReadError::Malformed | ReadError::UnknownFormat => UNREADABLE,
+        ReadError::TooLarge(l) => (TOO_LARGE, l.args()),
+        ReadError::Malformed | ReadError::UnknownFormat => (UNREADABLE, Value::Null),
     }
 }
 

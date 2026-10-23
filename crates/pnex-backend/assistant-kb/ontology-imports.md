@@ -33,6 +33,8 @@ Ontology › **Imports** turns the rows of a sheet (Excel, CSV), a file at an ad
 - **Run now** (a writer, on an import that has something to fetch) starts a run at once, like a scheduled one: checked, then applied without preview, with the author's role. Follow it in **History**.
 - An import can carry its own **steps** in its YAML, under `steps:` (the same as the flow *Open-data ingestion* nodes: find the newest file of a data.gouv.fr dataset, download, extract an archive, inspect a table, filter rows). *Run now* runs them on the server, then applies the mapping to the file they leave. Large files are written in bulk: tens of thousands of rows take about a minute.
 - *import-source-too-large* on *Run now* with steps: the filtered file still holds more than 250,000 rows. Narrow the row filter, for example `only: {property: statut, values: [actif]}` on an `in_objects` filter keeps the rows of your active objects only.
+- **History** shows each run with its outcome and, for a refusal or a failure, the message with its figures (for example how many records the source held against the limit). **Steps** unfolds the steps of a run: outcome, duration, rows read and kept, and the step where it stopped.
+- *import-server-stopping*: the server is restarting and starts no run for a minute; run it again. *import-run-interrupted*: the server stopped during the run, which wrote nothing; run it again.
 - *ingest-entry-missing* on *Run now*: a sheet import has nothing to fetch; send its file with **Preview** instead, or give it steps.
 
 ## Hierarchy

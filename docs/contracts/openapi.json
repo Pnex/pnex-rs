@@ -8254,6 +8254,13 @@
           },
           "run": {
             "$ref": "#/components/schemas/ImportRunView"
+          },
+          "steps": {
+            "description": "The run's steps, in order (an import with `steps:`).",
+            "items": {
+              "$ref": "#/components/schemas/IngestStepView"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -8300,6 +8307,13 @@
           "state": {
             "description": "`running` | `preview` | `applied` | `refused` | `failed` | `stale`.",
             "type": "string"
+          },
+          "state_args": {
+            "description": "Its arguments (`{rows, max}` for a source too large, the missing\ncolumns…), for the `err-<code>` message.",
+            "type": [
+              "object",
+              "null"
+            ]
           },
           "state_code": {
             "description": "Machine code of a refusal or failure (`import-schema-changed`…).",
@@ -56580,6 +56594,16 @@
               }
             },
             "description": "`ontology-version-conflict`, `import-run-stale`, `import-has-errors`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`import-server-stopping` (the server is restarting: try again)"
           }
         },
         "security": [
@@ -56690,6 +56714,16 @@
               }
             },
             "description": "`ontology-not-found`"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`import-server-stopping` (the server is restarting: try again)"
           }
         },
         "security": [
@@ -56874,6 +56908,16 @@
               }
             },
             "description": "`ingest-entry-missing` (a file import without steps)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`import-server-stopping` (the server is restarting: try again)"
           }
         },
         "security": [
@@ -56889,7 +56933,7 @@
     },
     "/api/v1/ontology/imports/{id}/runs/{run_id}": {
       "get": {
-        "description": "A run and, while it is a preview, its difference: objects created, updated (old → new), closed, links opened or updated, errors and warnings by row and column (each list cut to 500 entries; the counters hold the totals). Any org member.",
+        "description": "A run and, while it is a preview, its difference: objects created, updated (old → new), closed, links opened or updated, errors and warnings by row and column (each list cut to 500 entries; the counters hold the totals). A run of an import with steps also lists them, in order (outcome, code, manifest). Any org member.",
         "operationId": "ontology_imports_runs_get",
         "parameters": [
           {

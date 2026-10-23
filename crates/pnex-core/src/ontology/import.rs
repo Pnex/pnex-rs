@@ -1669,6 +1669,11 @@ pub struct ImportRunView {
     /// Machine code of a refusal or failure (`import-schema-changed`…).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_code: Option<String>,
+    /// Its arguments (`{rows, max}` for a source too large, the missing
+    /// columns…), for the `err-<code>` message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub state_args: Option<Value>,
     /// `preview` | `schedule` | `manual`.
     pub trigger: String,
     /// Import version the run was computed on.
@@ -1860,6 +1865,9 @@ impl ImportDiff {
 pub struct ImportPreview {
     pub run: ImportRunView,
     pub diff: ImportDiff,
+    /// The run's steps, in order (an import with `steps:`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<crate::ingest::IngestStepView>,
 }
 
 /// `POST …/apply`: the preview run, on the import version it was read on.

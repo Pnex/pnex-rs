@@ -57,6 +57,7 @@ mod m20261022_000047_pending_links_to_proposals;
 mod m20261022_000048_pack_settings;
 mod m20261023_000049_case_proposals_to_proposals;
 mod m20261023_000050_pack_display;
+mod m20261023_000051_import_run_state_args;
 
 pub struct Migrator;
 
@@ -110,6 +111,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261022_000048_pack_settings::Migration),
             Box::new(m20261023_000049_case_proposals_to_proposals::Migration),
             Box::new(m20261023_000050_pack_display::Migration),
+            Box::new(m20261023_000051_import_run_state_args::Migration),
         ]
     }
 }
