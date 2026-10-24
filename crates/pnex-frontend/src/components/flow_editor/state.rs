@@ -48,13 +48,6 @@ pub enum PaletteKind {
     OntologyQuery,
     ObjectUpsert,
     LinkUpsert,
-    IngestResolve,
-    IngestDownload,
-    IngestExtract,
-    IngestInspect,
-    IngestFilter,
-    IngestImport,
-    IngestCleanup,
     SiteRecipe,
     WebSearch,
     OrgResolve,
@@ -272,50 +265,6 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::LinkUpsert => FlowNodeKind::LinkUpsert {
                 config: Default::default(),
             },
-            // Step picked from the palette; its fields start empty.
-            PaletteKind::IngestResolve => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::SourceResolve,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestDownload => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::FileDownload,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestExtract => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::ArchiveExtract,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestInspect => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::TableInspect,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestFilter => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::RowsFilter,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestImport => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::OntologyImport,
-                    ..Default::default()
-                },
-            },
-            PaletteKind::IngestCleanup => FlowNodeKind::Ingest {
-                config: pnex_core::ingest::IngestConfig {
-                    step: pnex_core::ingest::IngestStep::StagingCleanup,
-                    ..Default::default()
-                },
-            },
-            // No rule picked yet: the deploy gate guides the user.
             PaletteKind::SiteRecipe => FlowNodeKind::SiteRecipe {
                 config: pnex_core::site_recipe::SiteRecipeNodeConfig::default(),
             },

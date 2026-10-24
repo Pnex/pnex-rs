@@ -121,7 +121,29 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
         out.manifest = json!({ "entry": input.name, "columns": table.columns });
         return out;
     };
+    let from_setting = match cfg.setting.as_deref() {
+        Some(key) => {
+            match crate::services::ontology::packs::setting_value(cx.db, cx.node.org_id, key).await
+            {
+                Ok(v) => Some(
+                    v.as_ref()
+                        .and_then(Value::as_str)
+                        .map(pnex_core::ontology::import::PerObjectSetting::codes)
+                        .unwrap_or_default(),
+                ),
+                Err(_) => return unavailable(),
+            }
+        }
+        None => None,
+    };
+    // An empty setting keeps every row (D425).
+    let keep_all = from_setting.as_ref().is_some_and(Vec::is_empty);
     let allowed: HashSet<String> = match cfg.op {
+        FilterOp::In if from_setting.is_some() => from_setting
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
         FilterOp::Equals | FilterOp::In => {
             cfg.values.iter().map(|v| v.trim().to_string()).collect()
         }
@@ -132,7 +154,11 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
             }
         }
     };
-    let (rows, distinct) = keep(&table, index, cfg, &allowed);
+    let (rows, distinct) = if keep_all {
+        (table.rows.iter().collect(), 0)
+    } else {
+        keep(&table, index, cfg, &allowed)
+    };
     let csv = to_csv(&table.columns, &rows, table.delimiter.unwrap_or(';'));
     let bytes = csv.len() as u64;
     match cx.room().await {
@@ -159,6 +185,7 @@ pub(super) async fn run(cx: &Cx<'_>, cfg: &IngestConfig, msg: IngestMsg) -> Outc
         "column": column,
         "op": cfg.op,
         "only": cfg.only,
+        "setting": cfg.setting,
         "allowed_values": allowed.len(),
         "rows_in": table.rows.len(),
         "rows_out": rows.len(),

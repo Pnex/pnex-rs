@@ -494,21 +494,6 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         notes: "msg.payload = {source_id, target_id, attributes?, valid_from?} (object ids). Closing keeps the link in the history. Output: msg.link = the link (valid_to set when skip_closed answered a closed one). Cardinality rules of the link type apply (a second open link where only one is allowed is refused).",
     },
     NodeDoc {
-        kind: "ingest",
-        summary: "One visible step of an open-data ingestion chain: resolve a source, download it to the staging area, extract an archive, inspect a table, filter rows, run a declarative import, clean up. Bytes stay in the server's staging area; messages carry keys and a manifest (shown in the node panel). Ports: 0 done, 1 error (msg.error = {code, args}); file_download adds 2 = unchanged since the last successful run.",
-        config: &[
-            ("step", "source_resolve | file_download | archive_extract | table_inspect | rows_filter | ontology_import | staging_cleanup"),
-            ("mode, url, dataset, resource_match", "source_resolve: mode url (fixed http(s) url) or datagouv (dataset id or slug + glob on the resource title; the most recent match wins)"),
-            ("max_bytes, skip_if_unchanged, keep_raw_days", "file_download: size cap (default 500 MB), same sha256 as the last success goes to port 2 (default true), days the raw file is kept (default 30)"),
-            ("entries", "archive_extract: globs of the entries to extract (zip, tar, tar.gz, gz; no rar), empty = all; the manifest lists every entry"),
-            ("entry", "table_inspect / rows_filter / ontology_import: glob picking one extracted entry (msg.ingest.entries); empty = the current file"),
-            ("expected_columns", "table_inspect: a missing column stops the chain with import-schema-changed"),
-            ("column, op, values, object_type, property, only, convert", "rows_filter: keep rows whose column (after D301 conversions such as digits, trim) equals a value, is in values, or is in_objects (values of a property on the org's live objects of a type; only: {property, values} restricts those objects, e.g. {property: statut, values: [actif]}); runs before the 50,000-record import cap"),
-            ("import_id, action, max_closures_pct", "ontology_import: an existing declarative import run on the current file; preview or apply; refuses a run closing more than max_closures_pct % (default 20) of what the import holds. A per_object import (API by identifier) ignores the file. A long import keeps the node on that step until it ends (minutes to hours); import-run-interrupted = its server stopped, nothing written"),
-        ],
-        notes: "Chain them in order, one wire each: source_resolve → file_download → archive_extract → (table_inspect → rows_filter → ontology_import) per table → staging_cleanup. msg.ingest = {run_id, url, raw_key, staging_key, entries:[{name, staging_key, bytes}]} is passed along; msg.manifest holds the step's manifest. Staging files are purged after 7 days at most; an org holds 2 GB of staging at most (ingest-staging-quota). Wire port 1 to a notify node to hear about a broken source.",
-    },
-    NodeDoc {
         kind: "site_recipe",
         summary: "Plays a saved website navigation rule (Web sites page) on the server browser at each message: one site, one rule, its steps journaled like a run started from the studio (trigger flow). Ports: 0 passed, 1 failed again, 2 broke (failed right after a passing run: wire it to a notify node to hear once when a site changes).",
         config: &[

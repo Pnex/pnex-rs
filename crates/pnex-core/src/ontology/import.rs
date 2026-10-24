@@ -610,14 +610,7 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
         return Err(ferr("steps", format!("{FIELD_MAX_LENGTH}:{STEPS_MAX}")));
     }
     for (i, step) in m.steps.iter().enumerate() {
-        use crate::ingest::IngestStep;
-        // The import is the end of its pipeline; the staging is cleaned
-        // when the run ends.
-        let allowed = !matches!(
-            step.step,
-            IngestStep::OntologyImport | IngestStep::StagingCleanup
-        );
-        if !allowed || step.check_deployable().is_some() || m.per_object.is_some() {
+        if step.check_deployable().is_some() || m.per_object.is_some() {
             return Err(ferr(format!("steps.{i}"), FIELD_INVALID));
         }
     }

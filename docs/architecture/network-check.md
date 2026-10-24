@@ -1,4 +1,4 @@
-# Contrôle d'un réseau de partenaires de bout en bout (D402–D424)
+# Contrôle d'un réseau de partenaires de bout en bout (D402–D425)
 
 > **Statut : proposé (2026-10-24)**, demande de la session `pnex-quali-watch`
 > (Shan : « coder tout ce qu'il faut […] et anticiper les futurs dév pour
@@ -393,6 +393,14 @@ Même règle que pour les fonctions et les flows (D368) :
   du pack sont listés comme modifiés, faute de savoir ce que le pack y
   avait écrit. Une reprise les remet dans le circuit normal.
 
+### D425 — Le filtre de lignes d'une étape suit un réglage de pack
+
+Une fois le flow d'ingestion retiré (W0), le filtre des certificateurs
+(SIRET du client) doit pouvoir être livré dans les `steps:` de l'import
+sans valeur en dur. `rows_filter` gagne `setting: <pack>.<réglage>`, avec
+`op: in`. Les codes du réglage remplacent `values` ; un réglage vide garde
+toutes les lignes. Le pack 1.5.0 ajoute le réglage `certificateurs`.
+
 ## 4. Lots
 
 | Lot | Contenu | Tests |
@@ -483,10 +491,10 @@ Même règle que pour les fonctions et les flows (D368) :
   **Corrigé** : `source_url`, `recurrence` et `max_pages` omis gardent leur
   valeur, `null` les efface (test `partner_watch`
   `import_update_keeps_what_it_omits`).
-- **Flow « Ingestion France Compétences »** : encore livré par le pack, donc
-  recréé à la mise à jour (flow 16 sur l'org 4). Son retrait relève du lot
-  W0 de D359 (`web-presence.md`), pas encore codé. D'ici là, il ne faut pas
-  le déployer.
+- **Flow « Ingestion France Compétences »** : encore livré par le pack, il
+  était recréé à chaque mise à jour (flow 16 sur l'org 4). **Corrigé** par le
+  lot W0 de D359 (`web-presence.md`) : le flow n'est plus livré, et la
+  montée en 1.5.0 le supprime parce qu'il est intact.
 
 Raccourcis notés : un seul site par partenaire (le premier), 200 liens joints
 par ligne et par type (une certification à 4 000 partenaires est tronquée),

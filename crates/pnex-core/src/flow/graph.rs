@@ -200,11 +200,6 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::flow::LinkUpsertConfig,
     },
-    /// One step of an open-data ingestion chain (ingestion.md D317–D322).
-    Ingest {
-        #[serde(default)]
-        config: crate::ingest::IngestConfig,
-    },
     /// Plays a saved site navigation rule on the server browser
     /// (site-recipes.md D327).
     SiteRecipe {
@@ -407,9 +402,6 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                 "link_upsert" => Ok(Self::LinkUpsert {
                     config: opt_config(config)?,
                 }),
-                "ingest" => Ok(Self::Ingest {
-                    config: opt_config(config)?,
-                }),
                 "site_recipe" => Ok(Self::SiteRecipe {
                     config: opt_config(config)?,
                 }),
@@ -448,6 +440,31 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
         })();
         parsed.map_err(serde::de::Error::custom)
     }
+}
+
+/// Node kinds retired, with what replaces them (web-presence.md D359): a
+/// graph holding one no longer reads, its deploy is refused with
+/// `flow-node-retired`.
+pub const RETIRED_KINDS: &[(&str, &str)] = &[("ingest", "import_steps")];
+
+/// The nodes of a stored graph whose kind is retired, as deploy violations.
+pub fn retired_nodes(graph: &serde_json::Value) -> Vec<FlowViolation> {
+    graph["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|n| {
+            let kind = n["kind"].as_str()?;
+            let (_, instead) = RETIRED_KINDS.iter().find(|(k, _)| *k == kind)?;
+            let id = n["id"].as_str().unwrap_or_default();
+            Some(FlowViolation::with_args(
+                Some(id),
+                crate::err_codes::FLOW_NODE_RETIRED,
+                format!("the node kind {kind} is retired: use {instead}"),
+                serde_json::json!({ "node": id, "kind": kind, "instead": instead }),
+            ))
+        })
+        .collect()
 }
 
 /// Deserialize an optional config struct; absent maps to `Default`

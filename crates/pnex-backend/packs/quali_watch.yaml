@@ -16,10 +16,11 @@
 # The partner network import reads the certifier's sheet (one row per
 # partner × certification, pnex-quali-watch/import-excel.md) as a snapshot:
 # a row gone closes its accreditation, nothing is deleted.
-# France Compétences open data (ingestion.md D317–D322) arrives through the
-# "Ingestion France Compétences" flow: the daily zip of data.gouv.fr is
-# resolved, downloaded, extracted, inspected, filtered (the client
-# certifier's SIRET, then the certifications it holds) and imported by
+# France Compétences open data (ingestion.md D317–D321) arrives through the
+# steps of the imports themselves (data-pipelines.md D344, web-presence.md
+# D359): each night the zip of data.gouv.fr is resolved, downloaded,
+# extracted, inspected, filtered (the certifiers of the `certificateurs`
+# setting, then the certifications they hold) and imported by
 # fc_certificateurs, fc_fiches and fc_partenaires (a partner gone from the
 # open data closes its accreditation); the SIRENE import then enriches the
 # organizations. Accreditations are linked at SIREN level (Q-I2 open).
@@ -57,6 +58,13 @@ extends:
 description: Certifications, partner websites, observed pages with dated proofs, CPF offers, rules, findings and graduated reminders.
 descriptions: {fr: "Certifications, sites des partenaires, pages observées avec preuves datées, offres CPF, règles, écarts et relances graduées."}
 settings:
+  - key: certificateurs
+    name: Certifiers followed
+    names: {fr: "Certificateurs suivis"}
+    description: SIRET of the certifiers whose France Compétences sheets are imported each night, comma-separated; empty = every certifier of the open data.
+    descriptions: {fr: "SIRET des certificateurs dont les fiches France Compétences sont importées chaque nuit, séparés par des virgules ; vide = tous les certificateurs de l'open data."}
+    kind: text
+    default: ""
   - key: certifications
     name: Certifications watched
     names: {fr: "Certifications contrôlées"}
@@ -494,7 +502,14 @@ imports:
   - name: France Compétences · certifiers
     source: file
     mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
+      steps:
+        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
+        - { step: file_download }
+        - { step: archive_extract, entries: ["*Certificateurs*.csv"] }
+        - { step: table_inspect, entry: "*Certificateurs*.csv", expected_columns: [Numero_Fiche, Siret_Certificateur, Nom_Certificateur] }
+        - { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, setting: quali_watch.certificateurs, convert: [digits] }
       key: fc_certificateurs
       name: France Compétences certifiers
       names: {fr: "Certificateurs France Compétences"}
@@ -519,7 +534,14 @@ imports:
   - name: France Compétences · sheets
     source: file
     mode: incremental
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
+      steps:
+        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
+        - { step: file_download }
+        - { step: archive_extract, entries: ["*Standard*.csv"] }
+        - { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }
+        - { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_fiches
       name: France Compétences sheets
       names: {fr: "Fiches France Compétences"}
@@ -544,7 +566,14 @@ imports:
   - name: France Compétences · partners
     source: file
     mode: snapshot
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
+      steps:
+        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
+        - { step: file_download }
+        - { step: archive_extract, entries: ["*Partenaires*.csv"] }
+        - { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }
+        - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_partenaires
       name: France Compétences partners
       names: {fr: "Partenaires France Compétences"}
@@ -576,7 +605,14 @@ imports:
   - name: France Compétences · skill blocks
     source: file
     mode: snapshot
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
+      steps:
+        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }
+        - { step: file_download }
+        - { step: archive_extract, entries: ["*Blocs_De_Comp*.csv"] }
+        - { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }
+        - { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
       key: fc_blocs
       name: France Compétences skill blocks
       names: {fr: "Blocs de compétences France Compétences"}
@@ -604,7 +640,12 @@ imports:
   - name: France Compétences · RS sheets (XML)
     source: file
     mode: snapshot
+    recurrence: { start: "2026-01-01", every: 1, unit: day }
     mapping:
+      steps:
+        - { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-rs-v4-1-*.zip" }
+        - { step: file_download }
+        - { step: archive_extract, entries: ["*.xml"] }
       key: fc_rs_xml
       name: France Compétences RS sheets
       names: {fr: "Fiches RS France Compétences (XML)"}
@@ -1474,33 +1515,6 @@ flows:
         - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
         - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         - { id: linked, kind: link_upsert, config: { link_type: concerne } }
-  - name: "Ingestion France Compétences"
-    note: "Each night the France Compétences open data (data.gouv.fr) is downloaded, inspected and imported: your certifications, their sheets and skill blocks, then their partners with their accreditation scope; the new organizations are then enriched from the company register; last, the RS sheets (XML) give each certification its competencies, objectives, prerequisites and jury, and each accreditation its France Compétences state. Before deploying, put your certifier's SIRET in the values of the « Certificateurs » row filter. Each step shows what it read and produced in its panel."
-    graph:
-      nodes:
-        - { id: tick, kind: inject, config: { cron: "30 3 * * *" }, outputs: [{ port: 0, targets: [resolve] }] }
-        - { id: resolve, kind: ingest, config: { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-csv-*.zip" }, outputs: [{ port: 0, targets: [download] }] }
-        # Unchanged CSV zip: the RS sheets may still have changed.
-        - { id: download, kind: ingest, config: { step: file_download }, outputs: [{ port: 0, targets: [extract] }, { port: 2, targets: [resolve_rs] }] }
-        - { id: extract, kind: ingest, config: { step: archive_extract, entries: ["*Certificateurs*.csv", "*Standard*.csv", "*Partenaires*.csv", "*Blocs_De_Comp*.csv"] }, outputs: [{ port: 0, targets: [inspect_c] }] }
-        - { id: inspect_c, kind: ingest, config: { step: table_inspect, entry: "*Certificateurs*.csv", expected_columns: [Numero_Fiche, Siret_Certificateur, Nom_Certificateur] }, outputs: [{ port: 0, targets: [filter_c] }] }
-        - { id: filter_c, kind: ingest, config: { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, values: [], convert: [digits] }, outputs: [{ port: 0, targets: [import_c] }] }
-        - { id: import_c, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · certifiers", action: apply }, outputs: [{ port: 0, targets: [inspect_s] }] }
-        - { id: inspect_s, kind: ingest, config: { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }, outputs: [{ port: 0, targets: [filter_s] }] }
-        - { id: filter_s, kind: ingest, config: { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_s] }] }
-        - { id: import_s, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · sheets", action: apply }, outputs: [{ port: 0, targets: [inspect_b] }] }
-        - { id: inspect_b, kind: ingest, config: { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }, outputs: [{ port: 0, targets: [filter_b] }] }
-        - { id: filter_b, kind: ingest, config: { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_b] }] }
-        - { id: import_b, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · skill blocks", action: apply }, outputs: [{ port: 0, targets: [inspect_p] }] }
-        - { id: inspect_p, kind: ingest, config: { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }, outputs: [{ port: 0, targets: [filter_p] }] }
-        - { id: filter_p, kind: ingest, config: { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }, outputs: [{ port: 0, targets: [import_p] }] }
-        - { id: import_p, kind: ingest, config: { step: ontology_import, import_name: "France Compétences · partners", action: apply }, outputs: [{ port: 0, targets: [enrich] }] }
-        - { id: enrich, kind: ingest, config: { step: ontology_import, import_name: "Company register (SIRENE)", action: apply }, outputs: [{ port: 0, targets: [resolve_rs] }] }
-        - { id: resolve_rs, kind: ingest, config: { step: source_resolve, mode: datagouv, dataset: 5eebbc067a14b6fecc9c9976, resource_match: "export-fiches-rs-v4-1-*.zip" }, outputs: [{ port: 0, targets: [download_rs] }] }
-        - { id: download_rs, kind: ingest, config: { step: file_download }, outputs: [{ port: 0, targets: [extract_rs] }, { port: 2, targets: [cleanup] }] }
-        - { id: extract_rs, kind: ingest, config: { step: archive_extract, entries: ["*.xml"] }, outputs: [{ port: 0, targets: [import_rs] }] }
-        - { id: import_rs, kind: ingest, config: { step: ontology_import, entry: "*.xml", import_name: "France Compétences · RS sheets (XML)", action: apply }, outputs: [{ port: 0, targets: [cleanup] }] }
-        - { id: cleanup, kind: ingest, config: { step: staging_cleanup } }
   - name: "Quali-Watch · network rules"
     note: "Each morning the registry facts of your network become findings to review, created once and never reset: ceased partner (ADM-01), Qualiopi missing (ADM-02), CPF offer by a non-accredited organization (CPF-01), out of scope (CPF-02), after the accreditation end (CPF-03), accreditation unknown to France Compétences (REG-01), inactive accreditation still selling (REG-02). Run the network imports first (company register, DGEFP, CPF catalogue). Replaces « rule ADM-01 »: deploy one of the two."
     graph:

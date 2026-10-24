@@ -128,8 +128,6 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         // Vision track: current tracks + appear/disappear events.
         FlowNodeKind::VisionTrack { .. } => (2, 0),
         FlowNodeKind::PagePdf { .. } => (2, 0),
-        // Ingestion step: done, error (+ unchanged for a download).
-        FlowNodeKind::Ingest { config } => (config.port_count(), 0),
         // Site rule: passed, failed, broke.
         FlowNodeKind::SiteRecipe { .. } => (pnex_core::site_recipe::NODE_PORT_COUNT, 0),
         // Web search: results, failed.

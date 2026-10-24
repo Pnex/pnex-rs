@@ -1131,7 +1131,7 @@ pub async fn start(
             }
             let Some(store) = store else {
                 let code = err_codes::INGEST_STAGING_UNAVAILABLE;
-                return fail_flow_run(&db, run.id, code, Value::Null).await;
+                return fail_run(&db, run.id, code, Value::Null).await;
             };
             let steps = crate::services::ingest::pipeline::run(
                 &db, &store, imp.org_id, imp.id, run.id, &m.steps,
@@ -1139,12 +1139,12 @@ pub async fn start(
             .await;
             match steps {
                 Ok(file) => {
-                    let pct = pnex_core::ingest::IngestConfig::default().max_closures_pct();
-                    run_from_flow(&db, imp.org_id, imp.id, run.id, Some(file), true, pct)
+                    let pct = pnex_core::ingest::MAX_CLOSURES_PCT;
+                    run_staged(&db, imp.org_id, imp.id, run.id, Some(file), true, pct)
                         .await
                         .map(|_| ())
                 }
-                Err((code, args)) => fail_flow_run(&db, run.id, &code, args).await,
+                Err((code, args)) => fail_run(&db, run.id, &code, args).await,
             }
         };
         // The run beats while it works: a pod gone leaves it stale, not running.
@@ -1162,14 +1162,14 @@ pub async fn start(
         if let Err(e) = out {
             tracing::warn!(import = %imp.id, run = %run.id, error = %e, "import run failed");
             let code = err_codes::IMPORT_SOURCE_UNREADABLE;
-            let _ = fail_flow_run(&db, run.id, code, Value::Null).await;
+            let _ = fail_run(&db, run.id, code, Value::Null).await;
         }
     });
     Ok(view)
 }
 
-/// What a flow `ontology_import` step got (ingestion.md D322).
-pub struct FlowImportOutcome {
+/// What a run on staged steps got.
+pub struct StagedOutcome {
     pub run: ImportRunView,
     pub counts: imp::ImportCounts,
     /// Refusal or failure code; the run is journaled either way.
@@ -1194,13 +1194,11 @@ async fn held<C: ConnectionTrait>(db: &C, org_id: i64, import_id: Uuid) -> Resul
         .max(0) as usize)
 }
 
-/// A run started by a flow node on a staged file (or, for an API import,
-/// on its own source): checked like a scheduled run (D303), refused when
-/// it would close more than `max_closures_pct` % of what the import holds,
-/// then kept as a preview (applicable from the Imports tab) or applied
-/// with the author's role. Works on the run `open_from_flow` opened; the
-/// step polls it (`flow_run_of`) while it lasts.
-pub async fn run_from_flow(
+/// A run on the file its steps staged (D344): checked like a scheduled run
+/// (D303), refused when it would close more than `max_closures_pct` % of
+/// what the import holds, then kept as a preview (applicable from the
+/// Imports tab) or applied with the author's role.
+pub async fn run_staged(
     db: &DatabaseConnection,
     org_id: i64,
     id: Uuid,
@@ -1208,7 +1206,7 @@ pub async fn run_from_flow(
     file: Option<(Vec<u8>, String)>,
     apply: bool,
     max_closures_pct: u32,
-) -> Result<FlowImportOutcome> {
+) -> Result<StagedOutcome> {
     let imp = find_row(db, org_id, id).await?;
     let (run, _) = load_run(db, imp.id, run_id).await?;
     let m = match imp.mapping() {
@@ -1246,7 +1244,7 @@ pub async fn run_from_flow(
                 notify_refused(db, &imp, code.unwrap_or_default(), args.clone()).await;
             }
             let (r, _) = load_run(db, imp.id, run_id).await?;
-            Ok::<_, OntologyError>(FlowImportOutcome {
+            Ok::<_, OntologyError>(StagedOutcome {
                 run: r.view(),
                 counts: d.as_ref().map(ImportDiff::counts).unwrap_or_default(),
                 code,
@@ -1334,58 +1332,13 @@ pub async fn run_from_flow(
     match written {
         Ok(()) => end("applied", None, Value::Null, Some(d), false).await,
         Err(e) => {
-            tracing::warn!(import = %imp.id, error = %e, "flow import failed");
+            tracing::warn!(import = %imp.id, error = %e, "staged import failed");
             end("failed", Some(error_code(&e)), Value::Null, Some(d), false).await
         }
     }
 }
 
-/// A run without a heartbeat for this long lost its server.
-const FLOW_RUN_STALE: &str = "10 minutes";
-
-/// Opens the run of one `ontology_import` step (pass `ingest_run`, node
-/// `node_id`), after failing the org's flow runs that lost their server.
-/// `None`: that step already has its run (a concurrent call opened it).
-pub async fn open_from_flow(
-    db: &DatabaseConnection,
-    org_id: i64,
-    id: Uuid,
-    ingest_run: Uuid,
-    node_id: &str,
-) -> Result<Option<Uuid>> {
-    let imp = find_row(db, org_id, id).await?;
-    db.execute_raw(stmt(
-        &format!(
-            "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now() \
-             WHERE org_id = $1 AND trigger = 'flow' AND state = 'running' \
-               AND heartbeat_at < now() - interval '{FLOW_RUN_STALE}'"
-        ),
-        vec![org_id.into(), err_codes::IMPORT_RUN_INTERRUPTED.into()],
-    ))
-    .await?;
-    let run = Uuid::new_v4();
-    let opened = db
-        .execute_raw(stmt(
-            "INSERT INTO object_import_runs (id, org_id, import_id, number, state, trigger, \
-               import_version, ingest_run_id, ingest_node_id) \
-             SELECT $1, $2, $3, coalesce(max(number), 0) + 1, 'running', 'flow', $4, $5, $6 \
-             FROM object_import_runs WHERE import_id = $3 \
-             ON CONFLICT (org_id, ingest_run_id, ingest_node_id) \
-               WHERE ingest_run_id IS NOT NULL DO NOTHING",
-            vec![
-                run.into(),
-                imp.org_id.into(),
-                imp.id.into(),
-                imp.version.into(),
-                ingest_run.into(),
-                node_id.into(),
-            ],
-        ))
-        .await?;
-    Ok((opened.rows_affected() == 1).then_some(run))
-}
-
-/// What a running flow run knows so far: its records, then the planned
+/// What a running run knows so far: its records, then the planned
 /// counts (the write itself is one transaction, all or nothing).
 async fn progress(db: &DatabaseConnection, run_id: Uuid, rows: usize, diff: Option<&ImportDiff>) {
     let counts = diff.map(ImportDiff::counts).unwrap_or_default();
@@ -1405,7 +1358,7 @@ async fn progress(db: &DatabaseConnection, run_id: Uuid, rows: usize, diff: Opti
     }
 }
 
-/// Keeps a flow run alive while its server works on it.
+/// Keeps a run alive while its server works on it.
 pub async fn beat(db: &DatabaseConnection, run_id: Uuid) {
     let r = db
         .execute_raw(stmt(
@@ -1418,48 +1371,9 @@ pub async fn beat(db: &DatabaseConnection, run_id: Uuid) {
     }
 }
 
-/// A flow step's run as a poll sees it.
-pub struct FlowRunState {
-    pub run: ImportRunView,
-    /// No heartbeat for `FLOW_RUN_STALE`: its server is gone.
-    pub stale: bool,
-}
-
-/// The run opened for step `node_id` of pass `ingest_run`, if any.
-pub async fn flow_run_of(
-    db: &DatabaseConnection,
-    org_id: i64,
-    ingest_run: Uuid,
-    node_id: &str,
-) -> Result<Option<FlowRunState>> {
-    let Some(q) = db
-        .query_one_raw(stmt(
-            &format!(
-                "SELECT id, import_id, heartbeat_at < now() - interval '{FLOW_RUN_STALE}' AS stale \
-                 FROM object_import_runs \
-                 WHERE org_id = $1 AND ingest_run_id = $2 AND ingest_node_id = $3"
-            ),
-            vec![org_id.into(), ingest_run.into(), node_id.into()],
-        ))
-        .await?
-    else {
-        return Ok(None);
-    };
-    let (id, import_id, stale) = (
-        q.try_get::<Uuid>("", "id")?,
-        q.try_get::<Uuid>("", "import_id")?,
-        q.try_get::<bool>("", "stale")?,
-    );
-    let (row, _) = load_run(db, import_id, id).await?;
-    Ok(Some(FlowRunState {
-        run: row.view(),
-        stale,
-    }))
-}
-
-/// Fails a flow run whose server is gone (or whose file could not be
-/// read); a run that finished meanwhile keeps its outcome.
-pub async fn fail_flow_run(
+/// Fails a run whose steps or file could not be read; a run that
+/// finished meanwhile keeps its outcome.
+pub async fn fail_run(
     db: &DatabaseConnection,
     run_id: Uuid,
     code: &str,
@@ -1641,6 +1555,9 @@ pub fn spawn_scheduler(ctx: &loco_rs::app::AppContext) {
     });
 }
 
+/// A run without a heartbeat for this long lost its server.
+const RUN_STALE: &str = "10 minutes";
+
 async fn sweep(
     db: &DatabaseConnection,
     store: Option<&crate::services::artifact_store::S3Store>,
@@ -1652,7 +1569,7 @@ async fn sweep(
     db.execute_raw(stmt(
         &format!(
             "UPDATE object_import_runs SET state = 'failed', state_code = $2, finished_at = now() \
-             WHERE state = 'running' AND heartbeat_at < now() - interval '{FLOW_RUN_STALE}' \
+             WHERE state = 'running' AND heartbeat_at < now() - interval '{RUN_STALE}' \
              AND pg_try_advisory_xact_lock($1, (org_id % 2147483647)::int)"
         ),
         vec![

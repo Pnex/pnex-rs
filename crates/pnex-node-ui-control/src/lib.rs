@@ -36,7 +36,6 @@ use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
 mod action;
-mod ingest;
 mod ontology;
 mod org_resolve;
 mod site_crawl;

@@ -1,7 +1,6 @@
-//! An import's own steps (data-pipelines.md D344): the same steps as the
-//! flow `ingest` node, run by the server for an import run and journaled
-//! in `ingest_steps` under that run. No flow, no runtime: the config comes
-//! from the import, never from a request.
+//! An import's own steps (data-pipelines.md D344), run by the server for an
+//! import run and journaled in `ingest_steps` under that run. No flow, no
+//! runtime: the config comes from the import, never from a request.
 
 use pnex_core::err_codes;
 use pnex_core::import_read::UNZIPPED_MAX;
@@ -11,7 +10,7 @@ use sea_orm::DatabaseConnection;
 use serde_json::Value;
 use uuid::Uuid;
 
-use super::{archive, cleanup, download, filter, finish, resolve, table, Cx, Outcome};
+use super::{archive, cleanup, download, filter, finish, resolve, table, Cx};
 use crate::services::artifact_store::S3Store;
 
 /// The journal identity of an import's steps (`ingest_steps`, staging keys).
@@ -70,10 +69,6 @@ async fn steps_then_file(
             IngestStep::ArchiveExtract => archive::run(cx, &cfg, msg.clone()).await,
             IngestStep::TableInspect => table::run(cx, &cfg, msg.clone()).await,
             IngestStep::RowsFilter => filter::run(cx, &cfg, msg.clone()).await,
-            // Refused by the mapping check; never run here.
-            IngestStep::OntologyImport | IngestStep::StagingCleanup => {
-                Outcome::fail(err_codes::FIELD_INVALID, Value::Null)
-            }
         };
         let reply = finish(cx, &cfg, msg, out).await.map_err(|_| {
             (

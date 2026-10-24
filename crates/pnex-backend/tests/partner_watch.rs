@@ -164,13 +164,14 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        // quali_watch 9 + presence_web 6 functions; 5 + 1 flows.
+        // quali_watch 9 + presence_web 6 functions; 4 + 1 flows (the
+        // ingestion flow is retired, D359).
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 15);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
-            6
+            5
         );
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 6);
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 5);
         // SIRENE, GLEIF ×2, Wikidata, the partner sheet, the five France
         // Compétences imports, and the network's SIRENE, DGEFP and CPF ×2.
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 14);
@@ -1124,6 +1125,24 @@ async fn pack_upgrade_follows_untouched_imports() {
             }
         };
         let (_, _, rs_version) = mapping_of(rs).await;
+        // D359: the pack's retired ingestion flow, as 1.4.0 left it, and a
+        // flow of the org holding the retired node.
+        use pnex_backend::models::_entities::{flow_versions, flows};
+        use sea_orm::{ActiveModelTrait, Set};
+        let retired = json!({"nodes": [{"id": "resolve", "kind": "ingest", "config": {"step": "source_resolve"}}]});
+        let mut ids = Vec::new();
+        for (name, author) in [("Ingestion France Compétences", Some("pack:quali_watch")), ("Mine", None)] {
+            let f = flows::ActiveModel { name: Set(name.into()), status: Set("draft".into()), org_id: Set(org), ..Default::default() }
+                .insert(&env.db).await.unwrap();
+            flow_versions::ActiveModel { flow_id: Set(f.id), version_number: Set(1), graph: Set(retired.clone()),
+                author: Set(author.map(str::to_string)), ..Default::default() }
+                .insert(&env.db).await.unwrap();
+            ids.push(f.id);
+        }
+        let (st, body) = call(&server, "POST", &format!("/api/v1/flows/{}/deploy", ids[1]), &env.alice, org, Some(json!({}))).await;
+        assert_eq!(st, 400, "{body}");
+        let v = &body["errors"]["violations"][0];
+        assert_eq!((v["code"].as_str(), v["args"]["kind"].as_str()), (Some("flow-node-retired"), Some("ingest")), "{body}");
         sql(format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'quali_watch'")).await;
         let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/install", &env.alice, org, None).await;
         assert_eq!(st, 200, "{up}");
@@ -1132,6 +1151,11 @@ async fn pack_upgrade_follows_untouched_imports() {
         assert!(yaml.contains("offers (RS)") && v == rs_version + 1, "untouched import upgraded: {yaml}");
         let (yaml, recurrence, _) = mapping_of(rncp).await;
         assert!(yaml.contains("my offers"), "edited import kept");
+        let left = |id: i64| { let db = env.db.clone(); async move {
+            db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+                format!("SELECT 1 AS x FROM flows WHERE id = {id}"))).await.unwrap().is_some() } };
+        assert!(!left(ids[0]).await, "the pack's untouched retired flow is gone");
+        assert!(left(ids[1]).await, "the org's own flow stays");
         // Taking the pack's version keeps the org's schedule.
         let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/take", &env.alice, org, Some(json!({"names": [rncp]}))).await;
         assert_eq!((st, p.get("kept").cloned()), (200, None), "{p}");
@@ -1268,42 +1292,27 @@ async fn import_runs_its_own_steps() {
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
         let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
 
-        // The steps of the pack's flow, moved onto the certifications import.
-        let graph = q(format!("SELECT v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
-            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
-            .await.unwrap().expect("pack flow").try_get::<Value>("", "graph").unwrap();
-        let config = |id: &str| graph["nodes"].as_array().unwrap().iter()
-            .find(|n| n["id"] == id).map(|n| n["config"].clone()).unwrap();
-        let mut steps = vec![config("resolve"), config("download"), config("extract"), config("inspect_c"), config("filter_c")];
-        steps[0]["dataset"] = json!("fc");
-        steps[4]["values"] = json!(["80259488700019"]);
-        let import_id = config("import_c")["import_id"].as_str().unwrap().to_string();
-        let (st, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
-        assert_eq!(st, 200, "{imp}");
-
-        // Nothing to fetch yet: a file import runs from a preview.
-        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &env.alice, org, None).await;
+        // A file import without steps has nothing to fetch, and nothing to
+        // schedule.
+        let (sheet_id, _) = import_named(&server, &env.alice, org, "Partner network (sheet)").await;
+        let (_, sheet) = call(&server, "GET", &format!("/api/v1/ontology/imports/{sheet_id}"), &env.alice, org, None).await;
+        let (st, e) = call(&server, "POST", &format!("/api/v1/ontology/imports/{sheet_id}/runs"), &env.alice, org, None).await;
         assert_eq!((st, e["error"].as_str()), (409, Some("ingest-entry-missing")), "{e}");
-
-        // A file import without steps has nothing to fetch on schedule.
         let start = (chrono::Utc::now().date_naive() + chrono::Days::new(7)).to_string();
         let weekly = json!({"start": start, "every": 1, "unit": "week"});
-        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org,
-            Some(json!({"name": imp["name"], "mapping": imp["mapping"], "source": "file", "mode": imp["mode"],
-                        "recurrence": weekly, "expected_version": imp["version"]}))).await;
+        let (st, e) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{sheet_id}"), &env.alice, org,
+            Some(json!({"name": sheet["name"], "mapping": sheet["mapping"], "source": "file", "mode": sheet["mode"],
+                        "recurrence": weekly, "expected_version": sheet["version"]}))).await;
         assert_eq!((st, e["errors"]["fields"]["recurrence"].as_str()), (400, Some("invalid")), "{e}");
 
-        // YAML takes JSON: one step per line. With its steps it is scheduled.
-        let mut mapping = imp["mapping"].as_str().unwrap().trim_end().to_string();
-        mapping.push_str("\nsteps:\n");
-        for s in &steps {
-            mapping.push_str(&format!("  - {s}\n"));
-        }
-        let (st, imp) = call(&server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org,
-            Some(json!({"name": imp["name"], "mapping": mapping, "source": "file", "mode": imp["mode"],
-                        "recurrence": weekly, "expected_version": imp["version"]}))).await;
-        assert_eq!(st, 200, "{imp}");
-        assert!(imp["next_run_at"].as_str().is_some_and(|t| t.starts_with(&start)), "{imp}");
+        // D359: the pack ships the certifiers import with its steps, every
+        // night; the followed certifiers come from the pack setting.
+        let (import_id, _) = import_named(&server, &env.alice, org, "France Compétences · certifiers").await;
+        let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
+        assert!(imp["next_run_at"].is_string() && imp["mapping"].as_str().unwrap().contains("source_resolve"), "{imp}");
+        let (st, p) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+        assert_eq!(st, 200, "{p}");
 
         // R2: a viewer starts nothing.
         personal_org(&server, &env.bob).await;
@@ -1746,7 +1755,7 @@ async fn mock_datagouv(zip: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String
     ]});
     let app = axum::Router::new()
         .route(
-            "/api/1/datasets/fc/",
+            "/api/1/datasets/{id}/",
             get(move || async move { axum::Json(dataset) }),
         )
         .route(
@@ -1755,16 +1764,6 @@ async fn mock_datagouv(zip: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String
         );
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     base
-}
-
-async fn ingest(server: &axum_test::TestServer, node: Value, msg: &Value) -> Value {
-    let res = server
-        .post("/internal/flow/ingest")
-        .add_header("x-pnex-flow-token", "tok-pw-1")
-        .json(&json!({"node": node, "msg": msg}))
-        .await;
-    assert_eq!(res.status_code().as_u16(), 200, "{}", res.text());
-    res.json::<Value>()
 }
 
 /// Empties the staging of `org` (a failed earlier test may have left files).
@@ -1787,6 +1786,9 @@ fn count(db_row: Option<sea_orm::QueryResult>) -> i64 {
     db_row.unwrap().try_get::<i64>("", "n").unwrap()
 }
 
+/// France Compétences through the steps of the pack's imports (D344,
+/// web-presence.md D359): certifiers, sheets then partners, each run on
+/// the night's zip; the ontology they build, closures and their guard.
 #[tokio::test]
 #[serial]
 async fn open_data_ingestion_chain() {
@@ -1798,78 +1800,40 @@ async fn open_data_ingestion_chain() {
         let zip = std::sync::Arc::new(std::sync::Mutex::new(fc_zip(&fc_partners(&[]))));
         let base = mock_datagouv(zip.clone()).await;
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
-        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
         let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
-
-        // The pack ships the flow as a draft, its import nodes resolved by name.
-        let row = q(format!("SELECT f.id, v.id AS vid, v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
-            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
-            .await.unwrap().expect("pack flow");
-        let (flow, vid) = (row.try_get::<i64>("", "id").unwrap(), row.try_get::<i64>("", "vid").unwrap());
-        let mut graph = row.try_get::<Value>("", "graph").unwrap();
-        let nodes = graph["nodes"].as_array_mut().unwrap();
-        for n in nodes.iter_mut() {
-            if n["kind"] == "ingest" && n["config"]["step"] == "ontology_import" {
-                assert!(n["config"]["import_id"].as_str().is_some_and(|s| s.len() == 36), "{n}");
-            }
-            // Q-I1: the client certifier's SIRET, set by the operator.
-            if n["id"] == "filter_c" {
-                n["config"]["values"] = json!(["80259488700019"]);
-            }
-            if n["id"] == "resolve" {
-                n["config"]["dataset"] = json!("fc");
-            }
-        }
-        let version = q(format!("SELECT version_number AS n FROM flow_versions WHERE id = {vid}"))
-            .await.unwrap().unwrap().try_get::<i64>("", "n").unwrap();
-        env.db.execute_raw(Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
-            "UPDATE flow_versions SET graph = $1 WHERE id = $2", vec![graph.into(), vid.into()])).await.unwrap();
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
-            format!("UPDATE flows SET status = 'deployed', deployed_version_id = {vid} WHERE id = {flow}"))).await.unwrap();
-        let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": version, "node_id": id});
-
-        // One pass of the chain, as the runtime wires it; returns the
-        // replies by node.
-        let chain = [
-            "resolve", "download", "extract", "inspect_c", "filter_c", "import_c",
-            "inspect_s", "filter_s", "import_s", "inspect_p", "filter_p", "import_p", "cleanup",
-        ];
-        let run = |stop_on_port: bool| {
-            let server = &server;
+        // Q-I1: the client certifier's SIRET, a pack setting.
+        let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+        assert_eq!(st, 200);
+        let run = |name: &'static str| {
+            let (server, token) = (&server, env.alice.clone());
             async move {
-                let mut msg = json!({});
-                let mut replies = std::collections::HashMap::new();
-                for id in chain {
-                    let r = ingest(server, node(id), &msg).await;
-                    msg = r["msg"].clone();
-                    let port = r["port"].as_u64().unwrap();
-                    replies.insert(id, r);
-                    if stop_on_port && port != 0 {
-                        break;
-                    }
-                }
-                replies
+                let (id, _) = import_named(server, &token, org, name).await;
+                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
+                assert_eq!(st, 202, "{r}");
+                settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 600).await
             }
         };
+        let step = |r: &Value, name: &str| r["steps"].as_array().unwrap().iter()
+            .find(|s| s["step"] == name).map(|s| s["manifest"].clone()).unwrap_or(Value::Null);
+        let (certifiers, sheets, partners) =
+            ("France Compétences · certifiers", "France Compétences · sheets", "France Compétences · partners");
 
-        let r = run(true).await;
-        for id in chain {
-            assert_eq!(r[id]["port"], 0, "{id}: {}", r[id]);
-        }
-        assert!(r["resolve"]["manifest"]["url"].as_str().unwrap().ends_with("export-fiches-csv-2026-10-20.zip"));
-        let dl = &r["download"]["manifest"];
-        assert_eq!(dl["sha256"].as_str().unwrap().len(), 64, "{dl}");
-        assert!(dl["staging_key"].as_str().unwrap().starts_with(&format!("org_{org}/staging/{flow}/")));
-        let x = &r["extract"]["manifest"];
-        assert_eq!((x["format"].clone(), x["total"].clone(), x["selected"].clone()), (json!("zip"), json!(4), json!(3)), "{x}");
-        assert_eq!(r["inspect_c"]["manifest"]["rows"], 3);
-        assert_eq!(r["inspect_c"]["manifest"]["columns"][1]["name"], "Siret_Certificateur");
-        assert_eq!((r["filter_c"]["manifest"]["rows_in"].clone(), r["filter_c"]["manifest"]["rows_out"].clone()), (json!(3), json!(2)));
-        assert_eq!(r["import_c"]["manifest"]["state"], "applied", "{}", r["import_c"]);
-        assert_eq!(r["filter_s"]["manifest"]["rows_out"], 2, "only the client's sheets");
-        assert_eq!(r["filter_p"]["manifest"]["rows_out"], 6, "{}", r["filter_p"]);
-        assert_eq!(r["import_p"]["manifest"]["state"], "applied", "{}", r["import_p"]);
-        assert!(r["cleanup"]["manifest"]["deleted_keys"].as_array().unwrap().len() >= 5, "{}", r["cleanup"]);
+        let rc = run(certifiers).await;
+        assert_eq!(rc["run"]["state"], "applied", "{rc}");
+        assert!(step(&rc, "source_resolve")["url"].as_str().unwrap().ends_with("export-fiches-csv-2026-10-20.zip"));
+        assert_eq!(step(&rc, "file_download")["sha256"].as_str().unwrap().len(), 64);
+        let x = step(&rc, "archive_extract");
+        assert_eq!((x["format"].clone(), x["total"].clone(), x["selected"].clone()), (json!("zip"), json!(4), json!(1)), "{x}");
+        assert_eq!(step(&rc, "table_inspect")["rows"], 3);
+        let f = step(&rc, "rows_filter");
+        assert_eq!((f["rows_in"].clone(), f["rows_out"].clone()), (json!(3), json!(2)), "{f}");
+        let rs = run(sheets).await;
+        assert_eq!(rs["run"]["state"], "applied", "{rs}");
+        assert_eq!(step(&rs, "rows_filter")["rows_out"], 2, "only the client's sheets");
+        let rp = run(partners).await;
+        assert_eq!(rp["run"]["state"], "applied", "{rp}");
+        assert_eq!(step(&rp, "rows_filter")["rows_out"], 6, "{rp}");
 
         // The ontology: certifications of the client with their sheet,
         // its `porte` links, the partners' accreditations and scopes.
@@ -1878,17 +1842,17 @@ async fn open_data_ingestion_chain() {
         let by_code = |code: &str| certs["rows"].as_array().unwrap().iter()
             .find(|r| r["object"]["properties"]["code"] == code).cloned().unwrap_or(Value::Null);
         assert_eq!(certs["count"], 2, "{certs}");
-        let rs = &by_code("RS6765")["object"]["properties"];
-        assert_eq!((rs["repertoire"].clone(), rs["statut"].clone()), (json!("rs"), json!("actif")), "{rs}");
-        assert_eq!(rs["intitule"], "Télépilote de drone");
-        assert_eq!(rs["date_enregistrement"], "2024-01-15", "Date_Decision when Date_Effet is empty");
+        let p = &by_code("RS6765")["object"]["properties"];
+        assert_eq!((p["repertoire"].clone(), p["statut"].clone()), (json!("rs"), json!("actif")), "{p}");
+        assert_eq!(p["intitule"], "Télépilote de drone");
+        assert_eq!(p["date_enregistrement"], "2024-01-15", "Date_Decision when Date_Effet is empty");
         assert_eq!(by_code("RS6766")["object"]["properties"]["statut"], "inactif");
         let links = |relation: &str| format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
             AND relation = '{relation}' AND valid_to IS NULL");
         assert_eq!(count(q(links("porte")).await.unwrap()), 2);
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
         // A SIREN failing its check digit: the row is a warning, not an error.
-        assert_eq!(r["import_p"]["manifest"]["warnings"], 1, "{}", r["import_p"]);
+        assert_eq!(rp["run"]["counts"]["warnings"], 1, "{rp}");
         let aftral = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
             AND type_key = 'organization' AND properties ->> 'siren' = '305405046'");
         assert_eq!(count(q(aftral).await.unwrap()), 0);
@@ -1903,70 +1867,36 @@ async fn open_data_ingestion_chain() {
             .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
         assert_eq!(both["perimetre"], "les_deux", "{both}");
 
-        // The node panel reads the journal.
-        let (st, steps) = call(&server, "GET", &format!("/api/v1/flows/{flow}/ingest-steps?node_id=extract"), &env.alice, org, None).await;
-        assert_eq!((st, steps["count"].clone()), (200, json!(1)), "{steps}");
-        assert_eq!(steps["results"][0]["manifest"]["entries"][0]["selected"], false);
-
-        // Same file the next night: unchanged, nothing written.
-        let r2 = run(true).await;
-        assert_eq!(r2["download"]["port"], 2, "{}", r2["download"]);
-        assert!(!r2.contains_key("extract"));
-
         // A known partner whose SIREN turns invalid in the export: left out
         // with a warning, its accreditation neither closed nor updated.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&[])
             .replace("11111111800001", "11111111900001")
             .replace("11111111800019", "11111111900019"));
-        let rk = run(true).await;
-        let m = &rk["import_p"]["manifest"];
-        assert_eq!((rk["import_p"]["port"].clone(), m["warnings"].clone(), m["closed"].clone()),
-            (json!(0), json!(3), json!(0)), "{}", rk["import_p"]);
+        let rk = run(partners).await;
+        let c = &rk["run"]["counts"];
+        assert_eq!((rk["run"]["state"].clone(), c["warnings"].clone(), c["closed"].clone()),
+            (json!("applied"), json!(3), json!(0)), "{rk}");
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3);
 
         // A partner gone from the open data: its accreditation closes.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["333"]));
-        let r3 = run(true).await;
-        assert_eq!(r3["import_p"]["manifest"]["closed"], 1, "{}", r3["import_p"]);
+        let r3 = run(partners).await;
+        assert_eq!(r3["run"]["counts"]["closed"], 1, "{r3}");
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
 
         // Most of the network gone at once: refused, nothing closed.
         // (AFTRAL out too: a row left out by its key keeps its sheet's links.)
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222", "305"]));
-        let r4 = run(true).await;
-        assert_eq!(r4["import_p"]["port"], 1, "{}", r4["import_p"]);
-        assert_eq!(r4["import_p"]["code"], "ingest-suspicious-closures");
+        let r4 = run(partners).await;
+        assert_eq!(r4["run"]["state_code"], "ingest-suspicious-closures", "{r4}");
         assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
 
-        // A changed shape stops the chain before any import.
+        // A changed shape stops the steps before the import.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&[]).replace("Habilitation_Partenaire", "Habilitation"));
-        let r5 = run(true).await;
-        assert_eq!(r5["inspect_p"]["code"], "import-schema-changed", "{}", r5["inspect_p"]);
-        assert!(!r5.contains_key("import_p"));
+        let r5 = run(partners).await;
+        assert_eq!((r5["run"]["state"].as_str(), r5["run"]["state_code"].as_str()), (Some("failed"), Some("import-schema-changed")), "{r5}");
 
-        // Partners of active certifications only: `only` narrows the objects
-        // an `in_objects` filter reads (RS6766 is inactive).
-        let mut g = q(format!("SELECT graph FROM flow_versions WHERE id = {vid}"))
-            .await.unwrap().unwrap().try_get::<Value>("", "graph").unwrap();
-        for n in g["nodes"].as_array_mut().unwrap() {
-            if n["id"] == "filter_p" {
-                n["config"]["only"] = json!({"property": "statut", "values": ["actif"]});
-            }
-        }
-        env.db.execute_raw(Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
-            "UPDATE flow_versions SET graph = $1 WHERE id = $2", vec![g.into(), vid.into()])).await.unwrap();
-        *zip.lock().unwrap() = fc_zip(&fc_partners(&[]));
-        let r6 = run(false).await;
-        assert_eq!(r6["filter_p"]["manifest"]["rows_out"], 5, "{}", r6["filter_p"]);
-
-        // A forged node is refused; a key of another org is never read.
-        let res = server.post("/internal/flow/ingest").add_header("x-pnex-flow-token", "tok-pw-1")
-            .json(&json!({"node": node("nope"), "msg": {}})).await;
-        assert_eq!(res.status_code().as_u16(), 403);
-        let r = ingest(&server, node("inspect_c"), &json!({"staging_key": "org_999999/staging/1/x/raw/a.csv"})).await;
-        assert_eq!((r["port"].clone(), r["code"].clone()), (json!(1), json!("ingest-entry-missing")), "{r}");
-
-        // The purge leaves live runs alone and empties what is expired.
+        // The purge empties what is expired.
         env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres,
             format!("UPDATE ingest_steps SET created_at = now() - interval '8 days', keep_until = NULL WHERE org_id = {org}"))).await.unwrap();
         let store = pnex_backend::services::artifact_store::S3Config::from_config(
@@ -1976,102 +1906,7 @@ async fn open_data_ingestion_chain() {
             AND purged_at IS NULL AND bytes > 0")).await.unwrap()), 0);
         let left = store.list_prefix(&format!("org_{org}/staging/")).await.unwrap();
         assert!(left.is_empty(), "{left:?}");
-        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
-    })
-    .await;
-}
-
-/// An import step outlives its HTTP call (no staged file here: the import
-/// fetches its own source, like an API enrichment): `pending` until done,
-/// then the journaled answer, never run twice; a run whose server is gone
-/// fails with `import-run-interrupted`.
-#[tokio::test]
-#[serial]
-async fn ingest_import_outlives_its_call() {
-    with_app(|server, env| async move {
-        use axum::routing::get;
-        use sea_orm::Statement;
-        let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "quali_watch").await;
-        let (st, r) = object(&server, &env.alice, org, "certification", "RNCP12345", json!({"code": "RNCP12345"})).await;
-        assert_eq!(st, 201, "{r}");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let app = axum::Router::new().route("/slow/reseau.csv", get(|| async {
-            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
-            "siret;raison_sociale;code_certification;perimetre;date_debut_habilitation;declaree_france_competences\n\
-             123456789 00012;ACME;RNCP12345;les_deux;01/02/2024;oui\n"
-        }));
-        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let (st, imp) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org,
-            Some(json!({"name": "Slow", "mapping": MAPPING, "mode": "incremental",
-                        "source": "url", "source_url": format!("{base}/slow/reseau.csv")}))).await;
-        assert_eq!(st, 201, "{imp}");
-        let import_id = imp["id"].as_str().unwrap().to_string();
-        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
-        unsafe { std::env::set_var("PNEX_INGEST_WAIT_MS", "100") };
-
-        use pnex_backend::models::_entities::{flow_versions, flows};
-        use sea_orm::{ActiveModelTrait, Set};
-        let flow = flows::ActiveModel {
-            name: Set("ingest".into()),
-            status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
-            org_id: Set(org),
-            ..Default::default()
-        }.insert(&env.db).await.unwrap();
-        let version = flow_versions::ActiveModel {
-            flow_id: Set(flow.id),
-            version_number: Set(1),
-            graph: Set(json!({ "nodes": [{"id": "imp", "kind": "ingest", "config":
-                {"step": "ontology_import", "import_id": import_id, "action": "apply"}}] })),
-            ..Default::default()
-        }.insert(&env.db).await.unwrap();
-        let mut am: flows::ActiveModel = flow.clone().into();
-        am.deployed_version_id = Set(Some(version.id));
-        am.update(&env.db).await.unwrap();
-        let node = json!({"org_id": org, "flow_id": flow.id, "version": 1, "node_id": "imp"});
-        let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
-
-        // Slower than the wait: pending, the pass id kept in the message.
-        let pass = uuid::Uuid::new_v4().to_string();
-        let msg = json!({"run_id": pass});
-        let mut r = ingest(&server, node.clone(), &msg).await;
-        assert_eq!(r["pending"], true, "{r}");
-        assert_eq!(r["msg"]["run_id"], pass);
-        for _ in 0..50 {
-            if r["pending"] != true {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            r = ingest(&server, node.clone(), &r["msg"]).await;
-        }
-        assert_eq!((r["port"].clone(), r["manifest"]["state"].clone()), (json!(0), json!("applied")), "{r}");
-        assert_eq!(r["manifest"]["created"], 1, "{r}");
-        let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} AND node_id = 'imp'");
-        let runs = format!("SELECT count(*)::bigint AS n FROM object_import_runs WHERE import_id = '{import_id}'");
-        assert_eq!((count(q(steps.clone()).await.unwrap()), count(q(runs.clone()).await.unwrap())), (1, 1));
-
-        // The same call again: the journaled answer, nothing run twice.
-        let again = ingest(&server, node.clone(), &msg).await;
-        assert_eq!((again["port"].clone(), again["manifest"].clone()), (r["port"].clone(), r["manifest"].clone()), "{again}");
-        assert_eq!((count(q(steps.clone()).await.unwrap()), count(q(runs.clone()).await.unwrap())), (1, 1));
-
-        // A run whose server stopped beating: failed, then journaled.
-        let dead = uuid::Uuid::new_v4();
-        env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
-            "INSERT INTO object_import_runs (id, org_id, import_id, number, state, trigger, import_version, \
-               heartbeat_at, ingest_run_id, ingest_node_id) \
-             SELECT gen_random_uuid(), {org}, '{import_id}', max(number) + 1, 'running', 'flow', 1, \
-               now() - interval '11 minutes', '{dead}', 'imp' FROM object_import_runs WHERE import_id = '{import_id}'"))).await.unwrap();
-        let r = ingest(&server, node.clone(), &json!({"run_id": dead})).await;
-        assert_eq!((r["port"].clone(), r["code"].clone()), (json!(1), json!("import-run-interrupted")), "{r}");
-        let state = q(format!("SELECT state FROM object_import_runs WHERE ingest_run_id = '{dead}'"))
-            .await.unwrap().unwrap().try_get::<String>("", "state").unwrap();
-        assert_eq!(state, "failed");
-        assert_eq!(count(q(steps).await.unwrap()), 2);
-        unsafe { std::env::remove_var("PNEX_INGEST_WAIT_MS") };
-        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;
 }
@@ -2357,47 +2192,26 @@ async fn partners_import_memory() {
         let base = mock_datagouv(zip.clone()).await;
         unsafe { std::env::set_var("PNEX_DATAGOUV_API_URL", format!("{base}/api/1")) };
         let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
-        let graph = q(format!("SELECT v.graph FROM flows f JOIN flow_versions v ON v.flow_id = f.id \
-            WHERE f.org_id = {org} AND f.name = 'Ingestion France Compétences' ORDER BY v.version_number DESC LIMIT 1"))
-            .await.unwrap().expect("pack flow").try_get::<Value>("", "graph").unwrap();
-        let config = |id: &str| graph["nodes"].as_array().unwrap().iter()
-            .find(|n| n["id"] == id).map(|n| n["config"].clone()).unwrap();
-        let fetch = || {
-            let mut r = config("resolve");
-            r["dataset"] = json!("fc");
-            vec![r, config("download"), config("extract")]
-        };
-        // Moves `steps` onto the import of node `node`, runs it; returns the run.
-        let run = |node: &'static str, steps: Vec<Value>| {
+        let _ = q;
+        let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+        assert_eq!(st, 200);
+        // Runs a pack import with its own steps; returns the run.
+        let run = |name: &'static str| {
             let server = &server;
             let token = env.alice.clone();
-            let import_id = config(node)["import_id"].as_str().unwrap().to_string();
             async move {
-                let (_, imp) = call(server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &token, org, None).await;
-                let mapping = imp["mapping"].as_str().unwrap();
-                let mut mapping = mapping.split("\nsteps:\n").next().unwrap().trim_end().to_string();
-                mapping.push_str("\nsteps:\n");
-                for s in &steps {
-                    mapping.push_str(&format!("  - {s}\n"));
-                }
-                let (st, imp) = call(server, "PUT", &format!("/api/v1/ontology/imports/{import_id}"), &token, org,
-                    Some(json!({"name": imp["name"], "mapping": mapping, "source": "file", "mode": imp["mode"],
-                                "expected_version": imp["version"]}))).await;
-                assert_eq!(st, 200, "{imp}");
+                let (import_id, _) = import_named(server, &token, org, name).await;
                 let (st, run) = call(server, "POST", &format!("/api/v1/ontology/imports/{import_id}/runs"), &token, org, None).await;
                 assert_eq!(st, 202, "{run}");
                 settle_within(server, &token, org, &import_id, run["id"].as_str().unwrap(), 6_000).await
             }
         };
-        let mut c = config("filter_c");
-        c["values"] = json!(["80259488700019"]);
-        let r = run("import_c", [fetch(), vec![config("inspect_c"), c]].concat()).await;
+        let r = run("France Compétences · certifiers").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
-        let r = run("import_s", [fetch(), vec![config("inspect_s"), config("filter_s")]].concat()).await;
+        let r = run("France Compétences · sheets").await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
 
-        let mut p = config("filter_p");
-        p["only"] = json!({"property": "statut", "values": ["actif"]});
         let hwm = || {
             std::fs::read_to_string("/proc/self/status").unwrap().lines()
                 .filter(|l| l.starts_with("VmHWM:") || l.starts_with("VmRSS:"))
@@ -2407,7 +2221,7 @@ async fn partners_import_memory() {
         std::fs::write("/proc/self/clear_refs", "5").unwrap();
         println!("before partners: {}", hwm());
         let t = std::time::Instant::now();
-        let r = run("import_p", [fetch(), vec![config("inspect_p"), p.clone()]].concat()).await;
+        let r = run("France Compétences · partners").await;
         println!("partners run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
         println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
         assert_eq!(r["run"]["state"], "applied", "{r}");
@@ -2417,7 +2231,7 @@ async fn partners_import_memory() {
         std::fs::write("/proc/self/clear_refs", "5").unwrap();
         println!("before update: {}", hwm());
         let t = std::time::Instant::now();
-        let r = run("import_p", [fetch(), vec![config("inspect_p"), p.clone()]].concat()).await;
+        let r = run("France Compétences · partners").await;
         println!("update run: {} in {:?}, peak {}", r["run"]["state"], t.elapsed(), hwm());
         println!("rows {} counts {}", r["run"]["rows"], r["run"]["counts"]);
         assert_eq!(r["run"]["state"], "applied", "{r}");

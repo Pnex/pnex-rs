@@ -742,13 +742,13 @@ fn RunSteps(import: String, run: ImportRunView) -> Element {
 
 fn step_name(step: &str) -> String {
     match step {
-        "source_resolve" => t!("flows-palette-ingest-resolve"),
-        "file_download" => t!("flows-palette-ingest-download"),
-        "archive_extract" => t!("flows-palette-ingest-extract"),
-        "table_inspect" => t!("flows-palette-ingest-inspect"),
-        "rows_filter" => t!("flows-palette-ingest-filter"),
-        "ontology_import" => t!("flows-palette-ingest-import"),
-        _ => t!("flows-palette-ingest-cleanup"),
+        "source_resolve" => t!("onto-imp-step-resolve"),
+        "file_download" => t!("onto-imp-step-download"),
+        "archive_extract" => t!("onto-imp-step-extract"),
+        "table_inspect" => t!("onto-imp-step-inspect"),
+        "rows_filter" => t!("onto-imp-step-filter"),
+        "ontology_import" => t!("onto-imp-step-import"),
+        _ => t!("onto-imp-step-cleanup"),
     }
     .to_string()
 }
@@ -756,12 +756,12 @@ fn step_name(step: &str) -> String {
 #[component]
 fn StepLine(step: pnex_core::ingest::IngestStepView, took: String) -> Element {
     let (badge, label) = match step.port {
-        0 => ("bg-green-50 text-green-700", t!("flows-ingest-port-ok")),
+        0 => ("bg-green-50 text-green-700", t!("onto-imp-step-port-ok")),
         2 => (
             "bg-gray-100 text-gray-600",
-            t!("flows-ingest-port-unchanged"),
+            t!("onto-imp-step-port-unchanged"),
         ),
-        _ => ("bg-red-50 text-red-700", t!("flows-ingest-port-error")),
+        _ => ("bg-red-50 text-red-700", t!("onto-imp-step-port-error")),
     };
     let m = &step.manifest;
     let num = |k: &str| m.get(k).and_then(serde_json::Value::as_u64);

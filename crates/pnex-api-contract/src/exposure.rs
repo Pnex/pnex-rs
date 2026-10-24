@@ -130,7 +130,6 @@ pub const EXPOSED: &[&str] = &[
     "flows_get",
     "flows_list",
     "flows_node_status",
-    "flows_ingest_steps",
     "flows_runtime",
     "flows_update",
     "flows_versions_get",

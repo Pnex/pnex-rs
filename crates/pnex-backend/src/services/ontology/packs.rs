@@ -684,6 +684,7 @@ async fn install_locked(
     }
     super::imports::install_from_pack(db, org_id, user_id, pack, &[]).await?;
     install_automation(db, org_id, user_id, pack, &[]).await?;
+    drop_unshipped_flows(db, org_id, pack).await?;
     let (kept, differs) = edited(db, org_id, pack).await?;
     let row = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
@@ -723,6 +724,48 @@ async fn install_locked(
         kept,
         differs,
     })
+}
+
+/// Flows the pack wrote and no longer ships (web-presence.md D359: the
+/// France Compétences ingestion flow) go at an upgrade, when the org never
+/// edited nor deployed them; any other stays the org's.
+async fn drop_unshipped_flows(db: &DatabaseConnection, org_id: i64, pack: &Pack) -> Result<()> {
+    use crate::models::_entities::flows;
+    let shipped: Vec<&str> = pack.flows.iter().map(|f| f.name.trim()).collect();
+    let rows = db
+        .query_all_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT f.id FROM flows f WHERE f.org_id = $1 AND f.deployed_version_id IS NULL \
+               AND NOT (f.name = ANY($2)) \
+               AND EXISTS (SELECT 1 FROM flow_versions v WHERE v.flow_id = f.id) \
+               AND NOT EXISTS (SELECT 1 FROM flow_versions v WHERE v.flow_id = f.id \
+                               AND v.author IS DISTINCT FROM $3)",
+            vec![
+                org_id.into(),
+                shipped
+                    .iter()
+                    .map(|n| n.to_string())
+                    .collect::<Vec<_>>()
+                    .into(),
+                format!("pack:{}", pack.key).into(),
+            ],
+        ))
+        .await?;
+    for id in rows.iter().filter_map(|r| r.try_get::<i64>("", "id").ok()) {
+        crate::services::resources::purge_for(
+            db,
+            org_id,
+            pnex_core::resources::KIND_FLOW,
+            &id.to_string(),
+        )
+        .await?;
+        crate::services::secrets::flow::release(db, org_id, id)
+            .await
+            .map_err(|e| OntologyError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
+        flows::Entity::delete_by_id(id).exec(db).await?;
+        tracing::info!(org_id, flow_id = id, pack = %pack.key, "unshipped pack flow removed");
+    }
+    Ok(())
 }
 
 /// D306: adds the pack's optional properties to a system type or to a type
@@ -919,17 +962,6 @@ async fn install_automation(
             known.insert(f.name.clone(), (id, v.version_number, v.inputs, v.outputs));
         }
     }
-    // name → id of the org's imports (ingestion nodes, D322).
-    let imports: std::collections::HashMap<String, String> = db
-        .query_all_raw(sea_orm::Statement::from_sql_and_values(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT id::text AS id, name FROM object_imports WHERE org_id = $1",
-            vec![org_id.into()],
-        ))
-        .await?
-        .iter()
-        .filter_map(|r| Some((r.try_get("", "name").ok()?, r.try_get("", "id").ok()?)))
-        .collect();
     let author = format!("pack:{}", pack.key);
     let writer = crate::services::secrets::flow::GraphWriter {
         ring: None,
@@ -968,7 +1000,6 @@ async fn install_automation(
                 .get(name)
                 .map(|(id, v, inputs, outputs)| (*id, *v, inputs.clone(), outputs.clone()))
         });
-        resolve_imports(&mut graph, |name| imports.get(name).cloned());
         let graph: pnex_core::FlowGraph = serde_json::from_value(graph)
             .map_err(|_| invalid(format!("flows.{i}.graph"), FIELD_INVALID))?;
         let note = Some(f.note.clone()).filter(|n| !n.is_empty());
@@ -1041,25 +1072,6 @@ pub fn resolve_functions(
             c["version_number"] = v.into();
             c["inputs"] = inputs;
             c["outputs"] = outputs;
-        }
-    }
-}
-
-/// Ingestion nodes naming an import (`import_name`, no id) get the id of
-/// the org's import of that name.
-pub fn resolve_imports(graph: &mut serde_json::Value, lookup: impl Fn(&str) -> Option<String>) {
-    let Some(nodes) = graph.get_mut("nodes").and_then(|n| n.as_array_mut()) else {
-        return;
-    };
-    for n in nodes.iter_mut().filter(|n| n["kind"] == "ingest") {
-        let Some(c) = n.get_mut("config").and_then(|c| c.as_object_mut()) else {
-            continue;
-        };
-        let Some(name) = c.remove("import_name") else {
-            continue;
-        };
-        if let Some(id) = name.as_str().and_then(&lookup) {
-            c.insert("import_id".into(), id.into());
         }
     }
 }

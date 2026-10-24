@@ -236,6 +236,41 @@ permission `ontology:write`.
 
 W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
 
+**W0 livré (2026-10-24, demandé par Shan pendant la recette R1 de
+`network-check.md`)** :
+
+- **Retirés** : tout ce que liste D359. S'y ajoutent les étapes
+  `ontology_import` **et** `staging_cleanup` du cœur (le nettoyage se fait en
+  fin de run d'import), `IngestRequest`, `ImportAction` et le champ
+  `pending`. La migration 000053 supprime les colonnes et l'index.
+  `resolve_imports` du pack est retiré aussi.
+- **Clés ftl** : les libellés d'étapes que la page Imports réutilise sont
+  renommés `onto-imp-step-*` ; les autres `flows-ingest-*` /
+  `flows-palette-ingest-*` sont supprimées.
+- **Refus propre** : au déploiement, `pnex_core::flow::retired_nodes` lit le
+  graphe brut et refuse avec `flow-node-retired` (`args` : `node`, `kind`,
+  `instead`). Au démarrage, un graphe qui contient encore `ingest` n'est
+  plus lisible : il est isolé comme `graph_unreadable`.
+- **Remplacement** : les cinq imports France Compétences de `quali_watch`
+  1.5.0 portent leurs `steps:` et une récurrence quotidienne.
+  - Le filtre des certificateurs lit le nouveau réglage `certificateurs`
+    (`rows_filter.setting`, `network-check.md` D425). Vide = tous les
+    certificateurs.
+  - Les autres imports filtrent sur les certifications de l'org
+    (`in_objects`).
+  - Raccourci : tous les runs partent à 03:00 (`RUN_HOUR`), sans ordre
+    garanti. Le premier soir, les fiches peuvent passer avant les
+    certificateurs ; tout est en place la nuit suivante.
+- **Flow 16 de l'org 4** : à la montée de version, le pack supprime les
+  flows qu'il avait écrits et ne livre plus, s'ils n'ont jamais été
+  modifiés ni déployés (`drop_unshipped_flows`). Un flow de l'org qui
+  contient le nœud reste en place ; son déploiement est refusé.
+- **Tests** : `partner_watch` `open_data_ingestion_chain` est porté sur les
+  runs d'imports à étapes, `import_runs_its_own_steps` part de l'import du
+  pack, `ingest_import_outlives_its_call` est supprimé, et
+  `pack_upgrade_follows_untouched_imports` vérifie le refus et la
+  suppression du flow retiré.
+
 **Avancement (2026-10-22, non commité)** — **W1 codé** :
 
 - table `web_search_providers` (migration 000044), service

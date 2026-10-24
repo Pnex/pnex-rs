@@ -1,7 +1,7 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 54] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 47] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
@@ -36,13 +36,6 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 54] = [
     PaletteKind::OntologyQuery,
     PaletteKind::ObjectUpsert,
     PaletteKind::LinkUpsert,
-    PaletteKind::IngestResolve,
-    PaletteKind::IngestDownload,
-    PaletteKind::IngestExtract,
-    PaletteKind::IngestInspect,
-    PaletteKind::IngestFilter,
-    PaletteKind::IngestImport,
-    PaletteKind::IngestCleanup,
     PaletteKind::SiteRecipe,
     PaletteKind::WebSearch,
     PaletteKind::OrgResolve,
@@ -100,13 +93,6 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
-        PaletteKind::IngestResolve => "ingest-resolve",
-        PaletteKind::IngestDownload => "ingest-download",
-        PaletteKind::IngestExtract => "ingest-extract",
-        PaletteKind::IngestInspect => "ingest-inspect",
-        PaletteKind::IngestFilter => "ingest-filter",
-        PaletteKind::IngestImport => "ingest-import",
-        PaletteKind::IngestCleanup => "ingest-cleanup",
         PaletteKind::SiteRecipe => "site-recipe",
         PaletteKind::WebSearch => "web-search",
         PaletteKind::OrgResolve => "org-resolve",
@@ -170,13 +156,6 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
-        PaletteKind::IngestResolve => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestDownload => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestExtract => (PaletteIcon::Layers, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestInspect => (PaletteIcon::Eye, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestFilter => (PaletteIcon::Spline, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestImport => (PaletteIcon::Database, "bg-cyan-50 text-cyan-700"),
-        PaletteKind::IngestCleanup => (PaletteIcon::History, "bg-cyan-50 text-cyan-700"),
         PaletteKind::SiteRecipe => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-800"),
         PaletteKind::WebSearch => (PaletteIcon::Globe, "bg-cyan-50 text-cyan-700"),
         PaletteKind::OrgResolve => (PaletteIcon::Database, "bg-cyan-50 text-cyan-800"),
@@ -233,15 +212,6 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
-        FlowNodeKind::Ingest { config } => match config.step {
-            pnex_core::ingest::IngestStep::SourceResolve => PaletteKind::IngestResolve,
-            pnex_core::ingest::IngestStep::FileDownload => PaletteKind::IngestDownload,
-            pnex_core::ingest::IngestStep::ArchiveExtract => PaletteKind::IngestExtract,
-            pnex_core::ingest::IngestStep::TableInspect => PaletteKind::IngestInspect,
-            pnex_core::ingest::IngestStep::RowsFilter => PaletteKind::IngestFilter,
-            pnex_core::ingest::IngestStep::OntologyImport => PaletteKind::IngestImport,
-            pnex_core::ingest::IngestStep::StagingCleanup => PaletteKind::IngestCleanup,
-        },
         FlowNodeKind::SiteRecipe { .. } => PaletteKind::SiteRecipe,
         FlowNodeKind::WebSearch { .. } => PaletteKind::WebSearch,
         FlowNodeKind::OrgResolve { .. } => PaletteKind::OrgResolve,
@@ -318,14 +288,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::OntologyQuery | PaletteKind::ObjectUpsert | PaletteKind::LinkUpsert => {
             PaletteCategory::Ontology
         }
-        PaletteKind::IngestResolve
-        | PaletteKind::IngestDownload
-        | PaletteKind::IngestExtract
-        | PaletteKind::IngestInspect
-        | PaletteKind::IngestFilter
-        | PaletteKind::IngestImport
-        | PaletteKind::IngestCleanup
-        | PaletteKind::SiteRecipe
+        PaletteKind::SiteRecipe
         | PaletteKind::WebSearch
         | PaletteKind::OrgResolve
         | PaletteKind::WebVisit
@@ -534,34 +497,6 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::LinkUpsert => (
             t!("flows-palette-link-upsert").to_string(),
             t!("flows-palette-link-upsert-help").to_string(),
-        ),
-        PaletteKind::IngestResolve => (
-            t!("flows-palette-ingest-resolve").to_string(),
-            t!("flows-palette-ingest-resolve-help").to_string(),
-        ),
-        PaletteKind::IngestDownload => (
-            t!("flows-palette-ingest-download").to_string(),
-            t!("flows-palette-ingest-download-help").to_string(),
-        ),
-        PaletteKind::IngestExtract => (
-            t!("flows-palette-ingest-extract").to_string(),
-            t!("flows-palette-ingest-extract-help").to_string(),
-        ),
-        PaletteKind::IngestInspect => (
-            t!("flows-palette-ingest-inspect").to_string(),
-            t!("flows-palette-ingest-inspect-help").to_string(),
-        ),
-        PaletteKind::IngestFilter => (
-            t!("flows-palette-ingest-filter").to_string(),
-            t!("flows-palette-ingest-filter-help").to_string(),
-        ),
-        PaletteKind::IngestImport => (
-            t!("flows-palette-ingest-import").to_string(),
-            t!("flows-palette-ingest-import-help").to_string(),
-        ),
-        PaletteKind::IngestCleanup => (
-            t!("flows-palette-ingest-cleanup").to_string(),
-            t!("flows-palette-ingest-cleanup-help").to_string(),
         ),
         PaletteKind::SiteRecipe => (
             t!("flows-palette-site-recipe").to_string(),

@@ -1,5 +1,9 @@
 # Ingestion des open data — chaîne visible dans un flow (D317–D322)
 
+> **Nœud de flow retiré (D359, `web-presence.md`, 2026-10-24)** : les étapes
+> vivent désormais dans les `steps:` des imports (`data-pipelines.md` D344).
+> Ce document reste la référence du contenu des étapes.
+
 > Adopté le 2026-10-20 depuis la proposition `pnex-quali-watch/ingestion.md`
 > v0.1. Remplace l'import Excel du réseau d'un certificateur : le réseau
 > déclaré est dans l'open data France Compétences (fichier `Partenaires`).

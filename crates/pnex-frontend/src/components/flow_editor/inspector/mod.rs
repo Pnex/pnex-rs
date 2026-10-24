@@ -202,15 +202,6 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::LinkUpsert { config } => rsx! {
             LinkUpsertForm { cx, initial: config.clone(), can_write }
         },
-        FlowNodeKind::Ingest { config } => rsx! {
-            IngestForm {
-                cx,
-                initial: config.clone(),
-                can_write,
-                flow_id,
-                node_id: node.id.clone(),
-            }
-        },
         FlowNodeKind::SiteRecipe { config } => rsx! {
             SiteRecipeForm { cx, initial: config.clone(), can_write }
         },
@@ -288,7 +279,6 @@ mod event_log;
 mod function;
 mod helpers;
 mod http_fetch;
-mod ingest;
 mod inject;
 mod json;
 mod media_source;
@@ -326,7 +316,6 @@ use event_log::EventLogForm;
 use function::FunctionForm;
 use helpers::{patch_selected, remove_selected};
 use http_fetch::HttpFetchForm;
-use ingest::IngestForm;
 use inject::InjectForm;
 use json::{JsonMergeForm, JsonSplitForm};
 use media_source::MediaSourceForm;

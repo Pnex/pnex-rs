@@ -1,11 +1,8 @@
-//! Open-data ingestion nodes (ingestion.md D317–D322): one flow node kind,
-//! `ingest`, whose `step` picks what it does — resolve a source, download
-//! it to the S3 staging area, extract an archive, inspect a table, filter
-//! rows, run a declarative import (D301), clean the staging area. The
-//! runtime holds no bytes and no credentials: each step calls
-//! `POST /internal/flow/ingest` naming its deployed node; the backend reads
-//! the config from the deployed graph, does the work and returns the
-//! message fields plus a manifest (what came in, what went out).
+//! Open-data ingestion steps (ingestion.md D317–D321): the `steps:` of a
+//! declarative import (data-pipelines.md D344), run by the server before
+//! the import reads its file — resolve a source, download it to the S3
+//! staging area, extract an archive, inspect a table, filter rows. The flow
+//! node `ingest` that chained them is retired (web-presence.md D359).
 //!
 //! Flat config (no internally tagged enum: serde_json
 //! `arbitrary_precision` breaks them), serde-only, wasm-safe.
@@ -13,7 +10,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::ontology::flow::FlowNodeRef;
 use crate::ontology::import::Convert;
 
 /// Serialized size cap of a manifest (node panel, run log).
@@ -26,7 +22,7 @@ pub const STAGING_QUOTA_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const STAGING_TTL_DAYS: i64 = 7;
 /// Default retention of a downloaded raw file (proof of what was imported).
 pub const KEEP_RAW_DAYS: u32 = 30;
-/// Default share of what an import wrote that one run may close.
+/// Share of what an import holds that one run of its steps may close.
 pub const MAX_CLOSURES_PCT: u32 = 20;
 /// Values of an `equals`/`in` filter.
 pub const FILTER_VALUES_MAX: usize = 1_000;
@@ -48,19 +44,15 @@ pub enum IngestStep {
     ArchiveExtract,
     TableInspect,
     RowsFilter,
-    OntologyImport,
-    StagingCleanup,
 }
 
 impl IngestStep {
-    pub const ALL: [IngestStep; 7] = [
+    pub const ALL: [IngestStep; 5] = [
         Self::SourceResolve,
         Self::FileDownload,
         Self::ArchiveExtract,
         Self::TableInspect,
         Self::RowsFilter,
-        Self::OntologyImport,
-        Self::StagingCleanup,
     ];
 
     pub fn key(self) -> &'static str {
@@ -70,8 +62,6 @@ impl IngestStep {
             Self::ArchiveExtract => "archive_extract",
             Self::TableInspect => "table_inspect",
             Self::RowsFilter => "rows_filter",
-            Self::OntologyImport => "ontology_import",
-            Self::StagingCleanup => "staging_cleanup",
         }
     }
 
@@ -103,16 +93,7 @@ pub enum FilterOp {
     InObjects,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ImportAction {
-    /// Computes the difference and stops (visible in the Imports tab).
-    #[default]
-    Preview,
-    Apply,
-}
-
-/// Config of an `ingest` node. Only the fields of its `step` are read.
+/// Config of one step. Only the fields of its `step` are read.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct IngestConfig {
     #[serde(default)]
@@ -141,7 +122,7 @@ pub struct IngestConfig {
     /// Globs of the entries to extract; empty = all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub entries: Vec<String>,
-    // ── table_inspect / rows_filter / ontology_import ──
+    // ── table_inspect / rows_filter ──
     /// Glob picking one of `msg.entries`; empty = `msg.staging_key`.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub entry: String,
@@ -155,6 +136,11 @@ pub struct IngestConfig {
     pub op: FilterOp,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub values: Vec<String>,
+    /// `in`: the values are the codes of this pack setting
+    /// (`<pack>.<key>`, comma-separated) instead of `values`; an empty
+    /// setting keeps every row (network-check.md D425).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setting: Option<String>,
     /// `in_objects`: type and property whose values are kept.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub object_type: String,
@@ -167,13 +153,6 @@ pub struct IngestConfig {
     /// D301 conversions applied to the column before comparing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub convert: Vec<Convert>,
-    // ── ontology_import ──
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub import_id: String,
-    #[serde(default)]
-    pub action: ImportAction,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_closures_pct: Option<u32>,
 }
 
 fn http_url(s: &str) -> bool {
@@ -192,10 +171,6 @@ impl IngestConfig {
 
     pub fn keep_raw_days(&self) -> u32 {
         self.keep_raw_days.unwrap_or(KEEP_RAW_DAYS)
-    }
-
-    pub fn max_closures_pct(&self) -> u32 {
-        self.max_closures_pct.unwrap_or(MAX_CLOSURES_PCT)
     }
 
     /// Save check (editor and backend): what is filled is well formed. An
@@ -239,21 +214,23 @@ impl IngestConfig {
                 bad("equals takes one value")
             }
             IngestStep::RowsFilter
+                if self.setting.as_deref().is_some_and(|k| {
+                    self.op != FilterOp::In
+                        || !k.split_once('.').is_some_and(|(a, b)| {
+                            crate::ontology::schema::valid_key(a)
+                                && crate::ontology::schema::valid_key(b)
+                        })
+                }) =>
+            {
+                bad("setting: <pack>.<key>, with op in")
+            }
+            IngestStep::RowsFilter
                 if self
                     .only
                     .as_ref()
                     .is_some_and(|o| o.values.len() > FILTER_VALUES_MAX) =>
             {
                 bad("1,000 values at most")
-            }
-            IngestStep::OntologyImport
-                if !self.import_id.trim().is_empty()
-                    && uuid::Uuid::parse_str(self.import_id.trim()).is_err() =>
-            {
-                bad("invalid import id")
-            }
-            IngestStep::OntologyImport if self.max_closures_pct.is_some_and(|p| p > 100) => {
-                bad("max_closures_pct is a percentage")
             }
             _ => None,
         }
@@ -278,6 +255,7 @@ impl IngestConfig {
                 unset("a column is required")
             }
             IngestStep::RowsFilter => match self.op {
+                FilterOp::In if self.setting.is_some() => None,
                 FilterOp::Equals | FilterOp::In if self.values.is_empty() => {
                     unset("the values to keep are required")
                 }
@@ -296,9 +274,6 @@ impl IngestConfig {
                 }
                 _ => None,
             },
-            IngestStep::OntologyImport if self.import_id.trim().is_empty() => {
-                unset("pick an import")
-            }
             _ => None,
         })
     }
@@ -313,8 +288,7 @@ pub struct StagedEntry {
     pub bytes: u64,
 }
 
-/// The ingestion fields of a flow message (`msg.ingest`), carried from node
-/// to node. Keys only, never bytes.
+/// What one step hands the next. Keys only, never bytes.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct IngestMsg {
     /// One id per pass of the chain; created by the first step.
@@ -334,17 +308,8 @@ pub struct IngestMsg {
     pub entries: Vec<StagedEntry>,
 }
 
-/// `POST /internal/flow/ingest`: the node and the message fields.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct IngestRequest {
-    pub node: FlowNodeRef,
-    #[serde(default)]
-    pub msg: IngestMsg,
-}
-
-/// Answer of a step: the next message fields, the output port and the
-/// manifest. A step that fails answers 200 too, on port 1 with its code:
-/// a broken source is a flow outcome, not a transport error.
+/// Outcome of a step: the next fields, the output port and the manifest;
+/// a failed step is on port 1 with its code.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct IngestReply {
     pub port: usize,
@@ -356,14 +321,9 @@ pub struct IngestReply {
     pub code: Option<String>,
     #[serde(default, skip_serializing_if = "Value::is_null")]
     pub args: Value,
-    /// The step still runs on the server: the node sends the same request
-    /// again (with this `msg`, which carries the pass id) until it is done.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub pending: bool,
 }
 
-/// One journaled step (`GET /flows/{id}/ingest-steps`): node panel and
-/// run log.
+/// One journaled step of an import run (its run history).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct IngestStepView {
@@ -374,8 +334,9 @@ pub struct IngestStepView {
     pub run_id: String,
     pub node_id: String,
     pub flow_version: i64,
-    /// `source_resolve`, `file_download`, `archive_extract`, `table_inspect`,
-    /// `rows_filter`, `ontology_import` or `staging_cleanup`.
+    /// `source_resolve`, `file_download`, `archive_extract`, `table_inspect`
+    /// or `rows_filter` (`ontology_import` and `staging_cleanup` in the
+    /// journal of retired flow nodes, D359).
     pub step: String,
     /// 0 done, 1 error, 2 unchanged.
     pub port: u32,
@@ -527,12 +488,6 @@ mod tests {
         };
         assert!(empty_in.check().is_none() && empty_in.check_deployable().is_some());
 
-        let i = IngestConfig {
-            step: IngestStep::OntologyImport,
-            import_id: "nope".into(),
-            ..Default::default()
-        };
-        assert!(i.check().is_some());
         assert_eq!(IngestStep::FileDownload.port_count(), 3);
     }
 

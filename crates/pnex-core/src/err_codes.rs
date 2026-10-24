@@ -775,6 +775,9 @@ pub const FIELD_INVALID_BODY: &str = "field-invalid";
 pub const REQUEST_INVALID: &str = "request-invalid";
 /// Flow graph violations: `errors.violations = [...]`.
 pub const FLOW_INVALID: &str = "flow-invalid";
+/// A node of a retired kind (web-presence.md D359); args `{node, kind,
+/// instead}`.
+pub const FLOW_NODE_RETIRED: &str = "flow-node-retired";
 /// Dashboard layout violations.
 pub const DASHBOARD_INVALID: &str = "dashboard-invalid";
 /// Dashboard widget violations.
@@ -854,6 +857,7 @@ pub const ALL: &[&str] = &[
     FIELD_INVALID_BODY,
     REQUEST_INVALID,
     FLOW_INVALID,
+    FLOW_NODE_RETIRED,
     DASHBOARD_INVALID,
     WIDGET_INVALID,
     TOUR_INVALID,

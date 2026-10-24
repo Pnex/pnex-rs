@@ -8378,7 +8378,7 @@
         "type": "object"
       },
       "IngestStepView": {
-        "description": "One journaled step (`GET /flows/{id}/ingest-steps`): node panel and\nrun log.",
+        "description": "One journaled step of an import run (its run history).",
         "properties": {
           "bytes": {
             "description": "Staging bytes the step wrote.",
@@ -8428,7 +8428,7 @@
             "type": "string"
           },
           "step": {
-            "description": "`source_resolve`, `file_download`, `archive_extract`, `table_inspect`,\n`rows_filter`, `ontology_import` or `staging_cleanup`.",
+            "description": "`source_resolve`, `file_download`, `archive_extract`, `table_inspect`\nor `rows_filter` (`ontology_import` and `staging_cleanup` in the\njournal of retired flow nodes, D359).",
             "type": "string"
           }
         },
@@ -14601,42 +14601,6 @@
             "description": "Items of this page.",
             "items": {
               "$ref": "#/components/schemas/ImportRunView"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "count",
-          "results"
-        ],
-        "type": "object"
-      },
-      "Paginated_IngestStepView": {
-        "description": "Envelope of a paginated list.",
-        "properties": {
-          "count": {
-            "description": "Total before slicing (filters apply to the count).",
-            "format": "int64",
-            "type": "integer"
-          },
-          "next": {
-            "description": "Link to the next page — `null` on the last page.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "previous": {
-            "description": "Link to the previous page — `null` on the first page.",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "results": {
-            "description": "Items of this page.",
-            "items": {
-              "$ref": "#/components/schemas/IngestStepView"
             },
             "type": "array"
           }
@@ -42211,112 +42175,6 @@
           }
         ],
         "summary": "Deploy a flow version",
-        "tags": [
-          "flows"
-        ]
-      }
-    },
-    "/api/v1/flows/{id}/ingest-steps": {
-      "get": {
-        "description": "Paginated journal of the open-data ingestion steps a flow ran, newest first: step, output port, error code and manifest (what the step received and produced). Optional `node_id` filter. Requires reading flows.",
-        "operationId": "flows_ingest_steps",
-        "parameters": [
-          {
-            "description": "Id of the selected organisation; the caller must be a member.",
-            "in": "header",
-            "name": "X-Org-Id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Flow id",
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Only the steps of this node.",
-            "in": "query",
-            "name": "node_id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "offset",
-            "required": false,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Paginated_IngestStepView"
-                }
-              }
-            },
-            "description": ""
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Missing, invalid or expired bearer token"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `flows:read`): the caller's role does not grant it"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorDetail"
-                }
-              }
-            },
-            "description": "Flow not found in this organisation"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "List the ingestion steps of a flow",
         "tags": [
           "flows"
         ]

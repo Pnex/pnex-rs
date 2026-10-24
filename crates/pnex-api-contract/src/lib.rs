@@ -27,7 +27,10 @@ pub mod iam;
 /// 3 (2026-10-17, D238–D244): harmonized contract — one error shape
 /// (`ErrorDetail`, `errors.fields` / `errors.violations`), every list
 /// paginated, typed ids/dates/enums, GET for reads, English descriptions.
-pub const CONTRACT: u32 = 3;
+///
+/// 4 (2026-10-24, web-presence.md D359): the flow node kind `ingest` and
+/// `GET /flows/{id}/ingest-steps` are removed; an import carries its steps.
+pub const CONTRACT: u32 = 4;
 
 /// Identité annoncée par le endpoint meta — aligned with
 /// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). Le scan LAN compare ce champ pour distinguer un serveur

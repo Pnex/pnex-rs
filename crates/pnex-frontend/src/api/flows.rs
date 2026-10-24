@@ -266,23 +266,6 @@ pub async fn node_status(id: i64) -> Result<FlowDebugFeed, ApiError> {
     .await
 }
 
-/// Journal of the ingestion steps of one node, newest first (D317–D322).
-pub async fn ingest_steps(
-    id: i64,
-    node_id: &str,
-    limit: i64,
-) -> Result<Paginated<pnex_core::ingest::IngestStepView>, ApiError> {
-    client::request(
-        reqwest::Method::GET,
-        &format!(
-            "/api/v1/flows/{id}/ingest-steps?node_id={}&limit={limit}",
-            urlencode(node_id)
-        ),
-        None,
-    )
-    .await
-}
-
 /// Échec d'un enregistrement, trié pour l'UI : conflit de concurrence (409,
 /// modal « recharger / écraser »), graphe invalide (400 violations,
 /// surlignage), ou autre (toast verbatim).
