@@ -1109,6 +1109,29 @@ déclencheurs par événement, évaluation avant promotion, audit chaîné.
 Premier lot :
 A0 (passerelle LLM), qui ne dépend que de D212.
 
+### P2.30 — Enregistrement des appels et visios (ajout 2026-10-24) — **proposition, rien d'implémenté**
+
+Doc : `call-recording.md` (lots R1–R4, décisions à numéroter au PRD).
+Usages : commerciaux (compte rendu de `rendez_vous`, P2.28), SAV
+(historique d'appels par client et équipement), notes de réunions
+multi-canaux. Capter appels et visios PC et mobile sans outil tiers et les
+verser dans l'ingestion média (P2.13) : un canal par interlocuteur →
+transcription `pnex-asr` diarisée « moi / l'autre », résumé et actions par
+le LLM de l'org, rattachement au contact (CLIP) dans l'ontologie.
+Annonce de l'enregistrement obligatoire (RGPD), LED REC sur device.
+
+| Lot | Contenu | Dépend de |
+|---|---|---|
+| R1 | Desktop natif : loopback + micro en deux flux, détection automatique d'une visio, Phone Link / Continuity | desktop natif (macOS pour Continuity) |
+| R2 | Device filaire « Audio Tap » (ESP32-C6 + ADC stéréo + SD), `call_active` | — |
+| R3 | Device Bluetooth HFP « PNEX Call » (C6 + CC2564C), `call_state` + CLIP, SD zéro perte, envoi Wi-Fi différé | validation de la pile Bluetooth Zephyr (Apache-2.0) |
+| R4 | Proxy Bluetooth (relais HFP, puis A2DP si besoin) | R3 |
+
+Bloquants avant R3 : hôte Bluetooth open source (Zephyr retenu, Bluedroid
+en repli ; BTstack écarté, licence non permissive), portage du protocole
+PneX sous Zephyr, politique de consentement et de
+rétention (`call-recording.md` §10).
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1469,3 +1492,9 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   (contrat pack + couche d'org, priorité 2), D369 (identité externe et
   frontière des transactions, principe) et D370 (clé d'énumération stable)
   inscrites dans `ontology.md` §11.
+- **2026-10-24 (appels et visios)** — Ajout de P2.30 (`call-recording.md`,
+  lots R1–R4) : enregistrement des appels et visios pour les commerciaux,
+  le SAV et les réunions multi-canaux ; desktop d'abord (loopback + micro,
+  détection automatique), puis devices filaire et Bluetooth HFP, proxy
+  Bluetooth. Bloquants notés : hôte Bluetooth (Zephyr), pile firmware, consentement
+  et rétention. Rien d'implémenté.
