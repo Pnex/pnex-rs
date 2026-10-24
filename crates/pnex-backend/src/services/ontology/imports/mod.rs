@@ -69,11 +69,13 @@ struct ImportRow {
     created_at: DateTimeWithTimeZone,
     updated_at: DateTimeWithTimeZone,
     per_object_cursor: Option<String>,
+    /// What its pack last wrote (D424): `{written, replaced}`.
+    pack_written: Option<Value>,
 }
 
 const IMPORT_COLUMNS: &str = "id, org_id, name, mapping_yaml, pack_key, source, source_url, mode, \
      recurrence, next_run_at, max_pages, version, created_by, created_at, updated_at, \
-     per_object_cursor";
+     per_object_cursor, pack_written";
 
 impl ImportRow {
     fn source(&self) -> ImportSource {
@@ -1689,45 +1691,192 @@ async fn sweep(
     Ok(())
 }
 
-/// Imports a pack ships (D301): created in the org at install, kept
-/// (never overwritten) at upgrade.
+/// The part of an import its pack owns (D424): mapping, source and URL.
+/// Mode, schedule and pages are the org's running choices, never replaced.
+fn pack_content(m: &Mapping, source: ImportSource, url: Option<&str>) -> Value {
+    serde_json::json!({
+        "mapping": serde_json::to_value(m).unwrap_or(Value::Null),
+        "source": source.wire(),
+        "source_url": url,
+    })
+}
+
+/// What differs between two contents: `source`, `source_url`, or
+/// `mapping.<key>` for each top-level key of the mapping.
+fn differs(a: &Value, b: &Value) -> Vec<String> {
+    let mut out: Vec<String> = ["source", "source_url"]
+        .into_iter()
+        .filter(|k| a.get(k) != b.get(k))
+        .map(str::to_string)
+        .collect();
+    let (ma, mb) = (&a["mapping"], &b["mapping"]);
+    let mut keys: Vec<&String> = ma
+        .as_object()
+        .into_iter()
+        .chain(mb.as_object())
+        .flat_map(|o| o.keys())
+        .collect();
+    keys.sort();
+    keys.dedup();
+    out.extend(
+        keys.into_iter()
+            .filter(|k| ma.get(k.as_str()) != mb.get(k.as_str()))
+            .map(|k| format!("mapping.{k}")),
+    );
+    out
+}
+
+/// The pack's imports in the org, with the content the pack ships now.
+async fn pack_rows(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &pnex_core::ontology::api::Pack,
+) -> Result<Vec<(usize, Option<ImportRow>, Value)>> {
+    let mut out = Vec::with_capacity(pack.imports.len());
+    for (i, p) in pack.imports.iter().enumerate() {
+        let row = ImportRow::find_by_statement(stmt(
+            &format!(
+                "SELECT {IMPORT_COLUMNS} FROM object_imports \
+                 WHERE org_id = $1 AND pack_key = $2 AND name = $3"
+            ),
+            vec![
+                org_id.into(),
+                pack.key.clone().into(),
+                p.name.clone().into(),
+            ],
+        ))
+        .one(db)
+        .await?;
+        let shipped = pack_content(&p.mapping, p.source, p.source_url.as_deref());
+        out.push((i, row, shipped));
+    }
+    Ok(out)
+}
+
+/// The content an import holds now; `None` when its mapping no longer
+/// parses (then it is the org's, kept).
+fn current_content(row: &ImportRow) -> Option<Value> {
+    Some(pack_content(
+        &row.mapping().ok()?,
+        row.source(),
+        row.source_url.as_deref(),
+    ))
+}
+
+/// The pack's imports the org edited since the pack wrote them (D424),
+/// with what differs from the pack's version: an upgrade keeps them.
+pub async fn kept(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &pnex_core::ontology::api::Pack,
+) -> Result<Vec<(String, Vec<String>)>> {
+    Ok(pack_rows(db, org_id, pack)
+        .await?
+        .into_iter()
+        .filter_map(|(i, row, shipped)| {
+            let row = row?;
+            let current = current_content(&row).unwrap_or(Value::Null);
+            let written = row.pack_written.as_ref().map(|w| &w["written"]);
+            (current != shipped && written != Some(&current))
+                .then(|| (pack.imports[i].name.clone(), differs(&current, &shipped)))
+        })
+        .collect())
+}
+
+/// Imports a pack ships (D301, D424): created at install; at an upgrade,
+/// one the org left as is (or named in `take`) gets the pack's mapping,
+/// source and URL, its mode, schedule and pages kept; one it edited stays.
 pub async fn install_from_pack(
     db: &DatabaseConnection,
     org_id: i64,
     user_id: Option<i64>,
     pack: &pnex_core::ontology::api::Pack,
+    take: &[String],
 ) -> Result<()> {
-    for (i, p) in pack.imports.iter().enumerate() {
-        let exists = db
-            .query_one_raw(stmt(
-                "SELECT 1 AS x FROM object_imports WHERE org_id = $1 AND pack_key = $2 AND name = $3",
-                vec![org_id.into(), pack.key.clone().into(), p.name.clone().into()],
-            ))
-            .await?
-            .is_some();
-        if exists {
-            continue;
+    let at = |i: usize| {
+        move |e| match e {
+            OntologyError::Invalid { field, token } => {
+                invalid(format!("imports.{i}.{field}"), token)
+            }
+            e => e,
         }
-        let input = ObjectImportInput {
-            name: p.name.clone(),
-            mapping: serde_saphyr::to_string(&p.mapping)
-                .map_err(|_| invalid(format!("imports.{i}.mapping"), FIELD_INVALID))?,
-            source: p.source,
-            source_url: Some(p.source_url.clone()),
-            mode: p.mode,
-            recurrence: Some(p.recurrence.clone()),
-            max_pages: Some(p.max_pages),
-            expected_version: None,
-        };
-        create(db, org_id, user_id, &input, Some(&pack.key))
-            .await
-            .map_err(|e| match e {
-                OntologyError::Invalid { field, token } => {
-                    invalid(format!("imports.{i}.{field}"), token)
+    };
+    for (i, row, shipped) in pack_rows(db, org_id, pack).await? {
+        let p = &pack.imports[i];
+        let mapping = serde_saphyr::to_string(&p.mapping)
+            .map_err(|_| invalid(format!("imports.{i}.mapping"), FIELD_INVALID))?;
+        let (id, replaced) = match row {
+            None => {
+                let input = ObjectImportInput {
+                    name: p.name.clone(),
+                    mapping,
+                    source: p.source,
+                    source_url: Some(p.source_url.clone()),
+                    mode: p.mode,
+                    recurrence: Some(p.recurrence.clone()),
+                    max_pages: Some(p.max_pages),
+                    expected_version: None,
+                };
+                let v = create(db, org_id, user_id, &input, Some(&pack.key))
+                    .await
+                    .map_err(at(i))?;
+                (
+                    v.id.parse::<Uuid>().map_err(|_| OntologyError::NotFound)?,
+                    Value::Null,
+                )
+            }
+            Some(row) => {
+                let current = current_content(&row);
+                let written = row.pack_written.as_ref().map(|w| &w["written"]);
+                if current.as_ref() == Some(&shipped) {
+                    if written != Some(&shipped) {
+                        set_written(db, row.id, &shipped, &Value::Null).await?;
+                    }
+                    continue;
                 }
-                e => e,
-            })?;
+                let pristine = current.is_some() && written == current.as_ref();
+                if !pristine && !take.contains(&p.name) {
+                    continue;
+                }
+                let input = ObjectImportInput {
+                    name: row.name.clone(),
+                    mapping,
+                    source: p.source,
+                    source_url: Some(p.source_url.clone()),
+                    mode: row.mode(),
+                    recurrence: Some(row.recurrence.clone()),
+                    max_pages: Some(row.max_pages.map(|n| n as u32)),
+                    expected_version: Some(row.version),
+                };
+                update(db, org_id, row.id, &input).await.map_err(at(i))?;
+                // The org's version, kept beside the pack's for a way back.
+                let replaced = serde_json::json!({
+                    "mapping_yaml": row.mapping_yaml,
+                    "source": row.source,
+                    "source_url": row.source_url,
+                });
+                (row.id, replaced)
+            }
+        };
+        set_written(db, id, &shipped, &replaced).await?;
     }
+    Ok(())
+}
+
+async fn set_written(
+    db: &DatabaseConnection,
+    id: Uuid,
+    written: &Value,
+    replaced: &Value,
+) -> Result<()> {
+    db.execute_raw(stmt(
+        "UPDATE object_imports SET pack_written = $2 WHERE id = $1",
+        vec![
+            id.into(),
+            serde_json::json!({ "written": written, "replaced": replaced }).into(),
+        ],
+    ))
+    .await?;
     Ok(())
 }
 

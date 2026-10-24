@@ -4812,6 +4812,7 @@ onto-pack-kept = Non mis à jour, car votre organisation les a modifiés : { $na
 onto-pack-edited = Modifiés par votre organisation (gardés à la mise à jour) :
 onto-pack-take = reprendre la version du pack
 onto-pack-taken = { $name } reprend la version du pack ; votre version reste dans son historique. Un flow la prend à son prochain déploiement.
+onto-pack-taken-import = { $name } reprend la version du pack ; son mode, sa récurrence et son nombre de pages restent les vôtres.
 onto-as-code = Schéma en YAML
 onto-as-code-help = Exportez vos types et types de liens, versionnez-les, importez-les dans une autre organisation.
 onto-export = Exporter le YAML

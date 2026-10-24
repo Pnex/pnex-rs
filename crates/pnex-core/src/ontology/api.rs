@@ -689,14 +689,20 @@ pub struct PackView {
     /// Settings of an installed pack (D368), empty otherwise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub settings: Vec<PackSettingView>,
-    /// Functions and flows of an installed pack the org edited since the
-    /// pack wrote them: an upgrade keeps the org's version (D368).
+    /// Functions, flows and imports of an installed pack the org edited
+    /// since the pack wrote them: an upgrade keeps the org's version (D368,
+    /// network-check.md D424).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub kept: Vec<String>,
+    /// For each import of `kept`, what differs from the pack's version:
+    /// `source`, `source_url`, `mapping.<key>`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub differs: std::collections::BTreeMap<String, Vec<String>>,
 }
 
-/// `POST /ontology/packs/{key}/take`: the pack's version of functions and
-/// flows the org edited (names from `PackView.kept`).
+/// `POST /ontology/packs/{key}/take`: the pack's version of functions,
+/// flows and imports the org edited (names from `PackView.kept`); an
+/// import keeps its mode, schedule and pages.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct PackTakeInput {

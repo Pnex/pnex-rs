@@ -4813,6 +4813,7 @@ onto-pack-kept = Not updated, because your organization edited them: { $names }.
 onto-pack-edited = Edited by your organization (kept at upgrades):
 onto-pack-take = take the pack's version
 onto-pack-taken = { $name } takes the pack's version; yours stays in its history. A flow runs it at its next deploy.
+onto-pack-taken-import = { $name } takes the pack's version; its mode, schedule and pages stay yours.
 onto-as-code = Schema as YAML
 onto-as-code-help = Export your types and link types, version them, import them into another organization.
 onto-export = Export YAML

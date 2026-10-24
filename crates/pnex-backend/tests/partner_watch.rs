@@ -1097,6 +1097,52 @@ async fn imports_preview_apply_and_close_missing_links() {
     .await;
 }
 
+/// network-check.md D424: an upgrade rewrites the pack's imports the org
+/// left as is, keeps the edited ones (named, with what differs), and taking
+/// the pack's version keeps the org's schedule.
+#[tokio::test]
+#[serial]
+async fn pack_upgrade_follows_untouched_imports() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let (rs, rncp) = ("CPF catalogue · RS certifications", "CPF catalogue · RNCP certifications");
+        let sql = |s: String| { let db = env.db.clone(); async move { db.execute_unprepared(&s).await.unwrap(); } };
+        // RS as an older pack wrote it; RNCP edited by the org, scheduled.
+        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'offers (RS)', 'old offers'), \
+                     pack_written = jsonb_set(pack_written, '{{written,mapping,name}}', '\"CPF old offers\"') \
+                     WHERE org_id = {org} AND name = '{rs}'")).await;
+        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'offers (RNCP)', 'my offers'), \
+                     recurrence = '{{\"start\": \"2026-01-01\", \"every\": 1, \"unit\": \"week\"}}' \
+                     WHERE org_id = {org} AND name = '{rncp}'")).await;
+        let mapping_of = |name: &'static str| {
+            let db = env.db.clone();
+            async move {
+                let r = db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+                    format!("SELECT mapping_yaml, recurrence, version FROM object_imports WHERE org_id = {org} AND name = '{name}'"))).await.unwrap().unwrap();
+                (r.try_get::<String>("", "mapping_yaml").unwrap(), r.try_get::<Option<Value>>("", "recurrence").unwrap(), r.try_get::<i32>("", "version").unwrap())
+            }
+        };
+        let (_, _, rs_version) = mapping_of(rs).await;
+        sql(format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'quali_watch'")).await;
+        let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/install", &env.alice, org, None).await;
+        assert_eq!(st, 200, "{up}");
+        assert_eq!((up["kept"].clone(), up["differs"].clone()), (json!([rncp]), json!({rncp: ["mapping.name"]})), "{up}");
+        let (yaml, _, v) = mapping_of(rs).await;
+        assert!(yaml.contains("offers (RS)") && v == rs_version + 1, "untouched import upgraded: {yaml}");
+        let (yaml, recurrence, _) = mapping_of(rncp).await;
+        assert!(yaml.contains("my offers"), "edited import kept");
+        // Taking the pack's version keeps the org's schedule.
+        let (st, p) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/take", &env.alice, org, Some(json!({"names": [rncp]}))).await;
+        assert_eq!((st, p.get("kept").cloned()), (200, None), "{p}");
+        let (yaml, kept_recurrence, _) = mapping_of(rncp).await;
+        assert!(yaml.contains("offers (RNCP)"), "the pack's version: {yaml}");
+        assert_eq!(kept_recurrence, recurrence);
+        assert!(recurrence.is_some());
+    })
+    .await;
+}
+
 /// network-check.md §7: an update without `recurrence`, `max_pages` or
 /// `source_url` keeps them; an explicit `null` clears them.
 #[tokio::test]

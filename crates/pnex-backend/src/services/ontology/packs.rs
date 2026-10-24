@@ -81,12 +81,12 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
             .iter()
             .find(|i| i.key == p.key)
             .map(|i| i.version.clone());
-        let (settings, kept) = match installed_version {
+        let (settings, (kept, differs)) = match installed_version {
             Some(_) => (
                 settings_view(&p, layers.get(&p.key).unwrap_or(&Value::Null)),
                 edited(db, org_id, &p).await?,
             ),
-            None => (Vec::new(), Vec::new()),
+            None => (Vec::new(), Default::default()),
         };
         out.push(PackView {
             descriptions: p.descriptions.clone(),
@@ -94,6 +94,7 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
             installed_version,
             settings,
             kept,
+            differs,
             key: p.key,
             name: p.name,
             version: p.version,
@@ -103,10 +104,26 @@ pub async fn list(db: &DatabaseConnection, org_id: i64) -> Result<Vec<PackView>>
     Ok(out)
 }
 
-/// The pack's functions and flows the org edited since the pack wrote them
-/// (D368): they keep the org's version at an upgrade. One of the same name
-/// the pack never wrote is the org's own, not listed.
-async fn edited(db: &DatabaseConnection, org_id: i64, pack: &Pack) -> Result<Vec<String>> {
+/// The pack's functions, flows and imports the org edited since the pack
+/// wrote them (D368, D424): they keep the org's version at an upgrade. One
+/// of the same name the pack never wrote is the org's own, not listed.
+/// Imports come with what differs from the pack's version.
+async fn edited(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &Pack,
+) -> Result<(Vec<String>, std::collections::BTreeMap<String, Vec<String>>)> {
+    let imports = super::imports::kept(db, org_id, pack).await?;
+    let mut out = automation_edited(db, org_id, pack).await?;
+    out.extend(imports.iter().map(|(n, _)| n.clone()));
+    Ok((out, imports.into_iter().collect()))
+}
+
+async fn automation_edited(
+    db: &DatabaseConnection,
+    org_id: i64,
+    pack: &Pack,
+) -> Result<Vec<String>> {
     if pack.functions.is_empty() && pack.flows.is_empty() {
         return Ok(Vec::new());
     }
@@ -181,12 +198,13 @@ pub async fn take(
     if installed.version != pack.version {
         return Err(invalid("version", FIELD_INVALID));
     }
-    let edited = edited(db, org_id, &pack).await?;
+    let (edited, _) = edited(db, org_id, &pack).await?;
     for (i, n) in input.names.iter().enumerate() {
         if !edited.contains(n) {
             return Err(invalid(format!("names.{i}"), FIELD_INVALID));
         }
     }
+    super::imports::install_from_pack(db, org_id, user_id, &pack, &input.names).await?;
     install_automation(db, org_id, user_id, &pack, &input.names).await?;
     list(db, org_id)
         .await?
@@ -583,6 +601,7 @@ async fn install_locked(
             installed_version: Some(pack.version.clone()),
             settings: Vec::new(),
             kept: Vec::new(),
+            differs: Default::default(),
         });
     }
     for key in &pack.requires {
@@ -663,9 +682,9 @@ async fn install_locked(
     for l in &pack.link_types {
         install_link(db, org_id, &s, &pack.key, l).await?;
     }
-    super::imports::install_from_pack(db, org_id, user_id, pack).await?;
+    super::imports::install_from_pack(db, org_id, user_id, pack, &[]).await?;
     install_automation(db, org_id, user_id, pack, &[]).await?;
-    let kept = edited(db, org_id, pack).await?;
+    let (kept, differs) = edited(db, org_id, pack).await?;
     let row = packs::Entity::find()
         .filter(packs::Column::OrgId.eq(org_id))
         .filter(packs::Column::Key.eq(&pack.key))
@@ -702,6 +721,7 @@ async fn install_locked(
         installed_version: Some(pack.version.clone()),
         settings: Vec::new(),
         kept,
+        differs,
     })
 }
 

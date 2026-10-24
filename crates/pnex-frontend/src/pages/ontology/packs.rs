@@ -52,7 +52,9 @@ pub fn PacksTab(tabs: Element) -> Element {
                             span { {t!("onto-pack-edited")} }
                             for name in pack.kept.clone() {
                                 span { key: "{name}", class: "inline-flex items-center gap-1",
-                                    code { "{name}" }
+                                    code { title: pack.differs.get(&name).map(|d| d.join(", ")).unwrap_or_default(),
+                                        "{name}"
+                                    }
                                     if can_take {
                                         button {
                                             class: "underline hover:text-amber-900",
@@ -60,9 +62,14 @@ pub fn PacksTab(tabs: Element) -> Element {
                                             "data-testid": "onto-pack-take",
                                             onclick: {
                                                 let (key, name) = (key.clone(), name.clone());
+                                                let import = pack.differs.contains_key(&name);
                                                 move |_| {
                                                     let (key, name) = (key.clone(), name.clone());
-                                                    let done = t!("onto-pack-taken", name : name.clone()).to_string();
+                                                    let done = if import {
+                                                        t!("onto-pack-taken-import", name : name.clone()).to_string()
+                                                    } else {
+                                                        t!("onto-pack-taken", name : name.clone()).to_string()
+                                                    };
                                                     spawn(async move {
                                                         let input = PackTakeInput { names: vec![name] };
                                                         match api::ontology::take_pack_version(&key, &input).await {

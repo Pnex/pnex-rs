@@ -1,4 +1,4 @@
-# Contrôle d'un réseau de partenaires de bout en bout (D402–D423)
+# Contrôle d'un réseau de partenaires de bout en bout (D402–D424)
 
 > **Statut : proposé (2026-10-24)**, demande de la session `pnex-quali-watch`
 > (Shan : « coder tout ce qu'il faut […] et anticiper les futurs dév pour
@@ -366,6 +366,33 @@ résolue par le serveur à chaque requête. Un réglage vide retire le filtre.
 Les trois requêtes du pack 1.5.0 filtrent sur
 `$setting.quali_watch.certifications`.
 
+### D424 — Les imports d'un pack suivent ses mises à jour
+
+Constat de la recette R1 : `install_from_pack` sautait un import déjà
+présent. Les imports France Compétences de l'org 4 n'ont donc reçu ni
+`certification.numero` ni le filtre de D422.
+
+Même règle que pour les fonctions et les flows (D368) :
+
+- **Ce que le pack possède** : le mapping (étapes comprises), la source et
+  l'URL. Le mode, la récurrence et `max_pages` sont des réglages
+  d'exploitation de l'org : jamais remplacés, même par une reprise.
+- `object_imports.pack_written` (migration 000052) garde ce que le pack a
+  écrit en dernier (`written`), et la version de l'org remplacée
+  (`replaced`) pour pouvoir revenir en arrière.
+- **À la montée de version** :
+  - un import identique à ce que le pack a écrit prend la nouvelle version
+    (`version` + 1) ;
+  - un import modifié reste tel quel. Il est listé dans `kept`, et
+    `differs` dit ce qui change : `source`, `source_url` ou
+    `mapping.<clé>`. Le front l'affiche en info-bulle.
+- **Reprise** : `take` sur un import met la version du pack et garde les
+  réglages d'exploitation. Pas de fusion automatique : la liste de
+  `differs` sert d'aperçu.
+- **Imports créés avant 000052** (sans `pack_written`) : ceux qui diffèrent
+  du pack sont listés comme modifiés, faute de savoir ce que le pack y
+  avait écrit. Une reprise les remet dans le circuit normal.
+
 ## 4. Lots
 
 | Lot | Contenu | Tests |
@@ -376,6 +403,7 @@ Les trois requêtes du pack 1.5.0 filtrent sur
 | **R4** | D408 preuve serveur par CDP | test sur le navigateur de test (`PNEX_BROWSER_URL`), ignoré sans |
 | **R5** | Règles et flows du pack (D409–D410), fiche `assistant-kb` | `pack_rules.rs` (chaque règle sur un cas positif et un négatif) |
 | **R1b** | D422–D423 : imports réseau et requêtes des flows bornés par le réglage `certifications` (pack 1.5.0) | `partner_watch.rs` `network_registers_and_query` |
+| **R1c** | D424 : imports d'un pack mis à jour s'ils sont intacts, listés sinon, reprise qui garde mode, récurrence et pages | `partner_watch.rs` `pack_upgrade_follows_untouched_imports` |
 | **R6** | D415–D421 (OCR compris) : dépôt des programmes, découpage, rattachements, PROG-01/02/03/04, tableau croisé et export xlsx | `pack_rules.rs` (découpage et règles sur RS0101 × OF EXEMPLE), test du nœud `sheet_write` |
 | V2 | NOM-01, WEB-07, LIEU-01, CPF-04, collecte des programmes sur le site, `llm_extract`, vision WEB-06, sens « open data → client » de REG-01 | — |
 
@@ -444,13 +472,13 @@ Les trois requêtes du pack 1.5.0 filtrent sur
   `network_registers_and_query` (certification hors réglage ignorée,
   réglage vidé).
 
+- **D424** : imports d'un pack mis à jour s'ils sont intacts. Test
+  `partner_watch` `pack_upgrade_follows_untouched_imports`.
+
 Écarts relevés en recette R1 (2026-10-24), non traités :
 
-- **Mise à jour d'un pack** : un import livré qui existe déjà n'est jamais
-  touché (`install_from_pack` passe au suivant). Les imports France
-  Compétences de l'org 4 n'ont donc pas reçu `certification.numero`, ni le
-  filtre de D422. Il faudrait le mécanisme des flows (`kept`, puis reprise),
-  ou au moins signaler qu'un import diffère du pack, et en quoi.
+- **Mise à jour d'un pack** : un import livré qui existait déjà n'était
+  jamais touché. **Corrigé** par D424.
 - **`PUT /ontology/imports/{id}`** sans `recurrence` effaçait la récurrence.
   **Corrigé** : `source_url`, `recurrence` et `max_pages` omis gardent leur
   valeur, `null` les efface (test `partner_watch`

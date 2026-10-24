@@ -13067,7 +13067,7 @@
         "type": "object"
       },
       "PackTakeInput": {
-        "description": "`POST /ontology/packs/{key}/take`: the pack's version of functions and\nflows the org edited (names from `PackView.kept`).",
+        "description": "`POST /ontology/packs/{key}/take`: the pack's version of functions,\nflows and imports the org edited (names from `PackView.kept`); an\nimport keeps its mode, schedule and pages.",
         "properties": {
           "names": {
             "items": {
@@ -13090,6 +13090,19 @@
           "descriptions": {
             "$ref": "#/components/schemas/BTreeMap"
           },
+          "differs": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "For each import of `kept`, what differs from the pack's version:\n`source`, `source_url`, `mapping.<key>`.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "installed_version": {
             "type": [
               "string",
@@ -13097,7 +13110,7 @@
             ]
           },
           "kept": {
-            "description": "Functions and flows of an installed pack the org edited since the\npack wrote them: an upgrade keeps the org's version (D368).",
+            "description": "Functions, flows and imports of an installed pack the org edited\nsince the pack wrote them: an upgrade keeps the org's version (D368,\nnetwork-check.md D424).",
             "items": {
               "type": "string"
             },
