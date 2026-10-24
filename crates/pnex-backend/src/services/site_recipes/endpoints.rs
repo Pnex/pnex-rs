@@ -591,6 +591,95 @@ async fn visit(tab: &Tab, url: &str) -> Result<(), String> {
     Err("the page did not load".into())
 }
 
+/// A page as the server's browser rendered it, for a proof (D408).
+pub struct PageShot {
+    pub png: Vec<u8>,
+    pub html: String,
+    pub title: String,
+    pub text: String,
+    pub final_url: String,
+    pub engine: String,
+}
+
+/// `url` rendered by the org's default browser, else the platform one
+/// (same resolution as a run), requests guarded as in a run: a full-page
+/// PNG when the engine can, else the viewport, the DOM and its text.
+pub async fn snapshot(
+    db: &DatabaseConnection,
+    ring: Option<&Keyring>,
+    org_id: i64,
+    url: &str,
+) -> Result<PageShot, String> {
+    use base64::Engine as _;
+    let t = resolve(db, ring, org_id, None).await?;
+    let host = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .ok_or("invalid address")?;
+    let _slot = slot(&t).await;
+    let (cdp, engine) = connect(&t).await?;
+    let tab = tokio::time::timeout(Duration::from_secs(20), Tab::open(cdp))
+        .await
+        .map_err(|_| "timed out")??;
+    let shot = async {
+        super::browser::guard_page(&tab, &host).await?;
+        visit(&tab, url).await?;
+        let final_url = tab.url().await;
+        if reqwest::Url::parse(&final_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .as_deref()
+            != Some(host.as_str())
+        {
+            return Err("the page left its site".to_string());
+        }
+        let read = |js: &'static str| {
+            let tab = &tab;
+            async move {
+                tab.eval(js, Duration::from_secs(10))
+                    .await
+                    .map(|v| v.as_str().unwrap_or_default().to_string())
+            }
+        };
+        let full = tab
+            .call(
+                "Page.captureScreenshot",
+                serde_json::json!({ "format": "png", "captureBeyondViewport": true }),
+            )
+            .await;
+        let data = match full {
+            Ok(r) => r["data"].as_str().map(str::to_string),
+            Err(_) => None,
+        };
+        let data = match data {
+            Some(d) => d,
+            None => tab
+                .call(
+                    "Page.captureScreenshot",
+                    serde_json::json!({ "format": "png" }),
+                )
+                .await?["data"]
+                .as_str()
+                .ok_or("no screenshot data")?
+                .to_string(),
+        };
+        Ok(PageShot {
+            png: base64::engine::general_purpose::STANDARD
+                .decode(data)
+                .map_err(|e| e.to_string())?,
+            html: read("document.documentElement ? document.documentElement.outerHTML : ''")
+                .await?,
+            title: read("document.title || ''").await?,
+            text: read("document.body ? document.body.innerText : ''").await?,
+            final_url,
+            engine: engine.engine.unwrap_or_else(|| "cdp".into()),
+        })
+    }
+    .await;
+    tab.close().await;
+    shot
+}
+
 /// JPEG of `url` taken by the org's own default browser (never the
 /// platform one), requests guarded as in a run. `Err` = no capture.
 pub async fn capture(

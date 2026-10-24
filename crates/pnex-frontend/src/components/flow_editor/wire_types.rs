@@ -108,6 +108,7 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::WebSearch { .. }
         | FlowNodeKind::OrgResolve { .. }
         | FlowNodeKind::WebVisit { .. }
+        | FlowNodeKind::SiteCrawl { .. }
         | FlowNodeKind::Weather { .. } => Fixed(Object),
         FlowNodeKind::MemoryRead { .. } if port == 0 => Fixed(Object),
         FlowNodeKind::ControlSource { .. } => Fixed(Number),

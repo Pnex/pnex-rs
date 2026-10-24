@@ -406,6 +406,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::WebSearch { .. } => kind_labels(PaletteKind::WebSearch),
         pnex_core::FlowNodeKind::OrgResolve { .. } => kind_labels(PaletteKind::OrgResolve),
         pnex_core::FlowNodeKind::WebVisit { .. } => kind_labels(PaletteKind::WebVisit),
+        pnex_core::FlowNodeKind::SiteCrawl { .. } => kind_labels(PaletteKind::SiteCrawl),
         pnex_core::FlowNodeKind::Weather { .. } => kind_labels(PaletteKind::Weather),
         pnex_core::FlowNodeKind::Anomaly { .. } => kind_labels(PaletteKind::Anomaly),
         pnex_core::FlowNodeKind::Forecast { .. } => kind_labels(PaletteKind::Forecast),
@@ -494,7 +495,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
-        | pnex_core::FlowNodeKind::WebVisit { .. } => {
+        | pnex_core::FlowNodeKind::WebVisit { .. }
+        | pnex_core::FlowNodeKind::SiteCrawl { .. } => {
             (geometry::MEMORY_READ_FILL, geometry::MEMORY_READ_STROKE)
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
@@ -705,7 +707,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         | pnex_core::FlowNodeKind::SiteRecipe { .. }
         | pnex_core::FlowNodeKind::WebSearch { .. }
         | pnex_core::FlowNodeKind::OrgResolve { .. }
-        | pnex_core::FlowNodeKind::WebVisit { .. } => {
+        | pnex_core::FlowNodeKind::WebVisit { .. }
+        | pnex_core::FlowNodeKind::SiteCrawl { .. } => {
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
             geometry::predict_output_labels(&node.kind)
                 .into_iter()
@@ -1374,6 +1377,7 @@ fn node_subtitle(node: &FlowNode) -> String {
         }
         pnex_core::FlowNodeKind::WebVisit { config } if config.legal_page => "+ legal".into(),
         pnex_core::FlowNodeKind::WebVisit { .. } => String::new(),
+        pnex_core::FlowNodeKind::SiteCrawl { config } => format!("{} max", config.max_pages),
         pnex_core::FlowNodeKind::SiteRecipe { config } if config.recipe_id.is_empty() => "—".into(),
         pnex_core::FlowNodeKind::SiteRecipe { config } => config
             .params

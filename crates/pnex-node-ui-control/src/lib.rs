@@ -39,6 +39,7 @@ mod action;
 mod ingest;
 mod ontology;
 mod org_resolve;
+mod site_crawl;
 mod site_recipe;
 mod web_search;
 mod web_visit;

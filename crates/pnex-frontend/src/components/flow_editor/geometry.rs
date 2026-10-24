@@ -138,6 +138,8 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
         FlowNodeKind::OrgResolve { .. } => (pnex_core::org_resolve::NODE_PORT_COUNT, 0),
         // Website visit: read, failed.
         FlowNodeKind::WebVisit { .. } => (pnex_core::web_visit::NODE_PORT_COUNT, 0),
+        // Site crawl: page, summary, failed.
+        FlowNodeKind::SiteCrawl { .. } => (pnex_core::site_crawl::NODE_PORT_COUNT, 0),
         _ => (1, 0),
     }
 }
@@ -218,6 +220,11 @@ pub fn predict_output_labels(kind: &FlowNodeKind) -> Vec<String> {
         FlowNodeKind::WebVisit { .. } => vec![
             t!("flows-web-visit-port-ok").to_string(),
             t!("flows-web-visit-port-failed").to_string(),
+        ],
+        FlowNodeKind::SiteCrawl { .. } => vec![
+            t!("flows-site-crawl-port-page").to_string(),
+            t!("flows-site-crawl-port-summary").to_string(),
+            t!("flows-site-crawl-port-failed").to_string(),
         ],
         _ => Vec::new(),
     }

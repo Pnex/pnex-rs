@@ -68,6 +68,8 @@ pub fn routes() -> Routes {
         .add("/internal/flow/web-search", post(flow_web_search))
         .add("/internal/flow/org-resolve", post(flow_org_resolve))
         .add("/internal/flow/web-visit", post(flow_web_visit))
+        // Server crawls started by site_crawl nodes (network-check.md D407).
+        .add("/internal/flow/site-crawl", post(flow_site_crawl))
         // Pages written by page-write nodes (D209).
         .add("/internal/flow/page-write", post(flow_page_write))
         .add("/internal/flow/page-pdf", post(flow_page_pdf))
@@ -860,6 +862,36 @@ async fn flow_web_visit(
         }
         Err(e) => {
             tracing::warn!(org_id = req.node.org_id, error = ?e, "flow web visit failed");
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+    }
+}
+
+/// `POST /internal/flow/site-crawl` — one site of a deployed `site_crawl`
+/// node (network-check.md D407), answered when the crawl ends. A refused
+/// crawl answers 200 on its failure port; only a forged or stale node is
+/// refused.
+async fn flow_site_crawl(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::site_crawl::SiteCrawlNodeRequest>,
+) -> Result<Response> {
+    use crate::services::ontology::flow_nodes::NodeError;
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    match crate::services::site_crawl::run(&ctx, &req).await {
+        Ok(reply) => Ok(axum::Json(reply).into_response()),
+        Err(NodeError::NotDeployed) => Ok((
+            StatusCode::FORBIDDEN,
+            axum::Json(serde_json::json!({ "code": "flow-node-not-deployed" })),
+        )
+            .into_response()),
+        Err(e) => {
+            tracing::warn!(org_id = req.node.org_id, error = ?e, "flow site crawl failed");
             Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
