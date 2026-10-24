@@ -1134,22 +1134,25 @@ async fn imports_apply_thousands_of_records_quickly() {
             .await;
         assert_eq!(res.status_code().as_u16(), 202, "{}", res.text());
         let run = res.json::<Value>()["id"].as_str().unwrap().to_string();
-        // Budgets match the 300 s bound below: a slow CI runner must fail on it, not on a poll count.
-        let p = settle_within(&server, &env.alice, org, &id, &run, 3000).await;
+        // Budgets match the CI bound below (900 s): a slow runner must fail on it, not on a poll count.
+        let p = settle_within(&server, &env.alice, org, &id, &run, 9000).await;
         assert_eq!(p["run"]["counts"]["created"], ROWS, "{p}");
         assert_eq!(p["run"]["counts"]["links_opened"], ROWS, "{p}");
 
+        // Shared CI runners vary sevenfold (191 s, then 421 s for ~60 s
+        // here): the bound that catches a write per row holds locally.
+        let bound = std::time::Duration::from_secs(if std::env::var("CI").is_ok() { 900 } else { 300 });
         let started = std::time::Instant::now();
         let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/apply"), &env.alice, org,
             Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
         assert_eq!(st, 202, "{r}");
         // Generous on purpose: about 7 s here, 38 s with a scan per object.
-        let r = settle_within(&server, &env.alice, org, &id, &run, 3000).await;
+        let r = settle_within(&server, &env.alice, org, &id, &run, 9000).await;
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{r}");
         eprintln!("applied {ROWS} records + {ROWS} links in {took:?}");
         // Debug build: ~60 s locally, 191 s seen on a loaded CI runner; one write per row took 340 s.
-        assert!(took < std::time::Duration::from_secs(300), "apply took {took:?}");
+        assert!(took < bound, "apply took {took:?}");
 
         // Every title changes: one bulk update.
         let p = preview(&server, &env.alice, org, &id, &csv_of("Firm")).await;
@@ -1159,11 +1162,11 @@ async fn imports_apply_thousands_of_records_quickly() {
         let (st, r) = call(&server, "POST", &format!("/api/v1/ontology/imports/{id}/apply"), &env.alice, org,
             Some(json!({"run_id": run, "expected_version": imp["version"]}))).await;
         assert_eq!(st, 202, "{r}");
-        let r = settle_within(&server, &env.alice, org, &id, run, 3000).await;
+        let r = settle_within(&server, &env.alice, org, &id, run, 9000).await;
         let took = started.elapsed();
         assert_eq!(r["run"]["state"], "applied", "{}", r["run"]);
         eprintln!("updated {ROWS} records in {took:?}");
-        assert!(took < std::time::Duration::from_secs(300), "update took {took:?}");
+        assert!(took < bound, "update took {took:?}");
         let row = env.db.query_one_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
