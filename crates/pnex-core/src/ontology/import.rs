@@ -304,6 +304,34 @@ pub struct PerObject {
     /// (network-check.md D403).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub linked: Vec<String>,
+    /// Only the objects (with `linked`: the objects linked to one) whose
+    /// property holds a code of this pack setting; an empty setting filters
+    /// nothing (network-check.md D422).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub setting: Option<PerObjectSetting>,
+}
+
+/// A pack setting read as a comma-separated list of codes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(deny_unknown_fields)]
+pub struct PerObjectSetting {
+    /// `<pack>.<setting>`, as pack functions read it.
+    pub key: String,
+    /// The property compared, on the object itself or, with `linked`, on
+    /// the other end of the link.
+    pub property: String,
+}
+
+impl PerObjectSetting {
+    /// The codes of a setting value: comma or semicolon separated, trimmed
+    /// and upper-cased like the pack functions' `setting_list`.
+    pub fn codes(raw: &str) -> Vec<String> {
+        raw.split([',', ';'])
+            .map(|x| x.trim().to_uppercase())
+            .filter(|x| !x.is_empty())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -614,6 +642,12 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
                 .any(|l| !s.links.iter().any(|d| &d.key == l))
         {
             return Err(ferr("per_object.linked", FIELD_INVALID));
+        }
+        if let Some(st) = &p.setting {
+            let bad = |k: &str| !valid_key(k);
+            if st.key.split_once('.').is_none_or(|(a, b)| bad(a) || bad(b)) || bad(&st.property) {
+                return Err(ferr("per_object.setting", FIELD_INVALID));
+            }
         }
     }
     for (i, o) in m.objects.iter().enumerate() {

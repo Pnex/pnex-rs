@@ -1,4 +1,4 @@
-# Contrôle d'un réseau de partenaires de bout en bout (D402–D414)
+# Contrôle d'un réseau de partenaires de bout en bout (D402–D423)
 
 > **Statut : proposé (2026-10-24)**, demande de la session `pnex-quali-watch`
 > (Shan : « coder tout ce qu'il faut […] et anticiper les futurs dév pour
@@ -332,6 +332,40 @@ l'org 4 :
    REG-02 côté pages.
 5. **« Quali-Watch · reminders »**, une fois les écarts validés.
 
+### D422 — Les imports du réseau suivent le réglage `certifications`
+
+Constat de la recette R1 (org 4, 2026-10-24) : l'org 4 contient tout l'open
+data France Compétences. `linked: [habilite_pour, porte]` y retient donc des
+dizaines de milliers d'organismes, coupés à 200 par `max_pages`, sans
+garantie que le pilote en fasse partie.
+
+`per_object` gagne `setting: { key: <pack>.<réglage>, property }`. Le réglage
+est lu comme une liste de codes séparés par des virgules (comme
+`setting_list` des fonctions du pack, en majuscules).
+
+- **Sans `linked`** : l'objet lui-même doit porter un de ces codes. C'est le
+  cas des certifications du catalogue CPF.
+- **Avec `linked`** : l'autre bout du lien doit porter un de ces codes. Ce
+  sont les organismes habilités à ces certifications ou qui les portent
+  (SIRENE, DGEFP).
+- **Réglage vide**, pack non installé ou réglage inconnu : aucun filtre,
+  c'est le comportement de D403.
+
+Le pack 1.5.0 pose `setting: { key: quali_watch.certifications, property:
+code }` sur les quatre imports du réseau.
+
+### D423 — Les requêtes des flows suivent le même réglage
+
+Les `ontology_query` sur certification des flows « network rules » et
+« website check » n'avaient pas de filtre. Elles prenaient les 500
+premières certifications par titre, et RS0101 n'était pas garanti d'en
+faire partie.
+
+Un filtre `in` accepte désormais la valeur `"$setting.<pack>.<réglage>"`,
+résolue par le serveur à chaque requête. Un réglage vide retire le filtre.
+Les trois requêtes du pack 1.5.0 filtrent sur
+`$setting.quali_watch.certifications`.
+
 ## 4. Lots
 
 | Lot | Contenu | Tests |
@@ -341,6 +375,7 @@ l'org 4 :
 | **R3** | D407 nœud `site_crawl` (cœur, runtime, route interne, garde, NodeDoc, palette, ftl, fiche) | `site_crawl.rs` (serveur de test local) |
 | **R4** | D408 preuve serveur par CDP | test sur le navigateur de test (`PNEX_BROWSER_URL`), ignoré sans |
 | **R5** | Règles et flows du pack (D409–D410), fiche `assistant-kb` | `pack_rules.rs` (chaque règle sur un cas positif et un négatif) |
+| **R1b** | D422–D423 : imports réseau et requêtes des flows bornés par le réglage `certifications` (pack 1.5.0) | `partner_watch.rs` `network_registers_and_query` |
 | **R6** | D415–D421 (OCR compris) : dépôt des programmes, découpage, rattachements, PROG-01/02/03/04, tableau croisé et export xlsx | `pack_rules.rs` (découpage et règles sur RS0101 × OF EXEMPLE), test du nœud `sheet_write` |
 | V2 | NOM-01, WEB-07, LIEU-01, CPF-04, collecte des programmes sur le site, `llm_extract`, vision WEB-06, sens « open data → client » de REG-01 | — |
 
@@ -403,6 +438,25 @@ l'org 4 :
   rules » et « Quali-Watch · website check » ; réglages `certifications` et
   `regles_inactives` ; fiche `assistant-kb/web-sites.md`. Tests :
   `pack_rules` (règles réseau, cibles, règles des pages, écart puis liens).
+
+- **D422–D423** (pack 1.5.0) : imports du réseau et requêtes des flows bornés
+  par le réglage `certifications`. Test : `partner_watch`
+  `network_registers_and_query` (certification hors réglage ignorée,
+  réglage vidé).
+
+Écarts relevés en recette R1 (2026-10-24), non traités :
+
+- **Mise à jour d'un pack** : un import livré qui existe déjà n'est jamais
+  touché (`install_from_pack` passe au suivant). Les imports France
+  Compétences de l'org 4 n'ont donc pas reçu `certification.numero`, ni le
+  filtre de D422. Il faudrait le mécanisme des flows (`kept`, puis reprise),
+  ou au moins signaler qu'un import diffère du pack, et en quoi.
+- **`PUT /ontology/imports/{id}`** sans `recurrence` efface la récurrence.
+  Pistes : un `PATCH` partiel, ou un refus quand le champ manque.
+- **Flow « Ingestion France Compétences »** : encore livré par le pack, donc
+  recréé à la mise à jour (flow 16 sur l'org 4). Son retrait relève du lot
+  W0 de D359 (`web-presence.md`), pas encore codé. D'ici là, il ne faut pas
+  le déployer.
 
 Raccourcis notés : un seul site par partenaire (le premier), 200 liens joints
 par ligne et par type (une certification à 4 000 partenaires est tronquée),

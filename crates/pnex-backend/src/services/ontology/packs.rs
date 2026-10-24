@@ -240,6 +240,36 @@ pub async fn org_settings(db: &DatabaseConnection, org_id: i64) -> Result<Map<St
     Ok(out)
 }
 
+/// One setting in force for the org (`<pack>.<key>`); `None` when the pack
+/// is not installed or does not declare it.
+pub async fn setting_value<C: ConnectionTrait>(
+    db: &C,
+    org_id: i64,
+    key: &str,
+) -> std::result::Result<Option<Value>, sea_orm::DbErr> {
+    let Some((pack_key, setting)) = key.split_once('.') else {
+        return Ok(None);
+    };
+    let Some(pack) = shipped().into_iter().find(|p| p.key == pack_key) else {
+        return Ok(None);
+    };
+    let Some(row) = db
+        .query_one_raw(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT settings FROM packs WHERE org_id = $1 AND key = $2",
+            vec![org_id.into(), pack_key.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let layer: Value = row.try_get("", "settings").unwrap_or(Value::Null);
+    Ok(settings_view(&pack, &layer)
+        .into_iter()
+        .find(|s| s.def.key == setting)
+        .map(|s| s.value))
+}
+
 /// The shipped definition of a property `pack` owns in `scope`
 /// (`type:<key>`, its extensions included, or `link:<key>`).
 fn shipped_property(pack: &Pack, scope: &str, prop: &str) -> Option<PropertyDef> {

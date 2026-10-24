@@ -2395,6 +2395,7 @@ async fn mock_training_registers(
     let partner = partner.to_string();
     let p2 = partner.clone();
     let outsider = outsider_siret.to_string();
+    let asked_cpf = asked.clone();
     let dgefp = move |RawQuery(q): RawQuery| {
         let (asked, partner) = (asked.clone(), partner.clone());
         async move {
@@ -2423,9 +2424,20 @@ async fn mock_training_registers(
         }
     };
     let cpf = move |RawQuery(q): RawQuery| {
-        let (partner, outsider) = (p2.clone(), outsider.clone());
+        let (partner, outsider, asked) = (p2.clone(), outsider.clone(), asked_cpf.clone());
         async move {
             let q = q.unwrap_or_default();
+            let code = q
+                .split("code_inventaire%3A")
+                .nth(1)
+                .or(q.split("code_inventaire:").nth(1))
+                .unwrap_or_default();
+            asked.lock().unwrap().push(format!(
+                "cpf:{}",
+                code.chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect::<String>()
+            ));
             let row = |siret: &str, of: &str, num: &str| {
                 json!({
                 "date_extract": "2026-10-23", "nom_of": of, "type_referentiel": "RS",
@@ -2477,8 +2489,12 @@ async fn network_registers_and_query() {
         }
         let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101",
             json!({"code": "RS0101", "numero": "0101", "repertoire": "rs", "intitule": "Piloter le référencement d'un site"})).await;
+        // D422: another certification of the network, not in the setting.
+        let (_, other_cert) = object(&server, &env.alice, org, "certification", "RS9999",
+            json!({"code": "RS9999", "numero": "9999", "repertoire": "rs", "intitule": "Autre"})).await;
+        let other = with_luhn("44455566");
         let mut ids = std::collections::HashMap::new();
-        for (name, siren) in [("OF EXEMPLE", &partner), ("CERTIF EXEMPLE", &certifier), ("STRANGER", &stranger)] {
+        for (name, siren) in [("OF EXEMPLE", &partner), ("CERTIF EXEMPLE", &certifier), ("STRANGER", &stranger), ("OTHER", &other)] {
             let (st, r) = object(&server, &env.alice, org, "organization", name, json!({"siren": siren})).await;
             assert_eq!(st, 201, "{r}");
             ids.insert(name, r["id"].as_str().unwrap().to_string());
@@ -2488,6 +2504,12 @@ async fn network_registers_and_query() {
                 Some(json!({"link_type": link, "source_id": ids[from], "target_id": cert["id"], "attributes": attrs}))).await;
             assert_eq!(st, 201, "{r}");
         }
+        let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
+            Some(json!({"link_type": "habilite_pour", "source_id": ids["OTHER"], "target_id": other_cert["id"], "attributes": {"perimetre": "les_deux", "etat_fc": "actif"}}))).await;
+        assert_eq!(st, 201, "{r}");
+        let (st, r) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certifications": " rs0101 ; "}}))).await;
+        assert_eq!(st, 200, "{r}");
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
             async move {
@@ -2500,7 +2522,8 @@ async fn network_registers_and_query() {
             }
         };
 
-        // D403: the partner and the certifier, never the stranger.
+        // D403: the partner and the certifier, never the stranger; D422:
+        // nor the network of a certification outside the setting.
         run("DGEFP · training organizations (network)").await;
         let mut got = asked.lock().unwrap().clone();
         got.sort();
@@ -2515,6 +2538,8 @@ async fn network_registers_and_query() {
         // D405: one offer per training, the outsider created.
         let r = run("CPF catalogue · RS certifications").await;
         assert!(r["diff"]["errors"].as_array().is_none_or(|e| e.is_empty()), "{r}");
+        let cpf: Vec<String> = asked.lock().unwrap().iter().filter(|a| a.starts_with("cpf:")).cloned().collect();
+        assert_eq!(cpf, vec!["cpf:0101".to_string()], "the setting's certification only");
         let o = props_of(&env.db, org, "offre_cpf", "id_action", "P_SEO").await;
         assert_eq!((o["duree_heures"].as_f64(), o["a_distance"].as_bool(), o["vue_le"].as_str()), (Some(7.0), Some(true), Some("2026-10-23")), "{o}");
         let outsider = props_of(&env.db, org, "organization", "siren", &outsider_siret[..9]).await;
@@ -2531,7 +2556,10 @@ async fn network_registers_and_query() {
               "traverse": [{"link_type": "habilite_pour", "direction": "in"}],
               "with_links": ["habilite_pour", "a_pour_site"]}},
             {"id": "offers", "kind": "ontology_query", "config": {"object_type": "certification",
-              "with_links": ["porte_sur", "porte"]}}
+              "filters": [{"key": "code", "op": "in", "value": ["RS0101"]}],
+              "with_links": ["porte_sur", "porte"]}},
+            {"id": "watched", "kind": "ontology_query", "config": {"object_type": "certification",
+              "filters": [{"key": "code", "op": "in", "value": "$setting.quali_watch.certifications"}]}}
         ])).await;
         let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": id});
         let (st, r) = internal(&server, "query", json!({"node": node("net")})).await;
@@ -2546,6 +2574,14 @@ async fn network_registers_and_query() {
         let l = &r["rows"][0]["links"];
         assert_eq!(l["porte_sur"].as_array().map(Vec::len), Some(2), "{r}");
         assert_eq!((l["porte_sur"][0]["direction"].as_str(), l["porte"][0]["other"]["title"].as_str()), (Some("in"), Some("CERTIF EXEMPLE")), "{r}");
+        // D423: the setting's certifications only, every one when empty.
+        let (st, r) = internal(&server, "query", json!({"node": node("watched")})).await;
+        assert_eq!((st, r["count"].clone(), r["rows"][0]["object"]["title"].clone()), (200, json!(1), json!("RS0101")), "{r}");
+        let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
+            Some(json!({"values": {"certifications": ""}}))).await;
+        assert_eq!(st, 200);
+        let (_, r) = internal(&server, "query", json!({"node": node("watched")})).await;
+        assert_eq!(r["count"], json!(2), "{r}");
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;

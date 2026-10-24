@@ -111,19 +111,28 @@ pub async fn query(
     let FlowNodeKind::OntologyQuery { config } = deployed(db, &req.node).await? else {
         return Err(NodeError::NotDeployed);
     };
-    let filters: Vec<PropertyFilter> = config
-        .filters
-        .iter()
-        .enumerate()
-        .map(|(i, f)| PropertyFilter {
-            value: req
-                .values
-                .get(i)
-                .cloned()
-                .unwrap_or_else(|| f.value.clone()),
-            ..f.clone()
-        })
-        .collect();
+    let mut filters = Vec::with_capacity(config.filters.len());
+    for (i, f) in config.filters.iter().enumerate() {
+        let mut value = req
+            .values
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| f.value.clone());
+        if let Some(key) = pnex_core::ontology::flow::setting_of(&f.value) {
+            let codes = super::packs::setting_value(db, req.node.org_id, key)
+                .await?
+                .as_ref()
+                .and_then(Value::as_str)
+                .map(pnex_core::ontology::import::PerObjectSetting::codes)
+                .unwrap_or_default();
+            // An empty setting follows everything (D423).
+            if codes.is_empty() {
+                continue;
+            }
+            value = Value::from(codes);
+        }
+        filters.push(PropertyFilter { value, ..f.clone() });
+    }
     let q = OntologyQuery {
         type_key: Some(config.object_type.clone()),
         filters,

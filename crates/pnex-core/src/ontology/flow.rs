@@ -16,6 +16,10 @@ use super::schema::valid_key;
 pub const VALUE_TODAY: &str = "$today";
 pub const VALUE_NOW: &str = "$now";
 pub const VALUE_MSG_PREFIX: &str = "$msg.";
+/// `in` value resolved by the server: the codes of a pack setting
+/// (`$setting.<pack>.<key>`); an empty setting drops the filter
+/// (network-check.md D423).
+pub const VALUE_SETTING_PREFIX: &str = "$setting.";
 
 /// Writes accepted per org and per minute from the ontology nodes.
 pub const WRITES_PER_MINUTE: u32 = 600;
@@ -112,9 +116,12 @@ impl OntologyQueryConfig {
         if self
             .filters
             .iter()
-            .any(|f| f.op == FilterOp::In && !f.value.is_array())
+            .any(|f| f.op == FilterOp::In && !f.value.is_array() && setting_of(&f.value).is_none())
         {
-            return bad("ontology_query_invalid", "`in` takes a list of values");
+            return bad(
+                "ontology_query_invalid",
+                "`in` takes a list of values or a $setting.<pack>.<key>",
+            );
         }
         if self.limit.is_some_and(|l| l == 0 || l > QUERY_LIMIT_MAX) {
             return bad("ontology_query_invalid", "limit is 1 to 500");
@@ -258,6 +265,14 @@ pub struct FlowLinkRequest {
 pub struct FlowUpsertAck {
     pub created: bool,
     pub object: super::api::ObjectView,
+}
+
+/// The pack setting an `in` value names (`<pack>.<key>`), if it is one.
+pub fn setting_of(v: &Value) -> Option<&str> {
+    v.as_str()?.strip_prefix(VALUE_SETTING_PREFIX).filter(|k| {
+        k.split_once('.')
+            .is_some_and(|(a, b)| valid_key(a) && valid_key(b))
+    })
 }
 
 /// Resolves the runtime value tokens of a filter value; `msg` reads a

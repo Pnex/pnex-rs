@@ -561,15 +561,34 @@ async fn per_object_values<C: ConnectionTrait>(
     p: &imp::PerObject,
     max: u32,
 ) -> std::result::Result<Vec<String>, sea_orm::DbErr> {
+    let (codes, code_prop) = match &p.setting {
+        Some(st) => (
+            super::packs::setting_value(db, imp.org_id, &st.key)
+                .await?
+                .as_ref()
+                .and_then(Value::as_str)
+                .map(imp::PerObjectSetting::codes)
+                .unwrap_or_default(),
+            Some(st.property.clone()),
+        ),
+        None => (Vec::new(), None),
+    };
     let rows = db
         .query_all_raw(stmt(
             "SELECT properties ->> $3 AS v FROM objects \
              WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
                AND ($6::text IS NULL OR properties ->> $6 = ANY($7)) \
+               AND (cardinality($9::text[]) = 0 OR cardinality($8::text[]) > 0 \
+                 OR upper(properties ->> $10) = ANY($9)) \
                AND (cardinality($8::text[]) = 0 OR EXISTS (SELECT 1 FROM resource_edges e \
                  WHERE e.org_id = $1 AND e.relation = ANY($8) \
                    AND (e.source_object_id = objects.id OR e.target_object_id = objects.id) \
-                   AND e.valid_from <= now() AND (e.valid_to IS NULL OR e.valid_to > now()))) \
+                   AND e.valid_from <= now() AND (e.valid_to IS NULL OR e.valid_to > now()) \
+                   AND (cardinality($9::text[]) = 0 OR EXISTS (SELECT 1 FROM objects o \
+                     WHERE o.org_id = $1 AND o.valid_to IS NULL \
+                       AND o.id = CASE WHEN e.source_object_id = objects.id \
+                         THEN e.target_object_id ELSE e.source_object_id END \
+                       AND upper(o.properties ->> $10) = ANY($9))))) \
              ORDER BY (properties ->> $3) <= coalesce($5, ''), properties ->> $3 LIMIT $4",
             vec![
                 imp.org_id.into(),
@@ -584,6 +603,8 @@ async fn per_object_values<C: ConnectionTrait>(
                     .unwrap_or_default()
                     .into(),
                 p.linked.clone().into(),
+                codes.into(),
+                code_prop.into(),
             ],
         ))
         .await?;

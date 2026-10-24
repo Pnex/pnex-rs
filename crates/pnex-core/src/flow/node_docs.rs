@@ -463,7 +463,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
         summary: "Reads the live objects of one ontology type matching property filters (e.g. procedures whose next due date has passed). Input: any message (often a daily inject). One output port.",
         config: &[
             ("object_type", "object type key, must exist at deploy"),
-            ("filters", "[{key: property, op: eq|ne|lt|lte|gt|gte|contains|exists|missing|in, value}] — value may be \"$today\" (YYYY-MM-DD), \"$now\" (RFC 3339) or \"$msg.<path>\" (read from the incoming message); `in` takes a list"),
+            ("filters", "[{key: property, op: eq|ne|lt|lte|gt|gte|contains|exists|missing|in, value}] — value may be \"$today\" (YYYY-MM-DD), \"$now\" (RFC 3339) or \"$msg.<path>\" (read from the incoming message); `in` takes a list or \"$setting.<pack>.<key>\" (the comma-separated codes of a pack setting, read by the server; an empty setting drops the filter)"),
             ("order_by", "property key to sort on (title by default); descending: bool"),
             ("limit", "1..=500, default 100"),
             ("output", "each (default: one message per object) | array (one message, payload = list)"),
