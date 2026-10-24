@@ -240,7 +240,7 @@ Le pack lit deux réglages (D368) :
 | WEB-02 | Code absent (intitulé cité sans le code) ou faux (autre code à côté de l'intitulé) | page | texte | majeur | **MVP** |
 | WEB-08 | Code d'une certification du client cité sans habilitation ouverte et active | page × habilitations | texte | critique | **MVP** |
 | WEB-04 | « Éligible CPF » sur une certification non éligible pour ce partenaire | lexique CPF × WEB-08 ou certification non active | texte | critique | **MVP** |
-| WEB-01 | Intitulé inexact | code cité sans l'intitulé normalisé : extrait autour du code ; LLM s'il y en a un | texte + LLM | majeur | **MVP** |
+| WEB-01 | Intitulé inexact | code cité sans l'intitulé normalisé : extrait autour du code | texte | majeur | **MVP** (texte), V2 (LLM sur l'extrait) |
 | WEB-03 | Certificateur non cité, ou partenaire présenté comme certificateur | nom du certificateur absent d'une page qui cite le code (texte) ; « notre certification », « certifié par nous » (LLM) | texte + LLM | majeur | **MVP** (texte), V2 (LLM) |
 | NOM-01 | Nom affiché ≠ raison sociale, sigle, nom commercial ou enseigne | mentions légales (`web_visit`) × SIRENE | texte | mineur | V2 |
 | WEB-05 | Promesse interdite (« gratuit », cadeau contre inscription) | lexique fermé + LLM | texte + LLM | critique | **MVP** (lexique), V2 (LLM) |
@@ -252,8 +252,8 @@ Le pack lit deux réglages (D368) :
 
 Les règles « texte » du MVP sont toutes déterministes : listes fermées,
 normalisation par `fold` (minuscules, sans accents). Elles marchent donc sur
-l'org 4 **sans fournisseur LLM**. Les branches LLM (WEB-01, puis WEB-03,
-WEB-05 et WEB-07 en V2) se branchent sur `llm_text` : sans fournisseur, le
+l'org 4 **sans fournisseur LLM**. Les branches LLM (WEB-01, WEB-03,
+WEB-05 et WEB-07, toutes en V2) se branchent sur `llm_text` : sans fournisseur, le
 nœud échoue sur son port d'échec et la partie déterministe a déjà écrit son
 écart.
 
@@ -381,3 +381,27 @@ l'org 4 :
   (D208) ; sa citation est revérifiée.
 - **MCP / IAM** : pas d'opération HTTP nouvelle ; les imports et les flows
   restent sous les permissions existantes.
+
+## 7. État (2026-10-24)
+
+- **R1–R2** (`4e15cc91`) : `traverse` et `with_links` du nœud `ontology_query` ;
+  `per_object.linked` ; avertissement pour un établissement sans coordonnées ;
+  `quali_watch` 1.4.0 (numéro de certification, intitulé de 2 000 caractères
+  `invalid: skip`, imports SIRENE et DGEFP du réseau, catalogue CPF RS et
+  RNCP). Test : `partner_watch` `network_registers_and_query`.
+- **R3–R4** (`1d529add`) : nœud `site_crawl` (palette, inspecteur, NodeDoc,
+  codes `site-crawl-*`) ; preuve serveur (`proofs::server_pass`, boucle
+  singleton `server-proofs`). Tests : `site_crawl`
+  `flow_node_crawls_the_site_of_its_message`,
+  `waiting_proofs_are_tried_by_the_server_a_bounded_number_of_times`,
+  `server_snapshot_of_a_public_page` (ignoré, navigateur réel : Chrome local,
+  PNG pleine page, HTML et texte lus).
+- **R5** : fonctions `qw_regles_reseau`, `qw_contexte`, `qw_cibles`,
+  `qw_regles_web`, `qw_ecart`, `qw_liens` ; flows « Quali-Watch · network
+  rules » et « Quali-Watch · website check » ; réglages `certifications` et
+  `regles_inactives` ; fiche `assistant-kb/web-sites.md`. Tests :
+  `pack_rules` (règles réseau, cibles, règles des pages, écart puis liens).
+
+Raccourcis notés : un seul site par partenaire (le premier), 200 liens joints
+par ligne et par type (une certification à 4 000 partenaires est tronquée),
+la règle CPF-01 ne relie pas l'écart à l'organisme (l'offre, oui).

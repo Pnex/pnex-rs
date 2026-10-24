@@ -56,6 +56,21 @@ extends:
       - { key: qualiopi_apprentissage, name: Qualiopi apprenticeship, names: {fr: "Qualiopi apprentissage"}, kind: bool }
 description: Certifications, partner websites, observed pages with dated proofs, CPF offers, rules, findings and graduated reminders.
 descriptions: {fr: "Certifications, sites des partenaires, pages observées avec preuves datées, offres CPF, règles, écarts et relances graduées."}
+settings:
+  - key: certifications
+    name: Certifications watched
+    names: {fr: "Certifications contrôlées"}
+    description: Codes checked by the rules, comma-separated (RS7511, RNCP34567); empty = every certification a certifier of the organization holds.
+    descriptions: {fr: "Codes contrôlés par les règles, séparés par des virgules (RS7511, RNCP34567) ; vide = toutes les certifications portées par un certificateur de l'organisation."}
+    kind: text
+    default: ""
+  - key: regles_inactives
+    name: Rules turned off
+    names: {fr: "Règles désactivées"}
+    description: Codes of the rules that write no finding, comma-separated (WEB-05, COL-01).
+    descriptions: {fr: "Codes des règles qui n'écrivent aucun écart, séparés par des virgules (WEB-05, COL-01)."}
+    kind: text
+    default: ""
 types:
   - key: certification
     name: Certification
@@ -965,6 +980,461 @@ functions:
       def handle(inputs, msg):
           target = msg.get("procedure_id", msg.get("organization_id", ""))
           return {"payload": {"source_id": msg["object"]["id"], "target_id": target}}
+  - name: qw_regles_reseau
+    language: starlark
+    description: "Registry rules of the network: ADM-01, ADM-02, CPF-01, CPF-02, CPF-03, REG-01, REG-02 (findings to review)."
+    code: |
+      # Registry rules of the network (network-check.md D410): ADM-01, ADM-02,
+      # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
+      # org's certifications with their accreditations (habilite_pour), offers
+      # (porte_sur) and certifiers (porte). Registry facts: findings `propose`.
+      # @output ecarts any "The findings, as a list (split them one per message)"
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
+              "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
+              "œ": "oe", "æ": "ae", "’": "'"}
+      PUNCT = [",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "«", "»", "\"", "/", "-", "–", "—", "_", "'", "&", "+", "*", "|", " "]
+
+      def fold(s):
+          s = s.lower()
+          for k, v in FOLD.items():
+              s = s.replace(k, v)
+          return s
+
+      def norm(s):
+          s = fold(s)
+          for c in PUNCT:
+              s = s.replace(c, " ")
+          return " ".join(s.split())
+
+      def setting_list(key):
+          raw = pack_setting(key, "") or ""
+          return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
+
+      def active(code):
+          return code not in setting_list("quali_watch.regles_inactives")
+
+      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
+          return {
+              "props": {
+                  "cle": (rule + ":" + key)[:255],
+                  "attendu": attendu[:2000],
+                  "constate": constate[:2000],
+                  "extrait": extrait[:2000],
+                  "gravite": gravite,
+                  "etat": etat,
+                  "detecte_le": now,
+                  "regle_version": VERSION,
+              },
+              "title": (rule + " · " + title)[:250],
+              "liens": liens,
+          }
+
+      VERSION = 1
+
+      def links(row, key):
+          return [l for l in row.get("links", {}).get(key, []) if l.get("direction") == "in"]
+
+      def watched(rows):
+          codes = setting_list("quali_watch.certifications")
+          out = []
+          for r in rows:
+              code = (r["properties"].get("code", "") or "").upper()
+              if codes:
+                  if code in codes:
+                      out.append(r)
+              elif links(r, "porte"):
+                  out.append(r)
+          return out
+
+      def handle(inputs, msg):
+          now = msg.get("now", "")
+          today = msg.get("today", now[:10])
+          found = []
+          for cert in watched(msg.get("payload", []) or []):
+              cp = cert["properties"]
+              code = (cp.get("code", "") or "").upper()
+              certifiers = {}
+              for l in links(cert, "porte"):
+                  certifiers[l["other"]["properties"].get("siren", "") or ""] = True
+              habs = {}
+              for l in links(cert, "habilite_pour"):
+                  org = l["other"]
+                  siren = org["properties"].get("siren", "") or ""
+                  if siren:
+                      habs[siren] = {"org": org, "a": l.get("attributes", {}) or {}}
+              for siren, h in habs.items():
+                  org, a = h["org"], h["a"]
+                  op = org["properties"]
+                  liens = {"concerne": org["id"], "sur": cert["id"]}
+                  name = org["title"] + " · " + code
+                  if active("ADM-01") and op.get("etat_administratif", "") == "cesse":
+                      ceased = op.get("date_cessation", "") or ""
+                      found.append(finding("ADM-01", "critique", "propose", siren + ":" + code, name,
+                          "Partenaire en activité", "Unité légale cessée" + (" le " + ceased if ceased else "") + ", habilitation ouverte",
+                          "", liens, now))
+                  if active("ADM-02") and op.get("qualiopi_maj", "") and op.get("qualiopi") != True:
+                      found.append(finding("ADM-02", "critique", "propose", siren, org["title"],
+                          "Certification Qualiopi « actions de formation »",
+                          "Absente de la liste publique des organismes de formation (DGEFP, " + op.get("qualiopi_maj", "") + ")",
+                          op.get("qualiopi_categories", "") or "", {"concerne": org["id"]}, now))
+                  if active("REG-01") and a.get("declaree_fc") != True:
+                      found.append(finding("REG-01", "info", "propose", siren + ":" + code, name,
+                          "Habilitation déclarée à France Compétences",
+                          "Habilitation connue (" + (a.get("source", "") or "client") + ") absente des données ouvertes de France Compétences",
+                          "", liens, now))
+              for l in links(cert, "porte_sur"):
+                  offer = l["other"]
+                  pp = offer["properties"]
+                  siren = (pp.get("siret", "") or "")[:9]
+                  if not siren or siren in certifiers:
+                      continue
+                  seen = pp.get("vue_le", "") or today
+                  liens = {"concerne": "", "sur": cert["id"], "constate_dans": offer["id"]}
+                  label = offer["title"] + " · " + code
+                  extrait = (pp.get("intitule", "") or "") + " · " + (pp.get("siret", "") or "")
+                  h = habs.get(siren)
+                  if h == None:
+                      if active("CPF-01"):
+                          found.append(finding("CPF-01", "critique", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                              "Offre CPF d'un organisme habilité sur " + code,
+                              "Organisme (SIREN " + siren + ") sans habilitation ouverte sur " + code,
+                              extrait, liens, now))
+                      continue
+                  liens["concerne"] = h["org"]["id"]
+                  a = h["a"]
+                  if active("CPF-02") and a.get("perimetre", "") == "evaluation":
+                      found.append(finding("CPF-02", "majeur", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                          "Préparation à " + code + " dans le périmètre de l'habilitation",
+                          "Habilité à organiser l'évaluation seulement, offre de formation au CPF",
+                          extrait, liens, now))
+                  end = a.get("date_fin", "") or ""
+                  if active("CPF-03") and end and end < seen:
+                      found.append(finding("CPF-03", "critique", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                          "Aucune offre CPF après la fin d'habilitation (" + end + ")",
+                          "Offre vue au catalogue le " + seen, extrait, liens, now))
+                  if active("REG-02") and a.get("etat_fc", "") == "inactif":
+                      found.append(finding("REG-02", "critique", "propose", siren + ":" + code, label,
+                          "Aucune activité sur une habilitation inactive",
+                          "Habilitation inactive chez France Compétences" + (" depuis le " + a.get("date_etat", "") if a.get("date_etat", "") else "") + ", offre CPF vue le " + seen,
+                          extrait, liens, now))
+          return {"ecarts": found}
+  - name: qw_contexte
+    language: starlark
+    description: The certifications watched, their exact titles and certifiers, for the website rules.
+    code: |
+      # The certifications watched, with their exact title and their
+      # certifiers' names, kept in msg.reseau for the website rules.
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
+              "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
+              "œ": "oe", "æ": "ae", "’": "'"}
+      PUNCT = [",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "«", "»", "\"", "/", "-", "–", "—", "_", "'", "&", "+", "*", "|", " "]
+
+      def fold(s):
+          s = s.lower()
+          for k, v in FOLD.items():
+              s = s.replace(k, v)
+          return s
+
+      def norm(s):
+          s = fold(s)
+          for c in PUNCT:
+              s = s.replace(c, " ")
+          return " ".join(s.split())
+
+      def setting_list(key):
+          raw = pack_setting(key, "") or ""
+          return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
+
+      def active(code):
+          return code not in setting_list("quali_watch.regles_inactives")
+
+      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
+          return {
+              "props": {
+                  "cle": (rule + ":" + key)[:255],
+                  "attendu": attendu[:2000],
+                  "constate": constate[:2000],
+                  "extrait": extrait[:2000],
+                  "gravite": gravite,
+                  "etat": etat,
+                  "detecte_le": now,
+                  "regle_version": VERSION,
+              },
+              "title": (rule + " · " + title)[:250],
+              "liens": liens,
+          }
+
+      def handle(inputs, msg):
+          codes = setting_list("quali_watch.certifications")
+          reseau = {}
+          for r in msg.get("payload", []) or []:
+              p = r["properties"]
+              code = (p.get("code", "") or "").upper()
+              porte = [l for l in r.get("links", {}).get("porte", []) if l.get("direction") == "in"]
+              if (codes and code not in codes) or (not codes and not porte):
+                  continue
+              reseau[code] = {
+                  "id": r["id"],
+                  "intitule": p.get("intitule", "") or "",
+                  "statut": p.get("statut", "") or "",
+                  "certificateurs": [l["other"]["title"] for l in porte],
+              }
+          return {"payload": {}, "reseau": reseau}
+  - name: qw_cibles
+    language: starlark
+    description: One crawl target per partner with a confirmed website, with what makes a page relevant.
+    code: |
+      # One crawl target per partner of the network that has a confirmed
+      # website: its url, what makes a page relevant (codes, exact titles,
+      # certifiers' names, CPF words), the website to hang pages on, and the
+      # partner with its accreditations for the rules.
+      CPF = ["mon compte formation", "moncompteformation", "eligible au cpf", "eligible cpf", "financable cpf", "financable par le cpf"]
+
+      def handle(inputs, msg):
+          reseau = msg.get("reseau", {}) or {}
+          l = msg.get("links", {}) or {}
+          sites = [s for s in l.get("a_pour_site", []) if s.get("direction") == "out"]
+          if not sites or not reseau:
+              return None
+          # shortcut: the first website of a partner only; split per site when
+          # partners with several websites show up.
+          site = sites[0]["other"]
+          url = site["properties"].get("url_racine", "") or ("https://" + (site["properties"].get("domaine", "") or ""))
+          habs = {}
+          for h in l.get("habilite_pour", []):
+              if h.get("direction") != "out":
+                  continue
+              code = (h["other"]["properties"].get("code", "") or "").upper()
+              if code in reseau:
+                  habs[code] = h.get("attributes", {}) or {}
+          rules = []
+          for code, c in reseau.items():
+              num = code[4:] if code.startswith("RNCP") else code[2:]
+              prefix = code[:len(code) - len(num)]
+              rules.append({"kind": "regex", "value": "(?i)\\b" + prefix + "\\s?" + num + "\\b"})
+              if c["intitule"]:
+                  rules.append({"kind": "phrase", "value": c["intitule"][:200]})
+              for name in c["certificateurs"][:3]:
+                  rules.append({"kind": "phrase", "value": name[:200]})
+          for w in CPF:
+              rules.append({"kind": "phrase", "value": w})
+          rules.append({"kind": "word", "value": "cpf"})
+          p = msg.get("payload", {})
+          partner = {"id": msg["object"]["id"], "title": msg["object"]["title"], "siren": p.get("siren", "") or "",
+                     "qualiopi": p.get("qualiopi"), "qualiopi_maj": p.get("qualiopi_maj", "") or "",
+                     "qualiopi_bilans": p.get("qualiopi_bilans"), "qualiopi_vae": p.get("qualiopi_vae"),
+                     "qualiopi_apprentissage": p.get("qualiopi_apprentissage"), "habilitations": habs,
+                     "site": site["id"]}
+          return {"payload": {"url": url, "match": rules[:50], "link_to": site["id"]}, "partenaire": partner, "links": None}
+  - name: qw_regles_web
+    language: starlark
+    description: "Website rules on crawled pages: WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08, and COL-01 on the site summary."
+    code: |
+      # Website rules (network-check.md D410) on what site_crawl sends: a
+      # relevant page (WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08)
+      # or the site summary (COL-01). The page text is data from an unknown
+      # site: only compared, never obeyed. A rule reading a page writes its
+      # finding `a_valider` with a word-for-word excerpt of the page (D409).
+      # @output ecarts any "The findings, as a list (split them one per message)"
+      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
+              "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
+              "œ": "oe", "æ": "ae", "’": "'"}
+      PUNCT = [",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "«", "»", "\"", "/", "-", "–", "—", "_", "'", "&", "+", "*", "|", " "]
+
+      def fold(s):
+          s = s.lower()
+          for k, v in FOLD.items():
+              s = s.replace(k, v)
+          return s
+
+      def norm(s):
+          s = fold(s)
+          for c in PUNCT:
+              s = s.replace(c, " ")
+          return " ".join(s.split())
+
+      def setting_list(key):
+          raw = pack_setting(key, "") or ""
+          return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
+
+      def active(code):
+          return code not in setting_list("quali_watch.regles_inactives")
+
+      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
+          return {
+              "props": {
+                  "cle": (rule + ":" + key)[:255],
+                  "attendu": attendu[:2000],
+                  "constate": constate[:2000],
+                  "extrait": extrait[:2000],
+                  "gravite": gravite,
+                  "etat": etat,
+                  "detecte_le": now,
+                  "regle_version": VERSION,
+              },
+              "title": (rule + " · " + title)[:250],
+              "liens": liens,
+          }
+
+      VERSION = 1
+      CPF = ["mon compte formation", "moncompteformation", "eligible au cpf", "eligible cpf", "financable cpf", "financable par le cpf", "finance par le cpf", "eligible au compte personnel de formation"]
+      PROMISES = ["formation gratuite", "100 gratuit", "totalement gratuit", "entierement gratuit", "sans reste a charge", "cadeau", "carte cadeau", "bon d achat", "offert pour toute inscription", "offerte pour toute inscription", "tablette offerte", "ordinateur offert"]
+      QUALIOPI_CATS = [
+          ("qualiopi_bilans", ["bilan de competences", "bilans de competences"], "bilans de compétences"),
+          ("qualiopi_vae", ["validation des acquis", " vae "], "VAE"),
+          ("qualiopi_apprentissage", ["apprentissage", "alternance", "apprenti"], "apprentissage"),
+      ]
+
+      def codes_in(tokens):
+          out = {}
+          n = len(tokens)
+          for i in range(n):
+              t = tokens[i]
+              if t in ("rs", "rncp") and i + 1 < n and tokens[i + 1].isdigit():
+                  out[(t + tokens[i + 1]).upper()] = True
+              elif t.startswith("rncp") and t[4:].isdigit():
+                  out[t.upper()] = True
+              elif t.startswith("rs") and len(t) > 2 and t[2:].isdigit():
+                  out[t.upper()] = True
+          return out
+
+      def at(text, needles):
+          lower = text.lower()
+          for n in needles:
+              i = lower.find(n.lower())
+              if i >= 0:
+                  return i
+          return -1
+
+      def excerpt(text, i):
+          if i < 0:
+              return text[:300].strip()
+          return text[max(0, i - 150):i + 250].strip()
+
+      def code_needles(code):
+          num = code[4:] if code.startswith("RNCP") else code[2:]
+          prefix = code[:len(code) - len(num)]
+          return [prefix + num, prefix + " " + num, prefix + " " + num, prefix + "-" + num]
+
+      def any_in(padded, words):
+          for w in words:
+              if (" " + w + " ") in padded:
+                  return True
+          return False
+
+      def summary(msg, p):
+          if not active("COL-01"):
+              return []
+          partner = msg.get("partenaire", {}) or {}
+          why = ""
+          if p.get("blocked"):
+              why = "Collecte arrêtée (" + p["blocked"] + ") après " + str(p.get("pages", 0)) + " page(s)"
+          elif not p.get("relevant"):
+              why = str(p.get("pages", 0)) + " page(s) lue(s), aucune pertinente"
+          if not why:
+              return []
+          return [finding("COL-01", "info", "propose", (partner.get("siren", "") or "") + ":" + p.get("url", ""),
+              partner.get("title", "") + " · " + p.get("url", ""), "Site lisible avec au moins une page pertinente",
+              why, "", {"concerne": partner.get("id", "")}, msg.get("now", ""))]
+
+      def handle(inputs, msg):
+          p = msg.get("payload", {}) or {}
+          if "mission_id" in p:
+              return {"ecarts": summary(msg, p)}
+          text = p.get("text", "") or ""
+          if not text:
+              return None
+          now = msg.get("now", "")
+          today = msg.get("today", now[:10])
+          partner = msg.get("partenaire", {}) or {}
+          reseau = msg.get("reseau", {}) or {}
+          habs = partner.get("habilitations", {}) or {}
+          padded = " " + norm(text) + " "
+          tokens = padded.split()
+          cited = codes_in(tokens)
+          cpf = any_in(padded, CPF) or " cpf " in padded
+          page = p.get("page_id", "") or p.get("url", "")
+          found = []
+          def add(rule, gravite, code, attendu, constate, i, cert_id):
+              if not active(rule):
+                  return
+              liens = {"concerne": partner.get("id", ""), "sur": cert_id, "constate_dans": p.get("object_id", "") or ""}
+              found.append(finding(rule, gravite, "a_valider", (partner.get("siren", "") or "") + ":" + code + ":" + page,
+                  partner.get("title", "") + " · " + code, attendu, constate + " (" + p.get("url", "") + ")",
+                  excerpt(text, i), liens, now))
+          for code, c in reseau.items():
+              title = norm(c.get("intitule", ""))
+              has_code = code in cited
+              has_title = len(title) > 3 and (" " + title + " ") in padded
+              if not has_code and not has_title:
+                  continue
+              i_code = at(text, code_needles(code))
+              h = habs.get(code)
+              end = (h or {}).get("date_fin", "") or ""
+              accredited = h != None and (h.get("etat_fc", "") or "") != "inactif" and not (end and end < today)
+              if has_code and not accredited:
+                  why = "aucune habilitation ouverte" if h == None else ("habilitation inactive chez France Compétences" if h.get("etat_fc", "") == "inactif" else "habilitation terminée le " + end)
+                  add("WEB-08", "critique", code, "Aucune offre de " + code + " sans habilitation active", "Page qui présente " + code + " : " + why, i_code, c["id"])
+              if cpf and (not accredited or c.get("statut", "") not in ("", "actif")):
+                  add("WEB-04", "critique", code, code + " présentée comme éligible au CPF seulement par un organisme habilité, sur une fiche active",
+                      "Mention du CPF sur une page de " + code + (" (fiche " + c.get("statut", "") + ")" if c.get("statut", "") not in ("", "actif") else " sans habilitation active"),
+                      at(text, ["mon compte formation", "cpf"]), c["id"])
+              if has_title and not has_code:
+                  others = [k for k in cited.keys() if k != code]
+                  if others:
+                      add("WEB-02", "majeur", code, "Code " + code + " cité avec l'intitulé", "Intitulé cité avec un autre code : " + ", ".join(others[:3]), at(text, code_needles(others[0])), c["id"])
+                  else:
+                      add("WEB-02", "majeur", code, "Code " + code + " cité avec l'intitulé", "Intitulé cité sans le code de la fiche", at(text, [c.get("intitule", "")[:40]]), c["id"])
+              if has_code and not has_title and title:
+                  add("WEB-01", "majeur", code, "Intitulé exact : « " + c.get("intitule", "") + " »", "Code cité sans l'intitulé exact de la fiche", i_code, c["id"])
+              if has_code and c.get("certificateurs"):
+                  named = [n for n in c["certificateurs"] if len(norm(n)) > 2 and (" " + norm(n) + " ") in padded]
+                  if not named:
+                      add("WEB-03", "majeur", code, "Certificateur cité : " + ", ".join(c["certificateurs"][:2]), "Code cité sans le nom du certificateur", i_code, c["id"])
+          if cited or cpf:
+              for w in PROMISES:
+                  if (" " + w + " ") in padded:
+                      add("WEB-05", "critique", "promesse", "Aucune promesse ni avantage contre une inscription", "Mention « " + w + " »", at(text, [w, w.replace(" ", "")]), "")
+                      break
+          if " qualiopi " in padded and partner.get("qualiopi_maj"):
+              for key, words, label in QUALIOPI_CATS:
+                  if partner.get(key) != True and any_in(padded, [w.strip() for w in words]):
+                      add("WEB-06", "mineur", "qualiopi-" + key, "Qualiopi affiché pour les catégories certifiées seulement",
+                          "Qualiopi affiché sur une page de " + label + ", catégorie non certifiée (DGEFP " + partner.get("qualiopi_maj", "") + ")",
+                          at(text, ["qualiopi"]), "")
+                      break
+          return {"ecarts": found}
+  - name: qw_ecart
+    language: starlark
+    description: One finding of a rule list, as the message the finding write takes.
+    code: |
+      # One finding of a rule's list as the message object_upsert writes:
+      # properties, title, and the links to open once written.
+      def handle(inputs, msg):
+          e = msg.get("payload", {}) or {}
+          if not e.get("props"):
+              return None
+          return {"payload": e["props"], "title": e.get("title", ""), "liens": e.get("liens", {}),
+                  "object": None, "object_id": None, "links": None}
+  - name: qw_liens
+    language: starlark
+    description: Links of a finding just written to its partner, certification and evidence.
+    code: |
+      # Links of the finding just written: to its partner, its certification
+      # and where it was seen (page or CPF offer); an absent end stays silent.
+      # @output concerne any "Finding → organization"
+      # @output sur any "Finding → certification"
+      # @output constate_dans any "Finding → page or offer"
+      def handle(inputs, msg):
+          o = msg.get("object", {}) or {}
+          l = msg.get("liens", {}) or {}
+          if not o.get("id"):
+              return None
+          out = {}
+          for k in ["concerne", "sur", "constate_dans"]:
+              if l.get(k, ""):
+                  out[k] = {"source_id": o["id"], "target_id": l[k]}
+          return out
 flows:
   - name: "Quali-Watch · reminders"
     note: "Each morning the procedures whose due date passed move to the next reminder. For the automatic levels, add a Notification node after the reminder write (e-mail channel allowing recipients from flows, recipient field: destinataire, report PDF attached), then deploy."
@@ -1031,6 +1501,56 @@ flows:
         - { id: extract_rs, kind: ingest, config: { step: archive_extract, entries: ["*.xml"] }, outputs: [{ port: 0, targets: [import_rs] }] }
         - { id: import_rs, kind: ingest, config: { step: ontology_import, entry: "*.xml", import_name: "France Compétences · RS sheets (XML)", action: apply }, outputs: [{ port: 0, targets: [cleanup] }] }
         - { id: cleanup, kind: ingest, config: { step: staging_cleanup } }
+  - name: "Quali-Watch · network rules"
+    note: "Each morning the registry facts of your network become findings to review, created once and never reset: ceased partner (ADM-01), Qualiopi missing (ADM-02), CPF offer by a non-accredited organization (CPF-01), out of scope (CPF-02), after the accreditation end (CPF-03), accreditation unknown to France Compétences (REG-01), inactive accreditation still selling (REG-02). Run the network imports first (company register, DGEFP, CPF catalogue). Replaces « rule ADM-01 »: deploy one of the two."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "30 5 * * *" }, outputs: [{ port: 0, targets: [net] }] }
+        - id: net
+          kind: ontology_query
+          config: { object_type: certification, limit: 500, output: array, with_links: [habilite_pour, porte_sur, porte] }
+          outputs: [{ port: 0, targets: [rules] }]
+        - { id: rules, kind: pnex_function, config: { function_name: qw_regles_reseau, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
+        - { id: one, kind: pnex_function, config: { function_name: qw_ecart, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: qw_liens, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
+        - { id: l_org, kind: link_upsert, config: { link_type: concerne } }
+        - { id: l_cert, kind: link_upsert, config: { link_type: sur } }
+        - { id: l_seen, kind: link_upsert, config: { link_type: constate_dans } }
+  - name: "Quali-Watch · website check"
+    note: "Each Sunday night the confirmed website of each partner is walked on the server (robots.txt obeyed, 2 s a page, 200 pages at most): pages citing your codes, exact titles, certifier names or the CPF are kept as observed pages with a sealed proof, then checked: exact title (WEB-01), code (WEB-02), certifier named (WEB-03), CPF eligibility (WEB-04), forbidden promises (WEB-05), Qualiopi category (WEB-06), accreditation still active (WEB-08), and a site with nothing relevant (COL-01). Findings read on a page are to validate, with their excerpt word for word. Find the websites first (Web presence · find websites)."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "0 2 * * 0" }, outputs: [{ port: 0, targets: [certs] }] }
+        - id: certs
+          kind: ontology_query
+          config: { object_type: certification, limit: 500, output: array, with_links: [porte] }
+          outputs: [{ port: 0, targets: [context] }]
+        - { id: context, kind: pnex_function, config: { function_name: qw_contexte, language: starlark }, outputs: [{ port: 0, targets: [partners] }] }
+        - id: partners
+          kind: ontology_query
+          config: { object_type: certification, limit: 500, traverse: [{ link_type: habilite_pour, direction: in }], with_links: [a_pour_site, habilite_pour] }
+          outputs: [{ port: 0, targets: [targets] }]
+        - { id: targets, kind: pnex_function, config: { function_name: qw_cibles, language: starlark }, outputs: [{ port: 0, targets: [crawl] }] }
+        - id: crawl
+          kind: site_crawl
+          config:
+            max_pages: 200
+            record:
+              type: page_observee
+              properties: { url: url, title: titre, first_seen: premiere_vue, last_seen: derniere_vue, text_hash: empreinte_texte, relevant: pertinente, state: etat }
+              link_type: page_de
+              proof_link: prouve_par
+          outputs: [{ port: 0, targets: [rules] }, { port: 1, targets: [rules] }]
+        - { id: rules, kind: pnex_function, config: { function_name: qw_regles_web, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
+        - { id: one, kind: pnex_function, config: { function_name: qw_ecart, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: qw_liens, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
+        - { id: l_org, kind: link_upsert, config: { link_type: concerne } }
+        - { id: l_cert, kind: link_upsert, config: { link_type: sur } }
+        - { id: l_seen, kind: link_upsert, config: { link_type: constate_dans } }
 page_templates:
   - key: constat_ecart
     name: Finding report

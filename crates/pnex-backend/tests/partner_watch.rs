@@ -164,13 +164,13 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        // quali_watch 3 + presence_web 6 functions; 3 + 1 flows.
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 9);
+        // quali_watch 9 + presence_web 6 functions; 5 + 1 flows.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 15);
         assert_eq!(
             count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org} AND status = 'draft'")).await,
-            4
+            6
         );
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 4);
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 6);
         // SIRENE, GLEIF ×2, Wikidata, the partner sheet, the five France
         // Compétences imports, and the network's SIRENE, DGEFP and CPF ×2.
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 14);
