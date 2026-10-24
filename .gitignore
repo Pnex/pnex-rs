@@ -64,3 +64,6 @@ deploy/vm/.cache/
 
 # Laya decision bundles (task laya:bundle, D197) — 1.3 GB, never committed
 /data/decide/
+
+# Python bytecode of the helper scripts.
+__pycache__/
