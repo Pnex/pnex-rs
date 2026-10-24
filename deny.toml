@@ -31,11 +31,12 @@ ignore = [
     { id = "RUSTSEC-2026-0367", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     { id = "RUSTSEC-2026-0368", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
     { id = "RUSTSEC-2026-0369", reason = "zip 8 via calamine, extract() never called (SEC-42)" },
-    # webpki-roots 0.26.11 is the semver shim `pub use webpki_roots::*` of
-    # 1.x, locked at 1.0.10 (emSign root removed): the advisory matches the
-    # shim's version, not its roots. Pulled by tokio-tungstenite 0.26 (loco /
-    # axum-test). Drop when that moves to webpki-roots 1.
-    { id = "RUSTSEC-2026-0381", reason = "webpki-roots 0.26 shim re-exports the fixed 1.0.10" },
+    # crypto-bigint 0.5.5 (timing branches in constant-time arithmetic, fixed
+    # in 0.7.6 only) comes through jsonwebtoken 10 → p256 / p384 0.13. We only
+    # verify RS256 tokens with Rauthy's public key: the elliptic-curve code
+    # never runs on a secret. Drop when jsonwebtoken moves to the next
+    # RustCrypto curves.
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 via jsonwebtoken EC curves, unused on secrets (RS256 verify only)" },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error unmaintained (unic-langid macros, build time)" },
 ]
 
