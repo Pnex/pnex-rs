@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::api::{FilterOp, PropertyFilter, QUERY_LIMIT_MAX};
+use super::api::{FilterOp, Hop, PropertyFilter, MAX_HOPS, QUERY_LIMIT_MAX};
 use super::schema::valid_key;
 
 /// Filter values resolved by the runtime at each message: today's date
@@ -46,7 +46,20 @@ pub struct OntologyQueryConfig {
     pub limit: Option<u64>,
     #[serde(default)]
     pub output: QueryOutput,
+    /// Links followed from the selected objects; the rows are the objects
+    /// reached (a certification's partners: `habilite_pour`, in).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traverse: Vec<Hop>,
+    /// Link types joined to each row, both directions, open links only
+    /// (network-check.md D402).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub with_links: Vec<String>,
 }
+
+/// Link types an `ontology_query` may join to its rows.
+pub const WITH_LINKS_MAX: usize = 8;
+/// Links of one type joined to one row.
+pub const LINKS_PER_ROW_MAX: usize = 200;
 
 /// `object_upsert`: `msg.payload` = the properties, matched on `key` (a
 /// unique property of the type) or on `msg.object_id` when `key` = `id`.
@@ -106,7 +119,25 @@ impl OntologyQueryConfig {
         if self.limit.is_some_and(|l| l == 0 || l > QUERY_LIMIT_MAX) {
             return bad("ontology_query_invalid", "limit is 1 to 500");
         }
+        if self.traverse.len() > MAX_HOPS
+            || self.traverse.iter().any(|h| !valid_key(&h.link_type))
+            || self.with_links.len() > WITH_LINKS_MAX
+            || self.with_links.iter().any(|l| !valid_key(l))
+        {
+            return bad(
+                "ontology_query_invalid",
+                "at most 4 traversal steps and 8 joined link types, with valid keys",
+            );
+        }
         None
+    }
+
+    /// Link types the node names (checked against the schema at deploy).
+    pub fn link_types(&self) -> impl Iterator<Item = &String> {
+        self.traverse
+            .iter()
+            .map(|h| &h.link_type)
+            .chain(self.with_links.iter())
     }
 
     pub fn check_deployable(&self) -> Option<(&'static str, String)> {
@@ -166,6 +197,22 @@ pub struct FlowQueryRequest {
     pub node: FlowNodeRef,
     #[serde(default)]
     pub values: Vec<Value>,
+}
+
+/// Reply of `POST /internal/flow/ontology/query`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FlowQueryReply {
+    pub count: i64,
+    pub rows: Vec<FlowQueryRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlowQueryRow {
+    pub object: super::api::ObjectView,
+    /// Link type → `[{direction, attributes, valid_from, other: {id, type,
+    /// title, properties}}]`, for the node's `with_links`.
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub links: Map<String, Value>,
 }
 
 /// `POST /internal/flow/ontology/upsert`.

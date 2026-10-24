@@ -335,12 +335,19 @@ pub async fn compute<C: ConnectionTrait>(
                     .map(|d| check_values(&d.properties, &doc))
                     .unwrap_or(Ok(Map::new()));
                 let pin = a.type_key == pnex_core::resources::KIND_MAP_PIN;
-                let issue = match (&full, pin && a.location.is_none()) {
-                    (Err((k, t)), _) => Some((k.clone(), t.clone())),
-                    (_, true) => Some(("location".to_string(), FIELD_REQUIRED.to_string())),
-                    _ => None,
-                };
-                if let Some((column, token)) = issue {
+                // A register site without coordinates is left out, its row
+                // kept (network-check.md D406): a warning, not an error.
+                if pin && full.is_ok() && a.location.is_none() {
+                    ends.push(End::Missing);
+                    diff.warnings.push(RowIssue {
+                        row: a.row,
+                        column: "location".into(),
+                        token: FIELD_REQUIRED.into(),
+                    });
+                    continue;
+                }
+                if let Err((column, token)) = &full {
+                    let (column, token) = (column.clone(), token.clone());
                     ends.push(End::Missing);
                     diff.errors.push(RowIssue {
                         row: a.row,

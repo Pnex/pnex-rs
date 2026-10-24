@@ -22,9 +22,9 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
-use pnex_core::ontology::api::{PropertyFilter, QueryResult};
+use pnex_core::ontology::api::PropertyFilter;
 use pnex_core::ontology::flow::{
-    resolve_value, FlowLinkRequest, FlowNodeRef, FlowQueryRequest, FlowUpsertAck,
+    resolve_value, FlowLinkRequest, FlowNodeRef, FlowQueryReply, FlowQueryRequest, FlowUpsertAck,
     FlowUpsertRequest, QueryOutput,
 };
 
@@ -199,7 +199,7 @@ impl OntologyQueryNode {
             values: values_for(&self.config.filters, &msg_json(&msg).await),
         };
         let who = format!("pnex-ontology-query [{}]", self.name());
-        let Some(result) = self.backend.call::<QueryResult>(&who, &req).await else {
+        let Some(result) = self.backend.call::<FlowQueryReply>(&who, &req).await else {
             return Ok(());
         };
         // The day the query ran, for the functions downstream (no clock in
@@ -213,6 +213,7 @@ impl OntologyQueryNode {
                 serde_json::json!({
                     "id": r.object.id, "type": r.object.type_key, "title": r.object.title,
                     "version": r.object.version, "properties": r.object.properties,
+                    "links": r.links,
                 })
             })
             .collect();
@@ -235,6 +236,7 @@ impl OntologyQueryNode {
                         m.set("payload".into(), Variant::from(o["properties"].clone()));
                         m.set("today".into(), Variant::from(today.clone()));
                         m.set("now".into(), Variant::from(now.clone()));
+                        m.set("links".into(), Variant::from(o["links"].clone()));
                         m.set(
                             "object".into(),
                             Variant::from(serde_json::json!({

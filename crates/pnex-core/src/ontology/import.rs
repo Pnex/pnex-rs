@@ -299,6 +299,11 @@ pub struct PerObject {
     /// accounts followed, not every company known).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub only: Option<PerObjectOnly>,
+    /// Only the objects holding an open link of one of these types, either
+    /// way: a certifier's network, not every company the org knows
+    /// (network-check.md D403).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub linked: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -602,6 +607,13 @@ pub fn check(m: &Mapping, s: &Schema) -> Result<(), FieldError> {
             if !known || o.values.is_empty() || o.values.len() > 50 {
                 return Err(ferr("per_object.only", FIELD_INVALID));
             }
+        }
+        if p.linked.len() > 8
+            || p.linked
+                .iter()
+                .any(|l| !s.links.iter().any(|d| &d.key == l))
+        {
+            return Err(ferr("per_object.linked", FIELD_INVALID));
         }
     }
     for (i, o) in m.objects.iter().enumerate() {

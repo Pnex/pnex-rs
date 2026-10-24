@@ -40,7 +40,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.3.1"
+version: "1.4.0"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -49,6 +49,11 @@ extends:
       - { key: contact_conformite_nom, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 255 }
       - { key: contact_telephone, name: Phone, names: {fr: "Téléphone"}, kind: text, max_len: 64 }
       - { key: charge_reseau_email, name: Network officer e-mail, names: {fr: "E-mail du chargé de réseau"}, kind: text, max_len: 254 }
+      # Qualiopi categories other than training actions (DGEFP list), for
+      # the rule on a Qualiopi mention out of its category.
+      - { key: qualiopi_bilans, name: Qualiopi skills assessments, names: {fr: "Qualiopi bilans de compétences"}, kind: bool }
+      - { key: qualiopi_vae, name: Qualiopi VAE, names: {fr: "Qualiopi VAE"}, kind: bool }
+      - { key: qualiopi_apprentissage, name: Qualiopi apprenticeship, names: {fr: "Qualiopi apprentissage"}, kind: bool }
 description: Certifications, partner websites, observed pages with dated proofs, CPF offers, rules, findings and graduated reminders.
 descriptions: {fr: "Certifications, sites des partenaires, pages observées avec preuves datées, offres CPF, règles, écarts et relances graduées."}
 types:
@@ -60,7 +65,10 @@ types:
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
       - { key: repertoire, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], indexed: true }
-      - { key: intitule, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 500 }
+      # The register holds titles over 500 characters (2026-10-24 export).
+      - { key: intitule, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 2000 }
+      # Digits of the code (7511): the value the CPF catalogue is queried by.
+      - { key: numero, name: Number, names: {fr: "Numéro"}, kind: text, max_len: 12 }
       - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: text, max_len: 32 }
       - { key: date_enregistrement, name: Registered on, names: {fr: "Enregistrée le"}, kind: date }
       - { key: date_echeance, name: Expires on, names: {fr: "Échéance"}, kind: date }
@@ -100,6 +108,8 @@ types:
       - { key: ville, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
       - { key: modalite, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte] }
       - { key: vue_le, name: Seen on, names: {fr: "Vue le"}, kind: date }
+      - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14 }
+      - { key: a_distance, name: Remote sessions, names: {fr: "Sessions à distance"}, kind: bool }
   - key: regle
     name: Rule
     names: {fr: "Règle"}
@@ -487,6 +497,7 @@ imports:
           key: code
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
+            numero: { from: Numero_Fiche, convert: [digits] }
             repertoire: { from: Numero_Fiche, convert: [trim, upper, "left:2", { enum: { RN: rncp, RS: rs } }] }
       links:
         - { type: porte, from: org, to: cert, close_missing: false }
@@ -508,7 +519,8 @@ imports:
           missing: skip
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
-            intitule: { from: Intitule, convert: [trim] }
+            numero: { from: Numero_Fiche, convert: [digits] }
+            intitule: { from: Intitule, convert: [trim], invalid: skip }
             niveau: { from: Nomenclature_Europe_Niveau, convert: [trim] }
             # RS sheets leave Date_Effet empty: Date_Decision then.
             date_enregistrement: { concat: [Date_Effet, Date_Decision], sep: "|", convert: ["before:|", "date:%d/%m/%Y"] }
@@ -636,6 +648,208 @@ imports:
             date_etat: { from: DATE_DERNIERE_MODIFICATION_ETAT, convert: ["date:%d/%m/%Y"] }
           # Several SIRET of one SIREN: active when one of them is.
           on_conflict: { etat_fc: actif }
+  - name: Company register · network (SIRENE)
+    source: api
+    source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
+    max_pages: 200
+    mapping:
+      key: qw_recherche_entreprises
+      name: Company register (network)
+      names: {fr: "Recherche d'entreprises (réseau)"}
+      format: json
+      rows: results
+      per_object: { type: organization, property: siren, param: q, linked: [habilite_pour, porte] }
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          create: false
+          update: true
+          missing: skip
+          properties:
+            siren: siren
+            forme_juridique: nature_juridique
+            naf: activite_principale
+            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, C: cesse } }] }
+            date_creation: date_creation
+            date_cessation: date_fermeture
+            effectif_tranche: tranche_effectif_salarie
+            effectif_min: { from: tranche_effectif_salarie, convert: [&qw_effectif_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
+            effectif_max: { from: tranche_effectif_salarie, convert: [&qw_effectif_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
+            pays: { value: FR }
+            code_activite: { from: activite_principale, convert: ["left:5"] }
+            qualiopi: complements.est_qualiopi
+        - as: siege
+          type: map_pin
+          key: siret
+          title: nom_complet
+          location: { lat: siege.latitude, lon: siege.longitude }
+          properties:
+            siret: siege.siret
+            siege: { value: true }
+            etat_administratif: { from: siege.etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+            effectif_tranche: siege.tranche_effectif_salarie
+            effectif_min: { from: siege.tranche_effectif_salarie, convert: [*qw_effectif_min] }
+            effectif_max: { from: siege.tranche_effectif_salarie, convert: [*qw_effectif_max] }
+        - as: etab
+          type: map_pin
+          key: siret
+          each: matching_etablissements
+          title: ^nom_complet
+          location: { lat: latitude, lon: longitude }
+          properties:
+            siret: siret
+            siege: est_siege
+            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
+            effectif_tranche: tranche_effectif_salarie
+            effectif_min: { from: tranche_effectif_salarie, convert: [*qw_effectif_min] }
+            effectif_max: { from: tranche_effectif_salarie, convert: [*qw_effectif_max] }
+        - as: personne
+          type: person
+          key: identifiant_registre
+          each: dirigeants
+          when: { from: type_dirigeant, equals: personne physique }
+          title: { concat: [prenoms, nom] }
+          properties:
+            identifiant_registre: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
+        - as: holding
+          type: organization
+          key: siren
+          each: dirigeants
+          when: { from: type_dirigeant, equals: personne morale }
+          title: denomination
+          properties:
+            siren: siren
+      links:
+        - { type: etablissement_de, from: siege, to: ul }
+        - { type: etablissement_de, from: etab, to: ul }
+        - type: dirige
+          from: personne
+          to: ul
+          attributes: &qw_mandate
+            role:
+              from: qualite
+              convert:
+                - lower
+                - enum:
+                    "président": president
+                    "président de sas": president
+                    "directeur général": directeur_general
+                    "directeur général délégué": dg_delegue
+                    "gérant": gerant
+                    "co-gérant": gerant
+                    "administrateur": administrateur
+                    "membre du directoire": membre_directoire
+                    "*": autre
+            qualite: qualite
+            source: { value: "recherche-entreprises.api.gouv.fr" }
+        - type: dirige
+          from: holding
+          to: ul
+          attributes: *qw_mandate
+  - name: DGEFP · training organizations (network)
+    source: api
+    source_url: "https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2/records?refine=siren:{value}&limit=20"
+    max_pages: 200
+    mapping:
+      key: qw_dgefp
+      name: Training organizations (DGEFP)
+      names: {fr: "Organismes de formation (DGEFP)"}
+      format: json
+      rows: results
+      per_object: { type: organization, property: siren, linked: [habilite_pour, porte] }
+      objects:
+        - as: of
+          type: organization
+          key: siren
+          create: false
+          update: true
+          missing: skip
+          properties:
+            siren: siren
+            nda: { from: numerodeclarationactivite, convert: [digits] }
+            qualiopi: { from: certifications_actionsdeformation, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_categories: { concat: [certifications.0, certifications.1, certifications.2, certifications.3], sep: "; " }
+            qualiopi_bilans: { from: certifications_bilansdecompetences, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_vae: { from: certifications_vae, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_apprentissage: { from: certifications_actionsdeformationparapprentissage, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_maj: { from: informationsdeclarees_datedernieredeclaration, convert: ["date:%d/%m/%Y"] }
+  - name: CPF catalogue · RS certifications
+    source: api
+    source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:{value}"
+    max_pages: 200
+    mapping:
+      key: qw_cpf_rs
+      name: CPF offers (RS)
+      names: {fr: "Offres CPF (RS)"}
+      format: json
+      per_object: { type: certification, property: numero, only: { property: repertoire, values: [rs] } }
+      objects:
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          properties:
+            code: { concat: [type_referentiel, code_inventaire], sep: "", convert: [trim, upper] }
+        - as: org
+          type: organization
+          key: siren
+          title: { from: nom_of, convert: [trim] }
+          properties:
+            siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
+        - as: offre
+          type: offre_cpf
+          key: id_action
+          title: { concat: [nom_of, intitule_formation], sep: " · " }
+          properties:
+            id_action: { from: numero_formation, convert: [trim] }
+            intitule: { from: intitule_formation, convert: [trim, "left:500"] }
+            siret: { from: siret, convert: [digits] }
+            prix: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
+            duree_heures: { from: nombre_heures_total_mean, invalid: skip }
+            a_distance: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
+            vue_le: date_extract
+      links:
+        - { type: offre_de, from: offre, to: org, attributes: { rapproche_par: { value: siret } } }
+        - { type: porte_sur, from: offre, to: cert }
+  - name: CPF catalogue · RNCP certifications
+    source: api
+    source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RNCP&refine=code_rncp:{value}"
+    max_pages: 200
+    mapping:
+      key: qw_cpf_rncp
+      name: CPF offers (RNCP)
+      names: {fr: "Offres CPF (RNCP)"}
+      format: json
+      per_object: { type: certification, property: numero, only: { property: repertoire, values: [rncp] } }
+      objects:
+        - as: cert
+          type: certification
+          key: code
+          create: false
+          properties:
+            code: { concat: [type_referentiel, code_rncp], sep: "", convert: [trim, upper] }
+        - as: org
+          type: organization
+          key: siren
+          title: { from: nom_of, convert: [trim] }
+          properties:
+            siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
+        - as: offre
+          type: offre_cpf
+          key: id_action
+          title: { concat: [nom_of, intitule_formation], sep: " · " }
+          properties:
+            id_action: { from: numero_formation, convert: [trim] }
+            intitule: { from: intitule_formation, convert: [trim, "left:500"] }
+            siret: { from: siret, convert: [digits] }
+            prix: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
+            duree_heures: { from: nombre_heures_total_mean, invalid: skip }
+            a_distance: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
+            vue_le: date_extract
+      links:
+        - { type: offre_de, from: offre, to: org, attributes: { rapproche_par: { value: siret } } }
+        - { type: porte_sur, from: offre, to: cert }
 functions:
   - name: qw_relance_suivante
     language: starlark
