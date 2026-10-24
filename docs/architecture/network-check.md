@@ -247,7 +247,7 @@ Le pack lit deux réglages (D368) :
 | WEB-07 | Modalités ou prérequis contraires à la fiche | page × `prerequis`, jury | LLM | majeur | V2 |
 | LIEU-01 | Lieu de formation annoncé sans établissement déclaré à proximité | page ou offre × établissements (géo) | géo | mineur | V2 (D412) |
 | CPF-04 | Prix ou durée du site ≠ offre CPF | page × offre | texte | mineur | V2 |
-| PROG-01/02/04 | Couverture, heures, modalités du programme | tableau croisé | LLM puis calcul | majeur | V2 (D413) |
+| PROG-01/02/04 | Couverture, heures, modalités du programme | tableau croisé sur programmes déposés | calcul (PROG-02, PROG-04), texte puis LLM optionnel (PROG-01) | majeur | **MVP, lot suivant** (D415–D420) ; collecte du programme sur le site : V2 (D413) |
 
 Les règles « texte » du MVP sont toutes déterministes : listes fermées,
 normalisation par `fold` (minuscules, sans accents). Elles marchent donc sur
@@ -292,10 +292,12 @@ est déployé : Photon pour `geocode` et `reverse`, GraphHopper pour `route`.
    reste à ajouter le saut `etablissement_de` à la hiérarchie (MVP, une
    ligne de pack).
 
-### D413 — Navigation et programmes (anticipé, V2)
+### D413 — Navigation et collecte des programmes (anticipé, V2)
 
-Le studio et le nœud `site_recipe` (D323–D327) sont livrés. Ce qui manque
-pour le tableau croisé :
+Le tableau croisé lui-même est au MVP, sur des programmes **déposés**
+(D415–D420, PRD §8 et QW3b). Ce qui reste V2 est la **collecte automatique**
+du programme sur le site du partenaire (QW7). Le studio et le nœud
+`site_recipe` (D323–D327) sont livrés ; il manque :
 
 - une règle de navigation par partenaire (« programme-RS0101 »), écrite dans
   le studio, une fois par site, par un humain aidé de l'assistant ;
@@ -339,7 +341,8 @@ l'org 4 :
 | **R3** | D407 nœud `site_crawl` (cœur, runtime, route interne, garde, NodeDoc, palette, ftl, fiche) | `site_crawl.rs` (serveur de test local) |
 | **R4** | D408 preuve serveur par CDP | test sur le navigateur de test (`PNEX_BROWSER_URL`), ignoré sans |
 | **R5** | Règles et flows du pack (D409–D410), fiche `assistant-kb` | `pack_rules.rs` (chaque règle sur un cas positif et un négatif) |
-| V2 | NOM-01, WEB-07, LIEU-01, CPF-04, PROG-*, `llm_extract`, vision WEB-06, sens « open data → client » de REG-01 | — |
+| **R6** | D415–D420 : dépôt des programmes, découpage, rattachements, PROG-01/02/03/04, tableau croisé et export xlsx | `pack_rules.rs` (découpage et règles sur RS0101 × OF EXEMPLE), test du nœud `sheet_write` |
+| V2 | NOM-01, WEB-07, LIEU-01, CPF-04, collecte des programmes sur le site, `llm_extract`, vision WEB-06, sens « open data → client » de REG-01 | — |
 
 ## 5. Questions pour Shan (défaut retenu en attendant)
 
@@ -404,3 +407,144 @@ l'org 4 :
 Raccourcis notés : un seul site par partenaire (le premier), 200 liens joints
 par ligne et par type (une certification à 4 000 partenaires est tronquée),
 la règle CPF-01 ne relie pas l'écart à l'organisme (l'offre, oui).
+
+## 8. Lot suivant du MVP : le tableau croisé sur programmes déposés (D415–D420)
+
+> Ajouté le 2026-10-24 sur la relecture de la session `pnex-quali-watch` :
+> le PRD §8 met PROG-01, PROG-02, PROG-04 et le tableau croisé du pilote
+> au MVP, à partir de programmes **déposés** (QW3b). Codé **après la
+> recette sur dev** de R1–R5, pour ne pas mélanger.
+
+Exemple à reproduire : `tableau croisé du pilote`, une
+feuille.
+
+- En titre (`B1:E1` fusionné), l'intitulé de la certification.
+- En tête : lien du programme de référence (C2–D2), format de la formation
+  (B4–C4), heures de suivi synchrone (B5–C5), heures de préparation à la
+  certification (B6–C6).
+- Le tableau commence ligne 8, sur 4 colonnes : compétence du référentiel
+  (« C1. … »), programme de référence (« Cadrer le projet… (C1) (2h) » et
+  son contenu), programme du partenaire (« Chapitre 01 : … »), écarts et
+  recommandations.
+- Il compte une ligne par compétence C1…C6, puis une dernière ligne
+  « Chapitre complémentaire, sans compétence associée » (le chapitre 5 de OF EXEMPLE).
+
+### D415 — Dépôt d'un programme
+
+Un humain dépose le fichier, PDF texte, DOCX ou texte, dans la médiathèque
+de l'org. Il crée ensuite l'objet `programme` :
+
+- `role` vaut `reference` ou `partenaire` ;
+- `programme_pour` le relie à la certification, `programme_de` à
+  l'organisation ;
+- la propriété `source` (nouvelle) porte l'id du média.
+
+Il lance enfin l'action **Analyser** (`programme.analyser`, D183), qui
+déclenche le flow livré par le pack. Le format, les heures synchrones et les
+heures de préparation se saisissent sur l'objet quand le document ne les
+donne pas lisiblement. Aucun envoi de fichier par le partenaire au MVP :
+le lien de dépôt de la relance R1 viendra avec le SaaS (QW5).
+
+### D416 — Nœud `document_text`
+
+Ce nœud générique lit le texte d'un média `document` de l'org, en dernière
+version (`pnex_core::doc_extract` : PDF, DOCX, XLSX, texte).
+
+- **Entrée** : `msg.payload.media_id`.
+- **Sortie** : `msg.payload = {media_id, version, text (200 000 car. au
+  plus), pages}`.
+- **Échec** : média absent ou d'une autre org, type non lisible, PDF sans
+  texte (scan). Il faudra 2 codes d'erreur.
+
+Il lit seulement, dans l'org du nœud déployé (R1). Un PDF en colonnes est le
+risque connu (D328) : il est à essayer sur le PDF de CERTIF EXEMPLE
+avant de figer.
+
+### D417 — Découpage déterministe en modules
+
+La fonction du pack `qw_decouper` lit le texte et en tire les modules : un
+titre suivi de son contenu, jusqu'au titre suivant. Un titre se reconnaît à
+un motif d'une liste fermée :
+
+- « Chapitre NN : … » ou « Module N – … » ;
+- une ligne qui finit par « (Cn) » ou « (n h) » / « (nh) ».
+
+Pour chaque module, elle relève le rang, le titre, les heures (« (2h) »,
+« 2 heures », « 1h30 »), le contenu et les **codes de compétence cités**
+(« (C3) », « C3. »). Le résultat va en `module` (`module_de` le programme)
+par `object_upsert`. Un nouveau dépôt donne une nouvelle `version` du
+programme, et l'ancienne reste.
+
+### D418 — Rattachements `couvre`, du plus sûr au moins sûr
+
+1. **Code cité** dans le titre ou le contenu (« (C1) ») :
+   `rapproche_par: code_cite`, `valide: true`. C'est le cas du programme de
+   référence de l'exemple.
+2. **Intitulé** : les mots du titre du module, normalisés par `fold` et sans
+   mots vides, recouvrent au moins 60 % de ceux du libellé de la compétence,
+   et le meilleur candidat dépasse le second de 15 points :
+   `rapproche_par: intitule`, `confiance`, **`valide: false`**. Cela couvre
+   les chapitres de OF EXEMPLE, qui reprennent le libellé sans le code.
+3. **LLM** (optionnel, org avec fournisseur) : sur les modules restés sans
+   rattachement, avec la liste des compétences. La réponse est un code et une
+   citation, et la citation est retrouvée dans le contenu du module (D316) :
+   `rapproche_par: llm`, `valide: false`.
+
+Un rattachement `valide: false` est montré « à valider ». L'action
+`valider_rattachement` du pack (ontologie §2) le fixe.
+
+### D419 — Règles PROG
+
+Elles sont calculées sur la vue certification → compétence ← `couvre` ←
+module → programme, par la fonction `qw_regles_prog` :
+
+| Code | Calcul | État de l'écart |
+|---|---|---|
+| PROG-01 | compétence sans aucun module du partenaire qui la couvre | `a_valider`, avec la mention « rapprochement par le texte » quand la couverture des autres compétences vient de l'intitulé |
+| PROG-02 | heures des modules du partenaire sur la compétence < heures de la référence − `tolerance_heures` (réglage du pack, défaut 0, PRD Q9) | `propose` si tous les rattachements de la ligne sont `valide`, sinon `a_valider` |
+| PROG-03 | module du partenaire sans aucune compétence (chapitre hors référentiel) | info, `a_valider` |
+| PROG-04 | format, heures synchrones ou heures de préparation du partenaire ≠ référence | `propose` |
+
+Test d'acceptation sur le pilote : retrouver la lecture humaine du PRD §5.7
+sans main humaine, rattachements à valider mis à part :
+
+- C2 2 h au lieu de 4, C3 5 h au lieu de 6, C4 3 h au lieu de 4
+  (PROG-02) ;
+- C5 élargi à 5 h au lieu de 3 (aucune règle, la ligne le montre) ;
+- le chapitre 5 hors référentiel (PROG-03) ;
+- aucun PROG-01.
+
+### D420 — Export xlsx au format du client : nœud `sheet_write`
+
+Ce nœud générique écrit un classeur xlsx dans la médiathèque de l'org, à
+partir de `msg.payload = {name, sheets: [{name, cells: [{ref, value, bold?,
+wrap?}], merges: ["B1:E1"], widths: {B: 60}}]}`. C'est un document, avec
+une nouvelle version à chaque écriture, et il n'y a pas de formule.
+
+L'écriture se fait **sans nouvelle dépendance** : `zip` et `quick-xml` sont
+déjà au cœur (`doc-extract`), et chaque cellule est écrite en texte en ligne
+(`inlineStr`).
+
+La fonction du pack `qw_tableau_croise` construit la mise en page de
+l'exemple :
+
+- l'en-tête de la référence, puis une ligne par compétence ;
+- la colonne « Écarts constatés & recommandations » remplie depuis les
+  écarts PROG-* de la ligne ;
+- une dernière ligne pour les chapitres hors référentiel.
+
+Le flow « Quali-Watch · cross-table » (action Analyser du programme
+partenaire) va du découpage aux rattachements, puis aux règles, aux écarts
+et au classeur. Le classeur est relié au programme (`constate_dans`) et
+téléchargeable depuis la médiathèque.
+
+### Questions pour Shan (défaut en attendant)
+
+- **Q-N6 — Programmes scannés** : faut-il de l'OCR ? **Défaut : non**. Un
+  PDF sans texte est refusé (`document_text`), et le client dépose un
+  DOCX.
+- **Q-N7 — Tolérance des heures** (PRD Q9) : **défaut 0 h**, réglable dans
+  le pack.
+- **Q-N8 — Rattachement par l'intitulé** : il compte comme couverture pour
+  PROG-01 mais reste « à valider ». **Défaut : oui**, c'est la seule voie
+  sans LLM.
