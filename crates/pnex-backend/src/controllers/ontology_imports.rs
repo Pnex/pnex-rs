@@ -135,7 +135,7 @@ async fn one(
     tag = "ontology",
     operation_id = "ontology_imports_update",
     summary = "Update an import",
-    description = "Replaces the import on top of `expected_version` (409 otherwise); a pending preview of the previous version can no longer be applied. Org writers.",
+    description = "Replaces the import on top of `expected_version` (409 otherwise); `source_url`, `recurrence` and `max_pages` left out keep their value, `null` clears them; a pending preview of the previous version can no longer be applied. Org writers.",
     params(("id" = String, Path, format = "uuid", description = "Import id")),
     request_body = ObjectImportInput,
     responses(

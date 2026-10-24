@@ -188,10 +188,13 @@ async fn check_input<C: ConnectionTrait>(
         },
     )
     .map_err(|(f, t)| invalid(format!("mapping.{f}"), t))?;
-    match (input.source, input.source_url.as_deref()) {
+    match (
+        input.source,
+        input.source_url.as_ref().and_then(|u| u.as_deref()),
+    ) {
         (ImportSource::File, _) => {
             // Only steps give a file import something to fetch on schedule.
-            if input.recurrence.is_some() && m.steps.is_empty() {
+            if input.recurrence.as_ref().is_some_and(Option::is_some) && m.steps.is_empty() {
                 return Err(invalid("recurrence", FIELD_INVALID));
             }
         }
@@ -208,7 +211,8 @@ async fn check_input<C: ConnectionTrait>(
         p.param.is_empty()
             && !input
                 .source_url
-                .as_deref()
+                .as_ref()
+                .and_then(|u| u.as_deref())
                 .is_some_and(|u| u.contains(source::VALUE))
     }) {
         return Err(invalid("source_url", FIELD_INVALID));
@@ -218,10 +222,14 @@ async fn check_input<C: ConnectionTrait>(
     if m.per_object.is_some() && input.mode == ImportMode::Snapshot {
         return Err(invalid("mode", FIELD_INVALID));
     }
-    if let Some(r) = &input.recurrence {
+    if let Some(Some(r)) = &input.recurrence {
         Recurrence::parse(r).ok_or_else(|| invalid("recurrence", FIELD_INVALID))?;
     }
-    if input.max_pages.is_some_and(|p| p == 0 || p > PAGES_MAX) {
+    if input
+        .max_pages
+        .flatten()
+        .is_some_and(|p| p == 0 || p > PAGES_MAX)
+    {
         return Err(invalid("max_pages", FIELD_INVALID));
     }
     Ok(m)
@@ -314,11 +322,11 @@ pub async fn create(
             input.mapping.clone().into(),
             pack_key.map(str::to_string).into(),
             input.source.wire().into(),
-            input.source_url.clone().into(),
+            input.source_url.clone().flatten().into(),
             input.mode.wire().into(),
-            input.recurrence.clone().into(),
-            next_run(input.recurrence.as_ref()).into(),
-            input.max_pages.map(|p| p as i32).into(),
+            input.recurrence.clone().flatten().into(),
+            next_run(input.recurrence.clone().flatten().as_ref()).into(),
+            input.max_pages.flatten().map(|p| p as i32).into(),
             user_id.into(),
         ],
     ))
@@ -332,11 +340,18 @@ pub async fn update(
     id: Uuid,
     input: &ObjectImportInput,
 ) -> Result<ObjectImportView> {
-    check_input(db, org_id, input).await?;
     let Some(expected) = input.expected_version else {
         return Err(invalid("expected_version", FIELD_REQUIRED));
     };
     let row = find_row(db, org_id, id).await?;
+    // An absent field keeps its value, `null` clears it.
+    let input = &ObjectImportInput {
+        source_url: Some(input.source_url.clone().unwrap_or(row.source_url.clone())),
+        recurrence: Some(input.recurrence.clone().unwrap_or(row.recurrence.clone())),
+        max_pages: Some(input.max_pages.unwrap_or(row.max_pages.map(|p| p as u32))),
+        ..input.clone()
+    };
+    check_input(db, org_id, input).await?;
     let done = db
         .execute_raw(stmt(
             "UPDATE object_imports SET name = $3, mapping_yaml = $4, source = $5, source_url = $6, \
@@ -349,11 +364,11 @@ pub async fn update(
                 input.name.trim().into(),
                 input.mapping.clone().into(),
                 input.source.wire().into(),
-                input.source_url.clone().into(),
+                input.source_url.clone().flatten().into(),
                 input.mode.wire().into(),
-                input.recurrence.clone().into(),
-                next_run(input.recurrence.as_ref()).into(),
-                input.max_pages.map(|p| p as i32).into(),
+                input.recurrence.clone().flatten().into(),
+                next_run(input.recurrence.clone().flatten().as_ref()).into(),
+                input.max_pages.flatten().map(|p| p as i32).into(),
                 expected.into(),
             ],
         ))
@@ -1698,10 +1713,10 @@ pub async fn install_from_pack(
             mapping: serde_saphyr::to_string(&p.mapping)
                 .map_err(|_| invalid(format!("imports.{i}.mapping"), FIELD_INVALID))?,
             source: p.source,
-            source_url: p.source_url.clone(),
+            source_url: Some(p.source_url.clone()),
             mode: p.mode,
-            recurrence: p.recurrence.clone(),
-            max_pages: p.max_pages,
+            recurrence: Some(p.recurrence.clone()),
+            max_pages: Some(p.max_pages),
             expected_version: None,
         };
         create(db, org_id, user_id, &input, Some(&pack.key))

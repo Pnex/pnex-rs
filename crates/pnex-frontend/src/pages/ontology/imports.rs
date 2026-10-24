@@ -297,10 +297,10 @@ fn ImportForm(
             name: name(),
             mapping: mapping(),
             source: source(),
-            source_url: Some(url().trim().to_string()).filter(|u| !u.is_empty()),
+            source_url: Some(Some(url().trim().to_string()).filter(|u| !u.is_empty())),
             mode: mode(),
-            recurrence,
-            max_pages: initial.as_ref().and_then(|i| i.max_pages),
+            recurrence: Some(recurrence),
+            max_pages: Some(initial.as_ref().and_then(|i| i.max_pages)),
             expected_version: initial.as_ref().map(|i| i.version),
         };
         let id = initial.as_ref().map(|i| i.id.clone());

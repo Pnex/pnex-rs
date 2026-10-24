@@ -12006,6 +12006,7 @@
             "$ref": "#/components/schemas/ImportSource"
           },
           "source_url": {
+            "description": "On an update, absent keeps the current value and `null` clears it\n(same for `recurrence` and `max_pages`).",
             "type": [
               "string",
               "null"
@@ -56391,7 +56392,7 @@
         ]
       },
       "put": {
-        "description": "Replaces the import on top of `expected_version` (409 otherwise); a pending preview of the previous version can no longer be applied. Org writers.",
+        "description": "Replaces the import on top of `expected_version` (409 otherwise); `source_url`, `recurrence` and `max_pages` left out keep their value, `null` clears them; a pending preview of the previous version can no longer be applied. Org writers.",
         "operationId": "ontology_imports_update",
         "parameters": [
           {

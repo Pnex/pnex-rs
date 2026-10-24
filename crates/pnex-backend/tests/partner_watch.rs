@@ -1097,6 +1097,36 @@ async fn imports_preview_apply_and_close_missing_links() {
     .await;
 }
 
+/// network-check.md §7: an update without `recurrence`, `max_pages` or
+/// `source_url` keeps them; an explicit `null` clears them.
+#[tokio::test]
+#[serial]
+async fn import_update_keeps_what_it_omits() {
+    with_app(|server, env| async move {
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let every_day = json!({"start": "2026-01-01", "every": 1, "unit": "day"});
+        let (st, imp) = call(&server, "POST", "/api/v1/ontology/imports", &env.alice, org,
+            Some(json!({"name": "Daily", "mapping": MAPPING, "mode": "incremental", "source": "url",
+                        "source_url": "https://example.org/reseau.csv", "recurrence": every_day, "max_pages": 7}))).await;
+        assert_eq!(st, 201, "{imp}");
+        assert!(imp["next_run_at"].is_string(), "{imp}");
+        let url = format!("/api/v1/ontology/imports/{}", imp["id"].as_str().unwrap());
+        let (st, kept) = call(&server, "PUT", &url, &env.alice, org,
+            Some(json!({"name": "Daily 2", "mapping": MAPPING, "mode": "incremental", "source": "url", "expected_version": imp["version"]}))).await;
+        assert_eq!(st, 200, "{kept}");
+        assert_eq!((&kept["recurrence"], &kept["next_run_at"], &kept["max_pages"], &kept["source_url"]),
+            (&imp["recurrence"], &imp["next_run_at"], &json!(7), &json!("https://example.org/reseau.csv")), "{kept}");
+        let (st, cleared) = call(&server, "PUT", &url, &env.alice, org,
+            Some(json!({"name": "Daily 2", "mapping": MAPPING, "mode": "incremental", "source": "url",
+                        "recurrence": null, "max_pages": null, "expected_version": kept["version"]}))).await;
+        assert_eq!(st, 200, "{cleared}");
+        assert!(cleared["recurrence"].is_null() && cleared["next_run_at"].is_null() && cleared["max_pages"].is_null(), "{cleared}");
+        assert_eq!(cleared["source_url"], "https://example.org/reseau.csv");
+    })
+    .await;
+}
+
 /// A few thousand records apply in seconds: the write loads the schema
 /// once, not per object and per link (an N+1 that made a 42k-row file
 /// outlast its flow step), and in bulk (D347): above the old 50,000-row

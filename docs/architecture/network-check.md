@@ -451,8 +451,10 @@ Les trois requêtes du pack 1.5.0 filtrent sur
   Compétences de l'org 4 n'ont donc pas reçu `certification.numero`, ni le
   filtre de D422. Il faudrait le mécanisme des flows (`kept`, puis reprise),
   ou au moins signaler qu'un import diffère du pack, et en quoi.
-- **`PUT /ontology/imports/{id}`** sans `recurrence` efface la récurrence.
-  Pistes : un `PATCH` partiel, ou un refus quand le champ manque.
+- **`PUT /ontology/imports/{id}`** sans `recurrence` effaçait la récurrence.
+  **Corrigé** : `source_url`, `recurrence` et `max_pages` omis gardent leur
+  valeur, `null` les efface (test `partner_watch`
+  `import_update_keeps_what_it_omits`).
 - **Flow « Ingestion France Compétences »** : encore livré par le pack, donc
   recréé à la mise à jour (flow 16 sur l'org 4). Son retrait relève du lot
   W0 de D359 (`web-presence.md`), pas encore codé. D'ici là, il ne faut pas

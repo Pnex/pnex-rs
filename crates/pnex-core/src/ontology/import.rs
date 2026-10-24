@@ -1653,20 +1653,46 @@ pub struct ObjectImportInput {
     pub mapping: String,
     #[serde(default)]
     pub source: ImportSource,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source_url: Option<String>,
+    /// On an update, absent keeps the current value and `null` clears it
+    /// (same for `recurrence` and `max_pages`).
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub source_url: Option<Option<String>>,
     #[serde(default)]
     pub mode: ImportMode,
     /// A `recurrence` value (URL and API sources only): scheduled runs
     /// apply without preview.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
-    pub recurrence: Option<Value>,
+    pub recurrence: Option<Option<Value>>,
     /// API pages per run (default 50, at most `PAGES_MAX`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_pages: Option<u32>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<u32>))]
+    pub max_pages: Option<Option<u32>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_version: Option<i32>,
+}
+
+/// A field sent, even as `null` (`Some(None)`), told from an absent one
+/// (`None`, with `#[serde(default)]`).
+fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
 }
 
 /// An import shipped by a pack: the mapping inline.
