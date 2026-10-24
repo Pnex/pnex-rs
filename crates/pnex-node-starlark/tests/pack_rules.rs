@@ -419,3 +419,250 @@ fn a_changed_page_becomes_a_signal_only_on_a_listed_topic() {
         json!({"source_id": "s1", "target_id": "org-1"})
     );
 }
+
+/// One ontology_query row (array output) with joined links.
+fn row(
+    id: &str,
+    title: &str,
+    props: serde_json::Value,
+    links: serde_json::Value,
+) -> serde_json::Value {
+    json!({"id": id, "title": title, "version": 1, "properties": props, "links": links})
+}
+
+fn joined(
+    other_id: &str,
+    title: &str,
+    props: serde_json::Value,
+    attrs: serde_json::Value,
+) -> serde_json::Value {
+    json!({"direction": "in", "attributes": attrs, "valid_from": "2026-01-01T00:00:00Z",
+           "other": {"id": other_id, "type": "x", "title": title, "properties": props}})
+}
+
+fn rules_of(out: &serde_json::Value) -> Vec<String> {
+    let mut r: Vec<String> = out["ecarts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            e["props"]["cle"]
+                .as_str()
+                .unwrap()
+                .split(':')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    r.sort();
+    r
+}
+
+#[test]
+fn network_rules_read_registry_facts() {
+    let cert = row(
+        "c1",
+        "RS0101",
+        json!({"code": "RS0101"}),
+        json!({
+            "porte": [joined("w", "CERTIF EXEMPLE", json!({"siren": "200000008"}), json!({}))],
+            "habilite_pour": [
+                joined("ceased", "OF CESSE", json!({"siren": "111111111", "etat_administratif": "cesse", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux"})),
+                joined("eval", "OF EVAL", json!({"siren": "222222222", "qualiopi": false, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "evaluation"})),
+                joined("old", "OF ANCIEN", json!({"siren": "333333333"}), json!({"perimetre": "les_deux", "etat_fc": "inactif", "date_fin": "2026-01-31", "source": "page_fc"})),
+                joined("ok", "OF EXEMPLE", json!({"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux", "etat_fc": "actif"}))
+            ],
+            "porte_sur": [
+                joined("o1", "OF HORS RESEAU · SEO", json!({"siret": "88024436300011", "id_action": "S_SEO", "vue_le": "2026-10-23"}), json!({})),
+                joined("o2", "OF EVAL · SEO", json!({"siret": "22222222200010", "id_action": "E_SEO", "vue_le": "2026-10-23"}), json!({})),
+                joined("o3", "OF ANCIEN · SEO", json!({"siret": "33333333300010", "id_action": "A_SEO", "vue_le": "2026-10-23"}), json!({})),
+                joined("o4", "OF EXEMPLE · SEO", json!({"siret": "10000000900024", "id_action": "P_SEO", "vue_le": "2026-10-23"}), json!({})),
+                joined("o5", "CERTIF EXEMPLE · SEO", json!({"siret": "20000000800010", "id_action": "W_SEO", "vue_le": "2026-10-23"}), json!({}))
+            ]
+        }),
+    );
+    // A certification no certifier of the org holds is not watched.
+    let other = row(
+        "c2",
+        "RS1",
+        json!({"code": "RS1"}),
+        json!({"porte_sur": [joined("o9", "X", json!({"siret": "99999999900010"}), json!({}))]}),
+    );
+    let msg = json!({"payload": [cert, other], "now": "2026-10-24T05:30:00+00:00", "today": "2026-10-24"});
+    let out = execute(&code_of("qw_regles_reseau"), &msg, 5000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        rules_of(&out),
+        vec!["ADM-01", "ADM-02", "CPF-01", "CPF-02", "CPF-03", "REG-01", "REG-02"],
+        "{out}"
+    );
+    let e = out["ecarts"].as_array().unwrap();
+    let cpf1 = e
+        .iter()
+        .find(|x| x["props"]["cle"].as_str().unwrap().starts_with("CPF-01"))
+        .unwrap();
+    assert_eq!(
+        cpf1["props"]["cle"], "CPF-01:880244363:RS0101:S_SEO",
+        "the certifier's own offer is not one"
+    );
+    assert_eq!(
+        (
+            cpf1["props"]["etat"].clone(),
+            cpf1["props"]["gravite"].clone()
+        ),
+        (json!("propose"), json!("critique"))
+    );
+    assert_eq!(cpf1["liens"]["constate_dans"], "o1");
+    assert!(
+        e.iter()
+            .all(|x| !x["props"]["cle"].as_str().unwrap().contains("100000009")),
+        "OF EXEMPLE is clean: {out}"
+    );
+}
+
+/// The partner message of the website check: a partner reached from a
+/// certification, its site and accreditation joined.
+fn partner_msg() -> serde_json::Value {
+    json!({
+        "payload": {"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11", "qualiopi_bilans": false},
+        "object": {"id": "ls", "type": "organization", "title": "OF EXEMPLE", "version": 3},
+        "links": {
+            "a_pour_site": [{"direction": "out", "attributes": {}, "other": {"id": "site1", "title": "of-exemple.example", "properties": {"url_racine": "https://www.of-exemple.example/", "domaine": "of-exemple.example"}}}],
+            "habilite_pour": [{"direction": "out", "attributes": {"etat_fc": "actif", "perimetre": "les_deux"}, "other": {"id": "c1", "title": "RS0101", "properties": {"code": "RS0101"}}}]
+        },
+        "reseau": {
+            "RS0101": {"id": "c1", "intitule": "Piloter le référencement d'un site", "statut": "actif", "certificateurs": ["CERTIF EXEMPLE"]},
+            "RS9999": {"id": "c9", "intitule": "Piloter un projet", "statut": "actif", "certificateurs": ["CERTIF EXEMPLE"]}
+        },
+        "today": "2026-10-26", "now": "2026-10-26T02:00:00+00:00"
+    })
+}
+
+#[test]
+fn crawl_targets_carry_codes_titles_and_the_partner() {
+    let out = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(out["payload"]["url"], "https://www.of-exemple.example/");
+    assert_eq!(out["payload"]["link_to"], "site1");
+    let rules = out["payload"]["match"].to_string();
+    assert!(
+        rules.contains("RS\\\\s?7511")
+            && rules.contains("référencement naturel")
+            && rules.contains("CERTIF EXEMPLE"),
+        "{rules}"
+    );
+    assert_eq!(
+        out["partenaire"]["habilitations"]["RS0101"]["etat_fc"],
+        "actif"
+    );
+    assert!(out["partenaire"]["habilitations"].get("RS9999").is_none());
+    // No website: no target.
+    let mut bare = partner_msg();
+    bare["links"]["a_pour_site"] = json!([]);
+    assert!(execute(&code_of("qw_cibles"), &bare, 2000)
+        .unwrap()
+        .return_json
+        .is_none());
+}
+
+#[test]
+fn website_rules_quote_the_page() {
+    let target = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let mut msg = partner_msg();
+    msg["partenaire"] = target["partenaire"].clone();
+    let page = |text: &str| {
+        let mut m = msg.clone();
+        m["payload"] = json!({"url": "https://www.of-exemple.example/seo", "title": "SEO", "text": text, "page_id": "p1", "object_id": "po1", "changed": true});
+        execute(&code_of("qw_regles_web"), &m, 5000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    // A clean page: code, exact title, certifier, CPF while accredited.
+    let clean = page("Formation Piloter le référencement d'un site (RS0101), certificateur CERTIF EXEMPLE. Éligible au CPF.");
+    assert_eq!(rules_of(&clean), Vec::<String>::new(), "{clean}");
+    // RS9999 (not accredited) offered with the CPF; a free gift; Qualiopi
+    // on skills assessments not certified; RS0101 under a wrong title and
+    // without its certifier.
+    let bad = page("Préparez le RS 9999 Piloter un projet, éligible au CPF ! Tablette offerte pour toute inscription. \
+        Organisme certifié Qualiopi pour vos bilans de compétences. Formation SEO RS0101 en 2 jours.");
+    assert_eq!(
+        rules_of(&bad),
+        vec!["WEB-01", "WEB-03", "WEB-03", "WEB-04", "WEB-05", "WEB-06", "WEB-08"],
+        "{bad}"
+    );
+    let e = bad["ecarts"].as_array().unwrap();
+    for x in e {
+        assert_eq!(x["props"]["etat"], "a_valider");
+        let quote = x["props"]["extrait"].as_str().unwrap();
+        assert!(
+            !quote.is_empty() && msg_text_holds(&bad, quote),
+            "word for word: {quote}"
+        );
+    }
+    let web08 = e
+        .iter()
+        .find(|x| x["props"]["cle"].as_str().unwrap().starts_with("WEB-08"))
+        .unwrap();
+    assert_eq!(web08["props"]["cle"], "WEB-08:100000009:RS9999:p1");
+    assert_eq!(
+        (
+            web08["liens"]["sur"].clone(),
+            web08["liens"]["constate_dans"].clone()
+        ),
+        (json!("c9"), json!("po1"))
+    );
+    // The title without its code (WEB-02).
+    let no_code = page("Notre parcours Piloter le référencement d'un site, par CERTIF EXEMPLE.");
+    assert_eq!(rules_of(&no_code), vec!["WEB-02"], "{no_code}");
+    // The site summary: nothing relevant (COL-01), a finding to propose.
+    let mut m = msg.clone();
+    m["payload"] = json!({"url": "https://www.of-exemple.example", "pages": 40, "relevant": 0, "truncated": false, "mission_id": "m1"});
+    let col = execute(&code_of("qw_regles_web"), &m, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(rules_of(&col), vec!["COL-01"]);
+    assert_eq!(col["ecarts"][0]["props"]["etat"], "propose");
+}
+
+/// Every excerpt is cut from the page text of the test (word for word).
+fn msg_text_holds(_out: &serde_json::Value, quote: &str) -> bool {
+    "Préparez le RS 9999 Piloter un projet, éligible au CPF ! Tablette offerte pour toute inscription. \
+        Organisme certifié Qualiopi pour vos bilans de compétences. Formation SEO RS0101 en 2 jours."
+        .contains(quote)
+}
+
+#[test]
+fn a_finding_becomes_a_write_then_its_links() {
+    let e = json!({"payload": {"props": {"cle": "WEB-08:1:RS1:p", "etat": "a_valider"}, "title": "WEB-08 · X", "liens": {"concerne": "o", "sur": "c", "constate_dans": ""}},
+                   "object": {"id": "stale"}, "links": {"big": []}});
+    let w = execute(&code_of("qw_ecart"), &e, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (
+            w["payload"]["cle"].clone(),
+            w["title"].clone(),
+            w["object"].clone()
+        ),
+        (json!("WEB-08:1:RS1:p"), json!("WEB-08 · X"), json!(null))
+    );
+    let written = json!({"object": {"id": "e1"}, "liens": w["liens"].clone()});
+    let l = execute(&code_of("qw_liens"), &written, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(l["concerne"], json!({"source_id": "e1", "target_id": "o"}));
+    assert_eq!(l["sur"]["target_id"], "c");
+    assert!(l.get("constate_dans").is_none());
+}
