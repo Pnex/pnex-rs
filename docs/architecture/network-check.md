@@ -341,7 +341,7 @@ l'org 4 :
 | **R3** | D407 nœud `site_crawl` (cœur, runtime, route interne, garde, NodeDoc, palette, ftl, fiche) | `site_crawl.rs` (serveur de test local) |
 | **R4** | D408 preuve serveur par CDP | test sur le navigateur de test (`PNEX_BROWSER_URL`), ignoré sans |
 | **R5** | Règles et flows du pack (D409–D410), fiche `assistant-kb` | `pack_rules.rs` (chaque règle sur un cas positif et un négatif) |
-| **R6** | D415–D420 : dépôt des programmes, découpage, rattachements, PROG-01/02/03/04, tableau croisé et export xlsx | `pack_rules.rs` (découpage et règles sur RS0101 × OF EXEMPLE), test du nœud `sheet_write` |
+| **R6** | D415–D421 (OCR compris) : dépôt des programmes, découpage, rattachements, PROG-01/02/03/04, tableau croisé et export xlsx | `pack_rules.rs` (découpage et règles sur RS0101 × OF EXEMPLE), test du nœud `sheet_write` |
 | V2 | NOM-01, WEB-07, LIEU-01, CPF-04, collecte des programmes sur le site, `llm_extract`, vision WEB-06, sens « open data → client » de REG-01 | — |
 
 ## 5. Questions pour Shan (défaut retenu en attendant)
@@ -460,6 +460,21 @@ Il lit seulement, dans l'org du nœud déployé (R1). Un PDF en colonnes est le
 risque connu (D328) : il est à essayer sur le PDF de CERTIF EXEMPLE
 avant de figer.
 
+**Sans texte, OCR (Shan, 2026-10-24).** Un PDF scanné ou une image est lu
+par un modèle d'OCR de l'org. Ce modèle se charge comme les autres
+(registre des modèles, `ml_models`, D81–D83) : fichier ONNX déposé, contrôle
+de chargement et d'inférence, inférence en Rust. Il n'y a ni Python
+(D204), ni service tiers.
+
+- La tâche `ocr` est nouvelle, à côté de `detection`, avec une première
+  famille `paddleocr` : PP-OCR détection + reconnaissance, Apache-2.0, deux
+  fichiers ONNX et le dictionnaire des caractères.
+- Le texte lu porte `ocr: true`, et chaque extrait cité garde sa page.
+- Sans modèle d'OCR dans l'org, le nœud échoue en
+  `document-text-no-text`, et le message dit d'ajouter un modèle.
+- Licence et poids du modèle : à vérifier avant l'ajout (règle des briques
+  permissives).
+
 ### D417 — Découpage déterministe en modules
 
 La fonction du pack `qw_decouper` lit le texte et en tire les modules : un
@@ -538,13 +553,36 @@ partenaire) va du découpage aux rattachements, puis aux règles, aux écarts
 et au classeur. Le classeur est relié au programme (`constate_dans`) et
 téléchargeable depuis la médiathèque.
 
+### D421 — Les médias d'une page sont des objets reliés à la page (Shan, 2026-10-24)
+
+Un média trouvé dans une page pertinente devient un objet de l'ontologie,
+relié à la page, avec sa propre date. Au MVP, ce sont les documents liés
+(PDF, DOCX) ; plus tard, les images (logos, WEB-06 par la vision) et les
+vidéos.
+
+- Le parcours `site_crawl` relève les liens d'une page pertinente vers un
+  document. Il les récupère par le client gardé : même site ou hôtes
+  permis, 20 Mo au plus, plancher de 2 s, robots.txt.
+- Chacun est gardé en média `document` de l'org, une version par SHA-256
+  (D311), et relié à la page par le lien `contient` (nouveau, du pack) :
+  `url`, `vu_le`, `premiere_vue`, `sha256`.
+- Un document plus lié par la page voit son lien fermé à la date du
+  parcours (historique gardé, comme une page disparue).
+- Le média garde ses propres dates : la version et quand elle a été vue.
+  L'écart qui le cite (`constate_dans` vers `media_asset`, déjà permis) dit
+  donc quel fichier et de quand.
+- Le programme d'un partenaire peut être pris parmi ces documents :
+  - au MVP, un humain le choisit sur la page observée, « en faire le
+    programme » ;
+  - le choix automatique (titre ou contenu « programme » et code de la
+    certification) est en V2 avec D413.
+
 ### Questions pour Shan (défaut en attendant)
 
-- **Q-N6 — Programmes scannés** : faut-il de l'OCR ? **Défaut : non**. Un
-  PDF sans texte est refusé (`document_text`), et le client dépose un
-  DOCX.
+- **Q-N6 — Programmes scannés** : **tranché (Shan)** : OCR par un modèle de
+  l'org chargé comme les autres (D416).
 - **Q-N7 — Tolérance des heures** (PRD Q9) : **défaut 0 h**, réglable dans
   le pack.
-- **Q-N8 — Rattachement par l'intitulé** : il compte comme couverture pour
-  PROG-01 mais reste « à valider ». **Défaut : oui**, c'est la seule voie
-  sans LLM.
+- **Q-N8 — Rattachement par l'intitulé** : **tranché (Shan, confiance)** :
+  il compte comme couverture pour PROG-01 et reste « à valider ».
+- **Médias d'une page** : **tranché (Shan)**, D421.
