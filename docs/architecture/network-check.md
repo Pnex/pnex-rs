@@ -581,8 +581,14 @@ vidéos.
 
 - **Q-N6 — Programmes scannés** : **tranché (Shan)** : OCR par un modèle de
   l'org chargé comme les autres (D416).
-- **Q-N7 — Tolérance des heures** (PRD Q9) : **défaut 0 h**, réglable dans
-  le pack.
+- **Q-N7 — Tolérance des heures** (PRD Q9) : **tranché (Shan)** : tout
+  relever (« 4 h prévues, 3 h 30 faites » est un écart PROG-02) ;
+  `tolerance_heures` = 0 par défaut, réglable dans le pack. **En best
+  effort** : des heures illisibles d'un module ou d'une compétence ne lèvent
+  pas PROG-02 et ne font pas échouer le run ; elles donnent un écart
+  PROG-00 « heures non lues » (info), pour que l'humain sache que la
+  comparaison n'a pas pu se faire. Un rattachement incertain donne un écart
+  « à valider », jamais un blocage.
 - **Q-N8 — Rattachement par l'intitulé** : **tranché (Shan, confiance)** :
   il compte comme couverture pour PROG-01 et reste « à valider ».
 - **Médias d'une page** : **tranché (Shan)**, D421.
