@@ -223,6 +223,9 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::WebVisit { config } => rsx! {
             WebVisitForm { cx, initial: config.clone(), can_write }
         },
+        FlowNodeKind::SiteCrawl { config } => rsx! {
+            SiteCrawlForm { cx, initial: config.clone(), can_write }
+        },
         FlowNodeKind::MediaSource { config } => rsx! {
             MediaSourceForm { cx, initial: config.clone(), can_write }
         },
@@ -298,6 +301,7 @@ mod predict;
 mod range_upsert;
 mod reg;
 mod simple;
+mod site_crawl;
 mod site_recipe;
 mod text_decide;
 mod topic_classify;
@@ -335,6 +339,7 @@ use predict::{AnomalyForm, ForecastForm};
 use range_upsert::RangeUpsertForm;
 use reg::{RegPidForm, RegTtForm};
 use simple::{DebugForm, DisplayForm, MetricForm};
+use site_crawl::SiteCrawlForm;
 use site_recipe::SiteRecipeForm;
 use text_decide::TextDecideForm;
 use topic_classify::TopicClassifyForm;

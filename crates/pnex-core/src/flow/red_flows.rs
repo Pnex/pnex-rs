@@ -373,6 +373,17 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            // The backend reads the crawl options from the deployed graph (D407).
+            FlowNodeKind::SiteCrawl { .. } => {
+                padded_ports = Some(crate::site_crawl::NODE_PORT_COUNT);
+                serde_json::json!({
+                    "type": "pnex-site-crawl",
+                    "pnex_node_id": n.id,
+                    "pnex_flow_id": meta.flow_id,
+                    "pnex_version": meta.version_number,
+                    "pnex_org_id": meta.org_id,
+                })
+            }
             // The backend reads the thresholds from the deployed graph (D332).
             FlowNodeKind::OrgResolve { .. } => {
                 padded_ports = Some(crate::org_resolve::NODE_PORT_COUNT);

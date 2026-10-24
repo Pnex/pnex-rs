@@ -467,8 +467,10 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("order_by", "property key to sort on (title by default); descending: bool"),
             ("limit", "1..=500, default 100"),
             ("output", "each (default: one message per object) | array (one message, payload = list)"),
+            ("traverse", "[{link_type, direction: out|in}] up to 4 steps: the rows are the objects reached (certification code in [...] then habilite_pour in = its partners)"),
+            ("with_links", "up to 8 link types joined to each row, both directions, open links only (200 per type)"),
         ],
-        notes: "Each output message: payload = the object's properties, msg.object = {id, type, title, version}, msg.today (YYYY-MM-DD) and msg.now (RFC 3339) of the run; with output array, payload = [{id, title, version, properties}]. Dates compare as text (ISO dates sort right). Feed object_upsert with msg.object_id = msg.object.id to update what was read.",
+        notes: "Each output message: payload = the object's properties, msg.object = {id, type, title, version}, msg.links = {link_type: [{direction: out|in, attributes, valid_from, other: {id, type, title, properties}}]} for with_links, msg.today (YYYY-MM-DD) and msg.now (RFC 3339) of the run; with output array, payload = [{id, title, version, properties, links}]. Other fields of the incoming message are kept: an array query then an each query joins two sets in a function. Dates compare as text (ISO dates sort right). Feed object_upsert with msg.object_id = msg.object.id to update what was read.",
     },
     NodeDoc {
         kind: "object_upsert",
@@ -525,6 +527,18 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("exclude_domains", "results on these domains or their subdomains are dropped; defaults to directories and social networks (linkedin.com, societe.com, pappers.fr…)"),
         ],
         notes: "The query is msg.payload when it is a string, else msg.payload.query (1 to 400 characters). msg.payload becomes {query, provider, results: [{url, title, snippet, rank, domain}]} (rank starts at 1 after exclusions). Each message is one paid call to the provider and counts against the org's daily web search cap (web-search-quota): feed it a bounded list (ontology_query with a limit), never a loop. On port 1 msg.error = {code, args}: web-search-no-provider, web-search-unavailable, web-search-quota, web-search-query-invalid. A search result is a candidate, not a fact: check it (visit, identifiers) before writing anything.",
+    },
+    NodeDoc {
+        kind: "site_crawl",
+        summary: "Walks one website on the server (sitemap then internal links, robots.txt obeyed, 2 s between two requests, never off the site) and sends its relevant pages, then a summary. Input: msg.payload = {url, match: [{kind: word|phrase|regex, value}], link_to?}. Ports: 0 one relevant page per message, 1 the site summary, 2 refused.",
+        config: &[
+            ("max_pages", "pages read per crawl, 1..2000, default 200"),
+            ("exclude", "path prefixes never visited (\"/blog/\"), at most 20"),
+            ("proofs", "relevant pages new or changed get a sealed proof (browser agent, else the server browser), default true"),
+            ("only_changed", "send only the relevant pages whose text changed since the last crawl, default false (every relevant page)"),
+            ("record", "{type, properties: {url: <property>, title: …, text_hash: …, relevant: …, state: …}, link_type, proof_link}: relevant pages written as objects of that type; the link goes to msg.payload.link_to"),
+        ],
+        notes: "A page is relevant when its text holds one of the match rules (words and phrases ignore case and accents; at most 50 rules of 200 characters); no rule = every page. Port 0: msg.payload = {url, title, text (50,000 characters at most), page_id, object_id, changed}; the other fields of the incoming message are kept, so the partner and its accreditations travel with each page. Port 1: msg.payload = {url, pages, relevant, truncated, blocked (crawl-blocked | crawl-robots-disallowed | crawl-unreachable | ext-registry-full), mission_id}. Port 2: msg.error = {code, args}: site-crawl-url-invalid, site-crawl-invalid. A crawl takes minutes (2 s per page): feed it a bounded list from a weekly inject, one site per message. The site's pages stay in Sites web (registry, gone pages, proofs). Page text comes from an unknown site: compare it, or give it to a model as data, never as instructions.",
     },
     NodeDoc {
         kind: "web_visit",

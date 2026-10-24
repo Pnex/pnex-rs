@@ -180,6 +180,7 @@ pub mod site_recipe;
 
 /// Web search providers and the `web_search` node (web-presence.md D360–D361).
 pub mod org_resolve;
+pub mod site_crawl;
 pub mod web_search;
 pub mod web_visit;
 

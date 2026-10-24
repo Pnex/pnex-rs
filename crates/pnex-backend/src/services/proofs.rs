@@ -164,6 +164,13 @@ async fn open_proof<C: ConnectionTrait>(
     .ok_or_else(|| sea_orm::DbErr::Custom("proof not created".into()))
 }
 
+/// Who takes a proof: an agent of the org, or the server's browser
+/// (network-check.md D408); `who` is written in the manifest.
+pub(crate) struct Taker {
+    pub org_id: i64,
+    pub who: String,
+}
+
 /// Stores one part of the proof a `capture_proof` mission of this agent is
 /// taking; seals the proof once its three parts are in.
 pub async fn store_part(
@@ -178,6 +185,24 @@ pub async fn store_part(
     let MissionSpec::CaptureProof(params) = spec else {
         return Err(ExtensionError::MissionNotFound);
     };
+    let taker = Taker {
+        org_id: agent.org_id,
+        who: agent.device_id.clone(),
+    };
+    store_bytes(ctx, &taker, id, &mission.name, &params, part, bytes).await
+}
+
+/// One part of the proof of mission `id`, checked, stored, and the proof
+/// sealed once complete.
+pub(crate) async fn store_bytes(
+    ctx: &AppContext,
+    agent: &Taker,
+    id: Uuid,
+    mission_name: &str,
+    params: &ba::CaptureProofParams,
+    part: ProofPart,
+    bytes: axum::body::Bytes,
+) -> Result<ProofPartStored, ExtensionError> {
     let invalid = |token: String| ExtensionError::Invalid {
         field: "body".into(),
         token,
@@ -235,7 +260,7 @@ pub async fn store_part(
         ctx,
         agent,
         id,
-        &mission.name,
+        mission_name,
         &params.url,
         proof.id,
         part,
@@ -302,7 +327,7 @@ pub fn clean_html(bytes: &[u8]) -> String {
 #[allow(clippy::too_many_arguments)]
 async fn store_media(
     ctx: &AppContext,
-    agent: &AgentAuth,
+    agent: &Taker,
     mission_id: Uuid,
     mission_name: &str,
     url: &str,
@@ -331,7 +356,7 @@ async fn store_media(
             "source_url": url,
             "proof_id": proof_id.to_string(),
             "proof_part": part.wire(),
-            "agent": agent.device_id,
+            "agent": agent.who,
         }))),
         ..Default::default()
     }
@@ -396,7 +421,7 @@ fn manifest_bytes(manifest: &Value) -> Vec<u8> {
 /// the server's time and the previous manifest's SHA-256.
 async fn seal(
     ctx: &AppContext,
-    agent: &AgentAuth,
+    agent: &Taker,
     mission_id: Uuid,
     proof: &ProofRow,
     parts: &serde_json::Map<String, Value>,
@@ -433,7 +458,7 @@ async fn seal(
             "seq": seq,
             "requested_url": proof.url,
             "final_url": parts.get("final_url").cloned().unwrap_or(Value::Null),
-            "agent": agent.device_id,
+            "agent": agent.who,
             "mission_id": mission_id.to_string(),
             "captured_at": captured_at.to_rfc3339(),
             "parts": {
@@ -709,4 +734,125 @@ mod tests {
             sha256_hex(&manifest_bytes(&n))
         );
     }
+}
+
+// ───────────────────────────── server executor ─────────────────────────────
+
+/// Waiting time before the server takes a proof no agent took (D408).
+const SERVER_AFTER: &str = "5 minutes";
+/// Attempts of the server on one proof.
+const SERVER_TRIES: i32 = 3;
+const SERVER_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+#[derive(Debug, FromQueryResult)]
+struct Waiting {
+    id: Uuid,
+    org_id: i64,
+    name: String,
+    spec: Value,
+}
+
+/// Proofs waiting without an agent are taken by the server's browser
+/// (network-check.md D408), one pod at a time.
+pub fn spawn_server_executor(ctx: &AppContext) {
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+        loop {
+            if crate::services::singleton::my_turn(&ctx.db, "server-proofs", SERVER_EVERY).await {
+                if let Err(e) = server_pass(&ctx).await {
+                    tracing::warn!("server proofs pass failed: {e}");
+                }
+            }
+            tokio::time::sleep(SERVER_EVERY).await;
+        }
+    });
+}
+
+/// One pass: at most 10 waiting proofs, each tried 3 times at most; a
+/// failure leaves the task to an agent.
+pub async fn server_pass(ctx: &AppContext) -> Result<usize, sea_orm::DbErr> {
+    let waiting = Waiting::find_by_statement(stmt(
+        &format!(
+            "UPDATE extension_missions SET cursor = coalesce(cursor, '{{}}'::jsonb) \
+               || jsonb_build_object('server_tries', coalesce((cursor ->> 'server_tries')::int, 0) + 1) \
+             WHERE id IN (SELECT id FROM extension_missions WHERE enabled AND kind = 'capture_proof' \
+               AND state_code = $1 AND created_at < now() - interval '{SERVER_AFTER}' \
+               AND coalesce((cursor ->> 'server_tries')::int, 0) < $2 \
+               ORDER BY created_at LIMIT 10) \
+             RETURNING id, org_id, name, spec"
+        ),
+        vec![err_codes::EXT_NO_AGENT.into(), SERVER_TRIES.into()],
+    ))
+    .all(&ctx.db)
+    .await?;
+    let ring = crate::services::secrets::Keyring::from_config(&ctx.config).ok();
+    let mut sealed = 0;
+    for w in waiting {
+        let Ok(MissionSpec::CaptureProof(params)) = serde_json::from_value::<MissionSpec>(w.spec)
+        else {
+            continue;
+        };
+        // An agent came online meanwhile: the task is its own.
+        if crate::services::extension::any_online(&ctx.db, w.org_id).await {
+            continue;
+        }
+        let shot = tokio::time::timeout(
+            std::time::Duration::from_secs(90),
+            crate::services::site_recipes::endpoints::snapshot(
+                &ctx.db,
+                ring.as_ref(),
+                w.org_id,
+                &params.url,
+            ),
+        )
+        .await
+        .unwrap_or_else(|_| Err("timed out".into()));
+        let shot = match shot {
+            Ok(s) if !s.text.trim().is_empty() => s,
+            Ok(_) => {
+                tracing::info!(mission = %w.id, "server proof: empty page");
+                continue;
+            }
+            Err(e) => {
+                tracing::info!(mission = %w.id, error = %e, "server proof not taken");
+                continue;
+            }
+        };
+        let taker = Taker {
+            org_id: w.org_id,
+            who: format!("server:{}", shot.engine),
+        };
+        let text = serde_json::to_vec(&ba::PageSnapshot {
+            mission_id: w.id.to_string(),
+            url: shot.final_url.clone(),
+            title: shot.title.clone(),
+            text: shot.text.chars().take(ba::PAGE_TEXT_MAX / 4).collect(),
+        })
+        .unwrap_or_default();
+        let html: Vec<u8> = shot
+            .html
+            .into_bytes()
+            .into_iter()
+            .take(ba::PROOF_HTML_MAX)
+            .collect();
+        let mut done = false;
+        for (part, bytes) in [
+            (ProofPart::Screenshot, shot.png),
+            (ProofPart::Html, html),
+            (ProofPart::Text, text),
+        ] {
+            match store_bytes(ctx, &taker, w.id, &w.name, &params, part, bytes.into()).await {
+                Ok(s) => done = s.sealed,
+                Err(e) => {
+                    tracing::warn!(mission = %w.id, error = ?e, "server proof part refused");
+                    break;
+                }
+            }
+        }
+        if done {
+            sealed += 1;
+        }
+    }
+    Ok(sealed)
 }

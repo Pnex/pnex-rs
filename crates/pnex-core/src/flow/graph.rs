@@ -229,6 +229,12 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::web_visit::WebVisitConfig,
     },
+    /// The server crawl of a site started by the flow, relevance rules from
+    /// the message; one message per relevant page (network-check.md D407).
+    SiteCrawl {
+        #[serde(default)]
+        config: crate::site_crawl::SiteCrawlConfig,
+    },
     /// Event source of transcribed media segments (media-ingest.md D163):
     /// one message per segment (or sentence) of the listed streams.
     MediaSource {
@@ -414,6 +420,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "web_visit" => Ok(Self::WebVisit {
+                    config: opt_config(config)?,
+                }),
+                "site_crawl" => Ok(Self::SiteCrawl {
                     config: opt_config(config)?,
                 }),
                 "media_source" => Ok(Self::MediaSource {

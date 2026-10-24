@@ -191,12 +191,12 @@ fn sha256_hex(data: &[u8]) -> String {
 
 /// Records one page in the registry; a relevant page new or changed keeps
 /// its text as a document version, asks for a proof and updates its
-/// object. `Err(code)` = registry full.
+/// object. `Ok((page, changed))`; `Err(code)` = registry full.
 pub async fn register(
     ctx: &AppContext,
     c: &CrawlRef<'_>,
     seen: &Seen,
-) -> Result<SitePage, &'static str> {
+) -> Result<(SitePage, bool), &'static str> {
     let db = &ctx.db;
     let text_hash = sha256_hex(seen.text.as_bytes());
     let relevant = !seen.text.trim().is_empty() && c.relevance.matches(&seen.text);
@@ -281,7 +281,7 @@ pub async fn register(
                 .or(row.object_id);
         }
     }
-    Ok(row.view())
+    Ok((row.view(), changed))
 }
 
 /// The readable text of a relevant page as a version of its document
@@ -626,6 +626,8 @@ pub struct CrawlOutcome {
     pub relevant: usize,
     pub truncated: bool,
     pub blocked: Option<&'static str>,
+    /// The relevant pages read, text clipped (network-check.md D407).
+    pub found: Vec<pnex_core::site_crawl::SiteCrawlPage>,
 }
 
 /// Walks the site of a mission once.
@@ -746,10 +748,24 @@ pub async fn crawl(
             depth,
         };
         match register(ctx, &c, &seen).await {
-            Ok(p) => {
+            Ok((p, changed)) => {
                 out.pages += 1;
                 if p.state != "listed" {
                     out.relevant += 1;
+                    if out.found.len() < pnex_core::site_crawl::PAGES_OUT_MAX {
+                        out.found.push(pnex_core::site_crawl::SiteCrawlPage {
+                            url: p.url.clone(),
+                            title: p.title.clone(),
+                            text: seen
+                                .text
+                                .chars()
+                                .take(pnex_core::site_crawl::TEXT_MAX)
+                                .collect(),
+                            page_id: p.id.clone(),
+                            object_id: p.object_id.clone(),
+                            changed,
+                        });
+                    }
                 }
                 seen_urls.push(seen.url.clone());
             }
@@ -846,6 +862,7 @@ pub async fn store_report(
         },
     )
     .await
+    .map(|(page, _)| page)
     .map_err(|code| invalid("url", code))
 }
 

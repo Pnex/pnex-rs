@@ -277,3 +277,182 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
     })
     .await;
 }
+
+/// network-check.md D407: a flow's `site_crawl` node walks the site of its
+/// message with the message's rules, through a disabled mission kept per
+/// site, and answers the relevant pages and a summary.
+#[tokio::test]
+#[serial]
+async fn flow_node_crawls_the_site_of_its_message() {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, Set};
+    with_app(|server, ctx, alice| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let (st, _) = call(&server, "POST", "/api/v1/ontology/packs/quali_watch/install", &alice, org, None).await;
+        assert_eq!(st, 200);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = site(Arc::new(Mutex::new(false)));
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let (st, website) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(json!({
+            "type_key": "site_web", "title": "of.example", "properties": {"domaine": "127.0.0.1", "url_racine": format!("http://{addr}/")}
+        }))).await;
+        assert_eq!(st, 201, "{website}");
+
+        let flow = flows::ActiveModel {
+            name: Set("check".into()),
+            status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+            org_id: Set(org),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+        let version = flow_versions::ActiveModel {
+            flow_id: Set(flow.id),
+            version_number: Set(1),
+            graph: Set(json!({"nodes": [{"id": "crawl", "kind": "site_crawl", "config": {
+                "max_pages": 20, "proofs": false,
+                "record": {"type": "page_observee", "properties": {"url": "url", "title": "titre"}, "link_type": "page_de"}
+            }}]})),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+        let mut am: flows::ActiveModel = flow.clone().into();
+        am.deployed_version_id = Set(Some(version.id));
+        am.update(&ctx.db).await.unwrap();
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-sc-1") };
+        let crawl = |body: Value| {
+            let server = &server;
+            async move {
+                let res = server.post("/internal/flow/site-crawl").add_header("x-pnex-flow-token", "tok-sc-1").json(&body).await;
+                (res.status_code().as_u16(), serde_json::from_str::<Value>(&res.text()).unwrap_or(Value::Null))
+            }
+        };
+        let node = json!({"org_id": org, "flow_id": flow.id, "version": 1, "node_id": "crawl"});
+        let ask = json!({"node": node, "url": format!("http://{addr}/formations/x"),
+            "match": [{"kind": "regex", "value": "RNCP\\s?\\d{5}"}], "link_to": website["id"]});
+
+        let (st, r) = crawl(ask.clone()).await;
+        assert_eq!((st, r["port"].clone()), (200, json!(0)), "{r}");
+        let pages = r["pages"].as_array().unwrap();
+        assert_eq!(pages.len(), 1, "{r}");
+        assert!(pages[0]["url"].as_str().unwrap().ends_with("/formations/rncp"), "{r}");
+        assert!(pages[0]["text"].as_str().unwrap().contains("RNCP12345"), "{r}");
+        assert_eq!((pages[0]["changed"].clone(), pages[0]["object_id"].is_string()), (json!(true), true), "{r}");
+        assert_eq!((r["summary"]["pages"].clone(), r["summary"]["relevant"].clone()), (json!(3), json!(1)), "{r}");
+        // The page object hangs off the website (record link to link_to).
+        let linked = ctx.db.execute_unprepared(&format!(
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'page_de' AND valid_to IS NULL")).await.unwrap();
+        assert_eq!(linked.rows_affected(), 1);
+        // One disabled mission for the flows; a second pass reuses it.
+        let (st, r2) = crawl(ask.clone()).await;
+        assert_eq!(st, 200);
+        assert_eq!((r2["summary"]["mission_id"].clone(), r2["pages"][0]["changed"].clone()), (r["summary"]["mission_id"].clone(), json!(false)), "{r2}");
+        let missions = ctx.db.execute_unprepared(&format!(
+            "SELECT 1 FROM extension_missions WHERE org_id = {org} AND kind = 'crawl_site' AND NOT enabled")).await.unwrap();
+        assert_eq!(missions.rows_affected(), 1);
+
+        // Refusals on the failure port, with their code.
+        let mut bad = ask.clone();
+        bad["url"] = json!("ftp://x");
+        let (_, r) = crawl(bad).await;
+        assert_eq!((r["port"].clone(), r["code"].clone()), (json!(2), json!("site-crawl-url-invalid")), "{r}");
+        let mut bad = ask.clone();
+        bad["match"] = json!((0..60).map(|i| json!({"kind": "word", "value": format!("w{i}")})).collect::<Vec<_>>());
+        let (_, r) = crawl(bad).await;
+        assert_eq!((r["code"].clone(), r["args"]["field"].clone()), (json!("site-crawl-invalid"), json!("match")), "{r}");
+        let mut forged = ask.clone();
+        forged["node"]["node_id"] = json!("nope");
+        let (st, _) = crawl(forged).await;
+        assert_eq!(st, 403);
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
+
+/// network-check.md D408: a proof no agent took is tried by the server's
+/// browser, three times at most; without a browser it stays for an agent.
+#[tokio::test]
+#[serial]
+async fn waiting_proofs_are_tried_by_the_server_a_bounded_number_of_times() {
+    with_app(|server, ctx, alice| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        unsafe { std::env::set_var("PNEX_BROWSER_URL", "http://127.0.0.1:1") };
+        let spec = json!({"kind": "capture_proof", "params": {"url": "https://of.example.fr/rs", "page_id": "00000000-0000-0000-0000-000000000000"}});
+        let fresh = uuid::Uuid::new_v4();
+        let old = uuid::Uuid::new_v4();
+        for (id, age) in [(fresh, "0 minutes"), (old, "10 minutes")] {
+            ctx.db.execute_unprepared(&format!(
+                "INSERT INTO extension_missions (id, org_id, name, kind, spec, target, interval_secs, enabled, state_code, created_at) \
+                 VALUES ('{id}', {org}, 'Proof', 'capture_proof', '{spec}', 'web:of.example.fr', 86400, true, 'ext-no-agent', now() - interval '{age}')"
+            )).await.unwrap();
+        }
+        for _ in 0..4 {
+            let sealed = pnex_backend::services::proofs::server_pass(&ctx).await.unwrap();
+            assert_eq!(sealed, 0);
+        }
+        let tries = |id: uuid::Uuid| {
+            let db = &ctx.db;
+            async move {
+                db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres,
+                    format!("SELECT coalesce((cursor ->> 'server_tries')::int, 0) AS n, enabled FROM extension_missions WHERE id = '{id}'")))
+                    .await.unwrap().map(|r| (r.try_get::<i32>("", "n").unwrap(), r.try_get::<bool>("", "enabled").unwrap())).unwrap()
+            }
+        };
+        assert_eq!(tries(old).await, (3, true), "bounded, and left to an agent");
+        assert_eq!(tries(fresh).await, (0, true), "an agent gets 5 minutes first");
+        unsafe { std::env::remove_var("PNEX_BROWSER_URL") };
+    })
+    .await;
+}
+
+/// The server snapshot on a real browser and a public page:
+/// `PNEX_BROWSER_URL=http://127.0.0.1:9222 cargo test --test site_crawl server_snapshot_of_a_public_page -- --ignored`.
+#[tokio::test]
+#[serial]
+#[ignore]
+async fn server_snapshot_of_a_public_page() {
+    with_app(|server, ctx, alice| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        let shot = pnex_backend::services::site_recipes::endpoints::snapshot(
+            &ctx.db,
+            None,
+            org,
+            "https://example.com/",
+        )
+        .await
+        .unwrap();
+        assert!(shot.png.starts_with(b"\x89PNG"), "png");
+        assert!(shot.text.contains("documentation"), "{}", shot.text);
+        assert!(shot.html.contains("<html"), "html");
+        println!(
+            "engine {} · png {} bytes · html {} · text {}",
+            shot.engine,
+            shot.png.len(),
+            shot.html.len(),
+            shot.text.len()
+        );
+    })
+    .await;
+}

@@ -700,6 +700,11 @@ pub const WEB_VISIT_UNREACHABLE: &str = "web-visit-unreachable";
 pub const WEB_VISIT_BLOCKED: &str = "web-visit-blocked";
 /// The org passed its daily number of visits; `args.cap`.
 pub const WEB_VISIT_QUOTA: &str = "web-visit-quota";
+/// A `site_crawl` address that is not an http(s) site (network-check.md D407).
+pub const SITE_CRAWL_URL_INVALID: &str = "site-crawl-url-invalid";
+/// The crawl the message describes is refused (too many rules, a rule too
+/// long, a bad regular expression); `args.field`.
+pub const SITE_CRAWL_INVALID: &str = "site-crawl-invalid";
 /// A proposal already decided the other way, or superseded (proposals.md D373).
 pub const PROPOSAL_DECIDED: &str = "proposal-decided";
 /// Making a property unique (D302) on a type whose objects already share\nvalues; `args.property`, `args.values` (first duplicates, comma-separated).
@@ -915,6 +920,8 @@ pub const ALL: &[&str] = &[
     WEB_VISIT_UNREACHABLE,
     WEB_VISIT_BLOCKED,
     WEB_VISIT_QUOTA,
+    SITE_CRAWL_URL_INVALID,
+    SITE_CRAWL_INVALID,
     PROPOSAL_DECIDED,
     ONTOLOGY_UNIQUE_DUPLICATES,
     CASE_LEGAL_BASIS_REQUIRED,
