@@ -471,14 +471,18 @@ fn network_rules_read_registry_facts() {
                 joined("ceased", "OF CESSE", json!({"siren": "111111111", "etat_administratif": "cesse", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux"})),
                 joined("eval", "OF EVAL", json!({"siren": "222222222", "qualiopi": false, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "evaluation"})),
                 joined("old", "OF ANCIEN", json!({"siren": "333333333"}), json!({"perimetre": "les_deux", "etat_fc": "inactif", "date_fin": "2026-01-31", "source": "page_fc"})),
-                joined("ok", "OF EXEMPLE", json!({"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux", "etat_fc": "actif"}))
+                joined("ok", "OF EXEMPLE", json!({"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux", "etat_fc": "actif"})),
+            // Accredited to prepare: its offers from another establishment
+            // (SIRET) are matched by SIREN and are not CPF-01.
+            joined("aud", "OF AUTRE SITE", json!({"siren": "520388901", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "preparation", "etat_fc": "actif"}))
             ],
             "porte_sur": [
                 joined("o1", "OF HORS RESEAU · SEO", json!({"siret": "88024436300011", "id_action": "S_SEO", "vue_le": "2026-10-23"}), json!({})),
                 joined("o2", "OF EVAL · SEO", json!({"siret": "22222222200010", "id_action": "E_SEO", "vue_le": "2026-10-23"}), json!({})),
                 joined("o3", "OF ANCIEN · SEO", json!({"siret": "33333333300010", "id_action": "A_SEO", "vue_le": "2026-10-23"}), json!({})),
                 joined("o4", "OF EXEMPLE · SEO", json!({"siret": "10000000900024", "id_action": "P_SEO", "vue_le": "2026-10-23"}), json!({})),
-                joined("o5", "CERTIF EXEMPLE · SEO", json!({"siret": "20000000800010", "id_action": "W_SEO", "vue_le": "2026-10-23"}), json!({}))
+                joined("o5", "CERTIF EXEMPLE · SEO", json!({"siret": "20000000800010", "id_action": "W_SEO", "vue_le": "2026-10-23"}), json!({})),
+            joined("o6", "OF AUTRE SITE · SEO", json!({"siret": "52038890100065", "id_action": "AUD_SEO", "vue_le": "2026-10-23"}), json!({}))
             ]
         }),
     );
