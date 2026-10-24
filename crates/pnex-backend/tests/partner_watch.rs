@@ -171,9 +171,9 @@ async fn natural_keys_extensions_and_hierarchy() {
             4
         );
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM flows WHERE org_id = {org}")).await, 4);
-        // SIRENE, GLEIF ×2, Wikidata, the partner sheet and the five France
-        // Compétences imports.
-        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 10);
+        // SIRENE, GLEIF ×2, Wikidata, the partner sheet, the five France
+        // Compétences imports, and the network's SIRENE, DGEFP and CPF ×2.
+        assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM object_imports WHERE org_id = {org}")).await, 14);
 
         // D302: one live organization per SIREN.
         let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789"})).await;
@@ -2345,6 +2345,205 @@ async fn partners_import_memory() {
         // The org id comes back in the next test: its staging is emptied.
         empty_staging(org).await;
         unsafe { std::env::remove_var("PNEX_DATAGOUV_API_URL") };
+    })
+    .await;
+}
+
+/// A deployed flow made of `nodes` (one version, deployed).
+async fn deploy_graph(db: &DatabaseConnection, org: i64, nodes: Value) -> i64 {
+    use pnex_backend::models::_entities::{flow_versions, flows};
+    use sea_orm::{ActiveModelTrait, Set};
+    let flow = flows::ActiveModel {
+        name: Set("network".into()),
+        status: Set(pnex_core::FLOW_STATUS_DEPLOYED.into()),
+        org_id: Set(org),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let version = flow_versions::ActiveModel {
+        flow_id: Set(flow.id),
+        version_number: Set(1),
+        graph: Set(json!({ "nodes": nodes })),
+        ..Default::default()
+    }
+    .insert(db)
+    .await
+    .unwrap();
+    let id = flow.id;
+    let mut am: flows::ActiveModel = flow.into();
+    am.deployed_version_id = Set(Some(version.id));
+    am.update(db).await.unwrap();
+    id
+}
+
+/// The DGEFP list and the CPF catalogue, as opendatasoft serves them; the
+/// SIRENs the DGEFP mock was asked for are recorded.
+async fn mock_training_registers(
+    asked: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    partner: &str,
+    outsider_siret: &str,
+) -> String {
+    use axum::extract::RawQuery;
+    use axum::routing::get;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let partner = partner.to_string();
+    let p2 = partner.clone();
+    let outsider = outsider_siret.to_string();
+    let dgefp = move |RawQuery(q): RawQuery| {
+        let (asked, partner) = (asked.clone(), partner.clone());
+        async move {
+            let q = q.unwrap_or_default();
+            let siren = q
+                .split("refine=siren%3A")
+                .nth(1)
+                .or(q.split("refine=siren:").nth(1))
+                .unwrap_or_default()
+                .chars()
+                .take(9)
+                .collect::<String>();
+            asked.lock().unwrap().push(siren.clone());
+            let results = if siren == partner {
+                vec![
+                    json!({"siren": partner, "numerodeclarationactivite": "11000000000",
+                    "certifications_actionsdeformation": "true", "certifications_bilansdecompetences": "false",
+                    "certifications_vae": null, "certifications_actionsdeformationparapprentissage": "false",
+                    "certifications": ["Actions de formations"],
+                    "informationsdeclarees_datedernieredeclaration": "11/04/2026"}),
+                ]
+            } else {
+                vec![]
+            };
+            axum::Json(json!({"total_count": results.len(), "results": results}))
+        }
+    };
+    let cpf = move |RawQuery(q): RawQuery| {
+        let (partner, outsider) = (p2.clone(), outsider.clone());
+        async move {
+            let q = q.unwrap_or_default();
+            let row = |siret: &str, of: &str, num: &str| {
+                json!({
+                "date_extract": "2026-10-23", "nom_of": of, "type_referentiel": "RS",
+                "code_inventaire": "0101", "code_rncp": "-1", "siret": siret,
+                "numero_formation": num, "intitule_formation": "Piloter le référencement d'un site",
+                "nombre_heures_total_mean": 7, "frais_ttc_tot_mean": 1650.0, "nb_session_a_distance": 1})
+            };
+            let rows = if q.contains("code_inventaire%3A0101") || q.contains("code_inventaire:0101")
+            {
+                vec![
+                    row(&format!("{partner}00024"), "OF EXEMPLE", "P_SEO"),
+                    // The same training in another region: one offer.
+                    row(&format!("{partner}00024"), "OF EXEMPLE", "P_SEO"),
+                    row(&outsider, "OF HORS RESEAU", "S_SEO"),
+                ]
+            } else {
+                vec![]
+            };
+            axum::Json(Value::Array(rows))
+        }
+    };
+    let app = axum::Router::new()
+        .route("/dgefp/records", get(dgefp))
+        .route("/cpf/exports/json", get(cpf));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    base
+}
+
+/// network-check.md D402–D405: the training registers are queried for the
+/// network only, CPF offers arrive by certification (an outsider selling
+/// it included), and a query reads the network with its links.
+#[tokio::test]
+#[serial]
+async fn network_registers_and_query() {
+    with_app(|server, env| async move {
+        use sea_orm::Statement;
+        let org = personal_org(&server, &env.alice).await;
+        install(&server, &env.alice, org, "quali_watch").await;
+        let (partner, certifier, stranger) = (with_luhn("83037034"), with_luhn("79015057"), with_luhn("11122233"));
+        let outsider_siret = format!("{}00011", with_luhn("88024436"));
+        let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let base = mock_training_registers(asked.clone(), &partner, &outsider_siret).await;
+        let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
+        for (from, to) in [
+            ("https://dgefp.opendatasoft.com/api/explore/v2.1/catalog/datasets/liste-publique-des-of-v2", format!("{base}/dgefp")),
+            ("https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation", format!("{base}/cpf")),
+        ] {
+            sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
+        }
+        let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101",
+            json!({"code": "RS0101", "numero": "0101", "repertoire": "rs", "intitule": "Piloter le référencement d'un site"})).await;
+        let mut ids = std::collections::HashMap::new();
+        for (name, siren) in [("OF EXEMPLE", &partner), ("CERTIF EXEMPLE", &certifier), ("STRANGER", &stranger)] {
+            let (st, r) = object(&server, &env.alice, org, "organization", name, json!({"siren": siren})).await;
+            assert_eq!(st, 201, "{r}");
+            ids.insert(name, r["id"].as_str().unwrap().to_string());
+        }
+        for (link, from, attrs) in [("habilite_pour", "OF EXEMPLE", json!({"perimetre": "les_deux", "etat_fc": "actif"})), ("porte", "CERTIF EXEMPLE", json!({}))] {
+            let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
+                Some(json!({"link_type": link, "source_id": ids[from], "target_id": cert["id"], "attributes": attrs}))).await;
+            assert_eq!(st, 201, "{r}");
+        }
+        let run = |name: &'static str| {
+            let (server, token) = (&server, env.alice.clone());
+            async move {
+                let (id, _) = import_named(server, &token, org, name).await;
+                let (st, r) = call(server, "POST", &format!("/api/v1/ontology/imports/{id}/runs"), &token, org, None).await;
+                assert_eq!(st, 202, "{r}");
+                let r = settle_within(server, &token, org, &id, r["id"].as_str().unwrap(), 300).await;
+                assert_eq!(r["run"]["state"], "applied", "{name}: {r}");
+                r
+            }
+        };
+
+        // D403: the partner and the certifier, never the stranger.
+        run("DGEFP · training organizations (network)").await;
+        let mut got = asked.lock().unwrap().clone();
+        got.sort();
+        let mut want = vec![partner.clone(), certifier.clone()];
+        want.sort();
+        assert_eq!(got, want);
+        let p = props_of(&env.db, org, "organization", "siren", &partner).await;
+        assert_eq!((p["nda"].as_str(), p["qualiopi"].as_bool(), p["qualiopi_bilans"].as_bool()), (Some("11000000000"), Some(true), Some(false)), "{p}");
+        assert_eq!((p["qualiopi_categories"].as_str(), p["qualiopi_maj"].as_str()), (Some("Actions de formations"), Some("2026-04-11")), "{p}");
+        assert!(p.get("qualiopi_vae").is_none(), "a null flag writes nothing: {p}");
+
+        // D405: one offer per training, the outsider created.
+        let r = run("CPF catalogue · RS certifications").await;
+        assert!(r["diff"]["errors"].as_array().is_none_or(|e| e.is_empty()), "{r}");
+        let o = props_of(&env.db, org, "offre_cpf", "id_action", "P_SEO").await;
+        assert_eq!((o["duree_heures"].as_f64(), o["a_distance"].as_bool(), o["vue_le"].as_str()), (Some(7.0), Some(true), Some("2026-10-23")), "{o}");
+        let outsider = props_of(&env.db, org, "organization", "siren", &outsider_siret[..9]).await;
+        assert!(outsider.is_object(), "the outsider selling the certification exists");
+        let n = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'offre_de' AND valid_to IS NULL")).await.unwrap();
+        assert_eq!(n.rows_affected(), 2);
+
+        // D402: the partners of RS0101 with their accreditations, and the
+        // certification with its offers.
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-pw-1") };
+        let flow = deploy_graph(&env.db, org, json!([
+            {"id": "net", "kind": "ontology_query", "config": {"object_type": "certification",
+              "filters": [{"key": "code", "op": "in", "value": ["RS0101"]}],
+              "traverse": [{"link_type": "habilite_pour", "direction": "in"}],
+              "with_links": ["habilite_pour", "a_pour_site"]}},
+            {"id": "offers", "kind": "ontology_query", "config": {"object_type": "certification",
+              "with_links": ["porte_sur", "porte"]}}
+        ])).await;
+        let node = |id: &str| json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": id});
+        let (st, r) = internal(&server, "query", json!({"node": node("net")})).await;
+        assert_eq!((st, r["count"].clone()), (200, json!(1)), "{r}");
+        assert_eq!(r["rows"][0]["object"]["title"], "OF EXEMPLE");
+        let h = &r["rows"][0]["links"]["habilite_pour"][0];
+        assert_eq!((h["direction"].as_str(), h["attributes"]["perimetre"].as_str(), h["other"]["properties"]["code"].as_str()),
+            (Some("out"), Some("les_deux"), Some("RS0101")), "{r}");
+        assert!(r["rows"][0]["links"].get("a_pour_site").is_none(), "no site, no key: {r}");
+        let (st, r) = internal(&server, "query", json!({"node": node("offers")})).await;
+        assert_eq!(st, 200, "{r}");
+        let l = &r["rows"][0]["links"];
+        assert_eq!(l["porte_sur"].as_array().map(Vec::len), Some(2), "{r}");
+        assert_eq!((l["porte_sur"][0]["direction"].as_str(), l["porte"][0]["other"]["title"].as_str()), (Some("in"), Some("CERTIF EXEMPLE")), "{r}");
+        unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
     })
     .await;
 }

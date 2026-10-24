@@ -14,8 +14,8 @@ use pnex_core::ontology::api::{
     LinkInput, ObjectInput, OntologyQuery, PropertyFilter, QueryResult,
 };
 use pnex_core::ontology::flow::{
-    FlowLinkRequest, FlowNodeRef, FlowQueryRequest, FlowUpsertAck, FlowUpsertRequest,
-    WRITES_PER_MINUTE,
+    FlowLinkRequest, FlowNodeRef, FlowQueryReply, FlowQueryRequest, FlowQueryRow, FlowUpsertAck,
+    FlowUpsertRequest, LINKS_PER_ROW_MAX, WRITES_PER_MINUTE,
 };
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::Value;
@@ -107,7 +107,7 @@ fn spend(org_id: i64) -> std::result::Result<(), NodeError> {
 pub async fn query(
     db: &DatabaseConnection,
     req: &FlowQueryRequest,
-) -> std::result::Result<QueryResult, NodeError> {
+) -> std::result::Result<FlowQueryReply, NodeError> {
     let FlowNodeKind::OntologyQuery { config } = deployed(db, &req.node).await? else {
         return Err(NodeError::NotDeployed);
     };
@@ -130,9 +130,112 @@ pub async fn query(
         order_by: config.order_by.clone(),
         descending: config.descending,
         limit: Some(config.limit.unwrap_or(100)),
+        traverse: config.traverse.clone(),
         ..Default::default()
     };
-    Ok(query::run(db, None, req.node.org_id, &q).await?)
+    let result = query::run(db, None, req.node.org_id, &q).await?;
+    let mut links = joined_links(db, req.node.org_id, &result, &config.with_links).await?;
+    Ok(FlowQueryReply {
+        count: result.count,
+        rows: result
+            .rows
+            .into_iter()
+            .map(|r| FlowQueryRow {
+                links: links.remove(&r.object.id).unwrap_or_default(),
+                object: r.object,
+            })
+            .collect(),
+    })
+}
+
+/// Open links of `types` touching the rows, by row id then link type
+/// (network-check.md D402): one statement for the links, one for their
+/// other ends.
+async fn joined_links(
+    db: &DatabaseConnection,
+    org_id: i64,
+    result: &QueryResult,
+    types: &[String],
+) -> Result<HashMap<String, serde_json::Map<String, Value>>> {
+    let mut out: HashMap<String, serde_json::Map<String, Value>> = HashMap::new();
+    let ids: Vec<Uuid> = result
+        .rows
+        .iter()
+        .filter_map(|r| Uuid::parse_str(&r.object.id).ok())
+        .collect();
+    if types.is_empty() || ids.is_empty() {
+        return Ok(out);
+    }
+    let now = chrono::Utc::now();
+    let edges = resource_edges::Entity::find()
+        .filter(resource_edges::Column::OrgId.eq(org_id))
+        .filter(resource_edges::Column::Relation.is_in(types.iter().cloned()))
+        .filter(resource_edges::Column::ValidFrom.lte(now))
+        .filter(
+            sea_orm::Condition::any()
+                .add(resource_edges::Column::ValidTo.is_null())
+                .add(resource_edges::Column::ValidTo.gt(now)),
+        )
+        .filter(
+            sea_orm::Condition::any()
+                .add(resource_edges::Column::SourceObjectId.is_in(ids.clone()))
+                .add(resource_edges::Column::TargetObjectId.is_in(ids.clone())),
+        )
+        .order_by_asc(resource_edges::Column::Id)
+        .all(db)
+        .await?;
+    let others: Vec<Uuid> = edges
+        .iter()
+        .flat_map(|e| [e.source_object_id, e.target_object_id])
+        .flatten()
+        .collect();
+    let s = schema(db, org_id).await?;
+    let ends: HashMap<Uuid, Value> = crate::models::_entities::objects::Entity::find()
+        .filter(crate::models::_entities::objects::Column::OrgId.eq(org_id))
+        .filter(crate::models::_entities::objects::Column::Id.is_in(others))
+        .all(db)
+        .await?
+        .iter()
+        .map(|o| {
+            let v = objects::view(o, &s);
+            (
+                o.id,
+                serde_json::json!({
+                    "id": v.id, "type": v.type_key, "title": v.title, "properties": v.properties,
+                }),
+            )
+        })
+        .collect();
+    let rows: std::collections::HashSet<Uuid> = ids.into_iter().collect();
+    for e in &edges {
+        for (here, there, direction) in [
+            (e.source_object_id, e.target_object_id, "out"),
+            (e.target_object_id, e.source_object_id, "in"),
+        ] {
+            let (Some(here), Some(there)) = (here, there) else {
+                continue;
+            };
+            let Some(other) = ends.get(&there).filter(|_| rows.contains(&here)) else {
+                continue;
+            };
+            let list = out
+                .entry(here.to_string())
+                .or_default()
+                .entry(e.relation.clone())
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Value::Array(a) = list {
+                if a.len() < LINKS_PER_ROW_MAX {
+                    a.push(serde_json::json!({
+                        "direction": direction,
+                        "attributes": e.attributes,
+                        "valid_from": e.valid_from.to_rfc3339(),
+                        "other": other,
+                    }));
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// `object_upsert`: on the natural key (or the id), created when absent.
@@ -333,15 +436,23 @@ fn view(l: pnex_core::ontology::api::LinkView) -> Value {
 
 /// What a node needs in the org schema.
 enum Need {
-    Type(String),
-    Writable { object_type: String, key: String },
+    Query {
+        object_type: String,
+        links: Vec<String>,
+    },
+    Writable {
+        object_type: String,
+        key: String,
+    },
     Link(String),
 }
 
 impl Need {
     fn met(&self, s: &super::OrgSchema) -> bool {
         match self {
-            Self::Type(t) => s.knows(t),
+            Self::Query { object_type, links } => {
+                s.knows(object_type) && links.iter().all(|l| s.link_type(l).is_some())
+            }
             Self::Writable { object_type, key } => s.object_type(object_type).is_some_and(|t| {
                 !t.native()
                     && (key == "id" || t.properties.iter().any(|p| &p.key == key && p.unique))
@@ -364,7 +475,10 @@ pub async fn deploy_violations(
         let (check, need) = match &n.kind {
             FlowNodeKind::OntologyQuery { config } => (
                 config.check_deployable(),
-                Need::Type(config.object_type.clone()),
+                Need::Query {
+                    object_type: config.object_type.clone(),
+                    links: config.link_types().cloned().collect(),
+                },
             ),
             FlowNodeKind::ObjectUpsert { config } => (
                 config.check_deployable(),

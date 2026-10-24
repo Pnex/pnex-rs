@@ -566,6 +566,10 @@ async fn per_object_values<C: ConnectionTrait>(
             "SELECT properties ->> $3 AS v FROM objects \
              WHERE org_id = $1 AND type_key = $2 AND valid_to IS NULL AND properties ? $3 \
                AND ($6::text IS NULL OR properties ->> $6 = ANY($7)) \
+               AND (cardinality($8::text[]) = 0 OR EXISTS (SELECT 1 FROM resource_edges e \
+                 WHERE e.org_id = $1 AND e.relation = ANY($8) \
+                   AND (e.source_object_id = objects.id OR e.target_object_id = objects.id) \
+                   AND e.valid_from <= now() AND (e.valid_to IS NULL OR e.valid_to > now()))) \
              ORDER BY (properties ->> $3) <= coalesce($5, ''), properties ->> $3 LIMIT $4",
             vec![
                 imp.org_id.into(),
@@ -579,6 +583,7 @@ async fn per_object_values<C: ConnectionTrait>(
                     .map(|o| o.values.clone())
                     .unwrap_or_default()
                     .into(),
+                p.linked.clone().into(),
             ],
         ))
         .await?;
