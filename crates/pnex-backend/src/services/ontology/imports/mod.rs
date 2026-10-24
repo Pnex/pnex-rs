@@ -1694,7 +1694,8 @@ pub async fn kept(
             let row = row?;
             let current = current_content(&row).unwrap_or(Value::Null);
             let written = row.pack_written.as_ref().map(|w| &w["written"]);
-            (current != shipped && written != Some(&current))
+            // Created before `pack_written` (beta, no history): the pack's.
+            (current != shipped && written.is_some() && written != Some(&current))
                 .then(|| (pack.imports[i].name.clone(), differs(&current, &shipped)))
         })
         .collect())
@@ -1751,7 +1752,8 @@ pub async fn install_from_pack(
                     }
                     continue;
                 }
-                let pristine = current.is_some() && written == current.as_ref();
+                let pristine =
+                    current.is_some() && (written.is_none() || written == current.as_ref());
                 if !pristine && !take.contains(&p.name) {
                     continue;
                 }

@@ -389,9 +389,9 @@ Même règle que pour les fonctions et les flows (D368) :
 - **Reprise** : `take` sur un import met la version du pack et garde les
   réglages d'exploitation. Pas de fusion automatique : la liste de
   `differs` sert d'aperçu.
-- **Imports créés avant 000052** (sans `pack_written`) : ceux qui diffèrent
-  du pack sont listés comme modifiés, faute de savoir ce que le pack y
-  avait écrit. Une reprise les remet dans le circuit normal.
+- **Imports créés avant 000052** (sans `pack_written`) : ils prennent la
+  version du pack à la montée suivante, comme s'ils étaient intacts (bêta,
+  rien à préserver : décision de Shan, 2026-10-24).
 
 ### D425 — Le filtre de lignes d'une étape suit un réglage de pack
 

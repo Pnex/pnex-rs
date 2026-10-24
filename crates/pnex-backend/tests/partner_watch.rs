@@ -1124,6 +1124,10 @@ async fn pack_upgrade_follows_untouched_imports() {
                 (r.try_get::<String>("", "mapping_yaml").unwrap(), r.try_get::<Option<Value>>("", "recurrence").unwrap(), r.try_get::<i32>("", "version").unwrap())
             }
         };
+        // An import from before `pack_written`: the pack's at the upgrade.
+        let dgefp = "DGEFP · training organizations (network)";
+        sql(format!("UPDATE object_imports SET mapping_yaml = replace(mapping_yaml, 'organizations (DGEFP)', 'orgs old'), \
+                     pack_written = NULL WHERE org_id = {org} AND name = '{dgefp}'")).await;
         let (_, _, rs_version) = mapping_of(rs).await;
         // D359: the pack's retired ingestion flow, as 1.4.0 left it, and a
         // flow of the org holding the retired node.
@@ -1149,6 +1153,7 @@ async fn pack_upgrade_follows_untouched_imports() {
         assert_eq!((up["kept"].clone(), up["differs"].clone()), (json!([rncp]), json!({rncp: ["mapping.name"]})), "{up}");
         let (yaml, _, v) = mapping_of(rs).await;
         assert!(yaml.contains("offers (RS)") && v == rs_version + 1, "untouched import upgraded: {yaml}");
+        assert!(mapping_of(dgefp).await.0.contains("organizations (DGEFP)"), "legacy import upgraded");
         let (yaml, recurrence, _) = mapping_of(rncp).await;
         assert!(yaml.contains("my offers"), "edited import kept");
         let left = |id: i64| { let db = env.db.clone(); async move {
