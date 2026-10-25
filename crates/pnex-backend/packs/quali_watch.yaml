@@ -41,7 +41,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.5.0"
+version: "1.5.1"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -1165,45 +1165,9 @@ functions:
     code: |
       # The certifications watched, with their exact title and their
       # certifiers' names, kept in msg.reseau for the website rules.
-      FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
-              "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
-              "œ": "oe", "æ": "ae", "’": "'"}
-      PUNCT = [",", ".", ";", ":", "!", "?", "(", ")", "[", "]", "«", "»", "\"", "/", "-", "–", "—", "_", "'", "&", "+", "*", "|", " "]
-
-      def fold(s):
-          s = s.lower()
-          for k, v in FOLD.items():
-              s = s.replace(k, v)
-          return s
-
-      def norm(s):
-          s = fold(s)
-          for c in PUNCT:
-              s = s.replace(c, " ")
-          return " ".join(s.split())
-
       def setting_list(key):
           raw = pack_setting(key, "") or ""
           return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
-
-      def active(code):
-          return code not in setting_list("quali_watch.regles_inactives")
-
-      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
-          return {
-              "props": {
-                  "cle": (rule + ":" + key)[:255],
-                  "attendu": attendu[:2000],
-                  "constate": constate[:2000],
-                  "extrait": extrait[:2000],
-                  "gravite": gravite,
-                  "etat": etat,
-                  "detecte_le": now,
-                  "regle_version": VERSION,
-              },
-              "title": (rule + " · " + title)[:250],
-              "liens": liens,
-          }
 
       def handle(inputs, msg):
           codes = setting_list("quali_watch.certifications")
