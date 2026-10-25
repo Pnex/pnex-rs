@@ -60,6 +60,10 @@ pub struct TokenSpec {
     pub email_verified: bool,
 }
 
+/// Test tokens outlive any test: a token minted when a test starts must
+/// not expire on a slow runner before the test ends (a 1 h token did).
+const TOKEN_LIFETIME_SECS: i64 = 24 * 3600;
+
 impl Default for TokenSpec {
     fn default() -> Self {
         Self {
@@ -68,7 +72,7 @@ impl Default for TokenSpec {
             email: "alice@example.com".into(),
             given_name: "Alice".into(),
             family_name: "Martin".into(),
-            exp: chrono::Utc::now().timestamp() + 3600,
+            exp: chrono::Utc::now().timestamp() + TOKEN_LIFETIME_SECS,
             email_verified: true,
             issuer: String::new(),
             audience: serde_json::json!(["account", "pnex"]),
@@ -126,7 +130,7 @@ pub fn lean_token(base_url: &str, sub: &str, email: &str) -> String {
         // Slash final obligatoire : issuer Rauthy = `{base}/auth/v1/`.
         "iss": format!("{base_url}/auth/v1/"),
         "aud": ["account", "pnex"],
-        "exp": chrono::Utc::now().timestamp() + 3600,
+        "exp": chrono::Utc::now().timestamp() + TOKEN_LIFETIME_SECS,
     });
     jsonwebtoken::encode(&header, &claims, &encoding_key()).expect("signature token test")
 }
