@@ -1,4 +1,4 @@
-# Contrôle d'un réseau de partenaires de bout en bout (D402–D425)
+# Contrôle d'un réseau de partenaires de bout en bout (D402–D431)
 
 > **Statut : proposé (2026-10-24)**, demande de la session `pnex-quali-watch`
 > (Shan : « coder tout ce qu'il faut […] et anticiper les futurs dév pour
@@ -684,3 +684,216 @@ vidéos.
 - **Q-N8 — Rattachement par l'intitulé** : **tranché (Shan, confiance)** :
   il compte comme couverture pour PROG-01 et reste « à valider ».
 - **Médias d'une page** : **tranché (Shan)**, D421.
+
+## 9. Trace des contrôles et dossiers de veille (D426–D431)
+
+> **Statut : proposé (2026-10-25)**, demande de Shan relayée par la session
+> `pnex-quali-watch` : « rendre visible, partenaire par partenaire, tout le
+> déroulement de Quali-Watch dans un case, avec la chronologie de chaque
+> contrôle et son résultat ». Cible montée à la main sur l'org 4 : case
+> « Veille RS0101 · OF EXEMPLE » (`6887d00d-481f-4f2a-850f-e9f88a5df87a`,
+> 9 événements). Code après accord de Shan.
+
+### Constat (org 4, pack 1.5.0, 2026-10-25)
+
+- Le flow 17 (règles réseau) n'écrit un `ecart` que s'il trouve un
+  problème. Le passage de 09:30 a donné 0 écart sur 22 partenaires, et rien
+  ne le prouve : ni objet, ni journal. Même chose pour les flows 15 (sites)
+  et 18 (site web) : on voit ce qu'ils créent, pas quand ils sont passés ni
+  ce qu'ils ont vérifié.
+- Les événements d'un case (K20) n'ont pas d'origine `flow`
+  (`EVENT_ORIGINS` = manual, detection, signal, import).
+- Une mise à jour d'objet crée toujours une version et une ligne
+  `object_changes`, même si rien ne change. Une propriété « dernier
+  contrôle » réécrite à chaque passage ferait donc 22 × 96 versions par jour
+  et par flow avec un cron de test au quart d'heure. Elle est écartée, comme
+  une propriété sur le lien `habilite_pour` (même coût, et un organisme
+  non habilité, CPF-01, n'a pas ce lien).
+
+### Principe
+
+Deux niveaux, à l'école de K30 (signal brut calculé, événement retenu) :
+
+1. **Le passage** : une ligne datée dans O2 à chaque passage, par sujet
+   (le partenaire), portée (la certification) et contrôle. Le coût d'un
+   journal, pas d'un objet.
+2. **L'événement** : un objet `event` dans le case du partenaire, écrit
+   **seulement quand le résultat change**. Il porte une période ouverte
+   (« conforme depuis 09:30 ») que le changement suivant ferme. Un passage
+   sans changement n'écrit aucun objet.
+
+Les primitives sont génériques (un « dossier de veille » sert aussi la
+maintenance ou l'IoT) ; le métier (règles, clés, titres) reste dans le
+pack (D190, D316).
+
+### D426 — Nœud `check_record` : un passage consigné
+
+- Nouveau nœud du noyau, écrit par le serveur (route interne, comme
+  `object_upsert`), jamais directement dans O2 par le runtime : la
+  provenance `flow:<id>@<version>` est prise de la version **déployée**,
+  pas du message (R1).
+- `msg.payload` :
+
+  ```json
+  {
+    "check": "quali_watch.network",
+    "subject_id": "<organisation>",
+    "scope_ids": ["<certification>"],
+    "rules": [
+      {"code": "ADM-02", "version": 1, "result": "ok"},
+      {"code": "CPF-03", "version": 1, "result": "finding", "finding_id": "<ecart>"},
+      {"code": "COL-01", "version": 1, "result": "unknown", "reason": "site-unreachable"}
+    ],
+    "objects": ["<site>", "<page>", "<preuve>", "<offre>"],
+    "case": {"key": "qw:RS0101:100000009", "title": "Veille RS0101 · OF EXEMPLE",
+             "parent_key": "qw:RS0101", "parent_title": "Veille RS0101"}
+  }
+  ```
+
+  `result` ∈ `ok` | `finding` | `unknown` ; `reason` est un code machine.
+  Résultat du passage = le pire de ses règles (`finding` > `unknown` > `ok`).
+- Chaque passage écrit une ligne dans le stream O2 **`check_runs`** de
+  l'org (stream système, comme `object_changes`) : sujet, portée,
+  contrôle, règles, objets, résultat, empreinte, flow et version.
+- **Empreinte** = hachage de (contrôle, sujet, portée triée, règles triées
+  avec code, version, résultat, raison et écart). Elle seule décide s'il y a
+  un changement.
+- Tous les identifiants sont vérifiés dans l'org du nœud ; un identifiant
+  inconnu refuse le passage (état du nœud, message abandonné). Budget
+  d'écriture commun avec `object_upsert` (600 par minute et par org).
+- Volume : une ligne par partenaire, certification et passage, **pas par
+  règle**. Org 4 au quart d'heure : 22 × 96 = 2 112 lignes par jour et par
+  flow, sans objet écrit tant que rien ne change.
+
+### D427 — Repli : un événement seulement au changement
+
+- Table **`check_states`** (org, contrôle, sujet, portée, empreinte,
+  événement courant, premier et dernier passage, nombre de passages). C'est
+  un état de travail, pas une donnée métier : l'exprimer en objet coûterait
+  une version par passage (constat). Exception à K1 (« aucune table
+  parallèle ») consignée ici.
+- Même empreinte : on met à jour le dernier passage et le compte, rien
+  d'autre.
+- Empreinte différente, en une transaction sous verrou de ligne :
+  - l'événement courant est **fermé** : `occurred.to` = dernier passage,
+    précision `range` ;
+  - un nouvel événement est créé, période ouverte depuis ce passage,
+    `origin = flow` (D428), `source_ref = flow:<id>@<version>`. Titre
+    construit par le serveur à partir du code du contrôle et du résultat
+    (« Règles réseau : 2 écarts (ADM-02, CPF-03) », traduit à l'affichage
+    par le code, pas de texte pré-rendu) ; la note liste les règles, leur
+    version et leurs raisons ;
+  - attaches `involves` : le sujet en *acteur*, la portée et les écarts en
+    *preuve*, les `objects` en *contexte* ;
+  - lien `in_case` vers le case (D429).
+- Un changement de version de règle (`regle_version`) change l'empreinte :
+  la montée d'un pack se voit donc dans la chronologie.
+- « Quand OF EXEMPLE a-t-il été contrôlé pour la dernière fois sur RS0101,
+  et était-ce OK ? » : `check_states` répond directement (dernier passage,
+  résultat). L'historique complet des passages est dans `check_runs`, dans
+  la limite de la rétention O2 de l'org.
+
+### D428 — Origine `flow` pour un événement
+
+`EVENT_ORIGINS` gagne `flow` (additif). L'événement porte alors la
+provenance `flow:<id>@<version>` (D184), que l'UI rend en lien vers la
+version du flow. Seul `check_record` écrit cette origine en V1.
+
+### D429 — Dossiers de veille ouverts par le serveur, sans doublon
+
+- Le type `case` gagne deux propriétés intégrées, optionnelles :
+  - `watch_key` (texte, unique dans l'org) : la clé par laquelle un
+    passage retrouve son case ;
+  - `watch_state` (`ok` | `finding` | `unknown`) : l'état global, le pire
+    des derniers résultats de tous les contrôles du case. Il n'est écrit
+    qu'au changement, jamais à chaque passage.
+- `check_record` trouve le case par `case.key`, sinon il l'ouvre. Avec
+  `parent_key`, il trouve ou ouvre le case parent et range l'enfant dessous
+  (containment, GS16). Le tout se fait sous verrou, donc deux passages
+  simultanés n'ouvrent pas deux cases. Le case garde ensuite son titre
+  humain : `title` ne sert qu'à l'ouverture.
+- Le pack donne la clé : `qw:<code certification>:<siren>`, parent
+  `qw:<code certification>`. Les flows lisent déjà le réseau borné par le
+  réglage `certifications` (D423) : les cases s'ouvrent donc pour les
+  partenaires suivis, et seulement pour eux.
+- Un case de veille fermé à la main (`status = archived`) n'est jamais
+  rouvert : le passage est consigné dans `check_runs`, sans événement.
+- Les écarts revus restent comptés selon leur `etat` : un écart `rejete`
+  ou `clos` sort de l'état global au passage suivant (la fonction du pack
+  envoie `ok` pour sa règle).
+
+### D430 — Synthèse : les contrôles du case
+
+- `GET /api/v1/cases/{id}/workspace` gagne `checks` : par contrôle et par
+  règle, le dernier passage, le résultat, la version de la règle, le nombre
+  de passages depuis le dernier changement et le flow. Lu dans
+  `check_states`, donc sans requête O2 à l'ouverture.
+- L'espace de travail affiche un panneau « Contrôles » au-dessus de la
+  frise, avec l'état global et la date du dernier contrôle. La frise montre
+  les événements de période (conforme, écarts) en barres. Une page
+  « Synthèse » rédigée n'est pas nécessaire : elle serait périmée au
+  passage suivant. Un export la fige (K33).
+- L'historique brut des passages (`check_runs`) s'ouvre depuis le panneau,
+  replié par empreinte : « 42 passages identiques du 25/10 09:30 au
+  26/10 08:15 ».
+
+### D431 — Flows et imports du pack branchés
+
+- **Flow 17** (règles réseau) : après les règles, une fonction du pack
+  (`qw_passage`) regroupe les résultats par partenaire et par certification
+  (les 7 règles, `ok` quand aucune n'a écrit d'écart) et envoie un
+  `check_record` `quali_watch.network`.
+- **Flow 18** (site web) : un `check_record` `quali_watch.website` par site
+  contrôlé (COL-01, WEB-*), avec le site, les pages et les preuves en
+  `objects`. Un site injoignable donne `unknown` (`site-unreachable`), ce
+  n'est pas un écart.
+- **Flow 15** (sites) : un `check_record` `presence_web.site` par
+  organisation cherchée : `ok` (site confirmé), `unknown` (aucun site,
+  proposition en attente). Le score et la preuve sont dans la note.
+- **Imports** (SIRENE, DGEFP, FC partenaires, CPF) : en fin de run, le
+  service d'import appelle le même service que `check_record` pour les
+  objets qu'il a écrits **et** qui sont le sujet d'un case de veille.
+  Contrôle `import:<nom de l'import>`, résultat `ok`, empreinte sur les
+  propriétés que l'import possède. Un run qui ne change rien pour le
+  partenaire ne fait que compter le passage. Aucune écriture pour les
+  objets hors veille, donc pas de coût sur un gros import.
+- Pack `quali_watch` 1.6.0 et `presence_web` suivant : nouveaux nœuds dans
+  les flows livrés (les flows intacts suivent la montée, D424 ; le flow 18
+  de l'org 4, modifié, se reprend depuis le pack).
+
+### Sécurité (grille §6)
+
+- **R1** : org et provenance tirées du nœud déployé ; identifiants du
+  message vérifiés dans cette org.
+- **R2** : aucune route publique d'écriture. `checks` est ajouté à une
+  lecture existante (`cases_workspace`, même permission). La route de
+  l'historique brut, si elle est retenue, est une lecture `Org` inscrite
+  dans `iam.rs`, exposée MCP (lecture).
+- **Code utilisateur non fiable** : un flow peut consigner un faux passage
+  « ok » dans sa propre org. C'est la limite connue de tout ce qu'écrit un
+  flow ; la provenance `flow:<id>@<version>` le rend traçable.
+- **Volume** : budget d'écriture partagé, une ligne O2 par passage et par
+  sujet, objets seulement au changement.
+
+### Lots
+
+| Lot | Contenu | Tests |
+|---|---|---|
+| **T1** | D428 origine `flow` ; D429 `watch_key` / `watch_state` sur `case` | ontologie : clé unique, origine acceptée |
+| **T2** | D426–D427 : nœud `check_record` (cœur, runtime, route interne, NodeDoc, palette, ftl, fiche), table `check_states`, stream `check_runs`, repli et fermeture d'événement | intégration : 3 passages identiques = 1 événement ; changement = fermeture + nouvel événement ; 2 passages simultanés = 1 case ; identifiant d'une autre org refusé |
+| **T3** | D430 `checks` dans l'espace de travail, panneau « Contrôles » | intégration + e2e du panneau |
+| **T4** | D431 : `qw_passage`, flows 15, 17 et 18, imports en fin de run, packs montés | `pack_rules.rs` (regroupement par partenaire), `partner_watch.rs` (case ouvert et alimenté de bout en bout) |
+
+### Questions pour Shan (défaut en attendant)
+
+- **Q-N9 — Granularité des cases** : un case par partenaire **sous** un
+  case par certification (défaut), ou un case par partenaire toutes
+  certifications confondues ?
+- **Q-N10 — Passages sans changement dans la frise** : rien (défaut : ils
+  sont comptés dans le panneau et dans `check_runs`), ou un repère discret
+  par jour ?
+- **Q-N11 — Imports dans le case** : seulement quand ils changent quelque
+  chose pour le partenaire (défaut), ou chaque run ?
+- **Q-N12 — Écarts revus** : un écart `rejete` ou `clos` ne compte plus
+  dans l'état global (défaut) ; un écart `a_valider` compte comme
+  `finding` (défaut) ou comme `unknown` ?
