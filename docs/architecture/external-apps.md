@@ -349,6 +349,32 @@ Contenu :
 - les **exemples par cas d'usage** (D438) et des tests sur une ontologie
   inventée (`article`, `auteur`, `ecrit_par`) avec un faux serveur local.
 
+Livré (lot A5) : `crates/pnex-mirror` (membre du workspace, aucune
+dépendance au backend ni à `pnex-core`) :
+
+- `Config::new(url, clé, dossier)`, `.from_app()` qui prend le périmètre
+  de `GET /apps/me` ; `Mirror::open`, `sync(&mut projection)`,
+  `fetch_media()`, `object`, `objects(type)`, `links_from`, `media(id)` →
+  `(chemin, type de contenu)`, `connection()` pour le SQL de
+  l'application ;
+- curseur et lignes d'une page dans une seule transaction SQLite ; 410 →
+  la copie est vidée, `Projection::reset`, reprise depuis 0 ;
+- médias : `GET /media/{id}` (genre, taille) décide ; le contenu est
+  revalidé à chaque passe par `If-None-Match` (ETag = id de version) ;
+  le SHA-256 vient de `GET /media/{id}/versions` (version courante),
+  un fichier dont l'empreinte diffère est refusé ; écriture à côté puis
+  renommage ;
+- **limite connue** : une nouvelle version de média ne touche pas l'objet
+  `media_asset` (le trigger natif ne suit que le titre), donc elle
+  n'arrive pas par le flux ; la revalidation de chaque passe la rattrape
+  (un 304 par média sinon). À reprendre si le nombre de médias le
+  justifie ;
+- `rusqlite` 0.32 (`bundled`) : la seule version compatible avec le
+  `libsqlite3-sys` 0.30 déjà dans le verrou (clé `links` unique) ;
+- tests : contrat (les champs lus existent dans `openapi.json`), copie,
+  reprise, 410, 304, empreinte fausse, projection, clé refusée ; exemple
+  `offline_copy`.
+
 ## 10. Actions (D440, lot 2)
 
 ### D440 — Une application écrit seulement par des actions déclarées
