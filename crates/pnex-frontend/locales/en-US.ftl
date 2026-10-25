@@ -4526,6 +4526,7 @@ err-ontology-link-cardinality = An open link already takes this place: close it 
 err-ontology-action-no-flow = No deployed flow handles this action: add an "Action trigger" node for it in a flow, then deploy the flow.
 err-ontology-action-unavailable = The action bus (Valkey) is unavailable: the action was not sent.
 err-ontology-changes-unavailable = History unavailable (OpenObserve not configured or unreachable).
+err-changes-cursor-expired = This position in the change feed is too old: copy everything again from the start.
 err-ontology-action-unknown = The action { $action } of type { $object_type } does not exist in the organization's ontology: pick another one in the node.
 err-media-diff-unsupported = Only documents whose text can be read are compared (text, Markdown, CSV, Word, PDF, sheets).
 err-ext-no-agent = Waiting for a browser agent of the organization to be online.

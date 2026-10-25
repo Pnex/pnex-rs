@@ -335,6 +335,66 @@ pub struct ChangeView {
     pub after: Value,
 }
 
+/// What a feed entry is about (external-apps.md D435).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum FeedKind {
+    Object,
+    Link,
+}
+
+/// What happened to it: `close` = archived object or closed link, `delete`
+/// = row removed (its state is gone).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum FeedAction {
+    Create,
+    Update,
+    Close,
+    Delete,
+}
+
+/// One entry of the change feed: the latest change of an object or a link
+/// within the page, with its current state (none after a delete).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FeedEntry {
+    /// Position of this entry: resume after it with `since`.
+    pub cursor: String,
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub at: String,
+    pub kind: FeedKind,
+    pub action: FeedAction,
+    /// Object UUID, or link id.
+    pub id: String,
+    /// Object type, or link type.
+    pub type_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object: Option<ObjectView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<LinkView>,
+}
+
+/// A page of the change feed (`GET /ontology/changes`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ChangeFeed {
+    pub changes: Vec<FeedEntry>,
+    /// Cursor to pass as `since` next time (unchanged when nothing is new).
+    pub next: String,
+    /// More entries are ready now: ask again without waiting.
+    pub more: bool,
+}
+
+/// The newest position of the change feed (`GET /ontology/changes/head`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct FeedHead {
+    pub cursor: String,
+}
+
 /// A pack (D190) as shipped or exported: YAML on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

@@ -4525,6 +4525,7 @@ err-ontology-link-cardinality = Un lien ouvert occupe déjà cette place : ferme
 err-ontology-action-no-flow = Aucun flow déployé ne traite cette action : ajoutez-lui un nœud « Déclencheur d'action » dans un flow, puis déployez ce flow.
 err-ontology-action-unavailable = Le bus d'actions (Valkey) est indisponible : l'action n'a pas été envoyée.
 err-ontology-changes-unavailable = Historique indisponible (OpenObserve non configuré ou injoignable).
+err-changes-cursor-expired = Cette position du flux des changements est trop ancienne : recopiez tout depuis le début.
 err-ontology-action-unknown = L'action { $action } du type { $object_type } n'existe pas dans l'ontologie de l'organisation : choisissez-en une autre dans le nœud.
 err-media-diff-unsupported = Seuls les documents dont le texte se lit sont comparés (texte, Markdown, CSV, Word, PDF, tableurs).
 err-ext-no-agent = En attente d'un agent navigateur de l'organisation en ligne.

@@ -677,6 +677,8 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         "ontology_link_types_update",
         Access::Org("ontology.schema:write"),
     ),
+    ("ontology_changes_head", Access::Org("ontology:read")),
+    ("ontology_changes_list", Access::Org("ontology:read")),
     ("ontology_links_close", Access::Org("ontology:write")),
     ("ontology_links_create", Access::Org("ontology:write")),
     ("ontology_links_update", Access::Org("ontology:write")),

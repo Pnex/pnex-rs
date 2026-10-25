@@ -598,6 +598,8 @@ pub const ONTOLOGY_ACTION_NO_FLOW: &str = "ontology-action-no-flow";
 pub const ONTOLOGY_ACTION_UNAVAILABLE: &str = "ontology-action-unavailable";
 /// The change journal (OpenObserve) of an object cannot be read (503).
 pub const ONTOLOGY_CHANGES_UNAVAILABLE: &str = "ontology-changes-unavailable";
+/// The feed cursor is behind what compaction removed: copy again from 0.
+pub const CHANGES_CURSOR_EXPIRED: &str = "changes-cursor-expired";
 /// An `action-trigger` names a type or action absent from the org schema;
 /// `args.object_type`, `args.action`.
 pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
@@ -879,6 +881,7 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_ACTION_NO_FLOW,
     ONTOLOGY_ACTION_UNAVAILABLE,
     ONTOLOGY_CHANGES_UNAVAILABLE,
+    CHANGES_CURSOR_EXPIRED,
     ONTOLOGY_ACTION_UNKNOWN,
     MEDIA_DIFF_UNSUPPORTED,
     EXT_NO_AGENT,

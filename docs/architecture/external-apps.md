@@ -132,43 +132,56 @@ ne sert pas à synchroniser : il est au mieux (file bornée), sans curseur,
 et sa rétention est celle d'O2. Le flux de synchronisation vit donc en
 base.
 
-**Table** `ontology_changes (seq bigint generated always as identity,
-org_id, at timestamptz, txid xid8, kind text, id text, type_key text,
-action text, version int, source_ref text)` :
+**Table** `ontology_changes (seq bigint identity, org_id, txid xid8,
+at, kind, id, type_key, action)` (migration 000054) :
 
 - `kind` : `object` ou `link` ; `id` : uuid de l'objet, ou id du lien ;
-- `action` : `create`, `update` ou `close` (objet archivé, lien fermé) ;
-- écrite par des **triggers** `AFTER INSERT OR UPDATE` sur `objects` et
-  `resource_edges` : toutes les voies d'écriture sont couvertes (API,
-  flows, imports en masse, objets natifs dont les médias), sans qu'un
-  service puisse l'oublier ;
-- index `(org_id, seq)`.
+  `type_key` : type de l'objet, ou type du lien ;
+- `action` : `create`, `update`, `close` (objet archivé, lien fermé) ou
+  `delete` (ligne supprimée) ;
+- écrite par des **triggers d'instruction** (tables de transition) sur
+  `objects` et `resource_edges` : toutes les voies d'écriture sont
+  couvertes (API, flows, imports en masse, objets natifs dont les
+  médias), et un import de 60 000 lignes n'en paie qu'un appel par
+  instruction ; une mise à jour sans changement n'écrit rien ;
+- index `(org_id, txid, seq)` et `(org_id, kind, id)`.
 
-**Curseur sans trou** : un `seq` est pris avant le commit, donc une
-transaction longue peut rendre visible un `seq` plus petit après qu'un
-lecteur a avancé. Le flux ne rend que les lignes dont la transaction est
-plus ancienne que toutes celles encore en cours
-(`txid < pg_snapshot_xmin(pg_current_snapshot())`) ; le curseur rendu est
-le dernier `seq` livré. Un lecteur ne perd donc rien, au prix d'un
-léger retard pendant une transaction longue (un import).
+**Curseur sans trou** : un `seq` est pris avant le commit, donc ordonner
+par `seq` sauterait une transaction longue qui valide après qu'un lecteur
+a avancé. Le flux ordonne par **(transaction, seq)** et ne lit que les
+transactions plus anciennes que toutes celles encore en cours
+(`txid < pg_snapshot_xmin(pg_current_snapshot())`) : une transaction qui
+valide tard a un identifiant plus grand que tout ce qui a déjà été
+servi. Le curseur est `<txid>.<seq>` (`0` = le début). Prix : une
+transaction longue (un import) retient le flux jusqu'à sa fin.
 
-**Route** `GET /api/v1/ontology/changes?since=<seq>&limit=<n>` (et
-`types=`, `link_types=` pour un appelant hors application) :
+**Journal compacté** : seule la **dernière** ligne de chaque objet et de
+chaque lien est gardée (tâche horaire, singleton). Un remplissage initial
+écrit une ligne par objet et par lien existants. Conséquences :
 
-- réponse `{changes: [{seq, at, kind, action, id, type_key, version,
-  source_ref, object?|link?}], next: <seq>, more: bool}` ; l'objet ou le
-  lien courant est joint (`ObjectView`, `LinkView`), un objet fermé est
-  rendu avec `valid_to` ;
-- plusieurs changements d'un même objet dans la page sont repliés sur le
-  dernier ;
-- pour une application, le filtre vient de son périmètre (D433) ;
-- `since` plus ancien que la rétention (30 jours par défaut, réglage
-  plateforme) : 410 `changes-cursor-expired`, l'application refait une
-  copie complète par ses ensembles d'objets puis repart du `next` rendu
-  par `GET /ontology/changes/head` ;
-- permission `ontology:read` ; MCP exposé (lecture JSON).
+- `since=0` est une **copie complète** (l'état courant de tout ce qui
+  existe), sans route à part ;
+- un lecteur en retard reçoit l'état courant, jamais les états
+  intermédiaires qu'il a manqués ;
+- les lignes `close` et `delete` partent après la **rétention** (30
+  jours) ; leur position devient la marque de l'org
+  (`ontology_change_marks`). Un `since` plus ancien que la marque répond
+  410 `changes-cursor-expired` : l'application vide sa copie et repart de
+  `0`.
 
-**Purge** : tâche quotidienne, lignes plus vieilles que la rétention.
+**Routes** (`ontology:read`, comptes de service compris ; MCP exposé) :
+
+- `GET /api/v1/ontology/changes?since=&limit=&types=&link_types=` :
+  `{changes: [{cursor, at, kind, action, id, type_key, object?|link?}],
+  next, more}`, du plus ancien au plus récent ; l'objet ou le lien
+  courant est joint (`ObjectView`, `LinkView`, avec `valid_to` s'il est
+  fermé) ; plusieurs changements d'un même objet dans la page sont
+  repliés sur le dernier ; une page courte avance `next` jusqu'à la tête,
+  par-delà les lignes que le filtre écarte ; `limit` 1 à 1000 (500) ;
+- `GET /api/v1/ontology/changes/head` : la position la plus récente,
+  pour qui a copié l'org autrement et veut suivre à partir de là ;
+- pour une application, le filtre viendra de son périmètre (D433, lot
+  A2).
 
 **Push (lot 2)** : `GET /api/v1/ontology/changes/stream?since=` en SSE,
 qui ne pousse que des curseurs (« il y a du neuf jusqu'à `seq` ») ;
@@ -376,7 +389,7 @@ Deux listes motivées, dans la garde :
 | Lot | Contenu | Tests |
 |---|---|---|
 | **A0** | D432 principe + D441 garde | `engine_genericity.rs` |
-| **A1** | D435 : table, triggers, curseur, `/ontology/changes` (+ `head`), purge | ordre et absence de trou avec deux transactions croisées ; import en masse ; objet natif ; 410 |
+| **A1** | D435 : table, triggers, curseur, `/ontology/changes` (+ `head`), compaction | ordre et absence de trou avec deux transactions croisées ; import en masse ; objet natif ; 410 |
 | **A2** | D433 : `apps` (CRUD, `apps/me`, périmètre appliqué au flux) | 403 sans permission ; périmètre filtrant |
 | **A3** | D434 : ensembles d'objets nommés, paramètres | substitution des valeurs seulement ; périmètre |
 | **A4** | D437 : `evidence: true`, `/objects/{id}/evidence`, lien direct au scellement ; pack `quali_watch` | écart → page → pièces sur une ontologie inventée |
