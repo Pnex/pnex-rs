@@ -409,7 +409,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("language", "answer language code (fr, en…), empty = the language of the data"),
             ("max_chars", "longest answer, 100..20000, default 4000"),
         ],
-        notes: "The data is passed to the model as data only: instructions found inside it are ignored. Calls count in the organization's daily AI quota (2000 per day with vision_caption and media_fuse). Typical chain: inject (cron) -> data (memory_read, http_fetch, media_fuse output…) -> llm_text -> page_write -> page_pdf -> pnex_notify. Requires an AI provider configured for the organization.",
+        notes: "The data is passed to the model as data only: instructions found inside it are ignored. Calls count in the organization's daily AI quota (2000 per day with vision_caption and media_fuse). Typical chain: inject (cron) -> data (memory_read, http_fetch, media_fuse output…) -> llm_text -> page_write -> page_pdf -> pnex_notify. Requires an AI provider configured for the organization. An empty answer (a reasoning model that spent its budget thinking) is an error (ai-bad-response) on the failure port, never an empty text.",
     },
     NodeDoc {
         kind: "media_fuse",

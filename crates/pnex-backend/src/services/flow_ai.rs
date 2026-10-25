@@ -173,6 +173,9 @@ pub async fn caption(
     })
 }
 
+/// Least answer budget of `llm_text`, in tokens.
+const LLM_MIN_TOKENS: u32 = 2048;
+
 /// System prompt of `llm_text` (D208): the instruction is the flow
 /// author's, the data is untrusted material.
 fn text_system(language: &str) -> String {
@@ -229,13 +232,22 @@ pub async fn text(ctx: &AppContext, req: &LlmTextRequest) -> Result<LlmTextRespo
                 system: text_system(&req.language),
                 messages: &msgs,
                 tools: &[],
-                // ~3 chars per token, with a margin.
-                max_tokens: (req.max_chars / 3 + 64).min(8000),
+                // ~3 chars per token, floored: a reasoning model spends
+                // its budget thinking before it answers (the answer is
+                // clipped to max_chars anyway).
+                max_tokens: (req.max_chars / 3 + 64).clamp(LLM_MIN_TOKENS, 8000),
             },
         )
         .await?;
+    let text = turn.text.unwrap_or_default();
+    if text.trim().is_empty() {
+        tracing::warn!(org_id = req.org_id, model = %cfg.model, stop = ?turn.stop_reason, "llm_text: empty answer");
+        return Err(
+            AiError::Deserialize(format!("empty answer (stop: {:?})", turn.stop_reason)).into(),
+        );
+    }
     Ok(LlmTextResponse {
-        text: clip(turn.text.unwrap_or_default().trim(), req.max_chars as usize),
+        text: clip(text.trim(), req.max_chars as usize),
         model: cfg.model,
         took_ms: started.elapsed().as_millis() as u64,
         data_truncated,

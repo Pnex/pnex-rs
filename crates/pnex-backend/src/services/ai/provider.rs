@@ -633,8 +633,9 @@ async fn openai_chat(
     };
     if let Some(message) = choice.message {
         if let Some(Value::String(text)) = message.content {
+            let text = strip_think(&text);
             if !text.is_empty() {
-                turn.text = Some(text);
+                turn.text = Some(text.to_string());
             }
         }
         for call in message.tool_calls.unwrap_or_default() {
@@ -656,8 +657,27 @@ async fn openai_chat(
     Ok(turn)
 }
 
+/// The answer without a leading `<think>…</think>` block (models that
+/// reason inline, e.g. Qwen3 on OpenAI-compatible hosts). An unclosed block
+/// (budget spent thinking) leaves no answer.
+fn strip_think(text: &str) -> &str {
+    let t = text.trim_start();
+    let Some(rest) = t.strip_prefix("<think>") else {
+        return text;
+    };
+    rest.split_once("</think>")
+        .map_or("", |(_, answer)| answer.trim_start())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn inline_reasoning_is_not_the_answer() {
+        assert_eq!(strip_think("<think>hmm</think>\n\nYes."), "Yes.");
+        assert_eq!(strip_think("<think>cut by the budget"), "");
+        assert_eq!(strip_think("Plain <think> answer"), "Plain <think> answer");
+    }
+
     use super::*;
 
     fn user(text: &str) -> Msg {
