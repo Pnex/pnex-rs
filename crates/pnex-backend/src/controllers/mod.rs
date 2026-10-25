@@ -89,6 +89,17 @@ pub mod ws_media;
 pub mod ws_notify;
 pub mod ws_ticket;
 
+/// Unknown route under `/api/`: a coded 404, never the application's HTML
+/// page (the static fallback serves `index.html` to every other path).
+pub(crate) async fn api_route_not_found() -> loco_rs::Error {
+    coded_error(
+        axum::http::StatusCode::NOT_FOUND,
+        pnex_core::err_codes::API_ROUTE_NOT_FOUND,
+        "No such API route.",
+        None,
+    )
+}
+
 /// Error answer of the API: machine `code` (resolved by the frontend to
 /// `err-<code>`), canonical English `description`, optional fluent `args`.
 pub(crate) fn coded_error(

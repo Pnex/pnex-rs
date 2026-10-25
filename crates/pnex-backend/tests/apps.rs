@@ -185,3 +185,34 @@ async fn an_application_reads_its_scope() {
     })
     .await;
 }
+
+/// An unknown API route answers a coded 404 in JSON, never the app's HTML
+/// page; known routes keep answering.
+#[tokio::test]
+#[serial]
+async fn an_unknown_api_route_is_a_json_404() {
+    with_app(|server, alice| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        for path in [
+            "/api/v1/nothing",
+            "/api/v1/ontology/objects/00000000-0000-0000-0000-000000000000/nothing",
+            "/api/v2/apps",
+        ] {
+            let (st, e) = call(&server, "GET", path, &alice, org, None).await;
+            assert_eq!(
+                (st, e["error"].as_str()),
+                (404, Some("api-route-not-found")),
+                "{path}: {e}"
+            );
+        }
+        let (st, _) = call(&server, "GET", "/api/v1/apps", &alice, org, None).await;
+        assert_eq!(st, 200, "a known route still answers");
+    })
+    .await;
+}

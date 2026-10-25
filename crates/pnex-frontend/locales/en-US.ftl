@@ -4530,6 +4530,7 @@ err-ontology-changes-unavailable = History unavailable (OpenObserve not configur
 err-changes-cursor-expired = This position in the change feed is too old: copy everything again from the start.
 err-app-not-found = Application not found.
 err-app-version-conflict = The application changed since it was read (version { $current }): reload it.
+err-api-route-not-found = This API route does not exist.
 err-ontology-action-unknown = The action { $action } of type { $object_type } does not exist in the organization's ontology: pick another one in the node.
 err-media-diff-unsupported = Only documents whose text can be read are compared (text, Markdown, CSV, Word, PDF, sheets).
 err-ext-no-agent = Waiting for a browser agent of the organization to be online.

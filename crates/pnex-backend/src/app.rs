@@ -296,6 +296,12 @@ impl Hooks for App {
         // too), gated on settings.flow.enabled.
         crate::services::flow_supervisor::warn_colocated_runtime(&ctx.config);
         crate::services::flow_cluster::boot(ctx).await;
+        // An unknown API route answers a coded 404: the static fallback
+        // would answer the application's HTML page with a 200.
+        let router = router.route(
+            "/api/{*rest}",
+            axum::routing::any(crate::controllers::api_route_not_found),
+        );
         // Cross-pod rate limit of unauthenticated / sensitive routes
         // (oauth2, agent enroll, device sockets, public links).
         let rate_limit = std::sync::Arc::new(

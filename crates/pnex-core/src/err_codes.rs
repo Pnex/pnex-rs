@@ -604,6 +604,8 @@ pub const CHANGES_CURSOR_EXPIRED: &str = "changes-cursor-expired";
 pub const APP_NOT_FOUND: &str = "app-not-found";
 /// The application changed since it was read (`args.current`).
 pub const APP_VERSION_CONFLICT: &str = "app-version-conflict";
+/// No route of the API at this path (404, never the app's HTML page).
+pub const API_ROUTE_NOT_FOUND: &str = "api-route-not-found";
 /// An `action-trigger` names a type or action absent from the org schema;
 /// `args.object_type`, `args.action`.
 pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
@@ -888,6 +890,7 @@ pub const ALL: &[&str] = &[
     CHANGES_CURSOR_EXPIRED,
     APP_NOT_FOUND,
     APP_VERSION_CONFLICT,
+    API_ROUTE_NOT_FOUND,
     ONTOLOGY_ACTION_UNKNOWN,
     MEDIA_DIFF_UNSUPPORTED,
     EXT_NO_AGENT,
