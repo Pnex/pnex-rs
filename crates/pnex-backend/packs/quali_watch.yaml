@@ -41,7 +41,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.5.1"
+version: "1.5.2"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -326,6 +326,7 @@ link_types:
     inverse_names: {fr: "prouve"}
     from_types: [page_observee]
     to_types: [media_asset]
+    evidence: true
     attributes:
       - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
       - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
@@ -369,8 +370,13 @@ link_types:
     inverse_names: {fr: "montre"}
     from_types: [ecart]
     to_types: [page_observee, offre_cpf, media_asset, programme, module]
+    # Evidence (external-apps.md D437): a finding seen in a page gets the
+    # parts of the page's next sealed proof, with their seal.
+    evidence: true
     attributes:
       - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
+      - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
+      - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
   - key: selon
     name: follows the rule
     names: {fr: "selon la règle"}

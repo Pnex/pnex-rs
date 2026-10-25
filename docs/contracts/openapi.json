@@ -6117,6 +6117,79 @@
         ],
         "type": "object"
       },
+      "EvidenceItem": {
+        "description": "A piece proving an object (external-apps.md D437): a media reached\nthrough evidence link types, with its current file and, for a web\nproof part, the proof's seal.",
+        "properties": {
+          "asset_id": {
+            "description": "Media library id: download with `GET /media/{id}/content`.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "content_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "media": {
+            "$ref": "#/components/schemas/ObjectRef",
+            "description": "The media object (`media_asset`)."
+          },
+          "part": {
+            "description": "Part of a web proof: `screenshot`, `html`, `text`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "proof": {
+            "$ref": "#/components/schemas/ProofSeal"
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size_bytes": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "via": {
+            "description": "Link types followed from the object, in order.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "media",
+          "asset_id",
+          "kind",
+          "via"
+        ],
+        "type": "object"
+      },
       "ExpandFacet": {
         "description": "Neighbours of one link type and one object type.",
         "properties": {
@@ -9723,6 +9796,10 @@
               "$ref": "#/components/schemas/PropertyDef"
             },
             "type": "array"
+          },
+          "evidence": {
+            "description": "The link points at what proves its source (external-apps.md\nD437): followed by `GET /objects/{id}/evidence`, and given the\npieces of a web proof sealed on its target.",
+            "type": "boolean"
           },
           "from_types": {
             "description": "Source types: `\"*\"` or a list of type keys."
@@ -14580,6 +14657,42 @@
         ],
         "type": "object"
       },
+      "Paginated_EvidenceItem": {
+        "description": "Envelope of a paginated list.",
+        "properties": {
+          "count": {
+            "description": "Total before slicing (filters apply to the count).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "next": {
+            "description": "Link to the next page — `null` on the last page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Link to the previous page — `null` on the first page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "description": "Items of this page.",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "Paginated_FirmwareProjectSummary": {
         "description": "Envelope of a paginated list.",
         "properties": {
@@ -18188,6 +18301,43 @@
         "required": [
           "proof_id",
           "sealed"
+        ],
+        "type": "object"
+      },
+      "ProofSeal": {
+        "description": "The seal of a web proof (D408): its place in the org's chain.",
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prev_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "seq"
         ],
         "type": "object"
       },
@@ -59323,6 +59473,103 @@
           }
         ],
         "summary": "Get the change history of an object",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/objects/{id}/evidence": {
+      "get": {
+        "description": "The media proving the object (external-apps.md D437), reached through link types declared `evidence`, two hops at most (a finding, the page it was seen in, the parts of that page's web proof), open links only. Each item gives the media id to download (`GET /media/{id}/content`, `media:read`), its current version and SHA-256, the link types followed, and for a web proof part the proof's seal (sequence, manifest SHA-256, previous seal). Paginated (`limit`/`offset`). Any org member.",
+        "operationId": "ontology_objects_evidence",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_EvidenceItem"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the evidence of an object",
         "tags": [
           "ontology"
         ]

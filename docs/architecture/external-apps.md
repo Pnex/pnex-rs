@@ -270,6 +270,23 @@ Dans le pack `quali_watch` (seule partie propre au métier) :
 `constate_dans` et `prouve_par` passent `evidence: true`. Les règles
 n'ont rien d'autre à faire.
 
+Livré (lot A4) :
+
+- `LinkTypeDef.evidence` (case « Pointe vers ce qui prouve la source »
+  dans le formulaire des types de liens) ;
+- `GET /api/v1/ontology/objects/{id}/evidence` (`ontology:read`, MCP
+  exposé) : les médias atteints par des liens de preuve ouverts, deux
+  sauts au plus, chacun avec son id de médiathèque, sa version courante,
+  son SHA-256, sa taille, son type, les types de liens suivis (`via`),
+  la pièce (`screenshot`, `html`, `text`) et le scellement de la preuve
+  web (`seq`, SHA-256 du manifeste et du précédent) ;
+- au scellement (`proofs::link_parts`), le lien direct décrit plus haut,
+  posé par le même type de lien de preuve, si ce type admet
+  `media_asset` comme cible, avec `captured_at` et `sha256_manifest`
+  quand le type les déclare ; il ne dépend plus de `record.proof_link` ;
+- `quali_watch` 1.5.2 : `constate_dans` et `prouve_par` en `evidence`,
+  `constate_dans` gagne `captured_at` et `sha256_manifest`.
+
 ## 8. Client et exemples (D438)
 
 ### D438 — Le SDK est le client OpenAPI générique, plus des exemples par cas d'usage

@@ -185,6 +185,11 @@ pub struct LinkTypeDef {
     /// A target has at most one open link of this type.
     #[serde(default)]
     pub one_source: bool,
+    /// The link points at what proves its source (external-apps.md
+    /// D437): followed by `GET /objects/{id}/evidence`, and given the
+    /// pieces of a web proof sealed on its target.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub evidence: bool,
     /// Attributes carried by each link (scalar properties only).
     #[serde(default)]
     pub attributes: Vec<PropertyDef>,
@@ -549,6 +554,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         to_types: to,
         one_target: false,
         one_source: false,
+        evidence: false,
         attributes: Vec::new(),
     };
     vec![

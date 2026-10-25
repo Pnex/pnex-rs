@@ -388,6 +388,53 @@ pub struct ChangeFeed {
     pub more: bool,
 }
 
+/// The seal of a web proof (D408): its place in the org's chain.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct ProofSeal {
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub id: String,
+    pub seq: i64,
+    #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub captured_at: Option<String>,
+    #[serde(default)]
+    pub manifest_sha256: Option<String>,
+    #[serde(default)]
+    pub prev_sha256: Option<String>,
+}
+
+/// A piece proving an object (external-apps.md D437): a media reached
+/// through evidence link types, with its current file and, for a web
+/// proof part, the proof's seal.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct EvidenceItem {
+    /// The media object (`media_asset`).
+    pub media: ObjectRef,
+    /// Media library id: download with `GET /media/{id}/content`.
+    #[cfg_attr(feature = "openapi", schema(format = "uuid"))]
+    pub asset_id: String,
+    pub kind: String,
+    /// Part of a web proof: `screenshot`, `html`, `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_url: Option<String>,
+    #[serde(default)]
+    pub version: Option<i64>,
+    #[serde(default)]
+    pub sha256: Option<String>,
+    #[serde(default)]
+    pub size_bytes: Option<i64>,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    /// Link types followed from the object, in order.
+    pub via: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<ProofSeal>,
+}
+
 /// The newest position of the change feed (`GET /ontology/changes/head`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

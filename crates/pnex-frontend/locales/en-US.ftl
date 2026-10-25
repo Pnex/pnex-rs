@@ -4727,6 +4727,7 @@ onto-from-type = From type
 onto-to-type = To type
 onto-one-target = One open target per source
 onto-one-source = One open source per target
+onto-evidence = Points at what proves the source (evidence)
 onto-system-extension = System type: you can add properties to it
 onto-type-editor-subtitle = Typed properties, containment rules, write role
 onto-type-name = Name

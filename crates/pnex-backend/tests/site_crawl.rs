@@ -222,6 +222,17 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
         let (_, listed) = call(&server, "GET", "/api/v1/extension/missions", &alice, org, None).await;
         assert!(listed["results"].as_array().unwrap().iter().all(|m| m["spec"]["kind"] != "capture_proof"));
 
+        // A finding seen in the page before its proof (D437).
+        let (st, finding) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org,
+            Some(json!({"type_key": "ecart", "title": "WEB-01 · test", "properties": {"etat": "a_valider"}}))).await;
+        assert_eq!(st, 201, "{finding}");
+        let finding = finding["id"].as_str().unwrap().to_string();
+        let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &alice, org,
+            Some(json!({"link_type": "constate_dans", "source_id": finding, "target_id": object}))).await;
+        assert_eq!(st, 201, "{l}");
+        let (_, none) = call(&server, "GET", &format!("/api/v1/ontology/objects/{finding}/evidence"), &alice, org, None).await;
+        assert_eq!(none["count"], 0, "no proof yet: {none}");
+
         let install = Install::new();
         let (st, paired) = call(&server, "POST", "/api/v1/extension/agents", &alice, org, Some(install.pair_body(org))).await;
         assert_eq!(st, 201, "{paired}");
@@ -267,6 +278,15 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
         let proven = links["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "prouve_par").count();
         assert_eq!(proven, 3, "{links}");
         assert!(!html_media.is_empty());
+        // The finding got the parts of that proof, sealed (D437).
+        let (_, ev) = call(&server, "GET", &format!("/api/v1/ontology/objects/{finding}/evidence"), &alice, org, None).await;
+        assert_eq!(ev["count"], 3, "{ev}");
+        let items = ev["results"].as_array().unwrap();
+        assert!(items.iter().all(|i| i["via"] == json!(["constate_dans"]) && i["proof"]["seq"] == 1), "{ev}");
+        assert!(items.iter().all(|i| i["sha256"].as_str().is_some_and(|h| h.len() == 64)), "{ev}");
+        let mut parts: Vec<&str> = items.iter().map(|i| i["part"].as_str().unwrap()).collect();
+        parts.sort();
+        assert_eq!(parts, vec!["html", "screenshot", "text"]);
 
         // A manifest changed afterwards breaks the chain.
         ctx.db.execute_unprepared(&format!(

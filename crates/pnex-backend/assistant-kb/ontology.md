@@ -42,6 +42,7 @@ A type may declare **actions** (for example *Start maintenance* on a pump, from 
 
 ## Good to know
 - Nothing is overwritten: closing a link keeps it in the history, archiving an object closes it, deleting a device or a media closes its object. *As of* shows the links valid at that date.
+- A link type ticked **Points at what proves the source (evidence)** marks proof: an object's evidence is the media reached through such links, two steps at most (a finding, the page it was seen in, the captures of that page). When a web proof of a page is sealed, every object pointing at the page through an evidence link and not proven yet is linked to the proof's captures too, so it keeps the proof of when it was found.
 - An open link takes a place: a series property is fed by one sensor at a time, and some link types allow one target per source. A second one is refused (*ontology-link-cardinality*): close the first one.
 - If someone saved the object or the type while you were editing, saving answers *ontology-version-conflict*: reload and redo your change.
 - System objects (devices, media…) are created and deleted from their own pages (*ontology-system-read-only*); you may add your own properties to a system type in the Schema tab.

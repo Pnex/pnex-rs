@@ -695,6 +695,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("ontology_objects_archive", Access::Org("ontology:delete")),
     ("ontology_objects_bindings", Access::Org("ontology:read")),
     ("ontology_objects_changes", Access::Org("ontology:read")),
+    ("ontology_objects_evidence", Access::Org("ontology:read")),
     ("ontology_objects_create", Access::Org("ontology:write")),
     ("ontology_objects_get", Access::Org("ontology:read")),
     ("ontology_objects_graph", Access::Org("ontology:read")),

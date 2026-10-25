@@ -230,3 +230,55 @@ async fn the_feed_follows_every_change_without_a_gap() {
     })
     .await;
 }
+
+/// Evidence of an object (D437) on an invented ontology: link types
+/// declared `evidence` are followed two hops to media, others never.
+#[tokio::test]
+#[serial]
+async fn evidence_follows_evidence_links_only() {
+    with_app(|server, alice, db| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        for key in ["article", "page_lue"] {
+            call(&server, "POST", "/api/v1/ontology/types", &alice, org, Some(json!({"def": {"key": key, "name": key, "properties": []}}))).await;
+        }
+        for (key, from, to, evidence) in [
+            ("vu_dans", "article", "page_lue", true),
+            ("prouve", "page_lue", "media_asset", true),
+            ("illustre", "article", "media_asset", false),
+        ] {
+            let (st, lt) = call(&server, "POST", "/api/v1/ontology/link-types", &alice, org, Some(json!({
+                "key": key, "name": key, "from_types": [from], "to_types": [to], "evidence": evidence
+            }))).await;
+            assert_eq!(st, 201, "{lt}");
+        }
+        let mut media = Vec::new();
+        for name in ["capture", "illustration"] {
+            let row = db.query_one_raw(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "INSERT INTO media_assets (id, org_id, kind, name) VALUES (gen_random_uuid(), $1, 'photo', $2) RETURNING object_id",
+                [org.into(), name.into()],
+            )).await.unwrap().unwrap();
+            media.push(row.try_get::<uuid::Uuid>("", "object_id").unwrap().to_string());
+        }
+        let obj = |t: &str| json!({"type_key": t, "title": t, "properties": {}});
+        let (_, art) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article"))).await;
+        let (_, page) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("page_lue"))).await;
+        for (lt, s, t) in [("vu_dans", &art["id"], &page["id"]), ("prouve", &page["id"], &json!(media[0])), ("illustre", &art["id"], &json!(media[1]))] {
+            let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &alice, org, Some(json!({"link_type": lt, "source_id": s, "target_id": t}))).await;
+            assert_eq!(st, 201, "{l}");
+        }
+        let (st, ev) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/evidence", art["id"].as_str().unwrap()), &alice, org, None).await;
+        assert_eq!(st, 200, "{ev}");
+        assert_eq!(ev["count"], 1, "the illustration is no evidence: {ev}");
+        assert_eq!(ev["results"][0]["media"]["id"], media[0].as_str());
+        assert_eq!(ev["results"][0]["via"], json!(["vu_dans", "prouve"]));
+        assert!(ev["results"][0]["proof"].is_null(), "no web proof behind it");
+    })
+    .await;
+}

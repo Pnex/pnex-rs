@@ -54,6 +54,7 @@ pub fn routes() -> Routes {
         .add("/objects/{id}/series/{property}", get(object_series))
         .add("/objects/{id}/bindings", get(object_bindings))
         .add("/objects/{id}/changes", get(object_changes))
+        .add("/objects/{id}/evidence", get(object_evidence))
         .add("/objects/{id}/actions/{key}", post(invoke_action))
         .add("/resolve/{kind}/{native_key}", get(resolve))
         .add("/path", get(path))
@@ -106,6 +107,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         object_series,
         object_bindings,
         object_changes,
+        object_evidence,
         create_link,
         update_link,
         close_link,
@@ -1152,6 +1154,35 @@ async fn object_changes(
         &[],
         &q,
         Ok(rows),
+    )
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/ontology/objects/{id}/evidence",
+    tag = "ontology",
+    operation_id = "ontology_objects_evidence",
+    summary = "List the evidence of an object",
+    description = "The media proving the object (external-apps.md D437), reached through link types declared `evidence`, two hops at most (a finding, the page it was seen in, the parts of that page's web proof), open links only. Each item gives the media id to download (`GET /media/{id}/content`, `media:read`), its current version and SHA-256, the link types followed, and for a web proof part the proof's seal (sequence, manifest SHA-256, previous seal). Paginated (`limit`/`offset`). Any org member.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)"), PageQuery),
+    responses(
+        (status = 200, body = pnex_core::Paginated<pnex_core::ontology::api::EvidenceItem>),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn object_evidence(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+    Query(q): Query<PageQuery>,
+) -> Result<Response> {
+    let id = parse_uuid(&id)?;
+    paged(
+        &format!("/api/v1/ontology/objects/{id}/evidence"),
+        &[],
+        &q,
+        crate::services::ontology::evidence::of(&ctx.db, org.org.id, id).await,
     )
 }
 

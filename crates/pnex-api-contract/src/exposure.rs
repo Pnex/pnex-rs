@@ -228,6 +228,7 @@ pub const EXPOSED: &[&str] = &[
     "ontology_link_types_update",
     "ontology_objects_bindings",
     "ontology_objects_changes",
+    "ontology_objects_evidence",
     "ontology_objects_create",
     "ontology_objects_get",
     "ontology_objects_graph",

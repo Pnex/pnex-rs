@@ -515,7 +515,10 @@ async fn seal(
     .await
 }
 
-/// The crawl's `record.proof_link`: page object → each part's media.
+/// The crawl's `record.proof_link`: page object → each part's media. Then
+/// the objects pointing at the page through an evidence link type and not
+/// pointing at any proof yet get the parts too (external-apps.md D437): a
+/// finding keeps the proof of when it was found.
 async fn link_parts(
     db: &DatabaseConnection,
     org_id: i64,
@@ -539,27 +542,19 @@ async fn link_parts(
     };
     let object: Option<Uuid> = row.try_get("", "object_id").ok().flatten();
     let spec: Option<Value> = row.try_get("", "spec").ok();
-    let link_type = spec
+    let proof_link = spec
         .and_then(|s| serde_json::from_value::<MissionSpec>(s).ok())
         .and_then(|s| match s {
             MissionSpec::CrawlSite(p) => p.record.and_then(|r| r.proof_link),
             _ => None,
         });
-    let (Some(object), Some(link_type)) = (object, link_type) else {
+    let Some(object) = object else {
         return;
     };
     let Ok(s) = schema(db, org_id).await else {
         return;
     };
-    let Some(lt) = s.link_type(&link_type) else {
-        return;
-    };
-    let declared = |k: &str| lt.attributes.iter().any(|a| a.key == k);
-    let actor = Actor {
-        user_id: None,
-        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
-        source_ref: format!("proof:{page}"),
-    };
+    let mut targets = Vec::new();
     for (part, kind) in [
         ("screenshot", "capture"),
         ("html", "html"),
@@ -568,15 +563,26 @@ async fn link_parts(
         let Some(media) = parts[part]["media_id"].as_str() else {
             continue;
         };
-        let Ok(target) = crate::services::ontology::objects::find_by_native(
+        if let Ok(target) = crate::services::ontology::objects::find_by_native(
             db,
             org_id,
             pnex_core::resources::KIND_MEDIA_ASSET,
             media,
         )
         .await
-        else {
-            continue;
+        {
+            targets.push((target.id, kind));
+        }
+    }
+    let actor = Actor {
+        user_id: None,
+        role: crate::models::_entities::sea_orm_active_enums::OrgMemberRole::Member,
+        source_ref: format!("proof:{page}"),
+    };
+    let link = |source: Uuid, link_type: String, target: Uuid, kind: &str| {
+        let declared = |k: &str| {
+            s.link_type(&link_type)
+                .is_some_and(|lt| lt.attributes.iter().any(|a| a.key == k))
         };
         let mut attrs = serde_json::Map::new();
         for (k, v) in [
@@ -588,16 +594,77 @@ async fn link_parts(
                 attrs.insert(k.into(), v);
             }
         }
-        let input = pnex_core::ontology::api::LinkInput {
-            link_type: link_type.clone(),
-            source_id: object.to_string(),
-            target_id: target.id.to_string(),
+        pnex_core::ontology::api::LinkInput {
+            link_type,
+            source_id: source.to_string(),
+            target_id: target.to_string(),
             attributes: attrs,
             valid_from: None,
             valid_to: None,
+        }
+    };
+    if let Some(lt) = proof_link.filter(|l| s.link_type(l).is_some()) {
+        for (target, kind) in &targets {
+            if let Err(e) =
+                links::create(db, org_id, &actor, &link(object, lt.clone(), *target, kind)).await
+            {
+                tracing::warn!(page = %page, error = %e, "proof part not linked");
+            }
+        }
+    }
+    let evidence: Vec<String> = s
+        .links
+        .iter()
+        .filter(|(l, _, _)| l.evidence)
+        .map(|(l, _, _)| l.key.clone())
+        .collect();
+    if evidence.is_empty() || targets.is_empty() {
+        return;
+    }
+    // Sources pointing at the page by evidence, with no proof of that type yet.
+    let waiting = db
+        .query_all_raw(stmt(
+            "SELECT e.source_object_id AS source, e.relation, o.type_key FROM resource_edges e \
+             JOIN objects o ON o.id = e.source_object_id \
+             WHERE e.org_id = $1 AND e.target_object_id = $2 AND e.valid_to IS NULL \
+               AND e.relation = ANY($3) \
+               AND NOT EXISTS (SELECT 1 FROM resource_edges p JOIN objects m ON m.id = p.target_object_id \
+                 WHERE p.org_id = $1 AND p.source_object_id = e.source_object_id \
+                   AND p.relation = e.relation AND p.valid_to IS NULL AND m.type_key = $4)",
+            vec![
+                org_id.into(),
+                object.into(),
+                evidence.into(),
+                pnex_core::resources::KIND_MEDIA_ASSET.into(),
+            ],
+        ))
+        .await
+        .unwrap_or_default();
+    for r in waiting {
+        let (Ok(source), Ok(relation), Ok(type_key)) = (
+            r.try_get::<Uuid>("", "source"),
+            r.try_get::<String>("", "relation"),
+            r.try_get::<String>("", "type_key"),
+        ) else {
+            continue;
         };
-        if let Err(e) = links::create(db, org_id, &actor, &input).await {
-            tracing::warn!(page = %page, error = %e, "proof part not linked");
+        let allowed = s.link_type(&relation).is_some_and(|lt| {
+            lt.allows(&relation, &type_key, pnex_core::resources::KIND_MEDIA_ASSET)
+        });
+        if !allowed {
+            continue;
+        }
+        for (target, kind) in &targets {
+            if let Err(e) = links::create(
+                db,
+                org_id,
+                &actor,
+                &link(source, relation.clone(), *target, kind),
+            )
+            .await
+            {
+                tracing::warn!(page = %page, error = %e, "evidence not linked to its proof");
+            }
         }
     }
 }

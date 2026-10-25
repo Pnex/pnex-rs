@@ -12,6 +12,7 @@
 pub mod actions;
 pub mod cases;
 pub mod changes;
+pub mod evidence;
 pub mod feed;
 pub mod flow_nodes;
 pub mod graph;
