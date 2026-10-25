@@ -29,6 +29,34 @@ fn code_in(pack: &str, name: &str) -> String {
         .join("\n")
 }
 
+/// Every Starlark function of every shipped pack evaluates as a module
+/// (names resolve at compile time: a dangling one refuses the whole flow).
+#[test]
+fn every_pack_starlark_function_compiles() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../pnex-backend/packs");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "yaml") {
+            continue;
+        }
+        let pack = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = pack.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            let Some(name) = l.strip_prefix("  - name: ") else {
+                continue;
+            };
+            if lines.get(i + 1) != Some(&"    language: starlark") {
+                continue;
+            }
+            pnex_node_starlark::executor::compile_check(&code_in(&pack, name))
+                .unwrap_or_else(|e| panic!("{}: {name}: {e}", path.display()));
+            checked += 1;
+        }
+    }
+    assert!(checked > 10, "only {checked} functions found");
+}
+
 #[test]
 fn next_reminder_moves_the_procedure_and_waits_for_a_human_at_r3() {
     let msg = json!({
