@@ -24,6 +24,9 @@ pub const EXPOSED: &[&str] = &[
     "annotation_layers_update",
     "annotation_layers_versions_get",
     "annotation_layers_versions_list",
+    "apps_get",
+    "apps_list",
+    "apps_me",
     "asr_models_check",
     "asr_models_create",
     "asr_models_get",
@@ -359,6 +362,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "ai_conversations_delete_all",
             "ai_providers_delete",
             "annotation_layers_delete",
+            "apps_delete",
             "asr_models_delete",
             "asr_profiles_delete",
             "cameras_recordings_delete",
@@ -468,6 +472,8 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
     (
         "access: membership and roles stay human decisions",
         &[
+            "apps_create",
+            "apps_update",
             "iam_access_keys_list",
             "iam_access_keys_revoke",
             "iam_assignments_create",

@@ -70,11 +70,11 @@ impl std::fmt::Display for Cursor {
     }
 }
 
-/// What to read: empty lists mean every type.
+/// What to read: `None` = every type, `Some` = only these (none if empty).
 #[derive(Debug, Default)]
 pub struct Filter {
-    pub types: Vec<String>,
-    pub link_types: Vec<String>,
+    pub types: Option<Vec<String>>,
+    pub link_types: Option<Vec<String>>,
 }
 
 #[derive(FromQueryResult)]
@@ -141,17 +141,19 @@ pub async fn page(
             "SELECT seq, txid::text AS txid, at, kind, id, type_key, action \
              FROM ontology_changes \
              WHERE org_id = $1 AND (txid, seq) > ($2::text::xid8, $3) AND {SETTLED} \
-               AND (kind <> 'object' OR cardinality($4::text[]) = 0 OR type_key = ANY($4)) \
-               AND (kind <> 'link' OR cardinality($5::text[]) = 0 OR type_key = ANY($5)) \
+               AND (kind <> 'object' OR $7 OR type_key = ANY($4)) \
+               AND (kind <> 'link' OR $8 OR type_key = ANY($5)) \
              ORDER BY txid, seq LIMIT $6"
         ),
         vec![
             org_id.into(),
             since.txid.to_string().into(),
             since.seq.into(),
-            filter.types.clone().into(),
-            filter.link_types.clone().into(),
+            filter.types.clone().unwrap_or_default().into(),
+            filter.link_types.clone().unwrap_or_default().into(),
             (limit as i64 + 1).into(),
+            filter.types.is_none().into(),
+            filter.link_types.is_none().into(),
         ],
     ))
     .all(&txn)

@@ -600,6 +600,10 @@ pub const ONTOLOGY_ACTION_UNAVAILABLE: &str = "ontology-action-unavailable";
 pub const ONTOLOGY_CHANGES_UNAVAILABLE: &str = "ontology-changes-unavailable";
 /// The feed cursor is behind what compaction removed: copy again from 0.
 pub const CHANGES_CURSOR_EXPIRED: &str = "changes-cursor-expired";
+/// No application with this id in the org, or the caller is not one.
+pub const APP_NOT_FOUND: &str = "app-not-found";
+/// The application changed since it was read (`args.current`).
+pub const APP_VERSION_CONFLICT: &str = "app-version-conflict";
 /// An `action-trigger` names a type or action absent from the org schema;
 /// `args.object_type`, `args.action`.
 pub const ONTOLOGY_ACTION_UNKNOWN: &str = "ontology-action-unknown";
@@ -882,6 +886,8 @@ pub const ALL: &[&str] = &[
     ONTOLOGY_ACTION_UNAVAILABLE,
     ONTOLOGY_CHANGES_UNAVAILABLE,
     CHANGES_CURSOR_EXPIRED,
+    APP_NOT_FOUND,
+    APP_VERSION_CONFLICT,
     ONTOLOGY_ACTION_UNKNOWN,
     MEDIA_DIFF_UNSUPPORTED,
     EXT_NO_AGENT,

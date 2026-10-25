@@ -45,13 +45,24 @@ struct FeedQuery {
     link_types: Option<String>,
 }
 
-fn list_of(raw: Option<&str>) -> Vec<String> {
-    raw.unwrap_or_default()
+/// A comma-separated list; absent or empty = no restriction.
+fn list_of(raw: Option<&str>) -> Option<Vec<String>> {
+    let list: Vec<String> = raw
+        .unwrap_or_default()
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .collect()
+        .collect();
+    (!list.is_empty()).then_some(list)
+}
+
+/// What an application asked, kept to what its scope allows (D433).
+fn within(asked: Option<Vec<String>>, allowed: &[String]) -> Option<Vec<String>> {
+    Some(match asked {
+        None => allowed.to_vec(),
+        Some(a) => a.into_iter().filter(|k| allowed.contains(k)).collect(),
+    })
 }
 
 fn feed_error(e: FeedError) -> Result<Response> {
@@ -73,7 +84,7 @@ fn feed_error(e: FeedError) -> Result<Response> {
     tag = "ontology",
     operation_id = "ontology_changes_list",
     summary = "List the ontology changes since a cursor",
-    description = "Objects and links created, updated, closed or deleted in the org after `since`, oldest first, each once per page with its current state. Pass `next` as `since` to resume; `more` = ask again now. `since=0` is a full copy (the log keeps the latest change of every object and link). Order never skips a transaction that commits late. 410 `changes-cursor-expired` when `since` is older than the retention of closes and deletes (30 days): copy again from 0. Any org member, service accounts included.",
+    description = "Objects and links created, updated, closed or deleted in the org after `since`, oldest first, each once per page with its current state. Pass `next` as `since` to resume; `more` = ask again now. `since=0` is a full copy (the log keeps the latest change of every object and link). Order never skips a transaction that commits late. 410 `changes-cursor-expired` when `since` is older than the retention of closes and deletes (30 days): copy again from 0. For an application's service account, only the types and link types of its scope. Any org member, service accounts included.",
     params(FeedQuery),
     responses(
         (status = 200, body = pnex_core::ontology::api::ChangeFeed),
@@ -96,10 +107,24 @@ async fn list(
         .as_deref()
         .and_then(|l| l.parse::<u64>().ok())
         .unwrap_or(500);
-    let filter = Filter {
+    let mut filter = Filter {
         types: list_of(q.types.as_deref()),
         link_types: list_of(q.link_types.as_deref()),
     };
+    // An application reads its scope, nothing else (D433).
+    if let Some(sp) = org.auth.service.as_ref() {
+        match crate::services::apps::of_service_account(&ctx.db, org.org.id, sp.id).await {
+            Ok(Some(app)) => {
+                filter.types = within(filter.types, &app.scope.types);
+                filter.link_types = within(filter.link_types, &app.scope.link_types);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!(error = %e, "application scope not read");
+                return Err(loco_rs::Error::InternalServerError);
+            }
+        }
+    }
     match feed::page(&ctx.db, org.org.id, since, &filter, limit).await {
         Ok(page) => format::json(page),
         Err(e) => feed_error(e),

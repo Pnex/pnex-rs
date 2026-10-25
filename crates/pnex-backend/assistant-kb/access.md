@@ -4,9 +4,9 @@ title: Access (roles, teams, assignments, service accounts)
 kind: feature
 pages: /access
 nodes: 
-err_codes: access-denied, iam-escalation, iam-role-key-taken, iam-role-not-found, iam-team-name-taken, iam-team-not-found, iam-assignment-duplicate, iam-assignment-not-found, iam-version-conflict, iam-service-account-not-found, iam-service-account-name-taken, iam-access-key-not-found, iam-access-key-limit, access-key-not-allowed
+err_codes: app-not-found, app-version-conflict, access-denied, iam-escalation, iam-role-key-taken, iam-role-not-found, iam-team-name-taken, iam-team-not-found, iam-assignment-duplicate, iam-assignment-not-found, iam-version-conflict, iam-service-account-not-found, iam-service-account-name-taken, iam-access-key-not-found, iam-access-key-limit, access-key-not-allowed
 tools: 
-tags: access, role, custom role, permission, team, assignment, service account, access key, api key, external application, accès, rôle, équipe, attribution, compte de service, clé d'accès
+tags: access, application, app, scope, change feed, role, custom role, permission, team, assignment, service account, access key, api key, external application, accès, rôle, équipe, attribution, compte de service, clé d'accès
 ---
 The Access page (Settings › Access) decides who can do what in the selected organization. Only Owners and Admins see it and change it; the assistant never changes access.
 
@@ -25,3 +25,8 @@ The Access page (Settings › Access) decides who can do what in the selected or
 - A **service account** lets an external application (a website server, a script on a server) read data of the organization. It holds nothing until it is given a role, and it only ever reads: it never writes, never manages access, never uses the assistant.
 - Open **Access keys** to create a key (expiry within a year, two active keys at most for a replacement without a cut). The key is shown **once**: copy it then, keep it on the application's server, never in a browser page.
 - **Revoke** stops a key at once; deleting the service account stops all its keys.
+
+## Applications
+- An **application** is an external program built on the organization's data (a site, a business tool). Declare it under **Applications** with a key, the **service account** it signs in with (one application per account) and its **scope**: the object types, link types and media kinds it reads, and the largest media it copies.
+- The application follows the organization's changes through the change feed and only receives what its scope holds, even if its role would let it read more.
+- Deleting an application keeps its service account and keys: delete them under **Service accounts** to cut it off.

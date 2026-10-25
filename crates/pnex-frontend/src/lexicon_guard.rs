@@ -30,6 +30,20 @@ struct Rule {
 }
 
 const RULES: &[Rule] = &[
+    // external-apps.md D433: an external program built on an org's data
+    // is an « application »; a « connecteur » is a provider (geo, LLM).
+    Rule {
+        scope: Scope::Fr,
+        term: "intégration externe",
+        use_instead: "application (D433)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "external integration",
+        use_instead: "application (D433)",
+        allowed_keys: &[],
+    },
     // web-presence.md D360: what an org plugs in to search the web is a
     // « fournisseur de recherche web »; the engine behind it is not ours.
     Rule {

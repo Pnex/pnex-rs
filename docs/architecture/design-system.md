@@ -263,6 +263,7 @@ les règles plus anciennes qui les contredisent.
 | Source continue (pistes audio et/ou vidéo : caméra IP, direct, fichier) | Flux | Stream | une caméra-appareil |
 | Caméra gérée par PNeX (matériel, firmware, réglages de capture) | Caméra | Camera | un flux |
 | État sauvegardé d'un objet | Version | Version | — |
+| Programme externe construit sur les données d'une org, par un compte de service (D433) | Application | Application | ni « intégration », ni « connecteur » (= fournisseur) |
 | Vue d'un dossier : chaque acteur est un fil dans le temps (storyline) | Histoire | Story | ni l'historique des versions, ni la frise |
 | Événement d'un dossier qui déplace de l'argent (montant + payeur + bénéficiaire) | Versement | Payment | ni « paiement », ni « transaction » |
 | Vue d'un dossier : diagramme de Sankey des versements | Argent | Money | pas « Flux » (= streams) |

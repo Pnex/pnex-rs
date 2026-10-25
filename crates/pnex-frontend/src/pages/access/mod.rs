@@ -1,11 +1,12 @@
 //! Page `/access` — access management of the org (iam.md §9, lot I7):
 //! roles (managed and custom), teams, assignments and service accounts
-//! with their access keys. Owner and admin only (`iam:*`); the server
+//! with their access keys, and the applications that use them (D433). Owner and admin only (`iam:*`); the server
 //! decides, the page hides what the caller may not do.
 //!
 //! School `pages/edge_refs.rs`: tabs above the CRUD socle (ListLayout +
 //! DataTable + FormDialog + ConfirmDialog), one component per tab.
 
+mod apps;
 mod assignments;
 mod grid;
 mod roles;
@@ -26,6 +27,7 @@ enum Tab {
     Teams,
     Assignments,
     ServiceAccounts,
+    Apps,
 }
 
 /// Opens the create form of the active tab (bumped by the header button).
@@ -38,24 +40,27 @@ pub fn Access() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut add = use_signal(AddRequest::default);
     let can_write = access::can("iam:write");
+    let can_write_apps = access::can("apps:write");
     let add_label = match tab() {
         Tab::Roles => t!("access-new-role"),
         Tab::Teams => t!("access-new-team"),
         Tab::Assignments => t!("access-new-assignment"),
         Tab::ServiceAccounts => t!("access-new-service-account"),
+        Tab::Apps => t!("access-new-app"),
     };
     let tabs = [
         (Tab::Roles, "access-tab-roles"),
         (Tab::Teams, "access-tab-teams"),
         (Tab::Assignments, "access-tab-assignments"),
         (Tab::ServiceAccounts, "access-tab-service-accounts"),
+        (Tab::Apps, "access-tab-apps"),
     ];
 
     rsx! {
         ListLayout {
             title: t!("access-title").to_string(),
             subtitle: Some(t!("access-subtitle").to_string()),
-            can_write,
+            can_write: if tab() == Tab::Apps { can_write_apps } else { can_write },
             add_label: Some(add_label.to_string()),
             on_add: move |_| add.with_mut(|a| a.0 += 1),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
@@ -95,6 +100,9 @@ pub fn Access() -> Element {
                     Tab::ServiceAccounts => rsx! {
                         service_accounts::ServiceAccountsTab { reload, add, can_write }
                     },
+                    Tab::Apps => rsx! {
+                        apps::AppsTab { reload, add, can_write: can_write_apps }
+                    },
                 }
             }
         }
@@ -116,6 +124,9 @@ fn TabIcon(tab: Tab) -> Element {
         },
         Tab::ServiceAccounts => rsx! {
             icons::Cpu { class }
+        },
+        Tab::Apps => rsx! {
+            icons::Layers { class }
         },
     }
 }

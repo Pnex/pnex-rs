@@ -4,6 +4,7 @@
 pub mod ai;
 /// Annotations sur médias (D55–D60) — écriture des couches versionnées.
 pub mod annotation_layer;
+pub mod apps;
 pub mod artifact_store;
 /// Per-device build history retention (keeps the newest records).
 pub mod build_retention;

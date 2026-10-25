@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod annotation_layers;
+pub mod apps;
 /// Profils de board (catalogue /api/v1/boards — éditeur pinout + wizard).
 pub mod boards;
 pub mod builds;

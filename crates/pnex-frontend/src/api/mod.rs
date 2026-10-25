@@ -5,6 +5,7 @@ pub mod agents;
 pub mod ai;
 /// Annotations sur médias (D55–D60) — couches versionnées + read model.
 pub mod annotation_layers;
+pub mod apps;
 pub mod auth;
 pub mod boards;
 pub mod builds;

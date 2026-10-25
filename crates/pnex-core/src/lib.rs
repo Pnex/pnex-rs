@@ -7,8 +7,10 @@
 //!   niveau des types exposés) ;
 //! - il ne contient que des DTO/constantes partagés, pas de logique métier.
 
-/// Edge agent contract (D95).
 pub mod agent;
+/// Edge agent contract (D95).
+/// Applications declared in an org (external-apps.md D433).
+pub mod apps;
 
 pub mod api;
 pub use api::*;

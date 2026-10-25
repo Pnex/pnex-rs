@@ -75,7 +75,7 @@ Conséquences :
 
 ### D433 — Une application est un objet de l'org qui habille un compte de service
 
-Une **application** est déclarée dans l'org (page Organisation,
+Une **application** est déclarée dans l'org (page Accès, onglet
 « Applications »), par un admin. Elle porte :
 
 - `key` (unique dans l'org), `name`, `description` ;
@@ -92,13 +92,26 @@ déclaré, même si son rôle IAM lui en permettrait plus (Q-A1, Shan). Les rout
 génériques (`/ontology/query`, `/media/{id}/content`) restent gouvernées
 par le rôle IAM du compte, comme pour tout appelant.
 
-Stockage : table `apps (id uuid, org_id, key, name, description,
-service_account_id, scope jsonb, object_sets jsonb, actions jsonb,
-version, created_at, updated_at)`. CRUD sous `/api/v1/apps`, permission
-`apps:read` (Viewer) et `apps:write` (Admin) ; contrat OpenAPI, IAM et
-MCP au même commit (création et suppression exclues du MCP, motif
-`accès`). L'application connaît sa propre déclaration par
-`GET /api/v1/apps/me` (compte de service appelant).
+Livré (lot A2) :
+
+- table `apps (id, org_id, key, name, description, service_account_id
+  unique, scope jsonb, version, created_by, created_at, updated_at)`,
+  migration 000055 ; les ensembles d'objets s'y ajoutent au lot A3, les
+  actions au lot 2 ;
+- `GET/POST /api/v1/apps`, `GET/PUT/DELETE /api/v1/apps/{id}` (PUT sur
+  `expected_version`, 409 `app-version-conflict`), `GET /api/v1/apps/me`
+  (l'application du compte de service appelant, 404 `app-not-found`
+  sinon) ; permissions `apps:read` (Viewer), `apps:write` et
+  `apps:delete` (Admin) ; MCP : lecture exposée, création et
+  modification exclues (motif accès), suppression exclue (destructif) ;
+- contrôles : clé unique, compte de service de l'org et d'une seule
+  application, types et types de liens existants, genres de médias de
+  la médiathèque, taille de 1 octet à 2 Gio ;
+- le flux (D435) restreint les types et types de liens à ceux du
+  périmètre quand l'appelant est le compte d'une application ;
+- onglet « Applications » de la page Accès (déclaration, périmètre par
+  cases à cocher), fiche `assistant-kb/access.md`, mot « Application »
+  au lexique et règle de la garde.
 
 Un pack peut **livrer** une déclaration d'application (`apps:` dans le
 YAML), que l'admin installe et relie à un compte de service : c'est la

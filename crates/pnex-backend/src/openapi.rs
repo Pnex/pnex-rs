@@ -87,6 +87,7 @@ pub fn spec() -> utoipa::openapi::OpenApi {
         controllers::ontology::openapi(),
         controllers::ontology_imports::openapi(),
         controllers::ontology_feed::openapi(),
+        controllers::apps::openapi(),
         controllers::cases::openapi(),
         controllers::flows::openapi(),
         controllers::functions::openapi(),
