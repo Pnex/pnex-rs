@@ -163,12 +163,14 @@ async fn node_reads_a_page_and_its_legal_notice() {
             "{r}"
         );
 
+        // No org browser and an unreachable platform one: the visit stays, no image.
+        unsafe { std::env::set_var("PNEX_BROWSER_URL", "http://127.0.0.1:1") };
         let (_, r) = node_call(
             &server,
             json!({"node": node("h"), "url": format!("{site}/")}),
         )
         .await;
-        // A capture asked without a browser of the org: the visit stays, no image.
+        unsafe { std::env::remove_var("PNEX_BROWSER_URL") };
         assert_eq!(
             (r["port"].clone(), r["legal_url"].clone(), r["screenshot_asset_id"].clone()),
             (json!(0), Value::Null, Value::Null),
@@ -209,6 +211,38 @@ async fn node_reads_a_page_and_its_legal_notice() {
             .await;
         assert_eq!(res.status_code().as_u16(), 401);
         unsafe { std::env::remove_var("PNEX_FLOW_RUNTIME_TOKEN") };
+    })
+    .await;
+}
+
+/// Without an org browser the capture falls back on the platform one (Q-N1),
+/// as recipe runs and server proofs do:
+/// `PNEX_BROWSER_URL=http://127.0.0.1:9222 cargo test --test web_visit capture_falls_back_on_the_platform_browser -- --ignored`.
+#[tokio::test]
+#[serial]
+#[ignore = "needs a running browser (PNEX_BROWSER_URL) and the internet"]
+async fn capture_falls_back_on_the_platform_browser() {
+    // A skipped capture only logs its reason.
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    with_app(|server, alice, db| async move {
+        let org = server
+            .get("/api/v1/user-info")
+            .add_header("Authorization", format!("Bearer {alice}"))
+            .await
+            .json::<Value>()["orgs"][0]["id"]
+            .as_i64()
+            .unwrap();
+        unsafe { std::env::set_var("PNEX_FLOW_RUNTIME_TOKEN", "tok-wv-1") };
+        let flow = deploy(
+            &db,
+            org,
+            json!([{"id": "h", "kind": "web_visit", "config": {"legal_page": false, "screenshot": true}}]),
+        )
+        .await;
+        let node = json!({"org_id": org, "flow_id": flow, "version": 1, "node_id": "h"});
+        let (_, r) = node_call(&server, json!({"node": node, "url": "https://example.com/"})).await;
+        assert_eq!(r["port"], 0, "{r}");
+        assert!(r["screenshot_asset_id"].as_str().is_some_and(|s| !s.is_empty()), "{r}");
     })
     .await;
 }

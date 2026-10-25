@@ -680,17 +680,16 @@ pub async fn snapshot(
     shot
 }
 
-/// JPEG of `url` taken by the org's own default browser (never the
-/// platform one), requests guarded as in a run. `Err` = no capture.
+/// JPEG of `url` taken by the org's default browser, else the platform
+/// one (same resolution as a run, Q-N1), requests guarded as in a run.
+/// `Err` = no capture.
 pub async fn capture(
     db: &DatabaseConnection,
     ring: Option<&Keyring>,
     org_id: i64,
     url: &str,
 ) -> Result<Vec<u8>, String> {
-    let rows = list(db, org_id).await.map_err(|e| e.to_string())?;
-    let row = rows.iter().find(|r| r.is_default).ok_or("no org browser")?;
-    let t = target_of(db, ring.ok_or("secrets keyring unavailable")?, org_id, row).await?;
+    let t = resolve(db, ring, org_id, None).await?;
     let host = reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_string))

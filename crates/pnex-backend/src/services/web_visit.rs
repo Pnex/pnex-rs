@@ -173,7 +173,7 @@ pub async fn run(
     Ok(reply)
 }
 
-/// The page captured by the org's browser, as an image of its media
+/// The page captured by the org's browser, else the platform one, as an image of its media
 /// library (quota of the org's storage).
 async fn capture(ctx: &AppContext, org_id: i64, url: &str) -> Result<uuid::Uuid, String> {
     use crate::models::_entities::media_assets;
@@ -188,7 +188,7 @@ async fn capture(ctx: &AppContext, org_id: i64, url: &str) -> Result<uuid::Uuid,
     let asset = media_assets::ActiveModel {
         id: Set(uuid::Uuid::new_v4()),
         org_id: Set(org_id),
-        kind: Set("image".into()),
+        kind: Set("photo".into()),
         name: Set(url.chars().take(255).collect()),
         description: Set(None),
         metadata: Set(Some(json!({ "source": "web_visit", "source_url": url }))),

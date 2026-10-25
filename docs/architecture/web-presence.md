@@ -168,8 +168,8 @@ Nœud **`web_visit`** : entrée `msg.payload.url` ; sortie `final_url`,
 `status`, `title`, `text` (accueil et mentions, ≤ 50 000 caractères
 chacun), `legal_url`, et `screenshot` (**Q-W4**). Exécuté par le serveur :
 texte par le client HTTP du crawl (`crawl::html::read`), capture par CDP
-(`site_recipes/cdp.rs`) si un navigateur est configuré pour l'org, sinon
-sans capture.
+(`site_recipes/cdp.rs`) par le navigateur de l'org, sinon celui de la
+plateforme ; sans navigateur joignable, pas de capture.
 
 ### D365 — Flow d'identification livré par le pack
 
@@ -319,9 +319,11 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   processus. Quota `settings.web_visit.daily_calls` (1 000 par jour).
   Quatre codes `web-visit-*`. Test `tests/web_visit.rs`. **Capture (Q-W4,
   2026-10-22)** : option `screenshot` du nœud ; le navigateur **par défaut
-  de l'org** seulement (jamais celui de la plateforme), requêtes gardées
+  de l'org**, sinon celui de la plateforme (`PNEX_BROWSER_URL`, même
+  résolution qu'un parcours et que les preuves serveur, Q-N1 ; 2026-10-25),
+  requêtes gardées
   comme un parcours (`guard_page`), image JPEG gardée comme asset média
-  `image` de l'org (`metadata.source = web_visit`), id rendu dans
+  `photo` de l'org (`metadata.source = web_visit`), id rendu dans
   `screenshot_asset_id`. Pas de navigateur ou échec : visite sans capture.
   `presence_web` 1.3.0 l'active et écrit l'id dans `site_web.capture`.
 - **W4** : opérateur de filtre `missing` (propriété absente) pour
