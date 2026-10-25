@@ -421,36 +421,67 @@ pub async fn run(
     run_id: Uuid,
 ) -> Result<ImportPreview> {
     find_row(db, org_id, id).await?;
-    let (row, diff) = load_run(db, id, run_id).await?;
+    let row = load_row(db, id, run_id).await?;
+    let diff = load_diff(db, run_id, Some(PREVIEW_SAMPLE)).await?;
     let steps = crate::services::ingest::run_steps(db, org_id, id, run_id).await?;
     Ok(ImportPreview {
         run: row.view(),
-        diff: diff.map(|d| d.sample(PREVIEW_SAMPLE)).unwrap_or_default(),
+        diff: diff.unwrap_or_default(),
         steps,
     })
 }
 
-async fn load_run<C: ConnectionTrait>(
-    db: &C,
-    import_id: Uuid,
-    run_id: Uuid,
-) -> Result<(RunRow, Option<ImportDiff>)> {
-    let row = RunRow::find_by_statement(stmt(
+async fn load_row<C: ConnectionTrait>(db: &C, import_id: Uuid, run_id: Uuid) -> Result<RunRow> {
+    RunRow::find_by_statement(stmt(
         &format!("SELECT {RUN_COLUMNS} FROM object_import_runs WHERE id = $1 AND import_id = $2"),
         vec![run_id.into(), import_id.into()],
     ))
     .one(db)
     .await?
-    .ok_or(OntologyError::NotFound)?;
-    let diff = db
+    .ok_or(OntologyError::NotFound)
+}
+
+/// A run's difference, each list cut to `sample` entries by Postgres: a
+/// preview of tens of thousands of rows weighs tens of MB, and the run is
+/// polled while it applies.
+async fn load_diff<C: ConnectionTrait>(
+    db: &C,
+    run_id: Uuid,
+    sample: Option<usize>,
+) -> Result<Option<ImportDiff>> {
+    let column = match sample {
+        None => "diff".to_string(),
+        Some(n) => {
+            let lists = [
+                "created",
+                "updated",
+                "closed",
+                "links_opened",
+                "links_updated",
+                "errors",
+                "warnings",
+            ]
+            .map(|k| {
+                format!(
+                    "'{k}', jsonb_path_query_array(diff, '$.{k}[0 to {}]')",
+                    n.saturating_sub(1)
+                )
+            })
+            .join(", ");
+            format!("jsonb_build_object('rows', diff -> 'rows', {lists})")
+        }
+    };
+    Ok(db
         .query_one_raw(stmt(
-            "SELECT diff FROM object_import_runs WHERE id = $1",
+            &format!(
+                "SELECT CASE WHEN diff IS NULL THEN NULL ELSE {column} END AS diff \
+                 FROM object_import_runs WHERE id = $1"
+            ),
             vec![run_id.into()],
         ))
         .await?
         .and_then(|r| r.try_get::<Option<Value>>("", "diff").ok().flatten())
-        .and_then(|d| serde_json::from_value(d).ok());
-    Ok((row, diff))
+        .and_then(|d| serde_json::from_value(d).ok()))
 }
 
 /// Opens a run (`running`) and returns it.
@@ -477,7 +508,7 @@ async fn open_run<C: ConnectionTrait>(
         ],
     ))
     .await?;
-    load_run(db, imp.id, id).await.map(|(r, _)| r)
+    load_row(db, imp.id, id).await
 }
 
 async fn finish_run<C: ConnectionTrait>(
@@ -725,7 +756,8 @@ pub async fn apply(
     let imp = find_row(db, org_id, id).await?;
     let run_id = Uuid::parse_str(&input.run_id)
         .map_err(|_| invalid("run_id", err_codes::FIELD_INVALID_UUID))?;
-    let (run, diff) = load_run(db, id, run_id).await?;
+    let run = load_row(db, id, run_id).await?;
+    let diff = load_diff(db, run_id, None).await?;
     if imp.version != input.expected_version {
         return Err(OntologyError::VersionConflict {
             current: imp.version,
@@ -1208,7 +1240,7 @@ pub async fn run_staged(
     max_closures_pct: u32,
 ) -> Result<StagedOutcome> {
     let imp = find_row(db, org_id, id).await?;
-    let (run, _) = load_run(db, imp.id, run_id).await?;
+    let run = load_row(db, imp.id, run_id).await?;
     let m = match imp.mapping() {
         Ok(m) => m,
         Err(e) => {
@@ -1243,7 +1275,7 @@ pub async fn run_staged(
             if state == "refused" {
                 notify_refused(db, &imp, code.unwrap_or_default(), args.clone()).await;
             }
-            let (r, _) = load_run(db, imp.id, run_id).await?;
+            let r = load_row(db, imp.id, run_id).await?;
             Ok::<_, OntologyError>(StagedOutcome {
                 run: r.view(),
                 counts: d.as_ref().map(ImportDiff::counts).unwrap_or_default(),

@@ -1904,23 +1904,6 @@ impl ImportDiff {
             warnings: self.warnings.len(),
         }
     }
-
-    /// The same difference with each list cut to `n` entries (display).
-    pub fn sample(&self, n: usize) -> Self {
-        fn cut<T: Clone>(v: &[T], n: usize) -> Vec<T> {
-            v.iter().take(n).cloned().collect()
-        }
-        Self {
-            rows: self.rows,
-            created: cut(&self.created, n),
-            updated: cut(&self.updated, n),
-            closed: cut(&self.closed, n),
-            links_opened: cut(&self.links_opened, n),
-            links_updated: cut(&self.links_updated, n),
-            errors: cut(&self.errors, n),
-            warnings: cut(&self.warnings, n),
-        }
-    }
 }
 
 /// `POST …/dry-run` answer: the run to apply and its difference (each
