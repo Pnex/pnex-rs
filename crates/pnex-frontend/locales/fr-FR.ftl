@@ -3631,6 +3631,7 @@ flows-link-upsert-type = Type de lien
 flows-link-upsert-close = Fermer le lien au lieu de l'ouvrir
 flows-link-upsert-skip-closed = Ne jamais rouvrir un lien déjà fermé pour ces deux objets (un candidat rejeté n'est pas reproposé)
 flows-link-upsert-propose = Proposer le lien à un humain (page « À valider ») au lieu de l'écrire
+flows-link-upsert-keep-best = Attribut qui ne fait que monter (ex. score) : un lien ouvert garde ses attributs si le message apporte une valeur plus basse
 flows-action-trigger-help = Un message par déclenchement : payload = les paramètres, msg.object = l'objet, msg.action = qui et quand.
 flows-action-trigger-action = Action
 flows-action-trigger-none = Aucune action n'est encore déclarée dans l'ontologie : ajoutez-en une à un type (ou installez le pack Maintenance).

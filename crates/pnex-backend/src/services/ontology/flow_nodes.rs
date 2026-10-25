@@ -415,6 +415,9 @@ pub async fn link(
             links::close(db, org, &actor, e.id, req.valid_from.as_deref()).await?
         }
         (None, true) => return Err(OntologyError::NotFound.into()),
+        (Some(e), false) if !keeps_best(&config.keep_best, &e.attributes, &req.attributes) => {
+            links::views(db, org, &[e]).await?.remove(0)
+        }
         (Some(e), false) => {
             let mut attrs = e.attributes.as_object().cloned().unwrap_or_default();
             attrs.extend(req.attributes.clone());
@@ -437,6 +440,18 @@ pub async fn link(
             .await?
         }
     }))
+}
+
+/// Whether the message may rewrite an open link's attributes under
+/// `keep_best`: not when it brings a lower value of that attribute.
+fn keeps_best(key: &str, stored: &Value, incoming: &serde_json::Map<String, Value>) -> bool {
+    let (Some(old), Some(new)) = (
+        stored.get(key).and_then(Value::as_f64),
+        incoming.get(key).and_then(Value::as_f64),
+    ) else {
+        return true;
+    };
+    new >= old
 }
 
 fn view(l: pnex_core::ontology::api::LinkView) -> Value {
@@ -525,4 +540,27 @@ pub async fn deploy_violations(
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keep_best_never_lowers_an_open_link() {
+        let stored = serde_json::json!({"score": 100, "preuve_nda": true});
+        let msg = |v: Value| {
+            serde_json::json!({"score": v})
+                .as_object()
+                .cloned()
+                .unwrap()
+        };
+        assert!(!keeps_best("score", &stored, &msg(70.into())));
+        assert!(keeps_best("score", &stored, &msg(100.into())));
+        assert!(keeps_best("", &stored, &msg(70.into())), "option off");
+        assert!(
+            keeps_best("score", &serde_json::json!({}), &msg(70.into())),
+            "nothing stored"
+        );
+    }
 }

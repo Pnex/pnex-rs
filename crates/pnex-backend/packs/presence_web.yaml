@@ -19,7 +19,7 @@
 key: presence_web
 name: Web presence
 names: {fr: "Présence web"}
-version: "1.5.0"
+version: "1.5.1"
 requires: [entreprises]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
@@ -288,7 +288,7 @@ flows:
         - { id: site, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link] }] }
         - { id: link, kind: pnex_function, config: { function_name: pw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         # 80 and more: a proposal accepted by the org rule (D377), traced.
-        - { id: linked, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true } }
+        - { id: linked, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true, keep_best: score } }
         # 40 to 79: the link is a proposal on the To validate page (D375).
         - { id: site_p, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link_p] }] }
         - { id: link_p, kind: pnex_function, config: { function_name: pw_lien_avis, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }, { port: 1, targets: [ask] }] }
@@ -302,4 +302,4 @@ flows:
             max_chars: 400
           outputs: [{ port: 0, targets: [opinion] }]
         - { id: opinion, kind: pnex_function, config: { function_name: pw_avis, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }] }
-        - { id: linked_p, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true } }
+        - { id: linked_p, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true, keep_best: score } }

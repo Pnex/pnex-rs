@@ -96,6 +96,11 @@ pub struct LinkUpsertConfig {
     /// an open link still gets its attributes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub propose: bool,
+    /// Numeric attribute that only rises: an open link keeps its attributes
+    /// when the message brings a lower value (a weaker candidate never
+    /// degrades a confirmed link).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub keep_best: String,
 }
 
 fn bad(code: &'static str, message: &str) -> Option<(&'static str, String)> {
@@ -176,6 +181,9 @@ impl LinkUpsertConfig {
     pub fn check(&self) -> Option<(&'static str, String)> {
         if !self.link_type.is_empty() && !valid_key(&self.link_type) {
             return bad("link_upsert_invalid", "invalid link type key");
+        }
+        if !self.keep_best.is_empty() && !valid_key(&self.keep_best) {
+            return bad("link_upsert_invalid", "invalid keep_best attribute key");
         }
         None
     }
@@ -333,6 +341,7 @@ mod tests {
             close: false,
             skip_closed: false,
             propose: false,
+            keep_best: String::new(),
         }
         .check()
         .is_some());

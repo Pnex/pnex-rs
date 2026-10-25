@@ -306,6 +306,8 @@ pub(super) fn LinkUpsertForm(
     let b2 = base.clone();
     let mut p3 = patch;
     let b3 = base.clone();
+    let mut p4 = patch;
+    let b4 = base.clone();
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-link-upsert-help")} }
@@ -371,6 +373,19 @@ pub(super) fn LinkUpsertForm(
                     },
                 }
                 {t!("flows-link-upsert-propose")}
+            }
+            label { class: FIELD_LABEL, {t!("flows-link-upsert-keep-best")} }
+            input {
+                class: SELECT,
+                "data-testid": "link-upsert-keep-best",
+                disabled: !can_write || initial.close,
+                value: "{initial.keep_best}",
+                onchange: move |e| {
+                    p4(LinkUpsertConfig {
+                        keep_best: e.value().trim().to_string(),
+                        ..b4.clone()
+                    });
+                },
             }
         }
     }
