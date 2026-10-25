@@ -323,20 +323,48 @@ Test bloquant `crates/pnex-backend/tests/engine_genericity.rs` :
   `crates/*/src` et de `crates/pnex-mirror` ;
 - échoue sur toute chaîne littérale égale à l'une de ces clés, sauf
   exception listée avec sa raison (le catalogue des packs livrés,
-  `services/ontology/packs.rs`).
+  `services/ontology/packs.rs`, ne nomme que des fichiers et passe).
+- Livrée en avance sur le reste (lot A0), puisqu'elle ne fait que
+  constater.
 
-**Constat du 2026-10-25** : aucune violation par nom dans le code non
-test. Restent, à traiter à part :
+Deux listes motivées, dans la garde :
 
-- le nœud `org_resolve` (nom → SIREN) et le mode d'import `datagouv` :
-  des connecteurs à des sources publiques françaises, génériques pour
-  tout pack mais propres à un pays ; à ranger comme connecteurs
-  (fournisseur déclaré, comme la géo) plutôt que dans le moteur ;
-- des modules de test dans `src` (`ontology/flow.rs`,
-  `ontology/import.rs`, `ingest.rs`, `controllers/flows/artifact.rs`,
-  `pnex-notify`) et un test du front qui inclut `quali_watch.yaml` :
-  admis (tests), mais à migrer vers une ontologie inventée quand on y
-  touche.
+- **mots du moteur** qu'un pack emploie aussi comme clé (`media`, `site`,
+  `line`, `controls`, `about`, `before`, `porte`, `programme`) : admis
+  partout ;
+- **couplages existants, gelés** : fichier, clés, raison. Tout nouveau
+  couplage fait échouer la garde ; chaque ligne est une dette.
+
+**Constat du 2026-10-25** :
+
+- `quali_watch` et `presence_web` : **aucune** clé dans le code non test
+  du moteur.
+- Couplages réels, à traiter à part (gelés dans `COUPLED`) :
+  - les **dossiers d'enquête** (`services/ontology/cases/`,
+    `pages/cases/`) sont construits sur les types du pack `investigation`
+    (`person`, `organization`, `place`, `hypothesis`, `claim`, `piece`,
+    `identifier`, `supports`, `contradicts`, `sourced_by`, `statement`,
+    `party`, `owns`) ; la règle de statut des `claim` est dans
+    `objects.rs` ;
+  - des fonctions transverses écrivent des types ou liens
+    d'`investigation` : profils des agents navigateur (`person`,
+    `identifier`, `uses_identifier`), attributions de médias
+    (`appears_in`), vidéos collectées (`published_by`), relecture média
+    (`statement`, `said_by`), profils vocaux (`person`) ;
+  - les chemins d'introduction de la cartographie de comptes (D329,
+    `ontology/api.rs`) nomment des liens d'`investigation`,
+    d'`entreprises` et de `prospection_b2b` (`knows`, `recommande`,
+    `employs`, `dirige`, `member_of`).
+  - Piste commune : un **rôle déclaré** par le pack (le type « personne »,
+    le lien « appuie »…), que le moteur lit au lieu d'un nom, comme
+    `evidence: true` (D437).
+- Hors garde (pas une clé de pack) : le nœud `org_resolve` (nom → SIREN)
+  et le mode d'import `datagouv` sont des connecteurs à des sources
+  publiques françaises : génériques pour tout pack, mais propres à un
+  pays ; à ranger comme connecteurs déclarés, comme la géo (Q-A7).
+- Des modules de test dans `src` et un test du front incluent
+  `quali_watch.yaml` : admis (tests), à migrer vers une ontologie
+  inventée quand on y touche.
 
 ## 12. Lots
 
