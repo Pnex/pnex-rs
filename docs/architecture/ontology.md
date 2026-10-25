@@ -348,6 +348,14 @@ Packs de référence pour valider le noyau :
 Règle : une fonctionnalité qui n'a de sens que pour un pack va **dans le
 pack**, jamais dans le noyau.
 
+> **2026-10-25 (`external-apps.md`, D432–D441, proposé)** : PneX est une
+> plateforme de données générique (catégorie Foundry). Le métier vit dans
+> les packs **et** dans les applications, qui passent par le SDK
+> d'applications (identité, ensembles d'objets, flux des changements,
+> médias, preuves et provenance, client généré, miroir hors ligne,
+> actions). La règle ci-dessus devient vérifiable : une garde (D441)
+> refuse tout nom de type, de lien ou de pack livré dans le code du moteur.
+
 > **2026-10-19 (`partner-watch.md`, proposé)** : deux packs de plus,
 > `entreprises_fr` (unité légale = `organization` étendue, établissement =
 > `map_pin`, dirigeants par lien temporel `dirige`, D304) et
