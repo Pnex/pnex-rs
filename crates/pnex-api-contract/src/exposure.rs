@@ -27,6 +27,7 @@ pub const EXPOSED: &[&str] = &[
     "apps_get",
     "apps_list",
     "apps_me",
+    "apps_me_object_sets_run",
     "asr_models_check",
     "asr_models_create",
     "asr_models_get",

@@ -123,16 +123,25 @@ que le moteur la connaisse.
 ### D434 — Un ensemble d'objets est une requête D185 nommée
 
 Un ensemble d'objets est une `OntologyQuery` (D185) enregistrée sous un
-nom, dans la déclaration de l'application (ou de l'org, plus tard). Rien
-de neuf côté moteur de requête : on reprend `/ontology/query`, `traverse`
-et `with_links`.
+nom dans la déclaration de l'application (`object_sets`, migration
+000056). Rien de neuf côté moteur de requête : l'exécution passe par
+`query::run`, comme `/ontology/query`.
 
-- `GET /api/v1/apps/me/object-sets/{name}?limit&offset` exécute
-  l'ensemble, dans le périmètre de l'application (les types et liens hors
-  périmètre sont refusés à l'enregistrement, `app-scope-violation`).
-- Paramètres : un ensemble peut déclarer des paramètres nommés
-  (`$code`), substitués dans les valeurs des filtres seulement, jamais
-  dans les clés (pas d'injection de structure).
+- `GET /api/v1/apps/me/object-sets/{name}?limit&offset&<paramètres>`
+  exécute l'ensemble pour le compte de service appelant
+  (`ontology:read`, MCP exposé) ; réponse `QueryResult`.
+- **Paramètres** : une valeur de filtre (ou d'un tableau de valeurs) ou
+  le `text` qui vaut `"$code"` est remplacée par le paramètre `code` de
+  la requête HTTP, en texte ; jamais une clé, un opérateur ni une
+  traversée (pas d'injection de structure). Paramètre absent : 400, champ
+  `code` = `required`. `"$$x"` reste littéral.
+- **Périmètre**, vérifié à l'enregistrement : l'ensemble nomme son
+  `type_key`, dans le périmètre ; chaque saut de `traverse` suit un type
+  de lien du périmètre, et les types qu'il atteint (`to_types` ou
+  `from_types` du type de lien, jamais `*`) y sont tous ; sinon 400
+  `out-of-scope` sur `object_sets.<nom>.type_key` ou `.traverse`.
+- Au plus 50 ensembles par application ; saisis en JSON dans l'onglet
+  Applications de la page Accès.
 - Agrégats simples (lot 2) : `count` et `group_by` une propriété, pour
   les compteurs d'écran ; le reste se calcule dans l'application.
 

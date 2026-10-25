@@ -4,7 +4,9 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::apps::{AppInput, AppScope, AppView, MEDIA_KINDS};
+use std::collections::BTreeMap;
+
+use pnex_core::apps::{AppInput, AppScope, AppView, ObjectSetDef, MEDIA_KINDS};
 
 use super::roles::use_add_request;
 use super::AddRequest;
@@ -149,6 +151,14 @@ fn AppDialog(
             .map(|b| (b / MB).to_string())
             .unwrap_or_default()
     });
+    let sets_json = use_signal(|| {
+        start
+            .as_ref()
+            .map(|a| serde_json::to_string_pretty(&a.object_sets).unwrap_or_default())
+            .unwrap_or_else(|| "{}".into())
+    });
+    let sets = serde_json::from_str::<BTreeMap<String, ObjectSetDef>>(&sets_json());
+    let sets_ok = sets.is_ok();
     let mut busy = use_signal(|| false);
     let title = if app.is_some() {
         t!("access-edit-app")
@@ -164,6 +174,7 @@ fn AppDialog(
             description: description(),
             service_account_id: Some(account()).filter(|a| !a.is_empty()),
             scope: s,
+            object_sets: serde_json::from_str(&sets_json()).unwrap_or_default(),
             expected_version: app.as_ref().map(|a| a.version),
         };
         let id = app.as_ref().map(|a| a.id.clone());
@@ -187,7 +198,7 @@ fn AppDialog(
             on_close: move |_| on_close.call(()),
             on_submit: save,
             busy: busy(),
-            valid: !name().trim().is_empty() && !key().trim().is_empty(),
+            valid: !name().trim().is_empty() && !key().trim().is_empty() && sets_ok,
             div {
                 label { class: FIELD_LABEL, r#for: "app-field-key", {t!("access-field-key")} }
                 input {
@@ -220,6 +231,7 @@ fn AppDialog(
             }
             AccountPicker { account }
             ScopePicker { scope }
+            ObjectSets { sets_json, ok: sets_ok }
             div {
                 label { class: FIELD_LABEL, r#for: "app-field-max", {t!("access-app-media-max")} }
                 input {
@@ -376,6 +388,29 @@ fn Choice(value: String, label: String, part: Part, scope: Signal<AppScope>) -> 
             input { r#type: "checkbox", checked, onchange: toggle }
             span { {label} }
             code { class: "text-xs text-slate", {value} }
+        }
+    }
+}
+
+/// Named queries of the application (D434), as JSON.
+#[component]
+fn ObjectSets(sets_json: Signal<String>, ok: bool) -> Element {
+    rsx! {
+        div {
+            label { class: FIELD_LABEL, r#for: "app-field-sets", {t!("access-app-object-sets")} }
+            textarea {
+                id: "app-field-sets",
+                class: "{INPUT} font-mono text-xs",
+                rows: "6",
+                spellcheck: false,
+                value: "{sets_json}",
+                oninput: move |e| sets_json.set(e.value()),
+            }
+            if ok {
+                p { class: FIELD_HELP, {t!("access-app-object-sets-help")} }
+            } else {
+                p { class: "text-xs text-red-700", {t!("access-app-object-sets-invalid")} }
+            }
         }
     }
 }

@@ -1300,3 +1300,6 @@ pub const FIELD_UNIQUE: &str = "unique";
 /// `{"wifi_credential_id": "not-found"}` — the referenced object does not
 /// exist in the org.
 pub const FIELD_NOT_FOUND: &str = "not-found";
+/// `{"object_sets.x.traverse": "out-of-scope"}`: reaches types or links
+/// outside the application's scope (D434).
+pub const FIELD_OUT_OF_SCOPE: &str = "out-of-scope";

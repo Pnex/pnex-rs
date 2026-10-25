@@ -1345,6 +1345,15 @@
           "name": {
             "type": "string"
           },
+          "object_sets": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ObjectSetDef"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "scope": {
             "$ref": "#/components/schemas/AppScope"
           },
@@ -1414,6 +1423,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "object_sets": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ObjectSetDef"
+            },
+            "description": "Named queries, run by `GET /apps/me/object-sets/{name}`.",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
           },
           "scope": {
             "$ref": "#/components/schemas/AppScope"
@@ -12448,6 +12467,21 @@
           "id",
           "type_key",
           "title"
+        ],
+        "type": "object"
+      },
+      "ObjectSetDef": {
+        "description": "A named query of an application (D434): an ontology query (D185) whose\nfilter values and text may name parameters, `\"$code\"`, given when it\nruns. Parameters are text and only ever fill values, never keys.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/OntologyQuery"
+          }
+        },
+        "required": [
+          "query"
         ],
         "type": "object"
       },
@@ -27583,6 +27617,114 @@
           }
         ],
         "summary": "Get the calling application",
+        "tags": [
+          "apps"
+        ]
+      }
+    },
+    "/api/v1/apps/me/object-sets/{name}": {
+      "get": {
+        "description": "Runs a named query of the application whose service account signs the request (D434). Every query parameter other than `limit` and `offset` fills the set's parameter of that name (`$code` in a filter value or the text); a missing one answers 400 with that field `required`. The set keeps to the application's scope (checked when it is saved). Answers like `POST /ontology/query`. Service accounts of an application.",
+        "operationId": "apps_me_object_sets_run",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object set name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rows per page (default 50, at most 500)",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Rows to skip",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResult"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "A parameter of the set is missing (`<name>`: `required`), or the query is invalid"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `ontology:read`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`app-not-found`: no application for the caller, or no set of that name"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Run an object set of the calling application",
         "tags": [
           "apps"
         ]

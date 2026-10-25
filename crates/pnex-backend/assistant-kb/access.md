@@ -28,5 +28,6 @@ The Access page (Settings › Access) decides who can do what in the selected or
 
 ## Applications
 - An **application** is an external program built on the organization's data (a site, a business tool). Declare it under **Applications** with a key, the **service account** it signs in with (one application per account) and its **scope**: the object types, link types and media kinds it reads, and the largest media it copies.
+- Its **object sets** are named queries it runs (one type of its scope each, links followed only inside the scope); a value "$code" is a parameter it gives when it runs the set.
 - The application follows the organization's changes through the change feed and only receives what its scope holds, even if its role would let it read more.
 - Deleting an application keeps its service account and keys: delete them under **Service accounts** to cut it off.

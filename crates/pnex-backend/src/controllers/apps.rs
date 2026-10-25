@@ -10,6 +10,7 @@ use loco_rs::controller::format;
 use loco_rs::prelude::*;
 use pnex_core::apps::{AppInput, AppView};
 use pnex_core::err_codes;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::coded_error;
@@ -22,13 +23,14 @@ pub fn routes() -> Routes {
         .prefix("/api/v1/apps")
         .add("/", get(list).post(create))
         .add("/me", get(me))
+        .add("/me/object-sets/{name}", get(me_object_set))
         .add("/{id}", get(one).put(update).delete(remove))
 }
 
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
-    #[openapi(paths(list, me, one, create, update, remove))]
+    #[openapi(paths(list, me, me_object_set, one, create, update, remove))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
 }
@@ -54,6 +56,7 @@ fn app_error(e: AppError) -> Result<Response> {
             "The application changed since it was read; reload it.",
             Some(serde_json::json!({ "current": current.to_string() })),
         )),
+        AppError::Query(e) => super::ontology::onto_error(e),
         AppError::Db(e) => Err(e.into()),
     }
 }
@@ -102,6 +105,59 @@ async fn me(State(ctx): State<AppContext>, org: OrgContext) -> Result<Response> 
     match apps::of_service_account(&ctx.db, org.org.id, sp.id).await {
         Ok(Some(a)) => format::json(a),
         Ok(None) => app_error(AppError::NotFound),
+        Err(e) => app_error(e),
+    }
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/apps/me/object-sets/{name}",
+    tag = "apps",
+    operation_id = "apps_me_object_sets_run",
+    summary = "Run an object set of the calling application",
+    description = "Runs a named query of the application whose service account signs the request (D434). Every query parameter other than `limit` and `offset` fills the set's parameter of that name (`$code` in a filter value or the text); a missing one answers 400 with that field `required`. The set keeps to the application's scope (checked when it is saved). Answers like `POST /ontology/query`. Service accounts of an application.",
+    params(
+        ("name" = String, Path, description = "Object set name"),
+        ("limit" = Option<i64>, Query, description = "Rows per page (default 50, at most 500)"),
+        ("offset" = Option<i64>, Query, description = "Rows to skip")
+    ),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::QueryResult),
+        (status = 400, description = "A parameter of the set is missing (`<name>`: `required`), or the query is invalid", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`app-not-found`: no application for the caller, or no set of that name", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn me_object_set(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(name): Path<String>,
+    Query(mut params): Query<HashMap<String, String>>,
+) -> Result<Response> {
+    let Some(sp) = org.auth.service.as_ref() else {
+        return app_error(AppError::NotFound);
+    };
+    let app = match apps::of_service_account(&ctx.db, org.org.id, sp.id).await {
+        Ok(Some(a)) => a,
+        Ok(None) => return app_error(AppError::NotFound),
+        Err(e) => return app_error(e),
+    };
+    let mut number = |k: &str| params.remove(k).and_then(|v| v.parse::<u64>().ok());
+    let (limit, offset) = (number("limit"), number("offset"));
+    let client = super::ontology::o2(&ctx);
+    match apps::run_set(
+        &ctx.db,
+        client.as_ref(),
+        org.org.id,
+        &app,
+        &name,
+        &params,
+        limit,
+        offset,
+    )
+    .await
+    {
+        Ok(r) => format::json(r),
         Err(e) => app_error(e),
     }
 }

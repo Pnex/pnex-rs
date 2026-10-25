@@ -77,7 +77,7 @@ async fn an_application_reads_its_scope() {
             .unwrap();
         for key in ["article", "auteur", "brouillon"] {
             let (st, t) = call(&server, "POST", "/api/v1/ontology/types", &alice, org,
-                Some(json!({"def": {"key": key, "name": key, "properties": []}}))).await;
+                Some(json!({"def": {"key": key, "name": key, "properties": [{"key": "lang", "name": "Lang", "kind": "text", "max_len": 8}]}}))).await;
             assert_eq!(st, 201, "{t}");
         }
         let (st, _) = call(&server, "POST", "/api/v1/ontology/link-types", &alice, org,
@@ -117,8 +117,17 @@ async fn an_application_reads_its_scope() {
 
         // Replace on the version read.
         let url = format!("/api/v1/apps/{}", app["id"].as_str().unwrap());
+        let mut out = decl.clone();
+        out["expected_version"] = json!(1);
+        out["object_sets"] = json!({"drafts": {"query": {"type_key": "brouillon"}}});
+        let (st, e) = call(&server, "PUT", &url, &alice, org, Some(out)).await;
+        assert_eq!((st, e["errors"]["fields"]["object_sets.drafts.type_key"].as_str()), (400, Some("out-of-scope")), "{e}");
         let mut v2 = decl.clone();
         v2["description"] = json!("Reads articles");
+        v2["object_sets"] = json!({
+            "by_lang": {"description": "Articles of a language", "query": {"type_key": "article", "filters": [{"key": "lang", "op": "eq", "value": "$lang"}]}},
+            "authors": {"query": {"type_key": "article", "traverse": [{"link_type": "ecrit_par"}]}}
+        });
         v2["expected_version"] = json!(1);
         let (st, a2) = call(&server, "PUT", &url, &alice, org, Some(v2.clone())).await;
         assert_eq!((st, &a2["version"]), (200, &json!(2)), "{a2}");
@@ -126,7 +135,7 @@ async fn an_application_reads_its_scope() {
         assert_eq!((st, e["error"].as_str()), (409, Some("app-version-conflict")), "{e}");
 
         // Objects in and out of the scope.
-        let obj = |t: &str, title: &str| json!({"type_key": t, "title": title, "properties": {}});
+        let obj = |t: &str, title: &str| json!({"type_key": t, "title": title, "properties": {"lang": "fr"}});
         call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article", "Moteurs"))).await;
         call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("brouillon", "Secret"))).await;
         call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("auteur", "Ada"))).await;
@@ -155,6 +164,16 @@ async fn an_application_reads_its_scope() {
         assert_eq!(titles(&scoped), vec!["Ada", "Moteurs"], "the application, its scope: {scoped}");
         let (_, asked) = call(&server, "GET", "/api/v1/ontology/changes?since=0&types=brouillon,article", &secret, org, None).await;
         assert_eq!(titles(&asked), vec!["Moteurs"], "never past its scope: {asked}");
+
+        // Its object sets, with their parameters.
+        let (st, r) = call(&server, "GET", "/api/v1/apps/me/object-sets/by_lang?lang=fr", &secret, org, None).await;
+        assert_eq!((st, &r["count"]), (200, &json!(1)), "{r}");
+        let (_, r) = call(&server, "GET", "/api/v1/apps/me/object-sets/by_lang?lang=en", &secret, org, None).await;
+        assert_eq!(r["count"], 0, "{r}");
+        let (st, e) = call(&server, "GET", "/api/v1/apps/me/object-sets/by_lang", &secret, org, None).await;
+        assert_eq!((st, e["errors"]["fields"]["lang"].as_str()), (400, Some("required")), "{e}");
+        let (st, _) = call(&server, "GET", "/api/v1/apps/me/object-sets/nope", &secret, org, None).await;
+        assert_eq!(st, 404);
 
         // The application cannot declare itself more.
         let (st, _) = call(&server, "POST", "/api/v1/apps", &secret, org, Some(json!({"key": "more", "name": "More"}))).await;

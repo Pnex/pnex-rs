@@ -2,11 +2,15 @@
 //! application dresses a service account of the org with the scope it
 //! reads; the change feed keeps to that scope when the application calls.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, FixedOffset};
-use pnex_core::apps::{check, AppInput, AppScope, AppView};
-use pnex_core::err_codes::{FIELD_INVALID_UUID, FIELD_NOT_FOUND, FIELD_UNIQUE};
+use pnex_core::apps::{bind, check, AppInput, AppScope, AppView, ObjectSetDef};
+use pnex_core::err_codes::{
+    FIELD_INVALID_UUID, FIELD_NOT_FOUND, FIELD_OUT_OF_SCOPE, FIELD_REQUIRED, FIELD_UNIQUE,
+};
+use pnex_core::ontology::api::{Direction, QueryResult};
+use pnex_core::ontology::TypeSet;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, FromQueryResult, Statement};
 use uuid::Uuid;
 
@@ -19,6 +23,9 @@ pub enum AppError {
     NotFound,
     #[error("version conflict (current {current})")]
     VersionConflict { current: i32 },
+    /// The query of an object set refused or failed.
+    #[error(transparent)]
+    Query(#[from] crate::services::ontology::OntologyError),
     #[error(transparent)]
     Db(#[from] DbErr),
 }
@@ -33,8 +40,8 @@ fn stmt(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres, sql, values)
 }
 
-const SELECT: &str = "SELECT id, key, name, description, service_account_id, scope, version, \
-                      created_at, updated_at FROM apps";
+const SELECT: &str = "SELECT id, key, name, description, service_account_id, scope, object_sets, \
+                      version, created_at, updated_at FROM apps";
 
 #[derive(FromQueryResult)]
 struct Row {
@@ -44,6 +51,7 @@ struct Row {
     description: String,
     service_account_id: Option<Uuid>,
     scope: serde_json::Value,
+    object_sets: serde_json::Value,
     version: i32,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
@@ -58,6 +66,7 @@ impl From<Row> for AppView {
             description: r.description,
             service_account_id: r.service_account_id.map(|i| i.to_string()),
             scope: serde_json::from_value(r.scope).unwrap_or_default(),
+            object_sets: serde_json::from_value(r.object_sets).unwrap_or_default(),
             version: r.version,
             created_at: r.created_at.to_rfc3339(),
             updated_at: r.updated_at.to_rfc3339(),
@@ -151,6 +160,9 @@ async fn check_in_org(
             Some(id)
         }
     };
+    for (name, set) in &input.object_sets {
+        check_set(&s, &input.scope, name, set)?;
+    }
     let mut scope = input.scope.clone();
     for list in [
         &mut scope.types,
@@ -161,6 +173,56 @@ async fn check_in_org(
         list.dedup();
     }
     Ok((account, scope))
+}
+
+/// An object set keeps to the scope: its type, every link it follows and
+/// the types those links reach (D434).
+fn check_set(
+    s: &crate::services::ontology::OrgSchema,
+    scope: &AppScope,
+    name: &str,
+    set: &ObjectSetDef,
+) -> Result<()> {
+    let in_scope = |t: &String| scope.types.contains(t);
+    if !set.query.type_key.as_ref().is_some_and(in_scope) {
+        return Err(field(
+            &format!("object_sets.{name}.type_key"),
+            FIELD_OUT_OF_SCOPE,
+        ));
+    }
+    for hop in &set.query.traverse {
+        let reached = s.link_type(&hop.link_type).map(|l| match hop.direction {
+            Direction::Out => &l.to_types,
+            Direction::In => &l.from_types,
+        });
+        let ok = scope.link_types.contains(&hop.link_type)
+            && matches!(reached, Some(TypeSet::Only(types)) if types.iter().all(in_scope));
+        if !ok {
+            return Err(field(
+                &format!("object_sets.{name}.traverse"),
+                FIELD_OUT_OF_SCOPE,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Runs an object set of an application with its parameters (text), paged.
+pub async fn run_set(
+    db: &DatabaseConnection,
+    client: Option<&crate::services::openobserve::client::Client>,
+    org_id: i64,
+    app: &AppView,
+    name: &str,
+    given: &HashMap<String, String>,
+    limit: Option<u64>,
+    offset: Option<u64>,
+) -> Result<QueryResult> {
+    let set = app.object_sets.get(name).ok_or(AppError::NotFound)?;
+    let mut q = bind(&set.query, given).map_err(|p| field(&p, FIELD_REQUIRED))?;
+    q.limit = limit.or(q.limit);
+    q.offset = offset.or(q.offset);
+    Ok(crate::services::ontology::query::run(db, client, org_id, &q).await?)
 }
 
 async fn key_taken(
@@ -190,8 +252,8 @@ pub async fn create(
     }
     let id = Uuid::new_v4();
     db.execute_raw(stmt(
-        "INSERT INTO apps (id, org_id, key, name, description, service_account_id, scope, created_by) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        "INSERT INTO apps (id, org_id, key, name, description, service_account_id, scope, \
+           object_sets, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
         vec![
             id.into(),
             org_id.into(),
@@ -200,6 +262,9 @@ pub async fn create(
             input.description.clone().into(),
             account.into(),
             serde_json::to_value(&scope).unwrap_or_default().into(),
+            serde_json::to_value(&input.object_sets)
+                .unwrap_or_default()
+                .into(),
             user_id.into(),
         ],
     ))
@@ -228,7 +293,7 @@ pub async fn update(
     let done = db
         .execute_raw(stmt(
             "UPDATE apps SET key = $3, name = $4, description = $5, service_account_id = $6, \
-               scope = $7, version = version + 1, updated_at = now() \
+               scope = $7, object_sets = $9, version = version + 1, updated_at = now() \
              WHERE org_id = $1 AND id = $2 AND version = $8",
             vec![
                 org_id.into(),
@@ -239,6 +304,9 @@ pub async fn update(
                 account.into(),
                 serde_json::to_value(&scope).unwrap_or_default().into(),
                 expected.into(),
+                serde_json::to_value(&input.object_sets)
+                    .unwrap_or_default()
+                    .into(),
             ],
         ))
         .await?;

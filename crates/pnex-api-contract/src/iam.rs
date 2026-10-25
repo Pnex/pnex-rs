@@ -239,6 +239,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("apps_get", Access::Org("apps:read")),
     ("apps_list", Access::Org("apps:read")),
     ("apps_me", Access::Org("apps:read")),
+    ("apps_me_object_sets_run", Access::Org("ontology:read")),
     ("apps_update", Access::Org("apps:write")),
     (
         "annotation_layers_create",
