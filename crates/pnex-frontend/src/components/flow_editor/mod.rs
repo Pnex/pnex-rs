@@ -98,6 +98,8 @@ pub fn FlowEditor(
         graph.set(fresh.clone());
         saved_graph.set(fresh);
         saved_version.set(flow.latest_version_number);
+        // Stored nodes the server left out (retired kind…): shown until saved.
+        violations.set(flow.unreadable_nodes.clone());
         loaded.set(true);
     });
 

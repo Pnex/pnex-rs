@@ -1969,6 +1969,7 @@ err-field-invalid = One or more fields are invalid.
 err-request-invalid = The request is malformed.
 err-flow-invalid = The flow is invalid.
 err-flow-node-retired = Node { $node } is of a retired kind ({ $kind }): remove it; its steps are now set on the import (Ontology › Imports).
+err-flow-node-unreadable = Node { $node } ({ $kind }) no longer reads: it is left out of the view and goes away on the next save.
 err-dashboard-invalid = The dashboard is invalid.
 err-widget-invalid = The widget is invalid.
 err-tour-invalid = The tour is invalid.

@@ -46,7 +46,7 @@ pub(super) fn summary_dto(
 
 pub(super) fn flow_dto(
     f: flows::Model,
-    graph: FlowGraph,
+    (graph, unreadable_nodes): (FlowGraph, Vec<pnex_core::FlowViolation>),
     latest: i64,
     deployed_number: Option<i64>,
 ) -> pnex_core::Flow {
@@ -59,6 +59,7 @@ pub(super) fn flow_dto(
         deployed_version_number: deployed_number,
         latest_version_number: latest,
         graph,
+        unreadable_nodes,
         created_at: f.created_at.to_rfc3339(),
         updated_at: f.updated_at.to_rfc3339(),
     }

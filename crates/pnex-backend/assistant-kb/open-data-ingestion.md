@@ -3,7 +3,7 @@ id: open-data-ingestion
 title: Open-data ingestion — the steps of an import
 kind: howto
 pages: /ontology
-err_codes: ingest-staging-quota, ingest-staging-unavailable, ingest-no-resource, ingest-entry-missing, ingest-archive-unsupported, ingest-unsafe-path, ingest-suspicious-closures, import-run-interrupted, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable, flow-node-retired
+err_codes: ingest-staging-quota, ingest-staging-unavailable, ingest-no-resource, ingest-entry-missing, ingest-archive-unsupported, ingest-unsafe-path, ingest-suspicious-closures, import-run-interrupted, import-schema-changed, import-source-unreachable, import-source-too-large, import-source-unreadable, flow-node-retired, flow-node-unreadable
 tags: ingestion, open data, données ouvertes, data.gouv, france compétences, télécharger, download, zip, archive, extraire, csv, filtre, filter, colonnes, columns, staging, zone de transit, import, rncp, rs, certificateurs, partenaires, habilitation, compétences, competencies, blocs, référentiel, programme, module, xml, étapes, steps
 ---
 An import (Ontology › Imports) can fetch an open-data file by itself every night: its YAML lists its **steps** under `steps:`, the server runs them, then applies the mapping to the file they leave. **History** unfolds each run's steps: what each one read and produced (the archive's table of contents, the columns with their fill rate and examples, the rows kept by a filter) and the step where a run stopped.
@@ -31,3 +31,4 @@ The RS register gives each **competency** of your RS certifications (one per par
 - *ingest-staging-quota*: the organization's staging area is full (2 GB) — files older than 7 days are purged anyway.
 - *ingest-archive-unsupported* or *ingest-unsafe-path*: the file is not an archive that can be read, or it holds a path leaving its folder — it is refused as a whole.
 - *flow-node-retired* when deploying a flow: it still holds an old *Data ingestion* node, which no longer exists. Delete that node (or the flow) and give the import its steps instead.
+- *flow-node-retired* or *flow-node-unreadable* when opening a flow: the editor left that node out of the canvas. Save the flow to drop it for good, or delete the flow from the Flows list.

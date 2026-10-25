@@ -41,7 +41,7 @@ pub(super) async fn create(
     };
     Ok((
         StatusCode::CREATED,
-        format::json(flow_dto(flow, graph, version, None)),
+        format::json(flow_dto(flow, (graph, Vec::new()), version, None)),
     )
         .into_response())
 }
@@ -227,9 +227,8 @@ pub(super) async fn detail(
     };
     let latest = latest_version(&ctx.db, flow.id).await?;
     let latest_number = latest.as_ref().map(|v| v.version_number).unwrap_or(0);
-    let graph: FlowGraph = latest
-        .map(|v| serde_json::from_value(v.graph).map_err(|_| Error::InternalServerError))
-        .transpose()?
+    let graph = latest
+        .map(|v| pnex_core::flow::read_graph(&v.graph))
         .unwrap_or_default();
     let deployed_number = deployed_number_of(&ctx.db, flow.deployed_version_id).await?;
     Ok(format::json(flow_dto(flow, graph, latest_number, deployed_number)).into_response())
@@ -282,7 +281,7 @@ pub(super) async fn update(
         Ok(v) => v,
         Err(e) => return flow_write_error_result(e),
     };
-    Ok(format::json(flow_dto(flow, graph, version, None)).into_response())
+    Ok(format::json(flow_dto(flow, (graph, Vec::new()), version, None)).into_response())
 }
 
 // ─────────────────────────── DELETE /flows/{id} ───────────────────────────
@@ -501,8 +500,7 @@ pub(super) async fn version_detail(
     else {
         return Err(Error::NotFound);
     };
-    let graph: FlowGraph =
-        serde_json::from_value(version.graph.clone()).map_err(|_| Error::InternalServerError)?;
+    let (graph, unreadable_nodes) = pnex_core::flow::read_graph(&version.graph);
     Ok(format::json(pnex_core::FlowVersionDetail {
         id: version.id,
         version_number: version.version_number,
@@ -511,6 +509,7 @@ pub(super) async fn version_detail(
         deployed: flow.deployed_version_id == Some(version.id),
         created_at: version.created_at.to_rfc3339(),
         graph,
+        unreadable_nodes,
     })
     .into_response())
 }

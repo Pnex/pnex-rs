@@ -251,6 +251,12 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   graphe brut et refuse avec `flow-node-retired` (`args` : `node`, `kind`,
   `instead`). Au démarrage, un graphe qui contient encore `ingest` n'est
   plus lisible : il est isolé comme `graph_unreadable`.
+- **Lecture** : `GET /flows/{id}` et `/versions/{n}` lisent le graphe nœud
+  par nœud (`pnex_core::flow::read_graph`) : un nœud retiré ou illisible est
+  écarté avec ses fils et signalé dans `unreadable_nodes`
+  (`flow-node-retired`, `flow-node-unreadable`), jamais de 500. L'éditeur
+  l'affiche en violation ; un enregistrement le fait disparaître. La
+  suppression du flow reste possible.
 - **Remplacement** : les cinq imports France Compétences de `quali_watch`
   1.5.0 portent leurs `steps:` et une récurrence quotidienne.
   - Le filtre des certificateurs lit le nouveau réglage `certificateurs`

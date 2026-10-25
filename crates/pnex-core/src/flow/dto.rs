@@ -80,6 +80,10 @@ pub struct Flow {
     pub deployed_version_number: Option<i64>,
     pub latest_version_number: i64,
     pub graph: FlowGraph,
+    /// Stored nodes left out of `graph` because they no longer read
+    /// (`flow-node-retired`, `flow-node-unreadable`); saving drops them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unreadable_nodes: Vec<FlowViolation>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
@@ -111,6 +115,10 @@ pub struct FlowVersionDetail {
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub created_at: String,
     pub graph: FlowGraph,
+    /// Stored nodes left out of `graph` because they no longer read
+    /// (`flow-node-retired`, `flow-node-unreadable`); saving drops them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unreadable_nodes: Vec<FlowViolation>,
 }
 
 /// Creation: the flow and its version 1 in one transaction. `Serialize`

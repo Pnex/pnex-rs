@@ -1968,6 +1968,7 @@ err-field-invalid = Un ou plusieurs champs sont invalides.
 err-request-invalid = La requête est mal formée.
 err-flow-invalid = Le flow est invalide.
 err-flow-node-retired = Le nœud { $node } est d'un type retiré ({ $kind }) : supprimez-le ; ses étapes se règlent désormais dans l'import (onglet Imports de l'ontologie).
+err-flow-node-unreadable = Le nœud { $node } ({ $kind }) n'est plus lisible : il est écarté de l'affichage et disparaîtra au prochain enregistrement.
 err-dashboard-invalid = Le tableau de bord est invalide.
 err-widget-invalid = Le widget est invalide.
 err-tour-invalid = La visite est invalide.

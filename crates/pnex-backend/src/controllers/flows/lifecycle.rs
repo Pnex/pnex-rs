@@ -798,7 +798,12 @@ async fn deploy_version(
     // Additive fields: stale notify references (non-blocking editor toast)
     // and tabs of OTHER flows isolated from the projection.
     let dto = FlowDeployResult {
-        flow: flow_dto(flow, graph, latest_number, Some(version_number)),
+        flow: flow_dto(
+            flow,
+            (graph, Vec::new()),
+            latest_number,
+            Some(version_number),
+        ),
         stale_notify_nodes: stale_notify
             .into_iter()
             .filter(|s| s.flow_id == id)

@@ -467,6 +467,43 @@ pub fn retired_nodes(graph: &serde_json::Value) -> Vec<FlowViolation> {
         .collect()
 }
 
+/// A stored graph read for display: nodes that no longer deserialize
+/// (retired kind, unknown kind, broken config) are left out with the wires
+/// to them, and reported as violations. Saving the result drops them.
+pub fn read_graph(raw: &serde_json::Value) -> (FlowGraph, Vec<FlowViolation>) {
+    let retired = retired_nodes(raw);
+    let mut dropped = Vec::new();
+    let mut violations = Vec::new();
+    let mut nodes: Vec<FlowNode> = Vec::new();
+    for n in raw["nodes"].as_array().into_iter().flatten() {
+        match serde_json::from_value::<FlowNode>(n.clone()) {
+            Ok(node) => nodes.push(node),
+            Err(e) => {
+                let id = n["id"].as_str().unwrap_or_default();
+                dropped.push(id.to_owned());
+                if retired.iter().all(|r| r.node_id.as_deref() != Some(id)) {
+                    let kind = n["kind"].as_str().unwrap_or_default();
+                    violations.push(FlowViolation::with_args(
+                        Some(id),
+                        crate::err_codes::FLOW_NODE_UNREADABLE,
+                        format!("node {id} ({kind}) no longer reads: {e}"),
+                        serde_json::json!({ "node": id, "kind": kind }),
+                    ));
+                }
+            }
+        }
+    }
+    for node in &mut nodes {
+        for w in &mut node.outputs {
+            w.targets.retain(|t| !dropped.contains(t));
+        }
+        node.outputs.retain(|w| !w.targets.is_empty());
+        node.inputs.retain(|i| !dropped.contains(&i.from));
+    }
+    violations.splice(0..0, retired);
+    (FlowGraph { nodes }, violations)
+}
+
 /// Deserialize an optional config struct; absent maps to `Default`
 /// (mirrors the derived `#[serde(default)]` on the variant field).
 fn opt_config<T>(raw: Option<&serde_json::Value>) -> Result<T, String>
@@ -539,13 +576,13 @@ pub struct FlowNode {
     pub kind: FlowNodeKind,
 }
 
-/// Violation de validation d'un graphe (rejetée en 400 par l'API).
+/// Graph validation violation (refused with a 400 by the API).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FlowViolation {
-    /// Nœud fautif, si la violation est localisée.
+    /// Offending node, when the violation is located.
     pub node_id: Option<String>,
-    /// Code machine (`duplicate_node_id`, `value_static_missing`…).
+    /// Machine code (`duplicate_node_id`, `value_static_missing`…).
     pub code: String,
     /// Canonical English message, display fallback when the code is not
     /// registered in `err_codes::ALL` or the translation fails.

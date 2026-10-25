@@ -865,3 +865,102 @@ async fn stop_start_gardes_sans_moteur() {
     })
     .await;
 }
+
+/// D359: a stored graph holding a retired (`ingest`) or unknown node still
+/// reads, lists and deletes; the node is left out with its wires and
+/// reported, and the deploy is refused with `flow-node-retired`.
+#[tokio::test]
+#[serial]
+async fn flow_with_retired_node_reads_lists_and_deletes() {
+    with_app_flow_engine(false, |server, env, ctx| async move {
+        use pnex_backend::models::_entities::flow_versions;
+        use sea_orm::{ActiveModelTrait, Set};
+        let org = personal_org(&server, &env.alice).await;
+        let flow_id = create_flow(&server, &env.alice, org, "legacy", 1.0).await["id"]
+            .as_i64()
+            .unwrap();
+        let stored = serde_json::json!({ "nodes": [
+            { "id": "n1", "kind": "inject", "config": { "repeat_secs": 1.0 },
+              "outputs": [{ "port": 0, "targets": ["n2", "old"] }, { "port": 1, "targets": ["odd"] }] },
+            { "id": "old", "kind": "ingest", "config": { "step": "source_resolve" } },
+            { "id": "odd", "kind": "no-such-kind" },
+            { "id": "n2", "kind": "debug", "config": {} }
+        ]});
+        flow_versions::ActiveModel {
+            flow_id: Set(flow_id),
+            version_number: Set(2),
+            graph: Set(stored),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .unwrap();
+        let get = |path: String| {
+            let server = &server;
+            let token = env.alice.clone();
+            async move {
+                let res = server
+                    .get(&path)
+                    .add_header("Authorization", bearer(&token))
+                    .add_header("X-Org-Id", org.to_string())
+                    .await;
+                (res.status_code().as_u16(), res.text())
+            }
+        };
+        for path in ["", "/versions/2"] {
+            let (st, text) = get(format!("/api/v1/flows/{flow_id}{path}")).await;
+            assert_eq!(st, 200, "{path}: {text}");
+            let body: serde_json::Value = serde_json::from_str(&text).unwrap();
+            let ids: Vec<&str> = body["graph"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|n| n["id"].as_str().unwrap())
+                .collect();
+            assert_eq!(ids, ["n1", "n2"], "{body}");
+            assert_eq!(
+                body["graph"]["nodes"][0]["outputs"],
+                serde_json::json!([{ "port": 0, "targets": ["n2"] }]),
+                "{body}"
+            );
+            let codes: Vec<&str> = body["unreadable_nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v["code"].as_str().unwrap())
+                .collect();
+            assert_eq!(codes, ["flow-node-retired", "flow-node-unreadable"], "{body}");
+        }
+        // Routes that never re-read the graph as a whole: no 500 either.
+        for path in ["", "/versions", "/runtime", "/node-status", "/debug"] {
+            let path = if path.is_empty() {
+                "/api/v1/flows".to_string()
+            } else {
+                format!("/api/v1/flows/{flow_id}{path}")
+            };
+            let (st, text) = get(path.clone()).await;
+            assert!(st < 500, "{path}: {st} {text}");
+            if path == "/api/v1/flows" {
+                assert!(text.contains("\"legacy\""), "{text}");
+            }
+        }
+        let res = server
+            .post(&format!("/api/v1/flows/{flow_id}/deploy"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .add_header("Content-Type", "application/json")
+            .json(&serde_json::json!({}))
+            .await;
+        assert_eq!(res.status_code(), 400, "{}", res.text());
+        let body = res.json::<serde_json::Value>();
+        assert_eq!(body["errors"]["violations"][0]["code"], "flow-node-retired", "{body}");
+        let res = server
+            .delete(&format!("/api/v1/flows/{flow_id}"))
+            .add_header("Authorization", bearer(&env.alice))
+            .add_header("X-Org-Id", org.to_string())
+            .await;
+        assert_eq!(res.status_code(), 204, "{}", res.text());
+        assert_eq!(get(format!("/api/v1/flows/{flow_id}")).await.0, 404);
+    })
+    .await;
+}

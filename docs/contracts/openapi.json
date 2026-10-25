@@ -6426,6 +6426,13 @@
           "status": {
             "$ref": "#/components/schemas/FlowStatus"
           },
+          "unreadable_nodes": {
+            "description": "Stored nodes left out of `graph` because they no longer read\n(`flow-node-retired`, `flow-node-unreadable`); saving drops them.",
+            "items": {
+              "$ref": "#/components/schemas/FlowViolation"
+            },
+            "type": "array"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -6768,6 +6775,13 @@
               "null"
             ]
           },
+          "unreadable_nodes": {
+            "description": "Stored nodes left out of `graph` because they no longer read\n(`flow-node-retired`, `flow-node-unreadable`); saving drops them.",
+            "items": {
+              "$ref": "#/components/schemas/FlowViolation"
+            },
+            "type": "array"
+          },
           "version_number": {
             "format": "int64",
             "type": "integer"
@@ -6818,6 +6832,34 @@
           "version_number",
           "deployed",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "FlowViolation": {
+        "description": "Graph validation violation (refused with a 400 by the API).",
+        "properties": {
+          "args": {
+            "description": "Interpolation data (JSON object of strings: `device`, `pin`…)\nconsumed by the client-side `err-<kebab>` resolution. Absent until\nthe construction site is migrated."
+          },
+          "code": {
+            "description": "Machine code (`duplicate_node_id`, `value_static_missing`…).",
+            "type": "string"
+          },
+          "message": {
+            "description": "Canonical English message, display fallback when the code is not\nregistered in `err_codes::ALL` or the translation fails.",
+            "type": "string"
+          },
+          "node_id": {
+            "description": "Offending node, when the violation is located.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "message"
         ],
         "type": "object"
       },
