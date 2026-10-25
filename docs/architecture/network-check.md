@@ -209,7 +209,28 @@ règles de site, D325).
   citation dans le texte de la page (espaces normalisés). Une citation du
   LLM introuvable n'écrit rien (D316, D328).
 - La **clé** d'un écart vaut `<règle>:<siren>:<code certif>[:<url>]`, avec
-  `skip_existing` : un écart revu par un humain n'est jamais réécrit.
+  `skip_existing` : un écart revu par un humain n'est jamais réécrit. Le
+  SIREN de l'organisme en cause suit toujours la règle : une application
+  rattache un écart à son organisme par `split(":")[1]`, sans suivre les
+  liens. La
+  forme exacte par règle (fonctions `qw_regles_reseau`, `qw_regles_web` et `qw_regle_adm_01`,
+  tronquée à 255 caractères) :
+
+  | Règles | Clé |
+  |---|---|
+  | ADM-01, REG-01 | `<règle>:<siren>:<code>` |
+  | REG-02 | `<règle>:<siren>:<code>` (SIREN de l'offre) |
+  | ADM-01 de `qw_regle_adm_01` (hors réseau) | `<règle>:<siren>`, l'id de l'objet à défaut |
+  | ADM-02 | `<règle>:<siren>` (le partenaire, toutes certifications) |
+  | CPF-01, CPF-02, CPF-03 | `<règle>:<siren>:<code>:<id_action>` (SIREN de l'offre) |
+  | WEB-01 à WEB-04, WEB-08 | `<règle>:<siren>:<code>:<page>` |
+  | WEB-05 | `<règle>:<siren>:promesse:<page>` |
+  | WEB-06 | `<règle>:<siren>:qualiopi-<catégorie>:<page>` |
+  | COL-01 | `<règle>:<siren>:<url du site>` |
+
+  `<page>` est l'id de l'objet page, ou son url à défaut. Un partenaire
+  sans SIREN donne un segment vide (`WEB-01::RNCP…`) : il se rattache
+  alors par le lien `concerne`.
 - Les **liens** sont `concerne` (organisation), `sur` (certification) et
   `constate_dans` (page observée ou offre CPF). L'objet `regle` et le lien
   `selon` attendent les réglages par client (Q-N2). L'écart porte en
