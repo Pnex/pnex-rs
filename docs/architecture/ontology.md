@@ -352,7 +352,7 @@ pack**, jamais dans le noyau.
 > plateforme de données générique (catégorie Foundry). Le métier vit dans
 > les packs **et** dans les applications, qui passent par le SDK
 > d'applications (identité, ensembles d'objets, flux des changements,
-> médias, preuves et provenance, client généré, miroir hors ligne,
+> médias, preuves et provenance, client OpenAPI et exemples, miroir hors ligne,
 > actions). La règle ci-dessus devient vérifiable : une garde (D441)
 > refuse tout nom de type, de lien ou de pack livré dans le code du moteur.
 

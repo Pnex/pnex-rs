@@ -1,8 +1,8 @@
 # Applications sur PneX : SDK d'applications (D432–D441)
 
-> **Statut : proposé (2026-10-25), questions Q-A1 à Q-A7 pour Shan (§12).**
-> Pas de code avant l'accord de Shan, sauf la garde de D432, qui ne fait
-> que constater l'état du moteur.
+> **Statut : questions Q-A1 à Q-A7 tranchées par Shan le 2026-10-25
+> (§13)** ; D433, D437 et D438 réécrites en conséquence. La garde D441 est
+> livrée ; les lots suivants attendent le feu vert de Shan pour le code.
 >
 > Demande de Shan, relayée par la session `pnex-quali-watch` : un socle
 > pour que n'importe quelle application métier se monte vite au-dessus de
@@ -41,7 +41,7 @@ Le SDK offre huit briques, toutes génériques :
 | Abonnements | Flux des changements, avec un curseur reprenable, puis du push | D435 |
 | Médias | Récupération des pièces, et dépôt par une action | D436 |
 | Preuves et provenance | D'où vient chaque donnée ; les preuves de tout objet | D437 |
-| Client généré | Client typé tiré des types de l'org | D438 |
+| Client et exemples | Le client OpenAPI générique (`task sdk`) et des exemples par cas d'usage | D438 |
 | Miroir hors ligne | Copie locale SQLite des objets, liens et médias | D439 |
 | Actions | Écritures typées, validées par le moteur, journalisées | D440 |
 
@@ -86,11 +86,23 @@ Une **application** est déclarée dans l'org (page Organisation,
 - ses **ensembles d'objets** nommés (D434) ;
 - ses **actions permises** (D440, lot 2).
 
-Le périmètre est **appliqué par le serveur** au flux (D435) et aux
-ensembles d'objets (D434) : une application ne reçoit que ce qu'elle a
-déclaré, même si son rôle IAM lui en permettrait plus (Q-A1). Les routes
-génériques (`/ontology/query`, `/media/{id}/content`) restent gouvernées
-par le rôle IAM du compte, comme pour tout appelant.
+Le périmètre est **appliqué par le serveur à toutes les lectures de
+l'application** (Q-A1, Shan) : le flux (D435), les ensembles d'objets
+(D434), mais aussi `/ontology/query`, la lecture d'un objet, de ses liens
+et de ses preuves, et `/media/{id}/content`. Une application ne reçoit
+que ce qu'elle a déclaré, même si son rôle IAM lui en permettrait plus.
+
+- L'extracteur d'authentification reconnaît le compte de service d'une
+  application et joint son périmètre au contexte de la requête ; les
+  services de lecture de l'ontologie et des médias le filtrent, comme
+  ils filtrent l'org (R1).
+- Hors périmètre = **404**, comme un objet d'une autre org : une
+  application ne sait pas ce qu'elle ne voit pas.
+- Un média est dans le périmètre si son genre est déclaré et qu'il est
+  relié, par un lien du périmètre, à un objet du périmètre (ou qu'il est
+  la pièce d'une preuve dans le périmètre).
+- Un compte de service sans application garde le seul filtre de son rôle
+  IAM.
 
 Stockage : table `apps (id uuid, org_id, key, name, description,
 service_account_id, scope jsonb, object_sets jsonb, actions jsonb,
@@ -213,48 +225,71 @@ de retrouver ses preuves par cette route. Le seul chemin aujourd'hui est
 `prouve_par`, de l'objet page vers les médias des pièces, posé au
 scellement si le pack le configure.
 
-**Décision** : un type de lien peut se déclarer **de preuve**
+**Décision (Q-A3, Shan)** : la preuve web devient un **objet natif** de
+l'ontologie, comme les médias (D177) : elle passe ainsi par le même
+flux, la même requête et le même miroir que tout objet.
+
+- Type système `web_proof`, adossé à la table `web_proofs` (trigger
+  vers `objects`, `native_id` = id de la preuve, comme `media_asset`).
+  Propriétés : `url`, `final_url`, `captured_at`, `state`, `seq`,
+  `manifest_sha256`, `prev_sha256`, `engine` ; titre : l'url et la date.
+- Relation système `proof_part`, de la preuve vers chacune de ses pièces
+  (`media_asset`), avec l'attribut `part` (`screenshot`, `html`, `text`,
+  `pdf` plus tard) : posée au scellement, par le moteur.
+- Relation système `proof_of`, de l'objet page (`site_pages.object_id`)
+  vers la preuve, quand la page a un objet. Le lien `prouve_par` que les
+  packs posent vers les pièces reste possible, mais n'est plus
+  nécessaire.
+- Une preuve n'est visible que scellée (une preuve ouverte n'a pas de
+  manifeste).
+
+**Liens de preuve** : un type de lien peut se déclarer **de preuve**
 (`evidence: true` dans son schéma, posé par le pack). Deux effets
 génériques :
 
 1. `GET /api/v1/ontology/objects/{id}/evidence` rend les preuves de
-   **tout** objet : les médias atteints par des liens de preuve, à deux
-   sauts au plus (l'écart → `constate_dans` → la page → `prouve_par` →
-   les pièces), avec pour chacun `captured_at`, `sha256`, genre, url
-   d'origine, et le scellement de la preuve web quand il existe
-   (`seq`, `manifest_sha256`, `prev_sha256`). `ontology:read` +
-   `media:read`.
-2. **Lien direct** : quand une preuve web est scellée, le moteur relie
-   aussi aux pièces les objets qui pointent la page par un lien de preuve
-   sans en avoir encore (un écart détecté avant la capture). Ainsi un
-   écart porte le lien vers la preuve sur laquelle il repose, à la date
-   de sa détection, et non vers les captures suivantes de la page (Q-A3).
+   **tout** objet : les objets `web_proof` et les médias atteints par des
+   liens de preuve et par `proof_of`, à deux sauts au plus (l'écart →
+   `constate_dans` → la page → `proof_of` → la preuve), chacune avec ses
+   pièces (`sha256`, genre, taille). `ontology:read` + `media:read`, dans
+   le périmètre de l'application (D433).
+2. **Lien direct** : quand une preuve est scellée, le moteur relie
+   l'objet preuve aux objets qui pointent la page par un lien de preuve
+   sans en avoir encore (un écart détecté avant la capture), par la
+   relation système `evidenced_by`. Un écart porte ainsi la preuve sur
+   laquelle il repose, à la date de sa détection, et non les captures
+   suivantes de la page.
 
 Dans le pack `quali_watch` (seule partie propre au métier) :
-`constate_dans` et `prouve_par` passent `evidence: true`. Les règles
-n'ont rien d'autre à faire.
+`constate_dans` passe `evidence: true`. Les règles n'ont rien d'autre à
+faire.
 
-## 8. Client généré (D438)
+## 8. Client et exemples (D438)
 
-### D438 — Un client Rust typé, tiré des types de l'org
+### D438 — Le SDK est le client OpenAPI générique, plus des exemples par cas d'usage
 
-`pnex-mirror` (D439) contient un générateur, `pnex-app-gen`, qui lit les
-types de l'org (`GET /ontology/types`, `ontology.schema:read`) dans le
-périmètre de l'application et écrit un module Rust :
+Décision de Shan (Q-A6) : pas de client généré par type, par
+application ni par pack. Le client d'une application est le client
+OpenAPI que `task sdk` génère déjà du contrat public
+(`docs/contracts/openapi.json`) : il couvre toutes les routes, dont
+celles de ce document, sans travail en plus. Les objets s'y lisent en
+JSON (propriétés par clé), comme dans le miroir.
 
-- une struct par type d'objet (propriétés typées : texte, nombre, date,
-  enum, ref, booléen ; `Option` si non requise), avec `id`, `title`,
-  `version`, `provenance` ;
-- pour chaque type de lien du périmètre, un accès typé
-  (`article.ecrit_par(&mirror)` → `Vec<Auteur>`) qui lit le miroir ;
-- une fonction par ensemble d'objets nommé ;
-- la `type_version` de chaque type, vérifiée à l'exécution : un écart
-  donne un avertissement, jamais une panique (un pack monté ajoute des
-  propriétés).
+À la place d'un générateur, des **exemples documentés, par cas
+d'usage**, dans `crates/pnex-mirror/examples/`, chacun sur l'ontologie
+inventée (`article`, `auteur`, `ecrit_par`) et lancé par un test contre
+un faux serveur :
 
-Le module généré est commité dans l'application et régénéré à la montée
-de pack (`pnex-app-gen --org <id> --app <key> --out src/ontology.rs`).
-TypeScript au lot 2, à partir du même modèle intermédiaire.
+| Exemple | Ce qu'il montre |
+|---|---|
+| `offline_copy` | Recopier le périmètre d'une application hors ligne, et servir ses médias |
+| `follow_changes` | Suivre le flux des changements et réagir à chaque objet (projection) |
+| `object_evidence` | Afficher les preuves d'un objet, avec ses pièces vérifiées |
+| `object_set` | Lire un ensemble d'objets nommé, avec ses paramètres |
+| `upload_by_action` | Déposer un fichier par une action (lot 2, avec D440) |
+
+Chaque exemple a son en-tête : le besoin, les routes appelées, les
+permissions et le périmètre qu'il demande.
 
 ## 9. Miroir hors ligne (D439)
 
@@ -288,9 +323,8 @@ Contenu :
   on_media }` appelé dans la transaction de chaque page appliquée, pour
   que l'application tienne ses propres vues ; ou des requêtes SQL
   directes sur le miroir ;
-- un **exemple** minimal (`examples/articles.rs`) et des tests sur une
-  ontologie inventée (`article`, `auteur`, `ecrit_par`) avec un faux
-  serveur local.
+- les **exemples par cas d'usage** (D438) et des tests sur une ontologie
+  inventée (`article`, `auteur`, `ecrit_par`) avec un faux serveur local.
 
 ## 10. Actions (D440, lot 2)
 
@@ -374,31 +408,26 @@ Deux listes motivées, dans la garde :
 | **A1** | D435 : table, triggers, curseur, `/ontology/changes` (+ `head`), purge | ordre et absence de trou avec deux transactions croisées ; import en masse ; objet natif ; 410 |
 | **A2** | D433 : `apps` (CRUD, `apps/me`, périmètre appliqué au flux) | 403 sans permission ; périmètre filtrant |
 | **A3** | D434 : ensembles d'objets nommés, paramètres | substitution des valeurs seulement ; périmètre |
-| **A4** | D437 : `evidence: true`, `/objects/{id}/evidence`, lien direct au scellement ; pack `quali_watch` | écart → page → pièces sur une ontologie inventée |
-| **A5** | D439 : `pnex-mirror` (client, flux, SQLite, médias, projection, exemple) | faux serveur ; coupure et reprise ; sha256 faux refusé ; 304 |
-| **A6** | D438 : `pnex-app-gen` Rust | module généré compilé dans les tests |
+| **A4** | D437 : type natif `web_proof`, relations `proof_part`, `proof_of`, `evidenced_by` ; `evidence: true` ; `/objects/{id}/evidence` ; pack `quali_watch` | écart → page → preuve → pièces sur une ontologie inventée ; la preuve dans le flux |
+| **A5** | D439 : `pnex-mirror` (client, flux, SQLite, médias, projection, exemple `offline_copy`) | faux serveur ; coupure et reprise ; sha256 faux refusé ; 304 |
+| **A6** | D438 : exemples par cas d'usage (client OpenAPI + `pnex-mirror`) | chaque exemple lancé contre le faux serveur |
 | **A7** | D421 : documents d'une page dans `site_crawl` (config `record.documents`), générique | serveur de test local |
-| Lot 2 | D440 actions, SSE, agrégats, TypeScript | — |
+| Lot 2 | D440 actions (et l'exemple `upload_by_action`), SSE, agrégats | — |
 
-Vigie bascule après A5 (A6 facultatif pour elle).
+Vigie bascule après A5.
 
-## 13. Questions pour Shan (défaut retenu en attendant)
+## 13. Questions tranchées (Shan, 2026-10-25)
 
-- **Q-A1 — Périmètre** : appliqué par le serveur au flux et aux
-  ensembles d'objets seulement (défaut), ou aussi à toutes les routes
-  de lecture quand l'appelant est une application ?
-- **Q-A2 — Rétention du flux** : 30 jours (défaut), puis copie complète.
-- **Q-A3 — Preuves** : liens `evidence` et lien direct au scellement
-  (défaut), ou faire de la preuve web un objet natif de l'ontologie
-  (`web_proof`, table système comme les médias) ?
-- **Q-A4 — Écritures des applications** : assouplir la règle « lecture
-  seule » des comptes de service pour les seuls comptes d'application et
-  les seules actions déclarées (défaut, lot 2) ?
-- **Q-A5 — Types du SDK** : types propres à `pnex-mirror`, vérifiés
-  contre le spec OpenAPI (défaut), ou dépendance à `pnex-core` (plus
-  lourde pour une application) ?
-- **Q-A6 — Client généré** : par application et par org (défaut), ou par
-  pack (le même client pour toutes les orgs qui ont le pack) ?
-- **Q-A7 — Connecteurs français** (`org_resolve`, `datagouv`) : les
-  ranger en connecteurs déclarés (défaut, chantier séparé) ou les laisser
-  au moteur ?
+- **Q-A1 — Périmètre** : appliqué à **toutes les lectures** de
+  l'application (D433).
+- **Q-A2 — Rétention du flux** : 30 jours, puis copie complète (D435).
+- **Q-A3 — Preuves** : la preuve web devient un **objet natif** ; les
+  liens `evidence` restent pour relier un objet à sa preuve (D437).
+- **Q-A4 — Écritures des applications** : par actions déclarées
+  seulement, au lot 2 (D440).
+- **Q-A5 — Types du SDK** : propres à `pnex-mirror`, vérifiés contre le
+  spec OpenAPI (D439).
+- **Q-A6 — Client** : le client OpenAPI générique, plus des exemples par
+  cas d'usage ; pas de client généré (D438).
+- **Q-A7 — Connecteurs français** (`org_resolve`, `datagouv`) : à ranger
+  en connecteurs déclarés, chantier séparé.
