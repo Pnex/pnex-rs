@@ -185,6 +185,11 @@ pub enum FlowNodeKind {
         #[serde(default)]
         config: crate::ontology::action::ActionTriggerConfig,
     },
+    /// Event source fed by the new messages of mailboxes (mail.md D456).
+    MailReceived {
+        #[serde(default)]
+        config: crate::mail::MailReceivedConfig,
+    },
     /// Objects of one type matching filters (partner-watch.md D312).
     OntologyQuery {
         #[serde(default)]
@@ -391,6 +396,9 @@ impl<'de> Deserialize<'de> for FlowNodeKind {
                     config: opt_config(config)?,
                 }),
                 "action_trigger" => Ok(Self::ActionTrigger {
+                    config: opt_config(config)?,
+                }),
+                "mail_received" => Ok(Self::MailReceived {
                     config: opt_config(config)?,
                 }),
                 "ontology_query" => Ok(Self::OntologyQuery {

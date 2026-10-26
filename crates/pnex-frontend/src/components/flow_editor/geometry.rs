@@ -249,6 +249,7 @@ pub fn accepts_input(node: &FlowNode) -> bool {
             | FlowNodeKind::CameraSource { .. }
             | FlowNodeKind::ControlSource { .. }
             | FlowNodeKind::ActionTrigger { .. }
+            | FlowNodeKind::MailReceived { .. }
             | FlowNodeKind::Weather { .. }
             | FlowNodeKind::MediaSource { .. }
     )

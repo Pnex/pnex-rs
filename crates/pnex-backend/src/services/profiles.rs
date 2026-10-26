@@ -172,6 +172,21 @@ pub async fn before_erase(
             .await
             .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
     }
+    // The mails the person sent go with them (mail.md D461): those whose
+    // correspondent they are (the original of a trusted forward, else the
+    // sender), never a member's forward of someone else's mail.
+    ctx.db
+        .execute_raw(stmt(
+            "DELETE FROM mail_messages WHERE org_id = $1 AND \
+               CASE WHEN COALESCE((forwarded ->> 'trusted')::boolean, false) \
+                 THEN lower(forwarded -> 'from' ->> 'address') ELSE from_address END IN (
+               SELECT lower(i.properties ->> 'value') FROM resource_edges l
+               JOIN objects i ON i.id = l.target_object_id AND i.org_id = l.org_id
+               WHERE l.org_id = $1 AND l.source_object_id = $2 AND l.relation = 'uses_identifier'
+                 AND i.properties ->> 'kind' = 'email')",
+            vec![org_id.into(), row.id.into()],
+        ))
+        .await?;
     let ids = ctx
         .db
         .query_all_raw(stmt(

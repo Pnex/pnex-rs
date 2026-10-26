@@ -100,6 +100,7 @@ fn port_type(node: &FlowNode, port: usize) -> PortType {
         | FlowNodeKind::PagePdf { .. }
         | FlowNodeKind::PageWrite { .. }
         | FlowNodeKind::ActionTrigger { .. }
+        | FlowNodeKind::MailReceived { .. }
         | FlowNodeKind::OntologyQuery { .. }
         | FlowNodeKind::ObjectUpsert { .. }
         | FlowNodeKind::LinkUpsert { .. }

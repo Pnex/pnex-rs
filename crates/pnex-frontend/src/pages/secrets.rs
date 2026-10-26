@@ -38,6 +38,8 @@ fn usage_route(kind: SecretConsumerKind) -> Route {
         SecretConsumerKind::GeoProvider => Route::OrgsCurrent {},
         SecretConsumerKind::BrowserEndpoint => Route::OrgsCurrent {},
         SecretConsumerKind::WebSearchProvider => Route::OrgsCurrent {},
+        // shortcut: no mailbox page yet (mail.md, backend first); point at the org page until it exists.
+        SecretConsumerKind::Mailbox => Route::OrgsCurrent {},
     }
 }
 
@@ -52,6 +54,7 @@ fn usage_label(u: &SecretUsage) -> String {
         SecretConsumerKind::GeoProvider => t!("secrets-usage-geo-provider"),
         SecretConsumerKind::BrowserEndpoint => t!("secrets-usage-browser-endpoint"),
         SecretConsumerKind::WebSearchProvider => t!("secrets-usage-web-search-provider"),
+        SecretConsumerKind::Mailbox => t!("secrets-usage-mailbox"),
     };
     let target = u.label.clone().unwrap_or_else(|| u.consumer_id.clone());
     format!("{kind} · {target}")

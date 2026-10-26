@@ -326,6 +326,19 @@ const RULES: &[Rule] = &[
         use_instead: "navigation rule (D323)",
         allowed_keys: &[],
     },
+    // mail.md D453: what PneX relève is a « boîte mail » / « mailbox ».
+    Rule {
+        scope: Scope::Fr,
+        term: "compte mail",
+        use_instead: "boîte mail (D453)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "email account",
+        use_instead: "mailbox (D453)",
+        allowed_keys: &[],
+    },
 ];
 
 /// Fluent placeables (`{ $label }`, selectors) are code, not words.

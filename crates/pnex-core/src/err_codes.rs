@@ -681,6 +681,30 @@ pub const SITE_RECIPE_UNAVAILABLE: &str = "site-recipe-unavailable";
 pub const BROWSER_ENDPOINT_NOT_FOUND: &str = "browser-endpoint-not-found";
 /// A browser endpoint of the org already has this name.
 pub const BROWSER_ENDPOINT_NAME_TAKEN: &str = "browser-endpoint-name-taken";
+/// Mailbox not found (or not in the org, or not yours to manage).
+pub const MAIL_MAILBOX_NOT_FOUND: &str = "mail-mailbox-not-found";
+/// A mailbox of the org already has this name.
+pub const MAIL_MAILBOX_NAME_TAKEN: &str = "mail-mailbox-name-taken";
+/// A `mail_received` node names no mailbox.
+pub const MAIL_NO_MAILBOX: &str = "mail-no-mailbox";
+/// A `mail_received` node names a mailbox absent from the org; `args.mailbox`.
+pub const MAIL_MAILBOX_UNKNOWN: &str = "mail-mailbox-unknown";
+/// The deployer may not read this mailbox (mail.md D454); `args.mailbox`.
+pub const MAIL_MAILBOX_FORBIDDEN: &str = "mail-mailbox-forbidden";
+/// The mailbox has no password in the vault.
+pub const MAIL_NO_PASSWORD: &str = "mail-no-password";
+/// The mail server did not answer (network, DNS, egress policy); `args.host`.
+pub const MAIL_UNREACHABLE: &str = "mail-unreachable";
+/// The TLS handshake or the certificate check failed; `args.host`.
+pub const MAIL_TLS_FAILED: &str = "mail-tls-failed";
+/// The mail server refused the user name or the password.
+pub const MAIL_AUTH_FAILED: &str = "mail-auth-failed";
+/// A folder of the mailbox does not exist on the server; `args.folder`.
+pub const MAIL_FOLDER_UNKNOWN: &str = "mail-folder-unknown";
+/// The mail server answered something the client could not read.
+pub const MAIL_PROTOCOL: &str = "mail-protocol";
+/// More messages than allowed per hour arrived; the mailbox is paused (mail.md D457.4); `args.max`.
+pub const MAIL_RATE_EXCEEDED: &str = "mail-rate-exceeded";
 /// Web search provider not found (or not in the org).
 pub const WEB_SEARCH_PROVIDER_NOT_FOUND: &str = "web-search-provider-not-found";
 /// A web search provider of the org already has this name.
@@ -930,6 +954,18 @@ pub const ALL: &[&str] = &[
     SITE_RECIPE_UNAVAILABLE,
     BROWSER_ENDPOINT_NOT_FOUND,
     BROWSER_ENDPOINT_NAME_TAKEN,
+    MAIL_MAILBOX_NOT_FOUND,
+    MAIL_MAILBOX_NAME_TAKEN,
+    MAIL_NO_MAILBOX,
+    MAIL_MAILBOX_UNKNOWN,
+    MAIL_MAILBOX_FORBIDDEN,
+    MAIL_NO_PASSWORD,
+    MAIL_UNREACHABLE,
+    MAIL_TLS_FAILED,
+    MAIL_AUTH_FAILED,
+    MAIL_FOLDER_UNKNOWN,
+    MAIL_PROTOCOL,
+    MAIL_RATE_EXCEEDED,
     WEB_SEARCH_PROVIDER_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NAME_TAKEN,
     WEB_SEARCH_NO_PROVIDER,

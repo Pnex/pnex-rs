@@ -119,6 +119,11 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("lab:delete", Level::Member),
     ("lab:read", Level::Viewer),
     ("lab:write", Level::Member),
+    ("mail.content:read", Level::Member),
+    ("mail.shared:write", Level::Admin),
+    ("mail:delete", Level::Member),
+    ("mail:read", Level::Viewer),
+    ("mail:write", Level::Member),
     ("media:delete", Level::Member),
     ("media:read", Level::Viewer),
     ("media:test", Level::Member),
@@ -907,6 +912,13 @@ pub const OPERATIONS: &[(&str, Access)] = &[
         Access::Org("web-search:write"),
     ),
     ("web_sites_list", Access::Org("site-recipes:read")),
+    ("mailboxes_create", Access::Org("mail:write")),
+    ("mailboxes_delete", Access::Org("mail:delete")),
+    ("mailboxes_list", Access::Org("mail:read")),
+    ("mailboxes_messages_list", Access::Org("mail.content:read")),
+    ("mailboxes_state", Access::Org("mail:write")),
+    ("mailboxes_test", Access::Org("mail:write")),
+    ("mailboxes_update", Access::Org("mail:write")),
     ("well_known_not_found", Access::Public),
     ("ws_ticket_issue", Access::Org("realtime:connect")),
 ];
@@ -919,6 +931,10 @@ pub const GATES: &[(&str, &str)] = &[
     (
         "notify:broadcast",
         "channels whose recipients come from flow messages (D313)",
+    ),
+    (
+        "mail.shared:write",
+        "manage the shared mailboxes and those of service accounts; pause or delete any mailbox (mail.md D454)",
     ),
     (
         "ontology.personal:read",

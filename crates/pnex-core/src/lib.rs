@@ -143,6 +143,9 @@ pub mod browser_agent;
 /// Accent- and case-insensitive text, Rust and SQL (crm.md D447).
 pub mod fold;
 
+/// Mailboxes as sources, messages, the `mail_received` trigger (mail.md).
+pub mod mail;
+
 /// Topic taxonomies (media-ingest.md D168): versioned topics, keyword
 /// classifier, `topic_classify` node config.
 pub mod taxonomy;

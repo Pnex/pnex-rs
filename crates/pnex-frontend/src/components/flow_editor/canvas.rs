@@ -398,6 +398,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::MemoryRead { .. } => kind_labels(PaletteKind::MemoryRead),
         pnex_core::FlowNodeKind::ControlSource { .. } => kind_labels(PaletteKind::ControlSource),
         pnex_core::FlowNodeKind::ActionTrigger { .. } => kind_labels(PaletteKind::ActionTrigger),
+        pnex_core::FlowNodeKind::MailReceived { .. } => kind_labels(PaletteKind::MailReceived),
         pnex_core::FlowNodeKind::OntologyQuery { .. } => kind_labels(PaletteKind::OntologyQuery),
         pnex_core::FlowNodeKind::ObjectUpsert { .. } => kind_labels(PaletteKind::ObjectUpsert),
         pnex_core::FlowNodeKind::LinkUpsert { .. } => kind_labels(PaletteKind::LinkUpsert),
@@ -499,6 +500,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         }
         pnex_core::FlowNodeKind::ControlSource { .. }
         | pnex_core::FlowNodeKind::ActionTrigger { .. }
+        | pnex_core::FlowNodeKind::MailReceived { .. }
         | pnex_core::FlowNodeKind::Weather { .. }
         | pnex_core::FlowNodeKind::MediaSource { .. } => (
             geometry::CONTROL_SOURCE_FILL,
@@ -1318,6 +1320,10 @@ fn node_subtitle(node: &FlowNode) -> String {
             [first, rest @ ..] => {
                 format!("{} +{}", crate::api::controls::key_of(first), rest.len())
             }
+        },
+        pnex_core::FlowNodeKind::MailReceived { config } => match config.mailboxes.len() {
+            0 => "—".into(),
+            n => format!("✉ {n}"),
         },
         pnex_core::FlowNodeKind::ActionTrigger { config } => {
             if config.action.is_empty() {

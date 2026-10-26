@@ -258,6 +258,19 @@ pub fn to_red_flows_json_with(
                     "pnex_org_id": meta.org_id,
                 })
             }
+            // The org stamped here is the only channel the node may read.
+            FlowNodeKind::MailReceived { config } => serde_json::json!({
+                "type": "pnex-mail-received",
+                "mailboxes": config.mailboxes,
+                "folder": config.folder,
+                "from_contains": config.from_contains,
+                "subject_contains": config.subject_contains,
+                "skip_automatic": config.skip_automatic,
+                "pnex_node_id": n.id,
+                "pnex_flow_id": meta.flow_id,
+                "pnex_version": meta.version_number,
+                "pnex_org_id": meta.org_id,
+            }),
             FlowNodeKind::ActionTrigger { config } => serde_json::json!({
                 "type": "pnex-action-trigger",
                 "object_type": config.object_type,

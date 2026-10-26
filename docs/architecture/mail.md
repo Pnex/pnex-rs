@@ -1,0 +1,233 @@
+# Boîtes mail : une source générique (D453–D462)
+
+| | |
+|---|---|
+| Statut | **M1, M2, M6 codés — 2026-10-26** (non commité) : serveur mail classique (IMAP, mot de passe) ; Microsoft reporté (§10). PneX **collecte et range** ; l'envoi (M3) passe après (Shan) |
+| Déclencheur | Lot CRM3 de `crm.md` (mail entrant rattaché à la fiche), élargi : le mail est une source comme les flux et les sites web, utile bien au-delà du commercial |
+| Repose sur | `iam.md` (principaux, comptes de service, équipes, D286–D299), `autonomous-agents.md` (agent = compte de service, D379, D381, D398), `secrets` (coffre D110–D118), `ontology.md` (types système D176–D177), `crm.md` (D442–D447 données personnelles), `security.md` (R8, R11–R13) |
+| Numérotation | **D453…D463**, lots **M1…M6** |
+
+## 1. Le besoin en une phrase
+
+Connecter des boîtes mail à PneX comme on connecte des flux : chaque boîte est une source configurée, ses nouveaux messages entrent, les flows et les agents les lisent, y répondent sous contrôle, et les relient aux objets de l'ontologie — sans écrire de code propre à un usage.
+
+## 2. Les usages, pour vérifier que le modèle est générique
+
+| Usage | Boîte | Qui la lit | Ce qu'on en fait |
+|---|---|---|---|
+| Commercial | `prenom@…`, la sienne | lui | mail ↔ contact, compte, opportunité (pack `crm`) |
+| Boîte d'équipe | `sales@`, `contact@` | une équipe | même chose, partagée ; répartition |
+| Relation client / SAV | `support@` | l'équipe SAV | un mail = une demande, rattachée au client et à l'équipement |
+| Veille | une boîte d'abonnements (newsletters, alertes Google, BODACC) | personne en direct | flow : texte → thème de l'org → signal à valider (D335) |
+| Agent IA | `agent-veille@…`, l'adresse de l'agent | l'agent (compte de service) | lire, préparer une réponse, la proposer ou l'envoyer selon sa politique |
+| Fournisseurs, factures | `factures@` | la comptabilité | pièce jointe → média → extraction à valider |
+| Machines | alertes envoyées par mail par un équipement tiers | un flow | mail → événement → notification |
+
+Une seule chose varie d'un usage à l'autre : **qui possède la boîte et qui en lit le contenu**. Le reste — relève, stockage, déclencheur, envoi, garde-fous — est commun.
+
+## 3. Décisions
+
+### D453 — Une boîte mail est une source, gérée par un CRUD classique
+
+Ressource `mailbox` de l'org, rangée dans le groupe de menu **Sources** (à côté des appareils, agents navigateur, sites web), liste harmonisée (tableau, pagination, bouton Ajouter) :
+
+| Champ | Contenu |
+|---|---|
+| `name`, `address` | nom affiché, adresse de la boîte |
+| `owner` | propriétaire (D454) |
+| `incoming` | IMAP : hôte, port, TLS obligatoire, identifiant, secret du coffre ou jeton OAuth (D459), dossiers relevés (`INBOX` par défaut) |
+| `outgoing` | SMTP, facultatif : sans lui, la boîte est en lecture seule |
+| `state` | `active`, `paused`, `error` + `last_error` (code machine + args), `last_sync_at` |
+| `retention_days` | durée de conservation des messages (défaut 90, D461) |
+| `send_mode` | `draft` (défaut) ou `send` (D456) |
+
+Le mot de passe ou le jeton ne quitte jamais le coffre (R4, R16) ; le formulaire suit D113 (choisir un secret ou en taper un, réservé owner/admin). **Tester la connexion** est une route à part (EXCLUDED du MCP : sortant).
+
+### D454 — Le propriétaire est un principal ; le partage passe par les équipes
+
+`owner` prend trois formes, sans nouveau type de principal :
+
+| Forme | Exemple | Qui gère la configuration | Qui lit le contenu |
+|---|---|---|---|
+| `user` | la boîte d'un commercial | lui, et les admins (sans le contenu) | lui seul |
+| `service_account` | la boîte d'un agent IA ou d'une application | les admins | le compte de service (ses runs), et les admins |
+| `org` (partagée) | `sales@`, `support@`, veille | les admins | les équipes listées sur la boîte (`teams`) |
+
+- Permissions : `mail:read` (voir que les boîtes existent, leur état), `mail:write` (gérer ses boîtes ; les boîtes partagées et de service : admin), `mail.content:read` (lire des messages, **en plus** d'être propriétaire ou dans une équipe de la boîte), `mail:send` (D456). Inscrites au registre IAM, appliquées par l'extracteur `OrgContext` (R2).
+- **Un admin ne lit pas la boîte personnelle d'un membre** : il voit qu'elle existe, son état, peut la mettre en pause ou la supprimer. C'est une règle d'accès, pas une option.
+- Un flow agit avec les droits de celui qui l'a déployé : il ne peut écouter que les boîtes dont son déployeur lit le contenu (vérifié au déploiement et à chaque message, comme D144).
+
+### D455 — Les messages sont stockés, exposés comme type système `mail_message`
+
+Deux possibilités ont été pesées :
+
+- **A. Déclencheur seulement** : PneX ne garde que ce qu'un flow écrit. Simple, minimal en données, mais : rien à lister pour un flow ou un agent (« les nouveaux mails »), pas de fil de discussion, rien à rejouer après un redéploiement, l'historique client dépend d'un flow bien écrit.
+- **B. Stockage + déclencheur** (retenu) : chaque message relevé est une ligne d'une table native, exposée dans l'ontologie comme **type système `mail_message`** (comme `media_asset` ou `doc`, D177).
+
+Ce que B apporte sans code propre à un usage : la liste et la recherche (requête D185, `ontology_query` dans un flow), les liens vers les personnes, comptes, opportunités, demandes SAV (les packs les déclarent), le masquage par rôle et l'effacement (D442–D446 : expéditeur, destinataires et texte sont `personnelle`), la rétention (D461), le fil (`in_reply_to`, `references`).
+
+Champs : boîte, dossier, `message_id`, `in_reply_to`, `references`, expéditeur, destinataires (plafonnés), sujet, date, texte (D458), extrait, résultat d'authentification (D458), pièces jointes (liste de noms et tailles en M2 ; médias en M5), `direction` (`in`/`out`), drapeaux (`auto_submitted`, `from_pneX`). Pas de HTML stocké.
+
+Le contenu suit D454 : la ligne n'est visible que de qui lit la boîte (prédicat appliqué dans les requêtes, comme le futur I4).
+
+### D456 — Lire, répondre, envoyer : un déclencheur, un nœud, une porte
+
+- **Déclencheur `mail_received`** : nœud de flow source, config `mailbox` (une ou plusieurs) + filtres simples (dossier, expéditeur, sujet contient). Message : l'objet `mail_message` (id, champs D455). Fiche `NodeDoc`.
+- **Lister** : `ontology_query` sur `mail_message` (non lus par le flow, d'une boîte, d'un fil) — aucun nœud de plus.
+- **Répondre / envoyer** : nœud `mail_send` (à, sujet, texte, `in_reply_to`) et route `POST /mailboxes/{id}/messages`. Selon `send_mode` de la boîte :
+  - `draft` (défaut) : le message devient une **proposition** (D367) dans « À valider » ; un humain relit et envoie ;
+  - `send` : envoi direct, réservé aux boîtes partagées et de service, activé par un admin, plafonné (D457).
+- **Agents IA** : leurs outils `mail_list`, `mail_read`, `mail_reply` passent par les mêmes services ; la politique de l'agent (`approval`, D380) peut imposer la proposition même si la boîte est en `send`. Le contenu d'un mail entre dans le contexte du run, jamais dans ses droits (D381).
+- Le MCP expose la lecture (pas l'envoi : motif sortant).
+
+### D457 — Pas de boucle
+
+Une boucle naît quand un mail déclenche un envoi qui déclenche un mail. Garde-fous, tous au moteur :
+
+1. **Réponses automatiques ignorées** pour le déclenchement d'un envoi : `Auto-Submitted` ≠ `no`, `Precedence: bulk | auto_reply | list | junk`, `X-Autoreply`, `X-Autorespond`, `List-Id` / `List-Unsubscribe` (listes), rapports de non-remise (`multipart/report`, `MAILER-DAEMON`, `postmaster`). Le message est stocké (drapeau `auto_submitted`), le déclencheur reçoit le drapeau ; `mail_send` refuse de répondre à un message drapé (`mail-reply-to-automatic`).
+2. **Nos envois marqués** : tout envoi porte `Auto-Submitted: auto-generated` quand il vient d'un flow ou d'un agent, et `X-PneX-Origin: <org>/<boîte>/<id>` ; un message entrant qui porte notre marque, ou dont l'expéditeur est une boîte connectée de l'org, ne déclenche rien (`from_pneX`).
+3. **Une seule entrée par `Message-ID`** et par boîte (clé naturelle).
+4. **Plafonds** : envois par boîte et par heure (défaut 30), réponses au même correspondant par jour (défaut 3), messages relevés par boîte et par heure (défaut 500). Dépassement : la boîte passe `paused` avec le code (`mail-rate-exceeded`), visible et notifiable — jamais une tempête silencieuse.
+5. **Pas d'envoi en chaîne** : un envoi déclenché par un `mail_received` porte la profondeur ; au-delà de 1, refusé.
+
+### D458 — Le contenu d'un mail est une donnée non fiable
+
+- **Jamais de HTML rendu** : on garde la partie `text/plain`, sinon le HTML converti en texte côté serveur (balises retirées, entités décodées). Rien n'est affiché comme HTML sur l'origine de l'application (R11–R13). Aucune image distante chargée, aucun lien suivi par un robot de PneX.
+- **Bornes** : message brut ≤ 10 Mo relevé (au-delà : en-têtes seuls, `mail-too-large`), texte stocké ≤ 100 000 caractères, 100 destinataires, caractères de contrôle retirés, encodages normalisés en UTF-8.
+- **Pièces jointes** : jamais ouvertes ni exécutées ; en M5 seulement, stockées comme médias sous la liste blanche de types existante, analysées à la demande.
+- **Injection de prompt** : le texte passe aux modèles comme **donnée** (contrat de `llm_text`) ; aucun outil, aucune écriture, aucun envoi n'est décidé par le contenu ; tout ce qu'un modèle en tire est une proposition (D367) ou un brouillon.
+- **Usurpation** : PneX vérifie lui-même l'expéditeur à la relève : une signature DKIM valide dont le domaine est aligné sur celui du `From:` (le même, un parent ou un sous-domaine) vaut DKIM et DMARC « pass » ; le SPF reste « none », une boîte ne connaît pas l'IP d'origine. L'en-tête `Authentication-Results` du message n'est **jamais cru** : un hébergeur qui n'en ajoute pas (cPanel, o2switch, constaté à l'essai du 2026-10-26) laisse l'expéditeur écrire le sien. Un message tronqué (au-delà de la taille plafond) reste non vérifié. Le verdict est stocké. Un message dont l'authentification échoue n'est **jamais rattaché automatiquement** à une personne ou un compte : le rattachement devient une proposition. Le déclencheur porte le résultat, les flows peuvent filtrer.
+- **Connexion** : TLS obligatoire (IMAPS 993, SMTP 465 ou STARTTLS refusé s'il n'aboutit pas), certificat vérifié (CA système, comme le canal SMTP de `pnex-notify`), hôte passé au garde de sortie R8 (pas d'adresse interne, sauf politique `lan`).
+
+### D459 — Connecteurs : IMAP/SMTP d'abord, OAuth ensuite
+
+- **M2–M3 : IMAP + SMTP avec mot de passe d'application** (secret du coffre). Couvre les hébergeurs classiques, OVH, Gandi, Infomaniak, serveurs auto-hébergés, Gmail avec mot de passe d'application.
+- **M4 : OAuth2 (XOAUTH2) sur les mêmes protocoles** pour Microsoft 365 et Google Workspace : Microsoft a coupé l'authentification par mot de passe en IMAP/SMTP sur Exchange Online, une boîte Outlook d'entreprise ne se connecte pas sans. Jeton de rafraîchissement au coffre, consentement par l'administrateur du tenant. Même pile de protocoles, pas d'API Graph à maintenir.
+- Une API propriétaire (Graph, Gmail API) n'est ajoutée que si IMAP + XOAUTH2 ne suffit pas (Q-M4).
+
+### D460 — Relève
+
+- Un relève par boîte active, toutes les 2 minutes (singleton par boîte, sur une seule instance), curseur par dossier `(UIDVALIDITY, dernier UID)` ; un changement d'`UIDVALIDITY` relit les 7 derniers jours en s'appuyant sur `Message-ID` pour ne rien dupliquer.
+- Le curseur n'avance qu'une fois la ligne écrite ; le déclencheur est servi depuis la table (un flow redéployé ne perd rien de ce qui est arrivé pendant son arrêt, dans la limite de 24 h).
+- Erreur d'authentification ou TLS : `error` + code, relève suspendue jusqu'à une modification de la boîte (pas de martèlement d'un serveur qui refuse). Erreur réseau : nouvel essai avec délai croissant.
+- IMAP IDLE (le push) : plus tard, même interface.
+
+### D461 — Conservation et données personnelles
+
+- `retention_days` par boîte (défaut 90, de 7 à 3650) : au-delà, le message est supprimé ; ce qu'un flow en a tiré (activité, signal) reste.
+- Expéditeur, destinataires, sujet et texte sont `personnelle` (D442) : masqués par rôle, retirés par un effacement.
+- Effacer une personne (D446) efface aussi les messages dont elle est l'expéditeur ou un destinataire (par ses adresses connues), en coquille.
+- Une personne en opposition (D447) : ses messages entrent (on ne peut pas refuser un mail reçu), mais ne sont jamais rattachés automatiquement à elle ni à ses comptes.
+
+### D462 — Ce que le pack `crm` en fait
+
+Le moteur ne connaît que la boîte et le message. Le pack `crm` livre le flow modèle **« CRM · mails reçus »** : `mail_received` (boîtes choisies) → expéditeur retrouvé par son adresse (identifiant de la personne) → lien `activite_sur` vers la personne et ses opportunités ouvertes, sauf authentification en échec ou opposition (alors proposition). Le pack de veille livre son propre flow ; le SAV le sien. Aucun d'eux n'ajoute de code au moteur.
+
+### D463 — Un mail transféré est rangé sous son expéditeur d'origine
+
+Un commercial dont la boîte n'est pas connectée (Outlook d'entreprise, D459) transfère vers une boîte relevée par PneX. Le message entrant a alors le commercial pour expéditeur ; PneX retrouve l'original :
+
+- **message joint** (`message/rfc822`, transfert « en pièce jointe ») : ses en-têtes sont lus tels quels — le plus fiable ;
+- sinon le **bloc de transfert du texte** : lignes « From / De / Von », « Date / Sent / Envoyé », « Subject / Objet », après un marqueur (« Forwarded message », « Message transféré », « Begin forwarded message », « Début du message réexpédié », « Original Message », une ligne de tirets ou de soulignés) ou sous un sujet « Fwd: / Fw: / TR: » ; formes Gmail, Outlook, Apple Mail et Thunderbird, français et anglais.
+
+`forwarded = {from, date, subject, trusted}` est stocké avec le message. **Il n'est cru (`trusted`) que si** l'expéditeur du transfert est l'adresse d'un membre de l'org et que l'authentification du transfert passe (D458) : sans cette condition, n'importe qui pourrait déposer un faux « transfert » et faire ranger un mail chez un client. Un transfert de transfert (un client écrit à un collègue, qui transfère au commercial, qui transfère à la boîte) porte un bloc par maillon : la relève lit toute la chaîne (10 maillons au plus) et retient le **premier expéditeur extérieur à l'org**, les maillons écrits par des membres étant sautés ; si tous sont des membres, le plus récent. Constaté à l'essai du 2026-10-26 avec un transfert imbriqué de Gmail. Le rangement des packs (D462) lit `correspondent` : l'original d'un transfert cru, sinon l'expéditeur.
+
+Une règle de **redirection** côté messagerie (qui garde l'expéditeur d'origine) n'a pas besoin de cette extraction ; elle reste soumise à l'authentification comme tout mail.
+
+## 4. Ce que le système ne fait pas
+
+- Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
+- Pas d'envoi de masse ni de campagne (marketing, newsletters).
+- Pas de lecture d'une boîte personnelle par un admin.
+- Pas de rendu HTML, d'ouverture de pièce jointe ni de suivi de lien.
+
+## 5. Sécurité (grille `security.md` §6)
+
+| Point | Réponse |
+|---|---|
+| 1 Routes | CRUD, test de connexion, envoi : permissions D454 au registre IAM, org du principal ; tests 403 / 404 cross-org |
+| 2 Données renvoyées | jamais de mot de passe ni de jeton ; contenu filtré par D454 |
+| 3 Nœuds | `mail_received`, `mail_send` en liste blanche ; boîte vérifiée au déploiement contre le déployeur |
+| 4 Sortant | IMAP/SMTP derrière R8, TLS obligatoire ; envoi = R9 (secret lié à sa boîte) |
+| 5 Rendu | texte seul (D458) |
+| 6 Requêtes | paramètres liés ; dossiers IMAP échappés (pas de nom de dossier tapé tel quel dans une commande) |
+| 7 Crypto, jetons | jetons OAuth au coffre, rafraîchis côté serveur |
+| 8 Dépendances | client IMAP (`async-imap`, MIT/Apache-2.0) et analyse MIME (`mail-parser`, Apache-2.0/MIT) : vérifiés (maintenus, licences permissives), `task security:deps` au lot M2 |
+
+## 6. Lots
+
+| Lot | Contenu | Sortie |
+|---|---|---|
+| M1 | CRUD des boîtes, propriétaire et équipes, secret, test de connexion | une boîte s'ajoute et se teste |
+| M2 | Relève IMAP, table + type système `mail_message`, déclencheur `mail_received`, garde-fous D457.1–3 et D458 | un flow reçoit les nouveaux mails |
+| M3 | Envoi SMTP, `mail_send`, brouillons à valider, marquage, plafonds | répondre sous contrôle |
+| M4 | OAuth2 Microsoft 365 et Google Workspace | boîtes Outlook d'entreprise |
+| M5 | Pièces jointes en médias, outils de l'assistant et des agents | factures, agents qui lisent et répondent |
+| M6 | Flows modèles des packs (`crm`, veille, SAV) | mail rattaché à la fiche (CRM3) |
+
+## 7. Questions à trancher
+
+1. **Q-M1 — Stockage** : B (stocker + déclencher) est recommandé ; A seulement si l'on refuse de garder des mails dans PneX.
+2. **Q-M2 — Boîte personnelle** : l'admin voit-elle seulement qu'elle existe (recommandé), ou peut-il aussi lire, sur décision explicite de l'org ?
+3. **Q-M3 — Envoi direct** (`send`) : autorisé pour les boîtes partagées et d'agents (recommandé, désactivé par défaut), ou brouillon toujours obligatoire ?
+4. **Q-M4 — Microsoft 365 en premier ?** Si les premiers clients sont sur Outlook d'entreprise, M4 passe avant M3.
+5. **Q-M5 — Conservation par défaut** : 90 jours ?
+
+## 8. Récapitulatif des décisions
+
+| # | Décision |
+|---|---|
+| D453 | La boîte mail est une source, CRUD classique |
+| D454 | Propriétaire = un principal (utilisateur, compte de service, org) ; partage par équipes ; l'admin ne lit pas une boîte personnelle |
+| D455 | Messages stockés, type système `mail_message` |
+| D456 | Déclencheur `mail_received`, nœud `mail_send`, brouillon à valider par défaut |
+| D457 | Garde-fous contre les boucles |
+| D458 | Contenu non fiable : texte seul, bornes, pas de pièce jointe ouverte, expéditeur vérifié par PneX (DKIM aligné, crate `mail-auth`), jamais par l'en-tête du message |
+| D459 | IMAP/SMTP puis OAuth2 (XOAUTH2) |
+| D460 | Relève par curseur UID, reprise, erreurs |
+| D461 | Conservation par boîte, effacement et opposition |
+| D462 | Les packs livrent leurs flows ; rien au moteur |
+| D463 | Un transfert d'un membre est rangé sous l'expéditeur d'origine |
+
+## 9. État
+
+### 2026-10-26 — M1, M2 et M6 codés (non commité)
+
+Arbitrages pris par défaut (recommandations du §7, réversibles) : messages stockés (Q-M1), boîte personnelle illisible par l'admin (Q-M2), pas d'envoi (Q-M3 sans objet tant que M3 n'est pas fait : PneX collecte et range), Microsoft reporté (Q-M4, §10), 90 jours (Q-M5).
+
+| Brique | Où | Tests |
+|---|---|---|
+| Règles pures : drapeaux anti-boucle, verdict d'authentification, HTML → texte, bornes, transferts (D457, D458, D463), filtres du déclencheur | `pnex-core` `mail.rs` | 9 unitaires |
+| Propriétaire = un `user_id` (personne ou compte de service, qui est un utilisateur) ou aucun (partagée, lue par ses équipes) ; permissions `mail:read`, `mail:write`, `mail:delete`, `mail.content:read`, `mail.shared:write` | `services/mail/mod.rs`, registre IAM | `tests/mail.rs` |
+| Mot de passe au coffre (consommateur `mailbox`) : un membre tape celui de **sa** boîte, ne choisit jamais un secret ; changer de serveur exige de le retaper (R9) | `services/secrets/mailbox.rs` | idem |
+| Client IMAP (IMAPS, CA système, `ring`, garde de sortie, `EXAMINE` + `BODY.PEEK`, rien n'est marqué lu) | `services/mail/imap.rs` (`async-imap` 0.12) | unitaires (dossiers) |
+| Analyse MIME (texte seul, pièces listées, transfert joint ou dans le texte) | `services/mail/parse.rs` (`mail-parser` 0.11.9) | 3 unitaires |
+| Relève toutes les 2 min, singleton, curseur `(UIDVALIDITY, UID)`, 7 jours au premier passage, 500 messages/heure puis pause, rétention, erreurs permanentes vs réseau | `services/mail/poller.rs` | `tests/mail.rs` (serveur injoignable) |
+| Tables `mailboxes`, `mail_cursors`, `mail_messages` (unique par boîte × `Message-ID`) | migration 000058 | — |
+| Routes `GET/POST /mailboxes`, `PUT/DELETE /mailboxes/{id}`, `POST …/state`, `POST …/test`, `GET …/messages` ; MCP : liste, messages, pause exposés, le reste exclu (secret, destructif, sortant) | `controllers/mailboxes.rs` | `tests/mail.rs`, gardes OpenAPI/IAM/MCP |
+| Nœud `mail_received` (canal Valkey `pnex:mail:v1:{org}`), contrôle au déploiement (D454), éditeur de flow (palette Déclencheurs, inspecteur) | `pnex-core` `flow/*`, `pnex-node-ui-control/src/mail.rs`, `controllers/flows/lifecycle.rs`, front `flow_editor` | runtime 2 unitaires ; déploiement refusé sur la boîte d'un autre |
+| Flow modèle **CRM · mails reçus** (D462) | `packs/crm.yaml` | `pack_rules.rs` |
+| Effacement d'une personne → ses mails (D461) | `services/profiles.rs` | — |
+
+Reste : l'écran de la liste des boîtes (CRUD) et le test réel sur une boîte jetable o2switch ; `mail_message` comme type système de l'ontologie (D455, liens et recherche depuis l'ontologie) ; l'envoi (M3) ; OAuth (M4, §10) ; les pièces jointes en médias (M5).
+
+## 10. Reprise : boîte jetable d'abord, Microsoft à contourner
+
+**Tests** : une boîte jetable chez un hébergeur classique (o2switch), abonnée à des newsletters et des alertes. IMAP + mot de passe y fonctionnent ; c'est le cas de la veille (§2) et il suffit à valider M1–M3 sans dépendre d'un éditeur.
+
+**Microsoft 365 : à inventer, sans alourdir le moteur.** Exchange Online refuse le mot de passe en IMAP/SMTP ; une connexion demande OAuth2, donc :
+
+- une **application déclarée dans Entra ID** (par l'admin du tenant du client, ou une application multi-tenant publiée par PneX que l'admin approuve une fois) ;
+- un **consentement de l'utilisateur** à la première connexion de sa boîte : redirection vers Microsoft puis retour vers PneX, ou, sans redirection, le **flux « device code »** (l'utilisateur tape un code sur `microsoft.com/devicelogin`), mieux adapté à un PneX auto-hébergé ;
+- un **jeton de rafraîchissement** gardé au coffre et renouvelé côté serveur ; à refaire seulement s'il expire ou est révoqué ;
+- pour une **boîte partagée**, des droits délégués ou « application » accordés par l'admin du tenant.
+
+Les gestes manuels sont donc concentrés au branchement d'une boîte (une fois par utilisateur, et une fois pour l'admin du tenant), pas à l'usage.
+
+**Pistes à étudier avant d'écrire du code propre à Microsoft :**
+
+1. **Un serveur MCP tiers** déjà fait (ex. `ms-365-mcp-server` de Softeria : lister, lire, envoyer, brouillons, boîtes partagées via Graph, connexion par device code), appelé par les agents et l'assistant comme un outil externe. PneX ne porterait ni le protocole ni l'OAuth Microsoft ; à vérifier : maintenance, licence, sécurité des jetons, place dans la frontière D381 (le contenu reste une donnée).
+2. **Device code + XOAUTH2 sur IMAP/SMTP** : un seul écran (« saisissez ce code »), même pile que les autres boîtes.
+3. **Transfert automatique** : une règle Outlook qui transfère vers une boîte IMAP ordinaire (sans OAuth côté PneX ; à vérifier : politique anti-transfert externe des tenants, perte des fils).
+
+Aucun service officiel Microsoft n'est apparu à la recherche du 2026-10-26 ; les serveurs MCP trouvés sont communautaires ou hébergés par des tiers.

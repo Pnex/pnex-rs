@@ -151,6 +151,7 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::time_ranges::routes())
         .add_route(controllers::site_recipes::routes())
         .add_route(controllers::web_search::routes())
+        .add_route(controllers::mailboxes::routes())
         .add_route(controllers::proposals::routes())
         .add_route(controllers::lab::routes())
         .add_route(controllers::ontology::routes())
@@ -270,6 +271,8 @@ impl Hooks for App {
         crate::services::site_recipes::spawn_pruner(ctx);
         // Captured profile texts past 30 days (D333).
         crate::services::profiles::spawn_pruner(ctx);
+        // Mailboxes relevées every two minutes (mail.md D460).
+        crate::services::mail::poller::spawn(ctx);
         crate::services::media_ingest::health::spawn(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
         crate::services::retention::spawn_reconciler(ctx);

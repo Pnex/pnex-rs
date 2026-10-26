@@ -557,6 +557,7 @@ async fn resolve_labels<C: ConnectionTrait>(
             SecretConsumerKind::WebSearchProvider,
             "web_search_providers",
         ),
+        (SecretConsumerKind::Mailbox, "mailboxes"),
     ] {
         let ids = uuids(ids_of(kind));
         if ids.is_empty() {

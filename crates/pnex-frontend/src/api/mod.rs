@@ -43,6 +43,7 @@ pub mod flows;
 pub mod functions;
 pub mod geo;
 pub mod lab;
+pub mod mailboxes;
 pub mod media;
 /// Vision model registry (camera-video.md D81).
 pub mod media_streams;

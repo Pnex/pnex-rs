@@ -1,10 +1,11 @@
 use super::*;
 
 /// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
-pub(crate) const PALETTE_KINDS: [PaletteKind; 47] = [
+pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
     PaletteKind::ActionTrigger,
+    PaletteKind::MailReceived,
     PaletteKind::Weather,
     PaletteKind::Value,
     PaletteKind::DeviceRead,
@@ -90,6 +91,7 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
         PaletteKind::MemoryRead => "memory-read",
         PaletteKind::ControlSource => "control-source",
         PaletteKind::ActionTrigger => "action-trigger",
+        PaletteKind::MailReceived => "mail-received",
         PaletteKind::OntologyQuery => "ontology-query",
         PaletteKind::ObjectUpsert => "object-upsert",
         PaletteKind::LinkUpsert => "link-upsert",
@@ -153,6 +155,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
         PaletteKind::MemoryRead => (PaletteIcon::Database, "bg-green-50 text-green-700"),
         PaletteKind::ControlSource => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
         PaletteKind::ActionTrigger => (PaletteIcon::Gauge, "bg-amber-50 text-amber-700"),
+        PaletteKind::MailReceived => (PaletteIcon::Gauge, "bg-sky-50 text-sky-700"),
         PaletteKind::OntologyQuery => (PaletteIcon::Database, "bg-teal-50 text-teal-700"),
         PaletteKind::ObjectUpsert => (PaletteIcon::Database, "bg-teal-50 text-teal-800"),
         PaletteKind::LinkUpsert => (PaletteIcon::Layers, "bg-teal-50 text-teal-700"),
@@ -209,6 +212,7 @@ pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
         FlowNodeKind::MemoryRead { .. } => PaletteKind::MemoryRead,
         FlowNodeKind::ControlSource { .. } => PaletteKind::ControlSource,
         FlowNodeKind::ActionTrigger { .. } => PaletteKind::ActionTrigger,
+        FlowNodeKind::MailReceived { .. } => PaletteKind::MailReceived,
         FlowNodeKind::OntologyQuery { .. } => PaletteKind::OntologyQuery,
         FlowNodeKind::ObjectUpsert { .. } => PaletteKind::ObjectUpsert,
         FlowNodeKind::LinkUpsert { .. } => PaletteKind::LinkUpsert,
@@ -263,6 +267,7 @@ pub(crate) fn kind_category(kind: PaletteKind) -> PaletteCategory {
         PaletteKind::Inject
         | PaletteKind::ControlSource
         | PaletteKind::ActionTrigger
+        | PaletteKind::MailReceived
         | PaletteKind::CameraSource
         | PaletteKind::MediaSource
         | PaletteKind::Weather => PaletteCategory::Triggers,
@@ -485,6 +490,10 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
         PaletteKind::ActionTrigger => (
             t!("flows-palette-action-trigger").to_string(),
             t!("flows-palette-action-trigger-help").to_string(),
+        ),
+        PaletteKind::MailReceived => (
+            t!("flows-palette-mail-received").to_string(),
+            t!("flows-palette-mail-received-help").to_string(),
         ),
         PaletteKind::OntologyQuery => (
             t!("flows-palette-ontology-query").to_string(),

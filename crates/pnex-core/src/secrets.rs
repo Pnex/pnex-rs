@@ -148,6 +148,8 @@ pub enum SecretConsumerKind {
     BrowserEndpoint,
     /// Key of an org web search provider (web-presence.md D360).
     WebSearchProvider,
+    /// Password of a mailbox (mail.md D453).
+    Mailbox,
 }
 
 impl SecretConsumerKind {
@@ -161,6 +163,7 @@ impl SecretConsumerKind {
             Self::GeoProvider => "geo-provider",
             Self::BrowserEndpoint => "browser-endpoint",
             Self::WebSearchProvider => "web-search-provider",
+            Self::Mailbox => "mailbox",
         }
     }
 
@@ -174,6 +177,7 @@ impl SecretConsumerKind {
             "geo-provider" => Self::GeoProvider,
             "browser-endpoint" => Self::BrowserEndpoint,
             "web-search-provider" => Self::WebSearchProvider,
+            "mailbox" => Self::Mailbox,
             _ => return None,
         })
     }

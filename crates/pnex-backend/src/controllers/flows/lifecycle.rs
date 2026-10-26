@@ -291,6 +291,49 @@ pub(crate) async fn unknown_actions_for_deploy(
     Ok(violations)
 }
 
+/// Mailboxes gate (mail.md D454): a `mail_received` names mailboxes, all
+/// of which the person deploying reads; a flow never listens to someone
+/// else's mailbox.
+pub(crate) async fn mailboxes_for_deploy(
+    ctx: &AppContext,
+    org: &OrgContext,
+    candidate_graph: &FlowGraph,
+) -> Result<Vec<pnex_core::FlowViolation>> {
+    use crate::services::mail;
+    let caller = mail::Caller {
+        user_id: org.auth.user.id,
+        manages_shared: org.can(mail::SHARED_WRITE),
+        reads_content: org.can(mail::CONTENT_READ),
+        can_write_secrets: false,
+    };
+    let mut violations = Vec::new();
+    for n in &candidate_graph.nodes {
+        let pnex_core::FlowNodeKind::MailReceived { config } = &n.kind else {
+            continue;
+        };
+        if let Some((code, message)) = config.check_deployable() {
+            violations.push(pnex_core::FlowViolation::new(
+                Some(n.id.as_str()),
+                code,
+                message,
+            ));
+            continue;
+        }
+        let refused = mail::unreadable_for(&ctx.db, org.org.id, caller, &config.mailboxes)
+            .await
+            .map_err(|_| Error::InternalServerError)?;
+        if let Some((mailbox, code)) = refused {
+            violations.push(pnex_core::FlowViolation::with_args(
+                Some(n.id.as_str()),
+                code,
+                "mail_received names a mailbox the person deploying does not read",
+                serde_json::json!({ "mailbox": mailbox }),
+            ));
+        }
+    }
+    Ok(violations)
+}
+
 /// Recipients from messages gate (D313): a notify node with `to_field`
 /// only sends through SMTP channels an admin marked `dynamic_recipients`.
 pub(crate) async fn dynamic_recipients_for_deploy(
@@ -699,6 +742,7 @@ async fn deploy_version(
         conflicts.extend(unknown_controls_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(unknown_actions_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
         conflicts.extend(dynamic_recipients_for_deploy(&ctx, org.org.id, &candidate_graph).await?);
+        conflicts.extend(mailboxes_for_deploy(&ctx, &org, &candidate_graph).await?);
         conflicts.extend(
             crate::services::ontology::flow_nodes::deploy_violations(
                 &ctx.db,
