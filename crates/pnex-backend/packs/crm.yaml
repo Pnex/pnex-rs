@@ -24,7 +24,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.1.0"
+version: "1.2.0"
 requires: [prospection_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -50,6 +50,7 @@ link_types:
         names: {fr: "Rôle"}
         kind: enum
         values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
+        labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
         classification: personnelle
   - key: porte_par
     name: is carried by
@@ -86,6 +87,7 @@ link_types:
         names: {fr: "Statut"}
         kind: enum
         values: [inconnu, partiel, valide]
+        labels: {inconnu: {fr: "Inconnu", en: "Unknown"}, partiel: {fr: "Partiel", en: "Partial"}, valide: {fr: "Validé", en: "Valid"}}
         colors: { inconnu: gray, partiel: amber, valide: green }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
   - key: activite_sur
@@ -120,6 +122,7 @@ types:
         names: {fr: "Étape"}
         kind: enum
         values: [decouverte, qualification, proposition, negociation, gagnee, perdue]
+        labels: {decouverte: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposition: {fr: "Proposition", en: "Proposal"}, negociation: {fr: "Négociation", en: "Negotiation"}, gagnee: {fr: "Gagnée", en: "Won"}, perdue: {fr: "Perdue", en: "Lost"}}
         colors: { decouverte: gray, qualification: blue, proposition: violet, negociation: amber, gagnee: green, perdue: red }
         required: true
         indexed: true
@@ -131,6 +134,7 @@ types:
         names: {fr: "Source"}
         kind: enum
         values: [salon, groupement, entrant, sortant, recommandation, reseau, autre]
+        labels: {salon: {fr: "Salon", en: "Trade show"}, groupement: {fr: "Groupement", en: "Buying group"}, entrant: {fr: "Entrant", en: "Inbound"}, sortant: {fr: "Sortant", en: "Outbound"}, recommandation: {fr: "Recommandation", en: "Referral"}, reseau: {fr: "Réseau", en: "Network"}, autre: {fr: "Autre", en: "Other"}}
         indexed: true
       - { key: source_detail, name: Source detail, names: {fr: "Détail de la source"}, kind: text, max_len: 255 }
       - { key: motif_perte, name: Reason lost, names: {fr: "Motif de perte"}, kind: text, max_len: 1000 }
@@ -148,6 +152,7 @@ types:
         names: {fr: "Exigé à partir de l'étape"}
         kind: enum
         values: [decouverte, qualification, proposition, negociation]
+        labels: {decouverte: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposition: {fr: "Proposition", en: "Proposal"}, negociation: {fr: "Négociation", en: "Negotiation"}}
         required: true
       - { key: ordre, name: Order, names: {fr: "Ordre"}, kind: number }
       - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
@@ -162,6 +167,7 @@ types:
         names: {fr: "Activité"}
         kind: enum
         values: [appel, mail, rendez_vous, message_reseau, note, tache]
+        labels: {appel: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, rendez_vous: {fr: "Rendez-vous", en: "Meeting"}, message_reseau: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, tache: {fr: "Tâche", en: "Task"}}
         required: true
       - { key: consigne, name: Instruction, names: {fr: "Consigne"}, kind: text, max_len: 2000 }
       - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
@@ -176,6 +182,7 @@ types:
         names: {fr: "Nature"}
         kind: enum
         values: [appel, mail, rendez_vous, message_reseau, note, tache]
+        labels: {appel: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, rendez_vous: {fr: "Rendez-vous", en: "Meeting"}, message_reseau: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, tache: {fr: "Tâche", en: "Task"}}
         required: true
         indexed: true
       - key: etat
@@ -183,6 +190,7 @@ types:
         names: {fr: "État"}
         kind: enum
         values: [a_faire, faite, annulee]
+        labels: {a_faire: {fr: "À faire", en: "To do"}, faite: {fr: "Faite", en: "Done"}, annulee: {fr: "Annulée", en: "Cancelled"}}
         colors: { a_faire: amber, faite: green, annulee: gray }
         required: true
         indexed: true
@@ -193,6 +201,7 @@ types:
         names: {fr: "Sens"}
         kind: enum
         values: [entrant, sortant]
+        labels: {entrant: {fr: "Entrant", en: "Incoming"}, sortant: {fr: "Sortant", en: "Outgoing"}}
       - { key: contenu, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
       - { key: contexte, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
       - { key: brouillon, name: Draft, names: {fr: "Brouillon"}, kind: text, max_len: 4000 }
@@ -269,7 +278,8 @@ functions:
                   "contenu": step.get("consigne", ""),
                   "contexte": opp["contexte"],
               },
-              "title": kind.replace("_", " ") + " J" + str(day) + " · " + opp["titre"],
+              # The step's own title (the org's words), the kind as a fallback.
+              "title": (msg["object"].get("title") or kind.replace("_", " ") + " J" + str(day)) + " · " + opp["titre"],
           }
   - name: crm_lien
     language: starlark

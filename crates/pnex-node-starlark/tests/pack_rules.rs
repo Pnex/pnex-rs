@@ -719,7 +719,7 @@ fn follow_up_steps_become_activities_due_on_their_day() {
     assert_eq!(r["payload"]["echeance"], "2026-11-02");
     assert_eq!(r["payload"]["cle"], "cadence:o1:s1");
     assert_eq!(r["payload"]["etat"], "a_faire");
-    assert_eq!(r["title"], "mail J3 · Acme 2027");
+    assert_eq!(r["title"], "J3 · Acme 2027", "the step's own title");
     assert_eq!(act("2028-02-27", 2)["payload"]["echeance"], "2028-02-29");
     assert_eq!(act("2026-12-31", 14)["payload"]["echeance"], "2027-01-14");
     assert_eq!(act("2026-01-01", 0)["payload"]["echeance"], "2026-01-01");
