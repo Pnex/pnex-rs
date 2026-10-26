@@ -214,6 +214,8 @@ pub(crate) fn status_text(code: &str) -> String {
         "calc-input-rejected" => t!("flow-status-calc-input-rejected").to_string(),
         "device-write-ok" => t!("flow-status-device-write-ok").to_string(),
         "device-write-rejected" => t!("flow-status-device-write-rejected").to_string(),
+        "ontology-ok" => t!("flow-status-ontology-ok").to_string(),
+        "ontology-refused" => t!("flow-status-ontology-refused").to_string(),
         other => other.to_string(),
     }
 }

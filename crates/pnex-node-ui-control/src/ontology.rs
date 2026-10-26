@@ -3,10 +3,11 @@
 //! access: each node calls `/internal/flow/ontology/{query,upsert,link}`
 //! naming itself (org, flow, version, node); the backend reads the node
 //! config from the deployed version and writes through the ontology
-//! services (same rules as the UI). A refused call is logged and the
-//! message dropped.
+//! services (same rules as the UI). A refused call drops the message and
+//! turns the node status to error with the server's answer, back to ok at
+//! the next accepted call.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -15,6 +16,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use edgelink_core::runtime::context::*;
+use edgelink_core::runtime::debug_channel::DebugMessage;
 use edgelink_core::runtime::flow::*;
 use edgelink_core::runtime::model::json::*;
 use edgelink_core::runtime::model::*;
@@ -27,6 +29,7 @@ use pnex_core::ontology::flow::{
     resolve_value, FlowLinkRequest, FlowNodeRef, FlowQueryReply, FlowQueryRequest, FlowUpsertAck,
     FlowUpsertRequest, QueryOutput,
 };
+use pnex_core::vision::{NodeStatus, NodeStatusLevel, NODE_STATUS_FORMAT};
 
 const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
 
@@ -50,6 +53,8 @@ struct Backend {
     http: reqwest::Client,
     url: String,
     token: String,
+    /// Last refusal, shown as the node status.
+    last_error: Mutex<Option<String>>,
 }
 
 impl Backend {
@@ -84,12 +89,15 @@ impl Backend {
             http,
             url: format!("{}/{path}", base.trim_end_matches('/')),
             token,
+            last_error: Mutex::new(None),
         })
     }
 
-    /// POSTs `body`; `None` (logged) when refused or unreachable.
-    async fn call<T: serde::de::DeserializeOwned>(
+    /// POSTs `body`; `None` when refused or unreachable, the reason then
+    /// shown as the status of `node`.
+    async fn call<T: serde::de::DeserializeOwned, N: FlowNodeBehavior>(
         &self,
+        node: &N,
         who: &str,
         body: &impl serde::Serialize,
     ) -> Option<T> {
@@ -104,25 +112,56 @@ impl Backend {
             .json(body)
             .send()
             .await;
-        match res {
-            Ok(r) if r.status().is_success() => match r.json::<T>().await {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    log::warn!("{who} : unreadable answer: {e}");
-                    None
-                }
-            },
+        let out = match res {
+            Ok(r) if r.status().is_success() => r
+                .json::<T>()
+                .await
+                .map_err(|e| format!("unreadable answer: {e}")),
             Ok(r) => {
                 let status = r.status();
                 let text = r.text().await.unwrap_or_default();
-                log::warn!("{who} : refused ({status}): {text}");
-                None
+                Err(format!("refused ({status}): {text}"))
             }
-            Err(e) => {
-                log::warn!("{who} : call failed: {e}");
-                None
-            }
+            Err(e) => Err(format!("call failed: {e}")),
+        };
+        if let Err(e) = &out {
+            log::warn!("{who} : {e}");
         }
+        self.report(node, out.as_ref().err().cloned());
+        out.ok()
+    }
+
+    /// Publishes the node status when the outcome changes (D103 school).
+    fn report<N: FlowNodeBehavior>(&self, node: &N, error: Option<String>) {
+        {
+            let mut last = self.last_error.lock().expect("ontology node status");
+            if *last == error {
+                return;
+            }
+            *last = error.clone();
+        }
+        let Some(engine) = node.engine() else {
+            return;
+        };
+        let status = match error {
+            Some(e) => NodeStatus::new(NodeStatusLevel::Error, "ontology-refused").detail(e),
+            None => NodeStatus::new(NodeStatusLevel::Ok, "ontology-ok"),
+        };
+        let name = node.name();
+        engine.debug_channel().send(DebugMessage {
+            id: self.node.node_id.clone(),
+            name: (!name.is_empty()).then(|| name.to_string()),
+            msg: serde_json::to_value(status).unwrap_or(Value::Null),
+            property: Some("payload".into()),
+            format: Some(NODE_STATUS_FORMAT.into()),
+            path: node
+                .flow()
+                .map(|f| f.get_path())
+                .unwrap_or_else(|| "global".to_string()),
+            topic: None,
+            timestamp: Some(chrono::Utc::now().timestamp_millis()),
+            msgid: None,
+        });
     }
 }
 
@@ -199,7 +238,11 @@ impl OntologyQueryNode {
             values: values_for(&self.config.filters, &msg_json(&msg).await),
         };
         let who = format!("pnex-ontology-query [{}]", self.name());
-        let Some(result) = self.backend.call::<FlowQueryReply>(&who, &req).await else {
+        let Some(result) = self
+            .backend
+            .call::<FlowQueryReply, _>(self, &who, &req)
+            .await
+        else {
             return Ok(());
         };
         // The day the query ran, for the functions downstream (no clock in
@@ -302,7 +345,11 @@ impl ObjectUpsertNode {
             }
         };
         let who = format!("pnex-object-upsert [{}]", self.name());
-        let Some(ack) = self.backend.call::<FlowUpsertAck>(&who, &req).await else {
+        let Some(ack) = self
+            .backend
+            .call::<FlowUpsertAck, _>(self, &who, &req)
+            .await
+        else {
             return Ok(());
         };
         {
@@ -351,7 +398,7 @@ impl LinkUpsertNode {
             return Ok(());
         };
         let who = format!("pnex-link-upsert [{}]", self.name());
-        let Some(link) = self.backend.call::<Value>(&who, &req).await else {
+        let Some(link) = self.backend.call::<Value, _>(self, &who, &req).await else {
             return Ok(());
         };
         msg.write().await.set("link".into(), Variant::from(link));
