@@ -19,7 +19,7 @@
 key: presence_web
 name: Web presence
 names: {fr: "Présence web"}
-version: "1.5.1"
+version: "1.6.0"
 requires: [entreprises]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
@@ -61,7 +61,7 @@ types:
       - { key: dernier_crawl, name: Last crawl, names: {fr: "Dernier parcours"}, kind: date_time }
       - { key: pages_listees, name: Listed pages, names: {fr: "Pages listées"}, kind: number, min: 0 }
       - { key: pages_pertinentes, name: Relevant pages, names: {fr: "Pages pertinentes"}, kind: number, min: 0 }
-      - { key: etat_collecte, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, bloque, inaccessible, vide], indexed: true }
+      - { key: etat_collecte, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, bloque, inaccessible, vide], labels: {ok: {fr: "OK", en: "OK"}, bloque: {fr: "Bloqué", en: "Blocked"}, inaccessible: {fr: "Inaccessible", en: "Unreachable"}, vide: {fr: "Vide", en: "Empty"}}, indexed: true }
       - { key: capture, name: Capture (media id), names: {fr: "Capture (id média)"}, kind: text, max_len: 36 }
 link_types:
   - key: a_pour_site
@@ -85,6 +85,7 @@ link_types:
         names: {fr: "Source"}
         kind: enum
         values: [email, recherche, manuel]
+        labels: {email: {fr: "E-mail", en: "Email"}, recherche: {fr: "Recherche", en: "Search"}, manuel: {fr: "Manuel", en: "Manual"}}
       - { key: valide_par, name: Validated by, names: {fr: "Validé par"}, kind: text, max_len: 255 }
 functions:
   - name: pw_preparer

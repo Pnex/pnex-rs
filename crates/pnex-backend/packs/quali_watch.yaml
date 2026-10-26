@@ -41,7 +41,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.5.2"
+version: "1.6.0"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -87,7 +87,7 @@ types:
     may_be_contained_in: [folder]
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
-      - { key: repertoire, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], indexed: true }
+      - { key: repertoire, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], labels: {rncp: {fr: "RNCP", en: "RNCP"}, rs: {fr: "RS", en: "RS"}}, indexed: true }
       # The register holds titles over 500 characters (2026-10-24 export).
       - { key: intitule, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 2000 }
       # Digits of the code (0101): the value the CPF catalogue is queried by.
@@ -95,7 +95,7 @@ types:
       - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: text, max_len: 32 }
       - { key: date_enregistrement, name: Registered on, names: {fr: "Enregistrée le"}, kind: date }
       - { key: date_echeance, name: Expires on, names: {fr: "Échéance"}, kind: date }
-      - { key: statut, name: Status, names: {fr: "Statut"}, kind: enum, values: [actif, inactif, echu], indexed: true }
+      - { key: statut, name: Status, names: {fr: "Statut"}, kind: enum, values: [actif, inactif, echu], labels: {actif: {fr: "Actif", en: "Active"}, inactif: {fr: "Inactif", en: "Inactive"}, echu: {fr: "Échu", en: "Expired"}}, indexed: true }
       - { key: url_fiche, name: Register page, names: {fr: "Fiche du répertoire"}, kind: url }
       - { key: objectifs, name: Objectives and context, names: {fr: "Objectifs et contexte"}, kind: text, max_len: 50000 }
       - { key: prerequis, name: Entry prerequisites, names: {fr: "Prérequis"}, kind: text, max_len: 50000 }
@@ -117,7 +117,7 @@ types:
       - { key: pertinente, name: Relevant, names: {fr: "Pertinente"}, kind: bool }
       - { key: codes_cites, name: Codes quoted, names: {fr: "Codes cités"}, kind: text, max_len: 1000 }
       # The registry states (D309), written by the crawl's `record`.
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [listed, relevant, captured, gone], indexed: true }
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [listed, relevant, captured, gone], labels: {listed: {fr: "Listée", en: "Listed"}, relevant: {fr: "Pertinente", en: "Relevant"}, captured: {fr: "Capturée", en: "Captured"}, gone: {fr: "Disparue", en: "Gone"}}, indexed: true }
   - key: offre_cpf
     name: CPF offer
     names: {fr: "Offre CPF"}
@@ -129,7 +129,7 @@ types:
       - { key: prix, name: Price, names: {fr: "Prix"}, kind: money }
       - { key: duree_heures, name: Duration, names: {fr: "Durée"}, kind: number, unit: h, min: 0 }
       - { key: ville, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
-      - { key: modalite, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte] }
+      - { key: modalite, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte], labels: {presentiel: {fr: "Présentiel", en: "On site"}, distanciel: {fr: "Distanciel", en: "Remote"}, mixte: {fr: "Mixte", en: "Blended"}} }
       - { key: vue_le, name: Seen on, names: {fr: "Vue le"}, kind: date }
       - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14 }
       - { key: a_distance, name: Remote sessions, names: {fr: "Sessions à distance"}, kind: bool }
@@ -142,8 +142,8 @@ types:
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
       - { key: libelle, name: Label, names: {fr: "Libellé"}, kind: text, max_len: 500 }
-      - { key: type, name: Kind, names: {fr: "Nature"}, kind: enum, values: [deterministe, llm] }
-      - { key: gravite_defaut, name: Default severity, names: {fr: "Gravité par défaut"}, kind: enum, values: [info, mineur, majeur, critique] }
+      - { key: type, name: Kind, names: {fr: "Nature"}, kind: enum, values: [deterministe, llm], labels: {deterministe: {fr: "Déterministe", en: "Deterministic"}, llm: {fr: "LLM", en: "LLM"}} }
+      - { key: gravite_defaut, name: Default severity, names: {fr: "Gravité par défaut"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}} }
       - { key: reference, name: Legal or contractual reference, names: {fr: "Référence légale ou contractuelle"}, kind: text, max_len: 2000 }
       - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
       - { key: active, name: Active, names: {fr: "Active"}, kind: bool }
@@ -157,12 +157,13 @@ types:
       - { key: attendu, name: Expected, names: {fr: "Attendu"}, kind: text, max_len: 2000 }
       - { key: constate, name: Observed, names: {fr: "Constaté"}, kind: text, max_len: 2000 }
       - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
-      - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], indexed: true }
+      - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}}, indexed: true }
       - key: etat
         name: State
         names: {fr: "État"}
         kind: enum
         values: [propose, a_valider, confirme, en_relance, corrige, clos, rejete]
+        labels: {propose: {fr: "Proposé", en: "Proposed"}, a_valider: {fr: "À valider", en: "To validate"}, confirme: {fr: "Confirmé", en: "Confirmed"}, en_relance: {fr: "En relance", en: "Being chased"}, corrige: {fr: "Corrigé", en: "Fixed"}, clos: {fr: "Clos", en: "Closed"}, rejete: {fr: "Rejeté", en: "Rejected"}}
         required: true
         indexed: true
       - { key: detecte_le, name: Detected on, names: {fr: "Détecté le"}, kind: date_time }
@@ -173,14 +174,14 @@ types:
         name: Confirm
         names: {fr: "Valider"}
         params:
-          - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique] }
+          - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}} }
           - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
       - key: rejeter
         name: Reject
         names: {fr: "Rejeter"}
         confirm: true
         params:
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [faux_positif, hors_perimetre, accepte_par_le_client], required: true }
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [faux_positif, hors_perimetre, accepte_par_le_client], labels: {faux_positif: {fr: "Faux positif", en: "False positive"}, hors_perimetre: {fr: "Hors périmètre", en: "Out of scope"}, accepte_par_le_client: {fr: "Accepté par le client", en: "Accepted by the customer"}}, required: true }
           - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
       - key: reverifier
         name: Check again
@@ -191,12 +192,12 @@ types:
     icon: workflow
     may_be_contained_in: [folder]
     properties:
-      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [aucun, r1, r2, r3, r4, retrait_propose], indexed: true }
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [ouverte, en_attente_validation, suspendue, close], required: true, indexed: true }
+      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [aucun, r1, r2, r3, r4, retrait_propose], labels: {aucun: {fr: "Aucun", en: "None"}, r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, retrait_propose: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, indexed: true }
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [ouverte, en_attente_validation, suspendue, close], labels: {ouverte: {fr: "Ouverte", en: "Open"}, en_attente_validation: {fr: "En attente de validation", en: "Awaiting validation"}, suspendue: {fr: "Suspendue", en: "Suspended"}, close: {fr: "Close", en: "Closed"}}, required: true, indexed: true }
       - { key: prochaine_echeance, name: Next due date, names: {fr: "Prochaine échéance"}, kind: date, indexed: true }
       - { key: ouverte_le, name: Opened on, names: {fr: "Ouverte le"}, kind: date }
       - { key: close_le, name: Closed on, names: {fr: "Close le"}, kind: date }
-      - { key: motif_cloture, name: Closing reason, names: {fr: "Motif de clôture"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat] }
+      - { key: motif_cloture, name: Closing reason, names: {fr: "Motif de clôture"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], labels: {corrige: {fr: "Corrigé", en: "Fixed"}, retrait_effectue: {fr: "Retrait effectué", en: "Withdrawn"}, fin_partenariat: {fr: "Fin de partenariat", en: "Partnership ended"}} }
       - { key: contact_email, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 254 }
       - { key: copie_email, name: Copy to, names: {fr: "Copie à"}, kind: text, max_len: 254 }
     actions:
@@ -212,7 +213,7 @@ types:
         names: {fr: "Envoyer maintenant"}
         confirm: true
         params:
-          - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4], required: true }
+          - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}}, required: true }
       - key: suspendre
         name: Suspend
         names: {fr: "Suspendre"}
@@ -228,13 +229,13 @@ types:
         name: Mark as fixed
         names: {fr: "Marquer corrigé"}
         params:
-          - { key: source, name: Reported by, names: {fr: "Signalé par"}, kind: enum, values: [partenaire, client], required: true }
+          - { key: source, name: Reported by, names: {fr: "Signalé par"}, kind: enum, values: [partenaire, client], labels: {partenaire: {fr: "Partenaire", en: "Partner"}, client: {fr: "Client", en: "Customer"}}, required: true }
       - key: clore
         name: Close
         names: {fr: "Clore"}
         confirm: true
         params:
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], required: true }
+          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], labels: {corrige: {fr: "Corrigé", en: "Fixed"}, retrait_effectue: {fr: "Retrait effectué", en: "Withdrawn"}, fin_partenariat: {fr: "Fin de partenariat", en: "Partnership ended"}}, required: true }
   - key: relance
     name: Reminder
     names: {fr: "Relance"}
@@ -242,11 +243,11 @@ types:
     may_be_contained_in: [folder]
     properties:
       - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
-      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4, retrait_propose], required: true }
+      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4, retrait_propose], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, retrait_propose: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, required: true }
       - { key: envoyee_le, name: Sent on, names: {fr: "Envoyée le"}, kind: date_time }
       - { key: destinataire, name: Recipient, names: {fr: "Destinataire"}, kind: text, max_len: 254 }
       - { key: modele, name: Template, names: {fr: "Modèle"}, kind: text, max_len: 255 }
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [a_valider, envoyee, echec], required: true, indexed: true }
+      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [a_valider, envoyee, echec], labels: {a_valider: {fr: "À valider", en: "To validate"}, envoyee: {fr: "Envoyée", en: "Sent"}, echec: {fr: "Échec", en: "Failed"}}, required: true, indexed: true }
       - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
       - { key: lien_corrige_ouvert_le, name: Fix link opened on, names: {fr: "Lien « corrigé » ouvert le"}, kind: date_time }
   - key: competence
@@ -258,7 +259,7 @@ types:
       - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 64, required: true, unique: true }
       - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
       - { key: libelle, name: Official wording, names: {fr: "Libellé officiel"}, kind: text, max_len: 10000 }
-      - { key: nature, name: Kind, names: {fr: "Nature"}, kind: enum, values: [competence, bloc], indexed: true }
+      - { key: nature, name: Kind, names: {fr: "Nature"}, kind: enum, values: [competence, bloc], labels: {competence: {fr: "Compétence", en: "Skill"}, bloc: {fr: "Bloc", en: "Block"}}, indexed: true }
   - key: programme
     name: Programme
     names: {fr: "Programme"}
@@ -266,10 +267,10 @@ types:
     may_be_contained_in: [folder]
     properties:
       - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
-      - { key: role, name: Role, names: {fr: "Rôle"}, kind: enum, values: [reference, partenaire], indexed: true }
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: enum, values: [reference, partenaire], labels: {reference: {fr: "Référence", en: "Reference"}, partenaire: {fr: "Partenaire", en: "Partner"}}, indexed: true }
       - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
       - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
-      - { key: format, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte] }
+      - { key: format, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte], labels: {presentiel: {fr: "Présentiel", en: "On site"}, distanciel: {fr: "Distanciel", en: "Remote"}, mixte: {fr: "Mixte", en: "Blended"}} }
       - { key: heures_synchrones, name: Live hours, names: {fr: "Heures synchrones"}, kind: number, unit: h, min: 0 }
       - { key: heures_preparation, name: Preparation hours, names: {fr: "Heures de préparation"}, kind: number, unit: h, min: 0 }
       - { key: heures_total, name: Total hours, names: {fr: "Heures au total"}, kind: number, unit: h, min: 0 }
@@ -303,12 +304,12 @@ link_types:
     from_types: [organization]
     to_types: [certification]
     attributes:
-      - { key: perimetre, name: Scope, names: {fr: "Périmètre"}, kind: enum, values: [preparation, evaluation, les_deux] }
+      - { key: perimetre, name: Scope, names: {fr: "Périmètre"}, kind: enum, values: [preparation, evaluation, les_deux], labels: {preparation: {fr: "Préparation", en: "Preparation"}, evaluation: {fr: "Évaluation", en: "Assessment"}, les_deux: {fr: "Les deux", en: "Both"}} }
       - { key: declaree_fc, name: Declared to France Compétences, names: {fr: "Déclarée à France Compétences"}, kind: bool }
       - { key: reference_convention, name: Agreement reference, names: {fr: "Référence de la convention"}, kind: text, max_len: 255 }
       - { key: date_fin, name: Accredited until, names: {fr: "Habilité jusqu'au"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 255 }
-      - { key: etat_fc, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [actif, inactif] }
+      - { key: etat_fc, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [actif, inactif], labels: {actif: {fr: "Actif", en: "Active"}, inactif: {fr: "Inactif", en: "Inactive"}} }
       - { key: date_actif, name: Active since, names: {fr: "Actif depuis"}, kind: date }
       - { key: date_etat, name: State changed on, names: {fr: "État modifié le"}, kind: date }
   - key: page_de
@@ -330,7 +331,7 @@ link_types:
     attributes:
       - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
       - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
-      - { key: kind, name: Part, names: {fr: "Partie"}, kind: enum, values: [capture, html, text] }
+      - { key: kind, name: Part, names: {fr: "Partie"}, kind: enum, values: [capture, html, text], labels: {capture: {fr: "Capture", en: "Screenshot"}, html: {fr: "HTML", en: "HTML"}, text: {fr: "Texte", en: "Text"}} }
   - key: offre_de
     name: is an offer of
     names: {fr: "est une offre de"}
@@ -340,7 +341,7 @@ link_types:
     to_types: [organization]
     one_target: true
     attributes:
-      - { key: rapproche_par, name: Matched by, names: {fr: "Rapprochée par"}, kind: enum, values: [siret, nda, nom] }
+      - { key: rapproche_par, name: Matched by, names: {fr: "Rapprochée par"}, kind: enum, values: [siret, nda, nom], labels: {siret: {fr: "SIRET", en: "SIRET"}, nda: {fr: "NDA", en: "NDA"}, nom: {fr: "Nom", en: "Name"}} }
   - key: porte_sur
     name: is about
     names: {fr: "porte sur"}
@@ -448,7 +449,7 @@ link_types:
     from_types: [module]
     to_types: [competence]
     attributes:
-      - { key: rapproche_par, name: Matched by, names: {fr: "Rapproché par"}, kind: enum, values: [code_cite, intitule, llm, humain] }
+      - { key: rapproche_par, name: Matched by, names: {fr: "Rapproché par"}, kind: enum, values: [code_cite, intitule, llm, humain], labels: {code_cite: {fr: "Code cité", en: "Quoted code"}, intitule: {fr: "Intitulé", en: "Title"}, llm: {fr: "LLM", en: "LLM"}, humain: {fr: "Humain", en: "Human"}} }
       - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
       - { key: confiance, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
       - { key: valide, name: Validated, names: {fr: "Validé"}, kind: bool }

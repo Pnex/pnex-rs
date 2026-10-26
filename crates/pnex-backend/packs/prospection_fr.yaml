@@ -25,7 +25,7 @@
 key: prospection_fr
 name: B2B account mapping, France
 names: {fr: "Cartographie commerciale, France"}
-version: "1.1.0"
+version: "1.2.0"
 requires: [entreprises_fr, prospection_b2b]
 description: "French target lists from the company register: a saved search becomes accounts to target, without touching the status of known accounts."
 descriptions: {fr: "Listes de ciblage françaises depuis le registre des entreprises : une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus."}
@@ -47,11 +47,13 @@ types:
         names: {fr: "Persona"}
         kind: enum
         values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
+        labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
       - key: rapprochement
         name: Company found
         names: {fr: "Société retrouvée"}
         kind: enum
         values: [trouve, a_revoir, introuvable]
+        labels: {trouve: {fr: "Trouvée", en: "Found"}, a_revoir: {fr: "À revoir", en: "To review"}, introuvable: {fr: "Introuvable", en: "Not found"}}
         colors: { trouve: green, a_revoir: amber, introuvable: gray }
         indexed: true
       - { key: siren_trouve, name: SIREN found, names: {fr: "SIREN retrouvé"}, kind: text, max_len: 9 }

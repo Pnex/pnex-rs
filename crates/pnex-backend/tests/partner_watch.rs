@@ -462,7 +462,7 @@ async fn group_coverage_and_status_colours() {
         let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let node = |id: &str| h["nodes"].as_array().unwrap().iter().find(|n| n["id"] == id).cloned().unwrap();
-        assert_eq!(node(&mother)["marks"], json!([{"property": "statut_compte", "value": "client", "color": "green"}]));
+        assert_eq!(node(&mother)["marks"], json!([{"property": "statut_compte", "value": "client", "color": "green", "labels": {"fr": "Client", "en": "Customer"}}]));
         assert_eq!((node(&gap)["white_space"].clone(), node(&covered)["white_space"].clone()), (json!(true), Value::Null), "{h}");
         assert_eq!((h["has_coverage"].clone(), h["white_space"].clone()), (json!(true), json!(1)));
         let totals: Vec<(String, f64)> = h["totals"].as_array().unwrap().iter()

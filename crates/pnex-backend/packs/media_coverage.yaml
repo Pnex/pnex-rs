@@ -12,7 +12,7 @@
 key: media_coverage
 name: Media coverage
 names: {fr: "Couverture médiatique"}
-version: "1.1.0"
+version: "1.2.0"
 requires: [investigation]
 description: Media outlets, programmes, parties and mandates — ownership, funding, hosts and office holders, every link sourced.
 descriptions: {fr: "Médias, émissions, partis et mandats — propriété, financement, présentateurs et élus, chaque lien sourcé."}
@@ -28,6 +28,7 @@ types:
         names: {fr: "Support"}
         kind: enum
         values: [tv, radio, daily_press, weekly_press, magazine, online, video_channel, podcast, agency, other]
+        labels: {tv: {fr: "Télévision", en: "TV"}, radio: {fr: "Radio", en: "Radio"}, daily_press: {fr: "Presse quotidienne", en: "Daily press"}, weekly_press: {fr: "Presse hebdomadaire", en: "Weekly press"}, magazine: {fr: "Magazine", en: "Magazine"}, online: {fr: "En ligne", en: "Online"}, video_channel: {fr: "Chaîne vidéo", en: "Video channel"}, podcast: {fr: "Podcast", en: "Podcast"}, agency: {fr: "Agence", en: "Agency"}, other: {fr: "Autre", en: "Other"}}
       - { key: status, name: Status, names: {fr: "Statut"}, kind: text, max_len: 255 }
       - { key: business_model, name: Business model, names: {fr: "Modèle économique"}, kind: text, max_len: 255 }
       - { key: website, name: Website, names: {fr: "Site"}, kind: text, max_len: 500 }

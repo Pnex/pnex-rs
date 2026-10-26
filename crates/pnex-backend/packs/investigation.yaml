@@ -31,7 +31,7 @@
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.11.0"
+version: "1.12.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -57,6 +57,7 @@ types:
         names: {fr: "Nature"}
         kind: enum
         values: [company, public_body, association, party, media, group, other]
+        labels: {company: {fr: "Entreprise", en: "Company"}, public_body: {fr: "Organisme public", en: "Public body"}, association: {fr: "Association", en: "Association"}, party: {fr: "Parti", en: "Party"}, media: {fr: "Média", en: "Media"}, group: {fr: "Groupe", en: "Group"}, other: {fr: "Autre", en: "Other"}}
       - { key: wikidata, name: Wikidata, names: {fr: "Wikidata"}, kind: text, max_len: 32, indexed: true }
       - { key: notes, name: Notes, names: {fr: "Notes"}, kind: text, max_len: 2000 }
   - key: place
@@ -91,6 +92,7 @@ types:
         names: {fr: "Statut"}
         kind: enum
         values: [unverified, corroborated, contested, refuted]
+        labels: {unverified: {fr: "Non vérifiée", en: "Unverified"}, corroborated: {fr: "Corroborée", en: "Corroborated"}, contested: {fr: "Contestée", en: "Contested"}, refuted: {fr: "Réfutée", en: "Refuted"}}
         required: true
         indexed: true
       - key: source_reliability
@@ -98,11 +100,13 @@ types:
         names: {fr: "Fiabilité de la source"}
         kind: enum
         values: [A, B, C, D, E, F]
+        labels: {A: {fr: "A — fiable", en: "A — reliable"}, B: {fr: "B — plutôt fiable", en: "B — usually reliable"}, C: {fr: "C — assez fiable", en: "C — fairly reliable"}, D: {fr: "D — peu fiable", en: "D — not usually reliable"}, E: {fr: "E — non fiable", en: "E — unreliable"}, F: {fr: "F — inconnue", en: "F — cannot be judged"}}
       - key: information_credibility
         name: Information credibility
         names: {fr: "Crédibilité de l'information"}
         kind: enum
         values: ["1", "2", "3", "4", "5", "6"]
+        labels: {"1": {fr: "1 — confirmée", en: "1 — confirmed"}, "2": {fr: "2 — probable", en: "2 — probably true"}, "3": {fr: "3 — possible", en: "3 — possibly true"}, "4": {fr: "4 — douteuse", en: "4 — doubtful"}, "5": {fr: "5 — improbable", en: "5 — improbable"}, "6": {fr: "6 — invérifiable", en: "6 — cannot be judged"}}
       - { key: corroboration_note, name: Corroboration justification, names: {fr: "Justification de la corroboration"}, kind: text, max_len: 1000 }
   - key: hypothesis
     name: Hypothesis
@@ -116,6 +120,7 @@ types:
         names: {fr: "Statut"}
         kind: enum
         values: [open, supported, refuted, retained]
+        labels: {open: {fr: "Ouverte", en: "Open"}, supported: {fr: "Étayée", en: "Supported"}, refuted: {fr: "Réfutée", en: "Refuted"}, retained: {fr: "Retenue", en: "Retained"}}
         required: true
         indexed: true
   - key: statement
@@ -134,6 +139,7 @@ types:
         names: {fr: "Position"}
         kind: enum
         values: [for, against, nuanced, none]
+        labels: {for: {fr: "Pour", en: "For"}, against: {fr: "Contre", en: "Against"}, nuanced: {fr: "Nuancé", en: "Nuanced"}, none: {fr: "Aucune", en: "None"}}
   - key: identifier
     name: Identifier
     names: {fr: "Identifiant"}
@@ -146,6 +152,7 @@ types:
         names: {fr: "Nature"}
         kind: enum
         values: [phone, email, plate, account, imei, iban, other]
+        labels: {phone: {fr: "Téléphone", en: "Phone"}, email: {fr: "E-mail", en: "Email"}, plate: {fr: "Plaque", en: "Plate"}, account: {fr: "Compte", en: "Account"}, imei: {fr: "IMEI", en: "IMEI"}, iban: {fr: "IBAN", en: "IBAN"}, other: {fr: "Autre", en: "Other"}}
         required: true
       - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 255, required: true, indexed: true, classification: personnelle }
 link_types:
@@ -170,6 +177,7 @@ link_types:
         names: {fr: "Nature"}
         kind: enum
         values: [seen, lives, works, registered, stored, other]
+        labels: {seen: {fr: "Vu", en: "Seen"}, lives: {fr: "Habite", en: "Lives"}, works: {fr: "Travaille", en: "Works"}, registered: {fr: "Enregistré", en: "Registered"}, stored: {fr: "Stocké", en: "Stored"}, other: {fr: "Autre", en: "Other"}}
   - key: before
     name: happened before
     names: {fr: "a eu lieu avant"}
@@ -245,7 +253,7 @@ link_types:
     to_types: [person]
     one_target: true
     attributes:
-      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid] }
+      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid], labels: {manual: {fr: "Manuelle", en: "Manual"}, voice: {fr: "Voix", en: "Voice"}, transcript: {fr: "Transcription", en: "Transcript"}, grid: {fr: "Grille", en: "Grid"}} }
       - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
   - key: appears_in
     name: appears in
@@ -255,8 +263,8 @@ link_types:
     from_types: [person]
     to_types: [media_asset]
     attributes:
-      - { key: kind, name: Kind, names: {fr: "Nature"}, kind: enum, values: [present, speaking, mentioned] }
-      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid] }
+      - { key: kind, name: Kind, names: {fr: "Nature"}, kind: enum, values: [present, speaking, mentioned], labels: {present: {fr: "Présent", en: "Present"}, speaking: {fr: "Parle", en: "Speaking"}, mentioned: {fr: "Cité", en: "Mentioned"}} }
+      - { key: origin, name: Origin, names: {fr: "Origine"}, kind: enum, values: [manual, voice, transcript, grid], labels: {manual: {fr: "Manuelle", en: "Manual"}, voice: {fr: "Voix", en: "Voice"}, transcript: {fr: "Transcription", en: "Transcript"}, grid: {fr: "Grille", en: "Grid"}} }
       - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number }
   - key: published_by
     name: is published by
