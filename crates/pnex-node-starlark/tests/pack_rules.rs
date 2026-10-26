@@ -9,6 +9,7 @@ const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
 const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospection_b2b.yaml");
 const PRESENCE: &str = include_str!("../../pnex-backend/packs/presence_web.yaml");
 const PROSPECTION_FR: &str = include_str!("../../pnex-backend/packs/prospection_fr.yaml");
+const CRM: &str = include_str!("../../pnex-backend/packs/crm.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
 fn code_of(name: &str) -> String {
@@ -697,4 +698,238 @@ fn a_finding_becomes_a_write_then_its_links() {
     assert_eq!(l["concerne"], json!({"source_id": "e1", "target_id": "o"}));
     assert_eq!(l["sur"]["target_id"], "c");
     assert!(l.get("constate_dans").is_none());
+}
+
+/// `crm` (crm.md D450): one activity per step of the plan, due on the
+/// start day plus the step's day, across month and leap-year ends.
+#[test]
+fn follow_up_steps_become_activities_due_on_their_day() {
+    let act = |jour0: &str, jour: i64| {
+        let msg = json!({
+            "payload": {"jour": jour, "kind": "mail", "consigne": "Relancer", "actif": true},
+            "object": {"id": "s1", "title": "J3"},
+            "opp": {"id": "o1", "titre": "Acme 2027", "contexte": "Compte : Acme", "jour0": jour0}
+        });
+        execute(&code_in(CRM, "crm_cadence_activite"), &msg, 2000)
+            .unwrap()
+            .return_json
+            .unwrap()
+    };
+    let r = act("2026-10-30", 3);
+    assert_eq!(r["payload"]["echeance"], "2026-11-02");
+    assert_eq!(r["payload"]["cle"], "cadence:o1:s1");
+    assert_eq!(r["payload"]["etat"], "a_faire");
+    assert_eq!(r["title"], "mail J3 · Acme 2027");
+    assert_eq!(act("2028-02-27", 2)["payload"]["echeance"], "2028-02-29");
+    assert_eq!(act("2026-12-31", 14)["payload"]["echeance"], "2027-01-14");
+    assert_eq!(act("2026-01-01", 0)["payload"]["echeance"], "2026-01-01");
+    let off = json!({"payload": {"jour": 1, "kind": "appel", "actif": false}, "object": {"id": "s"}, "opp": {"id": "o", "titre": "T", "contexte": "", "jour0": "2026-01-01"}});
+    assert!(execute(&code_in(CRM, "crm_cadence_activite"), &off, 2000)
+        .unwrap()
+        .return_json
+        .is_none());
+}
+
+#[test]
+fn a_plan_never_starts_when_every_person_objected() {
+    let msg = |opposed: bool| {
+        json!({
+            "payload": {"etape": "qualification"},
+            "object": {"id": "o1", "title": "Acme 2027"},
+            "today": "2026-10-26",
+            "links": {
+                "implique": [{"direction": "in", "attributes": {"role": "decideur"},
+                              "other": {"id": "p1", "type": "person", "title": "A",
+                                        "properties": if opposed { json!({"opposition_le": "2026-10-01"}) } else { json!({}) }}}],
+                "opportunite_de": [{"direction": "out", "other": {"id": "a", "type": "organization", "title": "Acme", "properties": {}}}]
+            }
+        })
+    };
+    let r = execute(&code_in(CRM, "crm_cadence_start"), &msg(false), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r[0]["payload"]["cadence_lancee_le"], "2026-10-26");
+    assert_eq!(
+        r[1]["opp"]["contexte"],
+        "Compte : Acme · contacts : decideur"
+    );
+    assert_eq!(r[1]["opp"]["jour0"], "2026-10-26");
+    let r = execute(&code_in(CRM, "crm_cadence_start"), &msg(true), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r[0]["object_id"], "o1");
+    assert!(r[1].is_null(), "marked, no activity");
+}
+
+#[test]
+fn missing_criteria_follow_the_stage_and_valid_links() {
+    let crit = |id: &str, title: &str, etape: &str, ordre: i64| json!({"id": id, "title": title, "properties": {"etape": etape, "ordre": ordre, "actif": true}});
+    let msg = |etape: &str, current: &str| {
+        json!({
+            "payload": {"etape": etape, "criteres_manquants": current},
+            "object": {"id": "o1", "title": "Acme"},
+            "criteres": [crit("c2", "Budget", "qualification", 2), crit("c1", "Douleur", "decouverte", 1), crit("c3", "Décideur", "proposition", 3)],
+            "links": {"qualifie": [{"direction": "out", "attributes": {"statut": "valide"}, "other": {"id": "c1"}},
+                                   {"direction": "out", "attributes": {"statut": "partiel"}, "other": {"id": "c2"}}]}
+        })
+    };
+    let r = execute(
+        &code_in(CRM, "crm_manquants"),
+        &msg("qualification", ""),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(r["payload"]["criteres_manquants"], "Budget");
+    let r = execute(
+        &code_in(CRM, "crm_manquants"),
+        &msg("negociation", ""),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(r["payload"]["criteres_manquants"], "Budget\nDécideur");
+    assert!(
+        execute(
+            &code_in(CRM, "crm_manquants"),
+            &msg("qualification", "Budget"),
+            2000
+        )
+        .unwrap()
+        .return_json
+        .is_none(),
+        "unchanged: no write"
+    );
+}
+
+#[test]
+fn a_done_activity_only_moves_the_last_activity_forward() {
+    let msg = |last: &str| {
+        json!({
+            "payload": {"etat": "faite", "faite_le": "2026-10-20T09:00:00Z"},
+            "object": {"id": "a1", "title": "Appel"},
+            "now": "2026-10-26T08:00:00Z",
+            "links": {"activite_sur": [{"direction": "out", "other": {"id": "o1", "type": "opportunite", "title": "Acme", "properties": {"derniere_activite": last}}}]}
+        })
+    };
+    let r = execute(
+        &code_in(CRM, "crm_report"),
+        &msg("2026-10-01T00:00:00Z"),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(r[0]["payload"]["derniere_activite"], "2026-10-20T09:00:00Z");
+    assert_eq!(r[0]["object_id"], "o1");
+    assert_eq!(r[1]["payload"]["reportee"], true);
+    let r = execute(
+        &code_in(CRM, "crm_report"),
+        &msg("2026-10-25T00:00:00Z"),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert!(r[0].is_null(), "an older activity never moves it back");
+}
+
+#[test]
+fn my_day_lists_due_activities_and_dormant_opportunities() {
+    let msg = json!({
+        "dues": [{"title": "mail J3 · Acme", "properties": {"echeance": "2026-10-26"}}],
+        "payload": [{"title": "Beta 2027", "properties": {"derniere_activite": "2026-09-30T10:00:00Z"}}]
+    });
+    let r = execute(&code_in(CRM, "crm_journee"), &msg, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["nombre"], 2);
+    let text = r["payload"]["texte"].as_str().unwrap();
+    assert!(
+        text.contains("2026-10-26 mail J3 · Acme")
+            && text.contains("Beta 2027 (dernière activité 2026-09-30)"),
+        "{text}"
+    );
+    let empty = json!({"dues": [], "payload": []});
+    assert!(execute(&code_in(CRM, "crm_journee"), &empty, 2000)
+        .unwrap()
+        .return_json
+        .is_none());
+}
+
+/// `crm` « mails received » (mail.md D462–D463): the correspondent of a
+/// trusted forward, authentication deciding between a link and a proposal.
+#[test]
+fn a_mail_is_filed_under_its_correspondent() {
+    let mail = |forward_trusted: bool, dmarc: &str| {
+        json!({"payload": {
+            "message_id": "<m1@x>", "subject": "Fwd: Devis", "text": "Bonjour", "date": "2026-10-26T09:00:00+00:00",
+            "from": {"address": "Bob@Example.com"}, "auth": {"spf": "pass", "dkim": "none", "dmarc": dmarc},
+            "automatic": false, "from_pnex": false,
+            "forwarded": {"from": {"address": "Elodie@Acme.fr"}, "subject": "Devis ligne 3", "trusted": forward_trusted}
+        }})
+    };
+    let r = execute(&code_in(CRM, "crm_mail_prep"), &mail(true, "pass"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["addr"], "elodie@acme.fr");
+    assert_eq!(r["mail"]["subject"], "Devis ligne 3");
+    assert_eq!(r["mail"]["trusted"], true);
+    let r = execute(&code_in(CRM, "crm_mail_prep"), &mail(false, "fail"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        r["addr"], "bob@example.com",
+        "an untrusted forward stays with its sender"
+    );
+    assert_eq!(r["mail"]["trusted"], false);
+    let auto = json!({"payload": {"automatic": true, "from": {"address": "a@b.fr"}}});
+    assert!(execute(&code_in(CRM, "crm_mail_prep"), &auto, 2000)
+        .unwrap()
+        .return_json
+        .is_none());
+
+    let linked = |trusted: bool| json!({"object": {"id": "act"}, "person": {"id": "p1"}, "opportunites": ["o1"], "mail": {"trusted": trusted, "subject": "Devis"}});
+    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked(true), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        r[0]["payload"],
+        json!([{"source_id": "act", "target_id": "p1"}, {"source_id": "act", "target_id": "o1"}])
+    );
+    assert!(r[1].is_null());
+    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked(false), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(r[0].is_null());
+    assert_eq!(r[1]["payload"][1]["confidence"], 40);
+
+    let opp = |id: &str, etape: &str| json!({"direction": "out", "other": {"id": id, "type": "opportunite", "properties": {"etape": etape}}});
+    let act = json!({"object": {"id": "p1"}, "links": {"implique": [opp("o1", "proposition"), opp("o2", "perdue")]},
+        "mail": {"message_id": "<m1@x>", "subject": "Devis", "text": "Bonjour", "date": "2026-10-26T13:35:00+00:00"}});
+    let r = execute(&code_in(CRM, "crm_mail_activite"), &act, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (
+            r["payload"]["cle"].clone(),
+            r["payload"]["sens"].clone(),
+            r["person"]["id"].clone()
+        ),
+        (json!("mail:<m1@x>"), json!("entrant"), json!("p1"))
+    );
+    // Only the open opportunity; the mail date moves its last activity.
+    assert_eq!(r["opportunites"], json!(["o1"]));
+    assert_eq!(r["payload"]["faite_le"], "2026-10-26T13:35:00+00:00");
+    assert!(r["payload"].get("reportee").is_none());
 }

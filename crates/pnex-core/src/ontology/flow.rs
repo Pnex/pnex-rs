@@ -16,6 +16,8 @@ use super::schema::valid_key;
 pub const VALUE_TODAY: &str = "$today";
 pub const VALUE_NOW: &str = "$now";
 pub const VALUE_MSG_PREFIX: &str = "$msg.";
+/// Days around today accepted by `$today-<n>` / `$today+<n>` (crm.md D451).
+pub const VALUE_DAYS_MAX: i64 = 3650;
 /// `in` value resolved by the server: the codes of a pack setting
 /// (`$setting.<pack>.<key>`); an empty setting drops the filter
 /// (network-check.md D423).
@@ -283,6 +285,33 @@ pub fn setting_of(v: &Value) -> Option<&str> {
     })
 }
 
+/// The day offset of `$today-<n>` / `$today+<n>` (crm.md D451).
+pub fn days_of(token: &str) -> Option<i64> {
+    let rest = token.strip_prefix(VALUE_TODAY)?;
+    let (sign, n) = match rest.split_at_checked(1)? {
+        ("-", n) => (-1, n),
+        ("+", n) => (1, n),
+        _ => return None,
+    };
+    if n.is_empty() || !n.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    n.parse::<i64>()
+        .ok()
+        .filter(|d| *d <= VALUE_DAYS_MAX)
+        .map(|d| sign * d)
+}
+
+/// `today` (`YYYY-MM-DD`) moved by `days`.
+fn shift_date(today: &str, days: i64) -> Option<String> {
+    let d = chrono::NaiveDate::parse_from_str(today, "%Y-%m-%d").ok()?;
+    Some(
+        d.checked_add_signed(chrono::Duration::days(days))?
+            .format("%Y-%m-%d")
+            .to_string(),
+    )
+}
+
 /// Resolves the runtime value tokens of a filter value; `msg` reads a
 /// path of the message (`None` = absent).
 pub fn resolve_value(
@@ -293,6 +322,9 @@ pub fn resolve_value(
 ) -> Value {
     match v {
         Value::String(s) if s == VALUE_TODAY => Value::String(today.to_string()),
+        Value::String(s) if days_of(s).is_some() => {
+            shift_date(today, days_of(s).unwrap_or(0)).map_or(Value::Null, Value::String)
+        }
         Value::String(s) if s == VALUE_NOW => Value::String(now.to_string()),
         Value::String(s) if s.starts_with(VALUE_MSG_PREFIX) => {
             msg(&s[VALUE_MSG_PREFIX.len()..]).unwrap_or(Value::Null)
@@ -310,6 +342,21 @@ pub fn resolve_value(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn today_offsets_resolve() {
+        let none = |_: &str| None;
+        let r = |v: &str| resolve_value(&json!(v), "2026-03-01", "", &none);
+        assert_eq!(r("$today-14"), json!("2026-02-15"));
+        assert_eq!(r("$today+1"), json!("2026-03-02"));
+        assert_eq!(r("$today-0"), json!("2026-03-01"));
+        // Not a token: kept as text.
+        assert_eq!(r("$today-"), json!("$today-"));
+        assert_eq!(r("$today-1d"), json!("$today-1d"));
+        assert_eq!(r("$today*2"), json!("$today*2"));
+        assert_eq!(days_of("$today-3651"), None);
+        assert_eq!(days_of("$today+3650"), Some(3650));
+    }
 
     #[test]
     fn configs_are_checked() {

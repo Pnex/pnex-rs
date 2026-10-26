@@ -388,6 +388,7 @@ mod tests {
             include_str!("../../../../pnex-backend/packs/entreprises_fr.yaml"),
             include_str!("../../../../pnex-backend/packs/quali_watch.yaml"),
             include_str!("../../../../pnex-backend/packs/prospection_b2b.yaml"),
+            include_str!("../../../../pnex-backend/packs/crm.yaml"),
         ];
         for line in packs.iter().flat_map(|p| p.lines()) {
             if let Some(icon) = line.trim().strip_prefix("icon:") {

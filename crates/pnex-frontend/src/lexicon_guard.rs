@@ -326,6 +326,27 @@ const RULES: &[Rule] = &[
         use_instead: "navigation rule (D323)",
         allowed_keys: &[],
     },
+    // crm.md D449–D450: a deal followed with an account is an
+    // « opportunité »; the plan of follow-ups is never a « séquence »
+    // (= a production) nor a « cadence » (= the read interval of a pin).
+    Rule {
+        scope: Scope::Fr,
+        term: "affaire",
+        use_instead: "opportunité (D449)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::EnAndCards,
+        term: "deal",
+        use_instead: "opportunity (D449)",
+        allowed_keys: &[],
+    },
+    Rule {
+        scope: Scope::Fr,
+        term: "séquence de relance",
+        use_instead: "plan de relance (D450)",
+        allowed_keys: &[],
+    },
     // mail.md D453: what PneX relève is a « boîte mail » / « mailbox ».
     Rule {
         scope: Scope::Fr,

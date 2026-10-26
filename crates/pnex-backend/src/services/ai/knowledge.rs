@@ -422,6 +422,7 @@ mod tests {
             ),
             ("conversation history privacy erase", "assistant"),
             ("contact retention erasure GDPR", "personal-data"),
+            ("opportunity follow-up plan draft", "sales-follow-up"),
         ] {
             let hits = search(query, 3);
             assert!(

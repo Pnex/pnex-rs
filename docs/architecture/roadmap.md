@@ -1132,6 +1132,21 @@ en repli ; BTstack écarté, licence non permissive), portage du protocole
 PneX sous Zephyr, politique de consentement et de
 rétention (`call-recording.md` §10).
 
+### P2.31 — Suivi commercial et fin de D341 (ajout 2026-10-26) — **lots DP, CRM1, CRM2 codés en local, à commiter**
+
+Doc : `crm.md` (D442–D452). Revient sur le non-objectif « Pas de CRM »
+d'`account-mapping.md` en gardant le CRM dans un pack.
+
+| Lot | Contenu | État |
+|---|---|---|
+| DP | D341 fini : classification D298 codée, masquage par rôle (`ontology.personal:read`, `ontology.sensitive:read`), base légale et durée de conservation en réglages de pack, file de rétention (propositions `object_erase`, jamais automatiques), effacement en coquille, opposition appliquée par le moteur aux nouveaux liens | codé + tests |
+| CRM1 | Pack `crm` : opportunités, qualification par les critères de l'org, fiche opportunité, hiérarchie des opportunités d'un compte | codé + tests |
+| CRM2 | Activités, plan de relance, brouillons relus (jamais envoyés par PneX), dernière activité, digest « ma journée » ; jetons `$today±n` | codé + tests |
+| CRM3 | Mail entrant rattaché à la fiche → lot M6 de `mail.md` (boîtes mail génériques D453–D462, réflexion) ; tableaux de bord (ROI par salon, taux par étape de relance) | M1, M2, M6 codés (2026-10-26) : boîtes IMAP, relève, déclencheur `mail_received`, flow « CRM · mails reçus » ; **essai de bout en bout le 2026-10-26** sur une vraie boîte o2switch (pack `crm` 1.1.0) : 7 défauts trouvés et corrigés (SEC-51 oracle de requête, SEC-52 effacement annulable et en-tête d'authentification forgeable, DKIM vérifié par PneX, date de transfert, chaîne de transferts, refus silencieux des nœuds d'ontologie, mails effacés par correspondant) ; restent écran, envoi, Microsoft (`mail.md` §9–§10), rejeu au déploiement |
+
+Écrans (bouton « Effacer », base légale affichée, vues dédiées) : hors de ce
+lot, l'application commerciale viendra sur l'API.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1498,3 +1513,8 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   détection automatique), puis devices filaire et Bluetooth HFP, proxy
   Bluetooth. Bloquants notés : hôte Bluetooth (Zephyr), pile firmware, consentement
   et rétention. Rien d'implémenté.
+- **2026-10-26 (suivi commercial)** — Ajout de P2.31 (`crm.md`, D442–D452) :
+  fin de D341 (classification, masquage par rôle, file de rétention,
+  effacement en coquille, opposition au moteur) et pack `crm`
+  (opportunités, qualification, activités, plan de relance, brouillons
+  relus, digest du matin). Codé en local, à commiter ; écrans hors lot.
