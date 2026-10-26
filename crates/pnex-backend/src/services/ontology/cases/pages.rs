@@ -132,7 +132,18 @@ pub async fn from_object(
     let mut trees = std::collections::HashMap::new();
     for k in hierarchies(&t.body) {
         // A hierarchy the org lacks leaves its placeholder as written.
-        if let Ok(v) = super::super::hierarchy::tree(db, org_id, id, Some(&k), None).await {
+        if let Ok(v) = super::super::hierarchy::tree(
+            db,
+            org_id,
+            id,
+            Some(&k),
+            None,
+            // shortcut: a generated page holds what its author reads; masking
+            // its text for later readers needs object visibility (iam.md I5).
+            super::super::redact::Redaction::NONE,
+        )
+        .await
+        {
             if v.key == k {
                 trees.insert(k, v);
             }

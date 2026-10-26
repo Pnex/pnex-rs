@@ -958,8 +958,16 @@ async fn object_hierarchy(
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
-    let r =
-        onto::hierarchy::tree(&ctx.db, org.org.id, parse_uuid(&id)?, q.key.as_deref(), at).await;
+    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    let r = onto::hierarchy::tree(
+        &ctx.db,
+        org.org.id,
+        parse_uuid(&id)?,
+        q.key.as_deref(),
+        at,
+        hide,
+    )
+    .await;
     reply(masked(&ctx, &org, r, |Masking(m, s), h| m.hierarchy(s, h)).await)
 }
 

@@ -166,6 +166,20 @@ async fn masking(
     Ok(Some((m, s)))
 }
 
+/// A case read masked for the member (D443) before it is reshaped for the
+/// model: through its JSON, every object and link it names.
+async fn masked_as<T: serde::Serialize + serde::de::DeserializeOwned>(
+    deps: &ToolDeps<'_>,
+    v: T,
+) -> Result<T, ToolError> {
+    let Some((m, s)) = masking(deps).await? else {
+        return Ok(v);
+    };
+    let mut j = serde_json::to_value(&v).map_err(|e| ToolError::from(e.to_string()))?;
+    m.json(&s, &mut j);
+    serde_json::from_value(j).map_err(|e| ToolError::from(e.to_string()))
+}
+
 /// D185 query, capped for the model.
 pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let mut q: OntologyQuery =
@@ -193,6 +207,7 @@ pub async fn case_workspace(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
     let w = onto::cases::workspace(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
+    let w = masked_as(deps, w).await?;
     let events: Vec<Value> = w
         .events
         .iter()
@@ -232,6 +247,7 @@ pub async fn case_signals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutco
     let sig = onto::cases::signals(deps.db, deps.o2, deps.org_id, id, &q)
         .await
         .map_err(onto_error)?;
+    let sig = masked_as(deps, sig).await?;
     let total = sig.items.len();
     let items: Vec<Value> = sig
         .items
@@ -270,6 +286,7 @@ pub async fn case_board(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome
     let b = onto::cases::board(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
+    let b = masked_as(deps, b).await?;
     outcome(serde_json::to_value(b).map_err(|e| ToolError::from(e.to_string()))?)
 }
 
@@ -279,6 +296,7 @@ pub async fn case_proposals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
     let p = onto::cases::proposals(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
+    let p = masked_as(deps, p).await?;
     outcome(json!({ "proposals": p }))
 }
 

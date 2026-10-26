@@ -17,7 +17,9 @@ use pnex_core::ontology::api::{
 };
 
 use crate::auth::OrgContext;
-use crate::controllers::ontology::{actor, o2, onto_error, paged, parse_uuid, PageQuery};
+use crate::controllers::ontology::{
+    actor, masking, o2, onto_error, paged, parse_uuid, Masking, PageQuery,
+};
 use crate::services::ontology::cases;
 use axum::extract::Query;
 
@@ -94,18 +96,71 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     <Doc as utoipa::OpenApi>::openapi()
 }
 
-fn reply<T: serde::Serialize>(r: crate::services::ontology::Result<T>) -> Result<Response> {
+/// `v` as JSON, masked by classification for the caller (crm.md D443):
+/// every case read names objects and links.
+async fn masked<T: serde::Serialize>(
+    ctx: &AppContext,
+    org: &OrgContext,
+    v: T,
+) -> crate::services::ontology::Result<serde_json::Value> {
+    let mut v = serde_json::to_value(v).unwrap_or(serde_json::Value::Null);
+    if let Some(Masking(m, s)) = masking(ctx, org).await? {
+        m.json(&s, &mut v);
+        // A frozen snapshot carries its content as JSON text.
+        if let Some(serde_json::Value::String(c)) = v.get_mut("content") {
+            if let Ok(mut inner) = serde_json::from_str::<serde_json::Value>(c) {
+                m.json(&s, &mut inner);
+                *c = inner.to_string();
+            }
+        }
+    }
+    Ok(v)
+}
+
+async fn reply<T: serde::Serialize>(
+    ctx: &AppContext,
+    org: &OrgContext,
+    r: crate::services::ontology::Result<T>,
+) -> Result<Response> {
     match r {
-        Ok(v) => format::json(v),
+        Ok(v) => match masked(ctx, org, v).await {
+            Ok(v) => format::json(v),
+            Err(e) => onto_error(e),
+        },
         Err(e) => onto_error(e),
     }
 }
 
-fn created<T: serde::Serialize>(r: crate::services::ontology::Result<T>) -> Result<Response> {
+async fn created<T: serde::Serialize>(
+    ctx: &AppContext,
+    org: &OrgContext,
+    r: crate::services::ontology::Result<T>,
+) -> Result<Response> {
     match r {
-        Ok(v) => Ok((StatusCode::CREATED, format::json(v)).into_response()),
+        Ok(v) => match masked(ctx, org, v).await {
+            Ok(v) => Ok((StatusCode::CREATED, format::json(v)).into_response()),
+            Err(e) => onto_error(e),
+        },
         Err(e) => onto_error(e),
     }
+}
+
+/// `paged` over rows masked for the caller.
+async fn paged_masked<T: serde::Serialize>(
+    ctx: &AppContext,
+    org: &OrgContext,
+    path: &str,
+    q: &PageQuery,
+    rows: crate::services::ontology::Result<Vec<T>>,
+) -> Result<Response> {
+    let rows = match rows {
+        Ok(rows) => masked(ctx, org, rows).await.map(|v| match v {
+            serde_json::Value::Array(a) => a,
+            _ => Vec::new(),
+        }),
+        Err(e) => Err(e),
+    };
+    paged(path, &[], q, rows)
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -130,7 +185,12 @@ async fn open_case(
     org: OrgContext,
     Json(input): Json<CaseOpenInput>,
 ) -> Result<Response> {
-    created(cases::open(&ctx.db, org.org.id, &actor(&org), &input).await)
+    created(
+        &ctx,
+        &org,
+        cases::open(&ctx.db, org.org.id, &actor(&org), &input).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1); objects
@@ -156,7 +216,12 @@ async fn import_case(
     org: OrgContext,
     Json(doc): Json<CaseExport>,
 ) -> Result<Response> {
-    created(cases::import_case(&ctx.db, org.org.id, &actor(&org), &doc).await)
+    created(
+        &ctx,
+        &org,
+        cases::import_case(&ctx.db, org.org.id, &actor(&org), &doc).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -179,7 +244,12 @@ async fn workspace(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    reply(cases::workspace(&ctx.db, org.org.id, parse_uuid(&id)?).await)
+    reply(
+        &ctx,
+        &org,
+        cases::workspace(&ctx.db, org.org.id, parse_uuid(&id)?).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -207,7 +277,12 @@ async fn create_event(
     Path(id): Path<String>,
     Json(input): Json<CaseEventInput>,
 ) -> Result<Response> {
-    created(cases::create_event(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    created(
+        &ctx,
+        &org,
+        cases::create_event(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -235,7 +310,12 @@ async fn attach(
     Path(id): Path<String>,
     Json(input): Json<CaseAttachInput>,
 ) -> Result<Response> {
-    reply(cases::attach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::attach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -262,7 +342,12 @@ async fn detach(
     Path(id): Path<String>,
     Json(input): Json<CaseDetachInput>,
 ) -> Result<Response> {
-    reply(cases::detach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::detach(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -290,7 +375,12 @@ async fn signals(
     Path(id): Path<String>,
     Query(q): Query<SignalsQuery>,
 ) -> Result<Response> {
-    reply(cases::signals(&ctx.db, o2(&ctx).as_ref(), org.org.id, parse_uuid(&id)?, &q).await)
+    reply(
+        &ctx,
+        &org,
+        cases::signals(&ctx.db, o2(&ctx).as_ref(), org.org.id, parse_uuid(&id)?, &q).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1); device ids
@@ -324,7 +414,12 @@ async fn tracks(
         purpose: "tracks",
     };
     let id = parse_uuid(&id)?;
-    reply(cases::tracks(&ctx.db, o2(&ctx).as_ref(), org.org.id, reader, id, &q).await)
+    reply(
+        &ctx,
+        &org,
+        cases::tracks(&ctx.db, o2(&ctx).as_ref(), org.org.id, reader, id, &q).await,
+    )
+    .await
 }
 
 /// Write (a dry run writes nothing but stays a write gesture): role guard
@@ -355,7 +450,12 @@ async fn import_track(
     Path(id): Path<String>,
     Json(input): Json<TrackImportInput>,
 ) -> Result<Response> {
-    reply(cases::import(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::import(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -380,7 +480,14 @@ async fn track_imports(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::imports(&ctx.db, org.org.id, parse_uuid(&id)?).await;
-    paged(&format!("/api/v1/cases/{id}/tracks/imports"), &[], &q, rows)
+    paged_masked(
+        &ctx,
+        &org,
+        &format!("/api/v1/cases/{id}/tracks/imports"),
+        &q,
+        rows,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -440,7 +547,12 @@ async fn detect(
     Json(q): Json<DetectQuery>,
 ) -> Result<Response> {
     let (id, user) = (parse_uuid(&id)?, actor(&org).user_id);
-    reply(cases::detect(&ctx.db, o2(&ctx).as_ref(), org.org.id, user, id, &q).await)
+    reply(
+        &ctx,
+        &org,
+        cases::detect(&ctx.db, o2(&ctx).as_ref(), org.org.id, user, id, &q).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -465,7 +577,14 @@ async fn proposals(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::proposals(&ctx.db, org.org.id, parse_uuid(&id)?).await;
-    paged(&format!("/api/v1/cases/{id}/proposals"), &[], &q, rows)
+    paged_masked(
+        &ctx,
+        &org,
+        &format!("/api/v1/cases/{id}/proposals"),
+        &q,
+        rows,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -497,7 +616,12 @@ async fn retain(
     Json(input): Json<ProposalRetain>,
 ) -> Result<Response> {
     let (id, pid) = (parse_uuid(&id)?, parse_uuid(&pid)?);
-    reply(cases::retain(&ctx.db, org.org.id, &actor(&org), id, pid, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::retain(&ctx.db, org.org.id, &actor(&org), id, pid, &input).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -536,7 +660,7 @@ async fn reject(
                 .find(|p| p.id == pid_s)
                 .ok_or(crate::services::ontology::OntologyError::NotFound)
         });
-    reply(rejected)
+    reply(&ctx, &org, rejected).await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -559,7 +683,12 @@ async fn board(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    reply(cases::board(&ctx.db, org.org.id, parse_uuid(&id)?).await)
+    reply(
+        &ctx,
+        &org,
+        cases::board(&ctx.db, org.org.id, parse_uuid(&id)?).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -588,6 +717,8 @@ async fn freeze(
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
     created(
+        &ctx,
+        &org,
         cases::freeze(
             &ctx.db,
             o2(&ctx).as_ref(),
@@ -598,6 +729,7 @@ async fn freeze(
         )
         .await,
     )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -622,7 +754,14 @@ async fn snapshots(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::snapshots(&ctx.db, org.org.id, parse_uuid(&id)?).await;
-    paged(&format!("/api/v1/cases/{id}/snapshots"), &[], &q, rows)
+    paged_masked(
+        &ctx,
+        &org,
+        &format!("/api/v1/cases/{id}/snapshots"),
+        &q,
+        rows,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -648,7 +787,12 @@ async fn snapshot(
     org: OrgContext,
     Path((id, seq)): Path<(String, i32)>,
 ) -> Result<Response> {
-    reply(cases::snapshot(&ctx.db, org.org.id, parse_uuid(&id)?, seq).await)
+    reply(
+        &ctx,
+        &org,
+        cases::snapshot(&ctx.db, org.org.id, parse_uuid(&id)?, seq).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -676,13 +820,20 @@ async fn reads(
     let page = q.page();
     let uuid = parse_uuid(&id)?;
     match cases::reads(&ctx.db, o2(&ctx).as_ref(), org.org.id, uuid, page).await {
-        Ok(Some((count, rows))) => format::json(crate::controllers::pagination::envelope(
-            &format!("/api/v1/cases/{id}/reads"),
-            &[],
-            page,
-            count,
-            rows,
-        )),
+        Ok(Some((count, rows))) => {
+            let rows = match masked(&ctx, &org, rows).await {
+                Ok(serde_json::Value::Array(rows)) => rows,
+                Ok(_) => Vec::new(),
+                Err(e) => return onto_error(e),
+            };
+            format::json(crate::controllers::pagination::envelope(
+                &format!("/api/v1/cases/{id}/reads"),
+                &[],
+                page,
+                count,
+                rows,
+            ))
+        }
         Ok(None) => Err(crate::controllers::coded_error(
             StatusCode::SERVICE_UNAVAILABLE,
             pnex_core::err_codes::CASE_READS_UNAVAILABLE,
@@ -715,7 +866,14 @@ async fn relations(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::relations(&ctx.db, org.org.id, parse_uuid(&id)?).await;
-    paged(&format!("/api/v1/cases/{id}/relations"), &[], &q, rows)
+    paged_masked(
+        &ctx,
+        &org,
+        &format!("/api/v1/cases/{id}/relations"),
+        &q,
+        rows,
+    )
+    .await
 }
 
 /// Read only (it adds nothing to the case): any org member (R1).
@@ -741,7 +899,12 @@ async fn expand(
     Path(id): Path<String>,
     Json(input): Json<ExpandInput>,
 ) -> Result<Response> {
-    reply(cases::expand(&ctx.db, org.org.id, parse_uuid(&id)?, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::expand(&ctx.db, org.org.id, parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Read only: any org member, the org from the principal (R1).
@@ -764,7 +927,12 @@ async fn layout(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    reply(cases::layout(&ctx.db, org.org.id, parse_uuid(&id)?).await)
+    reply(
+        &ctx,
+        &org,
+        cases::layout(&ctx.db, org.org.id, parse_uuid(&id)?).await,
+    )
+    .await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -792,7 +960,12 @@ async fn save_layout(
     Json(input): Json<CaseLayout>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    reply(cases::save_layout(&ctx.db, org.org.id, &actor(&org), id, &input).await)
+    reply(
+        &ctx,
+        &org,
+        cases::save_layout(&ctx.db, org.org.id, &actor(&org), id, &input).await,
+    )
+    .await
 }
 
 /// Read only (an export writes nothing): any org member (R1).
@@ -815,7 +988,12 @@ async fn export(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    reply(cases::export(&ctx.db, org.org.id, parse_uuid(&id)?).await)
+    reply(
+        &ctx,
+        &org,
+        cases::export(&ctx.db, org.org.id, parse_uuid(&id)?).await,
+    )
+    .await
 }
 
 /// Read only: the page templates of the packs the org installed.
@@ -838,7 +1016,7 @@ async fn page_templates(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::templates(&ctx.db, org.org.id).await;
-    paged("/api/v1/cases/templates", &[], &q, rows)
+    paged_masked(&ctx, &org, "/api/v1/cases/templates", &q, rows).await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1).
@@ -865,7 +1043,12 @@ async fn add_page(
     Path(id): Path<String>,
     Json(input): Json<CasePageInput>,
 ) -> Result<Response> {
-    created(cases::add_page(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await)
+    created(
+        &ctx,
+        &org,
+        cases::add_page(&ctx.db, org.org.id, &actor(&org), parse_uuid(&id)?, &input).await,
+    )
+    .await
 }
 
 /// Read only: the personal objects only this case holds (K16).
@@ -890,7 +1073,7 @@ async fn purge_candidates(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let rows = cases::candidates(&ctx.db, org.org.id, parse_uuid(&id)?).await;
-    paged(&format!("/api/v1/cases/{id}/purge"), &[], &q, rows)
+    paged_masked(&ctx, &org, &format!("/api/v1/cases/{id}/purge"), &q, rows).await
 }
 
 /// Write: role guard first (R2), the org from the principal (R1); the
@@ -919,6 +1102,8 @@ async fn purge(
     Json(input): Json<CasePurgeInput>,
 ) -> Result<Response> {
     reply(
+        &ctx,
+        &org,
         cases::purge(
             &ctx.db,
             org.org.id,
@@ -929,4 +1114,5 @@ async fn purge(
         .await
         .map(|purged| CasePurged { purged }),
     )
+    .await
 }

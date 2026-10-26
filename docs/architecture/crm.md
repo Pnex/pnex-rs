@@ -42,7 +42,7 @@ Deux permissions de lecture, inscrites au registre IAM :
 
 Un rôle personnalisé sans la permission reçoit les objets **caviardés** : propriétés et attributs de lien retirés, titre remplacé par `•••• <8 caractères de l'id>` (neutre, sans traduction), et la liste `redacted` des clés retirées sur l'objet. Points d'application : lecture d'un objet, résolution, liens, voisinage, chemin, impact, nœuds de la hiérarchie, requête D185, historique, flux des changements (D435), ensembles d'objets (D434), propositions (leurs objets), outils `query_ontology` et `get_object` de l'assistant ; le MCP passe par les mêmes routes. Les écritures ne changent pas.
 
-Limite connue : les autres parents d'un nœud de hiérarchie (`also_under`), les dossiers d'enquête et les pages générées gardent les titres ; ils seront filtrés avec la visibilité par objet (iam.md I5).
+Étendu le 2026-10-26 : les autres parents d'un nœud de hiérarchie (`also_under`, masqués à la construction) et toutes les lectures des dossiers d'enquête (espace de travail, tableau, signaux, traces, propositions, relations, export, instantanés, journal des lectures, et les outils de l'assistant qui les lisent) passent par le même masque, un parcours du JSON qui masque tout objet (`id` + `type_key`) et tout lien qu'il nomme. Limite restante : une page générée depuis un objet garde le texte que son auteur pouvait lire ; la masquer pour ses lecteurs suivants demande la visibilité par objet (iam.md I5).
 
 ### D444 — Base légale et durée de rétention : réglages du pack
 

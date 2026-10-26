@@ -19,12 +19,15 @@ pub const DEPTH_MAX: u32 = 6;
 pub const NODES_MAX: usize = 500;
 
 /// The tree of `key` (the first installed hierarchy by default) from `root`.
+/// `hide` masks the titles of the other parents (`also_under`) the caller
+/// may not read (D443); the nodes are masked by the caller.
 pub async fn tree(
     db: &DatabaseConnection,
     org_id: i64,
     root: Uuid,
     key: Option<&str>,
     at: Option<DateTimeWithTimeZone>,
+    hide: super::redact::Redaction,
 ) -> Result<HierarchyView> {
     let root_row = objects::find(db, org_id, root).await?;
     let hierarchies = packs::hierarchies(db, org_id).await?;
@@ -47,8 +50,13 @@ pub async fn tree(
         .chain([root])
         .collect();
     let rows = links::refs(db, org_id, ids.clone()).await?;
-    let title = |id: &Uuid| rows.get(id).map(|o| o.title.clone()).unwrap_or_default();
     let s = super::schema(db, org_id).await?;
+    let hidden = hide.title_hidden_types(&s);
+    let title = |id: &Uuid| match rows.get(id) {
+        Some(o) if hidden.contains(&o.type_key) => super::redact::masked(&id.to_string()),
+        Some(o) => o.title.clone(),
+        None => String::new(),
+    };
     let marks = |id: &Uuid| -> Vec<NodeMark> {
         let Some(row) = rows.get(id) else {
             return Vec::new();

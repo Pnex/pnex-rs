@@ -298,6 +298,62 @@ async fn a_role_without_personal_read_sees_masked_people() {
             }
         }
 
+        // A case naming the person is masked the same way (iam.md I5).
+        let (st, case) = call(
+            &server,
+            "POST",
+            "/api/v1/cases",
+            &env.alice,
+            org,
+            Some(json!({"title": "Inquiry"})),
+        )
+        .await;
+        assert_eq!(st, 201, "{case}");
+        let cid = case["id"].as_str().unwrap().to_string();
+        let (_, c) = call(
+            &server,
+            "GET",
+            &format!("/api/v1/ontology/objects/{cid}"),
+            &env.alice,
+            org,
+            None,
+        )
+        .await;
+        let mut props = c["properties"].clone();
+        props["legal_basis"] = json!("legitimate interest");
+        let basis =
+            json!({"expected_version": c["version"], "title": "Inquiry", "properties": props});
+        let (st, e) = call(
+            &server,
+            "PUT",
+            &format!("/api/v1/ontology/objects/{cid}"),
+            &env.alice,
+            org,
+            Some(basis),
+        )
+        .await;
+        assert_eq!(st, 200, "{e}");
+        let (st, e) = call(
+            &server,
+            "POST",
+            &format!("/api/v1/cases/{cid}/attach"),
+            &env.alice,
+            org,
+            Some(json!({"object_id": ann})),
+        )
+        .await;
+        assert_eq!(st, 200, "{e}");
+        let workspace = format!("/api/v1/cases/{cid}/workspace");
+        let (_, w) = call(&server, "GET", &workspace, &env.bob, org, None).await;
+        assert_eq!(
+            w["undated"][0]["title"],
+            format!("•••• {}", &ann[..8]),
+            "{w}"
+        );
+        assert!(!w.to_string().contains("Ann Smith"), "{w}");
+        let (_, w) = call(&server, "GET", &workspace, &env.alice, org, None).await;
+        assert_eq!(w["undated"][0]["title"], "Ann Smith", "{w}");
+
         // Alice still reads everything.
         let (_, o) = call(
             &server,

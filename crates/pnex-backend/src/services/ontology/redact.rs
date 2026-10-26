@@ -165,9 +165,8 @@ impl Redaction {
         }
     }
 
-    /// Node titles only: the other parents named in `also_under` are the
-    /// groups a node sits in, never a person (shortcut: a person parent
-    /// stays named until I5 filters the tree).
+    /// Node titles; the other parents named in `also_under` are masked
+    /// when the tree is built (`hierarchy::tree`).
     pub fn hierarchy(&self, s: &OrgSchema, h: &mut HierarchyView) {
         if self.is_none() {
             return;
@@ -203,6 +202,47 @@ impl Redaction {
         }
         for doc in [&mut c.before, &mut c.after] {
             self.doc(s, doc);
+        }
+    }
+
+    /// Any JSON made of object views, references, links and journal
+    /// entries (the case reads, D443): every map naming an object (`id` +
+    /// `type_key`) or a link (`link_type`) is masked, at every depth.
+    pub fn json(&self, s: &OrgSchema, v: &mut Value) {
+        if self.is_none() {
+            return;
+        }
+        match v {
+            Value::Array(items) => {
+                for x in items {
+                    self.json(s, x);
+                }
+            }
+            Value::Object(o) => {
+                let lt = o.get("link_type").and_then(Value::as_str).map(String::from);
+                if let (Some(def), Some(Value::Object(attrs))) =
+                    (lt.and_then(|k| s.link_type(&k)), o.get_mut("attributes"))
+                {
+                    for a in &def.attributes {
+                        if self.hides(a.classification) {
+                            attrs.remove(&a.key);
+                        }
+                    }
+                }
+                let key = |k: &str| o.get(k).and_then(Value::as_str).map(String::from);
+                if let (Some(t), Some(id)) = (key("type_key"), key("id")) {
+                    if let Some(Value::Object(props)) = o.get_mut("properties") {
+                        self.properties(s, &t, props);
+                    }
+                    if self.hides_title(s, &t) && o.contains_key(TITLE) {
+                        o.insert(TITLE.into(), Value::String(masked(&id)));
+                    }
+                }
+                for x in o.values_mut() {
+                    self.json(s, x);
+                }
+            }
+            _ => {}
         }
     }
 
