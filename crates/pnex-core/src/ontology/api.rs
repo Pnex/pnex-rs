@@ -98,6 +98,15 @@ pub struct ObjectView {
     pub created_at: String,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub updated_at: String,
+    /// Keys hidden from the caller by their classification (crm.md D443);
+    /// `title` when the title itself is hidden.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redacted: Vec<String>,
+    /// Set once the object's personal data was erased (crm.md D446): a
+    /// shell kept for the links and provenance of other objects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub erased_at: Option<String>,
 }
 
 /// Create or update an object. For a system object only `properties`

@@ -87,12 +87,14 @@ fn filter_sql(
             }
         }
         FilterOp::Contains => {
-            let pat = text(&f.value)
+            let pat = pnex_core::fold::fold(&text(&f.value))
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
             let p = sql.bind(format!("%{pat}%"));
-            format!("(o.properties ->> '{k}') ILIKE {p}")
+            // Accent-insensitive (crm.md D447), like the title search.
+            let col = pnex_core::fold::sql(&format!("(o.properties ->> '{k}')"));
+            format!("{col} LIKE {p}")
         }
         FilterOp::Lt | FilterOp::Lte | FilterOp::Gt | FilterOp::Gte => {
             let op = match f.op {
@@ -119,11 +121,15 @@ fn filter_sql(
     })
 }
 
+/// `hide` is what the caller may not read (D443): a hidden title or
+/// property never matches a search or filter and never orders the rows,
+/// so the result reveals nothing of it.
 pub async fn run(
     db: &DatabaseConnection,
     client: Option<&crate::services::openobserve::client::Client>,
     org_id: i64,
     q: &OntologyQuery,
+    hide: super::redact::Redaction,
 ) -> Result<QueryResult> {
     let s = schema(db, org_id).await?;
     if q.traverse.len() > MAX_HOPS {
@@ -139,6 +145,16 @@ pub async fn run(
     let at = sql.bind(at_ts);
     let archived = q.include_archived && q.as_of.is_none();
     let mut start = vec![format!("o.org_id = {org}"), object_validity(&at, archived)];
+    // `cond` on the types where the caller sees the value, false elsewhere.
+    let visible = |sql: &mut Sql, cond: String, hidden: Vec<String>| {
+        if hidden.is_empty() {
+            cond
+        } else {
+            let p = sql.bind(hidden);
+            format!("(({cond}) AND NOT (o.type_key = ANY({p})))")
+        }
+    };
+    let title_hidden = hide.title_hidden_types(&s);
 
     if let Some(t) = q.type_key.as_deref().filter(|t| !t.is_empty()) {
         if !s.knows(t) {
@@ -160,15 +176,19 @@ pub async fn run(
         start.push(format!("o.id = ANY({p})"));
     }
     if let Some(text) = q.text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        let pat = text
+        // « elodie » finds « Élodie » (crm.md D447).
+        let pat = pnex_core::fold::fold(text)
             .replace('\\', "\\\\")
             .replace('%', "\\%")
             .replace('_', "\\_");
         let p = sql.bind(format!("%{pat}%"));
-        start.push(format!("o.title ILIKE {p}"));
+        let cond = format!("{} LIKE {p}", pnex_core::fold::sql("o.title"));
+        start.push(visible(&mut sql, cond, title_hidden.clone()));
     }
     for (i, f) in q.filters.iter().enumerate() {
-        start.push(filter_sql(&mut sql, f, i)?);
+        let cond = filter_sql(&mut sql, f, i)?;
+        let hidden = hide.property_hidden_types(&s, &f.key);
+        start.push(visible(&mut sql, cond, hidden));
     }
     if let Some(raw) = q.label.as_deref().filter(|l| !l.trim().is_empty()) {
         let (filter, _) = pnex_core::resources::parse_label_filter(raw);
@@ -244,11 +264,27 @@ pub async fn run(
         .and_then(|r| r.try_get::<i64>("", "n").ok())
         .unwrap_or(0);
     let dir = if q.descending { "DESC" } else { "ASC" };
+    // A hidden value sorts as absent (D443).
+    let mut unless = |col: String, hidden: Vec<String>| {
+        if hidden.is_empty() {
+            col
+        } else {
+            let p = sql.bind(hidden);
+            format!("(CASE WHEN type_key = ANY({p}) THEN NULL ELSE {col} END)")
+        }
+    };
+    let title = unless("title".into(), title_hidden);
     let order = match q.order_by.as_deref().filter(|k| !k.is_empty()) {
         // The key enters the text: same charset check as the filters.
-        Some(k) if valid_key(k) => format!("(properties ->> '{k}') {dir} NULLS LAST, title, id"),
+        Some(k) if valid_key(k) => {
+            let col = unless(
+                format!("(properties ->> '{k}')"),
+                hide.property_hidden_types(&s, k),
+            );
+            format!("{col} {dir} NULLS LAST, {title}, id")
+        }
         Some(_) => return Err(invalid("order_by", FIELD_INVALID)),
-        None => format!("title {dir}, id"),
+        None => format!("{title} {dir}, id"),
     };
     let lim = sql.bind(limit as i64);
     let off = sql.bind(offset as i64);

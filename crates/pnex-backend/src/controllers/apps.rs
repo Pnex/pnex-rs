@@ -154,10 +154,19 @@ async fn me_object_set(
         &params,
         limit,
         offset,
+        crate::services::ontology::redact::Redaction::of(|p| org.can(p)),
     )
     .await
     {
-        Ok(r) => format::json(r),
+        Ok(mut r) => {
+            // Masked by classification like every ontology read (crm.md D443).
+            match super::ontology::masking(&ctx, &org).await {
+                Ok(Some(super::ontology::Masking(m, s))) => m.query(&s, &mut r),
+                Ok(None) => {}
+                Err(e) => return super::ontology::onto_error(e),
+            }
+            format::json(r)
+        }
         Err(e) => app_error(e),
     }
 }

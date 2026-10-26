@@ -133,9 +133,11 @@ pub const PERMISSIONS: &[(&str, Level)] = &[
     ("notify:read", Level::Viewer),
     ("notify:test", Level::Member),
     ("notify:write", Level::Member),
+    ("ontology.personal:read", Level::Viewer),
     ("ontology.schema:delete", Level::Admin),
     ("ontology.schema:read", Level::Viewer),
     ("ontology.schema:write", Level::Admin),
+    ("ontology.sensitive:read", Level::Admin),
     ("ontology:delete", Level::Member),
     ("ontology:read", Level::Viewer),
     ("ontology:write", Level::Member),
@@ -696,6 +698,7 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("ontology_objects_bindings", Access::Org("ontology:read")),
     ("ontology_objects_changes", Access::Org("ontology:read")),
     ("ontology_objects_evidence", Access::Org("ontology:read")),
+    ("ontology_objects_erase", Access::Org("ontology:delete")),
     ("ontology_objects_create", Access::Org("ontology:write")),
     ("ontology_objects_get", Access::Org("ontology:read")),
     ("ontology_objects_graph", Access::Org("ontology:read")),
@@ -916,6 +919,14 @@ pub const GATES: &[(&str, &str)] = &[
     (
         "notify:broadcast",
         "channels whose recipients come from flow messages (D313)",
+    ),
+    (
+        "ontology.personal:read",
+        "read the personal properties and names of objects (crm.md D443)",
+    ),
+    (
+        "ontology.sensitive:read",
+        "read the sensitive properties of objects (crm.md D443)",
     ),
     (
         "secrets:usage",

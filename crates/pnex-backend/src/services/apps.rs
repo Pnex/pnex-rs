@@ -217,12 +217,13 @@ pub async fn run_set(
     given: &HashMap<String, String>,
     limit: Option<u64>,
     offset: Option<u64>,
+    hide: crate::services::ontology::redact::Redaction,
 ) -> Result<QueryResult> {
     let set = app.object_sets.get(name).ok_or(AppError::NotFound)?;
     let mut q = bind(&set.query, given).map_err(|p| field(&p, FIELD_REQUIRED))?;
     q.limit = limit.or(q.limit);
     q.offset = offset.or(q.offset);
-    Ok(crate::services::ontology::query::run(db, client, org_id, &q).await?)
+    Ok(crate::services::ontology::query::run(db, client, org_id, &q, hide).await?)
 }
 
 async fn key_taken(

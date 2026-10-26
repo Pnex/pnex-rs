@@ -3761,6 +3761,16 @@
         ],
         "type": "object"
       },
+      "Classification": {
+        "description": "Closed classification list of a property, a link attribute or a type's\ntitle (iam.md D298).",
+        "enum": [
+          "publique",
+          "interne",
+          "personnelle",
+          "sensible"
+        ],
+        "type": "string"
+      },
       "ClockSource": {
         "description": "Where the absolute time of a segment comes from (D160): a statistic must\nbe able to say where its clock comes from.",
         "enum": [
@@ -12603,6 +12613,10 @@
             "description": "System types are native tables exposed through an adapter (D177);\nthey cannot be deleted.",
             "type": "boolean"
           },
+          "title_classification": {
+            "$ref": "#/components/schemas/Classification",
+            "description": "Classification of the title (crm.md D442): a person's title is its\nname, masked and erased like a personal property."
+          },
           "write_role": {
             "$ref": "#/components/schemas/WriteRole"
           }
@@ -12686,6 +12700,14 @@
             "format": "date-time",
             "type": "string"
           },
+          "erased_at": {
+            "description": "Set once the object's personal data was erased (crm.md D446): a\nshell kept for the links and provenance of other objects.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -12698,6 +12720,13 @@
               "type": "string"
             },
             "type": "object"
+          },
+          "redacted": {
+            "description": "Keys hidden from the caller by their classification (crm.md D443);\n`title` when the title itself is hidden.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "source_ref": {
             "type": [
@@ -18348,6 +18377,10 @@
           },
           {
             "properties": {
+              "classification": {
+                "$ref": "#/components/schemas/Classification",
+                "description": "Data classification (iam.md D298, crm.md D442): `personnelle` and\n`sensible` values are hidden from a role without the matching read\npermission and removed by an erasure."
+              },
               "colors": {
                 "additionalProperties": {
                   "type": "string"
@@ -18752,7 +18785,8 @@
           "link_update",
           "link_close",
           "case_event",
-          "voice_span"
+          "voice_span",
+          "object_erase"
         ],
         "type": "string"
       },
@@ -58569,7 +58603,7 @@
                 }
               }
             },
-            "description": "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`"
+            "description": "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospection-opposed`"
           }
         },
         "security": [
@@ -59132,7 +59166,7 @@
                 }
               }
             },
-            "description": "`ontology-version-conflict` (args.current), `ontology-system-read-only`"
+            "description": "`ontology-version-conflict` (args.current), `ontology-system-read-only`, `ontology-erased` (an erased object is a read-only shell)"
           }
         },
         "security": [
@@ -59473,6 +59507,85 @@
           }
         ],
         "summary": "Get the change history of an object",
+        "tags": [
+          "ontology"
+        ]
+      }
+    },
+    "/api/v1/ontology/objects/{id}/erase": {
+      "post": {
+        "description": "Removes the properties, link attributes and title the schema classifies personal or sensitive, and keeps the object as an empty shell so the links and provenance of other objects hold (crm.md D446). A person also enters the org's opposition list (its name at each of its accounts, its profile addresses), its captured profile texts are deleted and the identifiers it uses are erased with it. Its history is then read redacted. Irreversible; an object already erased is returned as is. Needs the delete permission and the type's write role.",
+        "operationId": "ontology_objects_erase",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Object id (UUID)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectView"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-write-forbidden` · `access-denied` (`args.permission` = `ontology:delete`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`ontology-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Erase the personal data of an object",
         "tags": [
           "ontology"
         ]
@@ -63365,7 +63478,7 @@
     },
     "/api/v1/proposals/{id}/decision": {
       "post": {
-        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+        "description": "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
         "operationId": "proposals_decide",
         "parameters": [
           {

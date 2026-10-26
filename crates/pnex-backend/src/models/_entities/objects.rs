@@ -24,6 +24,8 @@ pub struct Model {
     pub version: i32,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    /// Personal data erased (crm.md D446).
+    pub erased_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

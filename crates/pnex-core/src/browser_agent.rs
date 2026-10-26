@@ -863,20 +863,7 @@ fn crawl_depth_default() -> u32 {
 
 /// Lower case, accents dropped (relevance reads "Éligible" as "eligible").
 pub fn fold(text: &str) -> String {
-    text.chars()
-        .flat_map(char::to_lowercase)
-        .map(|c| match c {
-            'à' | 'â' | 'ä' | 'á' | 'ã' => 'a',
-            'é' | 'è' | 'ê' | 'ë' => 'e',
-            'î' | 'ï' | 'í' => 'i',
-            'ô' | 'ö' | 'ó' | 'õ' => 'o',
-            'ù' | 'û' | 'ü' | 'ú' => 'u',
-            'ç' => 'c',
-            'ÿ' => 'y',
-            '\u{2019}' => '\'',
-            c => c,
-        })
-        .collect()
+    crate::fold::fold(text)
 }
 
 /// Target and registry key of a declared site (D307): `web:site:<host>`,

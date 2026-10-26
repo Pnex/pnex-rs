@@ -161,50 +161,7 @@ pub fn check_topics(topics: &[Topic]) -> Result<Vec<Topic>, (String, String)> {
     Ok(out)
 }
 
-/// Lowercase ASCII form of a Latin letter (`é` → `e`, `œ` → `oe`); other
-/// characters are returned lowercased, unchanged.
-fn fold_char(c: char, out: &mut String) {
-    for l in c.to_lowercase() {
-        let ascii = match l {
-            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' | 'ā' | 'ă' | 'ą' => "a",
-            'æ' => "ae",
-            'ç' | 'ć' | 'č' => "c",
-            'ď' | 'đ' => "d",
-            'è' | 'é' | 'ê' | 'ë' | 'ē' | 'ė' | 'ę' | 'ě' => "e",
-            'ì' | 'í' | 'î' | 'ï' | 'ī' | 'į' => "i",
-            'ł' => "l",
-            'ñ' | 'ń' | 'ň' => "n",
-            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' | 'ō' | 'ő' => "o",
-            'œ' => "oe",
-            'ř' => "r",
-            'ś' | 'š' | 'ş' => "s",
-            'ß' => "ss",
-            'ť' | 'ţ' => "t",
-            'ù' | 'ú' | 'û' | 'ü' | 'ū' | 'ů' | 'ű' => "u",
-            'ý' | 'ÿ' => "y",
-            'ź' | 'ż' | 'ž' => "z",
-            other => {
-                out.push(other);
-                continue;
-            }
-        };
-        out.push_str(ascii);
-    }
-}
-
-/// Folded words of a text: lowercase, Latin accents folded, split on every
-/// non-alphanumeric character (apostrophes and hyphens included).
-pub fn fold_words(text: &str) -> Vec<String> {
-    let mut folded = String::with_capacity(text.len());
-    for c in text.chars() {
-        fold_char(c, &mut folded);
-    }
-    folded
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .map(str::to_string)
-        .collect()
-}
+pub use crate::fold::fold_words;
 
 /// Ids of the topics whose keywords appear in `text`, in taxonomy order.
 /// Whole words or whole phrases only (`bourse` never matches `boursier`),
@@ -315,15 +272,6 @@ mod tests {
             classify_keywords("football puis bourse", &topics),
             vec!["bourse".to_string(), "sport".to_string()]
         );
-    }
-
-    #[test]
-    fn folding_handles_ligatures_and_separators() {
-        assert_eq!(
-            fold_words("Cœur-de-Bœuf, ÇA!"),
-            ["coeur", "de", "boeuf", "ca"]
-        );
-        assert!(fold_words(" -- ").is_empty());
     }
 
     #[test]

@@ -16,7 +16,8 @@
 use axum::extract::{Query, State};
 use axum::routing::get;
 use loco_rs::prelude::*;
-use sea_orm::sea_query::{Expr, Func, IntoColumnRef, LikeExpr};
+use pnex_core::fold::fold;
+use sea_orm::sea_query::{Alias, Expr, Func, IntoColumnRef, LikeExpr, SimpleExpr};
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, DbErr, ExprTrait, QueryOrder, QuerySelect,
 };
@@ -125,11 +126,26 @@ fn escape_like(term: &str) -> String {
     out
 }
 
-/// Case-insensitive containment on one column:
-/// `Func::lower(col) LIKE pattern ESCAPE '\'`.
+/// Case- and accent-insensitive containment on one column (« elodie »
+/// finds « Élodie », crm.md D447): the column folded by the shared table,
+/// `LIKE pattern ESCAPE '\'`, the pattern folded by [`search_tokens`].
 fn contains_lower(col: impl IntoColumnRef, pattern: &str) -> Expr {
-    Expr::expr(Func::lower(Expr::col(col)))
-        .like(LikeExpr::new(pattern.to_string()).escape(LIKE_ESCAPE))
+    let f = pnex_core::fold::sql_fold();
+    let mut e: SimpleExpr = Func::lower(Expr::col(col)).into();
+    for (v, ascii) in f.ligatures {
+        e = Func::cust(Alias::new("replace"))
+            .arg(e)
+            .arg(v)
+            .arg(ascii)
+            .into();
+    }
+    Expr::expr(
+        Func::cust(Alias::new("translate"))
+            .arg(e)
+            .arg(f.from)
+            .arg(f.to),
+    )
+    .like(LikeExpr::new(pattern.to_string()).escape(LIKE_ESCAPE))
 }
 
 /// Split the search term into AND tokens: whitespace-separated, each token
@@ -141,14 +157,11 @@ fn contains_lower(col: impl IntoColumnRef, pattern: &str) -> Expr {
 fn search_tokens(term: &str) -> Vec<String> {
     let tokens: Vec<String> = term
         .split_whitespace()
-        .map(|t| {
-            t.trim_matches(|c: char| !c.is_alphanumeric())
-                .to_lowercase()
-        })
+        .map(|t| fold(t.trim_matches(|c: char| !c.is_alphanumeric())))
         .filter(|t| !t.is_empty())
         .collect();
     if tokens.is_empty() {
-        vec![term.to_lowercase()]
+        vec![fold(term)]
     } else {
         tokens
     }
@@ -187,7 +200,7 @@ async fn fetch_devices(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.device_id.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.device_id).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.device_id,
@@ -222,7 +235,7 @@ async fn fetch_pois(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.label.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.label).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.label,
@@ -252,7 +265,7 @@ async fn fetch_tours(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -282,7 +295,7 @@ async fn fetch_media(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -316,7 +329,7 @@ async fn fetch_layers(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -346,7 +359,7 @@ async fn fetch_functions(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -376,7 +389,7 @@ async fn fetch_flows(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -406,7 +419,7 @@ async fn fetch_dashboards(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.name.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.name).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.name,
@@ -443,7 +456,7 @@ async fn fetch_edge_refs(
         .await?;
     let mut out = Vec::with_capacity(wifi.len() + hosts.len());
     out.extend(wifi.into_iter().map(|r| Candidate {
-        prefix: r.ssid.to_lowercase().starts_with(prefix_token),
+        prefix: fold(&r.ssid).starts_with(prefix_token),
         hit: SearchHit {
             id: r.id.to_string(),
             title: r.ssid,
@@ -453,7 +466,7 @@ async fn fetch_edge_refs(
         },
     }));
     out.extend(hosts.into_iter().map(|r| Candidate {
-        prefix: r.host.to_lowercase().starts_with(prefix_token),
+        prefix: fold(&r.host).starts_with(prefix_token),
         hit: SearchHit {
             id: r.id.to_string(),
             title: r.host,
@@ -491,7 +504,7 @@ async fn fetch_objects(
     Ok(rows
         .into_iter()
         .map(|r| Candidate {
-            prefix: r.title.to_lowercase().starts_with(prefix_token),
+            prefix: fold(&r.title).starts_with(prefix_token),
             hit: SearchHit {
                 id: r.id.to_string(),
                 title: r.title,

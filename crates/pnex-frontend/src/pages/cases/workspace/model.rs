@@ -271,6 +271,8 @@ mod tests {
                 valid_to: None,
                 created_at: String::new(),
                 updated_at: String::new(),
+                redacted: Vec::new(),
+                erased_at: None,
             },
             attachments: Vec::new(),
         }

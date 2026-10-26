@@ -1042,7 +1042,7 @@ valeur de propriété au noyau (D339). Pas de CRM. Socle mondial `entreprises` +
 (données personnelles) attend D341.
 Suite et état au 2026-10-22 : **P2.28**.
 
-### P2.28 — Outillage commercial : prospection, veille, cartographie des comptes (ajout 2026-10-22) — **9 blocs codés en local, à commiter**
+### P2.28 — Outillage commercial : prospection, veille, cartographie des comptes (ajout 2026-10-22) — **9 blocs commités** (relevé 2026-10-26)
 
 Docs : `account-mapping.md` §10 et `web-presence.md`. Décisions de
 pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.

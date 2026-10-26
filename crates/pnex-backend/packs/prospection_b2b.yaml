@@ -35,6 +35,10 @@
 # Page templates (D340) are filled from the account they are opened on
 # (placeholders of `page_render`): account plan, competitor sheet, meeting
 # preparation. A snapshot of the day, then free text.
+# Personal data (D341, crm.md D442–D447): the persona of a person is
+# `personnelle`; `opposition_le` records an objection (prospecting flows
+# skip the person); the legal basis shown on a person and the retention
+# period of the erasure queue are settings of the org.
 # Meetings: a `rendez_vous` with an account, its participants (ours and
 # theirs), its recording (a media: transcription and summary with a focus
 # are the media analyses), its debrief page, and the criteria of the org's
@@ -44,10 +48,27 @@
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.2.0"
+version: "1.3.0"
 requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
+settings:
+  - key: base_legale
+    name: Legal basis
+    names: {fr: "Base légale"}
+    description: Legal basis of the processing of the contacts' personal data, shown on a person (D341).
+    descriptions: {fr: "Base légale du traitement des données personnelles des contacts, affichée sur une personne (D341)."}
+    kind: text
+    default: interet_legitime_prospection_b2b
+  - key: retention_mois
+    name: Retention (months)
+    names: {fr: "Durée de conservation (mois)"}
+    description: A person with no change, link or capture for this many months is proposed for erasure (D341).
+    descriptions: {fr: "Une personne sans modification, lien ni capture depuis ce nombre de mois est proposée à l'effacement (D341)."}
+    kind: number
+    default: 36
+    min: 6
+    max: 120
 extends:
   - type: organization
     properties:
@@ -83,7 +104,9 @@ extends:
         kind: enum
         values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
         indexed: true
+        classification: personnelle
       - { key: revoir_le, name: Review on, names: {fr: "À revoir le"}, kind: date }
+      - { key: opposition_le, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
 link_types:
   - key: recommande
     name: recommends

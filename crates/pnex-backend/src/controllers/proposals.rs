@@ -100,13 +100,22 @@ async fn list(
     )
     .await
     {
-        Ok((count, rows)) => format::json(pagination::envelope(
-            "/api/v1/proposals",
-            &[],
-            page,
-            count,
-            rows,
-        )),
+        Ok((count, mut rows)) => {
+            match super::ontology::masking(&ctx, &org).await {
+                Ok(Some(super::ontology::Masking(m, s))) => {
+                    rows.iter_mut().for_each(|p| m.refs(&s, &mut p.refs))
+                }
+                Ok(None) => {}
+                Err(e) => return super::ontology::onto_error(e),
+            }
+            format::json(pagination::envelope(
+                "/api/v1/proposals",
+                &[],
+                page,
+                count,
+                rows,
+            ))
+        }
         Err(e) => onto_error(e),
     }
 }
@@ -132,7 +141,14 @@ async fn detail(
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
     match proposals::get(&ctx.db, org.org.id, id).await {
-        Ok(v) => format::json(v),
+        Ok(mut v) => {
+            match super::ontology::masking(&ctx, &org).await {
+                Ok(Some(super::ontology::Masking(m, s))) => m.refs(&s, &mut v.refs),
+                Ok(None) => {}
+                Err(e) => return super::ontology::onto_error(e),
+            }
+            format::json(v)
+        }
         Err(e) => onto_error(e),
     }
 }
@@ -143,7 +159,7 @@ async fn detail(
     tag = "proposals",
     operation_id = "proposals_decide",
     summary = "Accept or reject a proposal",
-    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
+    description = "`accept` writes what the proposal says through the same checks as the ontology pages (optionally with corrected `values`), provenance `proposal:<id>`; `reject` keeps it with its reason so the same values are never proposed again. Accepting an erasure (`object_erase`, from the retention queue) erases the object's personal data (`POST /ontology/objects/{id}/erase`) and needs a person: never an org rule. Repeating the same decision is harmless. Needs the right to decide proposals and to write the type concerned.",
     params(("id" = String, Path, format = "uuid", description = "Proposal id")),
     request_body = ProposalDecision,
     responses(
@@ -162,7 +178,8 @@ async fn decide(
     Json(body): Json<ProposalDecision>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    match proposals::decide(&ctx.db, org.org.id, &actor(&org), id, &body).await {
+    match crate::services::ontology::erase::decide(&ctx, org.org.id, &actor(&org), id, &body).await
+    {
         Ok(v) => format::json(v),
         Err(e) => onto_error(e),
     }

@@ -62,7 +62,9 @@ pub async fn opposed(
 }
 
 /// Records the person's objection (D341): the person and every profile
-/// address it uses enter the list, which outlives the person.
+/// address it uses enter the list, which outlives the person, with a
+/// fingerprint of its name at each of its accounts (crm.md D447); the
+/// date lands on the person (`opposition_le`) for the prospecting flows.
 pub async fn oppose(
     db: &DatabaseConnection,
     org_id: i64,
@@ -70,6 +72,44 @@ pub async fn oppose(
     person_id: Uuid,
 ) -> Result<(), ExtensionError> {
     person(db, org_id, person_id).await?;
+    oppose_by(db, org_id, Some(user_id), person_id).await
+}
+
+/// Property of `prospection_b2b` holding the objection date.
+const OPPOSED_ON: &str = "opposition_le";
+
+async fn oppose_by(
+    db: &DatabaseConnection,
+    org_id: i64,
+    user_id: Option<i64>,
+    person_id: Uuid,
+) -> Result<(), ExtensionError> {
+    let onto_err =
+        |e: ontology::OntologyError| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string()));
+    let s = ontology::schema(db, org_id)
+        .await
+        .map_err(|e| onto_err(e.into()))?;
+    let row = ontology::objects::find(db, org_id, person_id)
+        .await
+        .map_err(onto_err)?;
+    let names = ontology::opposition::title_keys(db, &s, org_id, person_id, &row.title)
+        .await
+        .map_err(onto_err)?;
+    ontology::opposition::record(db, org_id, user_id, &names)
+        .await
+        .map_err(onto_err)?;
+    let has_date = s
+        .object_type("person")
+        .is_some_and(|t| t.properties.iter().any(|p| p.key == OPPOSED_ON));
+    if has_date && row.properties.get(OPPOSED_ON).is_none() {
+        // Written in place: a date stamp, not an edit of the person.
+        db.execute_raw(stmt(
+            "UPDATE objects SET properties = properties || jsonb_build_object($3::text, to_char(now(), 'YYYY-MM-DD'))
+             WHERE org_id = $1 AND id = $2",
+            vec![org_id.into(), person_id.into(), OPPOSED_ON.into()],
+        ))
+        .await?;
+    }
     let accounts = db
         .query_all_raw(stmt(
             "SELECT i.properties ->> 'value' AS value FROM resource_edges l
@@ -101,6 +141,49 @@ pub async fn oppose(
     ))
     .await?;
     Ok(())
+}
+
+/// Before a person is erased (crm.md D446): it enters the opposition
+/// list, its captured profile texts are deleted, and the identifiers it
+/// uses are returned to be erased with it. Other objects: nothing.
+pub async fn before_erase(
+    ctx: &AppContext,
+    org_id: i64,
+    actor: &ontology::Actor,
+    row: &crate::models::_entities::objects::Model,
+) -> Result<Vec<Uuid>, ExtensionError> {
+    if row.type_key != "person" {
+        return Ok(Vec::new());
+    }
+    oppose_by(&ctx.db, org_id, actor.user_id, row.id).await?;
+    let texts = ctx
+        .db
+        .query_all_raw(stmt(
+            "SELECT id FROM media_assets WHERE org_id = $1 AND metadata ->> 'profile_person_id' = $2",
+            vec![org_id.into(), row.id.to_string().into()],
+        ))
+        .await?;
+    let texts: Vec<Uuid> = texts
+        .iter()
+        .filter_map(|r| r.try_get("", "id").ok())
+        .collect();
+    if !texts.is_empty() {
+        crate::services::voice_id::samples::delete_assets(ctx, org_id, &texts)
+            .await
+            .map_err(|e| ExtensionError::Db(sea_orm::DbErr::Custom(e.to_string())))?;
+    }
+    let ids = ctx
+        .db
+        .query_all_raw(stmt(
+            "SELECT target_object_id AS id FROM resource_edges
+             WHERE org_id = $1 AND source_object_id = $2 AND relation = 'uses_identifier'",
+            vec![org_id.into(), row.id.into()],
+        ))
+        .await?;
+    Ok(ids
+        .iter()
+        .filter_map(|r| r.try_get("", "id").ok())
+        .collect())
 }
 
 /// Asks one capture of `raw_url` for the person (D333). An open capture of
@@ -294,6 +377,102 @@ pub async fn prune_expired(ctx: &AppContext) -> Result<u64, ExtensionError> {
     Ok(n)
 }
 
+/// Pack and setting of the retention period (crm.md D444).
+const RETENTION_SETTING: &str = "prospection_b2b.retention_mois";
+/// Default period when the setting cannot be read.
+const RETENTION_MONTHS: i64 = 36;
+/// People proposed per org and per run.
+const RETENTION_BATCH: i64 = 200;
+
+/// The retention queue (crm.md D445): in each org where the prospecting
+/// pack is installed, a live person with no change, no link opened or
+/// closed and no profile capture for the org's period becomes an erasure
+/// proposal, its last activity as evidence. A refusal counts as an
+/// activity; one open proposal per person (its slot).
+pub async fn propose_erasures(db: &DatabaseConnection) -> Result<u64, ExtensionError> {
+    let pack = RETENTION_SETTING.split('.').next().unwrap_or_default();
+    let orgs = db
+        .query_all_raw(stmt(
+            "SELECT org_id FROM packs WHERE key = $1",
+            vec![pack.into()],
+        ))
+        .await?;
+    let mut n = 0;
+    for row in orgs {
+        let Ok(org_id) = row.try_get::<i64>("", "org_id") else {
+            continue;
+        };
+        let months = ontology::packs::setting_value(db, org_id, RETENTION_SETTING)
+            .await?
+            .and_then(|v| v.as_f64())
+            .map_or(RETENTION_MONTHS, |m| m as i64);
+        n += propose_erasures_in(db, org_id, months).await?;
+    }
+    Ok(n)
+}
+
+/// The retention queue of one org, `months` its period.
+pub async fn propose_erasures_in(
+    db: &DatabaseConnection,
+    org_id: i64,
+    months: i64,
+) -> Result<u64, ExtensionError> {
+    let rows = db
+        .query_all_raw(stmt(
+            "WITH activity AS (
+               SELECT o.id, greatest(
+                 o.updated_at,
+                 (SELECT max(greatest(l.created_at, l.updated_at, coalesce(l.valid_to, l.valid_from)))
+                    FROM resource_edges l
+                   WHERE l.org_id = o.org_id AND (l.source_object_id = o.id OR l.target_object_id = o.id)),
+                 (SELECT max(m.created_at) FROM media_assets m
+                   WHERE m.org_id = o.org_id AND m.metadata ->> 'profile_person_id' = o.id::text),
+                 (SELECT max(p.decided_at) FROM proposals p
+                   WHERE p.org_id = o.org_id AND p.kind = 'object_erase' AND p.target_id = o.id::text
+                     AND p.status = 'rejected')
+               ) AS last
+               FROM objects o
+              WHERE o.org_id = $1 AND o.type_key = 'person' AND o.valid_to IS NULL
+                AND o.erased_at IS NULL
+                AND o.updated_at < now() - make_interval(months => $2::int)
+                AND NOT EXISTS (SELECT 1 FROM proposals p
+                   WHERE p.org_id = o.org_id AND p.kind = 'object_erase'
+                     AND p.target_id = o.id::text AND p.status = 'proposed')
+             )
+             SELECT id, to_char(last, 'YYYY-MM-DD') AS last FROM activity
+              WHERE last < now() - make_interval(months => $2::int)
+              ORDER BY last LIMIT $3",
+            vec![org_id.into(), (months as i32).into(), RETENTION_BATCH.into()],
+        ))
+        .await?;
+    let mut n = 0;
+    for row in rows {
+        let (Ok(id), Ok(last)) = (
+            row.try_get::<Uuid>("", "id"),
+            row.try_get::<String>("", "last"),
+        ) else {
+            continue;
+        };
+        let mut values = serde_json::Map::new();
+        values.insert("last_activity".into(), last.clone().into());
+        let p = pnex_core::ontology::proposal::ProposalInput {
+            kind: Some(pnex_core::ontology::proposal::ProposalKind::ObjectErase),
+            type_key: "person".into(),
+            target_id: Some(id.to_string()),
+            values,
+            evidence: serde_json::json!({"last_activity": last, "retention_months": months}),
+            origin: format!("retention:{RETENTION_SETTING}"),
+            ..Default::default()
+        };
+        match ontology::proposals::propose(db, org_id, &p).await {
+            Ok(Some(_)) => n += 1,
+            Ok(None) => {}
+            Err(e) => tracing::warn!(error = %e, %id, "erasure not proposed"),
+        }
+    }
+    Ok(n)
+}
+
 /// Background pruner, started at boot — skipped in tests.
 pub fn spawn_pruner(ctx: &AppContext) {
     use loco_rs::config::WorkerMode;
@@ -318,6 +497,11 @@ pub fn spawn_pruner(ctx: &AppContext) {
                 Ok(n) if n > 0 => tracing::info!(pruned = n, "profile text pruner"),
                 Ok(_) => {}
                 Err(e) => tracing::warn!(error = %e, "profile text pruner failed"),
+            }
+            match propose_erasures(&ctx.db).await {
+                Ok(n) if n > 0 => tracing::info!(proposed = n, "retention queue"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "retention queue failed"),
             }
         }
     });

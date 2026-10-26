@@ -49,6 +49,7 @@ fn blank(key: &str) -> ObjectTypeDef {
         may_contain: None,
         may_be_contained_in: Some(TypeSet::Only(vec!["folder".into()])),
         actions: Vec::new(),
+        title_classification: Default::default(),
     }
 }
 
@@ -342,6 +343,7 @@ fn Editor(
                                             pack: None,
                                             colors: Default::default(),
                                             labels: Default::default(),
+                                            classification: Default::default(),
                                         })
                                 });
                             },
@@ -876,6 +878,7 @@ mod display_tests {
             pack: None,
             colors: Default::default(),
             labels: Default::default(),
+            classification: Default::default(),
         };
         set_label(&mut p, "client", "fr", "Client actif");
         set_color(&mut p, "cible", "amber");

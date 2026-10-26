@@ -190,6 +190,9 @@ pub async fn create_with<C: ConnectionTrait>(
     if src.valid_to.is_some() || tgt.valid_to.is_some() {
         return Err(OntologyError::NotFound);
     }
+    if src.erased_at.is_some() || tgt.erased_at.is_some() {
+        return Err(OntologyError::Erased);
+    }
     if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
         return Err(OntologyError::LinkNotAllowed);
     }
@@ -200,6 +203,7 @@ pub async fn create_with<C: ConnectionTrait>(
             }
         }
     }
+    super::opposition::check_links(db, s, org_id, &[(&src, &tgt)]).await?;
     let attrs = check_values(&lt.attributes, &input.attributes)
         .map_err(|(f, t)| super::invalid(format!("attributes.{f}"), t))?;
     let now: DateTimeWithTimeZone = chrono::Utc::now().into();
@@ -554,6 +558,13 @@ pub async fn create_many_with<C: ConnectionTrait>(
             return Err(OntologyError::LinkCardinality);
         }
     }
+    // A link that would recreate a person who objected is left out, the
+    // rest of the run goes on (crm.md D447).
+    let pairs: Vec<_> = parsed
+        .iter()
+        .filter_map(|(a, b)| Some((ends.get(a)?, ends.get(b)?)))
+        .collect();
+    let opposed = super::opposition::opposed_pairs(db, s, org_id, &pairs).await?;
     // Then batch by batch: checked, inserted, journaled (only a batch of
     // rows is held at a time; the caller's transaction keeps it all or
     // nothing).
@@ -564,6 +575,9 @@ pub async fn create_many_with<C: ConnectionTrait>(
             let Some(lt) = s.link_type(&input.link_type) else {
                 return Err(super::invalid("link_type", FIELD_INVALID));
             };
+            if opposed.contains(&(*sid, *tid)) {
+                continue;
+            }
             if lt.key == REL_MEASURES || lt.key == REL_DEPICTS || input.valid_to.is_some() {
                 create_with(db, s, org_id, actor, input).await?;
                 continue;
@@ -573,6 +587,10 @@ pub async fn create_many_with<C: ConnectionTrait>(
             };
             if src.valid_to.is_some() || tgt.valid_to.is_some() {
                 return Err(OntologyError::NotFound);
+            }
+            // An erased end is left out like an opposed one (D446).
+            if src.erased_at.is_some() || tgt.erased_at.is_some() {
+                continue;
             }
             if src.id == tgt.id || !lt.allows(&lt.key, &src.type_key, &tgt.type_key) {
                 return Err(OntologyError::LinkNotAllowed);

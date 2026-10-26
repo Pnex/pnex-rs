@@ -859,6 +859,8 @@ pub const EXT_TARGET_NOT_PROFILE: &str = "ext-target-not-profile";
 pub const EXT_PROFILE_DAILY_CAP: &str = "ext-profile-daily-cap";
 /// The person objected to prospecting: no capture, no re-creation (D341).
 pub const PROSPECTION_OPPOSED: &str = "prospection-opposed";
+/// The object was erased: a shell, never edited nor linked again (D446).
+pub const ONTOLOGY_ERASED: &str = "ontology-erased";
 
 // ── Registered codes ─────────────────────────────────────────────────────
 
@@ -897,6 +899,7 @@ pub const ALL: &[&str] = &[
     EXT_TARGET_NOT_PROFILE,
     EXT_PROFILE_DAILY_CAP,
     PROSPECTION_OPPOSED,
+    ONTOLOGY_ERASED,
     CRAWL_BLOCKED,
     CRAWL_ROBOTS_DISALLOWED,
     CRAWL_UNREACHABLE,

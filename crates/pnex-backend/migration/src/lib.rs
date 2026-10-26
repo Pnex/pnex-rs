@@ -63,6 +63,7 @@ mod m20261024_000053_drop_flow_import_runs;
 mod m20261025_000054_ontology_changes;
 mod m20261025_000055_apps;
 mod m20261025_000056_app_object_sets;
+mod m20261026_000057_object_erased_at;
 
 pub struct Migrator;
 
@@ -122,6 +123,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261025_000054_ontology_changes::Migration),
             Box::new(m20261025_000055_apps::Migration),
             Box::new(m20261025_000056_app_object_sets::Migration),
+            Box::new(m20261026_000057_object_erased_at::Migration),
         ]
     }
 }

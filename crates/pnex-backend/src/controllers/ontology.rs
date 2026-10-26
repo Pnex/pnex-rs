@@ -21,6 +21,7 @@ use uuid::Uuid;
 use super::coded_error;
 use super::pagination::{envelope, PageParams};
 use crate::auth::OrgContext;
+use crate::services::ontology::redact::Redaction;
 use crate::services::ontology::{
     self as onto, changes, graph, link_types, links, objects, packs, query, series, types, Actor,
     OntologyError,
@@ -46,6 +47,7 @@ pub fn routes() -> Routes {
             "/objects/{id}",
             get(get_object).put(update_object).delete(archive_object),
         )
+        .add("/objects/{id}/erase", post(erase_object))
         .add("/objects/{id}/links", get(object_links))
         .add("/objects/{id}/pages", post(object_page))
         .add("/objects/{id}/graph", get(object_graph))
@@ -98,6 +100,7 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
         get_object,
         update_object,
         archive_object,
+        erase_object,
         resolve,
         object_links,
         object_graph,
@@ -169,6 +172,16 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             err_codes::ONTOLOGY_LINK_CARDINALITY,
             "An open link already takes this place; close it first.",
         ),
+        OntologyError::Erased => coded(
+            StatusCode::CONFLICT,
+            err_codes::ONTOLOGY_ERASED,
+            "This object was erased: it is never edited nor linked again.",
+        ),
+        OntologyError::Opposed => coded(
+            StatusCode::CONFLICT,
+            err_codes::PROSPECTION_OPPOSED,
+            "This person objected to the processing of their data: the link is refused.",
+        ),
         OntologyError::ClaimUnsourced => coded(
             StatusCode::CONFLICT,
             err_codes::ONTOLOGY_CLAIM_UNSOURCED,
@@ -233,6 +246,32 @@ pub(crate) fn onto_error(e: OntologyError) -> Result<Response> {
             Err(crate::services::compute_limits::db_busy(&e).unwrap_or(Error::InternalServerError))
         }
     }
+}
+
+/// The caller's masking by classification (crm.md D443) with the schema it
+/// reads; `None` when the role reads everything.
+pub(crate) async fn masking(ctx: &AppContext, org: &OrgContext) -> onto::Result<Option<Masking>> {
+    let r = Redaction::of(|p| org.can(p));
+    if r.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(Masking(r, onto::schema(&ctx.db, org.org.id).await?)))
+}
+
+pub(crate) struct Masking(pub Redaction, pub onto::OrgSchema);
+
+/// `r` with the caller's masking applied.
+async fn masked<T>(
+    ctx: &AppContext,
+    org: &OrgContext,
+    r: onto::Result<T>,
+    apply: impl Fn(&Masking, &mut T),
+) -> onto::Result<T> {
+    let mut v = r?;
+    if let Some(m) = masking(ctx, org).await? {
+        apply(&m, &mut v);
+    }
+    Ok(v)
 }
 
 fn reply<T: serde::Serialize>(r: onto::Result<T>) -> Result<Response> {
@@ -677,7 +716,8 @@ async fn get_object(
     org: OrgContext,
     Path(id): Path<String>,
 ) -> Result<Response> {
-    reply(objects::get(&ctx.db, org.org.id, parse_uuid(&id)?).await)
+    let r = objects::get(&ctx.db, org.org.id, parse_uuid(&id)?).await;
+    reply(masked(&ctx, &org, r, |Masking(m, s), v| m.object(s, v)).await)
 }
 
 #[utoipa::path(
@@ -694,7 +734,7 @@ async fn get_object(
         (status = 400, description = "Invalid field (field → token)", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ontology-version-conflict` (args.current), `ontology-system-read-only`, `ontology-erased` (an erased object is a read-only shell)", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -768,10 +808,34 @@ async fn resolve(
     let s = onto::schema(&ctx.db, org.org.id)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    match objects::find_by_native(&ctx.db, org.org.id, &kind, &native_id).await {
-        Ok(o) => format::json(objects::view(&o, &s)),
-        Err(e) => onto_error(e),
-    }
+    let r = objects::find_by_native(&ctx.db, org.org.id, &kind, &native_id)
+        .await
+        .map(|o| objects::view(&o, &s));
+    reply(masked(&ctx, &org, r, |Masking(m, s), v| m.object(s, v)).await)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/ontology/objects/{id}/erase",
+    tag = "ontology",
+    operation_id = "ontology_objects_erase",
+    summary = "Erase the personal data of an object",
+    description = "Removes the properties, link attributes and title the schema classifies personal or sensitive, and keeps the object as an empty shell so the links and provenance of other objects hold (crm.md D446). A person also enters the org's opposition list (its name at each of its accounts, its profile addresses), its captured profile texts are deleted and the identifiers it uses are erased with it. Its history is then read redacted. Irreversible; an object already erased is returned as is. Needs the delete permission and the type's write role.",
+    params(("id" = String, Path, format = "uuid", description = "Object id (UUID)")),
+    responses(
+        (status = 200, body = pnex_core::ontology::api::ObjectView),
+        (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`ontology-not-found`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn erase_object(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path(id): Path<String>,
+) -> Result<Response> {
+    let id = parse_uuid(&id)?;
+    reply(onto::erase::erase(&ctx, org.org.id, &actor(&org), id).await)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -811,6 +875,10 @@ async fn object_links(
     };
     let history = q.history.unwrap_or(false);
     let rows = links::for_object(&ctx.db, org.org.id, parse_uuid(&id)?, as_of, history).await;
+    let rows = masked(&ctx, &org, rows, |Masking(m, s), rows| {
+        rows.iter_mut().for_each(|l| m.link(s, l))
+    })
+    .await;
     let mut filters = vec![("history".to_string(), history.to_string())];
     if let Some(t) = q.as_of {
         filters.push(("as_of".to_string(), t));
@@ -852,7 +920,8 @@ async fn object_graph(
     Path(id): Path<String>,
     Query(q): Query<GraphQuery>,
 ) -> Result<Response> {
-    reply(graph::neighborhood(&ctx.db, org.org.id, parse_uuid(&id)?, q.depth.unwrap_or(1)).await)
+    let r = graph::neighborhood(&ctx.db, org.org.id, parse_uuid(&id)?, q.depth.unwrap_or(1)).await;
+    reply(masked(&ctx, &org, r, |Masking(m, s), n| m.neighborhood(s, n)).await)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -889,7 +958,9 @@ async fn object_hierarchy(
         Ok(t) => t,
         Err(e) => return onto_error(e),
     };
-    reply(onto::hierarchy::tree(&ctx.db, org.org.id, parse_uuid(&id)?, q.key.as_deref(), at).await)
+    let r =
+        onto::hierarchy::tree(&ctx.db, org.org.id, parse_uuid(&id)?, q.key.as_deref(), at).await;
+    reply(masked(&ctx, &org, r, |Masking(m, s), h| m.hierarchy(s, h)).await)
 }
 
 #[utoipa::path(
@@ -916,17 +987,16 @@ async fn object_impact(
         .depth
         .unwrap_or(4)
         .clamp(1, pnex_core::ontology::api::MAX_HOPS as u32);
-    reply(
-        graph::impact(
-            &ctx.db,
-            org.org.id,
-            parse_uuid(&id)?,
-            q.upstream.unwrap_or(false),
-            depth,
-        )
-        .await
-        .map(|objects| pnex_core::ontology::api::ObjectImpact { objects }),
+    let r = graph::impact(
+        &ctx.db,
+        org.org.id,
+        parse_uuid(&id)?,
+        q.upstream.unwrap_or(false),
+        depth,
     )
+    .await
+    .map(|objects| pnex_core::ontology::api::ObjectImpact { objects });
+    reply(masked(&ctx, &org, r, |Masking(m, s), i| m.refs(s, &mut i.objects)).await)
 }
 
 #[utoipa::path(
@@ -1022,7 +1092,8 @@ async fn path(
         }
         (None, true) => return onto_error(onto::invalid("from", err_codes::FIELD_REQUIRED)),
     };
-    reply(found.map(|path| pnex_core::ontology::api::ObjectPath { path }))
+    let r = found.map(|path| pnex_core::ontology::api::ObjectPath { path });
+    reply(masked(&ctx, &org, r, |Masking(m, s), p| m.refs(s, &mut p.path)).await)
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
@@ -1138,9 +1209,10 @@ async fn object_changes(
     Query(q): Query<PageQuery>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    if let Err(e) = objects::find(&ctx.db, org.org.id, id).await {
-        return onto_error(e);
-    }
+    let erased = match objects::find(&ctx.db, org.org.id, id).await {
+        Ok(o) => o.erased_at.is_some(),
+        Err(e) => return onto_error(e),
+    };
     let rows = match changes::history(&ctx, org.org.id, &id.to_string(), 200).await {
         Ok(Some(rows)) => rows,
         Ok(None) => return Err(changes_unavailable()),
@@ -1149,11 +1221,28 @@ async fn object_changes(
             return Err(changes_unavailable());
         }
     };
+    // The history of an erased object never shows what was erased (D446).
+    let rows = match erased {
+        true => onto::schema(&ctx.db, org.org.id)
+            .await
+            .map_err(Into::into)
+            .map(|s| {
+                let mut rows = rows;
+                rows.iter_mut().for_each(|c| Redaction::ALL.change(&s, c));
+                rows
+            }),
+        false => {
+            masked(&ctx, &org, Ok(rows), |Masking(m, s), rows| {
+                rows.iter_mut().for_each(|c| m.change(s, c))
+            })
+            .await
+        }
+    };
     paged(
         &format!("/api/v1/ontology/objects/{id}/changes"),
         &[],
         &q,
-        Ok(rows),
+        rows,
     )
 }
 
@@ -1210,7 +1299,7 @@ fn changes_unavailable() -> Error {
         (status = 400, description = "Invalid field (field → token), or `ontology-link-not-allowed`", body = crate::openapi::ErrorDetail),
         (status = 403, description = "`ontology-write-forbidden`", body = crate::openapi::ErrorDetail),
         (status = 404, description = "`ontology-not-found` (link type or object)", body = crate::openapi::ErrorDetail),
-        (status = 409, description = "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`", body = crate::openapi::ErrorDetail)
+        (status = 409, description = "`ontology-link-cardinality` (an open link already takes this place), `ontology-already-exists`, `ontology-erased` (an end was erased), `prospection-opposed`", body = crate::openapi::ErrorDetail)
     ),
     security(("bearer" = [], "org" = []))
 )]
@@ -1330,7 +1419,9 @@ async fn run_query(
     Json(q): Json<OntologyQuery>,
 ) -> Result<Response> {
     let client = o2(&ctx);
-    reply(query::run(&ctx.db, client.as_ref(), org.org.id, &q).await)
+    let hide = onto::redact::Redaction::of(|p| org.can(p));
+    let r = query::run(&ctx.db, client.as_ref(), org.org.id, &q, hide).await;
+    reply(masked(&ctx, &org, r, |Masking(m, s), r| m.query(s, r)).await)
 }
 
 // ─────────────────────────── packs ───────────────────────────

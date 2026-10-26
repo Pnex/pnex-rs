@@ -34,7 +34,9 @@ const COLUMNS: &str = "p.id, p.kind, p.status, p.type_key, p.target_id, p.source
 async fn refs_of<C: ConnectionTrait>(db: &C, org_id: i64, p: &ProposalInput) -> Result<Vec<Uuid>> {
     let uuid = |o: &Option<String>| o.as_deref().and_then(|s| Uuid::parse_str(s.trim()).ok());
     Ok(match p.kind {
-        Some(ProposalKind::ObjectUpdate) => uuid(&p.target_id).into_iter().collect(),
+        Some(ProposalKind::ObjectUpdate | ProposalKind::ObjectErase) => {
+            uuid(&p.target_id).into_iter().collect()
+        }
         // The case, then the members the detection is about.
         Some(ProposalKind::CaseEvent) => uuid(&p.target_id)
             .into_iter()
@@ -99,9 +101,10 @@ pub async fn propose<C: ConnectionTrait>(
     };
     match kind {
         ProposalKind::ObjectCreate => {}
-        ProposalKind::ObjectUpdate | ProposalKind::LinkUpdate | ProposalKind::LinkClose => {
-            needs("target_id", &p.target_id)?
-        }
+        ProposalKind::ObjectUpdate
+        | ProposalKind::LinkUpdate
+        | ProposalKind::LinkClose
+        | ProposalKind::ObjectErase => needs("target_id", &p.target_id)?,
         ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
         ProposalKind::CaseEvent => {
             needs("target_id", &p.target_id)?;
@@ -460,7 +463,11 @@ async fn apply<C: ConnectionTrait>(
             .await?
             .id
             .to_string(),
-        ProposalKind::VoiceSpan => return Err(invalid("kind", FIELD_INVALID)),
+        // Decided by `erase::decide` with a human (D445): an org rule
+        // accepting it lands here and leaves it to validate.
+        ProposalKind::VoiceSpan | ProposalKind::ObjectErase => {
+            return Err(invalid("kind", FIELD_INVALID))
+        }
         ProposalKind::CaseEvent => {
             let case_id = text("target_id")
                 .and_then(|t| Uuid::parse_str(&t).ok())
@@ -479,6 +486,37 @@ async fn apply<C: ConnectionTrait>(
                 .to_string()
         }
     })
+}
+
+/// Marks an open proposal accepted once its write was made elsewhere
+/// (`erase::decide`); refused when decided or superseded meanwhile.
+pub async fn mark_accepted(
+    db: &DatabaseConnection,
+    org_id: i64,
+    actor: &Actor,
+    id: Uuid,
+    applied: &str,
+    reason: Option<String>,
+) -> Result<ProposalView> {
+    let done = db
+        .execute_raw(stmt(
+            "UPDATE proposals SET status = 'accepted', applied = $1, reason = $2, \
+               decided_by = $3, decided_at = now() \
+             WHERE id = $4 AND org_id = $5 AND status = 'proposed'",
+            vec![
+                applied.into(),
+                reason.into(),
+                actor.user_id.into(),
+                id.into(),
+                org_id.into(),
+            ],
+        ))
+        .await?;
+    let view = get(db, org_id, id).await?;
+    if done.rows_affected() == 0 && view.status != ProposalStatus::Accepted {
+        return Err(OntologyError::ProposalDecided);
+    }
+    Ok(view)
 }
 
 /// Accepts or rejects. Idempotent for the same decision; the other one on a

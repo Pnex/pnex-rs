@@ -39,6 +39,8 @@ pub fn view(o: &objects::Model, s: &OrgSchema) -> ObjectView {
         valid_to: o.valid_to.map(|t| t.to_rfc3339()),
         created_at: o.created_at.to_rfc3339(),
         updated_at: o.updated_at.to_rfc3339(),
+        redacted: Vec::new(),
+        erased_at: o.erased_at.map(|t| t.to_rfc3339()),
     }
 }
 
@@ -229,7 +231,7 @@ const CLAIM: &str = "claim";
 const CLAIM_NOTE: &str = "corroboration_note";
 const CORROBORATED: &str = "corroborated";
 
-fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
+pub(super) fn require_role(def: &ObjectTypeDef, actor: &Actor) -> Result<()> {
     if role_allows(&actor.role, def.write_role) {
         Ok(())
     } else {
@@ -342,6 +344,9 @@ pub async fn update_in_with<C: ConnectionTrait>(
     let row = find(db, org_id, id).await?;
     if row.valid_to.is_some() {
         return Err(OntologyError::NotFound);
+    }
+    if row.erased_at.is_some() {
+        return Err(OntologyError::Erased);
     }
     let Some(def) = s.object_type(&row.type_key) else {
         return Err(OntologyError::NotFound);
@@ -685,6 +690,9 @@ pub async fn update_many_with<C: ConnectionTrait>(
         let row = rows.get(id).ok_or(OntologyError::NotFound)?;
         if row.valid_to.is_some() {
             return Err(OntologyError::NotFound);
+        }
+        if row.erased_at.is_some() {
+            return Err(OntologyError::Erased);
         }
         let Some(def) = s.object_type(&row.type_key) else {
             return Err(OntologyError::NotFound);

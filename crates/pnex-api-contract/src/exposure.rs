@@ -398,6 +398,7 @@ pub const EXCLUDED: &[(&str, &[&str])] = &[
             "notify_templates_delete",
             "ontology_link_types_delete",
             "ontology_objects_archive",
+            "ontology_objects_erase",
             "ontology_types_delete",
             "orgs_delete",
             "orgs_members_remove",

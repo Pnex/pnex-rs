@@ -27,10 +27,14 @@ pub enum ProposalKind {
     /// inbox but decided on the media review, where it can be heard and its
     /// span moved: never written to the proposals table.
     VoiceSpan,
+    /// Erase the personal data of `target_id` (crm.md D445): proposed by
+    /// the retention queue, `values.last_activity` its last activity.
+    /// Accepted by a human only, never by an org rule.
+    ObjectErase,
 }
 
 impl ProposalKind {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::ObjectCreate,
         Self::ObjectUpdate,
         Self::LinkCreate,
@@ -38,6 +42,7 @@ impl ProposalKind {
         Self::LinkClose,
         Self::CaseEvent,
         Self::VoiceSpan,
+        Self::ObjectErase,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -49,6 +54,7 @@ impl ProposalKind {
             Self::LinkClose => "link_close",
             Self::CaseEvent => "case_event",
             Self::VoiceSpan => "voice_span",
+            Self::ObjectErase => "object_erase",
         }
     }
 
@@ -183,9 +189,10 @@ pub fn slot(p: &ProposalInput) -> Option<String> {
     let id = |o: &Option<String>| o.as_deref().unwrap_or_default().to_string();
     Some(match kind {
         ProposalKind::ObjectCreate => format!("{}|{}|{}", kind.as_str(), p.type_key, id(&p.title)),
-        ProposalKind::ObjectUpdate | ProposalKind::LinkUpdate | ProposalKind::LinkClose => {
-            format!("{}|{}", kind.as_str(), id(&p.target_id))
-        }
+        ProposalKind::ObjectUpdate
+        | ProposalKind::LinkUpdate
+        | ProposalKind::LinkClose
+        | ProposalKind::ObjectErase => format!("{}|{}", kind.as_str(), id(&p.target_id)),
         ProposalKind::LinkCreate => format!(
             "{}|{}|{}|{}",
             kind.as_str(),
@@ -258,5 +265,25 @@ mod tests {
         assert_ne!(fingerprint_text(&a), fingerprint_text(&link("m", "saisie")));
         assert_eq!(slot(&a), slot(&link("m", "saisie")), "one slot, two values");
         assert!(fingerprint_text(&ProposalInput::default()).is_none());
+    }
+
+    #[test]
+    fn an_erasure_comes_back_after_a_new_period_only() {
+        let erase = |last: &str| ProposalInput {
+            kind: Some(ProposalKind::ObjectErase),
+            type_key: "person".into(),
+            target_id: Some("p".into()),
+            values: json!({"last_activity": last}).as_object().cloned().unwrap(),
+            ..Default::default()
+        };
+        assert_eq!(
+            fingerprint_text(&erase("2023-01-01")),
+            fingerprint_text(&erase("2023-01-01"))
+        );
+        assert_ne!(
+            fingerprint_text(&erase("2023-01-01")),
+            fingerprint_text(&erase("2026-02-01"))
+        );
+        assert_eq!(slot(&erase("2023-01-01")), slot(&erase("2026-02-01")));
     }
 }

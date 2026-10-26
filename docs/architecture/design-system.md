@@ -293,6 +293,7 @@ les règles plus anciennes qui les contredisent.
 | Rencontre avec un compte, ses participants, son enregistrement (account-mapping.md, réunions) | Rendez-vous | Meeting | pas « réunion commerciale » ni « RDV » |
 | Point de la méthode de vente de l'org, suivi rendez-vous par rendez-vous | Critère du playbook | Playbook criterion | pas « note » ni « score » d'une personne : on agrège par critère |
 | Écriture proposée par une machine (import, flow, détecteur, modèle), en attente d'un humain (proposals.md D371) | Proposition ; la page « À valider » | Proposal ; « To validate » | pas « suggestion » ni « recommandation » (= lien `recommande`) |
+| Retrait des données personnelles d'un objet, qui reste en coquille (crm.md D446) | Effacement | Erasure | pas « suppression » (= archivage) |
 
 Une chaîne d'interface qui emploie un mot pour une autre notion est un
 défaut, au même titre qu'une chaîne en dur. **Garde bloquante** :

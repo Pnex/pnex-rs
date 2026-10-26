@@ -126,7 +126,15 @@ async fn list(
         }
     }
     match feed::page(&ctx.db, org.org.id, since, &filter, limit).await {
-        Ok(page) => format::json(page),
+        Ok(mut page) => {
+            // Masked by classification like every ontology read (crm.md D443).
+            match super::ontology::masking(&ctx, &org).await {
+                Ok(Some(super::ontology::Masking(m, s))) => m.feed(&s, &mut page),
+                Ok(None) => {}
+                Err(e) => return super::ontology::onto_error(e),
+            }
+            format::json(page)
+        }
         Err(e) => feed_error(e),
     }
 }

@@ -12,6 +12,7 @@
 pub mod actions;
 pub mod cases;
 pub mod changes;
+pub mod erase;
 pub mod evidence;
 pub mod feed;
 pub mod flow_nodes;
@@ -21,10 +22,12 @@ pub mod imports;
 pub mod link_types;
 pub mod links;
 pub mod objects;
+pub mod opposition;
 pub mod packs;
 pub mod proposals;
 pub mod query;
 pub mod recurrence;
+pub mod redact;
 pub mod series;
 pub mod types;
 
@@ -94,6 +97,14 @@ pub enum OntologyError {
     /// The action bus (Valkey) is down: nothing was sent.
     #[error("action bus unavailable")]
     ActionUnavailable,
+    /// The person objected or was erased: this link would recreate it at
+    /// the same account (crm.md D447).
+    #[error("opposed")]
+    Opposed,
+    /// The object was erased (crm.md D446): a shell, never written again
+    /// nor given new links.
+    #[error("erased")]
+    Erased,
     #[error(transparent)]
     Db(#[from] DbErr),
 }

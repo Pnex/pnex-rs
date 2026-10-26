@@ -136,6 +136,10 @@ pub struct ObjectTypeDef {
     /// Operations invocable on the objects of this type (D183).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<ActionDef>,
+    /// Classification of the title (crm.md D442): a person's title is its
+    /// name, masked and erased like a personal property.
+    #[serde(default, skip_serializing_if = "schema::Classification::is_internal")]
+    pub title_classification: schema::Classification,
 }
 
 /// An action declared on a type (D183): invoked from the object page,
@@ -317,6 +321,7 @@ pub fn system_object_types() -> Vec<ObjectTypeDef> {
         may_contain: None,
         may_be_contained_in: Some(TypeSet::only(&[KIND_FOLDER])),
         actions: Vec::new(),
+        title_classification: Default::default(),
     };
     vec![
         leaf(KIND_DEVICE),
@@ -399,6 +404,7 @@ fn prop(key: &str, kind: PropertyKind) -> PropertyDef {
         pack: None,
         colors: Default::default(),
         labels: Default::default(),
+        classification: Default::default(),
     }
 }
 
@@ -542,6 +548,7 @@ pub fn system_link_types() -> Vec<LinkTypeDef> {
         pack: None,
         colors: Default::default(),
         labels: Default::default(),
+        classification: Default::default(),
     };
     let link = |key: &str, from: TypeSet, to: TypeSet| LinkTypeDef {
         inverse_names: Default::default(),

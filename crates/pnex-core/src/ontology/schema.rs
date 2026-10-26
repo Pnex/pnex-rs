@@ -150,6 +150,35 @@ pub struct PropertyDef {
     /// The value itself is a stable key, never renamed to translate it.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub labels: std::collections::BTreeMap<String, super::Names>,
+    /// Data classification (iam.md D298, crm.md D442): `personnelle` and
+    /// `sensible` values are hidden from a role without the matching read
+    /// permission and removed by an erasure.
+    #[serde(default, skip_serializing_if = "Classification::is_internal")]
+    pub classification: Classification,
+}
+
+/// Closed classification list of a property, a link attribute or a type's
+/// title (iam.md D298).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Classification {
+    Publique,
+    #[default]
+    Interne,
+    Personnelle,
+    Sensible,
+}
+
+impl Classification {
+    pub fn is_internal(&self) -> bool {
+        *self == Self::Interne
+    }
+
+    /// Personal data: hidden by role, removed by an erasure (D443, D446).
+    pub fn is_personal(&self) -> bool {
+        matches!(self, Self::Personnelle | Self::Sensible)
+    }
 }
 
 /// Languages a value label may carry.
@@ -210,6 +239,8 @@ impl<'de> Deserialize<'de> for PropertyDef {
             colors: std::collections::BTreeMap<String, String>,
             #[serde(default)]
             labels: std::collections::BTreeMap<String, super::Names>,
+            #[serde(default)]
+            classification: Classification,
         }
         #[derive(Deserialize, Default)]
         #[serde(default)]
@@ -289,6 +320,7 @@ impl<'de> Deserialize<'de> for PropertyDef {
             pack: h.pack,
             colors: h.colors,
             labels: h.labels,
+            classification: h.classification,
         })
     }
 }
@@ -601,6 +633,7 @@ mod tests {
             pack: None,
             colors: Default::default(),
             labels: Default::default(),
+            classification: Default::default(),
         }
     }
 

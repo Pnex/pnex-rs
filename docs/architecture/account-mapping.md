@@ -14,7 +14,7 @@ Voir un compte comme un **réseau daté** (groupe, filiales, établissements, di
 
 ## 2. Non-objectifs
 
-- **Pas de CRM** : ni pipeline d'opportunités, ni devis, ni séquences d'e-mails, ni comptes rendus de réunion. PNEX cartographie et signale ; le suivi commercial reste dans l'outil de vente.
+- ~~**Pas de CRM**~~ : revu le 2026-10-26 par `crm.md` D448 — le suivi commercial (opportunités, activités, plans de relance) est un pack `crm` à part, hors du noyau ; ni devis ni envoi automatique.
 - **Pas de connecteur CRM** dans ce PRD.
 - **Pas de découverte automatique de personnes** (D254 inchangé) : aucune recherche de profils, aucun parcours de graphe social, aucun rafraîchissement automatique d'un profil de réseau social.
 - **Pas de type « entreprise » ou « compte »** à côté de `organization` (même raison que D304 : un second type couperait le graphe en deux).
@@ -111,6 +111,8 @@ Nouveau nœud `org_resolve` : entrée nom + ville (ou code postal) ; il interrog
 
 > **Amendé et livré le 2026-10-21 (sans l'extraction)** : la capture est **générique par réseau** (LinkedIn, X, Facebook, Instagram, TikTok, YouTube) et **toujours rattachée à une `person`**. Elle prend la forme d'une mission `capture_profile` créée par le serveur seul : `POST /api/v1/extension/people/{id}/profile-captures`, exclue du MCP et de l'assistant (motif « outward »). La reconnaissance d'un profil (`browser_agent::profile_of`, partagée par le serveur et l'agent) rend une adresse canonique, et toute autre page d'un réseau connu reçoit `ext-target-not-profile`. À l'arrivée de la page : document `published_by` la personne, adresse = `identifier` `account` relié par `uses_identifier`, mission close. Un renvoi vers une page de connexion ou de vérification bloque la mission (`ext-login-required`, `ext-challenge`).
 > Plafond : 30 captures par jour, **par org et par réseau** (l'agent n'est connu qu'à l'exécution), code `ext-profile-daily-cap`. Le texte capturé est purgé après 30 jours (pruner `profiles`). L'extraction par LLM (flow du pack, « à valider ») reste au lot suivant.
+> **D341, fin (2026-10-26)** : classification, masquage par rôle, base légale, file de rétention, effacement en coquille et opposition au moteur sont décrits et codés dans `crm.md` D442–D447.
+>
 > **D341, minimum livré** : liste `prospection_oppositions` (empreintes `person:<uuid>` et adresses de profil canoniques, qui survivent à la personne). « Enregistrer son opposition » sur la fiche, confirmée deux fois et sans retour arrière dans l'UI, ferme les captures en attente et refuse les suivantes (`prospection-opposed`). La classification D298, la base légale affichée, la file de rétention à 36 mois et l'effacement restent à faire.
 
 ### D334 — Changement de poste : registre, recapture humaine et rappel

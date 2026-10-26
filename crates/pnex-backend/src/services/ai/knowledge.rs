@@ -421,6 +421,7 @@ mod tests {
                 "troubleshooting-notify-not-sent",
             ),
             ("conversation history privacy erase", "assistant"),
+            ("contact retention erasure GDPR", "personal-data"),
         ] {
             let hits = search(query, 3);
             assert!(

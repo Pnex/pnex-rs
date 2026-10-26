@@ -21,6 +21,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOr
 use serde_json::Value;
 use uuid::Uuid;
 
+use super::redact::Redaction;
 use super::{invalid, links, objects, query, schema, Actor, OntologyError, Result};
 use crate::models::_entities::sea_orm_active_enums::OrgMemberRole;
 use crate::models::_entities::{flow_versions, flows, resource_edges};
@@ -142,7 +143,9 @@ pub async fn query(
         traverse: config.traverse.clone(),
         ..Default::default()
     };
-    let result = query::run(db, None, req.node.org_id, &q).await?;
+    // A deployed flow reads what its deployer's org holds; its outputs are
+    // not an ontology read of a member (masking applies where they surface).
+    let result = query::run(db, None, req.node.org_id, &q, Redaction::NONE).await?;
     let mut links = joined_links(db, req.node.org_id, &result, &config.with_links).await?;
     Ok(FlowQueryReply {
         count: result.count,

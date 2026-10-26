@@ -70,6 +70,16 @@ fn onto_error(e: OntologyError) -> ToolError {
             None,
         ),
         OntologyError::LinkNotAllowed => coded(c::ONTOLOGY_LINK_NOT_ALLOWED, "this link type does not connect objects of these types — check describe_ontology".into(), None),
+        OntologyError::Erased => coded(
+            c::ONTOLOGY_ERASED,
+            "this object was erased (personal data): never edit nor link it, tell the user".into(),
+            None,
+        ),
+        OntologyError::Opposed => coded(
+            c::PROSPECTION_OPPOSED,
+            "this person objected to the processing of their data: never link them again, tell the user".into(),
+            None,
+        ),
         OntologyError::LinkCardinality => coded(
             c::ONTOLOGY_LINK_CARDINALITY,
             "an open link already takes this place: close it first (close_link), then open the new one".into(),
@@ -142,15 +152,33 @@ pub async fn describe_ontology(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolE
     }))
 }
 
+/// What the member may not read (crm.md D443), with the schema it needs.
+async fn masking(
+    deps: &ToolDeps<'_>,
+) -> Result<Option<(onto::redact::Redaction, onto::OrgSchema)>, ToolError> {
+    let m = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    if m.is_none() {
+        return Ok(None);
+    }
+    let s = onto::schema(deps.db, deps.org_id)
+        .await
+        .map_err(|e| ToolError::from(e.to_string()))?;
+    Ok(Some((m, s)))
+}
+
 /// D185 query, capped for the model.
 pub async fn query_ontology(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let mut q: OntologyQuery =
         serde_json::from_value(args.get("query").cloned().unwrap_or(json!({})))
             .map_err(|e| ToolError::from(format!("invalid query: {e}")))?;
     q.limit = Some(q.limit.unwrap_or(20).min(QUERY_CAP));
-    let r = query::run(deps.db, deps.o2, deps.org_id, &q)
+    let hide = onto::redact::Redaction::of(|p| deps.grants.can(p));
+    let mut r = query::run(deps.db, deps.o2, deps.org_id, &q, hide)
         .await
         .map_err(onto_error)?;
+    if let Some((m, s)) = masking(deps).await? {
+        m.query(&s, &mut r);
+    }
     outcome(json!({ "count": r.count, "rows": r.rows }))
 }
 
@@ -257,12 +285,16 @@ pub async fn case_proposals(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOut
 /// One object with its links valid now.
 pub async fn get_object(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let id = uuid_arg(args, "object_id")?;
-    let o = objects::get(deps.db, deps.org_id, id)
+    let mut o = objects::get(deps.db, deps.org_id, id)
         .await
         .map_err(onto_error)?;
-    let l = links::for_object(deps.db, deps.org_id, id, None, false)
+    let mut l = links::for_object(deps.db, deps.org_id, id, None, false)
         .await
         .map_err(onto_error)?;
+    if let Some((m, s)) = masking(deps).await? {
+        m.object(&s, &mut o);
+        l.iter_mut().for_each(|x| m.link(&s, x));
+    }
     outcome(json!({ "object": o, "links": l }))
 }
 
