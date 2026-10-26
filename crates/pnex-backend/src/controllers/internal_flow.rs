@@ -60,6 +60,9 @@ pub fn routes() -> Routes {
         .add("/internal/flow/ontology/query", post(flow_ontology_query))
         .add("/internal/flow/ontology/upsert", post(flow_ontology_upsert))
         .add("/internal/flow/ontology/link", post(flow_ontology_link))
+        // Stored mails replayed to mail_received nodes (mail.md D464).
+        .add("/internal/flow/mail/replay", post(flow_mail_replay))
+        .add("/internal/flow/mail/ack", post(flow_mail_ack))
         // Website navigation rules played by flows (site-recipes.md D327).
         .add("/internal/flow/site-recipe", post(flow_site_recipe))
         // Web search candidates of web_search nodes (web-presence.md D361).
@@ -660,6 +663,42 @@ async fn flow_ontology_query(
     }
     let r = crate::services::ontology::flow_nodes::query(&ctx.db, &req).await;
     ontology_reply(req.node.org_id, r)
+}
+
+/// `POST /internal/flow/mail/replay` — the stored mails a `mail_received`
+/// node missed since its cursor (mail.md D464).
+async fn flow_mail_replay(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::mail::MailReplayRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::mail::replay::replay(&ctx.db, &req)
+        .await
+        .map(|messages| pnex_core::mail::MailReplayReply { messages });
+    ontology_reply(req.node.org_id, r)
+}
+
+/// `POST /internal/flow/mail/ack` — the node emitted a mail: its cursor
+/// moves forward.
+async fn flow_mail_ack(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    axum::Json(req): axum::Json<pnex_core::mail::MailAckRequest>,
+) -> Result<Response> {
+    if !flow_token_ok(&ctx, &headers) {
+        return Ok(StatusCode::UNAUTHORIZED.into_response());
+    }
+    if let Some(r) = fenced(&ctx, &headers, req.node.org_id).await {
+        return Ok(r);
+    }
+    let r = crate::services::mail::replay::ack(&ctx.db, &req).await;
+    ontology_reply(req.node.org_id, r.map(|()| serde_json::json!({})))
 }
 
 async fn flow_ontology_upsert(

@@ -381,6 +381,34 @@ pub struct MailEvent {
     pub message: MailMessage,
 }
 
+/// Stored mails replayed to a `mail_received` node when it starts (D464):
+/// at most this many…
+pub const REPLAY_MAX: usize = 200;
+/// …received in the last days only.
+pub const REPLAY_DAYS: i64 = 7;
+
+/// `POST /internal/flow/mail/replay`: the mails the node missed since its
+/// cursor (none on its first start: the cursor begins then).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailReplayRequest {
+    pub node: crate::ontology::flow::FlowNodeRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailReplayReply {
+    /// Oldest first, already filtered by the node's deployed config.
+    pub messages: Vec<MailMessage>,
+}
+
+/// `POST /internal/flow/mail/ack`: the node emitted this mail; its cursor
+/// moves forward (never back).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MailAckRequest {
+    pub node: crate::ontology::flow::FlowNodeRef,
+    /// The mail's id (`MailMessage.id`).
+    pub id: String,
+}
+
 // ───────────────────────────── loops (D457) ─────────────────────────────
 
 /// Whether the headers mark an automatic message: an auto-reply, a list, a

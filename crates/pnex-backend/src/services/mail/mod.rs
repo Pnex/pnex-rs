@@ -7,6 +7,7 @@
 pub mod imap;
 pub mod parse;
 pub mod poller;
+pub mod replay;
 pub mod verify;
 
 use std::collections::HashMap;

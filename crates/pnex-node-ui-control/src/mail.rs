@@ -6,10 +6,11 @@
 //! stamped by the deploy projection and emits one message per mail of its
 //! mailboxes that passes its filters (`payload` = the mail, `topic` = its
 //! subject). The deploy checked that whoever deployed reads these
-//! mailboxes. No replay: a mail arriving while the flow is stopped stays in
-//! the mailbox.
+//! mailboxes. Each session (start, redeploy, a reconnect to Valkey) first
+//! subscribes, then replays from the backend the stored mails emitted
+//! after the node's cursor (D464), and acknowledges every mail it emits.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -26,10 +27,19 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
-use pnex_core::mail::{mail_channel, MailEvent, MailReceivedConfig};
+use pnex_core::mail::{
+    mail_channel, MailAckRequest, MailEvent, MailMessage, MailReceivedConfig, MailReplayReply,
+    MailReplayRequest,
+};
+use pnex_core::ontology::flow::FlowNodeRef;
 
 const NODE: &str = "pnex-mail-received";
 const BACKOFF_MAX_SECS: u64 = 30;
+const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
+/// Mail ids already emitted this run (replay and live may cross).
+const SEEN_MAX: usize = 10_000;
+/// Attempts of a replay or an acknowledgement (about a minute in all).
+const RETRIES: u64 = 7;
 
 #[derive(Debug, Deserialize)]
 struct NodeConfig {
@@ -47,6 +57,12 @@ struct NodeConfig {
     /// Stamped by the deploy projection.
     #[serde(default)]
     pnex_org_id: i64,
+    #[serde(default)]
+    pnex_flow_id: i64,
+    #[serde(default)]
+    pnex_version: i64,
+    #[serde(default)]
+    pnex_node_id: String,
 }
 
 fn yes() -> bool {
@@ -71,6 +87,67 @@ struct MailReceivedNode {
     config: NodeConfig,
     trigger: MailReceivedConfig,
     client: redis::Client,
+    /// Replay and acknowledgements; `None` without the runtime env.
+    backend: Option<Backend>,
+    seen: std::sync::Mutex<HashSet<String>>,
+}
+
+/// `/internal/flow/mail/{replay,ack}` of the backend (D464).
+struct Backend {
+    http: reqwest::Client,
+    base: String,
+    token: String,
+}
+
+impl Backend {
+    fn from_env() -> Option<Self> {
+        let base = std::env::var("PNEX_FLOW_MAIL_URL").ok()?;
+        let token = std::env::var("PNEX_FLOW_WRITE_TOKEN").ok()?;
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .ok()?;
+        Some(Self {
+            http,
+            base: base.trim_end_matches('/').to_string(),
+            token,
+        })
+    }
+
+    /// POSTs `body`. The flow is marked deployed only once the runtime
+    /// acknowledged it, after this node started: a refusal is retried for a
+    /// short while (2, 4, 6… s).
+    async fn post<T: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &T,
+        stop: &CancellationToken,
+    ) -> std::result::Result<reqwest::Response, String> {
+        let mut last = String::new();
+        for attempt in 1..=RETRIES {
+            let res = self
+                .http
+                .post(format!("{}/{path}", self.base))
+                .header(FLOW_TOKEN_HEADER, &self.token)
+                .header(
+                    pnex_core::FLOW_WORKER_HEADER,
+                    pnex_core::flow_worker_fence().unwrap_or_default(),
+                )
+                .json(body)
+                .send()
+                .await
+                .and_then(|r| r.error_for_status());
+            match res {
+                Ok(r) => return Ok(r),
+                Err(e) => last = e.to_string(),
+            }
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                _ = tokio::time::sleep(Duration::from_secs(2 * attempt)) => {}
+            }
+        }
+        Err(last)
+    }
 }
 
 /// Message body of one mail.
@@ -116,12 +193,92 @@ impl MailReceivedNode {
         let client = redis::Client::open(url.as_str()).map_err(|e| {
             EdgelinkError::InvalidOperation(format!("{NODE} : invalid VALKEY_URL: {e}"))
         })?;
+        let backend = Backend::from_env();
+        if backend.is_none() {
+            log::warn!("{NODE} : PNEX_FLOW_MAIL_URL unset, the mails missed while stopped are not replayed");
+        }
         Ok(Box::new(MailReceivedNode {
             base: base_node,
             trigger: cfg.trigger(),
             config: cfg,
             client,
+            backend,
+            seen: std::sync::Mutex::new(HashSet::new()),
         }))
+    }
+
+    fn node_ref(&self) -> FlowNodeRef {
+        FlowNodeRef {
+            org_id: self.config.pnex_org_id,
+            flow_id: self.config.pnex_flow_id,
+            version: self.config.pnex_version,
+            node_id: self.config.pnex_node_id.clone(),
+        }
+    }
+
+    /// Emits a mail once per run, then moves the node's cursor.
+    async fn emit(&self, m: MailMessage, stop: &CancellationToken) {
+        {
+            let mut seen = self.seen.lock().expect("mail seen");
+            if seen.len() >= SEEN_MAX {
+                seen.clear();
+            }
+            if !seen.insert(m.id.clone()) {
+                return;
+            }
+        }
+        let id = m.id.clone();
+        let envelope = Envelope {
+            port: 0,
+            msg: MsgHandle::with_properties(body_of(&MailEvent { message: m })),
+        };
+        if let Err(e) = self.fan_out_one(envelope, stop.child_token()).await {
+            log::warn!("{NODE} [{}] : fan-out failed: {e}", self.name());
+            return;
+        }
+        if let Some(b) = &self.backend {
+            let req = MailAckRequest {
+                node: self.node_ref(),
+                id,
+            };
+            if let Err(e) = b.post("ack", &req, stop).await {
+                log::warn!("{NODE} [{}] : ack refused: {e}", self.name());
+            }
+        }
+    }
+
+    /// The stored mails missed since the cursor, oldest first.
+    async fn replay(&self, stop: &CancellationToken) {
+        let Some(b) = &self.backend else {
+            return;
+        };
+        let req = MailReplayRequest {
+            node: self.node_ref(),
+        };
+        let reply = match b.post("replay", &req, stop).await {
+            Ok(r) => r.json::<MailReplayReply>().await.map_err(|e| e.to_string()),
+            Err(e) => Err(e),
+        };
+        match reply {
+            Ok(r) => {
+                if !r.messages.is_empty() {
+                    log::info!(
+                        "{NODE} [{}] : {} missed mails replayed",
+                        self.name(),
+                        r.messages.len()
+                    );
+                }
+                for m in r.messages {
+                    if stop.is_cancelled() {
+                        return;
+                    }
+                    if self.trigger.accepts(&m) {
+                        self.emit(m, stop).await;
+                    }
+                }
+            }
+            Err(e) => log::warn!("{NODE} [{}] : replay failed: {e}", self.name()),
+        }
     }
 
     /// One subscription session: returns when the connection drops (the
@@ -139,6 +296,8 @@ impl MailReceivedNode {
             .map_err(|e| format!("valkey subscribe failed: {e}"))?;
         log::info!("{NODE} [{}] : subscribed to {channel}", self.name());
         let mut stream = pubsub.on_message();
+        // Subscribed first: a mail stored meanwhile comes live or replayed.
+        self.replay(stop).await;
         loop {
             let msg = tokio::select! {
                 _ = stop.cancelled() => return Ok(()),
@@ -156,13 +315,7 @@ impl MailReceivedNode {
             if !self.trigger.accepts(&ev.message) {
                 continue;
             }
-            let envelope = Envelope {
-                port: 0,
-                msg: MsgHandle::with_properties(body_of(&ev)),
-            };
-            if let Err(e) = self.fan_out_one(envelope, stop.child_token()).await {
-                log::warn!("{NODE} [{}] : fan-out failed: {e}", self.name());
-            }
+            self.emit(ev.message, stop).await;
         }
     }
 }

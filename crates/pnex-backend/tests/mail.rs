@@ -337,6 +337,71 @@ async fn a_flow_listens_only_to_mailboxes_its_deployer_reads() {
 
 #[tokio::test]
 #[serial]
+async fn a_restarted_node_replays_the_mails_it_missed() {
+    with_app(|server, env| async move {
+        let (org, _, _) = setup(&server, &env).await;
+        let (_, own) = call(&server, "POST", "/api/v1/mailboxes", &env.alice, org,
+            Some(input("Alice", "alice@example.com", json!({})))).await;
+        let alice_box = own["id"].as_str().unwrap().to_string();
+        let graph = json!({"nodes": [
+            {"id": "mr", "kind": "mail_received",
+             "config": {"mailboxes": [alice_box], "from_contains": "acme"},
+             "outputs": [{"port": 0, "targets": ["dbg"]}]},
+            {"id": "dbg", "kind": "debug"}
+        ]});
+        let (_, f) = call(&server, "POST", "/api/v1/flows", &env.alice, org,
+            Some(json!({"name": "Inbox", "graph": graph}))).await;
+        let flow_id = f["id"].as_i64().unwrap();
+        // Marked deployed as the runtime would ack it (none in these tests).
+        use sea_orm::ConnectionTrait;
+        env.db.execute_unprepared(&format!(
+            "UPDATE flows SET status = '{}', deployed_version_id = \
+               (SELECT id FROM flow_versions WHERE flow_id = {flow_id} ORDER BY version_number DESC LIMIT 1) \
+             WHERE id = {flow_id}",
+            pnex_core::FLOW_STATUS_DEPLOYED
+        )).await.unwrap();
+        let node = |id: &str| pnex_core::ontology::flow::FlowNodeRef {
+            org_id: org,
+            flow_id,
+            version: 1,
+            node_id: id.into(),
+        };
+        let rq = || pnex_core::mail::MailReplayRequest { node: node("mr") };
+
+        // First start: the cursor begins, no history.
+        assert!(mail::replay::replay(&env.db, &rq()).await.unwrap().is_empty());
+
+        // Stopped meanwhile: two mails stored, one passes the node's filter.
+        let row = mail::find(&env.db, org, uuid::Uuid::parse_str(&alice_box).unwrap()).await.unwrap();
+        for (i, from) in ["Élodie <elodie@acme.fr>", "x@other.org"].iter().enumerate() {
+            mail::poller::store(&env.db, &row, "INBOX", i as u32 + 1, parsed(from, &format!("r{i}@x"), true, "Bonjour"), &[])
+                .await.unwrap().unwrap();
+        }
+        let missed = mail::replay::replay(&env.db, &rq()).await.unwrap();
+        assert_eq!(missed.iter().map(|m| m.from.address.as_str()).collect::<Vec<_>>(), ["elodie@acme.fr"]);
+
+        // Once emitted and acknowledged, never again; a new one comes.
+        let ak = |id: String| pnex_core::mail::MailAckRequest { node: node("mr"), id };
+        mail::replay::ack(&env.db, &ak(missed[0].id.clone())).await.unwrap();
+        assert!(mail::replay::replay(&env.db, &rq()).await.unwrap().is_empty());
+        mail::poller::store(&env.db, &row, "INBOX", 3, parsed("bob@acme.fr", "r3@x", true, "Suite"), &[])
+            .await.unwrap().unwrap();
+        let next = mail::replay::replay(&env.db, &rq()).await.unwrap();
+        assert_eq!(next.len(), 1);
+        // The cursor never moves back.
+        mail::replay::ack(&env.db, &ak(next[0].id.clone())).await.unwrap();
+        mail::replay::ack(&env.db, &ak(missed[0].id.clone())).await.unwrap();
+        assert!(mail::replay::replay(&env.db, &rq()).await.unwrap().is_empty());
+
+        // Another node, or a forged one, gets nothing.
+        let forged = mail::replay::replay(&env.db, &pnex_core::mail::MailReplayRequest { node: node("dbg") }).await;
+        assert!(forged.is_err());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn the_poller_records_a_server_it_cannot_reach() {
     with_app(|server, env| async move {
         let (org, _, _) = setup(&server, &env).await;

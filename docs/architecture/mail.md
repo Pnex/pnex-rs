@@ -134,6 +134,10 @@ Un commercial dont la boîte n'est pas connectée (Outlook d'entreprise, D459) t
 
 Une règle de **redirection** côté messagerie (qui garde l'expéditeur d'origine) n'a pas besoin de cette extraction ; elle reste soumise à l'authentification comme tout mail.
 
+### D464 — Un nœud qui redémarre rejoue les mails manqués
+
+La remise aux flows passe par une publication Valkey : un mail publié pendant qu'un flow est arrêté, en cours de redéploiement ou coupé du bus n'atteint jamais son nœud (constaté trois fois à l'essai du 2026-10-26). Chaque nœud `mail_received` garde un **curseur** en base (`mail_flow_cursors`, par flow et nœud, effacé avec le flow) : à chaque session (démarrage, redéploiement, reconnexion à Valkey), il s'abonne d'abord, puis demande au backend (`/internal/flow/mail/replay`, jeton de service et fencing comme les nœuds d'ontologie) les mails stockés après son curseur, filtrés par sa configuration **déployée** (les boîtes vérifiées au déploiement, D454), au plus 200 et des 7 derniers jours, du plus ancien au plus récent ; il accuse chaque mail émis (`/ack`), en direct ou rejoué, et le curseur n'avance que vers l'avant. Un mail croisé entre direct et rejeu n'est émis qu'une fois. Le premier déploiement pose le curseur à « maintenant » : pas d'historique déversé dans un flow neuf.
+
 ## 4. Ce que le système ne fait pas
 
 - Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
@@ -188,6 +192,7 @@ Une règle de **redirection** côté messagerie (qui garde l'expéditeur d'origi
 | D461 | Conservation par boîte, effacement et opposition |
 | D462 | Les packs livrent leurs flows ; rien au moteur |
 | D463 | Un transfert d'un membre est rangé sous l'expéditeur d'origine |
+| D464 | Un nœud `mail_received` qui redémarre rejoue les mails stockés après son curseur (200 au plus, 7 jours), jamais deux fois ; le premier déploiement part de maintenant |
 
 ## 9. État
 

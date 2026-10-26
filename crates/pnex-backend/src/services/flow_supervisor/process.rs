@@ -96,6 +96,12 @@ pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &Fl
                 "PNEX_FLOW_ONTOLOGY_URL",
                 url.replace("/internal/flow/device-write", "/internal/flow/ontology"),
             )
+            // Replay of stored mails (mail_received nodes, mail.md D464): base
+            // of `/internal/flow/mail/{replay,ack}`.
+            .env(
+                "PNEX_FLOW_MAIL_URL",
+                url.replace("/internal/flow/device-write", "/internal/flow/mail"),
+            )
             // Website navigation rules (site-recipes.md D327).
             .env(
                 "PNEX_FLOW_SITE_RECIPE_URL",
