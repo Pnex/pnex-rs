@@ -52,7 +52,7 @@ device (wss)     ──►  /ws/*       ─► pnex-server :5150 (upgrade websoc
   `rauthy:lan` (URIs par IP) inutile en mode edge.
 - **Nom collant** : une fois choisi, `PNEX_DOMAIN` est relu depuis
   `edge.env` à chaque `edge:up` (auto-détection au tout premier seulement).
-  Constat 2026-09-27 : la Freebox a « oublié » `shan-pc.home` (entrée
+  Constat 2026-09-27 : la Freebox a « oublié » le nom `.home` de la machine (entrée
   DNS liée au bail DHCP) → une relance a basculé sur `.local`, issuer et
   client OIDC compris. Le DNS de la box n'est **pas** une base fiable pour
   les devices.

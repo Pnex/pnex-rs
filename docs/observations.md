@@ -791,8 +791,8 @@ carte (11°, 5 jours) ; mémoire lisible comme source de carte.
 ## 2026-10-07 — mise en place de la démo « Usine pilote » sur dev.pnex.io (0.1.0-beta.6, Helm)
 
 Contexte : réinstallation à neuf du cluster perso (chart pnex 0.2.0,
-`values-dev.yaml`), org « Usine pilote » montée par API (scripts du pitch
-`pnex-pitch/capture`), cartes réelles : NodeMCU V3 OLED, ESP32-C6-Zero
+`values-dev.yaml`), org « Usine pilote » montée par API (scripts de capture du pitch),
+cartes réelles : NodeMCU V3 OLED, ESP32-C6-Zero
 (firmware custom LED RGB), ESP32-CAM.
 
 ### O35 — Splat : on tourne autour, on ne s'y promène pas

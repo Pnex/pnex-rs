@@ -968,7 +968,10 @@ mod tests {
         let chain = parse_forward_chain("Fwd: Fwd: Devis", text);
         let hops: Vec<&str> = chain.iter().map(|f| f.from.address.as_str()).collect();
         assert_eq!(hops, ["alice@example.com", "elodie@acme.fr"]);
-        let members = ["bob@example.com".to_string(), "alice@example.com".to_string()];
+        let members = [
+            "bob@example.com".to_string(),
+            "alice@example.com".to_string(),
+        ];
         let origin = forward_origin(chain.clone(), &members).unwrap();
         assert_eq!(origin.from.address, "elodie@acme.fr");
         assert_eq!(origin.date.as_deref(), Some("2026-10-26T09:12:00+01:00"));
