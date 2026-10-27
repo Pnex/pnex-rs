@@ -22,6 +22,7 @@ pub mod diagnose;
 pub mod doc_tools;
 pub mod error;
 pub mod knowledge;
+pub mod mail_tools;
 pub mod more_tools;
 pub mod ontology_tools;
 pub mod provider;

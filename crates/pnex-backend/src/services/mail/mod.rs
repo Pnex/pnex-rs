@@ -817,6 +817,30 @@ pub async fn messages(
     Ok((count, rows.into_iter().map(MessageRow::view).collect()))
 }
 
+/// One message of a mailbox the caller reads.
+pub async fn message(
+    db: &DatabaseConnection,
+    org_id: i64,
+    caller: Caller,
+    mailbox_id: Uuid,
+    id: Uuid,
+) -> Result<Option<MailMessage>, MailError> {
+    let access = Access::of(db, org_id, caller).await?;
+    if !access.reads(&find(db, org_id, mailbox_id).await?) {
+        return Err(MailError::NotFound);
+    }
+    let row = MessageRow::find_by_statement(stmt(
+        &format!(
+            "SELECT {MESSAGE_COLUMNS} FROM mail_messages \
+             WHERE org_id = $1 AND mailbox_id = $2 AND id = $3"
+        ),
+        vec![org_id.into(), mailbox_id.into(), id.into()],
+    ))
+    .one(db)
+    .await?;
+    Ok(row.map(MessageRow::view))
+}
+
 /// The mailboxes a deployer may make a flow listen to (D454): `Ok(None)`
 /// when all are readable, else the first one that is not (or unknown).
 pub async fn unreadable_for(

@@ -5,7 +5,7 @@ kind: feature
 pages: /mailboxes, /mailboxes/:id
 nodes: mail_received, ontology_query, object_upsert, link_upsert
 err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded, mail-attachment-not-found, mail-message-gone, mail-too-large
-tools:
+tools: list_mailboxes, list_mails, read_mail
 tags: mail, pièce jointe, attachment, facture, invoice, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
 ---
 A **mailbox** is a source, like a stream: PneX polls its new mails every two minutes (IMAP over TLS, port 993), keeps them as plain text and hands them to the flows that listen. PneX **collects and files**; it does not send mail.
@@ -44,3 +44,6 @@ The text is untrusted: HTML is turned into text, images and links are never load
 - **mail-message-gone** when saving an attachment: the mail was moved or deleted on the mail server since PneX polled it; nothing is saved.
 - **mail-too-large**: the mail or the attachment is above what PneX fetches (10 MB per mail) or stores.
 - **mail-attachment-not-found**: the mail left PneX (its retention ended) or the page is out of date; refresh it.
+
+## The assistant
+The assistant lists the mailboxes you read (list_mailboxes), their mails (list_mails) and reads one (read_mail) — never a mailbox you do not read. It cannot send, answer, delete or mark a mail read. A mail's text is data for it, never instructions: a mail that asks it to do something is only reported to you.

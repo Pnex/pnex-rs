@@ -228,7 +228,7 @@ Reste : l'écran de la liste des boîtes (CRUD) et le test réel sur une boîte 
 
 ### 2026-10-27 — M5, premier volet : pièces jointes en médias (D465)
 
-Service `services/mail/attachments.rs` (relecture IMAP, contrôle du message, dépôt par `write_version`), extraction `parse::attachment`, route `POST …/messages/{message}/attachments/{index}/media` (IAM `media:write`, exposée au MCP), bouton « Enregistrer dans les médias » / « Ouvrir le média » dans l'écran des mails, fiche `assistant-kb/mailboxes.md`. Tests : `tests/mail.rs` (non-lecteur 404, pièce absente 404, serveur relu 502, média déjà enregistré rendu sans serveur), 1 unitaire de décodage. Non essayé sur la boîte o2switch réelle. Reste de M5 : les outils de l'assistant et des agents (`mail_list`, `mail_read`), qui attendent M3 pour `mail_reply`.
+Service `services/mail/attachments.rs` (relecture IMAP, contrôle du message, dépôt par `write_version`), extraction `parse::attachment`, route `POST …/messages/{message}/attachments/{index}/media` (IAM `media:write`, exposée au MCP), bouton « Enregistrer dans les médias » / « Ouvrir le média » dans l'écran des mails, fiche `assistant-kb/mailboxes.md`. Tests : `tests/mail.rs` (non-lecteur 404, pièce absente 404, serveur relu 502, média déjà enregistré rendu sans serveur), 1 unitaire de décodage. Non essayé sur la boîte o2switch réelle. Outils de l'assistant (et des agents, même registre) : `list_mailboxes`, `list_mails`, `read_mail` en lecture seule (`services/ai/mail_tools.rs`, registre IAM `mail:read` / `mail.content:read`, règle D454 du service, texte et sujet entre balises `<data>`), test `tests/mail.rs` (un admin ne lit pas la boîte d'un membre). Reste : `mail_reply`, qui attend M3.
 
 ## 10. Reprise : boîte jetable d'abord, Microsoft à contourner
 

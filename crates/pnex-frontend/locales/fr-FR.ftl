@@ -4866,6 +4866,9 @@ ai-trace-action-proposed = « { $action } » proposée sur « { $title } »
 ai-review-action = Vérifier et exécuter « { $action } »
 ai-trace-calendar = { $count } occurrence(s) au calendrier
 ai-trace-site-recipes = { $count } règle(s) de navigation
+ai-trace-mailboxes = { $count } boîte(s) mail
+ai-trace-mails = { $count } mail(s)
+ai-trace-mail = mail lu
 ai-trace-site-recipe = règle « { $name } » lue
 ai-trace-site-recipe-run = passage { $status ->
     [ok] réussi
