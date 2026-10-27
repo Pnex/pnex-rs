@@ -515,7 +515,7 @@ Limites :
   moment de poser le lien.
 - **Pack `prospection_b2b`** : lien `page_sur` (`doc` → `organization`) et
   trois modèles sur `organization`, `plan_de_compte`, `fiche_concurrent`
-  et `preparation_rdv` (fiche de préparation de rendez-vous, utilisée par
+  et `meeting_prep` (fiche de préparation de rendez-vous, utilisée par
   le bloc réunions). La validation des packs vérifie que le lien d'un
   modèle admet `doc` → son type.
 - **UI** : bouton « Nouvelle page » sur la page d'un objet, quand un
@@ -528,16 +528,16 @@ Limites :
 
 ### Réunions : préparation, enregistrement, compte rendu, coaching (2026-10-22, non commité)
 
-- **Préparation** : modèle `preparation_rdv` (voir D340 ci-dessus), ouvert
+- **Préparation** : modèle `meeting_prep` (voir D340 ci-dessus), ouvert
   depuis l'organisation.
 - **Objets** (pack `prospection_b2b`) :
-  - `rendez_vous` (date, objet, statut `prevu` / `tenu` / `annule` coloré,
+  - `meeting` (date, objet `purpose`, statut `status` : `planned` / `held` / `cancelled` coloré,
     lieu, suite) ;
-  - `critere_coaching` (la liste de l'org : description, persona visé,
+  - `coaching_criterion` (la liste de l'org : description, persona visé,
     actif) ;
-  - liens `rdv_avec` (→ organisation ou site), `participe_a` (personne →,
-    côté `interne` | `client`), `enregistrement_de` (média →), `aborde`
-    (→ critère, commentaire) ; `page_sur` admet `rendez_vous`.
+  - liens `meeting_with` (→ organisation ou site), `takes_part_in` (personne →,
+    côté `side` : `internal` | `customer`), `recording_of` (média →), `covered`
+    (→ critère, commentaire) ; `page_sur` admet `meeting`.
 - **Enregistrement et résumé** : rien de nouveau dans les médias. On
   dépose le fichier, puis transcription, locuteurs et voix connues comme
   avant. Seul ajout générique : l'étape `summarize` accepte `focus`
@@ -546,7 +546,7 @@ Limites :
   - Le focus façonne la passe finale : une section `##` par point, « — »
     si l'enregistrement n'en dit rien.
   - Il vient de l'utilisateur, jamais du fichier, qui reste une donnée.
-- **Compte rendu** : modèle `debrief_rdv` sur `rendez_vous` (compte,
+- **Compte rendu** : modèle `meeting_debrief` sur `meeting` (compte,
   participants, enregistrement, critères abordés, puis sections à remplir
   après relecture). Le résumé du LLM reste une page à part, à valider :
   rien n'est recopié automatiquement.

@@ -39,18 +39,18 @@
 # `personnelle`; `opposition_le` records an objection (prospecting flows
 # skip the person); the legal basis shown on a person and the retention
 # period of the erasure queue are settings of the org.
-# Meetings: a `rendez_vous` with an account, its participants (ours and
+# Meetings: a `meeting` with an account, its participants (ours and
 # theirs), its recording (a media: transcription and summary with a focus
 # are the media analyses), its debrief page, and the criteria of the org's
-# sales playbook it covered (`critere_coaching`, the org's own list). The
+# sales playbook it covered (`coaching_criterion`, the org's own list). The
 # coaching reads per criterion how many meetings covered it: aggregates of
 # the team's practice, never a score of a person. A meeting read from a
 # mail invitation (crm pack) is keyed by the invitation's iCalendar UID
-# (`id_invitation`): an update moves it, a cancellation marks it.
+# (`invitation_uid`): an update moves it, a cancellation marks it.
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.6.0"
+version: "1.7.0"
 requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -146,44 +146,44 @@ link_types:
     inverse_name: has as page
     inverse_names: {fr: "a pour page"}
     from_types: [doc]
-    to_types: [organization, rendez_vous]
-  - key: participe_a
+    to_types: [organization, meeting]
+  - key: takes_part_in
     name: takes part in
     names: {fr: "participe à"}
     inverse_name: has as participant
     inverse_names: {fr: "a pour participant"}
     from_types: [person]
-    to_types: [rendez_vous]
+    to_types: [meeting]
     attributes:
-      - key: cote
+      - key: side
         name: Side
         names: {fr: "Côté"}
         kind: enum
-        values: [interne, client]
-        labels: {interne: {fr: "Interne", en: "Internal"}, client: {fr: "Client", en: "Customer"}}
-  - key: rdv_avec
+        values: [internal, customer]
+        labels: {internal: {fr: "Interne", en: "Internal"}, customer: {fr: "Client", en: "Customer"}}
+  - key: meeting_with
     name: is a meeting with
     names: {fr: "est un rendez-vous avec"}
     inverse_name: has as meeting
     inverse_names: {fr: "a pour rendez-vous"}
-    from_types: [rendez_vous]
+    from_types: [meeting]
     to_types: [organization, map_pin]
-  - key: enregistrement_de
+  - key: recording_of
     name: is the recording of
     names: {fr: "est l'enregistrement de"}
     inverse_name: has as recording
     inverse_names: {fr: "a pour enregistrement"}
     from_types: [media_asset]
-    to_types: [rendez_vous]
-  - key: aborde
+    to_types: [meeting]
+  - key: covered
     name: covered
     names: {fr: "a abordé"}
     inverse_name: was covered in
     inverse_names: {fr: "abordé lors de"}
-    from_types: [rendez_vous]
-    to_types: [critere_coaching]
+    from_types: [meeting]
+    to_types: [coaching_criterion]
     attributes:
-      - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 1000 }
+      - { key: comment, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 1000 }
   - key: utilise_solution
     name: uses the solution of
     names: {fr: "utilise la solution de"}
@@ -214,8 +214,8 @@ hierarchies:
     name: Coaching
     names: {fr: "Coaching"}
     steps:
-      - { link: aborde, inverse: true }
-      - { link: rdv_avec }
+      - { link: covered, inverse: true }
+      - { link: meeting_with }
 types:
   - key: page_suivie
     name: Watched page
@@ -227,25 +227,25 @@ types:
       - { key: modifiee, name: Changed, names: {fr: "Modifiée"}, kind: bool, indexed: true }
       - { key: compte, name: Account (id), names: {fr: "Compte (id)"}, kind: text, max_len: 36 }
       - { key: derniere_vue, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
-  - key: rendez_vous
+  - key: meeting
     name: Meeting
     names: {fr: "Rendez-vous"}
     icon: user
     properties:
       - { key: date, name: Date, names: {fr: "Date"}, kind: date_time, indexed: true }
-      - { key: objet, name: Purpose, names: {fr: "Objet"}, kind: text, max_len: 500 }
-      - key: statut
+      - { key: purpose, name: Purpose, names: {fr: "Objet"}, kind: text, max_len: 500 }
+      - key: status
         name: Status
         names: {fr: "Statut"}
         kind: enum
-        values: [prevu, tenu, annule]
-        labels: {prevu: {fr: "Prévu", en: "Planned"}, tenu: {fr: "Tenu", en: "Held"}, annule: {fr: "Annulé", en: "Cancelled"}}
-        colors: { prevu: blue, tenu: green, annule: gray }
+        values: [planned, held, cancelled]
+        labels: {planned: {fr: "Prévu", en: "Planned"}, held: {fr: "Tenu", en: "Held"}, cancelled: {fr: "Annulé", en: "Cancelled"}}
+        colors: { planned: blue, held: green, cancelled: gray }
         indexed: true
-      - { key: lieu, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
-      - { key: suite, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000 }
-      - { key: id_invitation, name: Invitation id, names: {fr: "Identifiant de l'invitation"}, kind: text, max_len: 1024, unique: true }
-  - key: critere_coaching
+      - { key: place, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
+      - { key: next_step, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000 }
+      - { key: invitation_uid, name: Invitation id, names: {fr: "Identifiant de l'invitation"}, kind: text, max_len: 1024, unique: true }
+  - key: coaching_criterion
     name: Playbook criterion
     names: {fr: "Critère du playbook"}
     icon: tag
@@ -257,7 +257,7 @@ types:
         kind: enum
         values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
         labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
-      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
+      - { key: active, name: Active, names: {fr: "Actif"}, kind: bool }
   - key: signal_commercial
     name: Commercial signal
     names: {fr: "Signal commercial"}
@@ -687,7 +687,7 @@ page_templates:
         ## Arguments de défense
 
         - À compléter
-  - key: preparation_rdv
+  - key: meeting_prep
     name: Meeting preparation
     names: {fr: "Préparation de rendez-vous"}
     description: Before meeting an account, everything known about it on one page, and the questions by persona.
@@ -773,31 +773,31 @@ page_templates:
         - Champion : irritants du terrain, ce qui le ferait gagner
         - Sponsor : priorités de l'entreprise, critères de décision
         - Utilisateur : usages actuels, ce qui manque
-  - key: debrief_rdv
+  - key: meeting_debrief
     name: Meeting debrief
     names: {fr: "Compte rendu de rendez-vous"}
     description: Who was there, with which account, the recording, the playbook criteria covered, then the summary, objections and next steps.
     descriptions: {fr: "Qui était là, avec quel compte, l'enregistrement, les critères du playbook abordés, puis le résumé, les objections et la suite."}
-    subject: rendez_vous
+    subject: meeting
     link: page_sur
     body: |
       # Meeting debrief — {{title}}
 
-      Meeting of {{prop:date}} · status {{prop:statut}} · {{prop:lieu}}
+      Meeting of {{prop:date}} · status {{prop:status}} · {{prop:place}}
 
-      Purpose: {{prop:objet}}
+      Purpose: {{prop:purpose}}
 
       ## Account
 
-      {{links:rdv_avec}}
+      {{links:meeting_with}}
 
       ## Participants
 
-      {{links:participe_a:in}}
+      {{links:takes_part_in:in}}
 
       ## Recording
 
-      {{links:enregistrement_de:in}}
+      {{links:recording_of:in}}
 
       The summary of the recording (the media's analyses, "Summarize" with what it should bring out) is a separate page: paste its gist here, once reviewed.
 
@@ -815,26 +815,26 @@ page_templates:
 
       ## Playbook criteria covered
 
-      {{links:aborde}}
+      {{links:covered}}
     bodies:
       fr: |
         # Compte rendu — {{title}}
 
-        Rendez-vous du {{prop:date}} · statut {{prop:statut}} · {{prop:lieu}}
+        Rendez-vous du {{prop:date}} · statut {{prop:status}} · {{prop:place}}
 
-        Objet : {{prop:objet}}
+        Objet : {{prop:purpose}}
 
         ## Compte
 
-        {{links:rdv_avec}}
+        {{links:meeting_with}}
 
         ## Participants
 
-        {{links:participe_a:in}}
+        {{links:takes_part_in:in}}
 
         ## Enregistrement
 
-        {{links:enregistrement_de:in}}
+        {{links:recording_of:in}}
 
         Le résumé de l'enregistrement (analyses du média, « Résumer » avec ce qu'il doit faire ressortir) est une page à part : collez-en l'essentiel ici, après relecture.
 
@@ -852,4 +852,4 @@ page_templates:
 
         ## Critères du playbook abordés
 
-        {{links:aborde}}
+        {{links:covered}}

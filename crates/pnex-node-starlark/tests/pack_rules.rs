@@ -765,27 +765,27 @@ fn a_finding_becomes_a_write_then_its_links() {
 /// start day plus the step's day, across month and leap-year ends.
 #[test]
 fn follow_up_steps_become_activities_due_on_their_day() {
-    let act = |jour0: &str, jour: i64| {
+    let act = |day0: &str, day: i64| {
         let msg = json!({
-            "payload": {"jour": jour, "kind": "mail", "consigne": "Relancer", "actif": true},
-            "object": {"id": "s1", "title": "J3"},
-            "opp": {"id": "o1", "titre": "Acme 2027", "contexte": "Compte : Acme", "jour0": jour0}
+            "payload": {"day": day, "kind": "mail", "instruction": "Follow up", "active": true},
+            "object": {"id": "s1", "title": "D3"},
+            "opp": {"id": "o1", "name": "Acme 2027", "context": "Account: Acme", "day0": day0}
         });
-        execute(&code_in(CRM, "crm_cadence_activite"), &msg, 2000)
+        execute(&code_in(CRM, "crm_cadence_activity"), &msg, 2000)
             .unwrap()
             .return_json
             .unwrap()
     };
     let r = act("2026-10-30", 3);
-    assert_eq!(r["payload"]["echeance"], "2026-11-02");
-    assert_eq!(r["payload"]["cle"], "cadence:o1:s1");
-    assert_eq!(r["payload"]["etat"], "a_faire");
-    assert_eq!(r["title"], "J3 · Acme 2027", "the step's own title");
-    assert_eq!(act("2028-02-27", 2)["payload"]["echeance"], "2028-02-29");
-    assert_eq!(act("2026-12-31", 14)["payload"]["echeance"], "2027-01-14");
-    assert_eq!(act("2026-01-01", 0)["payload"]["echeance"], "2026-01-01");
-    let off = json!({"payload": {"jour": 1, "kind": "appel", "actif": false}, "object": {"id": "s"}, "opp": {"id": "o", "titre": "T", "contexte": "", "jour0": "2026-01-01"}});
-    assert!(execute(&code_in(CRM, "crm_cadence_activite"), &off, 2000)
+    assert_eq!(r["payload"]["due_on"], "2026-11-02");
+    assert_eq!(r["payload"]["ref"], "cadence:o1:s1");
+    assert_eq!(r["payload"]["state"], "to_do");
+    assert_eq!(r["title"], "D3 · Acme 2027", "the step's own title");
+    assert_eq!(act("2028-02-27", 2)["payload"]["due_on"], "2028-02-29");
+    assert_eq!(act("2026-12-31", 14)["payload"]["due_on"], "2027-01-14");
+    assert_eq!(act("2026-01-01", 0)["payload"]["due_on"], "2026-01-01");
+    let off = json!({"payload": {"day": 1, "kind": "call", "active": false}, "object": {"id": "s"}, "opp": {"id": "o", "name": "T", "context": "", "day0": "2026-01-01"}});
+    assert!(execute(&code_in(CRM, "crm_cadence_activity"), &off, 2000)
         .unwrap()
         .return_json
         .is_none());
@@ -795,14 +795,14 @@ fn follow_up_steps_become_activities_due_on_their_day() {
 fn a_plan_never_starts_when_every_person_objected() {
     let msg = |opposed: bool| {
         json!({
-            "payload": {"etape": "qualification"},
+            "payload": {"stage": "qualification"},
             "object": {"id": "o1", "title": "Acme 2027"},
             "today": "2026-10-26",
             "links": {
-                "implique": [{"direction": "in", "attributes": {"role": "decideur"},
+                "involved_in": [{"direction": "in", "attributes": {"role": "decision_maker"},
                               "other": {"id": "p1", "type": "person", "title": "A",
                                         "properties": if opposed { json!({"opposition_le": "2026-10-01"}) } else { json!({}) }}}],
-                "opportunite_de": [{"direction": "out", "other": {"id": "a", "type": "organization", "title": "Acme", "properties": {}}}]
+                "opportunity_with": [{"direction": "out", "other": {"id": "a", "type": "organization", "title": "Acme", "properties": {}}}]
             }
         })
     };
@@ -810,12 +810,12 @@ fn a_plan_never_starts_when_every_person_objected() {
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r[0]["payload"]["cadence_lancee_le"], "2026-10-26");
+    assert_eq!(r[0]["payload"]["follow_up_started_on"], "2026-10-26");
     assert_eq!(
-        r[1]["opp"]["contexte"],
-        "Compte : Acme · contacts : decideur"
+        r[1]["opp"]["context"],
+        "Account: Acme · contacts: decision_maker"
     );
-    assert_eq!(r[1]["opp"]["jour0"], "2026-10-26");
+    assert_eq!(r[1]["opp"]["day0"], "2026-10-26");
     let r = execute(&code_in(CRM, "crm_cadence_start"), &msg(true), 2000)
         .unwrap()
         .return_json
@@ -826,37 +826,33 @@ fn a_plan_never_starts_when_every_person_objected() {
 
 #[test]
 fn missing_criteria_follow_the_stage_and_valid_links() {
-    let crit = |id: &str, title: &str, etape: &str, ordre: i64| json!({"id": id, "title": title, "properties": {"etape": etape, "ordre": ordre, "actif": true}});
-    let msg = |etape: &str, current: &str| {
+    let crit = |id: &str, title: &str, stage: &str, order: i64| json!({"id": id, "title": title, "properties": {"stage": stage, "order": order, "active": true}});
+    let msg = |stage: &str, current: &str| {
         json!({
-            "payload": {"etape": etape, "criteres_manquants": current},
+            "payload": {"stage": stage, "missing_criteria": current},
             "object": {"id": "o1", "title": "Acme"},
-            "criteres": [crit("c2", "Budget", "qualification", 2), crit("c1", "Douleur", "decouverte", 1), crit("c3", "Décideur", "proposition", 3)],
-            "links": {"qualifie": [{"direction": "out", "attributes": {"statut": "valide"}, "other": {"id": "c1"}},
-                                   {"direction": "out", "attributes": {"statut": "partiel"}, "other": {"id": "c2"}}]}
+            "criteria": [crit("c2", "Budget", "qualification", 2), crit("c1", "Pain", "discovery", 1), crit("c3", "Decision maker", "proposal", 3)],
+            "links": {"qualified_on": [{"direction": "out", "attributes": {"status": "valid"}, "other": {"id": "c1"}},
+                                   {"direction": "out", "attributes": {"status": "partial"}, "other": {"id": "c2"}}]}
         })
     };
     let r = execute(
-        &code_in(CRM, "crm_manquants"),
+        &code_in(CRM, "crm_missing"),
         &msg("qualification", ""),
         2000,
     )
     .unwrap()
     .return_json
     .unwrap();
-    assert_eq!(r["payload"]["criteres_manquants"], "Budget");
-    let r = execute(
-        &code_in(CRM, "crm_manquants"),
-        &msg("negociation", ""),
-        2000,
-    )
-    .unwrap()
-    .return_json
-    .unwrap();
-    assert_eq!(r["payload"]["criteres_manquants"], "Budget\nDécideur");
+    assert_eq!(r["payload"]["missing_criteria"], "Budget");
+    let r = execute(&code_in(CRM, "crm_missing"), &msg("negotiation", ""), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(r["payload"]["missing_criteria"], "Budget\nDecision maker");
     assert!(
         execute(
-            &code_in(CRM, "crm_manquants"),
+            &code_in(CRM, "crm_missing"),
             &msg("qualification", "Budget"),
             2000
         )
@@ -871,10 +867,10 @@ fn missing_criteria_follow_the_stage_and_valid_links() {
 fn a_done_activity_only_moves_the_last_activity_forward() {
     let msg = |last: &str| {
         json!({
-            "payload": {"etat": "faite", "faite_le": "2026-10-20T09:00:00Z"},
+            "payload": {"state": "done", "done_at": "2026-10-20T09:00:00Z"},
             "object": {"id": "a1", "title": "Appel"},
             "now": "2026-10-26T08:00:00Z",
-            "links": {"activite_sur": [{"direction": "out", "other": {"id": "o1", "type": "opportunite", "title": "Acme", "properties": {"derniere_activite": last}}}]}
+            "links": {"activity_on": [{"direction": "out", "other": {"id": "o1", "type": "opportunity", "title": "Acme", "properties": {"last_activity": last}}}]}
         })
     };
     let r = execute(
@@ -885,9 +881,9 @@ fn a_done_activity_only_moves_the_last_activity_forward() {
     .unwrap()
     .return_json
     .unwrap();
-    assert_eq!(r[0]["payload"]["derniere_activite"], "2026-10-20T09:00:00Z");
+    assert_eq!(r[0]["payload"]["last_activity"], "2026-10-20T09:00:00Z");
     assert_eq!(r[0]["object_id"], "o1");
-    assert_eq!(r[1]["payload"]["reportee"], true);
+    assert_eq!(r[1]["payload"]["reported"], true);
     let r = execute(
         &code_in(CRM, "crm_report"),
         &msg("2026-10-25T00:00:00Z"),
@@ -902,22 +898,22 @@ fn a_done_activity_only_moves_the_last_activity_forward() {
 #[test]
 fn my_day_lists_due_activities_and_dormant_opportunities() {
     let msg = json!({
-        "dues": [{"title": "mail J3 · Acme", "properties": {"echeance": "2026-10-26"}}],
-        "payload": [{"title": "Beta 2027", "properties": {"derniere_activite": "2026-09-30T10:00:00Z"}}]
+        "dues": [{"title": "mail D3 · Acme", "properties": {"due_on": "2026-10-26"}}],
+        "payload": [{"title": "Beta 2027", "properties": {"last_activity": "2026-09-30T10:00:00Z"}}]
     });
-    let r = execute(&code_in(CRM, "crm_journee"), &msg, 2000)
+    let r = execute(&code_in(CRM, "crm_day"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["payload"]["nombre"], 2);
-    let text = r["payload"]["texte"].as_str().unwrap();
+    assert_eq!(r["payload"]["count"], 2);
+    let text = r["payload"]["text"].as_str().unwrap();
     assert!(
-        text.contains("2026-10-26 mail J3 · Acme")
-            && text.contains("Beta 2027 (dernière activité 2026-09-30)"),
+        text.contains("2026-10-26 mail D3 · Acme")
+            && text.contains("Beta 2027 (last activity 2026-09-30)"),
         "{text}"
     );
     let empty = json!({"dues": [], "payload": []});
-    assert!(execute(&code_in(CRM, "crm_journee"), &empty, 2000)
+    assert!(execute(&code_in(CRM, "crm_day"), &empty, 2000)
         .unwrap()
         .return_json
         .is_none());
@@ -929,10 +925,10 @@ fn my_day_lists_due_activities_and_dormant_opportunities() {
 fn a_mail_is_filed_under_its_correspondent() {
     let mail = |forward_trusted: bool, dmarc: &str| {
         json!({"payload": {
-            "message_id": "<m1@x>", "subject": "Fwd: Devis", "text": "Bonjour", "date": "2026-10-26T09:00:00+00:00",
+            "message_id": "<m1@x>", "subject": "Fwd: Quote", "text": "Hello", "date": "2026-10-26T09:00:00+00:00",
             "from": {"address": "Bob@Example.com"}, "auth": {"spf": "pass", "dkim": "none", "dmarc": dmarc},
             "automatic": false, "from_pnex": false,
-            "forwarded": {"from": {"address": "Elodie@Acme.fr"}, "subject": "Devis ligne 3", "trusted": forward_trusted}
+            "forwarded": {"from": {"address": "Elodie@Acme.fr"}, "subject": "Quote line 3", "trusted": forward_trusted}
         }})
     };
     let r = execute(&code_in(CRM, "crm_mail_prep"), &mail(true, "pass"), 2000)
@@ -940,7 +936,7 @@ fn a_mail_is_filed_under_its_correspondent() {
         .return_json
         .unwrap();
     assert_eq!(r["addr"], "elodie@acme.fr");
-    assert_eq!(r["mail"]["subject"], "Devis ligne 3");
+    assert_eq!(r["mail"]["subject"], "Quote line 3");
     assert_eq!(r["mail"]["trusted"], true);
     let r = execute(&code_in(CRM, "crm_mail_prep"), &mail(false, "fail"), 2000)
         .unwrap()
@@ -957,8 +953,8 @@ fn a_mail_is_filed_under_its_correspondent() {
         .return_json
         .is_none());
 
-    let linked = |trusted: bool| json!({"object": {"id": "act"}, "person": {"id": "p1"}, "opportunites": ["o1"], "mail": {"trusted": trusted, "subject": "Devis"}});
-    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked(true), 2000)
+    let linked = |trusted: bool| json!({"object": {"id": "act"}, "person": {"id": "p1"}, "opportunities": ["o1"], "mail": {"trusted": trusted, "subject": "Quote"}});
+    let r = execute(&code_in(CRM, "crm_mail_link"), &linked(true), 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -967,32 +963,32 @@ fn a_mail_is_filed_under_its_correspondent() {
         json!([{"source_id": "act", "target_id": "p1"}, {"source_id": "act", "target_id": "o1"}])
     );
     assert!(r[1].is_null());
-    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked(false), 2000)
+    let r = execute(&code_in(CRM, "crm_mail_link"), &linked(false), 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert!(r[0].is_null());
     assert_eq!(r[1]["payload"][1]["confidence"], 40);
 
-    let opp = |id: &str, etape: &str| json!({"direction": "out", "other": {"id": id, "type": "opportunite", "properties": {"etape": etape}}});
-    let act = json!({"object": {"id": "p1"}, "links": {"implique": [opp("o1", "proposition"), opp("o2", "perdue")]},
-        "mail": {"message_id": "<m1@x>", "subject": "Devis", "text": "Bonjour", "date": "2026-10-26T13:35:00+00:00"}});
-    let r = execute(&code_in(CRM, "crm_mail_activite"), &act, 2000)
+    let opp = |id: &str, stage: &str| json!({"direction": "out", "other": {"id": id, "type": "opportunity", "properties": {"stage": stage}}});
+    let act = json!({"object": {"id": "p1"}, "links": {"involved_in": [opp("o1", "proposal"), opp("o2", "lost")]},
+        "mail": {"message_id": "<m1@x>", "subject": "Quote", "text": "Hello", "date": "2026-10-26T13:35:00+00:00"}});
+    let r = execute(&code_in(CRM, "crm_mail_activity"), &act, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
         (
-            r["payload"]["cle"].clone(),
-            r["payload"]["sens"].clone(),
+            r["payload"]["ref"].clone(),
+            r["payload"]["direction"].clone(),
             r["person"]["id"].clone()
         ),
-        (json!("mail:<m1@x>"), json!("entrant"), json!("p1"))
+        (json!("mail:<m1@x>"), json!("inbound"), json!("p1"))
     );
     // Only the open opportunity; the mail date moves its last activity.
-    assert_eq!(r["opportunites"], json!(["o1"]));
-    assert_eq!(r["payload"]["faite_le"], "2026-10-26T13:35:00+00:00");
-    assert!(r["payload"].get("reportee").is_none());
+    assert_eq!(r["opportunities"], json!(["o1"]));
+    assert_eq!(r["payload"]["done_at"], "2026-10-26T13:35:00+00:00");
+    assert!(r["payload"].get("reported").is_none());
 }
 
 /// An unknown sender from an own domain is proposed under the account
@@ -1000,42 +996,42 @@ fn a_mail_is_filed_under_its_correspondent() {
 #[test]
 fn an_unknown_sender_is_proposed_under_the_account_of_its_domain() {
     let mail =
-        json!({"message_id": "<m2@x>", "subject": "Devis", "text": "Bonjour", "trusted": true});
+        json!({"message_id": "<m2@x>", "subject": "Quote", "text": "Hello", "trusted": true});
     let q = |found: serde_json::Value, addr: &str| json!({"payload": found, "addr": addr, "mail": mail});
     let r = execute(
-        &code_in(CRM, "crm_mail_domaine"),
+        &code_in(CRM, "crm_mail_domain"),
         &q(json!([]), "new@acme.fr"),
         2000,
     )
     .unwrap()
     .return_json
     .unwrap();
-    assert_eq!(r["domaine"], "acme.fr");
+    assert_eq!(r["domain"], "acme.fr");
     for (found, addr) in [
         (json!([{"id": "p1"}]), "known@acme.fr"),
         (json!([]), "someone@gmail.com"),
     ] {
         assert!(
-            execute(&code_in(CRM, "crm_mail_domaine"), &q(found, addr), 2000)
+            execute(&code_in(CRM, "crm_mail_domain"), &q(found, addr), 2000)
                 .unwrap()
                 .return_json
                 .is_none()
         );
     }
-    let opp = |id: &str, etape: &str| json!({"direction": "in", "other": {"id": id, "type": "opportunite", "properties": {"etape": etape}}});
-    let acc = json!({"object": {"id": "org1"}, "links": {"opportunite_de": [opp("o1", "proposition"), opp("o2", "gagnee")]},
-        "mail": mail, "domaine": "acme.fr"});
-    let r = execute(&code_in(CRM, "crm_mail_compte"), &acc, 2000)
+    let opp = |id: &str, stage: &str| json!({"direction": "in", "other": {"id": id, "type": "opportunity", "properties": {"stage": stage}}});
+    let acc = json!({"object": {"id": "org1"}, "links": {"opportunity_with": [opp("o1", "proposal"), opp("o2", "won")]},
+        "mail": mail, "domain": "acme.fr"});
+    let r = execute(&code_in(CRM, "crm_mail_account"), &acc, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
-        (r["person"]["id"].clone(), r["opportunites"].clone()),
+        (r["person"]["id"].clone(), r["opportunities"].clone()),
         (json!("org1"), json!(["o1"]))
     );
     let mut linked = r.clone();
     linked["object"] = json!({"id": "act"});
-    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked, 2000)
+    let r = execute(&code_in(CRM, "crm_mail_link"), &linked, 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -1053,25 +1049,25 @@ fn an_unknown_sender_is_proposed_under_the_account_of_its_domain() {
 fn an_invitation_becomes_a_meeting_with_its_people() {
     let mail = |method: &str, dmarc: &str| {
         json!({"payload": {
-            "subject": "Invitation: Revue", "auth": {"spf": "pass", "dkim": "pass", "dmarc": dmarc},
-            "invitation": {"uid": "m1@acme.fr", "method": method, "summary": "Revue devis",
+            "subject": "Invitation: Review", "auth": {"spf": "pass", "dkim": "pass", "dmarc": dmarc},
+            "invitation": {"uid": "m1@acme.fr", "method": method, "summary": "Quote review",
                 "start": "2026-10-27T20:00:00+01:00", "location": "Teams",
                 "organizer": {"address": "Elodie@Acme.fr"},
                 "attendees": [{"address": "alice@example.com"}, {"address": "elodie@acme.fr"}]}
         }})
     };
-    let prep = code_in(CRM, "crm_rdv_prep");
+    let prep = code_in(CRM, "crm_meeting_prep");
     let r = execute(&prep, &mail("REQUEST", "pass"), 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
         r["payload"],
-        json!({"id_invitation": "m1@acme.fr", "objet": "Revue devis", "statut": "prevu",
-            "date": "2026-10-27T20:00:00+01:00", "lieu": "Teams"})
+        json!({"invitation_uid": "m1@acme.fr", "purpose": "Quote review", "status": "planned",
+            "date": "2026-10-27T20:00:00+01:00", "place": "Teams"})
     );
     assert_eq!(
-        r["adresses"],
+        r["addresses"],
         json!(["elodie@acme.fr", "alice@example.com"])
     );
     assert_eq!(r["trusted"], true);
@@ -1080,19 +1076,19 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
         .return_json
         .unwrap();
     assert_eq!(
-        (r["payload"]["statut"].clone(), r["trusted"].clone()),
-        (json!("annule"), json!(false))
+        (r["payload"]["status"].clone(), r["trusted"].clone()),
+        (json!("cancelled"), json!(false))
     );
     for m in [
         mail("REPLY", "pass"),
-        json!({"payload": {"subject": "Bonjour"}}),
+        json!({"payload": {"subject": "Hello"}}),
     ] {
         assert!(execute(&prep, &m, 2000).unwrap().return_json.is_none());
     }
 
     let r = execute(
-        &code_in(CRM, "crm_rdv_participants"),
-        &json!({"object": {"id": "rdv1", "title": "rendez-vous · Revue"}, "adresses": ["a@x.fr", "b@y.fr"]}),
+        &code_in(CRM, "crm_meeting_participants"),
+        &json!({"object": {"id": "m1", "title": "meeting · Review"}, "addresses": ["a@x.fr", "b@y.fr"]}),
         2000,
     )
     .unwrap()
@@ -1100,22 +1096,22 @@ fn an_invitation_becomes_a_meeting_with_its_people() {
     .unwrap();
     assert_eq!(
         r["payload"],
-        json!([{"adresse": "a@x.fr"}, {"adresse": "b@y.fr"}])
+        json!([{"address": "a@x.fr"}, {"address": "b@y.fr"}])
     );
-    assert_eq!(r["rdv"]["id"], "rdv1");
+    assert_eq!(r["meeting"]["id"], "m1");
 
-    let found = |trusted: bool| json!({"object": {"id": "p1"}, "rdv": {"id": "rdv1", "objet": "Revue"}, "trusted": trusted});
-    let lien = code_in(CRM, "crm_rdv_lien");
-    let r = execute(&lien, &found(true), 2000)
+    let found = |trusted: bool| json!({"object": {"id": "p1"}, "meeting": {"id": "m1", "purpose": "Review"}, "trusted": trusted});
+    let link = code_in(CRM, "crm_meeting_link");
+    let r = execute(&link, &found(true), 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
         r[0]["payload"],
-        json!({"source_id": "p1", "target_id": "rdv1"})
+        json!({"source_id": "p1", "target_id": "m1"})
     );
     assert!(r[1].is_null());
-    let r = execute(&lien, &found(false), 2000)
+    let r = execute(&link, &found(false), 2000)
         .unwrap()
         .return_json
         .unwrap();

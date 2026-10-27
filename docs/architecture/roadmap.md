@@ -1067,7 +1067,7 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 | W2–W4 | `link_upsert` `skip_closed`, pack `presence_web`, nœud `web_visit`, flow d'identification, « Sites à valider » | codé, à commiter |
 | CC4 | `signal_commercial`, annonces BODACC des comptes suivis, flow de résumé | codé, à commiter |
 | D340 | Pages remplies depuis un objet : plan de compte, fiche concurrent, préparation de rendez-vous | codé, à commiter |
-| Réunions | `rendez_vous`, `critere_coaching`, compte rendu, coaching par critère, `focus` du résumé de média | codé, à commiter |
+| Réunions | `meeting`, `coaching_criterion`, compte rendu, coaching par critère, `focus` du résumé de média | codé, à commiter |
 | Personas | Correspondance des personas d'un client vers la liste du pack | donnée d'org, hors dépôt |
 
 **Suites identifiées**
@@ -1114,7 +1114,7 @@ A0 (passerelle LLM), qui ne dépend que de D212.
 ### P2.30 — Enregistrement des appels et visios (ajout 2026-10-24) — **proposition, rien d'implémenté**
 
 Doc : `call-recording.md` (lots R1–R4, décisions à numéroter au PRD).
-Usages : commerciaux (compte rendu de `rendez_vous`, P2.28), SAV
+Usages : commerciaux (compte rendu de `meeting`, P2.28), SAV
 (historique d'appels par client et équipement), notes de réunions
 multi-canaux. Capter appels et visios PC et mobile sans outil tiers et les
 verser dans l'ingestion média (P2.13) : un canal par interlocuteur →

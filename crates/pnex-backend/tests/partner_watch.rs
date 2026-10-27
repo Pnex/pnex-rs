@@ -765,33 +765,33 @@ async fn meeting_debrief_and_coaching() {
             }
         };
         let account = mk("organization", "Usine Nord", json!({"statut_compte": "prospect"})).await;
-        let meeting = mk("rendez_vous", "Découverte Usine Nord", json!({"statut": "tenu", "objet": "Découverte", "date": "2026-10-20T09:00:00Z"})).await;
+        let meeting = mk("meeting", "Découverte Usine Nord", json!({"status": "held", "purpose": "Découverte", "date": "2026-10-20T09:00:00Z"})).await;
         let director = mk("person", "Directrice d'usine", json!({"persona": "decideur"})).await;
-        let criterion = mk("critere_coaching", "Faire parler du turnover", json!({"persona": "sponsor", "actif": true})).await;
+        let criterion = mk("coaching_criterion", "Faire parler du turnover", json!({"persona": "sponsor", "active": true})).await;
         let link = |kind: &str, from: &str, to: &str, attrs: Value| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": attrs});
         for body in [
-            link("rdv_avec", &meeting, &account, json!({})),
-            link("participe_a", &director, &meeting, json!({"cote": "client"})),
-            link("aborde", &meeting, &criterion, json!({"commentaire": "abordé en fin de rendez-vous"})),
+            link("meeting_with", &meeting, &account, json!({})),
+            link("takes_part_in", &director, &meeting, json!({"side": "customer"})),
+            link("covered", &meeting, &criterion, json!({"comment": "abordé en fin de rendez-vous"})),
         ] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
         }
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{meeting}/pages"), &env.alice, org,
-            Some(json!({"template": "debrief_rdv"}))).await;
+            Some(json!({"template": "meeting_debrief"}))).await;
         assert_eq!(st, 201, "{page}");
         let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
-        for want in ["Usine Nord", "Directrice d'usine", "cote: client", "Faire parler du turnover", "abordé en fin de rendez-vous"] {
+        for want in ["Usine Nord", "Directrice d'usine", "side: customer", "Faire parler du turnover", "abordé en fin de rendez-vous"] {
             assert!(text.contains(want), "{want} missing");
         }
         let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{criterion}/hierarchy?key=coaching"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let titles: Vec<&str> = h["nodes"].as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap()).collect();
         assert_eq!(titles, ["Faire parler du turnover", "Découverte Usine Nord", "Usine Nord"]);
-        assert!(h["counts"].to_string().contains("\"tenu\""), "{h}");
+        assert!(h["counts"].to_string().contains("\"held\""), "{h}");
     })
     .await;
 }

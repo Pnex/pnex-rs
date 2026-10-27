@@ -5,9 +5,9 @@
 # relabels (D370), qualification criteria and follow-up plans are objects
 # of the org, the pack ships none.
 # An opportunity moves through its stages by a human decision; a flow only
-# writes what is missing (`criteres_manquants`): the criteria required up to
-# the current stage that are not `valide` on a `qualifie` link.
-# Activities are done by people. The follow-up plan (`etape_cadence`: day,
+# writes what is missing (`missing_criteria`): the criteria required up to
+# the current stage that are not `valid` on a `qualified_on` link.
+# Activities are done by people. The follow-up plan (`follow_up_step`: day,
 # kind, instruction) becomes one activity to do per step when an
 # opportunity enters `qualification`, unless every person involved objected
 # (`opposition_le`). Mails and network messages due by tomorrow get a draft
@@ -20,7 +20,7 @@
 # website has the sender's domain (never a webmail). A mail whose authentication fails is only
 # proposed for linking; automatic mails and the org's own are left out.
 # Meetings received (D484): a mail carrying a meeting invitation becomes a
-# `rendez_vous` keyed by its iCalendar UID (an update moves it, a
+# `meeting` keyed by its iCalendar UID (an update moves it, a
 # cancellation marks it cancelled), and each organizer or attendee whose
 # address a person uses as e-mail identifier takes part in it; proposed
 # only when the sender is not authenticated. Nobody is created.
@@ -30,209 +30,209 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.5.0"
+version: "1.6.0"
 requires: [prospection_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
 link_types:
-  - key: opportunite_de
+  - key: opportunity_with
     name: is an opportunity with
     names: {fr: "est une opportunité avec"}
     inverse_name: has as opportunity
     inverse_names: {fr: "a pour opportunité"}
-    from_types: [opportunite]
+    from_types: [opportunity]
     to_types: [organization]
     one_target: true
-  - key: implique
+  - key: involved_in
     name: is involved in
     names: {fr: "est impliqué dans"}
     inverse_name: involves
     inverse_names: {fr: "implique"}
     from_types: [person]
-    to_types: [opportunite]
+    to_types: [opportunity]
     attributes:
       - key: role
         name: Role
         names: {fr: "Rôle"}
         kind: enum
-        values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
-        labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
+        values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
+        labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
         classification: personnelle
-  - key: porte_par
+  - key: owned_by
     name: is carried by
     names: {fr: "est portée par"}
     inverse_name: carries
     inverse_names: {fr: "porte"}
-    from_types: [opportunite]
+    from_types: [opportunity]
     to_types: [person]
     one_target: true
-  - key: issue_de
+  - key: comes_from
     name: comes from
     names: {fr: "est issue de"}
     inverse_name: led to
     inverse_names: {fr: "a donné"}
-    from_types: [opportunite]
-    to_types: [signal_commercial, rendez_vous]
-  - key: rdv_pour
+    from_types: [opportunity]
+    to_types: [signal_commercial, meeting]
+  - key: meeting_for
     name: is a meeting for
     names: {fr: "est un rendez-vous pour"}
     inverse_name: has as meeting
     inverse_names: {fr: "a pour rendez-vous"}
-    from_types: [rendez_vous]
-    to_types: [opportunite]
-  - key: qualifie
+    from_types: [meeting]
+    to_types: [opportunity]
+  - key: qualified_on
     name: is qualified on
     names: {fr: "est qualifiée sur"}
     inverse_name: qualifies
     inverse_names: {fr: "qualifie"}
-    from_types: [opportunite]
-    to_types: [critere_qualification]
+    from_types: [opportunity]
+    to_types: [qualification_criterion]
     attributes:
-      - key: statut
+      - key: status
         name: Status
         names: {fr: "Statut"}
         kind: enum
-        values: [inconnu, partiel, valide]
-        labels: {inconnu: {fr: "Inconnu", en: "Unknown"}, partiel: {fr: "Partiel", en: "Partial"}, valide: {fr: "Validé", en: "Valid"}}
-        colors: { inconnu: gray, partiel: amber, valide: green }
+        values: [unknown, partial, valid]
+        labels: {unknown: {fr: "Inconnu", en: "Unknown"}, partial: {fr: "Partiel", en: "Partial"}, valid: {fr: "Validé", en: "Valid"}}
+        colors: { unknown: gray, partial: amber, valid: green }
       - { key: note, name: Note, names: {fr: "Note"}, kind: text, max_len: 2000 }
-  - key: activite_sur
+  - key: activity_on
     name: is an activity on
     names: {fr: "est une activité sur"}
     inverse_name: has as activity
     inverse_names: {fr: "a pour activité"}
-    from_types: [activite]
-    to_types: [opportunite, organization, person]
-  - key: fiche_de
+    from_types: [activity]
+    to_types: [opportunity, organization, person]
+  - key: sheet_of
     name: is the sheet of
     names: {fr: "est la fiche de"}
     inverse_name: has as sheet
     inverse_names: {fr: "a pour fiche"}
     from_types: [doc]
-    to_types: [opportunite]
+    to_types: [opportunity]
 hierarchies:
   # From an account, its opportunities; the band counts them by stage.
-  - key: opportunites
+  - key: opportunities
     name: Opportunities
     names: {fr: "Opportunités"}
     steps:
-      - { link: opportunite_de, inverse: true }
+      - { link: opportunity_with, inverse: true }
 types:
-  - key: opportunite
+  - key: opportunity
     name: Opportunity
     names: {fr: "Opportunité"}
     icon: flag
     properties:
-      - key: etape
+      - key: stage
         name: Stage
         names: {fr: "Étape"}
         kind: enum
-        values: [decouverte, qualification, proposition, negociation, gagnee, perdue]
-        labels: {decouverte: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposition: {fr: "Proposition", en: "Proposal"}, negociation: {fr: "Négociation", en: "Negotiation"}, gagnee: {fr: "Gagnée", en: "Won"}, perdue: {fr: "Perdue", en: "Lost"}}
-        colors: { decouverte: gray, qualification: blue, proposition: violet, negociation: amber, gagnee: green, perdue: red }
+        values: [discovery, qualification, proposal, negotiation, won, lost]
+        labels: {discovery: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposal: {fr: "Proposition", en: "Proposal"}, negotiation: {fr: "Négociation", en: "Negotiation"}, won: {fr: "Gagnée", en: "Won"}, lost: {fr: "Perdue", en: "Lost"}}
+        colors: { discovery: gray, qualification: blue, proposal: violet, negotiation: amber, won: green, lost: red }
         required: true
         indexed: true
-      - { key: montant, name: Amount, names: {fr: "Montant"}, kind: money }
-      - { key: probabilite, name: Probability (%), names: {fr: "Probabilité (%)"}, kind: number, min: 0, max: 100 }
-      - { key: cloture_prevue, name: Expected close, names: {fr: "Clôture prévue"}, kind: date, indexed: true }
+      - { key: amount, name: Amount, names: {fr: "Montant"}, kind: money }
+      - { key: probability, name: Probability (%), names: {fr: "Probabilité (%)"}, kind: number, min: 0, max: 100 }
+      - { key: expected_close, name: Expected close, names: {fr: "Clôture prévue"}, kind: date, indexed: true }
       - key: source
         name: Source
         names: {fr: "Source"}
         kind: enum
-        values: [salon, groupement, entrant, sortant, recommandation, reseau, autre]
-        labels: {salon: {fr: "Salon", en: "Trade show"}, groupement: {fr: "Groupement", en: "Buying group"}, entrant: {fr: "Entrant", en: "Inbound"}, sortant: {fr: "Sortant", en: "Outbound"}, recommandation: {fr: "Recommandation", en: "Referral"}, reseau: {fr: "Réseau", en: "Network"}, autre: {fr: "Autre", en: "Other"}}
+        values: [trade_show, buying_group, inbound, outbound, referral, network, other]
+        labels: {trade_show: {fr: "Salon", en: "Trade show"}, buying_group: {fr: "Groupement", en: "Buying group"}, inbound: {fr: "Entrant", en: "Inbound"}, outbound: {fr: "Sortant", en: "Outbound"}, referral: {fr: "Recommandation", en: "Referral"}, network: {fr: "Réseau", en: "Network"}, other: {fr: "Autre", en: "Other"}}
         indexed: true
       - { key: source_detail, name: Source detail, names: {fr: "Détail de la source"}, kind: text, max_len: 255 }
-      - { key: motif_perte, name: Reason lost, names: {fr: "Motif de perte"}, kind: text, max_len: 1000 }
-      - { key: derniere_activite, name: Last activity, names: {fr: "Dernière activité"}, kind: date_time, indexed: true }
-      - { key: criteres_manquants, name: Missing criteria, names: {fr: "Critères manquants"}, kind: text, max_len: 2000 }
-      - { key: cadence_lancee_le, name: Follow-up started on, names: {fr: "Relances lancées le"}, kind: date, indexed: true }
-  - key: critere_qualification
+      - { key: loss_reason, name: Reason lost, names: {fr: "Motif de perte"}, kind: text, max_len: 1000 }
+      - { key: last_activity, name: Last activity, names: {fr: "Dernière activité"}, kind: date_time, indexed: true }
+      - { key: missing_criteria, name: Missing criteria, names: {fr: "Critères manquants"}, kind: text, max_len: 2000 }
+      - { key: follow_up_started_on, name: Follow-up started on, names: {fr: "Relances lancées le"}, kind: date, indexed: true }
+  - key: qualification_criterion
     name: Qualification criterion
     names: {fr: "Critère de qualification"}
     icon: tag
     properties:
       - { key: description, name: Description, names: {fr: "Description"}, kind: text, max_len: 2000 }
-      - key: etape
+      - key: stage
         name: Required from stage
         names: {fr: "Exigé à partir de l'étape"}
         kind: enum
-        values: [decouverte, qualification, proposition, negociation]
-        labels: {decouverte: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposition: {fr: "Proposition", en: "Proposal"}, negociation: {fr: "Négociation", en: "Negotiation"}}
+        values: [discovery, qualification, proposal, negotiation]
+        labels: {discovery: {fr: "Découverte", en: "Discovery"}, qualification: {fr: "Qualification", en: "Qualification"}, proposal: {fr: "Proposition", en: "Proposal"}, negotiation: {fr: "Négociation", en: "Negotiation"}}
         required: true
-      - { key: ordre, name: Order, names: {fr: "Ordre"}, kind: number }
-      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
-  - key: etape_cadence
+      - { key: order, name: Order, names: {fr: "Ordre"}, kind: number }
+      - { key: active, name: Active, names: {fr: "Actif"}, kind: bool }
+  - key: follow_up_step
     name: Follow-up step
     names: {fr: "Étape de relance"}
     icon: workflow
     properties:
-      - { key: jour, name: Day, names: {fr: "Jour"}, kind: number, min: 0, max: 365, required: true }
+      - { key: day, name: Day, names: {fr: "Jour"}, kind: number, min: 0, max: 365, required: true }
       - key: kind
         name: Activity
         names: {fr: "Activité"}
         kind: enum
-        values: [appel, mail, rendez_vous, message_reseau, note, tache]
-        labels: {appel: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, rendez_vous: {fr: "Rendez-vous", en: "Meeting"}, message_reseau: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, tache: {fr: "Tâche", en: "Task"}}
+        values: [call, mail, meeting, network_message, note, task]
+        labels: {call: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, meeting: {fr: "Rendez-vous", en: "Meeting"}, network_message: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, task: {fr: "Tâche", en: "Task"}}
         required: true
-      - { key: consigne, name: Instruction, names: {fr: "Consigne"}, kind: text, max_len: 2000 }
-      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
-  - key: activite
+      - { key: instruction, name: Instruction, names: {fr: "Consigne"}, kind: text, max_len: 2000 }
+      - { key: active, name: Active, names: {fr: "Actif"}, kind: bool }
+  - key: activity
     name: Activity
     names: {fr: "Activité"}
     icon: book
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
       - key: kind
         name: Kind
         names: {fr: "Nature"}
         kind: enum
-        values: [appel, mail, rendez_vous, message_reseau, note, tache]
-        labels: {appel: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, rendez_vous: {fr: "Rendez-vous", en: "Meeting"}, message_reseau: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, tache: {fr: "Tâche", en: "Task"}}
+        values: [call, mail, meeting, network_message, note, task]
+        labels: {call: {fr: "Appel", en: "Call"}, mail: {fr: "Mail", en: "Mail"}, meeting: {fr: "Rendez-vous", en: "Meeting"}, network_message: {fr: "Message réseau", en: "Network message"}, note: {fr: "Note", en: "Note"}, task: {fr: "Tâche", en: "Task"}}
         required: true
         indexed: true
-      - key: etat
+      - key: state
         name: State
         names: {fr: "État"}
         kind: enum
-        values: [a_faire, faite, annulee]
-        labels: {a_faire: {fr: "À faire", en: "To do"}, faite: {fr: "Faite", en: "Done"}, annulee: {fr: "Annulée", en: "Cancelled"}}
-        colors: { a_faire: amber, faite: green, annulee: gray }
+        values: [to_do, done, cancelled]
+        labels: {to_do: {fr: "À faire", en: "To do"}, done: {fr: "Faite", en: "Done"}, cancelled: {fr: "Annulée", en: "Cancelled"}}
+        colors: { to_do: amber, done: green, cancelled: gray }
         required: true
         indexed: true
-      - { key: echeance, name: Due on, names: {fr: "Échéance"}, kind: date, indexed: true }
-      - { key: faite_le, name: Done at, names: {fr: "Faite le"}, kind: date_time }
-      - key: sens
+      - { key: due_on, name: Due on, names: {fr: "Échéance"}, kind: date, indexed: true }
+      - { key: done_at, name: Done at, names: {fr: "Faite le"}, kind: date_time }
+      - key: direction
         name: Direction
         names: {fr: "Sens"}
         kind: enum
-        values: [entrant, sortant]
-        labels: {entrant: {fr: "Entrant", en: "Incoming"}, sortant: {fr: "Sortant", en: "Outgoing"}}
-      - { key: contenu, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
-      - { key: contexte, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
-      - { key: brouillon, name: Draft, names: {fr: "Brouillon"}, kind: text, max_len: 4000 }
-      - { key: reportee, name: Reported, names: {fr: "Reportée"}, kind: bool, indexed: true }
+        values: [inbound, outbound]
+        labels: {inbound: {fr: "Entrant", en: "Incoming"}, outbound: {fr: "Sortant", en: "Outgoing"}}
+      - { key: content, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 4000 }
+      - { key: context, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
+      - { key: draft, name: Draft, names: {fr: "Brouillon"}, kind: text, max_len: 4000 }
+      - { key: reported, name: Reported, names: {fr: "Reportée"}, kind: bool, indexed: true }
 functions:
   - name: crm_cadence_start
     language: starlark
     description: An opportunity entering qualification is marked started, and goes on to the plan unless every person involved objected.
     code: |
-      # @output marquer any "The opportunity, marked started today"
+      # @output mark any "The opportunity, marked started today"
       # @output plan any "The opportunity, carried to the follow-up plan"
       def handle(inputs, msg):
           o = msg["object"]
           links = msg.get("links", {})
-          people = [l for l in links.get("implique", []) if l.get("direction") == "in"]
+          people = [l for l in links.get("involved_in", []) if l.get("direction") == "in"]
           opposed = [l for l in people if l.get("other", {}).get("properties", {}).get("opposition_le")]
-          accounts = [l["other"]["title"] for l in links.get("opportunite_de", []) if l.get("direction") == "out"]
+          accounts = [l["other"]["title"] for l in links.get("opportunity_with", []) if l.get("direction") == "out"]
           roles = [l.get("attributes", {}).get("role", "") for l in people if l not in opposed]
-          mark = {"payload": {"cadence_lancee_le": msg.get("today", "")}, "object_id": o["id"]}
+          mark = {"payload": {"follow_up_started_on": msg.get("today", "")}, "object_id": o["id"]}
           if people and len(opposed) == len(people):
               return [mark, None]
-          context = "Compte : " + (accounts[0] if accounts else "") + " · contacts : " + ", ".join([r for r in roles if r])
-          go = {"payload": {}, "opp": {"id": o["id"], "titre": o["title"], "contexte": context, "jour0": msg.get("today", "")}}
+          context = "Account: " + (accounts[0] if accounts else "") + " · contacts: " + ", ".join([r for r in roles if r])
+          go = {"payload": {}, "opp": {"id": o["id"], "name": o["title"], "context": context, "day0": msg.get("today", "")}}
           return [mark, go]
-  - name: crm_cadence_activite
+  - name: crm_cadence_activity
     language: starlark
     description: "One activity to do for one step of the follow-up plan: due on the start day plus the step's day."
     code: |
@@ -269,25 +269,25 @@ functions:
 
       def handle(inputs, msg):
           step = msg["payload"]
-          if step.get("actif") == False:
+          if step.get("active") == False:
               return None
           opp = msg["opp"]
-          day = int(step.get("jour", 0) or 0)
-          kind = step.get("kind", "tache")
+          day = int(step.get("day", 0) or 0)
+          kind = step.get("kind", "task")
           return {
               "payload": {
-                  "cle": "cadence:" + opp["id"] + ":" + msg["object"]["id"],
+                  "ref": "cadence:" + opp["id"] + ":" + msg["object"]["id"],
                   "kind": kind,
-                  "etat": "a_faire",
-                  "echeance": add_days(opp["jour0"], day),
-                  "sens": "sortant",
-                  "contenu": step.get("consigne", ""),
-                  "contexte": opp["contexte"],
+                  "state": "to_do",
+                  "due_on": add_days(opp["day0"], day),
+                  "direction": "outbound",
+                  "content": step.get("instruction", ""),
+                  "context": opp["context"],
               },
               # The step's own title (the org's words), the kind as a fallback.
-              "title": (msg["object"].get("title") or kind.replace("_", " ") + " J" + str(day)) + " · " + opp["titre"],
+              "title": (msg["object"].get("title") or kind.replace("_", " ") + " D" + str(day)) + " · " + opp["name"],
           }
-  - name: crm_lien
+  - name: crm_link
     language: starlark
     description: Link payload from the activity just written to its opportunity.
     code: |
@@ -297,69 +297,69 @@ functions:
     language: starlark
     description: "A done activity moves the last activity of its opportunity forward, then is marked reported."
     code: |
-      # @output opportunite any "The opportunity, its last activity moved forward"
-      # @output reportee any "The activity, marked reported"
+      # @output opportunity any "The opportunity, its last activity moved forward"
+      # @output reported any "The activity, marked reported"
       def handle(inputs, msg):
           p = msg["payload"]
-          at = p.get("faite_le") or msg.get("now", "")
-          done = {"payload": {"reportee": True}, "object_id": msg["object"]["id"]}
-          opps = [l["other"] for l in msg.get("links", {}).get("activite_sur", [])
-                  if l.get("direction") == "out" and l.get("other", {}).get("type") == "opportunite"]
+          at = p.get("done_at") or msg.get("now", "")
+          done = {"payload": {"reported": True}, "object_id": msg["object"]["id"]}
+          opps = [l["other"] for l in msg.get("links", {}).get("activity_on", [])
+                  if l.get("direction") == "out" and l.get("other", {}).get("type") == "opportunity"]
           if not opps:
               return [None, done]
           o = opps[0]
-          last = o.get("properties", {}).get("derniere_activite", "") or ""
+          last = o.get("properties", {}).get("last_activity", "") or ""
           if last >= at:
               return [None, done]
-          return [{"payload": {"derniere_activite": at}, "object_id": o["id"]}, done]
+          return [{"payload": {"last_activity": at}, "object_id": o["id"]}, done]
   - name: crm_init
     language: starlark
     description: An opportunity with no activity yet starts counting from now.
     code: |
       def handle(inputs, msg):
-          return {"payload": {"derniere_activite": msg.get("now", "")}, "object_id": msg["object"]["id"]}
-  - name: crm_criteres
+          return {"payload": {"last_activity": msg.get("now", "")}, "object_id": msg["object"]["id"]}
+  - name: crm_criteria
     language: starlark
     description: Keeps the org's qualification criteria on the message for the opportunities that follow.
     code: |
       def handle(inputs, msg):
-          return {"payload": {}, "criteres": msg["payload"]}
-  - name: crm_manquants
+          return {"payload": {}, "criteria": msg["payload"]}
+  - name: crm_missing
     language: starlark
     description: "The criteria required up to the opportunity's stage that are not valid yet, one per line; written only when they changed."
     code: |
-      STAGES = ["decouverte", "qualification", "proposition", "negociation", "gagnee", "perdue"]
+      STAGES = ["discovery", "qualification", "proposal", "negotiation", "won", "lost"]
 
       def rank(stage):
           return STAGES.index(stage) if stage in STAGES else -1
 
       def handle(inputs, msg):
           p = msg["payload"]
-          stage = rank(p.get("etape", ""))
-          valid = [l["other"]["id"] for l in msg.get("links", {}).get("qualifie", [])
-                   if l.get("direction") == "out" and l.get("attributes", {}).get("statut") == "valide"]
-          rows = sorted(msg.get("criteres", []), key = lambda c: (c["properties"].get("ordre", 0) or 0, c["title"]))
+          stage = rank(p.get("stage", ""))
+          valid = [l["other"]["id"] for l in msg.get("links", {}).get("qualified_on", [])
+                   if l.get("direction") == "out" and l.get("attributes", {}).get("status") == "valid"]
+          rows = sorted(msg.get("criteria", []), key = lambda c: (c["properties"].get("order", 0) or 0, c["title"]))
           missing = []
           for c in rows:
               props = c.get("properties", {})
-              if props.get("actif") == False:
+              if props.get("active") == False:
                   continue
-              if rank(props.get("etape", "")) <= stage and c["id"] not in valid:
+              if rank(props.get("stage", "")) <= stage and c["id"] not in valid:
                   missing.append(c["title"])
           text = "\n".join(missing)
-          if text == (p.get("criteres_manquants", "") or ""):
+          if text == (p.get("missing_criteria", "") or ""):
               return None
-          return {"payload": {"criteres_manquants": text}, "object_id": msg["object"]["id"]}
-  - name: crm_brouillon_prep
+          return {"payload": {"missing_criteria": text}, "object_id": msg["object"]["id"]}
+  - name: crm_draft_prep
     language: starlark
     description: An activity to draft, its instruction and context for the model, the activity kept aside.
     code: |
       def handle(inputs, msg):
           p = msg["payload"]
-          kind = "message on a professional network" if p.get("kind") == "message_reseau" else "e-mail"
-          text = "Kind: " + kind + "\nInstruction: " + (p.get("contenu", "") or "") + "\nContext: " + (p.get("contexte", "") or "")
-          return {"payload": {"texte": text}, "act": {"id": msg["object"]["id"]}}
-  - name: crm_brouillon
+          kind = "message on a professional network" if p.get("kind") == "network_message" else "e-mail"
+          text = "Kind: " + kind + "\nInstruction: " + (p.get("content", "") or "") + "\nContext: " + (p.get("context", "") or "")
+          return {"payload": {"text": text}, "act": {"id": msg["object"]["id"]}}
+  - name: crm_draft
     language: starlark
     description: The model's draft written on the activity, to be read and sent by a person.
     code: |
@@ -367,7 +367,7 @@ functions:
           text = msg["payload"].get("text", "").strip()
           if not text:
               return None
-          return {"payload": {"brouillon": text[:4000]}, "object_id": msg["act"]["id"]}
+          return {"payload": {"draft": text[:4000]}, "object_id": msg["act"]["id"]}
   - name: crm_mail_prep
     language: starlark
     description: "A new mail: its correspondent's address, and whether its sender may be trusted to link it on its own."
@@ -404,47 +404,47 @@ functions:
                   "trusted": trusted(m.get("auth", {})),
               },
           }
-  - name: crm_mail_activite
+  - name: crm_mail_activity
     language: starlark
     description: The mail as a done incoming activity of the person found; the person and their open opportunities kept for the links.
     code: |
-      CLOSED = ["gagnee", "perdue"]
+      CLOSED = ["won", "lost"]
 
       def handle(inputs, msg):
           mail = msg["mail"]
-          subject = mail.get("subject", "") or "(sans objet)"
+          subject = mail.get("subject", "") or "(no subject)"
           # The opportunities the person is involved in and still open: the
           # mail counts as their last activity too.
-          opps = [l["other"]["id"] for l in msg.get("links", {}).get("implique", [])
-                  if l.get("direction") == "out" and l.get("other", {}).get("type") == "opportunite"
-                  and l["other"].get("properties", {}).get("etape", "") not in CLOSED]
+          opps = [l["other"]["id"] for l in msg.get("links", {}).get("involved_in", [])
+                  if l.get("direction") == "out" and l.get("other", {}).get("type") == "opportunity"
+                  and l["other"].get("properties", {}).get("stage", "") not in CLOSED]
           payload = {
-              "cle": "mail:" + mail.get("message_id", ""),
+              "ref": "mail:" + mail.get("message_id", ""),
               "kind": "mail",
-              "etat": "faite",
-              "sens": "entrant",
-              "contenu": subject + "\n\n" + mail.get("text", ""),
+              "state": "done",
+              "direction": "inbound",
+              "content": subject + "\n\n" + mail.get("text", ""),
           }
           if mail.get("date"):
-              payload["faite_le"] = mail["date"]
+              payload["done_at"] = mail["date"]
           return {
               "payload": payload,
               "title": "mail · " + subject[:200],
               "person": {"id": msg["object"]["id"]},
-              "opportunites": opps,
+              "opportunities": opps,
           }
-  - name: crm_mail_lien
+  - name: crm_mail_link
     language: starlark
     description: "The links from the activity to the person (or the account found by domain) and their open opportunities (payload = the list): written when the sender is trusted, proposed otherwise or when found by domain."
     code: |
-      # @output lien any "Trusted sender: the links are written"
-      # @output proposition any "Sender not authenticated: the links are proposed"
+      # @output link any "Trusted sender: the links are written"
+      # @output proposal any "Sender not authenticated: the links are proposed"
       def handle(inputs, msg):
           act = msg["object"]["id"]
-          targets = [msg["person"]["id"]] + msg.get("opportunites", [])
+          targets = [msg["person"]["id"]] + msg.get("opportunities", [])
           links = [{"source_id": act, "target_id": t} for t in targets]
           # A match by the domain of the address is a guess: always proposed.
-          domain = msg.get("par_domaine", "")
+          domain = msg.get("by_domain", "")
           if msg["mail"].get("trusted") and not domain:
               return [{"payload": links}, None]
           evidence = {"reason": "sender not authenticated", "subject": msg["mail"].get("subject", "")}
@@ -454,7 +454,7 @@ functions:
               l["confidence"] = 50 if domain else 40
               l["evidence"] = evidence
           return [None, {"payload": links}]
-  - name: crm_mail_domaine
+  - name: crm_mail_domain
     language: starlark
     description: "A sender no person uses as identifier: the domain of their address, unless a webmail, to find the account by its website (presence_web)."
     code: |
@@ -470,37 +470,37 @@ functions:
           d = msg.get("addr", "").split("@")[-1]
           if "." not in d or d in WEBMAIL:
               return None
-          return {"payload": {}, "domaine": d, "addr": msg["addr"], "mail": msg["mail"]}
-  - name: crm_mail_compte
+          return {"payload": {}, "domain": d, "addr": msg["addr"], "mail": msg["mail"]}
+  - name: crm_mail_account
     language: starlark
     description: The mail as a done incoming activity of the account whose website has the sender's domain; its open opportunities kept for the links, all proposed.
     code: |
-      CLOSED = ["gagnee", "perdue"]
+      CLOSED = ["won", "lost"]
 
       def handle(inputs, msg):
           mail = msg["mail"]
-          subject = mail.get("subject", "") or "(sans objet)"
-          opps = [l["other"]["id"] for l in msg.get("links", {}).get("opportunite_de", [])
-                  if l.get("direction") == "in" and l.get("other", {}).get("type") == "opportunite"
-                  and l["other"].get("properties", {}).get("etape", "") not in CLOSED]
+          subject = mail.get("subject", "") or "(no subject)"
+          opps = [l["other"]["id"] for l in msg.get("links", {}).get("opportunity_with", [])
+                  if l.get("direction") == "in" and l.get("other", {}).get("type") == "opportunity"
+                  and l["other"].get("properties", {}).get("stage", "") not in CLOSED]
           payload = {
-              "cle": "mail:" + mail.get("message_id", ""),
+              "ref": "mail:" + mail.get("message_id", ""),
               "kind": "mail",
-              "etat": "faite",
-              "sens": "entrant",
-              "contenu": subject + "\n\n" + mail.get("text", ""),
+              "state": "done",
+              "direction": "inbound",
+              "content": subject + "\n\n" + mail.get("text", ""),
           }
           if mail.get("date"):
-              payload["faite_le"] = mail["date"]
+              payload["done_at"] = mail["date"]
           return {
               "payload": payload,
               "title": "mail · " + subject[:200],
               "person": {"id": msg["object"]["id"]},
-              "opportunites": opps,
+              "opportunities": opps,
               "mail": mail,
-              "par_domaine": msg.get("domaine", ""),
+              "by_domain": msg.get("domain", ""),
           }
-  - name: crm_rdv_prep
+  - name: crm_meeting_prep
     language: starlark
     description: "A mail carrying a meeting invitation: the meeting keyed by the invitation's UID, the addresses of its organizer and attendees, and whether the sender may be trusted."
     code: |
@@ -520,16 +520,16 @@ functions:
           # A reply only says whether one attendee comes.
           if not inv.get("uid") or method == "REPLY":
               return None
-          objet = (inv.get("summary", "") or m.get("subject", "") or "(sans objet)")[:500]
+          purpose = (inv.get("summary", "") or m.get("subject", "") or "(no subject)")[:500]
           payload = {
-              "id_invitation": inv["uid"][:1024],
-              "objet": objet,
-              "statut": "annule" if method == "CANCEL" else "prevu",
+              "invitation_uid": inv["uid"][:1024],
+              "purpose": purpose,
+              "status": "cancelled" if method == "CANCEL" else "planned",
           }
           if inv.get("start"):
               payload["date"] = inv["start"]
           if inv.get("location"):
-              payload["lieu"] = inv["location"][:255]
+              payload["place"] = inv["location"][:255]
           who = ([inv["organizer"]] if inv.get("organizer") else []) + inv.get("attendees", [])
           addrs = []
           for a in who:
@@ -538,56 +538,56 @@ functions:
                   addrs.append(addr)
           return {
               "payload": payload,
-              "title": "rendez-vous · " + objet[:200],
-              "adresses": addrs,
+              "title": "meeting · " + purpose[:200],
+              "addresses": addrs,
               "trusted": trusted(m.get("auth", {})),
           }
-  - name: crm_rdv_participants
+  - name: crm_meeting_participants
     language: starlark
     description: The meeting written; one address per message follows (payload = the list), the meeting kept for the links.
     code: |
       def handle(inputs, msg):
-          return {"payload": [{"adresse": a} for a in msg.get("adresses", [])], "rdv": {"id": msg["object"]["id"], "objet": msg["object"]["title"]}}
-  - name: crm_rdv_lien
+          return {"payload": [{"address": a} for a in msg.get("addresses", [])], "meeting": {"id": msg["object"]["id"], "purpose": msg["object"]["title"]}}
+  - name: crm_meeting_link
     language: starlark
     description: "The person found takes part in the meeting: written when the sender is trusted, proposed otherwise."
     code: |
-      # @output lien any "Trusted sender: the person takes part"
-      # @output proposition any "Sender not authenticated: the link is proposed"
+      # @output link any "Trusted sender: the person takes part"
+      # @output proposal any "Sender not authenticated: the link is proposed"
       def handle(inputs, msg):
-          link = {"source_id": msg["object"]["id"], "target_id": msg["rdv"]["id"]}
+          link = {"source_id": msg["object"]["id"], "target_id": msg["meeting"]["id"]}
           if msg.get("trusted"):
               return [{"payload": link}, None]
           link["confidence"] = 40
-          link["evidence"] = {"reason": "sender not authenticated", "meeting": msg["rdv"]["objet"]}
+          link["evidence"] = {"reason": "sender not authenticated", "meeting": msg["meeting"]["purpose"]}
           return [None, {"payload": link}]
-  - name: crm_journee_dues
+  - name: crm_day_due
     language: starlark
     description: Keeps the activities due on the message for the morning digest.
     code: |
       def handle(inputs, msg):
           return {"payload": {}, "dues": msg["payload"]}
-  - name: crm_journee
+  - name: crm_day
     language: starlark
     description: "The morning digest: activities due or late, then open opportunities with no recent activity."
     code: |
-      # @output digest any "The digest (payload.texte), when there is something to do"
+      # @output digest any "The digest (payload.text), when there is something to do"
       def handle(inputs, msg):
-          dues = sorted(msg.get("dues", []), key = lambda r: r["properties"].get("echeance", ""))
-          dormant = sorted(msg["payload"], key = lambda r: r["properties"].get("derniere_activite", ""))
+          dues = sorted(msg.get("dues", []), key = lambda r: r["properties"].get("due_on", ""))
+          dormant = sorted(msg["payload"], key = lambda r: r["properties"].get("last_activity", ""))
           if not dues and not dormant:
               return None
           lines = []
           if dues:
-              lines.append("À faire :")
+              lines.append("To do:")
               for r in dues:
-                  lines.append("- " + r["properties"].get("echeance", "") + " " + r["title"])
+                  lines.append("- " + r["properties"].get("due_on", "") + " " + r["title"])
           if dormant:
-              lines.append("Sans activité récente :")
+              lines.append("No recent activity:")
               for r in dormant:
-                  last = (r["properties"].get("derniere_activite", "") or "")[:10]
-                  lines.append("- " + r["title"] + " (dernière activité " + last + ")")
-          return {"payload": {"trigger": True, "nombre": len(dues) + len(dormant), "texte": "\n".join(lines)}}
+                  last = (r["properties"].get("last_activity", "") or "")[:10]
+                  lines.append("- " + r["title"] + " (last activity " + last + ")")
+          return {"payload": {"trigger": True, "count": len(dues) + len(dormant), "text": "\n".join(lines)}}
 flows:
   - name: "CRM · follow-up plan"
     note: "Every hour, up to 20 opportunities that entered the stage qualification get one activity to do per active step of the org's follow-up plan (objects « Follow-up step »: day, kind, instruction), due on the start day plus the step's day, linked to the opportunity. An opportunity whose people involved all objected is only marked. Add the steps first, then deploy."
@@ -597,24 +597,24 @@ flows:
         - id: opps
           kind: ontology_query
           config:
-            object_type: opportunite
-            filters: [{ key: etape, op: eq, value: qualification }, { key: cadence_lancee_le, op: missing }]
+            object_type: opportunity
+            filters: [{ key: stage, op: eq, value: qualification }, { key: follow_up_started_on, op: missing }]
             limit: 20
-            with_links: [implique, opportunite_de]
+            with_links: [involved_in, opportunity_with]
           outputs: [{ port: 0, targets: [start] }]
         - { id: start, kind: pnex_function, config: { function_name: crm_cadence_start, language: starlark }, outputs: [{ port: 0, targets: [started] }, { port: 1, targets: [steps] }] }
-        - { id: started, kind: object_upsert, config: { object_type: opportunite, key: id } }
+        - { id: started, kind: object_upsert, config: { object_type: opportunity, key: id } }
         - id: steps
           kind: ontology_query
           config:
-            object_type: etape_cadence
-            order_by: jour
+            object_type: follow_up_step
+            order_by: day
             limit: 50
           outputs: [{ port: 0, targets: [act] }]
-        - { id: act, kind: pnex_function, config: { function_name: crm_cadence_activite, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: activite, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
-        - { id: about, kind: pnex_function, config: { function_name: crm_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: activite_sur } }
+        - { id: act, kind: pnex_function, config: { function_name: crm_cadence_activity, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: activity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
+        - { id: about, kind: pnex_function, config: { function_name: crm_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: activity_on } }
   - name: "CRM · last activity"
     note: "Every 15 minutes, a done activity moves the last activity of its opportunity forward (the date it was done, or now), then is marked reported; an opportunity with no activity yet starts counting from now. The morning digest reads it."
     graph:
@@ -623,46 +623,46 @@ flows:
         - id: done
           kind: ontology_query
           config:
-            object_type: activite
-            filters: [{ key: etat, op: eq, value: faite }, { key: reportee, op: missing }]
+            object_type: activity
+            filters: [{ key: state, op: eq, value: done }, { key: reported, op: missing }]
             limit: 200
-            with_links: [activite_sur]
+            with_links: [activity_on]
           outputs: [{ port: 0, targets: [report] }]
         - { id: report, kind: pnex_function, config: { function_name: crm_report, language: starlark }, outputs: [{ port: 0, targets: [moved] }, { port: 1, targets: [reported] }] }
-        - { id: moved, kind: object_upsert, config: { object_type: opportunite, key: id } }
-        - { id: reported, kind: object_upsert, config: { object_type: activite, key: id } }
+        - { id: moved, kind: object_upsert, config: { object_type: opportunity, key: id } }
+        - { id: reported, kind: object_upsert, config: { object_type: activity, key: id } }
         - id: fresh
           kind: ontology_query
           config:
-            object_type: opportunite
-            filters: [{ key: derniere_activite, op: missing }]
+            object_type: opportunity
+            filters: [{ key: last_activity, op: missing }]
             limit: 200
           outputs: [{ port: 0, targets: [init] }]
         - { id: init, kind: pnex_function, config: { function_name: crm_init, language: starlark }, outputs: [{ port: 0, targets: [started] }] }
-        - { id: started, kind: object_upsert, config: { object_type: opportunite, key: id } }
+        - { id: started, kind: object_upsert, config: { object_type: opportunity, key: id } }
   - name: "CRM · missing criteria"
-    note: "Every hour, each open opportunity gets the list of the org's active qualification criteria required up to its stage that are not valid on it (link « is qualified on », status valide). Nothing is blocked: a stage changes by a human decision. Add the criteria first (your SPICED, MEDDPICC or own grid), then deploy."
+    note: "Every hour, each open opportunity gets the list of the org's active qualification criteria required up to its stage that are not valid on it (link « is qualified on », status valid). Nothing is blocked: a stage changes by a human decision. Add the criteria first (your SPICED, MEDDPICC or own grid), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "10 * * * *" }, outputs: [{ port: 0, targets: [crit] }] }
         - id: crit
           kind: ontology_query
           config:
-            object_type: critere_qualification
+            object_type: qualification_criterion
             limit: 200
             output: array
           outputs: [{ port: 0, targets: [keep] }]
-        - { id: keep, kind: pnex_function, config: { function_name: crm_criteres, language: starlark }, outputs: [{ port: 0, targets: [opps] }] }
+        - { id: keep, kind: pnex_function, config: { function_name: crm_criteria, language: starlark }, outputs: [{ port: 0, targets: [opps] }] }
         - id: opps
           kind: ontology_query
           config:
-            object_type: opportunite
-            filters: [{ key: etape, op: in, value: [decouverte, qualification, proposition, negociation] }]
+            object_type: opportunity
+            filters: [{ key: stage, op: in, value: [discovery, qualification, proposal, negotiation] }]
             limit: 200
-            with_links: [qualifie]
+            with_links: [qualified_on]
           outputs: [{ port: 0, targets: [missing] }]
-        - { id: missing, kind: pnex_function, config: { function_name: crm_manquants, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: opportunite, key: id } }
+        - { id: missing, kind: pnex_function, config: { function_name: crm_missing, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: opportunity, key: id } }
   - name: "CRM · drafts"
     note: "Every hour, up to 20 mails and network messages to do, due by tomorrow and without a draft, get one written by the organization's LLM from the step's instruction and the account. Nothing is sent: a person reads the draft, sends it and marks the activity done. Needs an AI provider."
     graph:
@@ -671,24 +671,24 @@ flows:
         - id: todo
           kind: ontology_query
           config:
-            object_type: activite
+            object_type: activity
             filters:
-              - { key: kind, op: in, value: [mail, message_reseau] }
-              - { key: etat, op: eq, value: a_faire }
-              - { key: brouillon, op: missing }
-              - { key: echeance, op: lte, value: "$today+1" }
+              - { key: kind, op: in, value: [mail, network_message] }
+              - { key: state, op: eq, value: to_do }
+              - { key: draft, op: missing }
+              - { key: due_on, op: lte, value: "$today+1" }
             limit: 20
           outputs: [{ port: 0, targets: [prep] }]
-        - { id: prep, kind: pnex_function, config: { function_name: crm_brouillon_prep, language: starlark }, outputs: [{ port: 0, targets: [draft] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: crm_draft_prep, language: starlark }, outputs: [{ port: 0, targets: [draft] }] }
         - id: draft
           kind: llm_text
           config:
-            data_field: texte
+            data_field: text
             max_chars: 1500
             prompt: "Write the first draft of a short professional follow-up message of the kind given, following the instruction, for the account in the context. Plain text, at most 120 words, no subject line, no placeholder in brackets, no invented fact or figure. Write in the language of the instruction."
           outputs: [{ port: 0, targets: [keep] }]
-        - { id: keep, kind: pnex_function, config: { function_name: crm_brouillon, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: activite, key: id } }
+        - { id: keep, kind: pnex_function, config: { function_name: crm_draft, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: activity, key: id } }
   - name: "CRM · mails received"
     note: "Each new mail of the mailboxes you pick (node Mail received: choose them, you must read them) becomes a done incoming activity of its correspondent and of their open opportunities (it moves their last activity) — the original sender of a forward made by a member, else the sender — found by an e-mail identifier of a person (identifier kind email, value in lower case). A sender whose authentication fails is only proposed for the link, on the To validate page. A sender no person uses, writing from an own domain (not a webmail), is proposed as an activity of the account whose website has that domain (Web presence pack), and of its open opportunities. Automatic replies, lists and the organization's own mails are left out. Pick the mailboxes, then deploy."
     graph:
@@ -704,17 +704,17 @@ flows:
             limit: 1
             output: array
           outputs: [{ port: 0, targets: [domain] }]
-        - { id: domain, kind: pnex_function, config: { function_name: crm_mail_domaine, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
+        - { id: domain, kind: pnex_function, config: { function_name: crm_mail_domain, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
         - id: account
           kind: ontology_query
           config:
             object_type: site_web
-            filters: [{ key: domaine, op: eq, value: "$msg.domaine" }]
+            filters: [{ key: domaine, op: eq, value: "$msg.domain" }]
             traverse: [{ link_type: a_pour_site, direction: in }]
             limit: 3
-            with_links: [opportunite_de]
+            with_links: [opportunity_with]
           outputs: [{ port: 0, targets: [act_account] }]
-        - { id: act_account, kind: pnex_function, config: { function_name: crm_mail_compte, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: act_account, kind: pnex_function, config: { function_name: crm_mail_account, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - id: who
           kind: ontology_query
           config:
@@ -722,68 +722,68 @@ flows:
             filters: [{ key: value, op: eq, value: "$msg.addr" }]
             traverse: [{ link_type: uses_identifier, direction: in }]
             limit: 5
-            with_links: [implique]
+            with_links: [involved_in]
           outputs: [{ port: 0, targets: [act] }]
-        - { id: act, kind: pnex_function, config: { function_name: crm_mail_activite, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: activite, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
-        - { id: link, kind: pnex_function, config: { function_name: crm_mail_lien, language: starlark }, outputs: [{ port: 0, targets: [each_linked] }, { port: 1, targets: [each_proposed] }] }
+        - { id: act, kind: pnex_function, config: { function_name: crm_mail_activity, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: activity, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: crm_mail_link, language: starlark }, outputs: [{ port: 0, targets: [each_linked] }, { port: 1, targets: [each_proposed] }] }
         - { id: each_linked, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: activite_sur } }
+        - { id: linked, kind: link_upsert, config: { link_type: activity_on } }
         - { id: each_proposed, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [proposed] }] }
-        - { id: proposed, kind: link_upsert, config: { link_type: activite_sur, propose: true } }
+        - { id: proposed, kind: link_upsert, config: { link_type: activity_on, propose: true } }
   - name: "CRM · meetings received"
     note: "Each mail of the mailboxes you pick (node Mail received: choose them, you must read them) that carries a meeting invitation becomes a meeting (Meeting, keyed by the invitation id): date, purpose, place, planned or cancelled; an update of the invitation moves the same meeting. The organizer and each attendee whose address a person uses as e-mail identifier (identifier kind email, value in lower case) take part in it; when the sender's authentication fails the participation is only proposed, on the To validate page. Unknown addresses are left out: nobody is created. Pick the mailboxes, then deploy."
     graph:
       nodes:
         - { id: mail, kind: mail_received, config: { skip_automatic: false }, outputs: [{ port: 0, targets: [prep] }] }
-        - { id: prep, kind: pnex_function, config: { function_name: crm_rdv_prep, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: rendez_vous, key: id_invitation }, outputs: [{ port: 0, targets: [fan] }] }
-        - { id: fan, kind: pnex_function, config: { function_name: crm_rdv_participants, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: crm_meeting_prep, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: meeting, key: invitation_uid }, outputs: [{ port: 0, targets: [fan] }] }
+        - { id: fan, kind: pnex_function, config: { function_name: crm_meeting_participants, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
         - { id: each, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [who] }] }
         - id: who
           kind: ontology_query
           config:
             object_type: identifier
-            filters: [{ key: value, op: eq, value: "$msg.payload.adresse" }]
+            filters: [{ key: value, op: eq, value: "$msg.payload.address" }]
             traverse: [{ link_type: uses_identifier, direction: in }]
             limit: 1
           outputs: [{ port: 0, targets: [link] }]
-        - { id: link, kind: pnex_function, config: { function_name: crm_rdv_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }, { port: 1, targets: [proposed] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: participe_a } }
-        - { id: proposed, kind: link_upsert, config: { link_type: participe_a, propose: true } }
+        - { id: link, kind: pnex_function, config: { function_name: crm_meeting_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }, { port: 1, targets: [proposed] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: takes_part_in } }
+        - { id: proposed, kind: link_upsert, config: { link_type: takes_part_in, propose: true } }
   - name: "CRM · my day"
-    note: "Each morning one digest (payload.texte, payload.nombre) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
+    note: "Each morning one digest (payload.text, payload.count) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a « text » variable, trigger = payload.trigger), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [due] }] }
         - id: due
           kind: ontology_query
           config:
-            object_type: activite
-            filters: [{ key: etat, op: eq, value: a_faire }, { key: echeance, op: lte, value: "$today" }]
+            object_type: activity
+            filters: [{ key: state, op: eq, value: to_do }, { key: due_on, op: lte, value: "$today" }]
             limit: 200
             output: array
           outputs: [{ port: 0, targets: [keep] }]
-        - { id: keep, kind: pnex_function, config: { function_name: crm_journee_dues, language: starlark }, outputs: [{ port: 0, targets: [dormant] }] }
+        - { id: keep, kind: pnex_function, config: { function_name: crm_day_due, language: starlark }, outputs: [{ port: 0, targets: [dormant] }] }
         - id: dormant
           kind: ontology_query
           config:
-            object_type: opportunite
+            object_type: opportunity
             filters:
-              - { key: etape, op: in, value: [decouverte, qualification, proposition, negociation] }
-              - { key: derniere_activite, op: lt, value: "$today-14" }
+              - { key: stage, op: in, value: [discovery, qualification, proposal, negotiation] }
+              - { key: last_activity, op: lt, value: "$today-14" }
             limit: 200
             output: array
           outputs: [{ port: 0, targets: [digest] }]
-        - { id: digest, kind: pnex_function, config: { function_name: crm_journee, language: starlark } }
+        - { id: digest, kind: pnex_function, config: { function_name: crm_day, language: starlark } }
 page_templates:
-  - key: fiche_opportunite
+  - key: opportunity_sheet
     name: Opportunity sheet
     names: {fr: "Fiche opportunité"}
     description: The opportunity as of today, its account, stage, people involved, qualification, activities and meetings, then the next steps.
     descriptions: {fr: "L'opportunité au jour dit : compte, étape, personnes impliquées, qualification, activités et rendez-vous, puis les prochaines étapes."}
-    subject: opportunite
-    link: fiche_de
+    subject: opportunity
+    link: sheet_of
     body: |
       # Opportunity — {{title}}
 
@@ -791,37 +791,37 @@ page_templates:
 
       ## At a glance
 
-      - Stage: {{prop:etape}} · amount: {{prop:montant}} · probability: {{prop:probabilite}} %
-      - Expected close: {{prop:cloture_prevue}} · source: {{prop:source}} {{prop:source_detail}}
-      - Last activity: {{prop:derniere_activite}}
+      - Stage: {{prop:stage}} · amount: {{prop:amount}} · probability: {{prop:probability}} %
+      - Expected close: {{prop:expected_close}} · source: {{prop:source}} {{prop:source_detail}}
+      - Last activity: {{prop:last_activity}}
 
       ## Account
 
-      {{links:opportunite_de}}
+      {{links:opportunity_with}}
 
       ## People involved
 
-      {{links:implique:in}}
+      {{links:involved_in:in}}
 
       ## Owned by
 
-      {{links:porte_par}}
+      {{links:owned_by}}
 
       ## Qualification
 
-      {{links:qualifie}}
+      {{links:qualified_on}}
 
       Missing criteria:
 
-      {{prop:criteres_manquants}}
+      {{prop:missing_criteria}}
 
       ## Activities
 
-      {{links:activite_sur:in}}
+      {{links:activity_on:in}}
 
       ## Meetings
 
-      {{links:rdv_pour:in}}
+      {{links:meeting_for:in}}
 
       ## Next steps
 
@@ -834,37 +834,37 @@ page_templates:
 
         ## En bref
 
-        - Étape : {{prop:etape}} · montant : {{prop:montant}} · probabilité : {{prop:probabilite}} %
-        - Clôture prévue : {{prop:cloture_prevue}} · source : {{prop:source}} {{prop:source_detail}}
-        - Dernière activité : {{prop:derniere_activite}}
+        - Étape : {{prop:stage}} · montant : {{prop:amount}} · probabilité : {{prop:probability}} %
+        - Clôture prévue : {{prop:expected_close}} · source : {{prop:source}} {{prop:source_detail}}
+        - Dernière activité : {{prop:last_activity}}
 
         ## Compte
 
-        {{links:opportunite_de}}
+        {{links:opportunity_with}}
 
         ## Personnes impliquées
 
-        {{links:implique:in}}
+        {{links:involved_in:in}}
 
         ## Portée par
 
-        {{links:porte_par}}
+        {{links:owned_by}}
 
         ## Qualification
 
-        {{links:qualifie}}
+        {{links:qualified_on}}
 
         Critères manquants :
 
-        {{prop:criteres_manquants}}
+        {{prop:missing_criteria}}
 
         ## Activités
 
-        {{links:activite_sur:in}}
+        {{links:activity_on:in}}
 
         ## Rendez-vous
 
-        {{links:rdv_pour:in}}
+        {{links:meeting_for:in}}
 
         ## Prochaines étapes
 

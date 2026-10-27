@@ -166,40 +166,40 @@ async fn an_opportunity_lives_in_the_account_graph() {
 
         let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"statut_compte": "prospect"})).await;
         let ann = object(&server, &env.alice, org, "person", "Ann Smith", json!({})).await;
-        let budget = object(&server, &env.alice, org, "critere_qualification", "Budget identifié", json!({"etape": "qualification", "actif": true})).await;
-        let deal = object(&server, &env.alice, org, "opportunite", "Acme 2027", json!({
-            "etape": "qualification", "source": "salon", "source_detail": "Global Industrie",
-            "montant": {"amount": 48000, "currency": "EUR"}
+        let budget = object(&server, &env.alice, org, "qualification_criterion", "Budget confirmed", json!({"stage": "qualification", "active": true})).await;
+        let deal = object(&server, &env.alice, org, "opportunity", "Acme 2027", json!({
+            "stage": "qualification", "source": "trade_show", "source_detail": "Global Industrie",
+            "amount": {"amount": 48000, "currency": "EUR"}
         })).await;
         // A stage outside the list is refused.
         let (st, _) = call(&server, "POST", "/api/v1/ontology/objects", &env.alice, org,
-            Some(json!({"type_key": "opportunite", "title": "X", "properties": {"etape": "signee"}}))).await;
+            Some(json!({"type_key": "opportunity", "title": "X", "properties": {"stage": "signed"}}))).await;
         assert_eq!(st, 400);
 
-        let (st, e) = link(&server, &env.alice, org, "opportunite_de", &deal, &acme, json!({})).await;
+        let (st, e) = link(&server, &env.alice, org, "opportunity_with", &deal, &acme, json!({})).await;
         assert_eq!(st, 201, "{e}");
         let beta = object(&server, &env.alice, org, "organization", "Beta", json!({})).await;
-        let (st, _) = link(&server, &env.alice, org, "opportunite_de", &deal, &beta, json!({})).await;
+        let (st, _) = link(&server, &env.alice, org, "opportunity_with", &deal, &beta, json!({})).await;
         assert_eq!(st, 409, "one account per opportunity");
-        let (st, e) = link(&server, &env.alice, org, "implique", &ann, &deal, json!({"role": "decideur"})).await;
+        let (st, e) = link(&server, &env.alice, org, "involved_in", &ann, &deal, json!({"role": "decision_maker"})).await;
         assert_eq!(st, 201, "{e}");
-        let (st, e) = link(&server, &env.alice, org, "qualifie", &deal, &budget, json!({"statut": "partiel", "note": "en cours d'arbitrage"})).await;
+        let (st, e) = link(&server, &env.alice, org, "qualified_on", &deal, &budget, json!({"status": "partial", "note": "being decided"})).await;
         assert_eq!(st, 201, "{e}");
 
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}/hierarchy?key=opportunites"), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{acme}/hierarchy?key=opportunities"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let titles: Vec<&str> = h["nodes"].as_array().unwrap().iter().map(|n| n["title"].as_str().unwrap()).collect();
         assert_eq!(titles, ["Acme", "Acme 2027"]);
         assert!(h["counts"].to_string().contains("\"qualification\""), "{h}");
 
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{deal}/pages"), &env.alice, org,
-            Some(json!({"template": "fiche_opportunite"}))).await;
+            Some(json!({"template": "opportunity_sheet"}))).await;
         assert_eq!(st, 201, "{page}");
         let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
-        for want in ["Acme 2027", "Acme", "Ann Smith", "Budget identifié", "Global Industrie"] {
+        for want in ["Acme 2027", "Acme", "Ann Smith", "Budget confirmed", "Global Industrie"] {
             assert!(text.contains(want), "{want} missing");
         }
     })

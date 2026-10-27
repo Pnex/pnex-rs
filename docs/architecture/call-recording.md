@@ -15,7 +15,7 @@ horodatée par interlocuteur, résumé, actions, puis rapports dans PneX.
 Usages visés :
 
 - **commerciaux** : compte rendu de rendez-vous rattaché au compte et au
-  contact (`rendez_vous`, coaching par critère, P2.28) ;
+  contact (`meeting`, coaching par critère, P2.28) ;
 - **SAV / support** : historique d'appels par client et par équipement,
   actions de suivi ;
 - **réunions multi-canaux** : une même réunion vue depuis plusieurs

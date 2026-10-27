@@ -75,7 +75,7 @@ Le MCP ne l'expose pas (motif destructif).
 ### D447 — Opposition consultée partout
 
 - `oppose` pose aussi la propriété `opposition_le` (date, pack `prospection_b2b`) sur la personne : les flows de relance la filtrent.
-- La liste d'opposition gagne une empreinte **nom + compte** : `title:<nom normalisé>@<id de l'objet lié>`, posée pour chaque organisation liée à la personne au moment de l'opposition ou de l'effacement.
+- La liste d'opposition gagne une empreinte **nom + compte** : `title:<nom normalisé>@<id de l'purpose lié>`, posée pour chaque organisation liée à la personne au moment de l'opposition ou de l'effacement.
 - **Le moteur refuse tout nouveau lien** entre un objet dont le titre est `personnelle` et un objet de l'empreinte quand le nom normalisé correspond (`prospection-opposed`, 409) : un rapprochement qui recrée « la même personne chez le même compte » échoue. Dans un import en masse, le lien est laissé de côté et le reste du lot passe (un refus ne fait pas échouer l'import). Générique : aucune clé de type ou de lien n'est nommée.
 - Nom normalisé : minuscules, accents latins repliés (« Élodie » = « elodie » = « ELODIE », `œ` → `oe`, apostrophe typographique), lettres et chiffres seulement, un espace entre les mots.
 - **Une seule table de repli** (`pnex_core::fold`) sert aux empreintes, au texte de la recherche globale et de la requête D185 (titre et filtre `contains`) : la colonne y est repliée en SQL par `translate(lower(…))`, majuscules accentuées comprises. Aucune extension Postgres (`unaccent`), aucune dépendance. Les deux copies qui existaient (`taxonomy`, `browser_agent`) y délèguent. Coût : la recherche par sous-chaîne n'utilisait déjà aucun index.
@@ -88,31 +88,31 @@ Nouveau pack `crm` (`requires: [prospection_b2b]`). Il revient sur le non-object
 
 ### D449 — Opportunité et qualification
 
-Type `opportunite` :
+Type `opportunity` :
 
 | Propriété | Forme |
 |---|---|
-| `etape` | énumération : `decouverte`, `qualification`, `proposition`, `negociation`, `gagnee`, `perdue` (clés stables, l'org les renomme par D370) |
-| `montant`, `probabilite` (0–100), `cloture_prevue` (date) | |
-| `source` | `salon`, `groupement`, `entrant`, `sortant`, `recommandation`, `reseau`, `autre` ; `source_detail` (nom du salon…) |
-| `motif_perte` | texte |
-| `derniere_activite` | date-heure, écrite par flow |
-| `criteres_manquants` | texte, écrit par flow |
-| `cadence_lancee_le` | date, écrite par flow |
+| `stage` | énumération : `discovery`, `qualification`, `proposal`, `negotiation`, `won`, `lost` (clés stables, l'org les renomme par D370) |
+| `amount`, `probability` (0–100), `expected_close` (date) | |
+| `source` | `trade_show`, `buying_group`, `inbound`, `outbound`, `referral`, `network`, `other` ; `source_detail` (nom du salon…) |
+| `loss_reason` | texte |
+| `last_activity` | date-heure, écrite par flow |
+| `missing_criteria` | texte, écrit par flow |
+| `follow_up_started_on` | date, écrite par flow |
 
-Liens : `opportunite_de` (→ `organization`, un seul ouvert), `implique` (`person` → opportunité, attribut `role` = persona), `porte_par` (opportunité → `person` interne), `issue_de` (opportunité → `signal_commercial`, `rendez_vous`), `rdv_pour` (`rendez_vous` → opportunité).
+Liens : `opportunity_with` (→ `organization`, un seul ouvert), `involved_in` (`person` → opportunité, attribut `role` = persona), `owned_by` (opportunité → `person` interne), `comes_from` (opportunité → `signal_commercial`, `meeting`), `meeting_for` (`meeting` → opportunité).
 
-**Qualification = données de l'org** : type `critere_qualification` (description, `etape` à partir de laquelle il est exigé, actif). Lien `qualifie` (opportunité → critère, attributs `statut` `inconnu`/`partiel`/`valide`, `note`). SPICED, MEDDPICC ou la grille maison sont des listes de critères ; le pack n'en livre aucune. Un flow écrit `criteres_manquants` : les critères exigés jusqu'à l'étape courante qui ne sont pas `valide`. Rien n'est bloqué : le passage d'étape reste une décision humaine.
+**Qualification = données de l'org** : type `qualification_criterion` (description, `stage` à partir de laquelle il est exigé, actif). Lien `qualified_on` (opportunité → critère, attributs `status` `unknown`/`partial`/`valid`, `note`). SPICED, MEDDPICC ou la grille maison sont des listes de critères ; le pack n'en livre aucune. Un flow écrit `missing_criteria` : les critères exigés jusqu'à l'étape courante qui ne sont pas `valid`. Rien n'est bloqué : le passage d'étape reste une décision humaine.
 
 ### D450 — Activités et cadence
 
-Type `activite` : `cle` (unique), `kind` (`appel`, `mail`, `rendez_vous`, `message_reseau`, `note`, `tache`), `etat` (`a_faire`, `faite`, `annulee`), `echeance` (date), `faite_le` (date-heure), `sens` (`entrant`, `sortant`), `contenu`, `brouillon` (texte préparé par le LLM de l'org), `reportee` (bool, écrit par flow). Lien `activite_sur` (→ opportunité, organisation, personne).
+Type `activity` : `ref` (unique), `kind` (`call`, `mail`, `meeting`, `network_message`, `note`, `task`), `state` (`to_do`, `done`, `cancelled`), `due_on` (date), `done_at` (date-heure), `direction` (`inbound`, `outbound`), `content`, `draft` (texte préparé par le LLM de l'org), `reported` (bool, écrit par flow). Lien `activity_on` (→ opportunité, organisation, personne).
 
-Le **plan de relance** est une donnée de l'org : type `etape_cadence` (`jour` depuis le lancement, `kind`, `consigne`, actif). Flows livrés :
+Le **plan de relance** est une donnée de l'org : type `follow_up_step` (`day` depuis le lancement, `kind`, `instruction`, actif). Flows livrés :
 
-- **Cadence** (toutes les heures) : une opportunité en `qualification` sans `cadence_lancee_le` reçoit une activité `a_faire` par étape active, d'échéance « lancement + jour », liée à l'opportunité ; puis `cadence_lancee_le`. Une opportunité dont tous les contacts impliqués ont fait opposition est sautée.
-- **Brouillons** (toutes les heures) : une activité `mail` ou `message_reseau` à faire, due d'ici demain, sans brouillon, reçoit une accroche rédigée par le LLM de l'org à partir de la consigne et du compte. **L'humain la relit et l'envoie lui-même**, puis coche `faite`.
-- **Dernière activité** (toutes les 15 minutes) : une activité faite et non reportée met à jour `derniere_activite` de son opportunité.
+- **Cadence** (toutes les heures) : une opportunité en `qualification` sans `follow_up_started_on` reçoit une activité `to_do` par étape active, d'échéance « lancement + jour », liée à l'opportunité ; puis `follow_up_started_on`. Une opportunité dont tous les contacts impliqués ont fait opposition est sautée.
+- **Brouillons** (toutes les heures) : une activité `mail` ou `network_message` à faire, due d'ici demain, sans brouillon, reçoit une accroche rédigée par le LLM de l'org à partir de la consigne et du compte. **L'humain la relit et l'envoie lui-même**, puis coche `done`.
+- **Dernière activité** (toutes les 15 minutes) : une activité faite et non reportée met à jour `last_activity` de son opportunité.
 - **Critères manquants** (toutes les heures) : D449.
 
 ### D451 — « Ma journée » et alertes : un digest du matin
@@ -121,7 +121,7 @@ Flow « CRM · ma journée » (7 h) : un texte pour le nœud de notification de 
 
 Brique générique pour cela : les jetons `$today-<n>` et `$today+<n>` (jours, 0 à 3650) dans les filtres des nœuds `ontology_query`, résolus par le runtime comme `$today`.
 
-### D452 — Modèle de page `fiche_opportunite`
+### D452 — Modèle de page `opportunity_sheet`
 
 Rempli depuis l'opportunité (D340) : compte, étape, montant, contacts impliqués, critères et leur statut, activités, rendez-vous, puis les prochaines étapes en texte libre. Export PDF par `page_pdf`.
 
@@ -163,7 +163,7 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 | D449 | Opportunité et qualification par critères de l'org |
 | D450 | Activités, plan de relance, brouillons relus |
 | D451 | Digest « ma journée », jetons `$today±n` |
-| D452 | Modèle de page `fiche_opportunite` |
+| D452 | Modèle de page `opportunity_sheet` |
 
 ## 9. État d'implémentation
 
@@ -184,4 +184,4 @@ Reste : l'export du registre des traitements (pas de registre dans PneX aujourd'
 
 ### Lots CRM1–CRM2 — 2026-10-26, non commité
 
-Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunites`, modèle `fiche_opportunite`, 11 fonctions Starlark, 5 flows modèles (plan de relance, dernière activité, critères manquants, brouillons, ma journée). Tests : `pnex-node-starlark/tests/pack_rules.rs` (échéances à travers les fins de mois et années bissextiles, opposition, critères, dernière activité, digest) et `tests/crm.rs` (installation, brouillons de flows, cardinalité, hiérarchie, fiche). Fiches de l'assistant `sales-follow-up` et `personal-data` ; lexique §7 + garde.
+Pack `crm` 1.0.0 (`packs/crm.yaml`) : types, liens, hiérarchie `opportunities`, modèle `opportunity_sheet`, 11 fonctions Starlark, 5 flows modèles (plan de relance, dernière activité, critères manquants, brouillons, ma journée). Tests : `pnex-node-starlark/tests/pack_rules.rs` (échéances à travers les fins de mois et années bissextiles, opposition, critères, dernière activité, digest) et `tests/crm.rs` (installation, brouillons de flows, cardinalité, hiérarchie, fiche). Fiches de l'assistant `sales-follow-up` et `personal-data` ; lexique §7 + garde.
