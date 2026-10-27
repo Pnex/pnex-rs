@@ -69,6 +69,7 @@ use versions::*;
 use crud::delete;
 
 // Historical crate-level paths, preserved for external consumers.
+pub(crate) use helpers::format_unsupported;
 pub(crate) use store::{write_version, IncomingVersion};
 
 // ─────────────────────────── Routes ───────────────────────────

@@ -138,12 +138,21 @@ Une règle de **redirection** côté messagerie (qui garde l'expéditeur d'origi
 
 La remise aux flows passe par une publication Valkey : un mail publié pendant qu'un flow est arrêté, en cours de redéploiement ou coupé du bus n'atteint jamais son nœud (constaté trois fois à l'essai du 2026-10-26). Chaque nœud `mail_received` garde un **curseur** en base (`mail_flow_cursors`, par flow et nœud, effacé avec le flow) : à chaque session (démarrage, redéploiement, reconnexion à Valkey), il s'abonne d'abord, puis demande au backend (`/internal/flow/mail/replay`, jeton de service et fencing comme les nœuds d'ontologie) les mails stockés après son curseur, filtrés par sa configuration **déployée** (les boîtes vérifiées au déploiement, D454), au plus 200 et des 7 derniers jours, du plus ancien au plus récent ; il accuse chaque mail émis (`/ack`), en direct ou rejoué, et le curseur n'avance que vers l'avant. Un mail croisé entre direct et rejeu n'est émis qu'une fois. Le premier déploiement pose le curseur à « maintenant » : pas d'historique déversé dans un flow neuf.
 
+### D465 — Une pièce jointe devient un média à la demande d'un lecteur
+
+Une pièce jointe n'est **jamais** copiée à la relève : un média est vu de toute l'org (droit `media:read`), un mail seulement de qui lit sa boîte (D454) ; copier d'office ferait fuir le contenu d'une boîte personnelle. Un **lecteur de la boîte** qui a aussi le droit d'ajouter des médias clique « Enregistrer dans les médias » (`POST /mailboxes/{id}/messages/{message}/attachments/{index}/media`, outil MCP du même nom) : c'est un partage délibéré, comme télécharger puis déposer le fichier.
+
+- PneX ne garde aucun octet de pièce jointe : le serveur relit le message sous son UID (`EXAMINE` + `BODY.PEEK`, rien n'est marqué lu) et vérifie que c'est bien le message stocké (même `Message-ID`, même nom de pièce) ; sinon `mail-message-gone` (409), rien n'est enregistré.
+- Les octets passent par la règle d'un dépôt : liste blanche de formats, extension conforme au contenu (`media-format-unsupported`), plafond de taille (`mail-too-large`) ; un message tronqué à la relève (au-delà de 10 Mo) est refusé.
+- Le média est relié à la pièce (`media_id` dans la liste des pièces du message) : un second clic rend le même média tant qu'il existe. L'analyse (index, résumé) est celle de tout média, à la demande.
+- Les droits : l'opération exige `media:write` (registre IAM) et la lecture de la boîte (`mail.content:read` et D454, sinon 404).
+
 ## 4. Ce que le système ne fait pas
 
 - Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
 - Pas d'envoi de masse ni de campagne (marketing, newsletters).
 - Pas de lecture d'une boîte personnelle par un admin.
-- Pas de rendu HTML, d'ouverture de pièce jointe ni de suivi de lien.
+- Pas de rendu HTML, d'ouverture de pièce jointe ni de suivi de lien ; une pièce jointe n'est copiée en média qu'à la demande d'un lecteur (D465).
 
 ## 5. Sécurité (grille `security.md` §6)
 
@@ -153,7 +162,7 @@ La remise aux flows passe par une publication Valkey : un mail publié pendant q
 | 2 Données renvoyées | jamais de mot de passe ni de jeton ; contenu filtré par D454 |
 | 3 Nœuds | `mail_received`, `mail_send` en liste blanche ; boîte vérifiée au déploiement contre le déployeur |
 | 4 Sortant | IMAP/SMTP derrière R8, TLS obligatoire ; envoi = R9 (secret lié à sa boîte) |
-| 5 Rendu | texte seul (D458) |
+| 5 Rendu | texte seul (D458) ; une pièce jointe enregistrée (D465) suit la règle des dépôts : liste blanche, type servi sûr et en-têtes de contenu utilisateur (SEC-5) |
 | 6 Requêtes | paramètres liés ; dossiers IMAP échappés (pas de nom de dossier tapé tel quel dans une commande) |
 | 7 Crypto, jetons | jetons OAuth au coffre, rafraîchis côté serveur |
 | 8 Dépendances | client IMAP (`async-imap`, MIT/Apache-2.0) et analyse MIME (`mail-parser`, Apache-2.0/MIT) : vérifiés (maintenus, licences permissives), `task security:deps` au lot M2 |
@@ -193,6 +202,7 @@ La remise aux flows passe par une publication Valkey : un mail publié pendant q
 | D462 | Les packs livrent leurs flows ; rien au moteur |
 | D463 | Un transfert d'un membre est rangé sous l'expéditeur d'origine |
 | D464 | Un nœud `mail_received` qui redémarre rejoue les mails stockés après son curseur (200 au plus, 7 jours), jamais deux fois ; le premier déploiement part de maintenant |
+| D465 | Une pièce jointe devient un média seulement à la demande d'un lecteur de la boîte qui peut ajouter des médias ; relue sur le serveur, vérifiée, passée par la liste blanche des dépôts |
 
 ## 9. État
 
@@ -215,6 +225,10 @@ Arbitrages pris par défaut (recommandations du §7, réversibles) : messages st
 | Effacement d'une personne → ses mails (D461) | `services/profiles.rs` | — |
 
 Reste : l'écran de la liste des boîtes (CRUD) et le test réel sur une boîte jetable o2switch ; `mail_message` comme type système de l'ontologie (D455, liens et recherche depuis l'ontologie) ; l'envoi (M3) ; OAuth (M4, §10) ; les pièces jointes en médias (M5).
+
+### 2026-10-27 — M5, premier volet : pièces jointes en médias (D465)
+
+Service `services/mail/attachments.rs` (relecture IMAP, contrôle du message, dépôt par `write_version`), extraction `parse::attachment`, route `POST …/messages/{message}/attachments/{index}/media` (IAM `media:write`, exposée au MCP), bouton « Enregistrer dans les médias » / « Ouvrir le média » dans l'écran des mails, fiche `assistant-kb/mailboxes.md`. Tests : `tests/mail.rs` (non-lecteur 404, pièce absente 404, serveur relu 502, média déjà enregistré rendu sans serveur), 1 unitaire de décodage. Non essayé sur la boîte o2switch réelle. Reste de M5 : les outils de l'assistant et des agents (`mail_list`, `mail_read`), qui attendent M3 pour `mail_reply`.
 
 ## 10. Reprise : boîte jetable d'abord, Microsoft à contourner
 

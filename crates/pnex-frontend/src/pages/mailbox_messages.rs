@@ -15,7 +15,9 @@ use crate::components::crud::layout::ListLayout;
 use crate::components::crud::pager::{ListPager, PAGE_SIZE};
 use crate::components::crud::states::ListStates;
 use crate::components::crud::table::{Column, DataTable, RowKey};
-use crate::components::ui::{State, StateMark, PANEL};
+use crate::components::ui::{State, StateMark, BTN_GHOST, PANEL};
+use crate::state::media::OPEN_MEDIA;
+use crate::state::{access, toasts};
 
 fn address_label(a: &MailAddress) -> String {
     if a.name.is_empty() {
@@ -133,7 +135,10 @@ pub fn MailboxMessages(id: String) -> Element {
                     }
                     ListPager { count, page }
                     if let Some(message) = selected {
-                        MessageText { message }
+                        MessageText {
+                            message,
+                            on_saved: move |_| reload.with_mut(|r| *r += 1),
+                        }
                     }
                 }
             }
@@ -143,8 +148,21 @@ pub fn MailboxMessages(id: String) -> Element {
 
 /// One mail read as text: headers, what PneX checked, attachments listed.
 #[component]
-fn MessageText(message: MailMessage) -> Element {
+fn MessageText(message: MailMessage, on_saved: EventHandler<()>) -> Element {
     let (mark, check) = sender_check(&message);
+    let navigator = use_navigator();
+    let mut saving = use_signal(|| None::<usize>);
+    let can_save = access::can("media:write");
+    let mut save = move |mailbox: String, id: String, i: usize| {
+        saving.set(Some(i));
+        spawn(async move {
+            match api::mailboxes::save_attachment(&mailbox, &id, i).await {
+                Ok(_) => on_saved.call(()),
+                Err(err) => toasts::error(err),
+            }
+            saving.set(None);
+        });
+    };
     let to: Vec<String> = message.to.iter().map(address_label).collect();
     rsx! {
         article { class: "{PANEL} p-4 space-y-3",
@@ -176,9 +194,37 @@ fn MessageText(message: MailMessage) -> Element {
             }
             if !message.attachments.is_empty() {
                 ul { class: "text-xs text-gray-600 space-y-0.5",
-                    for a in message.attachments.clone() {
-                        li { key: "{a.name}",
-                            {t!("mailboxes-attachment", name : a.name.clone(), size : (a.size / 1024) as i64)}
+                    for (i, a) in message.attachments.clone().into_iter().enumerate() {
+                        li {
+                            key: "{i}",
+                            class: "flex flex-wrap items-center gap-2",
+                            span {
+                                {t!("mailboxes-attachment", name : a.name.clone(), size : (a.size / 1024) as i64)}
+                            }
+                            if let Some(media) = a.media_id.clone() {
+                                button {
+                                    class: BTN_GHOST,
+                                    onclick: move |_| {
+                                        OPEN_MEDIA.with_mut(|v| *v = Some(media.clone()));
+                                        navigator.push(Route::Media {});
+                                    },
+                                    {t!("mailboxes-attachment-open")}
+                                }
+                            } else if can_save {
+                                button {
+                                    class: BTN_GHOST,
+                                    disabled: saving().is_some(),
+                                    onclick: {
+                                        let (mailbox, id) = (message.mailbox_id.clone(), message.id.clone());
+                                        move |_| save(mailbox.clone(), id.clone(), i)
+                                    },
+                                    if saving() == Some(i) {
+                                        {t!("mailboxes-attachment-saving")}
+                                    } else {
+                                        {t!("mailboxes-attachment-save")}
+                                    }
+                                }
+                            }
                         }
                     }
                 }

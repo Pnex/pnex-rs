@@ -348,6 +348,7 @@ pub const EXPOSED: &[&str] = &[
     "voice_id_profiles_update",
     "voice_id_samples_from_media",
     "web_search_providers_list",
+    "mailboxes_attachments_save",
     "mailboxes_list",
     "mailboxes_messages_list",
     "mailboxes_state",

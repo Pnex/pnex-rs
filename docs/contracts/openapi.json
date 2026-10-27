@@ -10327,6 +10327,13 @@
           "content_type": {
             "type": "string"
           },
+          "media_id": {
+            "description": "The media it was saved as by a reader of the mailbox (mail.md M5).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -51211,6 +51218,145 @@
           }
         ],
         "summary": "List the messages of a mailbox",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{id}/messages/{message}/attachments/{index}/media": {
+      "post": {
+        "description": "Fetches the message again from the mail server (read-only, nothing marked read) and saves attachment `index` (in the listed order) as a new media of the org, under the media upload rules: allowed formats only, size limit. The media is then visible to whoever reads the org's media, unlike the mail. Answers the attachment with its `media_id`; saving it again returns the same media while it exists. Only a reader of the mailbox (404 for anyone else). Requires the media write permission and the mail content read permission.",
+        "operationId": "mailboxes_attachments_save",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stored message id",
+            "in": "path",
+            "name": "message",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Attachment position, from 0",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MailAttachment"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`media-format-unsupported`"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `media:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`, `mail-attachment-not-found`"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-message-gone`"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-too-large` (`args.max_bytes`)"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The mail server refused or failed: `mail-unreachable`, `mail-tls-failed`, `mail-auth-failed`, `mail-folder-unknown`, `mail-protocol`, `mail-no-password`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Save a mail attachment as a media",
         "tags": [
           "mail"
         ]

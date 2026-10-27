@@ -444,3 +444,64 @@ async fn the_poller_records_a_server_it_cannot_reach() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn an_attachment_is_saved_as_a_media_only_by_a_reader() {
+    with_app(|server, env| async move {
+        let (org, _, _) = setup(&server, &env).await;
+        let (_, b) = call(
+            &server,
+            "POST",
+            "/api/v1/mailboxes",
+            &env.alice,
+            org,
+            Some(input(
+                "Alice",
+                "alice@example.com",
+                json!({"imap_host": "imap.nowhere.invalid"}),
+            )),
+        )
+        .await;
+        let id = uuid::Uuid::parse_str(b["id"].as_str().unwrap()).unwrap();
+        let row = mail::find(&env.db, org, id).await.unwrap();
+        let raw = "From: elodie@acme.fr\r\nTo: alice@example.com\r\nSubject: Facture\r\n\
+Message-ID: <inv1@acme.fr>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+--m\r\nContent-Type: text/plain\r\n\r\nCi-joint.\r\n\
+--m\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"facture.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--m--\r\n";
+        let p = mail::parse::parse(raw.as_bytes(), false, &[], "x").unwrap();
+        let m = mail::poller::store(&env.db, &row, "INBOX", 1, p, &[])
+            .await
+            .unwrap()
+            .unwrap();
+        let path = |i: usize| format!("/api/v1/mailboxes/{id}/messages/{}/attachments/{i}/media", m.id);
+
+        // Bob does not read Alice's own mailbox: it does not exist for him.
+        let (st, e) = call(&server, "POST", &path(0), &env.bob, org, None).await;
+        assert_eq!((st, e["error"].clone()), (404, json!("mail-mailbox-not-found")), "{e}");
+        let (st, e) = call(&server, "POST", &path(1), &env.alice, org, None).await;
+        assert_eq!((st, e["error"].clone()), (404, json!("mail-attachment-not-found")), "{e}");
+        // PneX keeps no attachment bytes: the server is asked again.
+        let (st, e) = call(&server, "POST", &path(0), &env.alice, org, None).await;
+        assert_eq!((st, e["error"].clone()), (502, json!("mail-unreachable")), "{e}");
+
+        // Once saved, the same media is answered without the server.
+        use sea_orm::ConnectionTrait;
+        let media = uuid::Uuid::new_v4();
+        env.db
+            .execute_unprepared(&format!(
+                "INSERT INTO media_assets (id, org_id, kind, name) VALUES ('{media}', {org}, 'document', 'facture.pdf'); \
+                 UPDATE mail_messages SET attachments = jsonb_set(attachments, '{{0,media_id}}', '\"{media}\"') \
+                 WHERE id = '{}'",
+                m.id
+            ))
+            .await
+            .unwrap();
+        let (st, a) = call(&server, "POST", &path(0), &env.alice, org, None).await;
+        assert_eq!((st, a["media_id"].clone()), (200, json!(media.to_string())), "{a}");
+        let (_, l) = call(&server, "GET", &format!("/api/v1/mailboxes/{id}/messages"), &env.alice, org, None).await;
+        assert_eq!(l["results"][0]["attachments"][0]["media_id"], json!(media.to_string()));
+    })
+    .await;
+}

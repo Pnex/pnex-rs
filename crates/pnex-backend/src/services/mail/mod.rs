@@ -4,6 +4,7 @@
 //! that listen to them. Who manages a mailbox and who reads its messages
 //! is decided here (D454), never by the caller.
 
+pub mod attachments;
 pub mod imap;
 pub mod parse;
 pub mod poller;

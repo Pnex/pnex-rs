@@ -11,12 +11,13 @@ use axum::Json;
 use loco_rs::controller::format;
 use loco_rs::prelude::*;
 use pnex_core::err_codes;
-use pnex_core::mail::{MailMessage, Mailbox, MailboxInput, MailboxTestResult};
+use pnex_core::mail::{MailAttachment, MailMessage, Mailbox, MailboxInput, MailboxTestResult};
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
+use crate::services::mail::attachments::SaveError;
 use crate::services::mail::{self as mail, Access, Caller, MailError};
 
 pub fn routes() -> Routes {
@@ -27,6 +28,10 @@ pub fn routes() -> Routes {
         .add("/mailboxes/{id}/state", post(set_state))
         .add("/mailboxes/{id}/test", post(test))
         .add("/mailboxes/{id}/messages", get(messages))
+        .add(
+            "/mailboxes/{id}/messages/{message}/attachments/{index}/media",
+            post(save_attachment),
+        )
 }
 
 fn caller(org: &OrgContext) -> Caller {
@@ -319,10 +324,92 @@ async fn messages(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/mailboxes/{id}/messages/{message}/attachments/{index}/media",
+    tag = "mail",
+    operation_id = "mailboxes_attachments_save",
+    summary = "Save a mail attachment as a media",
+    description = "Fetches the message again from the mail server (read-only, nothing marked read) and saves attachment `index` (in the listed order) as a new media of the org, under the media upload rules: allowed formats only, size limit. The media is then visible to whoever reads the org's media, unlike the mail. Answers the attachment with its `media_id`; saving it again returns the same media while it exists. Only a reader of the mailbox (404 for anyone else). Requires the media write permission and the mail content read permission.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Mailbox id"),
+        ("message" = String, Path, format = "uuid", description = "Stored message id"),
+        ("index" = i64, Path, description = "Attachment position, from 0")
+    ),
+    responses(
+        (status = 200, body = MailAttachment),
+        (status = 400, description = "`media-format-unsupported`", body = crate::openapi::ErrorDetail),
+        (status = 404, description = "`mail-mailbox-not-found`, `mail-attachment-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 409, description = "`mail-message-gone`", body = crate::openapi::ErrorDetail),
+        (status = 413, description = "`mail-too-large` (`args.max_bytes`)", body = crate::openapi::ErrorDetail),
+        (status = 502, description = "The mail server refused or failed: `mail-unreachable`, `mail-tls-failed`, `mail-auth-failed`, `mail-folder-unknown`, `mail-protocol`, `mail-no-password`", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn save_attachment(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, message, index)): Path<(Uuid, Uuid, usize)>,
+) -> Result<Response> {
+    let ring = match crate::controllers::secrets::keyring(&ctx) {
+        Ok(r) => r,
+        Err(e) => return crate::controllers::secrets::store_error(e),
+    };
+    match mail::attachments::save_as_media(
+        &ctx,
+        &ring,
+        org.org.id,
+        caller(&org),
+        id,
+        message,
+        index,
+    )
+    .await
+    {
+        Ok(a) => format::json(a),
+        Err(SaveError::Mail(e)) => mail_error(e),
+        Err(SaveError::NotFound) => Err(super::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::MAIL_ATTACHMENT_NOT_FOUND,
+            "Attachment not found.",
+            None,
+        )),
+        Err(SaveError::Gone) => Err(super::coded_error(
+            StatusCode::CONFLICT,
+            err_codes::MAIL_MESSAGE_GONE,
+            "The mail server no longer holds this message.",
+            None,
+        )),
+        Err(SaveError::TooLarge(max)) => Err(super::coded_error(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            err_codes::MAIL_TOO_LARGE,
+            "Too large to save.",
+            Some(serde_json::json!({ "max_bytes": max.to_string() })),
+        )),
+        Err(SaveError::Format) => Err(crate::controllers::media::format_unsupported()),
+        Err(SaveError::Server(e)) => Err(super::coded_error(
+            StatusCode::BAD_GATEWAY,
+            &e.code,
+            "The mail server refused or failed.",
+            Some(e.args),
+        )),
+        Err(SaveError::Failed) => Err(Error::InternalServerError),
+    }
+}
+
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
-        paths(list, create, update, set_state, remove, test, messages),
+        paths(
+            list,
+            create,
+            update,
+            set_state,
+            remove,
+            test,
+            messages,
+            save_attachment
+        ),
         components(schemas(StateInput))
     )]
     struct Doc;

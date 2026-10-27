@@ -705,6 +705,13 @@ pub const MAIL_FOLDER_UNKNOWN: &str = "mail-folder-unknown";
 pub const MAIL_PROTOCOL: &str = "mail-protocol";
 /// More messages than allowed per hour arrived; the mailbox is paused (mail.md D457.4); `args.max`.
 pub const MAIL_RATE_EXCEEDED: &str = "mail-rate-exceeded";
+/// The message or its attachment is not stored (mail.md M5).
+pub const MAIL_ATTACHMENT_NOT_FOUND: &str = "mail-attachment-not-found";
+/// The mail server no longer holds the stored message (moved, deleted, or
+/// the folder renumbered); nothing was saved.
+pub const MAIL_MESSAGE_GONE: &str = "mail-message-gone";
+/// The message or attachment exceeds what PneX fetches or stores; `args.max_bytes`.
+pub const MAIL_TOO_LARGE: &str = "mail-too-large";
 /// Web search provider not found (or not in the org).
 pub const WEB_SEARCH_PROVIDER_NOT_FOUND: &str = "web-search-provider-not-found";
 /// A web search provider of the org already has this name.
@@ -966,6 +973,9 @@ pub const ALL: &[&str] = &[
     MAIL_FOLDER_UNKNOWN,
     MAIL_PROTOCOL,
     MAIL_RATE_EXCEEDED,
+    MAIL_ATTACHMENT_NOT_FOUND,
+    MAIL_MESSAGE_GONE,
+    MAIL_TOO_LARGE,
     WEB_SEARCH_PROVIDER_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NAME_TAKEN,
     WEB_SEARCH_NO_PROVIDER,

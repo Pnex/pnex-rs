@@ -1,6 +1,6 @@
 //! Mailboxes of the org (mail.md D453).
 
-use pnex_core::mail::{MailMessage, Mailbox, MailboxInput, MailboxTestResult};
+use pnex_core::mail::{MailAttachment, MailMessage, Mailbox, MailboxInput, MailboxTestResult};
 use pnex_core::Paginated;
 
 use crate::api::client;
@@ -72,6 +72,21 @@ pub async fn messages(
     client::request(
         reqwest::Method::GET,
         &format!("/api/v1/mailboxes/{id}/messages?limit={limit}&offset={offset}"),
+        None,
+    )
+    .await
+}
+
+/// `POST /api/v1/mailboxes/{id}/messages/{message}/attachments/{index}/media`:
+/// the server fetches the mail again and saves the attachment as a media.
+pub async fn save_attachment(
+    id: &str,
+    message: &str,
+    index: usize,
+) -> Result<MailAttachment, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/mailboxes/{id}/messages/{message}/attachments/{index}/media"),
         None,
     )
     .await

@@ -117,6 +117,7 @@ pub fn parse(raw: &[u8], truncated_raw: bool, own: &[String], fallback_id: &str)
             name: line(part.attachment_name().unwrap_or("attachment"), 255),
             content_type: line(&ct, 255),
             size: part.len() as u64,
+            media_id: None,
         });
         if attachments.len() >= 100 {
             break;
@@ -157,6 +158,41 @@ pub fn parse(raw: &[u8], truncated_raw: bool, own: &[String], fallback_id: &str)
         attachments,
         auth,
         forwards,
+    })
+}
+
+/// One attachment taken out of a message (mail.md M5), still unopened:
+/// the caller passes its bytes to the media allowlist.
+#[derive(Debug)]
+pub struct Extracted {
+    /// The `Message-ID` read again, to check the server still holds the
+    /// stored message under this UID.
+    pub message_id: Option<String>,
+    pub name: String,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// The attachment at `index`, in the order [`parse`] lists them.
+pub fn attachment(raw: &[u8], index: usize) -> Option<Extracted> {
+    let msg = MessageParser::default().parse(raw)?;
+    let part = msg.attachments().take(100).nth(index)?;
+    Some(Extracted {
+        message_id: msg
+            .message_id()
+            .map(|m| line(m, 990))
+            .filter(|m| !m.is_empty()),
+        name: line(part.attachment_name().unwrap_or("attachment"), 255),
+        content_type: part
+            .content_type()
+            .map(|c| {
+                line(
+                    &format!("{}/{}", c.ctype(), c.subtype().unwrap_or_default()),
+                    255,
+                )
+            })
+            .unwrap_or_default(),
+        bytes: part.contents().to_vec(),
     })
 }
 
@@ -233,6 +269,10 @@ Bonjour, voici notre besoin.\r\n\
         assert!(!f.trusted);
         assert_eq!(p.attachments.len(), 1);
         assert!(!p.automatic);
+        let a = attachment(raw.as_bytes(), 0).expect("attachment 0");
+        assert_eq!(a.message_id.as_deref(), Some("f1@example.com"));
+        assert_eq!(a.name, "devis.eml");
+        assert!(attachment(raw.as_bytes(), 1).is_none());
     }
 
     #[test]
@@ -248,5 +288,20 @@ Bonjour, voici notre besoin.\r\n\
         assert!(p.from_pnex);
         assert_eq!(p.message_id, "<7.42@mailbox>");
         assert!(p.truncated);
+    }
+
+    #[test]
+    fn an_attachment_comes_out_decoded() {
+        let raw = "From: elodie@acme.fr\r\nSubject: Facture\r\nMessage-ID: <inv1@acme.fr>\r\n\
+MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+--m\r\nContent-Type: text/plain\r\n\r\nCi-joint.\r\n\
+--m\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=\"facture.pdf\"\r\n\
+Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--m--\r\n";
+        let a = attachment(raw.as_bytes(), 0).unwrap();
+        assert_eq!(
+            (a.name.as_str(), a.content_type.as_str(), a.bytes.as_slice()),
+            ("facture.pdf", "application/pdf", b"%PDF-1.4\n".as_slice())
+        );
+        assert_eq!(a.message_id.as_deref(), Some("inv1@acme.fr"));
     }
 }

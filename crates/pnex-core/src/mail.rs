@@ -222,6 +222,9 @@ pub struct MailAttachment {
     pub name: String,
     pub content_type: String,
     pub size: u64,
+    /// The media it was saved as by a reader of the mailbox (mail.md M5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media_id: Option<String>,
 }
 
 /// The original of a forwarded message (D463): its sender, date and
