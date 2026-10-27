@@ -213,6 +213,7 @@ La partie `text/calendar` d'un mail (en ligne ou jointe) est lue à la relève p
 | D464 | Un nœud `mail_received` qui redémarre rejoue les mails stockés après son curseur (200 au plus, 7 jours), jamais deux fois ; le premier déploiement part de maintenant |
 | D465 | Une pièce jointe devient un média seulement à la demande d'un lecteur de la boîte qui peut ajouter des médias ; relue sur le serveur, vérifiée, passée par la liste blanche des dépôts |
 | D466 | Une invitation de réunion lue à la relève va au calendrier de l'org à la demande d'un lecteur ; clé = `UID` (mise à jour, annulation), participants rattachés aux personnes par identifiant e-mail |
+| D467 | Un expéditeur inconnu d'un domaine propre est proposé (jamais lié) sous le compte dont le site web confirmé a ce domaine ; webmails exclus |
 
 ## 9. État
 
@@ -263,7 +264,9 @@ Aucun service officiel Microsoft n'est apparu à la recherche du 2026-10-26 ; le
 
 ## 11. Piste (2026-10-27) : invitations de réunion et reconnaissance des correspondants
 
-**Point 1 livré (D466)**, choix par défaut : calendrier de l'org (pas de calendrier par personne aujourd'hui), ajout à la demande. Points 2 et 3 ouverts.
+**Point 1 livré (D466)**, choix par défaut : calendrier de l'org (pas de calendrier par personne aujourd'hui), ajout à la demande.
+
+**Point 2 livré (D467, pack `crm` 1.4.0)** : le domaine d'une entreprise n'est pas saisi, il vient de son site web confirmé (pack `presence_web`, `site_web.domaine`, lien `a_pour_site`). Le flow **CRM · mails reçus** cherche d'abord une personne par identifiant e-mail ; s'il n'y en a aucune et que l'adresse n'est pas un webmail, il range le mail comme activité et **propose** son rattachement au compte dont le site a ce domaine, et à ses opportunités ouvertes (page « À valider », confiance 50, preuve = le domaine). Jamais lié d'office, même expéditeur authentifié : un clic humain valide, comme les sites candidats de la veille. Point 3 (LinkedIn) ouvert.
 
 Demande : une invitation reçue ou transférée par mail apparaît au calendrier avec ses participants, et chaque correspondant est relié à sa personne, à son entreprise (par le domaine de son adresse) et, le cas échéant, à son profil LinkedIn.
 

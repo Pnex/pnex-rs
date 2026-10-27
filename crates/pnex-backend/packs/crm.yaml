@@ -16,7 +16,8 @@
 # Mails received (mail.md D462): the flow model files each new mail of
 # the mailboxes you pick as a done incoming activity of its correspondent
 # (the original sender of a trusted forward, else the sender), found by an
-# e-mail identifier of a person. A mail whose authentication fails is only
+# e-mail identifier of a person, else proposed under the account whose
+# website has the sender's domain (never a webmail). A mail whose authentication fails is only
 # proposed for linking; automatic mails and the org's own are left out.
 # The morning digest lists the activities due and the open opportunities
 # with no activity for 14 days (edit `$today-14` in the flow): add the org's
@@ -24,7 +25,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.3.0"
+version: "1.4.0"
 requires: [prospection_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -429,7 +430,7 @@ functions:
           }
   - name: crm_mail_lien
     language: starlark
-    description: "The links from the activity to the person and their open opportunities (payload = the list): written when the sender is trusted, proposed otherwise."
+    description: "The links from the activity to the person (or the account found by domain) and their open opportunities (payload = the list): written when the sender is trusted, proposed otherwise or when found by domain."
     code: |
       # @output lien any "Trusted sender: the links are written"
       # @output proposition any "Sender not authenticated: the links are proposed"
@@ -437,13 +438,63 @@ functions:
           act = msg["object"]["id"]
           targets = [msg["person"]["id"]] + msg.get("opportunites", [])
           links = [{"source_id": act, "target_id": t} for t in targets]
-          if msg["mail"].get("trusted"):
+          # A match by the domain of the address is a guess: always proposed.
+          domain = msg.get("par_domaine", "")
+          if msg["mail"].get("trusted") and not domain:
               return [{"payload": links}, None]
           evidence = {"reason": "sender not authenticated", "subject": msg["mail"].get("subject", "")}
+          if domain:
+              evidence = {"reason": "matched by the e-mail domain", "domain": domain, "subject": msg["mail"].get("subject", "")}
           for l in links:
-              l["confidence"] = 40
+              l["confidence"] = 50 if domain else 40
               l["evidence"] = evidence
           return [None, {"payload": links}]
+  - name: crm_mail_domaine
+    language: starlark
+    description: "A sender no person uses as identifier: the domain of their address, unless a webmail, to find the account by its website (presence_web)."
+    code: |
+      WEBMAIL = ["gmail.com", "googlemail.com", "hotmail.com", "hotmail.fr", "outlook.com",
+                 "outlook.fr", "live.com", "live.fr", "msn.com", "yahoo.com", "yahoo.fr",
+                 "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "neuf.fr", "laposte.net",
+                 "icloud.com", "me.com", "gmx.fr", "gmx.com", "aol.com", "bbox.fr",
+                 "protonmail.com", "proton.me", "numericable.fr"]
+
+      def handle(inputs, msg):
+          if msg["payload"]:
+              return None
+          d = msg.get("addr", "").split("@")[-1]
+          if "." not in d or d in WEBMAIL:
+              return None
+          return {"payload": {}, "domaine": d, "addr": msg["addr"], "mail": msg["mail"]}
+  - name: crm_mail_compte
+    language: starlark
+    description: The mail as a done incoming activity of the account whose website has the sender's domain; its open opportunities kept for the links, all proposed.
+    code: |
+      CLOSED = ["gagnee", "perdue"]
+
+      def handle(inputs, msg):
+          mail = msg["mail"]
+          subject = mail.get("subject", "") or "(sans objet)"
+          opps = [l["other"]["id"] for l in msg.get("links", {}).get("opportunite_de", [])
+                  if l.get("direction") == "in" and l.get("other", {}).get("type") == "opportunite"
+                  and l["other"].get("properties", {}).get("etape", "") not in CLOSED]
+          payload = {
+              "cle": "mail:" + mail.get("message_id", ""),
+              "kind": "mail",
+              "etat": "faite",
+              "sens": "entrant",
+              "contenu": subject + "\n\n" + mail.get("text", ""),
+          }
+          if mail.get("date"):
+              payload["faite_le"] = mail["date"]
+          return {
+              "payload": payload,
+              "title": "mail · " + subject[:200],
+              "person": {"id": msg["object"]["id"]},
+              "opportunites": opps,
+              "mail": mail,
+              "par_domaine": msg.get("domaine", ""),
+          }
   - name: crm_journee_dues
     language: starlark
     description: Keeps the activities due on the message for the morning digest.
@@ -573,11 +624,31 @@ flows:
         - { id: keep, kind: pnex_function, config: { function_name: crm_brouillon, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: activite, key: id } }
   - name: "CRM · mails received"
-    note: "Each new mail of the mailboxes you pick (node Mail received: choose them, you must read them) becomes a done incoming activity of its correspondent and of their open opportunities (it moves their last activity) — the original sender of a forward made by a member, else the sender — found by an e-mail identifier of a person (identifier kind email, value in lower case). A sender whose authentication fails is only proposed for the link, on the To validate page. Automatic replies, lists and the organization's own mails are left out. Pick the mailboxes, then deploy."
+    note: "Each new mail of the mailboxes you pick (node Mail received: choose them, you must read them) becomes a done incoming activity of its correspondent and of their open opportunities (it moves their last activity) — the original sender of a forward made by a member, else the sender — found by an e-mail identifier of a person (identifier kind email, value in lower case). A sender whose authentication fails is only proposed for the link, on the To validate page. A sender no person uses, writing from an own domain (not a webmail), is proposed as an activity of the account whose website has that domain (Web presence pack), and of its open opportunities. Automatic replies, lists and the organization's own mails are left out. Pick the mailboxes, then deploy."
     graph:
       nodes:
         - { id: mail, kind: mail_received, config: { skip_automatic: true }, outputs: [{ port: 0, targets: [prep] }] }
-        - { id: prep, kind: pnex_function, config: { function_name: crm_mail_prep, language: starlark }, outputs: [{ port: 0, targets: [who] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: crm_mail_prep, language: starlark }, outputs: [{ port: 0, targets: [who, known] }] }
+        - id: known
+          kind: ontology_query
+          config:
+            object_type: identifier
+            filters: [{ key: value, op: eq, value: "$msg.addr" }]
+            traverse: [{ link_type: uses_identifier, direction: in }]
+            limit: 1
+            output: array
+          outputs: [{ port: 0, targets: [domain] }]
+        - { id: domain, kind: pnex_function, config: { function_name: crm_mail_domaine, language: starlark }, outputs: [{ port: 0, targets: [account] }] }
+        - id: account
+          kind: ontology_query
+          config:
+            object_type: site_web
+            filters: [{ key: domaine, op: eq, value: "$msg.domaine" }]
+            traverse: [{ link_type: a_pour_site, direction: in }]
+            limit: 3
+            with_links: [opportunite_de]
+          outputs: [{ port: 0, targets: [act_account] }]
+        - { id: act_account, kind: pnex_function, config: { function_name: crm_mail_compte, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - id: who
           kind: ontology_query
           config:

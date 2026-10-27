@@ -30,7 +30,7 @@ A mailbox keeps its mails 90 days by default. Removing a mailbox removes its mai
 ## In a flow
 The **Mail received** node (palette, Triggers) sends one message per new mail of the mailboxes you pick — only those you read; the deploy refuses the others (**mail-mailbox-forbidden**). Filters: sender contains, subject contains, and *leave out automatic replies, lists and the organization's own mails* (on by default, so flows never answer each other).
 
-The sales follow-up pack ships **CRM · mails received**: pick your mailboxes in its Mail received node, then deploy. Each mail becomes a done incoming activity of the person whose e-mail identifier matches the sender.
+The sales follow-up pack ships **CRM · mails received**: pick your mailboxes in its Mail received node, then deploy. Each mail becomes a done incoming activity of the person whose e-mail identifier matches the sender. When no person uses the sender's address and it is not a webmail (gmail.com, orange.fr…), the mail is proposed, on the **To validate** page, as an activity of the account whose confirmed website has the same domain (Web presence pack): accept it to link it. A match by domain is never linked on its own.
 
 ## Forwarding from a mailbox PneX does not read
 A salesperson whose company mailbox cannot be connected forwards the mail to a mailbox PneX reads. PneX finds the original sender (a forward as attachment, or the forward block of Gmail, Outlook or Apple Mail; in a forward of a forward, the first sender outside the organization) and files the mail under them — only when the forward comes from a member's address and passed authentication; otherwise the mail stays with whoever sent it.

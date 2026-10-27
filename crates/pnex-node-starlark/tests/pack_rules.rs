@@ -933,3 +933,54 @@ fn a_mail_is_filed_under_its_correspondent() {
     assert_eq!(r["payload"]["faite_le"], "2026-10-26T13:35:00+00:00");
     assert!(r["payload"].get("reportee").is_none());
 }
+
+/// An unknown sender from an own domain is proposed under the account
+/// whose website has that domain; a webmail never is.
+#[test]
+fn an_unknown_sender_is_proposed_under_the_account_of_its_domain() {
+    let mail =
+        json!({"message_id": "<m2@x>", "subject": "Devis", "text": "Bonjour", "trusted": true});
+    let q = |found: serde_json::Value, addr: &str| json!({"payload": found, "addr": addr, "mail": mail});
+    let r = execute(
+        &code_in(CRM, "crm_mail_domaine"),
+        &q(json!([]), "new@acme.fr"),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(r["domaine"], "acme.fr");
+    for (found, addr) in [
+        (json!([{"id": "p1"}]), "known@acme.fr"),
+        (json!([]), "someone@gmail.com"),
+    ] {
+        assert!(
+            execute(&code_in(CRM, "crm_mail_domaine"), &q(found, addr), 2000)
+                .unwrap()
+                .return_json
+                .is_none()
+        );
+    }
+    let opp = |id: &str, etape: &str| json!({"direction": "in", "other": {"id": id, "type": "opportunite", "properties": {"etape": etape}}});
+    let acc = json!({"object": {"id": "org1"}, "links": {"opportunite_de": [opp("o1", "proposition"), opp("o2", "gagnee")]},
+        "mail": mail, "domaine": "acme.fr"});
+    let r = execute(&code_in(CRM, "crm_mail_compte"), &acc, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (r["person"]["id"].clone(), r["opportunites"].clone()),
+        (json!("org1"), json!(["o1"]))
+    );
+    let mut linked = r.clone();
+    linked["object"] = json!({"id": "act"});
+    let r = execute(&code_in(CRM, "crm_mail_lien"), &linked, 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(
+        r[0].is_null(),
+        "a domain match is never linked on its own, even trusted"
+    );
+    assert_eq!(r[1]["payload"][0]["evidence"]["domain"], "acme.fr");
+}
