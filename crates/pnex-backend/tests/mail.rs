@@ -608,7 +608,7 @@ Message-ID: <{message_id}>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alter
 --a\r\nContent-Type: text/calendar; method={method}; charset=utf-8\r\n\r\n\
 BEGIN:VCALENDAR\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:m1@acme.fr\r\nSUMMARY:Revue devis\r\n\
 DTSTART:{start}\r\nDURATION:PT1H\r\nORGANIZER;CN=Elodie:mailto:elodie@acme.fr\r\n\
-ATTENDEE;CN=Alice:mailto:alice@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--a--\r\n")
+ATTENDEE;CN=Alice:mailto:alice@example.com\r\nATTENDEE;CN=Elodie:mailto:elodie@acme.fr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--a--\r\n")
 }
 
 #[tokio::test]
@@ -678,6 +678,11 @@ async fn an_invitation_reaches_the_calendar_when_a_reader_adds_it() {
             (json!("Revue devis"), json!("meeting"), json!("org"))
         );
         assert_eq!(r["attrs"]["people"][0]["address"], "elodie@acme.fr", "{r}");
+        assert_eq!(
+            r["attrs"]["people"].as_array().map(|p| p.len()),
+            Some(2),
+            "{r}"
+        );
         // The update moves the same meeting; the cancellation marks it.
         let (_, moved) = call(&server, "POST", &path(&stored[1]), &env.alice, org, None).await;
         assert_eq!(

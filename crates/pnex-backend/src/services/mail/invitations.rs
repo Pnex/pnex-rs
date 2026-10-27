@@ -95,13 +95,17 @@ pub async fn add_to_calendar(
         .invitation
         .and_then(|v| serde_json::from_value(v).ok())
         .ok_or(InviteError::NotFound)?;
-    let mut who = Vec::new();
+    let mut who: Vec<Value> = Vec::new();
     for (role, a) in inv
         .organizer
         .iter()
         .map(|a| ("organizer", a))
         .chain(inv.attendees.iter().map(|a| ("attendee", a)))
     {
+        // Google lists the organizer among the attendees too.
+        if who.iter().any(|w| w["address"] == json!(a.address)) {
+            continue;
+        }
         let MailAddress { name, address } = a;
         who.push(json!({
             "role": role,

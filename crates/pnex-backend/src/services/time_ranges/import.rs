@@ -250,6 +250,7 @@ fn ics_time(value: &str, params: &[(String, String)]) -> String {
         Some(tz) => tz
             .parse::<chrono_tz::Tz>()
             .ok()
+            .or_else(|| windows_tz(tz)?.parse().ok())
             .and_then(|tz| tz.from_local_datetime(&naive).earliest())
             .map(|t| t.to_rfc3339())
             .unwrap_or_else(|| v.to_string()),
@@ -257,6 +258,60 @@ fn ics_time(value: &str, params: &[(String, String)]) -> String {
         // schedule ships floating times (a per-import timezone then).
         None => Utc.from_utc_datetime(&naive).to_rfc3339(),
     }
+}
+
+/// IANA zone of a Windows time zone name, as Outlook and Exchange write
+/// in `TZID` (CLDR `windowsZones`, territory 001).
+// shortcut: the most used zones only, an unknown one keeps the raw time;
+// add a line when an invitation shows another one.
+fn windows_tz(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "UTC" | "Coordinated Universal Time" => "Etc/UTC",
+        "GMT Standard Time" => "Europe/London",
+        "Greenwich Standard Time" => "Atlantic/Reykjavik",
+        "W. Europe Standard Time" => "Europe/Berlin",
+        "Romance Standard Time" => "Europe/Paris",
+        "Central Europe Standard Time" => "Europe/Budapest",
+        "Central European Standard Time" => "Europe/Warsaw",
+        "W. Central Africa Standard Time" => "Africa/Lagos",
+        "Morocco Standard Time" => "Africa/Casablanca",
+        "GTB Standard Time" => "Europe/Bucharest",
+        "E. Europe Standard Time" => "Europe/Chisinau",
+        "FLE Standard Time" => "Europe/Kiev",
+        "South Africa Standard Time" => "Africa/Johannesburg",
+        "Egypt Standard Time" => "Africa/Cairo",
+        "Israel Standard Time" => "Asia/Jerusalem",
+        "Turkey Standard Time" => "Europe/Istanbul",
+        "Russian Standard Time" => "Europe/Moscow",
+        "Arabian Standard Time" => "Asia/Dubai",
+        "Arab Standard Time" => "Asia/Riyadh",
+        "E. Africa Standard Time" => "Africa/Nairobi",
+        "Mauritius Standard Time" => "Indian/Mauritius",
+        "Pakistan Standard Time" => "Asia/Karachi",
+        "India Standard Time" => "Asia/Calcutta",
+        "SE Asia Standard Time" => "Asia/Bangkok",
+        "China Standard Time" => "Asia/Shanghai",
+        "Singapore Standard Time" => "Asia/Singapore",
+        "Tokyo Standard Time" => "Asia/Tokyo",
+        "Korea Standard Time" => "Asia/Seoul",
+        "AUS Eastern Standard Time" => "Australia/Sydney",
+        "New Zealand Standard Time" => "Pacific/Auckland",
+        "Eastern Standard Time" => "America/New_York",
+        "Central Standard Time" => "America/Chicago",
+        "Mountain Standard Time" => "America/Denver",
+        "US Mountain Standard Time" => "America/Phoenix",
+        "Pacific Standard Time" => "America/Los_Angeles",
+        "Alaskan Standard Time" => "America/Anchorage",
+        "Hawaiian Standard Time" => "Pacific/Honolulu",
+        "Atlantic Standard Time" => "America/Halifax",
+        "SA Western Standard Time" => "America/La_Paz",
+        "E. South America Standard Time" => "America/Sao_Paulo",
+        "Argentina Standard Time" => "America/Buenos_Aires",
+        "Central Standard Time (Mexico)" => "America/Mexico_City",
+        "Canada Central Standard Time" => "America/Regina",
+        "SA Pacific Standard Time" => "America/Bogota",
+        _ => return None,
+    })
 }
 
 /// `DURATION` (`P1DT2H30M`, `PT45M`, `P1W`) in seconds.
@@ -502,6 +557,23 @@ mod tests {
         );
         let bad_conf = parse(Format::Csv, b"label,confidence\nx,abc\n").unwrap();
         assert!(bad_conf[0].input.confidence.is_some_and(f64::is_nan));
+    }
+
+    #[test]
+    fn ics_windows_zone_names_as_outlook_writes() {
+        let tz = |n: &str| vec![("TZID".to_string(), n.to_string())];
+        assert_eq!(
+            ics_time("20261027T200000", &tz("Romance Standard Time")),
+            "2026-10-27T20:00:00+01:00"
+        );
+        assert_eq!(
+            ics_time("20260701T090000", &tz("Eastern Standard Time")),
+            "2026-07-01T09:00:00-04:00"
+        );
+        assert_eq!(
+            ics_time("20261027T200000", &tz("Mars Time")),
+            "20261027T200000"
+        );
     }
 
     #[test]
