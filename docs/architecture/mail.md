@@ -250,3 +250,22 @@ Les gestes manuels sont donc concentrés au branchement d'une boîte (une fois p
 3. **Transfert automatique** : une règle Outlook qui transfère vers une boîte IMAP ordinaire (sans OAuth côté PneX ; à vérifier : politique anti-transfert externe des tenants, perte des fils).
 
 Aucun service officiel Microsoft n'est apparu à la recherche du 2026-10-26 ; les serveurs MCP trouvés sont communautaires ou hébergés par des tiers.
+
+## 11. Piste (non décidée, 2026-10-27) : invitations de réunion et reconnaissance des correspondants
+
+Demande : une invitation reçue ou transférée par mail apparaît au calendrier avec ses participants, et chaque correspondant est relié à sa personne, à son entreprise (par le domaine de son adresse) et, le cas échéant, à son profil LinkedIn.
+
+Ce qui existe déjà et servirait :
+
+- l'analyse MIME voit la partie `text/calendar` (aujourd'hui seulement listée en pièce jointe) ;
+- un analyseur iCalendar maison (`services/time_ranges/import.rs` : `VEVENT`, `UID`, `DTSTART`/`DTEND`, `TZID`) ; l'`UID` sert de clé, donc une invitation mise à jour remplace l'ancienne ;
+- le calendrier (plages, `list_calendar`) ;
+- le rattachement du mail à la personne par son adresse (flow **CRM · mails reçus**), les propositions « À valider » quand l'expéditeur n'est pas vérifié (D458).
+
+À construire (lot M7 possible) :
+
+1. **Invitation → plage du calendrier** : `METHOD:REQUEST` crée ou met à jour, `CANCEL` annule ; organisateur et `ATTENDEE` rattachés aux personnes de l'org par adresse, inconnus proposés (jamais créés d'office, D458) ; aucune réponse (accepter/refuser) envoyée, il faudrait M3.
+2. **Entreprise par domaine** : le domaine de l'adresse rapproché du domaine du compte (champ à ajouter au type `account` du pack `crm`) ; liste d'exclusion des messageries publiques (gmail.com, outlook.fr, orange.fr…) ; rapprochement = proposition quand il n'est pas unique.
+3. **LinkedIn** : pas de collecte automatique sur LinkedIn (conditions d'utilisation, données personnelles) ; un champ « profil » tapé par un humain, ou une proposition tirée d'une recherche web (fournisseur de recherche de l'org) qu'un humain valide.
+
+Questions : l'invitation va-t-elle au calendrier de la boîte, ou à celui de chaque participant interne ? Le domaine d'entreprise est-il saisi à la main ou déduit de son site web ?
