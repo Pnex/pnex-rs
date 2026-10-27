@@ -69,6 +69,11 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
         "browser-agent profiles write investigation identities",
     ),
     (
+        "pnex-backend/src/services/mail/invitations.rs",
+        &["identifier", "uses_identifier"],
+        "meeting attendees matched by the investigation pack's e-mail identifiers (mail.md D466)",
+    ),
+    (
         "pnex-backend/src/services/media_attributions.rs",
         &["appears_in"],
         "media attributions write an investigation link",
