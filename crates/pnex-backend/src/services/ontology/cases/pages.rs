@@ -96,23 +96,37 @@ pub async fn on_concluded(db: &DatabaseConnection, org_id: i64, actor: &Actor, p
 /// D340): the template's placeholders read the object, its open links and
 /// its hierarchies today; the page is then linked to the object by the
 /// template's link. A snapshot of the day, edited freely afterwards.
+/// Filled with what the author reads: `hide` masks the object, its links
+/// and its hierarchies as on the author's own reads (D443, SEC-53).
 pub async fn from_object(
     db: &DatabaseConnection,
     org_id: i64,
     actor: &Actor,
     id: Uuid,
     input: &pnex_core::ontology::api::ObjectPageInput,
+    hide: super::super::redact::Redaction,
 ) -> Result<DocSummary> {
     use pnex_core::ontology::page_render::{hierarchies, render, RenderCtx};
-    let obj = objects::find(db, org_id, id).await?;
-    if obj.valid_to.is_some() {
+    let found = objects::find(db, org_id, id).await?;
+    if found.valid_to.is_some() {
         return Err(super::super::OntologyError::NotFound);
     }
+    let schema = super::super::schema(db, org_id).await?;
+    let mut obj = objects::view(&found, &schema);
+    hide.object(&schema, &mut obj);
     let t = templates(db, org_id)
         .await?
         .into_iter()
         .find(|t| t.key == input.template && t.subject.as_deref() == Some(obj.type_key.as_str()))
         .ok_or_else(|| invalid("template", FIELD_INVALID))?;
+    // Bounded: a language tag is a few letters (`fr-FR`).
+    let lang: String = input
+        .lang
+        .as_deref()
+        .unwrap_or("en")
+        .chars()
+        .take(16)
+        .collect();
     let title = match input
         .title
         .as_deref()
@@ -128,40 +142,28 @@ pub async fn from_object(
             format!("{FIELD_MAX_LENGTH}:{MAX_TITLE_CHARS}"),
         ));
     }
-    let open = links::for_object(db, org_id, id, None, false).await?;
+    let mut open = links::for_object(db, org_id, id, None, false).await?;
+    for l in &mut open {
+        hide.link(&schema, l);
+    }
     let mut trees = std::collections::HashMap::new();
     for k in hierarchies(&t.body) {
         // A hierarchy the org lacks leaves its placeholder as written.
-        if let Ok(v) = super::super::hierarchy::tree(
-            db,
-            org_id,
-            id,
-            Some(&k),
-            None,
-            // shortcut: a generated page holds what its author reads; masking
-            // its text for later readers needs object visibility (iam.md I5).
-            super::super::redact::Redaction::NONE,
-        )
-        .await
+        // shortcut: the page keeps what its author reads; masking it again
+        // for a later reader needs object visibility (iam.md I5).
+        if let Ok(mut v) = super::super::hierarchy::tree(db, org_id, id, Some(&k), None, hide).await
         {
+            hide.hierarchy(&schema, &mut v);
             if v.key == k {
                 trees.insert(k, v);
             }
         }
     }
-    let props = obj.properties.as_object().cloned().unwrap_or_default();
+    let props = obj.properties.clone();
     let defs = super::super::types::get(db, org_id, &obj.type_key)
         .await
         .map(|t| t.def.properties)
         .unwrap_or_default();
-    // Bounded: a language tag is a few letters (`fr-FR`).
-    let lang: String = input
-        .lang
-        .as_deref()
-        .unwrap_or("en")
-        .chars()
-        .take(16)
-        .collect();
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let id_text = id.to_string();
     let body = render(

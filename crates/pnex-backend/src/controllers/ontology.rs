@@ -1031,7 +1031,10 @@ async fn object_page(
     Json(input): Json<pnex_core::ontology::api::ObjectPageInput>,
 ) -> Result<Response> {
     let id = parse_uuid(&id)?;
-    created(onto::cases::pages::from_object(&ctx.db, org.org.id, &actor(&org), id, &input).await)
+    let hide = Redaction::of(|p| org.can(p));
+    created(
+        onto::cases::pages::from_object(&ctx.db, org.org.id, &actor(&org), id, &input, hide).await,
+    )
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
