@@ -79,6 +79,13 @@ settings:
     descriptions: {fr: "Codes des règles qui n'écrivent aucun écart, séparés par des virgules (WEB-05, COL-01)."}
     kind: text
     default: ""
+  - key: site_entier
+    name: Whole website checked
+    names: {fr: "Site entier contrôlé"}
+    description: Off, the website rules (WEB-*) only read the pages that cite one of the certifications watched; on, every relevant page of the site (Qualiopi auditor use).
+    descriptions: {fr: "Désactivé, les règles du site (WEB-*) ne lisent que les pages qui citent une des certifications contrôlées ; activé, toute page pertinente du site (usage auditeur Qualiopi)."}
+    kind: bool
+    default: false
 types:
   - key: certification
     name: Certification
@@ -1291,10 +1298,18 @@ functions:
       VERSION = 1
       CPF = ["mon compte formation", "moncompteformation", "eligible au cpf", "eligible cpf", "financable cpf", "financable par le cpf", "finance par le cpf", "eligible au compte personnel de formation"]
       PROMISES = ["formation gratuite", "100 gratuit", "totalement gratuit", "entierement gratuit", "sans reste a charge", "cadeau", "carte cadeau", "bon d achat", "offert pour toute inscription", "offerte pour toute inscription", "tablette offerte", "ordinateur offert"]
+      # Explicit claims of a Qualiopi action category only: "apprentissage"
+      # alone is the everyday word for learning, never a claim (expert
+      # review 2026-10-27: "l'apprentissage des apprenants").
+      # shortcut: phrases written from the rule's wording, not from the
+      # Qualiopi mark charter / RNQ reading guide; take them from that
+      # reference text once provided.
       QUALIOPI_CATS = [
           ("qualiopi_bilans", ["bilan de competences", "bilans de competences"], "bilans de compétences"),
-          ("qualiopi_vae", ["validation des acquis", " vae "], "VAE"),
-          ("qualiopi_apprentissage", ["apprentissage", "alternance", "apprenti"], "apprentissage"),
+          ("qualiopi_vae", ["validation des acquis de l experience", "vae"], "VAE"),
+          ("qualiopi_apprentissage", ["contrat d apprentissage", "contrats d apprentissage", "formation par apprentissage",
+                                      "formations par apprentissage", "actions de formation par apprentissage",
+                                      "centre de formation d apprentis", "cfa", "alternance"], "apprentissage"),
       ]
 
       def codes_in(tokens):
@@ -1334,6 +1349,25 @@ functions:
                   return True
           return False
 
+      def first_in(padded, words):
+          for w in words:
+              if (" " + w + " ") in padded:
+                  return w
+          return ""
+
+      def at_phrase(text, phrase):
+          # Where a normalized phrase sits in the raw text: fold and blank the
+          # punctuation one character for one, so the index still points at
+          # the raw text (œ/æ shift it by one, within the excerpt margin).
+          s = text.lower()
+          for k, v in FOLD.items():
+              if len(v) == 1:
+                  s = s.replace(k, v)
+          for c in PUNCT + ["\n", "\t", "\r"]:
+              s = s.replace(c, " ")
+          i = (" " + s + " ").find(" " + phrase + " ")
+          return i if i >= 0 else at(text, [phrase])
+
       def summary(msg, p):
           if not active("COL-01"):
               return []
@@ -1367,6 +1401,10 @@ functions:
           cpf = any_in(padded, CPF) or " cpf " in padded
           page = p.get("page_id", "") or p.get("url", "")
           found = []
+          # By default a certifier only checks what concerns its own
+          # certifications: a page citing none of them writes no WEB finding.
+          ours = [False]
+          whole_site = pack_setting("quali_watch.site_entier", False) == True
           def add(rule, gravite, code, attendu, constate, i, cert_id):
               if not active(rule):
                   return
@@ -1380,6 +1418,7 @@ functions:
               has_title = len(title) > 3 and (" " + title + " ") in padded
               if not has_code and not has_title:
                   continue
+              ours[0] = True
               i_code = at(text, code_needles(code))
               h = habs.get(code)
               end = (h or {}).get("date_fin", "") or ""
@@ -1403,6 +1442,8 @@ functions:
                   named = [n for n in c["certificateurs"] if len(norm(n)) > 2 and (" " + norm(n) + " ") in padded]
                   if not named:
                       add("WEB-03", "majeur", code, "Certificateur cité : " + ", ".join(c["certificateurs"][:2]), "Code cité sans le nom du certificateur", i_code, c["id"])
+          if not (ours[0] or whole_site):
+              return {"ecarts": found}
           if cited or cpf:
               for w in PROMISES:
                   if (" " + w + " ") in padded:
@@ -1410,10 +1451,11 @@ functions:
                       break
           if " qualiopi " in padded and partner.get("qualiopi_maj"):
               for key, words, label in QUALIOPI_CATS:
-                  if partner.get(key) != True and any_in(padded, [w.strip() for w in words]):
+                  claim = first_in(padded, words) if partner.get(key) != True else ""
+                  if claim:
                       add("WEB-06", "mineur", "qualiopi-" + key, "Qualiopi affiché pour les catégories certifiées seulement",
-                          "Qualiopi affiché sur une page de " + label + ", catégorie non certifiée (DGEFP " + partner.get("qualiopi_maj", "") + ")",
-                          at(text, ["qualiopi"]), "")
+                          "Qualiopi affiché avec la catégorie « " + label + " » (mention « " + claim + " »), non certifiée (DGEFP " + partner.get("qualiopi_maj", "") + ")",
+                          at_phrase(text, claim), "")
                       break
           return {"ecarts": found}
   - name: qw_ecart

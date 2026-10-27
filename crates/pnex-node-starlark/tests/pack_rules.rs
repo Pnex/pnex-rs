@@ -667,6 +667,67 @@ fn website_rules_quote_the_page() {
     assert_eq!(col["ecarts"][0]["props"]["etat"], "propose");
 }
 
+/// WEB-06 needs an explicit Qualiopi category claim, quoted word for word,
+/// and the website rules stay on pages citing the client's certifications
+/// unless the whole-site setting is on.
+#[test]
+fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
+    let target = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    let mut msg = partner_msg();
+    msg["partenaire"] = target["partenaire"].clone();
+    let run = |text: &str, settings: serde_json::Value| {
+        let mut m = msg.clone();
+        m["payload"] = json!({"url": "https://www.of-exemple.example/seo", "title": "SEO", "text": text, "page_id": "p1", "object_id": "po1", "changed": true});
+        pnex_node_starlark::executor::execute_with(
+            &code_of("qw_regles_web"),
+            &m,
+            5000,
+            settings.as_object().unwrap(),
+        )
+        .unwrap()
+        .return_json
+        .unwrap()
+    };
+    let page = |text: &str| run(text, json!({}));
+    // Expert review 2026-10-27, false positives: "apprentissage" in its
+    // pedagogical sense (wording of the stored GOBITWIN pages).
+    for text in [
+        "Formation RS0101 Piloter le référencement d'un site, CERTIF EXEMPLE. \
+         Formation animée par un formateur expert, certifié Qualiopi. Des évaluations formatives \
+         soutiennent l'apprentissage des apprenants.",
+        "RS0101 Piloter le référencement d'un site (CERTIF EXEMPLE) : \
+         organisme certifié Qualiopi, une pédagogie centrée sur l’apprentissage par la pratique.",
+    ] {
+        assert_eq!(page(text), json!({"ecarts": []}), "{text}");
+    }
+    // An explicit claim: quoted where the claim is, not where Qualiopi is.
+    let claim = format!(
+        "Organisme certifié Qualiopi. RS0101 Piloter le référencement d'un site, \
+         CERTIF EXEMPLE. {} Cette formation est aussi proposée en contrat d’apprentissage avec notre CFA.",
+        "Programme détaillé, modalités, délais d'accès. ".repeat(10)
+    );
+    let out = page(&claim);
+    assert_eq!(rules_of(&out), vec!["WEB-06"], "{out}");
+    let quote = out["ecarts"][0]["props"]["extrait"].as_str().unwrap();
+    assert!(
+        quote.contains("en contrat d’apprentissage")
+            && !quote.contains("Qualiopi")
+            && claim.contains(quote),
+        "{quote}"
+    );
+    // A page citing none of the client's certifications: nothing by default,
+    // the whole site under the setting.
+    let other = "Organisme certifié Qualiopi pour vos bilans de compétences. Éligible au CPF, formation gratuite.";
+    assert_eq!(page(other), json!({"ecarts": []}));
+    assert_eq!(
+        rules_of(&run(other, json!({"quali_watch.site_entier": true}))),
+        vec!["WEB-05", "WEB-06"]
+    );
+}
+
 /// Every excerpt is cut from the page text of the test (word for word).
 fn msg_text_holds(_out: &serde_json::Value, quote: &str) -> bool {
     "Préparez le RS 9999 Piloter un projet, éligible au CPF ! Tablette offerte pour toute inscription. \

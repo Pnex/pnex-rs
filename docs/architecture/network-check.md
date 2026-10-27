@@ -264,7 +264,7 @@ Le pack lit deux réglages (D368) :
 | WEB-03 | Certificateur non cité, ou partenaire présenté comme certificateur | nom du certificateur absent d'une page qui cite le code (texte) ; « notre certification », « certifié par nous » (LLM) | texte + LLM | majeur | **MVP** (texte), V2 (LLM) |
 | NOM-01 | Nom affiché ≠ raison sociale, sigle, nom commercial ou enseigne | mentions légales (`web_visit`) × SIRENE | texte | mineur | V2 |
 | WEB-05 | Promesse interdite (« gratuit », cadeau contre inscription) | lexique fermé + LLM | texte + LLM | critique | **MVP** (lexique), V2 (LLM) |
-| WEB-06 | Qualiopi affiché pour une catégorie non certifiée | texte « Qualiopi » × « bilan », « VAE », « apprentissage » × DGEFP ; logo : vision | texte, vision | mineur | **MVP** (texte), V2 (vision) |
+| WEB-06 | Qualiopi affiché pour une catégorie non certifiée | texte « Qualiopi » × mention explicite d'une catégorie (« bilan de compétences », « VAE », « contrat d'apprentissage », « CFA », « alternance » ; « apprentissage » seul ne suffit pas, revue experte 2026-10-27) × DGEFP, extrait cité là où est la mention ; logo : vision | texte, vision | mineur | **MVP** (texte), V2 (vision) |
 | WEB-07 | Modalités ou prérequis contraires à la fiche | page × `prerequis`, jury | LLM | majeur | V2 |
 | LIEU-01 | Lieu de formation annoncé sans établissement déclaré à proximité | page ou offre × établissements (géo) | géo | mineur | V2 (D412) |
 | CPF-04 | Prix ou durée du site ≠ offre CPF | page × offre | texte | mineur | V2 |
