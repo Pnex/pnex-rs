@@ -32,6 +32,7 @@ pub async fn create(title: String, template: Option<String>) -> Result<DocSummar
                 title,
                 template,
                 markdown: None,
+                lang: Some(crate::i18n::current_tag()),
             })
             .unwrap_or_default(),
         ),

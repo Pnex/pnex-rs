@@ -41,7 +41,7 @@
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.6.0"
+version: "1.7.0"
 requires: [entreprises_fr, presence_web]
 extends:
   - type: organization
@@ -1543,54 +1543,103 @@ page_templates:
     description: One finding, its proof and what is expected.
     descriptions: {fr: "Un écart, sa preuve et ce qui est attendu."}
     body: |
-      # Constat d'écart
+      # Finding report
 
-      ## Partenaire
+      ## Partner
 
-      Raison sociale, SIREN, certification concernée.
+      Company name, SIREN, certification concerned.
 
-      ## Règle
+      ## Rule
 
-      Code, libellé, référence légale ou contractuelle, version de la règle.
+      Code, wording, legal or contractual reference, version of the rule.
 
-      ## Attendu
+      ## Expected
 
-      Ce que la règle demande.
+      What the rule requires.
 
-      ## Constaté
+      ## Observed
 
-      Ce que la page publiée montre, avec l'extrait cité mot pour mot.
+      What the published page shows, with the excerpt quoted word for word.
 
-      ## Preuve
+      ## Proof
 
-      - Adresse de la page
-      - Capture pleine page et horodatage du serveur
-      - Empreinte SHA-256 du manifeste et rang dans la chaîne des preuves
+      - Address of the page
+      - Full-page capture and server timestamp
+      - SHA-256 fingerprint of the manifest and rank in the proof chain
+    bodies:
+      fr: |
+        # Constat d'écart
+
+        ## Partenaire
+
+        Raison sociale, SIREN, certification concernée.
+
+        ## Règle
+
+        Code, libellé, référence légale ou contractuelle, version de la règle.
+
+        ## Attendu
+
+        Ce que la règle demande.
+
+        ## Constaté
+
+        Ce que la page publiée montre, avec l'extrait cité mot pour mot.
+
+        ## Preuve
+
+        - Adresse de la page
+        - Capture pleine page et horodatage du serveur
+        - Empreinte SHA-256 du manifeste et rang dans la chaîne des preuves
   - key: rapport_partenaire
     name: Partner report
     names: {fr: "Rapport partenaire"}
     description: State, findings and reminders of one partner.
     descriptions: {fr: "État, écarts et relances d'un partenaire."}
     body: |
-      # Rapport partenaire
+      # Partner report
 
-      ## Identité
+      ## Identity
 
-      SIREN, établissements, dirigeants, numéro de déclaration d'activité, Qualiopi.
+      SIREN, establishments, officers, training declaration number, Qualiopi.
 
-      ## Habilitations
+      ## Accreditations
 
-      Certifications, périmètre, dates.
+      Certifications, scope, dates.
 
-      ## Écarts
+      ## Findings
 
-      - Ouverts
-      - Clos
+      - Open
+      - Closed
 
-      ## Relances
+      ## Reminders
 
-      Niveau, date d'envoi, destinataire, suite donnée.
+      Level, date sent, recipient, follow-up.
 
-      ## Contrôles
+      ## Checks
 
-      Dates des parcours du site et des synchronisations.
+      Dates of the site crawls and of the synchronizations.
+    bodies:
+      fr: |
+        # Rapport partenaire
+
+        ## Identité
+
+        SIREN, établissements, dirigeants, numéro de déclaration d'activité, Qualiopi.
+
+        ## Habilitations
+
+        Certifications, périmètre, dates.
+
+        ## Écarts
+
+        - Ouverts
+        - Clos
+
+        ## Relances
+
+        Niveau, date d'envoi, destinataire, suite donnée.
+
+        ## Contrôles
+
+        Dates des parcours du site et des synchronisations.

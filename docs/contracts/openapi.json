@@ -3206,6 +3206,13 @@
       "CasePageInput": {
         "description": "New page of a case, optionally from a template of an installed pack.",
         "properties": {
+          "lang": {
+            "description": "Language of the template's text (`fr-FR`…); default English.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "template": {
             "type": [
               "string",
@@ -4598,6 +4605,13 @@
       "CreateDoc": {
         "description": "`POST /api/v1/docs`.",
         "properties": {
+          "lang": {
+            "description": "Language of the template's text (`fr-FR`…); default English.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "markdown": {
             "description": "Markdown the page starts with (titles, lists, tables, code), as the\neditor's import does; exclusive with `template`. Up to 256 KiB.",
             "type": [
@@ -14099,7 +14113,11 @@
             "type": "string"
           },
           "descriptions": {
+          "bodies": {
             "$ref": "#/components/schemas/BTreeMap"
+          },
+            "$ref": "#/components/schemas/BTreeMap"
+            "description": "Markdown in English; `bodies` holds the other languages (`fr`…) with\nthe same placeholders (D370).",
           },
           "key": {
             "type": "string"

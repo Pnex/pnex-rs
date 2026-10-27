@@ -43,6 +43,7 @@ pub fn PagesPanel(
         let input = CasePageInput {
             title: t,
             template: Some(template()).filter(|k| !k.is_empty()),
+            lang: Some(crate::i18n::current_tag()),
         };
         let id = case_id.clone();
         busy.set(true);

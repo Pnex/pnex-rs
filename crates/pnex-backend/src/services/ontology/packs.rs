@@ -1284,6 +1284,26 @@ mod tests {
                     assert!(links.contains(&s.link.as_str()), "{}: {}", h.key, s.link);
                 }
             }
+            // Every template speaks English and French with the same
+            // placeholders (D370): a translation never drops a field.
+            for t in &p.page_templates {
+                let marks = |b: &str| -> std::collections::BTreeSet<String> {
+                    b.match_indices("{{")
+                        .filter_map(|(i, _)| b[i..].find("}}").map(|j| b[i..i + j + 2].to_string()))
+                        .collect()
+                };
+                let fr = t
+                    .bodies
+                    .get("fr")
+                    .unwrap_or_else(|| panic!("{}: {} has no French body", p.key, t.key));
+                assert_eq!(
+                    marks(&t.body),
+                    marks(fr),
+                    "{}: {} placeholders differ",
+                    p.key,
+                    t.key
+                );
+            }
             // A template filled from an object links back to it (D340).
             for t in &p.page_templates {
                 if let Some(l) = &t.link {

@@ -94,6 +94,9 @@ pub struct CreateDoc {
     /// editor's import does; exclusive with `template`. Up to 256 KiB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
+    /// Language of the template's text (`fr-FR`…); default English.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 /// `PATCH /api/v1/docs/{id}` (rename; the content goes through the

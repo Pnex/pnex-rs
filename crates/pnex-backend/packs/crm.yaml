@@ -24,7 +24,7 @@
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.2.0"
+version: "1.3.0"
 requires: [prospection_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -628,25 +628,25 @@ page_templates:
     subject: opportunite
     link: fiche_de
     body: |
-      # Opportunité — {{title}}
+      # Opportunity — {{title}}
 
-      Fiche du {{today}}.
+      Sheet of {{today}}.
 
-      ## En bref
+      ## At a glance
 
-      - Étape : {{prop:etape}} · montant : {{prop:montant}} · probabilité : {{prop:probabilite}} %
-      - Clôture prévue : {{prop:cloture_prevue}} · source : {{prop:source}} {{prop:source_detail}}
-      - Dernière activité : {{prop:derniere_activite}}
+      - Stage: {{prop:etape}} · amount: {{prop:montant}} · probability: {{prop:probabilite}} %
+      - Expected close: {{prop:cloture_prevue}} · source: {{prop:source}} {{prop:source_detail}}
+      - Last activity: {{prop:derniere_activite}}
 
-      ## Compte
+      ## Account
 
       {{links:opportunite_de}}
 
-      ## Personnes impliquées
+      ## People involved
 
       {{links:implique:in}}
 
-      ## Portée par
+      ## Owned by
 
       {{links:porte_par}}
 
@@ -654,18 +654,61 @@ page_templates:
 
       {{links:qualifie}}
 
-      Critères manquants :
+      Missing criteria:
 
       {{prop:criteres_manquants}}
 
-      ## Activités
+      ## Activities
 
       {{links:activite_sur:in}}
 
-      ## Rendez-vous
+      ## Meetings
 
       {{links:rdv_pour:in}}
 
-      ## Prochaines étapes
+      ## Next steps
 
-      - À compléter
+      - To fill in
+    bodies:
+      fr: |
+        # Opportunité — {{title}}
+
+        Fiche du {{today}}.
+
+        ## En bref
+
+        - Étape : {{prop:etape}} · montant : {{prop:montant}} · probabilité : {{prop:probabilite}} %
+        - Clôture prévue : {{prop:cloture_prevue}} · source : {{prop:source}} {{prop:source_detail}}
+        - Dernière activité : {{prop:derniere_activite}}
+
+        ## Compte
+
+        {{links:opportunite_de}}
+
+        ## Personnes impliquées
+
+        {{links:implique:in}}
+
+        ## Portée par
+
+        {{links:porte_par}}
+
+        ## Qualification
+
+        {{links:qualifie}}
+
+        Critères manquants :
+
+        {{prop:criteres_manquants}}
+
+        ## Activités
+
+        {{links:activite_sur:in}}
+
+        ## Rendez-vous
+
+        {{links:rdv_pour:in}}
+
+        ## Prochaines étapes
+
+        - À compléter

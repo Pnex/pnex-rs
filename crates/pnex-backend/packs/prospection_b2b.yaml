@@ -48,7 +48,7 @@
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.4.0"
+version: "1.5.0"
 requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -544,25 +544,25 @@ page_templates:
     subject: organization
     link: page_sur
     body: |
-      # Plan de compte — {{title}}
+      # Account plan — {{title}}
 
-      Préparé le {{today}}.
+      Prepared on {{today}}.
 
-      ## Le compte
+      ## The account
 
-      - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
-      - Utilisateurs : {{prop:utilisateurs_actuels}} sur un potentiel de {{prop:potentiel_utilisateurs}}
-      - Activité : {{prop:code_activite}} · effectif : {{prop:effectif_min}} à {{prop:effectif_max}} · dernier CA : {{prop:ca_dernier}}
+      - Status: {{prop:statut_compte}} · targeting score: {{prop:score_cible}}
+      - Users: {{prop:utilisateurs_actuels}} out of a potential {{prop:potentiel_utilisateurs}}
+      - Activity: {{prop:code_activite}} · headcount: {{prop:effectif_min}} to {{prop:effectif_max}} · last revenue: {{prop:ca_dernier}}
 
-      ## Groupe
+      ## Group
 
       {{tree:groupe_commercial}}
 
-      ## Couverture
+      ## Coverage
 
       {{coverage:groupe_commercial}}
 
-      ## Espace blanc
+      ## White space
 
       {{white_space:groupe_commercial}}
 
@@ -570,25 +570,72 @@ page_templates:
 
       {{links:employs}}
 
-      ## Recommandations
+      ## Referrals
 
       {{links:recommande:in}}
 
-      ## Qui suit le compte
+      ## Who follows the account
 
       {{links:suit_le_compte:in}}
 
-      ## Signaux
+      ## Signals
 
       {{links:signal_sur:in}}
 
-      ## Solutions en place
+      ## Solutions in place
 
       {{links:utilise_solution}}
 
-      ## Prochaines actions
+      ## Next actions
 
-      - À compléter
+      - To fill in
+    bodies:
+      fr: |
+        # Plan de compte — {{title}}
+
+        Préparé le {{today}}.
+
+        ## Le compte
+
+        - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
+        - Utilisateurs : {{prop:utilisateurs_actuels}} sur un potentiel de {{prop:potentiel_utilisateurs}}
+        - Activité : {{prop:code_activite}} · effectif : {{prop:effectif_min}} à {{prop:effectif_max}} · dernier CA : {{prop:ca_dernier}}
+
+        ## Groupe
+
+        {{tree:groupe_commercial}}
+
+        ## Couverture
+
+        {{coverage:groupe_commercial}}
+
+        ## Espace blanc
+
+        {{white_space:groupe_commercial}}
+
+        ## Contacts
+
+        {{links:employs}}
+
+        ## Recommandations
+
+        {{links:recommande:in}}
+
+        ## Qui suit le compte
+
+        {{links:suit_le_compte:in}}
+
+        ## Signaux
+
+        {{links:signal_sur:in}}
+
+        ## Solutions en place
+
+        {{links:utilise_solution}}
+
+        ## Prochaines actions
+
+        - À compléter
   - key: fiche_concurrent
     name: Competitor sheet
     names: {fr: "Fiche concurrent"}
@@ -597,25 +644,46 @@ page_templates:
     subject: organization
     link: page_sur
     body: |
-      # Fiche concurrent — {{title}}
+      # Competitor sheet — {{title}}
 
-      Mise à jour le {{today}}.
+      Updated on {{today}}.
 
-      ## Offre
+      ## Offer
 
-      Ce qu'il vend, à qui, à quel prix connu.
+      What it sells, to whom, at what known price.
 
-      ## Comptes connus qui l'utilisent
+      ## Known accounts using it
 
       {{links:utilise_solution:in}}
 
-      ## Signaux et pages modifiées
+      ## Signals and changed pages
 
       {{links:signal_sur:in}}
 
-      ## Arguments de défense
+      ## How to answer it
 
-      - À compléter
+      - To fill in
+    bodies:
+      fr: |
+        # Fiche concurrent — {{title}}
+
+        Mise à jour le {{today}}.
+
+        ## Offre
+
+        Ce qu'il vend, à qui, à quel prix connu.
+
+        ## Comptes connus qui l'utilisent
+
+        {{links:utilise_solution:in}}
+
+        ## Signaux et pages modifiées
+
+        {{links:signal_sur:in}}
+
+        ## Arguments de défense
+
+        - À compléter
   - key: preparation_rdv
     name: Meeting preparation
     names: {fr: "Préparation de rendez-vous"}
@@ -624,44 +692,84 @@ page_templates:
     subject: organization
     link: page_sur
     body: |
-      # Préparation de rendez-vous — {{title}}
+      # Meeting preparation — {{title}}
 
-      Préparée le {{today}}. Date du rendez-vous : à compléter.
+      Prepared on {{today}}. Meeting date: to fill in.
 
-      ## Le compte en bref
+      ## The account at a glance
 
-      Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
+      Status {{prop:statut_compte}} · score {{prop:score_cible}} · last revenue {{prop:ca_dernier}} · headcount {{prop:effectif_min}} to {{prop:effectif_max}}.
 
-      ## Groupe et couverture
+      ## Group and coverage
 
       {{coverage:groupe_commercial}}
 
-      ## Interlocuteurs connus
+      ## Known contacts
 
       {{links:employs}}
 
-      ## Qui peut nous introduire
+      ## Who can introduce us
 
       {{links:recommande:in}}
 
-      ## Signaux récents
+      ## Recent signals
 
       {{links:signal_sur:in}}
 
-      ## Concurrence en place
+      ## Competition in place
 
       {{links:utilise_solution}}
 
-      ## Objectif du rendez-vous
+      ## Goal of the meeting
 
-      - À compléter
+      - To fill in
 
-      ## Questions par persona
+      ## Questions by persona
 
-      - Décideur : enjeux, budget, calendrier
-      - Champion : irritants du terrain, ce qui le ferait gagner
-      - Sponsor : priorités de l'entreprise, critères de décision
-      - Utilisateur : usages actuels, ce qui manque
+      - Decision maker: stakes, budget, timeline
+      - Champion: pain points on the ground, what would make them win
+      - Sponsor: company priorities, decision criteria
+      - User: current usage, what is missing
+    bodies:
+      fr: |
+        # Préparation de rendez-vous — {{title}}
+
+        Préparée le {{today}}. Date du rendez-vous : à compléter.
+
+        ## Le compte en bref
+
+        Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
+
+        ## Groupe et couverture
+
+        {{coverage:groupe_commercial}}
+
+        ## Interlocuteurs connus
+
+        {{links:employs}}
+
+        ## Qui peut nous introduire
+
+        {{links:recommande:in}}
+
+        ## Signaux récents
+
+        {{links:signal_sur:in}}
+
+        ## Concurrence en place
+
+        {{links:utilise_solution}}
+
+        ## Objectif du rendez-vous
+
+        - À compléter
+
+        ## Questions par persona
+
+        - Décideur : enjeux, budget, calendrier
+        - Champion : irritants du terrain, ce qui le ferait gagner
+        - Sponsor : priorités de l'entreprise, critères de décision
+        - Utilisateur : usages actuels, ce qui manque
   - key: debrief_rdv
     name: Meeting debrief
     names: {fr: "Compte rendu de rendez-vous"}
@@ -670,13 +778,13 @@ page_templates:
     subject: rendez_vous
     link: page_sur
     body: |
-      # Compte rendu — {{title}}
+      # Meeting debrief — {{title}}
 
-      Rendez-vous du {{prop:date}} · statut {{prop:statut}} · {{prop:lieu}}
+      Meeting of {{prop:date}} · status {{prop:statut}} · {{prop:lieu}}
 
-      Objet : {{prop:objet}}
+      Purpose: {{prop:objet}}
 
-      ## Compte
+      ## Account
 
       {{links:rdv_avec}}
 
@@ -684,24 +792,61 @@ page_templates:
 
       {{links:participe_a:in}}
 
-      ## Enregistrement
+      ## Recording
 
       {{links:enregistrement_de:in}}
 
-      Le résumé de l'enregistrement (analyses du média, « Résumer » avec ce qu'il doit faire ressortir) est une page à part : collez-en l'essentiel ici, après relecture.
+      The summary of the recording (the media's analyses, "Summarize" with what it should bring out) is a separate page: paste its gist here, once reviewed.
 
-      ## Résumé (à valider)
+      ## Summary (to validate)
 
-      - À compléter
+      - To fill in
 
-      ## Objections entendues
+      ## Objections heard
 
-      - À compléter
+      - To fill in
 
-      ## Prochaines étapes
+      ## Next steps
 
-      - À compléter
+      - To fill in
 
-      ## Critères du playbook abordés
+      ## Playbook criteria covered
 
       {{links:aborde}}
+    bodies:
+      fr: |
+        # Compte rendu — {{title}}
+
+        Rendez-vous du {{prop:date}} · statut {{prop:statut}} · {{prop:lieu}}
+
+        Objet : {{prop:objet}}
+
+        ## Compte
+
+        {{links:rdv_avec}}
+
+        ## Participants
+
+        {{links:participe_a:in}}
+
+        ## Enregistrement
+
+        {{links:enregistrement_de:in}}
+
+        Le résumé de l'enregistrement (analyses du média, « Résumer » avec ce qu'il doit faire ressortir) est une page à part : collez-en l'essentiel ici, après relecture.
+
+        ## Résumé (à valider)
+
+        - À compléter
+
+        ## Objections entendues
+
+        - À compléter
+
+        ## Prochaines étapes
+
+        - À compléter
+
+        ## Critères du playbook abordés
+
+        {{links:aborde}}

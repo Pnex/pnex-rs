@@ -42,14 +42,15 @@ pub async fn add_page(
     }
     let body = match input.template.as_deref().filter(|k| !k.is_empty()) {
         None => None,
-        Some(key) => Some(
-            templates(db, org_id)
+        Some(key) => {
+            let t = templates(db, org_id)
                 .await?
                 .into_iter()
                 .find(|t| t.key == key)
-                .ok_or_else(|| invalid("template", FIELD_INVALID))?
-                .body,
-        ),
+                .ok_or_else(|| invalid("template", FIELD_INVALID))?;
+            let lang = input.lang.as_deref().unwrap_or("en");
+            Some(pnex_core::ontology::localized(&t.body, &t.bodies, lang).to_string())
+        }
     };
     let row = docs::ActiveModel {
         id: Set(Uuid::new_v4()),
@@ -134,7 +135,11 @@ pub async fn from_object(
         .filter(|t| !t.is_empty())
     {
         Some(t) => t.to_string(),
-        None => format!("{} — {}", t.name, obj.title),
+        None => format!(
+            "{} — {}",
+            pnex_core::ontology::localized(&t.name, &t.names, &lang),
+            obj.title
+        ),
     };
     if title.chars().count() > MAX_TITLE_CHARS {
         return Err(invalid(
@@ -146,8 +151,9 @@ pub async fn from_object(
     for l in &mut open {
         hide.link(&schema, l);
     }
+    let template_body = pnex_core::ontology::localized(&t.body, &t.bodies, &lang);
     let mut trees = std::collections::HashMap::new();
-    for k in hierarchies(&t.body) {
+    for k in hierarchies(template_body) {
         // A hierarchy the org lacks leaves its placeholder as written.
         // shortcut: the page keeps what its author reads; masking it again
         // for a later reader needs object visibility (iam.md I5).
@@ -167,7 +173,7 @@ pub async fn from_object(
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let id_text = id.to_string();
     let body = render(
-        &t.body,
+        template_body,
         &RenderCtx {
             id: &id_text,
             title: &obj.title,

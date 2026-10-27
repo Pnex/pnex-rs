@@ -241,7 +241,10 @@ async fn create(
                 .await
                 .map_err(|_| Error::InternalServerError)?;
             match templates.into_iter().find(|t| t.key == key) {
-                Some(t) => Some(t.body),
+                Some(t) => {
+                    let lang = input.lang.as_deref().unwrap_or("en");
+                    Some(pnex_core::ontology::localized(&t.body, &t.bodies, lang).to_string())
+                }
                 None => return Ok(field_status("template", err_codes::FIELD_INVALID)),
             }
         }

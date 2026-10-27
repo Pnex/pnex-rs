@@ -31,7 +31,7 @@
 key: investigation
 name: Investigation
 names: {fr: "Enquête"}
-version: "1.12.0"
+version: "1.13.0"
 description: People, organizations, events with approximate dates, sourced claims and hypotheses — for cases, newsrooms and root-cause analyses.
 descriptions: {fr: "Personnes, organisations, événements datés au plus juste, affirmations sourcées et hypothèses — pour les enquêtes, les rédactions et les analyses de cause racine."}
 types:
@@ -328,6 +328,24 @@ page_templates:
       - Containment:
       - Correction:
       - Prevention:
+    bodies:
+      fr: |
+        ## Problème
+        Ce qui a échoué, où et quand (liez l'alerte ou l'événement).
+
+        ## Pourquoi ?
+        1. Pourquoi est-ce arrivé ?
+        2. Pourquoi ?
+        3. Pourquoi ?
+        4. Pourquoi ?
+        5. Pourquoi ?
+
+        ## Cause racine
+
+        ## Actions
+        - Confinement :
+        - Correction :
+        - Prévention :
   - key: ishikawa
     name: Ishikawa (6M)
     names: {fr: "Ishikawa (6M)"}
@@ -357,6 +375,31 @@ page_templates:
 
       ## Causes retained
       Each retained cause becomes a hypothesis of the case.
+    bodies:
+      fr: |
+        ## Effet
+        L'effet observé, en une phrase.
+
+        ## Méthode
+        - 
+
+        ## Machine
+        - 
+
+        ## Main-d'œuvre
+        - 
+
+        ## Matière
+        - 
+
+        ## Mesure
+        - 
+
+        ## Milieu (environnement)
+        - 
+
+        ## Causes retenues
+        Chaque cause retenue devient une hypothèse du dossier.
   - key: incident_report
     name: Incident report
     names: {fr: "Rapport d'incident"}
@@ -376,6 +419,21 @@ page_templates:
 
       ## Actions
       - 
+    bodies:
+      fr: |
+        ## Résumé
+
+        ## Chronologie
+        Les moments clés de la frise du dossier, en UTC.
+
+        ## Impact
+
+        ## Réponse
+
+        ## Cause racine
+
+        ## Actions
+        - 
   - key: investigation_note
     name: Investigation note
     names: {fr: "Note d'enquête"}
@@ -392,6 +450,18 @@ page_templates:
       ## Not established
 
       ## Sources
+    bodies:
+      fr: |
+        ## Question
+
+        ## Faits établis
+        Chaque fait cite ses affirmations et ses pièces.
+
+        ## Hypothèses ouvertes
+
+        ## Non établi
+
+        ## Sources
   - key: script
     name: Presentation outline
     names: {fr: "Plan de présentation"}
@@ -408,3 +478,15 @@ page_templates:
       ## Sources to show
 
       ## Rights and consent
+    bodies:
+      fr: |
+        ## Angle
+
+        ## Séquences
+        1. Ouverture
+        2. 
+        3. Conclusion
+
+        ## Sources à montrer
+
+        ## Droits et consentements

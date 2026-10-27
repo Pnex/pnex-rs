@@ -740,7 +740,11 @@ pub struct PageTemplate {
     pub description: String,
     #[serde(default, skip_serializing_if = "super::Names::is_empty")]
     pub descriptions: super::Names,
+    /// Markdown in English; `bodies` holds the other languages (`fr`…) with
+    /// the same placeholders (D370).
     pub body: String,
+    #[serde(default, skip_serializing_if = "super::Names::is_empty")]
+    pub bodies: super::Names,
     /// Object type the template is filled from (`page_render`
     /// placeholders, account-mapping.md D340); none = a blank page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -786,6 +790,9 @@ pub struct CasePageInput {
     pub title: String,
     #[serde(default)]
     pub template: Option<String>,
+    /// Language of the template's text (`fr-FR`…); default English.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<String>,
 }
 
 /// A pack the server offers, and whether the org installed it.

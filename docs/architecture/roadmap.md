@@ -1081,7 +1081,7 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 - Listes de salon et d'associations (fichier + `org_resolve`).
 - Fournisseurs par pays (`org_resolve`, registre, annonces ; Royaume-Uni d'abord) + identifiants d'import au coffre (D352).
 - Quotas par org ou par offre + affichage du coût.
-- Libellés d'énumération et i18n des corps de modèles (D370) : libellés fr/en posés sur `crm` (1.2.0) et `prospection_b2b` (1.4.0) le 2026-10-26, et le titre d'une activité de relance reprend le titre de l'étape ; tous les autres packs suivent le même jour (entreprises 1.3.0, investigation 1.12.0, maintenance 1.4.0, media_coverage 1.2.0, presence_web 1.6.0, prospection_fr 1.2.0, quali_watch 1.6.0) ; restent les corps de modèles.
+- Libellés d'énumération et i18n des corps de modèles (D370) : libellés fr/en posés sur `crm` (1.2.0) et `prospection_b2b` (1.4.0) le 2026-10-26, et le titre d'une activité de relance reprend le titre de l'étape ; tous les autres packs suivent le même jour (entreprises 1.3.0, investigation 1.12.0, maintenance 1.4.0, media_coverage 1.2.0, presence_web 1.6.0, prospection_fr 1.2.0, quali_watch 1.6.0) ; les corps des modèles de pages suivent le 2026-10-27 (anglais par défaut, `bodies.fr`, mêmes champs gardés par le test des packs ; la page prend la langue de l'interface).
 - Pages vivantes.
 - Droits par objet (ACL).
 - Règles côté serveur par ensembles / L2 pour plus de 100 000 objets.

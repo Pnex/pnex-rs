@@ -896,6 +896,10 @@ confiance, auteur machine.
   l'org (D368).
 - Renommer une clé est une migration de données, jamais une retouche
   d'affichage.
+- Même règle pour le **texte d'un modèle de page** (2026-10-27) : `body`
+  en anglais, `bodies.fr`… pour les autres langues, avec exactement les
+  mêmes champs `{{…}}` (garde du test des packs) ; la page générée prend
+  la langue de l'interface de son auteur.
 
 ## Annexe B — Calendrier GMAO : étude de l'existant (pré-PRD, 2026-10-13)
 
