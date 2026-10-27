@@ -6,6 +6,7 @@
 
 pub mod attachments;
 pub mod imap;
+pub mod invitations;
 pub mod parse;
 pub mod poller;
 pub mod replay;
@@ -738,12 +739,13 @@ struct MessageRow {
     automatic: bool,
     from_pnex: bool,
     forwarded: Option<Value>,
+    invitation: Option<Value>,
     received_at: DateTimeWithTimeZone,
 }
 
 const MESSAGE_COLUMNS: &str = "id, mailbox_id, folder, message_id, in_reply_to, refs, from_name, \
      from_address, to_addrs, cc_addrs, subject, sent_at, body, truncated, attachments, auth, \
-     automatic, from_pnex, forwarded, received_at";
+     automatic, from_pnex, forwarded, invitation, received_at";
 
 impl MessageRow {
     fn view(self) -> MailMessage {
@@ -773,6 +775,7 @@ impl MessageRow {
             forwarded: self
                 .forwarded
                 .and_then(|v| serde_json::from_value::<MailForward>(v).ok()),
+            invitation: self.invitation.and_then(|v| serde_json::from_value(v).ok()),
             received_at: self.received_at.to_rfc3339(),
         }
     }

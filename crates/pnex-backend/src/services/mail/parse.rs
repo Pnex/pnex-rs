@@ -9,6 +9,9 @@ use pnex_core::mail::{
     MailAttachment, MailAuth, MailForward, RECIPIENTS_MAX, SUBJECT_MAX, TEXT_MAX,
 };
 
+/// Largest `text/calendar` part read (D466).
+const CALENDAR_MAX: usize = 256 * 1024;
+
 /// What the parser read from one message; the poller adds the mailbox,
 /// folder, ids and trust.
 #[derive(Debug, Clone, PartialEq)]
@@ -30,6 +33,8 @@ pub struct Parsed {
     /// The hops of a forward, the latest first, not yet trusted (the
     /// poller picks the original, D463).
     pub forwards: Vec<MailForward>,
+    /// The meeting invitation of a `text/calendar` part (D466).
+    pub invitation: Option<pnex_core::mail::MailInvitation>,
 }
 
 fn addresses(a: Option<&Address<'_>>) -> Vec<MailAddress> {
@@ -128,6 +133,26 @@ pub fn parse(raw: &[u8], truncated_raw: bool, own: &[String], fallback_id: &str)
         .map(|m| line(m, 990))
         .filter(|m| !m.is_empty())
         .unwrap_or_else(|| fallback_id.to_string());
+    // An invitation is a `text/calendar` part, inline or attached; only
+    // read as text by our own iCalendar reader, never run.
+    let invitation = msg
+        .parts
+        .iter()
+        .filter(|p| {
+            p.content_type().is_some_and(|c| {
+                c.ctype().eq_ignore_ascii_case("text")
+                    && c.subtype()
+                        .is_some_and(|s| s.eq_ignore_ascii_case("calendar"))
+            })
+        })
+        .filter(|p| p.len() <= CALENDAR_MAX)
+        .find_map(|p| {
+            let text = p
+                .text_contents()
+                .map(str::to_string)
+                .or_else(|| std::str::from_utf8(p.contents()).ok().map(str::to_string))?;
+            crate::services::time_ranges::import::invitation(&text)
+        });
     let in_reply_to = msg
         .in_reply_to()
         .as_text()
@@ -143,6 +168,7 @@ pub fn parse(raw: &[u8], truncated_raw: bool, own: &[String], fallback_id: &str)
         None => parse_forward_chain(&subject, &text),
     };
     Some(Parsed {
+        invitation,
         automatic: is_automatic(&headers, &from.address, &content_type),
         from_pnex: is_from_pnex(&headers, &from.address, own),
         message_id,

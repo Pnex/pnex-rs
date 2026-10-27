@@ -319,8 +319,8 @@ pub async fn store<C: ConnectionTrait>(
         .query_one_raw(stmt(
             "INSERT INTO mail_messages (id, org_id, mailbox_id, folder, uid, message_id, in_reply_to, refs, \
                from_name, from_address, to_addrs, cc_addrs, subject, sent_at, body, truncated, attachments, \
-               auth, automatic, from_pnex, forwarded) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21) \
+               auth, automatic, from_pnex, forwarded, invitation) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22) \
              ON CONFLICT (mailbox_id, message_id) DO NOTHING RETURNING received_at",
             vec![
                 id.into(),
@@ -344,6 +344,7 @@ pub async fn store<C: ConnectionTrait>(
                 p.automatic.into(),
                 p.from_pnex.into(),
                 forwarded.as_ref().map(|f| serde_json::to_value(f).unwrap_or_default()).into(),
+                p.invitation.as_ref().map(|i| serde_json::to_value(i).unwrap_or_default()).into(),
             ],
         ))
         .await?;
@@ -373,6 +374,7 @@ pub async fn store<C: ConnectionTrait>(
         automatic: p.automatic,
         from_pnex: p.from_pnex,
         forwarded,
+        invitation: p.invitation,
         received_at,
     }))
 }

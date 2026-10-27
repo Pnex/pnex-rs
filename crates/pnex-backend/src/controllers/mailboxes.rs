@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::auth::OrgContext;
 use crate::controllers::pagination::{self, PageParams};
 use crate::services::mail::attachments::SaveError;
+use crate::services::mail::invitations::InviteError;
 use crate::services::mail::{self as mail, Access, Caller, MailError};
 
 pub fn routes() -> Routes {
@@ -31,6 +32,10 @@ pub fn routes() -> Routes {
         .add(
             "/mailboxes/{id}/messages/{message}/attachments/{index}/media",
             post(save_attachment),
+        )
+        .add(
+            "/mailboxes/{id}/messages/{message}/invitation/calendar",
+            post(add_invitation),
         )
 }
 
@@ -397,6 +402,45 @@ async fn save_attachment(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/mailboxes/{id}/messages/{message}/invitation/calendar",
+    tag = "mail",
+    operation_id = "mailboxes_invitations_add",
+    summary = "Add a mail's meeting invitation to the calendar",
+    description = "Adds the meeting invitation the mail carries to the organization calendar, as a range of category `meeting` keyed by its iCalendar UID: adding it again, or adding a later update, moves the same meeting; a cancellation marks it cancelled. The organizer and attendees are kept with their addresses, each matched to the people of the organization that use it as an e-mail identifier (none created). The meeting is then visible to whoever reads the calendar, unlike the mail. Nothing is answered to the organizer. Only a reader of the mailbox (404 for anyone else). Requires the time range write permission and the mail content read permission.",
+    params(
+        ("id" = String, Path, format = "uuid", description = "Mailbox id"),
+        ("message" = String, Path, format = "uuid", description = "Stored message id")
+    ),
+    responses(
+        (status = 200, body = pnex_core::time_range::TimeRange),
+        (status = 404, description = "`mail-mailbox-not-found`, `mail-invitation-not-found`", body = crate::openapi::ErrorDetail),
+        (status = 400, description = "`field-invalid` (the invitation has no usable times)", body = crate::openapi::ErrorDetail)
+    ),
+    security(("bearer" = [], "org" = []))
+)]
+async fn add_invitation(
+    State(ctx): State<AppContext>,
+    org: OrgContext,
+    Path((id, message)): Path<(Uuid, Uuid)>,
+) -> Result<Response> {
+    let hide = crate::services::ontology::redact::Redaction::of(|p| org.can(p));
+    match mail::invitations::add_to_calendar(&ctx.db, org.org.id, caller(&org), &hide, id, message)
+        .await
+    {
+        Ok(r) => format::json(r),
+        Err(InviteError::Mail(e)) => mail_error(e),
+        Err(InviteError::NotFound) => Err(super::coded_error(
+            StatusCode::NOT_FOUND,
+            err_codes::MAIL_INVITATION_NOT_FOUND,
+            "This mail carries no invitation.",
+            None,
+        )),
+        Err(InviteError::Range(e)) => crate::controllers::time_ranges::range_error(e),
+    }
+}
+
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
     #[openapi(
@@ -408,7 +452,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
             remove,
             test,
             messages,
-            save_attachment
+            save_attachment,
+            add_invitation
         ),
         components(schemas(StateInput))
     )]

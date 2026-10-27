@@ -4,9 +4,9 @@ title: Mailboxes — collect and file incoming mail
 kind: feature
 pages: /mailboxes, /mailboxes/:id
 nodes: mail_received, ontology_query, object_upsert, link_upsert
-err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded, mail-attachment-not-found, mail-message-gone, mail-too-large
+err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded, mail-attachment-not-found, mail-message-gone, mail-too-large, mail-invitation-not-found
 tools: list_mailboxes, list_mails, read_mail
-tags: mail, pièce jointe, attachment, facture, invoice, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
+tags: mail, invitation, réunion, meeting, calendrier, calendar, .ics, pièce jointe, attachment, facture, invoice, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
 ---
 A **mailbox** is a source, like a stream: PneX polls its new mails every two minutes (IMAP over TLS, port 993), keeps them as plain text and hands them to the flows that listen. PneX **collects and files**; it does not send mail.
 
@@ -17,6 +17,7 @@ A **mailbox** is a source, like a stream: PneX polls its new mails every two min
 - **Pause** stops the polling; **Resume** starts it again and clears the last error.
 - **Delete** removes the mailbox and its mails from PneX, never from the mail server.
 - The name of a mailbox you read opens its **mails**: correspondent, subject, whether PneX verified the sender (DKIM), as plain text; click a row to read it. Attachments are listed, never opened.
+- A mail that carries a **meeting invitation** shows it under its text: title, date, place, organizer and attendees. **Add to calendar** puts the meeting in the organization's **Calendar** (category meeting). Adding a later update of the same invitation moves the meeting; adding its cancellation marks it cancelled. The attendees are matched to the people of the organization by their e-mail identifier; nobody is created, and nothing is answered to the organizer. It needs the right to change the calendar; the meeting is then seen by everyone who sees the calendar.
 - **Save to media** next to an attachment copies it into the **Media** library, where it can be analysed, searched or used by a flow. PneX fetches the mail again from the server (it keeps no attachment), and the file goes through the upload rules: allowed formats only (PDF, office documents, images, audio, video…), size limit. Once saved, the button becomes **Open the media**. Saving needs the right to add media; a saved file is then seen by everyone who sees the organization's media, not only by the readers of the mailbox.
 
 ## Whose mailbox, who reads it

@@ -712,6 +712,8 @@ pub const MAIL_ATTACHMENT_NOT_FOUND: &str = "mail-attachment-not-found";
 pub const MAIL_MESSAGE_GONE: &str = "mail-message-gone";
 /// The message or attachment exceeds what PneX fetches or stores; `args.max_bytes`.
 pub const MAIL_TOO_LARGE: &str = "mail-too-large";
+/// The mail carries no meeting invitation (mail.md D466).
+pub const MAIL_INVITATION_NOT_FOUND: &str = "mail-invitation-not-found";
 /// Web search provider not found (or not in the org).
 pub const WEB_SEARCH_PROVIDER_NOT_FOUND: &str = "web-search-provider-not-found";
 /// A web search provider of the org already has this name.
@@ -976,6 +978,7 @@ pub const ALL: &[&str] = &[
     MAIL_ATTACHMENT_NOT_FOUND,
     MAIL_MESSAGE_GONE,
     MAIL_TOO_LARGE,
+    MAIL_INVITATION_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NOT_FOUND,
     WEB_SEARCH_PROVIDER_NAME_TAKEN,
     WEB_SEARCH_NO_PROVIDER,

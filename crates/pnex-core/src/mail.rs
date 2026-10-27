@@ -279,8 +279,43 @@ pub struct MailMessage {
     /// A forward by a member: file it under `forwarded.from` (D463).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub forwarded: Option<MailForward>,
+    /// The meeting invitation it carries (D466).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invitation: Option<MailInvitation>,
     #[cfg_attr(feature = "openapi", schema(format = DateTime))]
     pub received_at: String,
+}
+
+/// The first event of the `text/calendar` part of a mail (D466): what a
+/// reader adds to the calendar. Times are RFC 3339 in UTC.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct MailInvitation {
+    /// iCalendar `UID`: an update or a cancellation names the same one.
+    pub uid: String,
+    /// `METHOD` of the calendar (`REQUEST`, `CANCEL`, `PUBLISH`, `REPLY`…).
+    pub method: String,
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(format = DateTime))]
+    pub end: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub organizer: Option<MailAddress>,
+    #[serde(default)]
+    pub attendees: Vec<MailAddress>,
+}
+
+impl MailInvitation {
+    /// The meeting is called off: `METHOD:CANCEL` or `STATUS:CANCELLED`
+    /// (kept in `method`).
+    pub fn cancelled(&self) -> bool {
+        self.method.eq_ignore_ascii_case("CANCEL")
+    }
 }
 
 impl MailMessage {
@@ -1007,6 +1042,7 @@ mod tests {
             automatic: false,
             from_pnex: false,
             forwarded: None,
+            invitation: None,
             received_at: String::new(),
         }
     }

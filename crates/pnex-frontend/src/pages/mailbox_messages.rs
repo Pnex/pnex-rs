@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
-use pnex_core::mail::{AuthVerdict, MailAddress, MailMessage};
+use pnex_core::mail::{AuthVerdict, MailAddress, MailInvitation, MailMessage};
 
 use crate::api;
 use crate::app::Route;
@@ -192,6 +192,13 @@ fn MessageText(message: MailMessage, on_saved: EventHandler<()>) -> Element {
             if message.truncated {
                 p { class: "text-xs text-gray-500", {t!("mailboxes-truncated")} }
             }
+            if let Some(inv) = message.invitation.clone() {
+                Invitation {
+                    mailbox_id: message.mailbox_id.clone(),
+                    message_id: message.id.clone(),
+                    invitation: inv,
+                }
+            }
             if !message.attachments.is_empty() {
                 ul { class: "text-xs text-gray-600 space-y-0.5",
                     for (i, a) in message.attachments.clone().into_iter().enumerate() {
@@ -227,6 +234,63 @@ fn MessageText(message: MailMessage, on_saved: EventHandler<()>) -> Element {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/// The meeting a mail invites to (D466), added to the calendar on demand.
+#[component]
+fn Invitation(mailbox_id: String, message_id: String, invitation: MailInvitation) -> Element {
+    let mut adding = use_signal(|| false);
+    let navigator = use_navigator();
+    let when = invitation
+        .start
+        .as_deref()
+        .map(date_label)
+        .unwrap_or_default();
+    let people: Vec<String> = invitation
+        .organizer
+        .iter()
+        .chain(invitation.attendees.iter())
+        .map(address_label)
+        .collect();
+    let add = move |_| {
+        let (mailbox, id) = (mailbox_id.clone(), message_id.clone());
+        adding.set(true);
+        spawn(async move {
+            match api::mailboxes::add_invitation(&mailbox, &id).await {
+                Ok(_) => {
+                    toasts::success(t!("mailboxes-invitation-added"));
+                    navigator.push(Route::Calendar {});
+                }
+                Err(err) => toasts::error(err),
+            }
+            adding.set(false);
+        });
+    };
+    rsx! {
+        section { class: "rounded-md border border-line p-3 space-y-1",
+            p { class: "text-sm font-medium text-gray-900",
+                if invitation.cancelled() {
+                    {t!("mailboxes-invitation-cancelled", title : invitation.summary.clone())}
+                } else {
+                    {t!("mailboxes-invitation", title : invitation.summary.clone())}
+                }
+            }
+            if !when.is_empty() {
+                p { class: "text-xs text-gray-600", {when} }
+            }
+            if let Some(place) = invitation.location.clone() {
+                p { class: "text-xs text-gray-600 break-words", {place} }
+            }
+            if !people.is_empty() {
+                p { class: "text-xs text-gray-500 break-all", {people.join(", ")} }
+            }
+            if access::can("time-ranges:write") {
+                button { class: BTN_GHOST, disabled: adding(), onclick: add,
+                    {t!("mailboxes-invitation-add")}
                 }
             }
         }

@@ -914,6 +914,10 @@ pub const OPERATIONS: &[(&str, Access)] = &[
     ("web_sites_list", Access::Org("site-recipes:read")),
     ("mailboxes_attachments_save", Access::Org("media:write")),
     ("mailboxes_create", Access::Org("mail:write")),
+    (
+        "mailboxes_invitations_add",
+        Access::Org("time-ranges:write"),
+    ),
     ("mailboxes_delete", Access::Org("mail:delete")),
     ("mailboxes_list", Access::Org("mail:read")),
     ("mailboxes_messages_list", Access::Org("mail.content:read")),

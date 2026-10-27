@@ -76,7 +76,7 @@ fn field(field: &str, token: &str) -> Result<Response> {
 }
 
 /// Service error → HTTP answer (field errors as `field-invalid`).
-fn range_error(e: RangeError) -> Result<Response> {
+pub(crate) fn range_error(e: RangeError) -> Result<Response> {
     match e {
         RangeError::Invalid { field: f, token } => field(&f, &token),
         RangeError::ScopeUnknown => field("scope_id", err_codes::FIELD_INVALID),

@@ -600,3 +600,118 @@ async fn the_assistant_reads_only_the_mails_of_its_member() {
     })
     .await;
 }
+
+fn invite(method: &str, start: &str, message_id: &str) -> String {
+    format!("From: elodie@acme.fr\r\nTo: alice@example.com\r\nSubject: Invitation: Revue\r\n\
+Message-ID: <{message_id}>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n\
+--a\r\nContent-Type: text/plain\r\n\r\nRevue du devis.\r\n\
+--a\r\nContent-Type: text/calendar; method={method}; charset=utf-8\r\n\r\n\
+BEGIN:VCALENDAR\r\nMETHOD:{method}\r\nBEGIN:VEVENT\r\nUID:m1@acme.fr\r\nSUMMARY:Revue devis\r\n\
+DTSTART:{start}\r\nDURATION:PT1H\r\nORGANIZER;CN=Elodie:mailto:elodie@acme.fr\r\n\
+ATTENDEE;CN=Alice:mailto:alice@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n--a--\r\n")
+}
+
+#[tokio::test]
+#[serial]
+async fn an_invitation_reaches_the_calendar_when_a_reader_adds_it() {
+    with_app(|server, env| async move {
+        let (org, _, _) = setup(&server, &env).await;
+        let (_, b) = call(
+            &server,
+            "POST",
+            "/api/v1/mailboxes",
+            &env.alice,
+            org,
+            Some(input("Alice", "alice@example.com", json!({}))),
+        )
+        .await;
+        let id = uuid::Uuid::parse_str(b["id"].as_str().unwrap()).unwrap();
+        let row = mail::find(&env.db, org, id).await.unwrap();
+        let mut stored = Vec::new();
+        for (i, (method, start)) in [
+            ("REQUEST", "20261103T090000Z"),
+            ("REQUEST", "20261104T090000Z"),
+            ("CANCEL", "20261104T090000Z"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let p = mail::parse::parse(
+                invite(method, start, &format!("i{i}@acme.fr")).as_bytes(),
+                false,
+                &[],
+                "x",
+            )
+            .unwrap();
+            stored.push(
+                mail::poller::store(&env.db, &row, "INBOX", i as u32 + 1, p, &[])
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        assert_eq!(
+            stored[0].invitation.as_ref().map(|i| i.uid.as_str()),
+            Some("m1@acme.fr")
+        );
+        let path = |m: &pnex_core::mail::MailMessage| {
+            format!(
+                "/api/v1/mailboxes/{id}/messages/{}/invitation/calendar",
+                m.id
+            )
+        };
+
+        let (st, e) = call(&server, "POST", &path(&stored[0]), &env.bob, org, None).await;
+        assert_eq!(
+            (st, e["error"].clone()),
+            (404, json!("mail-mailbox-not-found")),
+            "{e}"
+        );
+        let (st, r) = call(&server, "POST", &path(&stored[0]), &env.alice, org, None).await;
+        assert_eq!(st, 200, "{r}");
+        assert_eq!(
+            (
+                r["label"].clone(),
+                r["category"].clone(),
+                r["scope_kind"].clone()
+            ),
+            (json!("Revue devis"), json!("meeting"), json!("org"))
+        );
+        assert_eq!(r["attrs"]["people"][0]["address"], "elodie@acme.fr", "{r}");
+        // The update moves the same meeting; the cancellation marks it.
+        let (_, moved) = call(&server, "POST", &path(&stored[1]), &env.alice, org, None).await;
+        assert_eq!(
+            (
+                moved["id"].clone(),
+                moved["planned_start"].as_str().map(|s| &s[..10])
+            ),
+            (r["id"].clone(), Some("2026-11-04")),
+            "{moved}"
+        );
+        let (_, gone) = call(&server, "POST", &path(&stored[2]), &env.alice, org, None).await;
+        assert_eq!(
+            (gone["id"].clone(), gone["attrs"]["status"].clone()),
+            (r["id"].clone(), json!("cancelled")),
+            "{gone}"
+        );
+
+        let plain = mail::poller::store(
+            &env.db,
+            &row,
+            "INBOX",
+            9,
+            parsed("x@other.org", "p@x", true, "Bonjour"),
+            &[],
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let (st, e) = call(&server, "POST", &path(&plain), &env.alice, org, None).await;
+        assert_eq!(
+            (st, e["error"].clone()),
+            (404, json!("mail-invitation-not-found")),
+            "{e}"
+        );
+    })
+    .await;
+}

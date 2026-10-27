@@ -91,3 +91,17 @@ pub async fn save_attachment(
     )
     .await
 }
+
+/// `POST /api/v1/mailboxes/{id}/messages/{message}/invitation/calendar`:
+/// the meeting goes to the org calendar (or moves, or is cancelled).
+pub async fn add_invitation(
+    id: &str,
+    message: &str,
+) -> Result<pnex_core::time_range::TimeRange, ApiError> {
+    client::request(
+        reqwest::Method::POST,
+        &format!("/api/v1/mailboxes/{id}/messages/{message}/invitation/calendar"),
+        None,
+    )
+    .await
+}

@@ -10412,6 +10412,57 @@
         ],
         "type": "object"
       },
+      "MailInvitation": {
+        "description": "The first event of the `text/calendar` part of a mail (D466): what a\nreader adds to the calendar. Times are RFC 3339 in UTC.",
+        "properties": {
+          "attendees": {
+            "items": {
+              "$ref": "#/components/schemas/MailAddress"
+            },
+            "type": "array"
+          },
+          "end": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "method": {
+            "description": "`METHOD` of the calendar (`REQUEST`, `CANCEL`, `PUBLISH`, `REPLY`…).",
+            "type": "string"
+          },
+          "organizer": {
+            "$ref": "#/components/schemas/MailAddress"
+          },
+          "start": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "uid": {
+            "description": "iCalendar `UID`: an update or a cancellation names the same one.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "method",
+          "summary"
+        ],
+        "type": "object"
+      },
       "MailMessage": {
         "description": "One stored message (D455). Text only: never HTML (D458).",
         "properties": {
@@ -10464,6 +10515,10 @@
               "string",
               "null"
             ]
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/MailInvitation",
+            "description": "The meeting invitation it carries (D466)."
           },
           "mailbox_id": {
             "format": "uuid",
@@ -51357,6 +51412,105 @@
           }
         ],
         "summary": "Save a mail attachment as a media",
+        "tags": [
+          "mail"
+        ]
+      }
+    },
+    "/api/v1/mailboxes/{id}/messages/{message}/invitation/calendar": {
+      "post": {
+        "description": "Adds the meeting invitation the mail carries to the organization calendar, as a range of category `meeting` keyed by its iCalendar UID: adding it again, or adding a later update, moves the same meeting; a cancellation marks it cancelled. The organizer and attendees are kept with their addresses, each matched to the people of the organization that use it as an e-mail identifier (none created). The meeting is then visible to whoever reads the calendar, unlike the mail. Nothing is answered to the organizer. Only a reader of the mailbox (404 for anyone else). Requires the time range write permission and the mail content read permission.",
+        "operationId": "mailboxes_invitations_add",
+        "parameters": [
+          {
+            "description": "Id of the selected organisation; the caller must be a member.",
+            "in": "header",
+            "name": "X-Org-Id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Mailbox id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stored message id",
+            "in": "path",
+            "name": "message",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeRange"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`field-invalid` (the invitation has no usable times)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Missing, invalid or expired bearer token"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`org-not-member`: the caller is not a member of the `X-Org-Id` organisation · `access-denied` (`args.permission` = `time-ranges:write`): the caller's role does not grant it"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "`mail-mailbox-not-found`, `mail-invitation-not-found`"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Add a mail's meeting invitation to the calendar",
         "tags": [
           "mail"
         ]

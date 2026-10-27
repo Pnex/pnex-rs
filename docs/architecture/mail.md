@@ -147,6 +147,15 @@ Une pièce jointe n'est **jamais** copiée à la relève : un média est vu de t
 - Le média est relié à la pièce (`media_id` dans la liste des pièces du message) : un second clic rend le même média tant qu'il existe. L'analyse (index, résumé) est celle de tout média, à la demande.
 - Les droits : l'opération exige `media:write` (registre IAM) et la lecture de la boîte (`mail.content:read` et D454, sinon 404).
 
+### D466 — Une invitation de réunion va au calendrier à la demande d'un lecteur
+
+La partie `text/calendar` d'un mail (en ligne ou jointe) est lue à la relève par le lecteur iCalendar maison (`time_ranges::import::invitation`, jamais exécutée) : premier `VEVENT`, `UID`, `METHOD`, `STATUS`, début, fin (`DTEND` ou `DURATION`), lieu, organisateur, participants (plafonnés). Elle est gardée avec le mail (colonne `invitation`), visible de ses seuls lecteurs (D454).
+
+- **Au calendrier sur demande** (comme D465, le calendrier est vu de toute l'org) : un lecteur de la boîte qui a `time-ranges:write` clique « Ajouter au calendrier » (`POST /mailboxes/{id}/messages/{message}/invitation/calendar`, outil MCP). La réunion devient une plage de l'org, catégorie `meeting`, clé = l'`UID` : ajouter une mise à jour la déplace, une annulation (`METHOD:CANCEL` ou `STATUS:CANCELLED`) la marque annulée (`attrs.status`).
+- **Les gens** : organisateur et participants gardés dans `attrs.people` (rôle, nom, adresse) avec les personnes de l'org qui utilisent l'adresse comme identifiant e-mail (requête D185, masquage de l'appelant) ; personne n'est créé.
+- **Aucune réponse** à l'organisateur (accepter, refuser) : il faudrait l'envoi (M3).
+- Limite : une réunion passée s'affiche « en retard » au calendrier (état calculé pour la maintenance) tant qu'on ne la marque pas faite.
+
 ## 4. Ce que le système ne fait pas
 
 - Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
@@ -203,6 +212,7 @@ Une pièce jointe n'est **jamais** copiée à la relève : un média est vu de t
 | D463 | Un transfert d'un membre est rangé sous l'expéditeur d'origine |
 | D464 | Un nœud `mail_received` qui redémarre rejoue les mails stockés après son curseur (200 au plus, 7 jours), jamais deux fois ; le premier déploiement part de maintenant |
 | D465 | Une pièce jointe devient un média seulement à la demande d'un lecteur de la boîte qui peut ajouter des médias ; relue sur le serveur, vérifiée, passée par la liste blanche des dépôts |
+| D466 | Une invitation de réunion lue à la relève va au calendrier de l'org à la demande d'un lecteur ; clé = `UID` (mise à jour, annulation), participants rattachés aux personnes par identifiant e-mail |
 
 ## 9. État
 
@@ -251,7 +261,9 @@ Les gestes manuels sont donc concentrés au branchement d'une boîte (une fois p
 
 Aucun service officiel Microsoft n'est apparu à la recherche du 2026-10-26 ; les serveurs MCP trouvés sont communautaires ou hébergés par des tiers.
 
-## 11. Piste (non décidée, 2026-10-27) : invitations de réunion et reconnaissance des correspondants
+## 11. Piste (2026-10-27) : invitations de réunion et reconnaissance des correspondants
+
+**Point 1 livré (D466)**, choix par défaut : calendrier de l'org (pas de calendrier par personne aujourd'hui), ajout à la demande. Points 2 et 3 ouverts.
 
 Demande : une invitation reçue ou transférée par mail apparaît au calendrier avec ses participants, et chaque correspondant est relié à sa personne, à son entreprise (par le domaine de son adresse) et, le cas échéant, à son profil LinkedIn.
 

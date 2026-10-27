@@ -360,6 +360,65 @@ fn parse_ics(text: &str) -> Result<Vec<Row>, ParseError> {
     Ok(rows)
 }
 
+/// The first event of a mail's `text/calendar` part (mail.md D466): its
+/// times from [`parse_ics`], then method, status, place and people.
+pub fn invitation(text: &str) -> Option<pnex_core::mail::MailInvitation> {
+    use pnex_core::mail::{MailAddress, MailInvitation, ADDRESS_MAX, RECIPIENTS_MAX};
+    let first = parse_ics(text).ok()?.into_iter().next()?.input;
+    let uid = first.external_id.filter(|u| !u.trim().is_empty())?;
+    let person = |params: &Params, value: &str| {
+        let v = value.trim();
+        let address = v
+            .get(..7)
+            .filter(|p| p.eq_ignore_ascii_case("mailto:"))
+            .map_or(v, |_| &v[7..])
+            .trim()
+            .to_ascii_lowercase();
+        (address.contains('@') && address.len() <= ADDRESS_MAX).then(|| MailAddress {
+            name: params
+                .iter()
+                .find(|(k, _)| k == "CN")
+                .map(|(_, n)| n.chars().take(200).collect())
+                .unwrap_or_default(),
+            address,
+        })
+    };
+    let mut inv = MailInvitation {
+        uid: uid.chars().take(200).collect(),
+        summary: first.label.unwrap_or_default().chars().take(200).collect(),
+        start: first.planned_start,
+        end: first.planned_end,
+        ..Default::default()
+    };
+    let (mut depth, mut seen_event) = (0usize, false);
+    for (_, l) in unfold(text) {
+        let Some((name, params, value)) = property(&l) else {
+            continue;
+        };
+        let upper = value.trim().to_ascii_uppercase();
+        match name.as_str() {
+            "BEGIN" if upper == "VEVENT" && !seen_event => depth = 1,
+            "BEGIN" if depth > 0 => depth += 1,
+            "END" if depth == 1 => {
+                depth = 0;
+                seen_event = true;
+            }
+            "END" if depth > 1 => depth -= 1,
+            "METHOD" if depth == 0 => inv.method = upper.chars().take(32).collect(),
+            "STATUS" if depth == 1 && upper == "CANCELLED" => inv.method = "CANCEL".into(),
+            "LOCATION" if depth == 1 => {
+                inv.location = Some(unescape(&value).chars().take(500).collect())
+            }
+            "ORGANIZER" if depth == 1 => inv.organizer = person(&params, &value),
+            "ATTENDEE" if depth == 1 && inv.attendees.len() < RECIPIENTS_MAX => {
+                inv.attendees.extend(person(&params, &value))
+            }
+            _ => {}
+        }
+    }
+    Some(inv)
+}
+
 // ───────────────────────────── Import ─────────────────────────────
 
 /// Upserts parsed rows into `scope` (origin `import`, provenance
@@ -525,5 +584,37 @@ END:VCALENDAR\r\n";
         assert_eq!(ics_duration("PT"), None);
         assert_eq!(ics_duration("P1H"), None);
         assert_eq!(ics_duration("1H"), None);
+    }
+
+    #[test]
+    fn an_invitation_names_its_people_and_its_cancellation() {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:m1@acme.fr\r\n\
+SUMMARY:Revue devis\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\n\
+LOCATION:Lyon\\, salle 2\r\nORGANIZER;CN=\"Martin, Élodie\":mailto:Elodie@Acme.fr\r\n\
+ATTENDEE;CN=Bob;RSVP=TRUE:MAILTO:bob@example.com\r\nATTENDEE:mailto:not-an-address\r\n\
+BEGIN:VALARM\r\nATTENDEE:mailto:alarm@x.fr\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let inv = invitation(ics).unwrap();
+        assert_eq!(
+            (inv.uid.as_str(), inv.method.as_str(), inv.summary.as_str()),
+            ("m1@acme.fr", "REQUEST", "Revue devis")
+        );
+        assert_eq!(inv.start.as_deref(), Some("2026-11-03T09:00:00+00:00"));
+        assert_eq!(inv.location.as_deref(), Some("Lyon, salle 2"));
+        let o = inv.organizer.as_ref().unwrap();
+        assert_eq!(
+            (o.name.as_str(), o.address.as_str()),
+            ("Martin, Élodie", "elodie@acme.fr")
+        );
+        assert_eq!(
+            inv.attendees
+                .iter()
+                .map(|a| a.address.as_str())
+                .collect::<Vec<_>>(),
+            ["bob@example.com"]
+        );
+        assert!(!inv.cancelled());
+        let cancel = ics.replace("METHOD:REQUEST", "METHOD:CANCEL");
+        assert!(invitation(&cancel).unwrap().cancelled());
+        assert!(invitation("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n").is_none());
     }
 }
