@@ -3638,6 +3638,7 @@ flows-object-upsert-help = msg.payload porte les propriétés à écrire ; l'obj
 flows-object-upsert-key = Retrouvé par
 flows-object-upsert-key-id = Son identifiant (msg.object_id ou msg.object.id)
 flows-object-upsert-skip-existing = Créer seulement : laisser tel quel un objet existant
+flows-object-upsert-propose = Proposer l'objet ou ses changements à un humain (page « À valider ») au lieu de les écrire
 flows-link-upsert-help = msg.payload = source_id, target_id (identifiants d'objets), et au besoin attributes et valid_from.
 flows-link-upsert-type = Type de lien
 flows-link-upsert-close = Fermer le lien au lieu de l'ouvrir

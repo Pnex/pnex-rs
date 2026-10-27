@@ -342,6 +342,8 @@ impl ObjectUpsertNode {
                 expected_version: to_json(m.get("expected_version"))
                     .as_i64()
                     .map(|v| v as i32),
+                confidence: to_json(m.get("confidence")).as_f64(),
+                evidence: to_json(m.get("evidence")),
             }
         };
         let who = format!("pnex-object-upsert [{}]", self.name());
@@ -359,6 +361,7 @@ impl ObjectUpsertNode {
                 Variant::from(serde_json::to_value(&ack.object).unwrap_or(Value::Null)),
             );
             m.set("created".into(), Variant::from(ack.created));
+            m.set("proposed".into(), Variant::from(ack.proposed));
         }
         self.fan_out_one(Envelope { port: 0, msg }, cancel).await
     }

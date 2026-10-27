@@ -217,7 +217,8 @@ pub(super) fn ObjectUpsertForm(
     };
     let mut p1 = patch;
     let mut p2 = patch;
-    let (b1, b2) = (base.clone(), base.clone());
+    let mut p3 = patch;
+    let (b1, b2, b3) = (base.clone(), base.clone(), base.clone());
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-object-upsert-help")} }
@@ -230,15 +231,15 @@ pub(super) fn ObjectUpsertForm(
                     p1(ObjectUpsertConfig {
                         object_type: e.value(),
                         key: String::new(),
-                        skip_existing: b1.skip_existing,
+                        ..b1.clone()
                     });
                 },
-                option { value: "", selected: b1.object_type.is_empty(), "—" }
+                option { value: "", selected: initial.object_type.is_empty(), "—" }
                 for (k, label) in choices {
                     option {
                         key: "{k}",
                         value: "{k}",
-                        selected: k == b1.object_type,
+                        selected: k == initial.object_type,
                         "{label}"
                     }
                 }
@@ -279,6 +280,20 @@ pub(super) fn ObjectUpsertForm(
                     },
                 }
                 {t!("flows-object-upsert-skip-existing")}
+            }
+            label { class: "flex items-center gap-2 text-sm text-gray-700",
+                input {
+                    r#type: "checkbox",
+                    disabled: !can_write,
+                    checked: initial.propose,
+                    onchange: move |e| {
+                        p3(ObjectUpsertConfig {
+                            propose: e.checked(),
+                            ..b3.clone()
+                        });
+                    },
+                }
+                {t!("flows-object-upsert-propose")}
             }
         }
     }

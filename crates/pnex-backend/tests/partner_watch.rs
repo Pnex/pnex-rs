@@ -1400,6 +1400,7 @@ async fn deploy_ontology_nodes(db: &DatabaseConnection, org: i64) -> i64 {
             {"id": "q", "kind": "ontology_query", "config": {"object_type": "certification",
               "filters": [{"key": "code", "op": "in", "value": "$msg.payload.codes"}]}},
             {"id": "u", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren"}},
+            {"id": "v", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren", "propose": true}},
             {"id": "l", "kind": "link_upsert", "config": {"link_type": "habilite_pour"}},
             {"id": "s", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true}},
             {"id": "p", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true, "propose": true}},
@@ -1459,6 +1460,22 @@ async fn flow_nodes_write_as_their_deployed_node() {
         // Same validations as the UI: an unknown property is refused.
         let (st, _) = internal(&server, "upsert", json!({"node": node("u"), "properties": {"siren": "123456789", "nope": 1}})).await;
         assert_eq!(st, 400);
+        // D375: a proposing node writes nothing; only what differs is proposed.
+        let (st, same) = internal(&server, "upsert", json!({"node": node("v"), "properties": {"siren": "123456789", "nda": "11111111111"}})).await;
+        assert_eq!((st, same.get("proposed")), (200, None), "{same}");
+        let (st, up) = internal(&server, "upsert", json!({"node": node("v"), "properties": {"siren": "123456789", "nda": "22222222222"},
+                                                            "confidence": 50, "evidence": {"url": "https://example.com"}})).await;
+        assert_eq!((st, up["proposed"].clone(), up["object"]["properties"]["nda"].clone()), (200, json!(true), json!("11111111111")), "{up}");
+        let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", up["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
+        assert_eq!((got["kind"].clone(), got["values"].clone(), got["confidence"].clone()),
+            (json!("object_update"), json!({"nda": "22222222222"}), json!(50.0)), "{got}");
+        let (st, new) = internal(&server, "upsert", json!({"node": node("v"), "title": "Beta", "properties": {"siren": "987654321"}})).await;
+        assert_eq!((st, new["object"].clone(), new["created"].clone()), (200, Value::Null, json!(false)), "{new}");
+        let id = new["proposal_id"].as_str().unwrap().to_string();
+        let (st, _) = call(&server, "POST", &format!("/api/v1/proposals/{id}/decision"), &env.alice, org, Some(json!({"decision": "accept"}))).await;
+        assert_eq!(st, 200);
+        let (st, again) = internal(&server, "upsert", json!({"node": node("u"), "properties": {"siren": "987654321"}})).await;
+        assert_eq!((st, again["created"].clone(), again["object"]["title"].clone()), (200, json!(false), json!("Beta")), "{again}");
 
         let link = json!({"node": node("l"), "source_id": a["object"]["id"], "target_id": cert["id"],
                           "attributes": {"perimetre": "evaluation"}});

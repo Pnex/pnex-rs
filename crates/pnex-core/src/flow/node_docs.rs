@@ -491,8 +491,9 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("object_type", "object type key (not a system type such as device or flow), must exist at deploy"),
             ("key", "a unique property of the type (e.g. \"siren\"), or \"id\" to update msg.object_id"),
             ("skip_existing", "bool: an object already there is left as is (rules creating findings must not reset one a human reviewed)"),
+            ("propose", "bool: nothing is written; a new object, or the properties and title that differ from the stored ones, become a proposal a human accepts on the To validate page (msg.confidence 0-100 and msg.evidence are kept on it; one rejected is never proposed again)"),
         ],
-        notes: "msg.payload = {property: value}; the properties given replace those values, the others stay. msg.title sets the title (default: the key value). msg.expected_version, when set, refuses a write on a newer version (409). Output: msg.object = the object written, msg.created = bool. A refused write (validation, role, 600 writes a minute per organization) is logged in the node status and the message dropped. Provenance: flow:<flow id>@<version>.",
+        notes: "msg.payload = {property: value}; the properties given replace those values, the others stay. msg.title sets the title (default: the key value). msg.expected_version, when set, refuses a write on a newer version (409). Output: msg.object = the object written, msg.created = bool; with propose, msg.object = the object as it stands (null when it does not exist yet) and msg.proposed = true. A refused write (validation, role, 600 writes a minute per organization) is logged in the node status and the message dropped. Provenance: flow:<flow id>@<version>.",
     },
     NodeDoc {
         kind: "link_upsert",

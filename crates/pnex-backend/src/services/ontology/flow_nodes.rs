@@ -17,6 +17,7 @@ use pnex_core::ontology::flow::{
     FlowLinkRequest, FlowNodeRef, FlowQueryReply, FlowQueryRequest, FlowQueryRow, FlowUpsertAck,
     FlowUpsertRequest, LINKS_PER_ROW_MAX, WRITES_PER_MINUTE,
 };
+use pnex_core::ontology::proposal::{ProposalInput, ProposalKind};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder};
 use serde_json::Value;
 use uuid::Uuid;
@@ -287,12 +288,58 @@ pub async fn upsert(
         objects::find_by_key(db, org, &config.object_type, &config.key, v).await?
     };
     let actor = actor(&req.node);
+    let ack = |created, object| FlowUpsertAck {
+        created,
+        object: Some(object),
+        proposed: false,
+        proposal_id: None,
+    };
     match existing {
         // Left as is (a reviewed finding is never reset by a rule).
-        Some(o) if config.skip_existing => Ok(FlowUpsertAck {
-            created: false,
-            object: objects::view(&o, &s),
-        }),
+        Some(o) if config.skip_existing => Ok(ack(false, objects::view(&o, &s))),
+        // D375: what the message changes is proposed, never written.
+        Some(o) if config.propose => {
+            let values: serde_json::Map<String, Value> = req
+                .properties
+                .iter()
+                .filter(|(k, v)| o.properties.get(k.as_str()) != Some(*v))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            let title = req.title.clone().filter(|t| *t != o.title);
+            let object = objects::view(&o, &s);
+            if values.is_empty() && title.is_none() {
+                return Ok(ack(false, object));
+            }
+            let input = ProposalInput {
+                kind: Some(ProposalKind::ObjectUpdate),
+                type_key: o.type_key.clone(),
+                target_id: Some(o.id.to_string()),
+                title,
+                values,
+                base_version: Some(o.version),
+                ..proposal(&actor, req)
+            };
+            Ok(FlowUpsertAck {
+                proposed: true,
+                proposal_id: propose(db, org, &input).await?,
+                ..ack(false, object)
+            })
+        }
+        None if config.propose => {
+            let input = ProposalInput {
+                kind: Some(ProposalKind::ObjectCreate),
+                type_key: config.object_type.clone(),
+                title: Some(new_title(req, &config.key, &config.object_type)),
+                values: req.properties.clone(),
+                ..proposal(&actor, req)
+            };
+            Ok(FlowUpsertAck {
+                created: false,
+                object: None,
+                proposed: true,
+                proposal_id: propose(db, org, &input).await?,
+            })
+        }
         Some(o) => {
             let mut props = o.properties.as_object().cloned().unwrap_or_default();
             props.extend(req.properties.clone());
@@ -309,20 +356,10 @@ pub async fn upsert(
                 },
             )
             .await?;
-            Ok(FlowUpsertAck {
-                created: false,
-                object,
-            })
+            Ok(ack(false, object))
         }
         None => {
-            let title =
-                req.title
-                    .clone()
-                    .unwrap_or_else(|| match req.properties.get(&config.key) {
-                        Some(Value::String(s)) => s.clone(),
-                        Some(v) => v.to_string(),
-                        None => config.object_type.clone(),
-                    });
+            let title = new_title(req, &config.key, &config.object_type);
             let object = objects::create(
                 db,
                 org,
@@ -335,12 +372,40 @@ pub async fn upsert(
                 },
             )
             .await?;
-            Ok(FlowUpsertAck {
-                created: true,
-                object,
-            })
+            Ok(ack(true, object))
         }
     }
+}
+
+/// Title of an object created from a message: the message's, else its key.
+fn new_title(req: &FlowUpsertRequest, key: &str, object_type: &str) -> String {
+    req.title
+        .clone()
+        .unwrap_or_else(|| match req.properties.get(key) {
+            Some(Value::String(s)) => s.clone(),
+            Some(v) => v.to_string(),
+            None => object_type.to_string(),
+        })
+}
+
+/// What every proposal of an upsert carries: who proposes, how sure, why.
+fn proposal(actor: &Actor, req: &FlowUpsertRequest) -> ProposalInput {
+    ProposalInput {
+        origin: actor.source_ref.clone(),
+        confidence: req.confidence.map(|c| c.clamp(0.0, 100.0)),
+        evidence: req.evidence.clone(),
+        ..Default::default()
+    }
+}
+
+async fn propose(
+    db: &DatabaseConnection,
+    org: i64,
+    input: &ProposalInput,
+) -> std::result::Result<Option<String>, NodeError> {
+    Ok(super::proposals::propose(db, org, input)
+        .await?
+        .map(|id| id.to_string()))
 }
 
 /// `link_upsert`: open (or update the attributes of the open link), or

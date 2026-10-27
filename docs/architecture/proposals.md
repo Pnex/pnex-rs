@@ -167,5 +167,14 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
   - fait depuis : la même proposition reçue à nouveau avec des preuves
     (`evidence` du nœud `link_upsert`), encore ouverte, prend ces preuves
     et la nouvelle confiance ; la boîte affiche les preuves en texte ;
-  - producteurs d'objets (`object_upsert` `propose`, entrée d'objet d'un
-    mapping), à faire quand un cas réel le demande.
+  - option `propose` du nœud `object_upsert` (2026-10-27, premier cas : le
+    profil LinkedIn d'une personne retrouvé sur le web) : un objet absent
+    devient une proposition `object_create` ; un objet présent, une
+    proposition `object_update` qui ne porte que les propriétés et le
+    titre qui diffèrent, sur la version lue (`base_version`) ; rien qui
+    diffère, rien de proposé. `msg.confidence` et `msg.evidence` sont
+    gardés (la charge utile, ce sont les propriétés). Réponse : l'objet tel
+    qu'il est (`null` s'il n'existe pas) et `msg.proposed = true`. Pas
+    d'acceptation automatique (D377) pour ce nœud ;
+  - entrée d'objet d'un mapping qui propose : à faire quand un cas réel le
+    demande.

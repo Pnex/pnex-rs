@@ -79,6 +79,10 @@ pub struct ObjectUpsertConfig {
     /// finding a human reviewed): only absent ones are created.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub skip_existing: bool,
+    /// The object, or the properties it changes, is a proposal waiting for
+    /// a human (proposals.md D375); nothing is written.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub propose: bool,
 }
 
 /// `link_upsert`: opens (or updates the attributes of) the link
@@ -245,6 +249,12 @@ pub struct FlowUpsertRequest {
     pub properties: Map<String, Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected_version: Option<i32>,
+    /// Confidence of a proposal (0..=100), from `msg.confidence`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    /// Evidence of a proposal, from `msg.evidence`.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub evidence: Value,
 }
 
 /// `POST /internal/flow/ontology/link`.
@@ -270,11 +280,18 @@ pub struct FlowLinkRequest {
     pub accept: Option<String>,
 }
 
-/// Answer of an upsert: the object, and whether it was created.
+/// Answer of an upsert: the object, and whether it was created. A
+/// proposing node answers the object as it stands (none when it would be
+/// created) and the proposal (none when the same one was made before).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlowUpsertAck {
     pub created: bool,
-    pub object: super::api::ObjectView,
+    #[serde(default)]
+    pub object: Option<super::api::ObjectView>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub proposed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposal_id: Option<String>,
 }
 
 /// The pack setting an `in` value names (`<pack>.<key>`), if it is one.
@@ -381,6 +398,7 @@ mod tests {
             object_type: "ecart".into(),
             key: "id".into(),
             skip_existing: false,
+            propose: false,
         };
         assert!(u.check_deployable().is_none());
         assert!(LinkUpsertConfig {
