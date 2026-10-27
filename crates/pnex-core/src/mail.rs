@@ -454,6 +454,9 @@ pub fn is_automatic(headers: &[(String, String)], from: &str, content_type: &str
         .iter()
         .any(|p| local.starts_with(p))
     {
+            // Hosting panels and cron mail; never `alerts@`: a machine that
+            // alerts by mail is a wanted source (D453).
+            | "cpanel" | "whm" | "plesk" | "root" | "cron" | "daemon"
         return true;
     }
     content_type
@@ -806,6 +809,8 @@ mod tests {
             &[],
             "a@b.fr",
             "multipart/report; report-type=delivery-status"
+        assert!(is_automatic(&[], "cpanel@radis.o2switch.net", "text/plain"));
+        assert!(!is_automatic(&[], "alerts@usine.fr", "text/plain"));
         ));
         assert!(!is_automatic(
             &h(&[("Subject", "Bonjour")]),
