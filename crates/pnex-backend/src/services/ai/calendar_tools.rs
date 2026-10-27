@@ -127,7 +127,7 @@ pub async fn propose_occurrence_change(
     let role = deps
         .actor
         .as_ref()
-        .map(|a| a.role.clone())
+        .map(|a| a.role)
         .ok_or_else(|| ToolError::from("this tool needs a signed-in member"))?;
     let writable =
         time_ranges::scope_writable(deps.db, deps.org_id, &role, &row.scope_kind, &row.scope_id)

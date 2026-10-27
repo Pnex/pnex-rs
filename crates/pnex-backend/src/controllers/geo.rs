@@ -53,7 +53,7 @@ fn custom(status: StatusCode, code: &str, msg: &str, args: Option<serde_json::Va
 
 fn provider_error(e: ProviderError) -> Result<Response> {
     match e {
-        ProviderError::Invalid { field, token } => Ok(super::field_error(&field, &token)),
+        ProviderError::Invalid { field, token } => Ok(super::field_error(field, &token)),
         ProviderError::NotFound => Err(custom(
             StatusCode::NOT_FOUND,
             err_codes::GEO_PROVIDER_NOT_FOUND,

@@ -225,7 +225,7 @@ pub(crate) fn status_text(code: &str) -> String {
 pub(crate) fn status_pretty(st: &pnex_core::vision::NodeStatus) -> String {
     let mut out = status_text(&st.code);
     if let Some(d) = &st.detail {
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(d);
     }
     for (k, v) in &st.stats {

@@ -26,7 +26,8 @@ const STYLE_URL_DARK: &str = "style_url_dark";
 #[derive(Clone, Debug, PartialEq)]
 enum Editing {
     New,
-    Edit(GeoProvider),
+    // Boxed: a provider is far larger than the empty `New`.
+    Edit(Box<GeoProvider>),
 }
 
 fn kind_label(k: GeoProviderKind) -> String {
@@ -125,7 +126,7 @@ pub fn GeoProviders(can_manage: bool) -> Element {
                                     provider: p.clone(),
                                     can_manage,
                                     confirming: confirm_delete() == Some(p.id),
-                                    on_edit: move |p: GeoProvider| editing.set(Some(Editing::Edit(p))),
+                                    on_edit: move |p: GeoProvider| editing.set(Some(Editing::Edit(Box::new(p)))),
                                     on_ask_delete: move |id: Uuid| confirm_delete.set(Some(id)),
                                     on_deleted: move |_| {
                                         confirm_delete.set(None);
@@ -151,7 +152,7 @@ pub fn GeoProviders(can_manage: bool) -> Element {
                 Some(Editing::Edit(p)) => rsx! {
                     ProviderForm {
                         key: "{p.id}",
-                        existing: Some(p.clone()),
+                        existing: Some((*p).clone()),
                         on_done: move |_| {
                             editing.set(None);
                             reload += 1;

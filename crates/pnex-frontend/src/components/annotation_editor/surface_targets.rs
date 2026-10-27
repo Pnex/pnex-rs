@@ -44,7 +44,7 @@ fn reading_target(
     };
     let gauge = shape == "gauge";
     AnnotationTarget::Reading {
-        source,
+        source: Box::new(source),
         display: Some(shape.to_string()),
         min: if gauge { min } else { None },
         max: if gauge { max } else { None },

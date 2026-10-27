@@ -47,7 +47,7 @@ fn grouped(all: &[UiControl], query: &str) -> Vec<(String, Vec<UiControl>)> {
     groups
         .into_iter()
         .map(|((_, name), mut items)| {
-            items.sort_by(|a, b| control_display_name(a).cmp(&control_display_name(b)));
+            items.sort_by_key(control_display_name);
             (name, items)
         })
         .collect()
@@ -57,6 +57,9 @@ fn grouped(all: &[UiControl], query: &str) -> Vec<(String, Vec<UiControl>)> {
 /// (dashboards, annotations — D131) and the standalone controls, grouped by
 /// surface; one output port per checked source, in pick order; replay at
 /// start; inline creation of a standalone control.
+// The handler closure stays: passing `&mut` would borrow the FnMut past
+// the render it is still called from.
+#[allow(clippy::redundant_closure)]
 #[component]
 pub(super) fn ControlSourceForm(
     mut cx: EditorCx,

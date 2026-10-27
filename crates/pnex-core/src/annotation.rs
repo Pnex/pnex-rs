@@ -140,7 +140,8 @@ pub enum AnnotationTarget {
     },
     /// Same read binding as the dashboard widgets (D129).
     Reading {
-        source: crate::viz::SourceRef,
+        // Boxed: the binding is several times larger than any other variant.
+        source: Box<crate::viz::SourceRef>,
         /// Mini chart drawn for the value: `stat`, `line`, `gauge` or
         /// `indicator` (`READING_DISPLAYS`). Absent = `stat`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -229,7 +230,7 @@ impl<'de> Deserialize<'de> for AnnotationTarget {
                 kind: r.kind,
             }),
             "reading" => part::<ReadingRepr, D::Error>(v).map(|r| Self::Reading {
-                source: r.source,
+                source: Box::new(r.source),
                 display: r.display,
                 min: r.min,
                 max: r.max,
@@ -668,7 +669,7 @@ mod tests {
             pitch: -5.0,
         };
         let reading = |metric: &str, line: bool| AnnotationTarget::Reading {
-            source: crate::viz::SourceRef {
+            source: Box::new(crate::viz::SourceRef {
                 object_property: None,
                 role: "primary".into(),
                 metric: metric.into(),
@@ -676,7 +677,7 @@ mod tests {
                 window: "1h".into(),
                 memory: None,
                 labels: Default::default(),
-            },
+            }),
             display: line.then(|| "line".to_string()),
             min: None,
             max: None,
@@ -1040,7 +1041,7 @@ mod tests {
                 "g1",
                 ANNOTATION_KIND_READING,
                 AnnotationTarget::Reading {
-                    source: crate::viz::SourceRef {
+                    source: Box::new(crate::viz::SourceRef {
                         object_property: None,
                         role: "primary".into(),
                         metric: "temperature".into(),
@@ -1048,7 +1049,7 @@ mod tests {
                         window: "1h".into(),
                         memory: None,
                         labels: Default::default(),
-                    },
+                    }),
                     display: Some(display.into()),
                     min,
                     max,

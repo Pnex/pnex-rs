@@ -95,8 +95,8 @@ fn views_from(
         .map(|e| LinkView {
             id: e.id,
             link_type: e.relation.clone(),
-            source: end_ref(e.source_object_id, &e.source_kind, &e.source_id, &by_id),
-            target: end_ref(e.target_object_id, &e.target_kind, &e.target_id, &by_id),
+            source: end_ref(e.source_object_id, &e.source_kind, &e.source_id, by_id),
+            target: end_ref(e.target_object_id, &e.target_kind, &e.target_id, by_id),
             attributes: e.attributes.as_object().cloned().unwrap_or_default(),
             valid_from: e.valid_from.to_rfc3339(),
             valid_to: e.valid_to.map(|t| t.to_rfc3339()),

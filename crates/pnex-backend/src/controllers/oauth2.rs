@@ -725,6 +725,14 @@ async fn native_poll(State(ctx): State<AppContext>, Path(state): Path<String>) -
     Ok(axum::Json(NativePoll { code }).into_response())
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(token, refresh, sso, logout, native_callback, native_poll))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -760,12 +768,4 @@ mod tests {
         assert_eq!(preferred_language(&hdr("zh-CN,zh;q=0.9")), "en");
         assert_eq!(preferred_language(&HeaderMap::new()), "en");
     }
-}
-
-/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
-pub fn openapi() -> utoipa::openapi::OpenApi {
-    #[derive(utoipa::OpenApi)]
-    #[openapi(paths(token, refresh, sso, logout, native_callback, native_poll))]
-    struct Doc;
-    <Doc as utoipa::OpenApi>::openapi()
 }

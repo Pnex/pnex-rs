@@ -99,7 +99,7 @@ pub(super) fn ModelFormModal(
     });
     // What the picked (or edited) ONNX file declares — locks the input size.
     let inspection = use_resource(move || {
-        let target = edit_asset.clone().unwrap_or_else(|| asset_id());
+        let target = edit_asset.clone().unwrap_or_else(&*asset_id);
         async move {
             if target.is_empty() {
                 return None;

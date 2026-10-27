@@ -733,7 +733,7 @@ async fn legal_announcements_become_signals() {
         let opening = props_of(&env.db, org, "signal_commercial", "cle", "A2026000001").await;
         assert_eq!(opening["kind"], "nouvel_etablissement", "{opening}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", meca["id"].as_str().unwrap()), &env.alice, org, None).await;
-        assert_eq!(l.to_string().matches("signal_sur").count() >= 2, true, "{l}");
+        assert!(l.to_string().matches("signal_sur").count() >= 2, "{l}");
 
         // A human retains it; the next run leaves that alone.
         env.db.execute_unprepared(&format!(

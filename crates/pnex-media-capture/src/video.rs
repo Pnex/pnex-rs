@@ -20,10 +20,14 @@ pub struct Jpeg {
     pub height: u16,
 }
 
+/// The stream is not MJPEG, or a frame outgrew [`MAX_JPEG_BYTES`].
+#[derive(Debug)]
+pub struct NotJpeg;
+
 impl JpegSplitter {
     /// Appends `chunk`, returns the complete frames. `Err` = not a JPEG
     /// stream, or a frame over [`MAX_JPEG_BYTES`].
-    pub fn push(&mut self, chunk: &[u8]) -> Result<Vec<Jpeg>, ()> {
+    pub fn push(&mut self, chunk: &[u8]) -> Result<Vec<Jpeg>, NotJpeg> {
         self.buf.extend_from_slice(chunk);
         let mut out = Vec::new();
         loop {
@@ -37,7 +41,7 @@ impl JpegSplitter {
                         height,
                     });
                 }
-                None if self.buf.len() > MAX_JPEG_BYTES => return Err(()),
+                None if self.buf.len() > MAX_JPEG_BYTES => return Err(NotJpeg),
                 None => return Ok(out),
             }
         }
@@ -48,12 +52,12 @@ impl JpegSplitter {
 /// bytes needed. Walks the marker segments by their lengths, then the
 /// entropy-coded data up to EOI (a stuffed `FF 00` or a restart marker is
 /// data), so a `FF D9` inside a table is never taken for the end.
-fn scan(b: &[u8]) -> Result<Option<(usize, u16, u16)>, ()> {
+fn scan(b: &[u8]) -> Result<Option<(usize, u16, u16)>, NotJpeg> {
     if b.len() < 2 {
         return Ok(None);
     }
     if b[0] != 0xFF || b[1] != 0xD8 {
-        return Err(());
+        return Err(NotJpeg);
     }
     let (mut width, mut height) = (0u16, 0u16);
     let mut i = 2;
@@ -62,7 +66,7 @@ fn scan(b: &[u8]) -> Result<Option<(usize, u16, u16)>, ()> {
             return Ok(None);
         }
         if b[i] != 0xFF {
-            return Err(());
+            return Err(NotJpeg);
         }
         let marker = b[i + 1];
         match marker {
@@ -82,7 +86,7 @@ fn scan(b: &[u8]) -> Result<Option<(usize, u16, u16)>, ()> {
         }
         let len = usize::from(u16::from_be_bytes([b[i + 2], b[i + 3]]));
         if len < 2 {
-            return Err(());
+            return Err(NotJpeg);
         }
         // SOF0..SOF15 except DHT (C4), JPG (C8), DAC (CC): frame size.
         if matches!(marker, 0xC0..=0xCF) && !matches!(marker, 0xC4 | 0xC8 | 0xCC) {

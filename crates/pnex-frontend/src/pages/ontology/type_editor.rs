@@ -162,7 +162,7 @@ fn Editor(
     let save = move |_| {
         let input = ObjectTypeInput {
             def: def.read().clone(),
-            expected_version: (!is_new).then(|| version()),
+            expected_version: (!is_new).then(&*version),
         };
         busy.set(true);
         error.set(None);

@@ -801,7 +801,7 @@ fn projection_notify_stample_vars_et_anti_spam() {
         )],
     };
     let out = to_red_flows_json(&g, &meta);
-    let notify = out.as_array().unwrap().iter().nth(1).unwrap();
+    let notify = &out.as_array().unwrap()[1];
     assert_eq!(notify["template_vars"], json!(["seuil", "value"]));
     assert_eq!(
         notify["anti_spam"],
@@ -816,7 +816,7 @@ fn projection_notify_stample_vars_et_anti_spam() {
         },
         &meta,
     );
-    let notify = bare.as_array().unwrap().iter().nth(1).unwrap();
+    let notify = &bare.as_array().unwrap()[1];
     assert_eq!(notify["template_vars"], json!([]));
     assert!(notify["anti_spam"].is_null());
 }
@@ -1524,10 +1524,7 @@ fn coolprop_projection_pads_ports_and_routes_named_inputs() {
         .iter()
         .find(|e| e["type"] == "function" && e["func"].as_str().is_some_and(|f| f.contains("in2")))
         .unwrap_or_else(|| panic!("no tagger in {red}"));
-    assert_eq!(
-        tagger["wires"][0][0].as_str().unwrap().ends_with("_cp1"),
-        true
-    );
+    assert!(tagger["wires"][0][0].as_str().unwrap().ends_with("_cp1"));
 }
 
 #[test]

@@ -418,8 +418,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     boards_resource
                                         .value()
                                         .cloned()
-                                        .map(|r| r.ok())
-                                        .flatten(),
+                                        .and_then(|r| r.ok()),
                                     selected().as_ref(),
                                 );
                                 if !variants.is_empty() {

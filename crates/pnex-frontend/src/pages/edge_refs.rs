@@ -388,7 +388,6 @@ fn WifiForm(
             let input = pnex_core::WifiCredentialInput {
                 ssid: ssid_value,
                 password: password_input,
-                ..Default::default()
             };
             // Édition = PUT in-place (id conservé, renommage possible,
             // 409 si le ssid visé existe ailleurs) ; création = upsert POST.

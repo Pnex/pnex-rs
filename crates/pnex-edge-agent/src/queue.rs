@@ -144,6 +144,10 @@ impl Queue {
         Ok(tx.open_table(POINTS)?.len()?)
     }
 
+    pub fn is_empty(&self) -> Result<bool> {
+        Ok(self.len()? == 0)
+    }
+
     /// Enforces the bounds: drops the oldest points beyond `max_points` and
     /// those captured before `min_ts_ms`. Returns the number dropped.
     pub fn trim(&self, max_points: u64, min_ts_ms: i64) -> Result<u64> {

@@ -415,12 +415,12 @@ fn entries(ftl: &str) -> Vec<(String, String)> {
 }
 
 fn applies(rule: &Rule, locale: Scope) -> bool {
-    match (rule.scope, locale) {
-        (Scope::Fr, Scope::Fr) => true,
-        (Scope::En | Scope::EnAndCards, Scope::En) => true,
-        (Scope::EnAndCards, Scope::EnAndCards) => true,
-        _ => false,
-    }
+    matches!(
+        (rule.scope, locale),
+        (Scope::Fr, Scope::Fr)
+            | (Scope::En | Scope::EnAndCards, Scope::En)
+            | (Scope::EnAndCards, Scope::EnAndCards)
+    )
 }
 
 fn check_locale(file: &str, locale: Scope, failures: &mut Vec<String>) {

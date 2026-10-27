@@ -254,7 +254,7 @@ fn anneau_16_reprojection_et_poles() {
     let within_row_spread = |rgb: &[u8], j: usize| -> i32 {
         let row = &rgb[j * row_len..(j + 1) * row_len];
         let (mut min, mut max) = ([255i32; 3], [0i32; 3]);
-        for px in row.chunks_exact(3) {
+        for px in row.as_chunks::<3>().0 {
             for (k, &v) in px.iter().enumerate() {
                 min[k] = min[k].min(v as i32);
                 max[k] = max[k].max(v as i32);
@@ -265,7 +265,7 @@ fn anneau_16_reprojection_et_poles() {
     let row_mean = |rgb: &[u8], j: usize| -> [f32; 3] {
         let row = &rgb[j * row_len..(j + 1) * row_len];
         let mut m = [0.0f32; 3];
-        for px in row.chunks_exact(3) {
+        for px in row.as_chunks::<3>().0 {
             for (k, &v) in px.iter().enumerate() {
                 m[k] += v as f32;
             }

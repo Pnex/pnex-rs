@@ -194,7 +194,7 @@ pub fn envelope<T: Serialize>(
     };
     serde_json::json!({
         "count": count,
-        "next": page.next_offset(count).map(&link),
+        "next": page.next_offset(count).map(link),
         "previous": page.previous_offset().map(link),
         "results": results,
     })

@@ -486,6 +486,94 @@ fn speech_points(
     out
 }
 
+#[async_trait]
+impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
+    fn build(ctx: &AppContext) -> Self {
+        Self { ctx: ctx.clone() }
+    }
+
+    fn tags() -> Vec<String> {
+        crate::services::media_ingest::asr_queue_tags()
+    }
+
+    async fn perform(&self, args: TranscribeSegmentArgs) -> Result<()> {
+        let Some(seg) = media_segments::Entity::find_by_id(args.segment_id)
+            .filter(media_segments::Column::OrgId.eq(args.org_id))
+            .one(&self.ctx.db)
+            .await?
+        else {
+            return Ok(()); // stream deleted meanwhile
+        };
+        let Some(_slot) = org_slot(args.org_id, max_per_org()) else {
+            // Back to the queue: the worker slot goes to another org's job.
+            tokio::time::sleep(REQUEUE_AFTER).await;
+            let live = seg.state == SegmentState::Queued.wire() && !batch_of(&seg);
+            Self::perform_later_with_priority(
+                &self.ctx,
+                args,
+                crate::services::media_ingest::segments::priority(live),
+            )
+            .await?;
+            return Ok(());
+        };
+        if !Self::claim(&self.ctx.db, seg.id, args.org_id).await? {
+            tracing::debug!(segment = %seg.id, state = %seg.state, "segment already handled");
+            return Ok(());
+        }
+        let lag = chrono::Utc::now().signed_duration_since(seg.ended_at);
+        // A file analysed in batch is late by nature (D211): never skipped.
+        if !batch_of(&seg) && lag.num_seconds() > max_lag_secs() {
+            set_state(&self.ctx.db, seg.id, SegmentState::SkippedBacklog, None).await?;
+            if let Some(stream) = media_streams::Entity::find_by_id(seg.stream_id)
+                .one(&self.ctx.db)
+                .await?
+            {
+                self.purge(&seg, &stream).await;
+            }
+            return Ok(());
+        }
+        if let Err(f) = self.run(&seg).await {
+            // The blob stays for an explicit replay (D161).
+            set_state(&self.ctx.db, seg.id, SegmentState::Failed, Some(f.code())).await?;
+        }
+        if batch_of(&seg) {
+            crate::services::media_analyses::batch_segment_done(&self.ctx, seg.stream_id).await;
+        }
+        Ok(())
+    }
+}
+
+/// Position in the analysed file of a batch segment (D211): its start
+/// minus the date of its run, which is the file's position 0.
+async fn file_pos(
+    db: &sea_orm::DatabaseConnection,
+    seg: &media_segments::Model,
+    stream: &media_streams::Model,
+) -> Option<transcripts::FilePos> {
+    use crate::models::_entities::media_versions;
+    if !batch_of(seg) {
+        return None;
+    }
+    let version = media_versions::Entity::find_by_id(stream.media_version_id?)
+        .one(db)
+        .await
+        .ok()??;
+    let base = crate::services::media_runs::run_base(db, stream.run_id?)
+        .await
+        .ok()??;
+    Some(transcripts::FilePos {
+        offset_ms: (seg.started_at.with_timezone(&chrono::Utc) - base).num_milliseconds(),
+        run: stream.run_id?,
+        origin: pnex_core::media_review::RunOrigin::Pnex,
+        version: Some(version.id),
+    })
+}
+
+/// A segment of a file analysed in batch (D211): stamped on the file clock.
+fn batch_of(seg: &media_segments::Model) -> bool {
+    seg.clock_source == ClockSource::File.wire()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -601,92 +689,4 @@ mod tests {
             "a slot comes back when released"
         );
     }
-}
-
-#[async_trait]
-impl BackgroundWorker<TranscribeSegmentArgs> for TranscribeSegmentWorker {
-    fn build(ctx: &AppContext) -> Self {
-        Self { ctx: ctx.clone() }
-    }
-
-    fn tags() -> Vec<String> {
-        crate::services::media_ingest::asr_queue_tags()
-    }
-
-    async fn perform(&self, args: TranscribeSegmentArgs) -> Result<()> {
-        let Some(seg) = media_segments::Entity::find_by_id(args.segment_id)
-            .filter(media_segments::Column::OrgId.eq(args.org_id))
-            .one(&self.ctx.db)
-            .await?
-        else {
-            return Ok(()); // stream deleted meanwhile
-        };
-        let Some(_slot) = org_slot(args.org_id, max_per_org()) else {
-            // Back to the queue: the worker slot goes to another org's job.
-            tokio::time::sleep(REQUEUE_AFTER).await;
-            let live = seg.state == SegmentState::Queued.wire() && !batch_of(&seg);
-            Self::perform_later_with_priority(
-                &self.ctx,
-                args,
-                crate::services::media_ingest::segments::priority(live),
-            )
-            .await?;
-            return Ok(());
-        };
-        if !Self::claim(&self.ctx.db, seg.id, args.org_id).await? {
-            tracing::debug!(segment = %seg.id, state = %seg.state, "segment already handled");
-            return Ok(());
-        }
-        let lag = chrono::Utc::now().signed_duration_since(seg.ended_at);
-        // A file analysed in batch is late by nature (D211): never skipped.
-        if !batch_of(&seg) && lag.num_seconds() > max_lag_secs() {
-            set_state(&self.ctx.db, seg.id, SegmentState::SkippedBacklog, None).await?;
-            if let Some(stream) = media_streams::Entity::find_by_id(seg.stream_id)
-                .one(&self.ctx.db)
-                .await?
-            {
-                self.purge(&seg, &stream).await;
-            }
-            return Ok(());
-        }
-        if let Err(f) = self.run(&seg).await {
-            // The blob stays for an explicit replay (D161).
-            set_state(&self.ctx.db, seg.id, SegmentState::Failed, Some(f.code())).await?;
-        }
-        if batch_of(&seg) {
-            crate::services::media_analyses::batch_segment_done(&self.ctx, seg.stream_id).await;
-        }
-        Ok(())
-    }
-}
-
-/// Position in the analysed file of a batch segment (D211): its start
-/// minus the date of its run, which is the file's position 0.
-async fn file_pos(
-    db: &sea_orm::DatabaseConnection,
-    seg: &media_segments::Model,
-    stream: &media_streams::Model,
-) -> Option<transcripts::FilePos> {
-    use crate::models::_entities::media_versions;
-    if !batch_of(seg) {
-        return None;
-    }
-    let version = media_versions::Entity::find_by_id(stream.media_version_id?)
-        .one(db)
-        .await
-        .ok()??;
-    let base = crate::services::media_runs::run_base(db, stream.run_id?)
-        .await
-        .ok()??;
-    Some(transcripts::FilePos {
-        offset_ms: (seg.started_at.with_timezone(&chrono::Utc) - base).num_milliseconds(),
-        run: stream.run_id?,
-        origin: pnex_core::media_review::RunOrigin::Pnex,
-        version: Some(version.id),
-    })
-}
-
-/// A segment of a file analysed in batch (D211): stamped on the file clock.
-fn batch_of(seg: &media_segments::Model) -> bool {
-    seg.clock_source == ClockSource::File.wire()
 }

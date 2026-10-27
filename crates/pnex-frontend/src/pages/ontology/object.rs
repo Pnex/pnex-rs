@@ -1041,7 +1041,7 @@ fn BindSensor(
         }
     });
     // Wait for the lookup: the form must know what it replaces.
-    let Some(close_first) = current.read().clone() else {
+    let Some(close_first) = *current.read() else {
         return rsx! {};
     };
     rsx! {

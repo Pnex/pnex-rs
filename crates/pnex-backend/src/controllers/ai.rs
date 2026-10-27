@@ -765,10 +765,10 @@ async fn run_conversation_turn(
         author: Some(org.auth.user.email.clone()).filter(|e| !e.trim().is_empty()),
         o2: o2_client.as_ref(),
         config: Some(&ctx.config),
-        app: Some(&ctx),
+        app: Some(ctx),
         actor: Some(crate::services::ontology::Actor {
             user_id: Some(org.auth.user.id),
-            role: org.role.clone(),
+            role: org.role,
             source_ref: format!("assistant:{}", org.auth.user.id),
         }),
     };

@@ -814,7 +814,7 @@ fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
                 "data-testid": "cw-path-to",
                 onchange: {
                     let from = id.clone();
-                    let mut find = find.clone();
+                    let mut find = find;
                     move |e: FormEvent| {
                         target.set(e.value());
                         find(from.clone());
@@ -832,7 +832,7 @@ fn PathFinder(id: String, workspace: CaseWorkspace) -> Element {
                     checked: people_only(),
                     onchange: {
                         let from = id.clone();
-                        let mut find = find.clone();
+                        let mut find = find;
                         move |e: FormEvent| {
                             people_only.set(e.checked());
                             find(from.clone());

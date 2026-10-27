@@ -164,7 +164,7 @@ async fn fluids(State(ctx): State<AppContext>, org: OrgContext) -> Result<Respon
         })
         .collect();
     let mixtures = rows.into_iter().map(|m| m.name).collect();
-    let mut fluids = crate::services::compute_limits::run_coolprop(|| pnex_coolprop::fluids_list())
+    let mut fluids = crate::services::compute_limits::run_coolprop(pnex_coolprop::fluids_list)
         .await?
         .unwrap_or_default();
     fluids.sort();

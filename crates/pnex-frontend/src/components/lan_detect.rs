@@ -73,7 +73,7 @@ pub fn LanDetect(on_pick: Callback<String>) -> Element {
                     }
                 }
             }
-            if let Some(scan) = result().filter(|r| r.is_some()).map(|r| r.unwrap()) {
+            if let Some(scan) = result().flatten() {
                 if scan.hits.is_empty() {
                     p { class: "text-xs text-gray-500", {t!("edgerefs-scan-none")} }
                 }

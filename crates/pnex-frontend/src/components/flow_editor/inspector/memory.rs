@@ -17,7 +17,7 @@ fn split_duration(secs: u32) -> (u32, u32) {
     DURATION_UNITS
         .iter()
         .rev()
-        .find(|(_, u)| secs > 0 && secs % u == 0)
+        .find(|(_, u)| secs > 0 && secs.is_multiple_of(*u))
         .map(|(_, u)| (secs / u, *u))
         .unwrap_or((secs, 1))
 }

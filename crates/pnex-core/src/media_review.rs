@@ -460,14 +460,11 @@ mod tests {
         let platform = run(RunOrigin::Platform, None);
         let current = run(RunOrigin::Pnex, Some(2));
         let runs = vec![platform.clone(), current.clone(), old];
-        let v2 = Some(uuid::Uuid::from_fields(2 as u32, 0, 0, &[0; 8]));
+        let v2 = Some(uuid::Uuid::from_fields(2, 0, 0, &[0; 8]));
         assert_eq!(default_run(&runs, v2), Some(current.id));
         // No run on the current version: the newest of any origin.
         assert_eq!(
-            default_run(
-                &runs,
-                Some(uuid::Uuid::from_fields(9 as u32, 0, 0, &[0; 8]))
-            ),
+            default_run(&runs, Some(uuid::Uuid::from_fields(9, 0, 0, &[0; 8]))),
             Some(platform.id)
         );
         assert_eq!(default_run(&[], v2), None);

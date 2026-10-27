@@ -238,7 +238,7 @@ async fn pinout(
         if reserved {
             if let Some(m) = obj.as_object_mut() {
                 m.insert("available_modes".into(), serde_json::json!([]));
-                if let Some(g) = (*gpio).try_into().ok() {
+                if let Ok(g) = (*gpio).try_into() {
                     if let Some(reason) = details
                         .as_ref()
                         .and_then(|d| d.reserved_reason(g, &peripherals))

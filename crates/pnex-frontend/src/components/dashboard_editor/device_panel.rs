@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn metric_names_suggest_home_cards() {
-        let card = |m: &str| suggest_card(m).map(|(c, role, v)| (c, role, v));
+        let card = suggest_card;
         assert_eq!(
             card("temperature"),
             Some((HomeCard::ThermoHygro, "temperature", None))

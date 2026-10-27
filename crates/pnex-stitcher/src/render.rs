@@ -360,7 +360,7 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
             }
 
             let mut n_couverts = 0u32;
-            for (i, px) in row.chunks_exact_mut(3).enumerate() {
+            for (i, px) in row.as_chunks_mut::<3>().0.iter_mut().enumerate() {
                 if wsum[i] > 0.0 {
                     px[0] = (sum[i * 3] / wsum[i]).round().clamp(0.0, 255.0) as u8;
                     px[1] = (sum[i * 3 + 1] / wsum[i]).round().clamp(0.0, 255.0) as u8;

@@ -194,9 +194,7 @@ fn tag_idents(expr: &str, out: &mut Vec<String>) {
                 i += 1;
             }
             let ident = &expr[start..i];
-            if !after_dot {
-                out.push(ident.to_string());
-            } else if prev_ident == Some("vars") {
+            if !after_dot || prev_ident == Some("vars") {
                 out.push(ident.to_string());
             }
             prev_ident = if after_dot { None } else { Some(ident) };

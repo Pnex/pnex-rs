@@ -108,7 +108,7 @@ async fn create_generic(server: &axum_test::TestServer, auth: &str, device_id: &
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!("/ws/device?token={}", &d.token,),
+        &format!("/ws/device?token={}", d.token,),
         &d.key,
         &d.device_id,
     )

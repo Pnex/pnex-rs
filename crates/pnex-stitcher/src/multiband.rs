@@ -203,7 +203,13 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         let n = &num[n_levels];
         let d = &den[n_levels];
         let mut out = vec![0.0f32; n.len()];
-        for ((o, &dv), dst) in n.chunks_exact(3).zip(d.iter()).zip(out.chunks_exact_mut(3)) {
+        for ((o, &dv), dst) in n
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .zip(d.iter())
+            .zip(out.as_chunks_mut::<3>().0)
+        {
             let dn = if dv > 1e-6 { dv } else { 1.0 };
             dst[0] = o[0] / dn;
             dst[1] = o[1] / dn;
@@ -218,8 +224,10 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         let n = &num[l];
         let d = &den[l];
         for ((dst, v), &dv) in next
-            .chunks_exact_mut(3)
-            .zip(n.chunks_exact(3))
+            .as_chunks_mut::<3>()
+            .0
+            .iter_mut()
+            .zip(n.as_chunks::<3>().0)
             .zip(d.iter())
         {
             let dn = if dv > 1e-6 { dv } else { 1.0 };
@@ -230,7 +238,12 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         cur = next;
     }
 
-    for (px, src) in rgb.chunks_exact_mut(3).zip(cur.chunks_exact(3)) {
+    for (px, src) in rgb
+        .as_chunks_mut::<3>()
+        .0
+        .iter_mut()
+        .zip(cur.as_chunks::<3>().0)
+    {
         px[0] = (src[0].round().clamp(0.0, 255.0)) as u8;
         px[1] = (src[1].round().clamp(0.0, 255.0)) as u8;
         px[2] = (src[2].round().clamp(0.0, 255.0)) as u8;
@@ -549,7 +562,13 @@ mod tests {
             let n = &num[n_levels];
             let d = &den[n_levels];
             let mut out = vec![0.0f32; n.len()];
-            for ((o, &dv), dst) in n.chunks_exact(3).zip(d.iter()).zip(out.chunks_exact_mut(3)) {
+            for ((o, &dv), dst) in n
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .zip(d.iter())
+                .zip(out.as_chunks_mut::<3>().0)
+            {
                 let dn = if dv > 1e-6 { dv } else { 1.0 };
                 dst[0] = o[0] / dn;
                 dst[1] = o[1] / dn;
@@ -562,8 +581,10 @@ mod tests {
             let n = &num[l];
             let d = &den[l];
             for ((dst, v), &dv) in next
-                .chunks_exact_mut(3)
-                .zip(n.chunks_exact(3))
+                .as_chunks_mut::<3>()
+                .0
+                .iter_mut()
+                .zip(n.as_chunks::<3>().0)
                 .zip(d.iter())
             {
                 let dn = if dv > 1e-6 { dv } else { 1.0 };
@@ -667,7 +688,13 @@ mod tests {
             let n = &num[n_levels];
             let d = &den[n_levels];
             let mut out = vec![0.0f32; n.len()];
-            for ((o, &dv), dst) in n.chunks_exact(3).zip(d.iter()).zip(out.chunks_exact_mut(3)) {
+            for ((o, &dv), dst) in n
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .zip(d.iter())
+                .zip(out.as_chunks_mut::<3>().0)
+            {
                 let dn = if dv > 1e-6 { dv } else { 1.0 };
                 dst[0] = o[0] / dn;
                 dst[1] = o[1] / dn;
@@ -680,8 +707,10 @@ mod tests {
             let n = &num[l];
             let d = &den[l];
             for ((dst, v), &dv) in next
-                .chunks_exact_mut(3)
-                .zip(n.chunks_exact(3))
+                .as_chunks_mut::<3>()
+                .0
+                .iter_mut()
+                .zip(n.as_chunks::<3>().0)
                 .zip(d.iter())
             {
                 let dn = if dv > 1e-6 { dv } else { 1.0 };

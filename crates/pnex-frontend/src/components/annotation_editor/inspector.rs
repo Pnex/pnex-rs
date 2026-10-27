@@ -44,7 +44,7 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
             kind: Some(pnex_core::ui_control::ControlKind::Switch),
         },
         ANNOTATION_KIND_READING => AnnotationTarget::Reading {
-            source: pnex_core::SourceRef {
+            source: Box::new(pnex_core::SourceRef {
                 object_property: None,
                 role: "primary".into(),
                 metric: String::new(),
@@ -52,7 +52,7 @@ fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarg
                 window: "1h".into(),
                 memory: None,
                 labels: Default::default(),
-            },
+            }),
             display: None,
             min: None,
             max: None,
@@ -177,7 +177,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     key: "{item.id}",
                     cx,
                     item_id: item.id.clone(),
-                    source,
+                    source: *source,
                     display,
                     min,
                     max,

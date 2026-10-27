@@ -267,7 +267,7 @@ pub(super) fn StepInspector(
                         alts: alts.iter().map(|(k, _)| k.to_string()).collect::<Vec<_>>(),
                         action: action.clone(),
                         can_write,
-                        on_write: move |v| write(v),
+                        on_write: write,
                     }
                 },
                 _ => rsx! {},

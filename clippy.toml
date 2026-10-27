@@ -1,0 +1,7 @@
+# Style thresholds for the workspace (`task lint`). Handlers and services
+# take the loco context, org and actor besides their own inputs, signal
+# tuples and `ErrorDetail` responses are routine: the defaults flagged them
+# everywhere without pointing at a defect.
+too-many-arguments-threshold = 10
+type-complexity-threshold = 500
+large-error-threshold = 256

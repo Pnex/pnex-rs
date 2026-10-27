@@ -84,6 +84,9 @@ fn violations_of(e: &api::error::ApiError) -> Vec<Violation> {
         .unwrap_or_default()
 }
 
+// The handler closure stays: passing `&mut` would borrow the FnMut past
+// the render it is still called from.
+#[allow(clippy::redundant_closure)]
 #[component]
 pub fn WebSiteStudio(site: String) -> Element {
     let site = use_signal(|| site);
@@ -598,11 +601,7 @@ pub fn WebSiteStudio(site: String) -> Element {
                                     }
                                 }
                                 if tab() == Tab::Rule {
-                                    ActionStrip {
-                                        can_write,
-                                        drag,
-                                        on_add: move |a| add_step(a),
-                                    }
+                                    ActionStrip { can_write, drag, on_add: add_step }
                                     StepBlocks {
                                         recipe,
                                         selected: selected(),

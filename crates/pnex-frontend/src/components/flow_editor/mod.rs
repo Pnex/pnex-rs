@@ -646,7 +646,7 @@ pub fn FlowEditor(
             _ => {}
         }
         let detail_status = match &*detail.peek() {
-            Some(Ok(flow)) => Some(flow.status.clone()),
+            Some(Ok(flow)) => Some(flow.status),
             _ => None,
         };
         if status.flow_status.is_some()

@@ -143,7 +143,7 @@ pub(super) fn JsonSplitForm(
                                 let mut new = keys.read().clone();
                                 let mut i = new.len() + 1;
                                 let mut name = format!("key{i}");
-                                while new.iter().any(|c| *c == name) {
+                                while new.contains(&name) {
                                     i += 1;
                                     name = format!("key{i}");
                                 }
@@ -299,7 +299,7 @@ pub(super) fn JsonMergeForm(
                             let mut new = inputs.read().clone();
                             let mut i = new.len() + 1;
                             let mut name = format!("value{i}");
-                            while new.iter().any(|c| *c == name) {
+                            while new.contains(&name) {
                                 i += 1;
                                 name = format!("value{i}");
                             }

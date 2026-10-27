@@ -344,11 +344,13 @@ mod tests {
             validate_widget("w", ty, source, o, &mut v);
             v.into_iter().map(|x| x.code).collect::<Vec<_>>()
         };
-        assert!(codes("range_bars", &[src.clone()], &opts).is_empty());
-        assert!(
-            codes("range_bars", &[src.clone()], &WidgetOptions::default())
-                .contains(&"aggregate_missing".to_string())
-        );
+        assert!(codes("range_bars", std::slice::from_ref(&src), &opts).is_empty());
+        assert!(codes(
+            "range_bars",
+            std::slice::from_ref(&src),
+            &WidgetOptions::default()
+        )
+        .contains(&"aggregate_missing".to_string()));
         assert!(codes("range_bars", &[], &opts).contains(&"range_bars_source".to_string()));
         assert!(codes("stat", &[src], &opts).contains(&"aggregate_unexpected".to_string()));
     }

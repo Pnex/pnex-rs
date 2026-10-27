@@ -58,12 +58,14 @@ async fn insert_board(
     db: &sea_orm::DatabaseConnection,
     board: pnex_core::catalog::CatalogBoard,
 ) -> i64 {
-    let mut am = <mcu_boards::ActiveModel as Default>::default();
-    am.name = Set(board.name.to_string());
-    am.soc = Set(board.soc_str().to_string());
-    am.pretty_name = Set(board.pretty_name.map(str::to_string));
-    am.pio_board = Set(board.pio_board.map(str::to_string));
-    am.details = Set(board.profile.map(|p| serde_json::to_value(p()).unwrap()));
+    let am = mcu_boards::ActiveModel {
+        name: Set(board.name.to_string()),
+        soc: Set(board.soc_str().to_string()),
+        pretty_name: Set(board.pretty_name.map(str::to_string)),
+        pio_board: Set(board.pio_board.map(str::to_string)),
+        details: Set(board.profile.map(|p| serde_json::to_value(p()).unwrap())),
+        ..Default::default()
+    };
     am.insert(db).await.expect("board").id
 }
 

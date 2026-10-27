@@ -81,7 +81,7 @@ pub(super) fn TrackImports(object_id: String) -> Element {
         let Some(p) = pending() else { return };
         let mut input = p.input.clone();
         input.dry_run = dry;
-        input.time_zone = p.preview.needs_time_zone.then(|| zone());
+        input.time_zone = p.preview.needs_time_zone.then(&*zone);
         let id = ws.case_id.peek().clone();
         spawn(async move {
             match api::cases::import_track(&id, &input).await {

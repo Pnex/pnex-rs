@@ -107,8 +107,8 @@ pub(super) fn FirmwareEditor(project_id: i64, can_write: bool, on_back: Callback
         }
         let params = SaveFirmwareRevision {
             expected_revision_number: base.current_revision_number,
-            main_cpp: (code() != base.main_cpp).then(|| code()),
-            lib_deps: (libs() != base.lib_deps).then(|| libs()),
+            main_cpp: (code() != base.main_cpp).then(&*code),
+            lib_deps: (libs() != base.lib_deps).then(&*libs),
             name: (name().trim() != base.name).then(|| name().trim().to_string()),
             description: None,
             note: None,

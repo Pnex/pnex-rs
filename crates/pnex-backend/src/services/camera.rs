@@ -26,7 +26,8 @@
 //!     that also tells every pod whether the camera is streaming;
 //!   - the latest frame metadata ([`latest_key`]) serves snapshots and
 //!     `last_frame_ms` from any pod.
-//!   Without Valkey everything stays process-local (single-node).
+//!
+//! Without Valkey everything stays process-local (single-node).
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex, OnceLock};

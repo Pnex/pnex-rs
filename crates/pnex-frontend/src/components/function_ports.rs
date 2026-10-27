@@ -472,7 +472,7 @@ mod tests {
         let code = "// @input temperature number \"Measured temperature\"\n// @output heating number\ndef handle(inputs, msg):\n    return {\"heating\": 1}\n";
         // Rename
         let next = set_directive_fields(
-            &code,
+            code,
             1,
             true,
             &DirectiveFields {
@@ -483,14 +483,14 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(next.lines().nth(0).unwrap(), "// @input temp number");
+        assert_eq!(next.lines().next().unwrap(), "// @input temp number");
         assert_eq!(next.lines().nth(1).unwrap(), "// @output heating number");
         // Roundtrip: parse reflects the new fields
         let sig = pnex_core::parse_directives(&next).unwrap();
         assert_eq!(sig.inputs[0].name, "temp");
         // Default + desc
         let next = set_directive_fields(
-            &code,
+            code,
             1,
             true,
             &DirectiveFields {
@@ -502,7 +502,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            next.lines().nth(0).unwrap(),
+            next.lines().next().unwrap(),
             "// @input temperature number=20 \"Measured (°C)\""
         );
     }
@@ -510,7 +510,7 @@ mod tests {
     fn rewrite_respects_line_prefix() {
         let code = "# @input a number\n# @input b string\nx = 1";
         let next = set_directive_fields(
-            &code,
+            code,
             2,
             true,
             &DirectiveFields {
@@ -528,7 +528,7 @@ mod tests {
     fn insert_after_last_directive() {
         let code = "// @input a number\ndef handle(inputs, msg):\n    return 1";
         let next = insert_directive(
-            &code,
+            code,
             false,
             &DirectiveFields {
                 name: "out".into(),
@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn delete_removes_only_target_line() {
         let code = "// @input a number\n// @input b string\nx = 1";
-        let next = delete_directive(&code, 1);
+        let next = delete_directive(code, 1);
         assert_eq!(next, "// @input b string\nx = 1");
     }
 }

@@ -992,7 +992,7 @@ fn PublisherPicker(selected: Signal<String>) -> Element {
                 all.extend(page.rows.into_iter().map(|r| (r.object.id, r.object.title)));
             }
         }
-        all.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        all.sort_by_key(|a| a.1.to_lowercase());
         all
     });
     let rows = objects.read().clone().unwrap_or_default();

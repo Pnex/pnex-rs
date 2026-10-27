@@ -720,21 +720,6 @@ pub fn routes() -> Routes {
         .add("/agent/download/{target}", get(download))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn codes_are_unambiguous_and_displayed_in_groups() {
-        let c = new_code();
-        assert_eq!(c.len(), CODE_LEN);
-        assert!(c.bytes().all(|b| CODE_ALPHABET.contains(&b)));
-        let shown = display_code(&c);
-        assert_eq!(shown.len(), CODE_LEN + 2);
-        assert_eq!(normalize_enroll_code(&shown), c);
-    }
-}
-
 /// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
 pub fn openapi() -> utoipa::openapi::OpenApi {
     #[derive(utoipa::OpenApi)]
@@ -752,4 +737,19 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
     ))]
     struct Doc;
     <Doc as utoipa::OpenApi>::openapi()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codes_are_unambiguous_and_displayed_in_groups() {
+        let c = new_code();
+        assert_eq!(c.len(), CODE_LEN);
+        assert!(c.bytes().all(|b| CODE_ALPHABET.contains(&b)));
+        let shown = display_code(&c);
+        assert_eq!(shown.len(), CODE_LEN + 2);
+        assert_eq!(normalize_enroll_code(&shown), c);
+    }
 }

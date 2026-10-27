@@ -189,11 +189,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
         "var(--color-slate-300, #cbd5e1)"
     };
     let stroke_w = if view.selected { "2.4" } else { "1.2" };
-    let mut badge_x = if left {
-        view.chip_x + CHIP_W - 14.0
-    } else {
-        view.chip_x + CHIP_W - 14.0
-    };
+    let mut badge_x = view.chip_x + CHIP_W - 14.0;
     let sub = view
         .gpio
         .map(|g| format!("GPIO{g}"))

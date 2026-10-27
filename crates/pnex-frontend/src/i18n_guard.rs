@@ -91,7 +91,7 @@ fn scan() -> Result<(usize, usize), Vec<String>> {
             // Blank literal interiors so braces inside strings (raw JSON
             // fixtures, fluent placeholders) do not affect the depth
             // accounting.
-            let spans = string_literals(&line);
+            let spans = string_literals(line);
             let mut blanked: Vec<u8> = line.as_bytes().to_vec();
             for (start, end) in &spans {
                 for byte in blanked.iter_mut().skip(*start).take(end - start) {

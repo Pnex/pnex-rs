@@ -456,7 +456,7 @@ mod tests {
             let got = got.clone();
             async move {
                 for _ in 0..100 {
-                    if got.lock().unwrap().iter().any(|e| pred(e)) {
+                    if got.lock().unwrap().iter().any(&pred) {
                         return true;
                     }
                     tokio::time::sleep(Duration::from_millis(20)).await;

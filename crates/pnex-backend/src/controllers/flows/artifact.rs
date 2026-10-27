@@ -352,11 +352,11 @@ async fn stamp_pack_settings(
             .get("pnex_org_id")
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
-        if !by_org.contains_key(&org_id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = by_org.entry(org_id) {
             let settings = crate::services::ontology::packs::org_settings(db, org_id)
                 .await
                 .map_err(|_| Error::InternalServerError)?;
-            by_org.insert(org_id, serde_json::Value::Object(settings));
+            e.insert(serde_json::Value::Object(settings));
         }
         entry["settings"] = by_org[&org_id].clone();
     }

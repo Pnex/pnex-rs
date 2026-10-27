@@ -261,11 +261,11 @@ pub async fn org_weights(db: &DatabaseConnection) -> Result<HashMap<i64, u64>, D
 /// Deployed flows of one org.
 pub async fn org_weight(db: &DatabaseConnection, org_id: i64) -> Result<u64, DbErr> {
     use sea_orm::PaginatorTrait;
-    Ok(flows::Entity::find()
+    flows::Entity::find()
         .filter(flows::Column::OrgId.eq(org_id))
         .filter(flows::Column::Status.eq(pnex_core::FLOW_STATUS_DEPLOYED))
         .count(db)
-        .await?)
+        .await
 }
 
 // ──────────────────────────────── Leases ────────────────────────────────

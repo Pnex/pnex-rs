@@ -245,7 +245,7 @@ fn DecisionDialog(
         let id = id.clone();
         let reject = decision == DecisionKind::Reject;
         let r = Some(reason()).filter(|r| !r.trim().is_empty());
-        let v = (!reject).then(|| values());
+        let v = (!reject).then(&*values);
         busy.set(true);
         spawn(async move {
             match api::proposals::decide(&id, decision, r, v).await {

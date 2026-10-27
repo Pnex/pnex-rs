@@ -14,8 +14,9 @@
 //!   rejected without any network call;
 //! - **TTL**: known keys are re-fetched after [`KEYS_TTL`] (opportunistic,
 //!   by the first request that notices, others keep using the cache);
-//! - a failed fetch **never wipes** the current key set. The `pnex` client is configured on the Rauthy
-//! side with `access_token_alg: RS256` (deploy/rauthy/bootstrap/clients.json).
+//! - a failed fetch **never wipes** the current key set.
+//!
+//! The `pnex` client is configured on the Rauthy side with `access_token_alg: RS256` (deploy/rauthy/bootstrap/clients.json).
 
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};

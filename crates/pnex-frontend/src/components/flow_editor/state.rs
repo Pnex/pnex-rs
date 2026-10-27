@@ -842,13 +842,13 @@ pub fn set_input_target(
     // Notify: only a stamped template var or the permanent `trigger` gate
     // row is a valid anchor.
     if let FlowNodeKind::PnexNotify { config } = &target.kind {
-        if pin != pnex_core::NOTIFY_TRIGGER_PIN && !config.template_vars.iter().any(|v| *v == pin) {
+        if pin != pnex_core::NOTIFY_TRIGGER_PIN && !config.template_vars.contains(&pin) {
             return;
         }
     }
     // Json-merge : seule une entrée déclarée est une ancre valide.
     if let FlowNodeKind::JsonMerge { config } = &target.kind {
-        if !config.inputs.iter().any(|v| *v == pin) {
+        if !config.inputs.contains(&pin) {
             return;
         }
     }

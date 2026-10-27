@@ -575,7 +575,7 @@ pub fn pan_to_reveal_node(node_x: f64, pan_x: f64, zoom: f64, canvas_w: f64) -> 
         return None;
     }
     let node_right = pan_x + (node_x + NODE_W) * zoom;
-    (node_right > visible_right).then(|| pan_x - (node_right - visible_right))
+    (node_right > visible_right).then_some(pan_x - (node_right - visible_right))
 }
 
 /// Margin kept around the nodes by [`fit_view`] (room for port labels).

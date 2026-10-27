@@ -297,29 +297,6 @@ pub async fn transcript(
     Ok(out)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn cue(start_ms: i64, end_ms: i64, text: &str) -> PlatformCue {
-        PlatformCue {
-            start_ms,
-            end_ms,
-            text: text.into(),
-        }
-    }
-
-    #[test]
-    fn cues_are_bounded() {
-        assert!(check_cues("fr", &[cue(0, 1_000, "bonjour")]).is_ok());
-        assert!(check_cues("fr", &[]).is_err());
-        assert!(check_cues("fr", &[cue(2_000, 1_000, "x")]).is_err());
-        assert!(check_cues("fr", &[cue(-1, 1_000, "x")]).is_err());
-        assert!(check_cues("fr'; drop", &[cue(0, 1, "x")]).is_err());
-        assert!(check_cues("fr", &[cue(0, 1, &"a".repeat(CUE_TEXT_MAX + 1))]).is_err());
-    }
-}
-
 /// A window of a live stream of the org for the review screen (D271 V2):
 /// the transcripts on the window clock and the segments whose audio is
 /// still kept. `from`..`to` at most [`STREAM_REVIEW_MAX_SECS`].
@@ -393,4 +370,27 @@ pub async fn stream_review(
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cue(start_ms: i64, end_ms: i64, text: &str) -> PlatformCue {
+        PlatformCue {
+            start_ms,
+            end_ms,
+            text: text.into(),
+        }
+    }
+
+    #[test]
+    fn cues_are_bounded() {
+        assert!(check_cues("fr", &[cue(0, 1_000, "bonjour")]).is_ok());
+        assert!(check_cues("fr", &[]).is_err());
+        assert!(check_cues("fr", &[cue(2_000, 1_000, "x")]).is_err());
+        assert!(check_cues("fr", &[cue(-1, 1_000, "x")]).is_err());
+        assert!(check_cues("fr'; drop", &[cue(0, 1, "x")]).is_err());
+        assert!(check_cues("fr", &[cue(0, 1, &"a".repeat(CUE_TEXT_MAX + 1))]).is_err());
+    }
 }

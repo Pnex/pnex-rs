@@ -169,7 +169,7 @@ async fn camera_uplink_live_and_settings() {
 
         let mut ctl = common::DevWs::connect(
             &server,
-            &format!("/ws/device?token={}", &dev.token,),
+            &format!("/ws/device?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -208,7 +208,7 @@ async fn camera_uplink_live_and_settings() {
         // Uplink: an encrypted frame reaches the viewer as raw JPEG.
         let mut cam = common::DevWs::connect_binary(
             &server,
-            &format!("/ws/camera?token={}", &dev.token,),
+            &format!("/ws/camera?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -226,7 +226,7 @@ async fn camera_uplink_live_and_settings() {
         // A second uplink for the same camera is refused (anti-clone).
         let mut clone = common::DevWs::connect_binary(
             &server,
-            &format!("/ws/camera?token={}", &dev.token,),
+            &format!("/ws/camera?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -307,7 +307,7 @@ async fn segments_written_listed_and_deleted() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         content.assert_status_ok();
-        let idx = pnex_core::avi::read_avi(&content.as_bytes()).expect("avi");
+        let idx = pnex_core::avi::read_avi(content.as_bytes()).expect("avi");
         assert_eq!(idx.frames.len(), 2);
 
         server
@@ -468,7 +468,7 @@ async fn recording_timeline_export_and_day_delete() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         export.assert_status_ok();
-        let idx = pnex_core::avi::read_avi(&export.as_bytes()).expect("avi");
+        let idx = pnex_core::avi::read_avi(export.as_bytes()).expect("avi");
         assert_eq!(idx.frames.len(), 5, "3 + 2 frames, the overlapping n2 segment skipped");
         assert_eq!((idx.width, idx.height), (320, 240));
 
@@ -544,7 +544,7 @@ async fn camera_cluster_state_crosses_pods() {
             .unwrap();
         let mut ctl = common::DevWs::connect(
             &server,
-            &format!("/ws/device?token={}", &dev.token,),
+            &format!("/ws/device?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -604,7 +604,7 @@ async fn camera_cluster_state_crosses_pods() {
             .unwrap();
         let mut clone = common::DevWs::connect_binary(
             &server,
-            &format!("/ws/camera?token={}", &dev.token,),
+            &format!("/ws/camera?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )
@@ -725,7 +725,7 @@ async fn camera_cluster_state_crosses_pods() {
         let _: () = kv.del(camera::uplink_key(dev.id)).await.unwrap();
         let mut cam = common::DevWs::connect_binary(
             &server,
-            &format!("/ws/camera?token={}", &dev.token,),
+            &format!("/ws/camera?token={}", dev.token,),
             &dev.key,
             &dev.device_id,
         )

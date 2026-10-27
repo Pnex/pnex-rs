@@ -102,7 +102,7 @@ async fn check_js(code: &str) -> Vec<FunctionDiagnostic> {
         let attempt: Result<Option<String>, rquickjs::Error> = (|| {
             ctx.eval::<(), _>(PROLOGUE.as_bytes())?;
             let check: Function = ctx.globals().get("__pnex_check")?;
-            Ok(check.call((code.as_str(),))?)
+            check.call((code.as_str(),))
         })();
         match attempt {
             Ok(maybe_json) => Ok(maybe_json),

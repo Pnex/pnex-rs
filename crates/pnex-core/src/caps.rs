@@ -364,7 +364,7 @@ pub fn pin_fns(soc: Soc, gpio: u16) -> &'static [PinFn] {
             _ => NONE,
         },
         Soc::Esp32C3 => match gpio {
-            0 | 1 | 2 | 3 | 4 => &[PinFn::Adc1],
+            0..=4 => &[PinFn::Adc1],
             5 => &[PinFn::Adc2],
             6 => &[PinFn::I2cSda],
             7 => &[PinFn::I2cScl],
@@ -378,7 +378,7 @@ pub fn pin_fns(soc: Soc, gpio: u16) -> &'static [PinFn] {
         // PneX screen conventions (the C6 routes any peripheral to any pin:
         // display hints only).
         Soc::Esp32C6 => match gpio {
-            0 | 1 | 2 | 3 | 4 | 5 | 6 => &[PinFn::Adc1],
+            0..=6 => &[PinFn::Adc1],
             8 => &[PinFn::Led],
             16 => &[PinFn::UartTx],
             17 => &[PinFn::UartRx],
@@ -391,7 +391,7 @@ pub fn pin_fns(soc: Soc, gpio: u16) -> &'static [PinFn] {
         },
         Soc::Esp32 => match gpio {
             32 | 33 => &[PinFn::Adc1, PinFn::Touch],
-            34 | 35 | 36 | 37 | 38 | 39 => &[PinFn::Adc1],
+            34..=39 => &[PinFn::Adc1],
             25 | 26 => &[PinFn::Adc2, PinFn::Dac],
             0 | 4 | 12 | 13 | 14 | 15 | 27 => &[PinFn::Adc2, PinFn::Touch],
             2 => &[PinFn::Adc2, PinFn::Touch, PinFn::Led],
@@ -408,14 +408,14 @@ pub fn pin_fns(soc: Soc, gpio: u16) -> &'static [PinFn] {
         // Arduino conventions (Wire 8/9, FSPI 10–13) — the S3 routes any
         // peripheral to any pin, these are only the display hints.
         Soc::Esp32S3 => match gpio {
-            1 | 2 | 3 | 4 | 5 | 6 | 7 => &[PinFn::Adc1],
+            1..=7 => &[PinFn::Adc1],
             8 => &[PinFn::Adc1, PinFn::I2cSda],
             9 => &[PinFn::Adc1, PinFn::I2cScl],
             10 => &[PinFn::Adc1, PinFn::SpiCs],
             11 => &[PinFn::Adc2, PinFn::SpiMosi],
             12 => &[PinFn::Adc2, PinFn::SpiClk],
             13 => &[PinFn::Adc2, PinFn::SpiMiso],
-            14 | 15 | 16 | 17 | 18 | 19 | 20 => &[PinFn::Adc2],
+            14..=20 => &[PinFn::Adc2],
             43 => &[PinFn::UartTx],
             44 => &[PinFn::UartRx],
             _ => NONE,
@@ -444,7 +444,7 @@ pub fn pin_flags(soc: Soc, gpio: u16) -> &'static [PinFlag] {
             _ => NONE,
         },
         Soc::Esp32 => match gpio {
-            34 | 35 | 36 | 37 | 38 | 39 => &[PinFlag::InputOnly],
+            34..=39 => &[PinFlag::InputOnly],
             0 | 15 | 2 | 12 => &[PinFlag::Strapping],
             1 | 3 => &[PinFlag::Reserved],
             _ => NONE,

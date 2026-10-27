@@ -98,7 +98,7 @@ async fn create_device(
 async fn connect(server: &axum_test::TestServer, a: &Agent) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!("/ws/device?token={}", &a.token,),
+        &format!("/ws/device?token={}", a.token,),
         &a.key,
         &a.device_id,
     )

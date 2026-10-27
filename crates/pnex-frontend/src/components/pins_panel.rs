@@ -42,7 +42,7 @@ pub(crate) fn PinCard(
     // Garde « config device ↔ flows déployés » : la commande set_mode
     // refusée 409 stocke la liste des flows, le modal propose l'arrêt
     // confirmé puis ré-envoie avec `confirm_stop_flows: true`.
-    let mut conflict_flows = use_signal(|| Vec::<String>::new());
+    let mut conflict_flows = use_signal(Vec::<String>::new);
     let mut pending_cmd = use_signal(|| None::<api::pins::Command>);
 
     let is_digital = pin.mode == "digital_in" || pin.mode == "digital_out";

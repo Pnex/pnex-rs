@@ -256,9 +256,9 @@ async fn wait_delivered(srv: &FakeServer, api_port: u16, expected: usize) {
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+    let delivered = srv.points.lock().unwrap().len();
     panic!(
-        "delivered {} / {expected}, status {}",
-        srv.points.lock().unwrap().len(),
+        "delivered {delivered} / {expected}, status {}",
         status(api_port).await
     );
 }

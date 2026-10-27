@@ -369,6 +369,23 @@ async fn session(shared: &Arc<Shared>, ws: Ws, key: &[u8; 32], device_id: &str) 
     }
 }
 
+/// Upgrade request carrying the device token as `Authorization: Bearer
+/// <token>` (D154: never in the URL, so never in an access log).
+pub(crate) fn authorized_request(
+    url: &str,
+    token: &str,
+) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request, String> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| format!("invalid server URL: {e}"))?;
+    let value = format!("Bearer {token}")
+        .parse()
+        .map_err(|_| "device token is not a valid header value".to_string())?;
+    request.headers_mut().insert("Authorization", value);
+    Ok(request)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,21 +418,4 @@ mod tests {
         let t = target_id();
         assert!(t.contains('-'), "{t}");
     }
-}
-
-/// Upgrade request carrying the device token as `Authorization: Bearer
-/// <token>` (D154: never in the URL, so never in an access log).
-pub(crate) fn authorized_request(
-    url: &str,
-    token: &str,
-) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request, String> {
-    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    let mut request = url
-        .into_client_request()
-        .map_err(|e| format!("invalid server URL: {e}"))?;
-    let value = format!("Bearer {token}")
-        .parse()
-        .map_err(|_| "device token is not a valid header value".to_string())?;
-    request.headers_mut().insert("Authorization", value);
-    Ok(request)
 }

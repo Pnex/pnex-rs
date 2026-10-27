@@ -799,7 +799,7 @@ fn RebuildModal(
     // None = état courant du device repris tel quel).
     let mut options = board
         .as_ref()
-        .map(|b| board_pinout::screen_options(b))
+        .map(board_pinout::screen_options)
         .unwrap_or_default();
     let current_kind = board.as_ref().and_then(board_pinout::screen_state_kind);
     let effective = screen_pick().unwrap_or_else(|| current_kind.clone());
@@ -1478,7 +1478,7 @@ fn DeviceDetail(
                                         }
                                     }
                                 }
-                                {black_box_outputs(&device)}
+                                {black_box_outputs(device)}
                             }
                         }
                     }

@@ -223,8 +223,7 @@ async fn ota_one_active_assignment_per_device() {
         let err = ota_row(org, dev, "downloading")
             .insert(&ctx.db)
             .await
-            .err()
-            .expect("second active row must be rejected");
+            .expect_err("second active row must be rejected");
         assert!(
             db_lock::is_unique_violation(&err),
             "unexpected error: {err}"

@@ -75,7 +75,7 @@ pub fn AgentInstall(device_pk: i64) -> Element {
             generating.set(false);
         });
     };
-    use_hook(move || generate());
+    use_hook(generate);
 
     // Connection wait: poll the device detail until the agent is online.
     use_future(move || async move {

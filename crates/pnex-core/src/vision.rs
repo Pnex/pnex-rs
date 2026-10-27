@@ -69,7 +69,7 @@ impl ModelSpec {
     /// Field-level validation (machine tokens).
     pub fn check(&self) -> Result<(), Vec<(&'static str, String)>> {
         let mut errs = Vec::new();
-        let dim_ok = |d: u32| (32..=2048).contains(&d) && d % 32 == 0;
+        let dim_ok = |d: u32| (32..=2048).contains(&d) && d.is_multiple_of(32);
         if !dim_ok(self.input_width) {
             errs.push(("input_width", "range:32..2048/32".to_string()));
         }

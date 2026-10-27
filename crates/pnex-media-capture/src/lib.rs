@@ -597,8 +597,10 @@ pub async fn decode_clip(
         return Err(CaptureError::FormatUnsupported);
     }
     let samples: Vec<i16> = pcm
-        .chunks_exact(2)
-        .map(|b| i16::from_le_bytes([b[0], b[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_le_bytes(*b))
         .collect();
     Ok((segmenter::wav_bytes(&samples), truncated))
 }

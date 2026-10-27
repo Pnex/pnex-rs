@@ -226,7 +226,7 @@ fn queue(change: Change) {
 
 fn dropped() {
     let n = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
-    if n == 1 || n % 10_000 == 0 {
+    if n == 1 || n.is_multiple_of(10_000) {
         tracing::warn!(dropped = n, "object changes queue full, changes dropped");
     }
 }

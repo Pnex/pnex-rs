@@ -942,6 +942,25 @@ fn valid_prefix(prefix: &str) -> bool {
             .unwrap_or(false)
 }
 
+/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
+pub fn openapi() -> utoipa::openapi::OpenApi {
+    #[derive(utoipa::OpenApi)]
+    #[openapi(paths(
+        list_wifi,
+        create_wifi,
+        update_wifi,
+        delete_wifi,
+        list_hosts,
+        locked_host,
+        create_host,
+        update_host,
+        delete_host,
+        lan_scan
+    ))]
+    struct Doc;
+    <Doc as utoipa::OpenApi>::openapi()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1011,23 +1030,4 @@ mod tests {
         h.insert("x-forwarded-host", "192.168.1.185".parse().unwrap());
         assert_eq!(request_host(&h).as_deref(), Some("192.168.1.185"));
     }
-}
-
-/// OpenAPI paths of this controller (merged by `crate::openapi::spec`).
-pub fn openapi() -> utoipa::openapi::OpenApi {
-    #[derive(utoipa::OpenApi)]
-    #[openapi(paths(
-        list_wifi,
-        create_wifi,
-        update_wifi,
-        delete_wifi,
-        list_hosts,
-        locked_host,
-        create_host,
-        update_host,
-        delete_host,
-        lan_scan
-    ))]
-    struct Doc;
-    <Doc as utoipa::OpenApi>::openapi()
 }

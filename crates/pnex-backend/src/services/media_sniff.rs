@@ -212,7 +212,9 @@ pub fn identify(filename: &str, bytes: &[u8]) -> Option<Format> {
         None => match ext.as_str() {
             // An ONNX ModelProto opens with field 1 (ir_version, varint).
             "onnx" if bytes.first() == Some(&0x08) => Format::Onnx,
-            "splat" if !bytes.is_empty() && bytes.len() % SPLAT_RECORD == 0 => Format::Splat,
+            "splat" if !bytes.is_empty() && bytes.len().is_multiple_of(SPLAT_RECORD) => {
+                Format::Splat
+            }
             "ksplat" if !bytes.is_empty() => Format::Ksplat,
             _ => return None,
         },

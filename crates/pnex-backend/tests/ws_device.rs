@@ -173,7 +173,7 @@ async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core:
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!("/ws/device?token={}", &d.token,),
+        &format!("/ws/device?token={}", d.token,),
         &d.key,
         &d.device_id,
     )

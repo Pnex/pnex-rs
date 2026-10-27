@@ -71,7 +71,6 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
             let input = pnex_core::WifiCredentialInput {
                 ssid,
                 password: Some(pnex_core::SecretFieldInput::Value { value: password }),
-                ..Default::default()
             };
             match api::wifi::create(input).await {
                 Ok(created) => {

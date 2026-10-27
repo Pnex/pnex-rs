@@ -107,7 +107,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     common::DevWs::connect(
         server,
-        &format!("/ws/device?token={}", &d.token,),
+        &format!("/ws/device?token={}", d.token,),
         &d.key,
         &d.device_id,
     )

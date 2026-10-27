@@ -84,19 +84,17 @@ pub fn install(dir: &Path, user_mode: bool) -> Result<()> {
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
-    {
-        Some(SYSTEM_USER)
-    } else if sh(
-        "useradd",
-        &[
-            "--system",
-            "--no-create-home",
-            "--shell",
-            "/usr/sbin/nologin",
-            SYSTEM_USER,
-        ],
-    )
-    .is_ok()
+        || sh(
+            "useradd",
+            &[
+                "--system",
+                "--no-create-home",
+                "--shell",
+                "/usr/sbin/nologin",
+                SYSTEM_USER,
+            ],
+        )
+        .is_ok()
     {
         Some(SYSTEM_USER)
     } else {

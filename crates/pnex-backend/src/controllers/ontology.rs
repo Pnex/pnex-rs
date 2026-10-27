@@ -324,7 +324,7 @@ pub(crate) fn paged<T: serde::Serialize>(
 }
 
 pub(crate) fn actor(org: &OrgContext) -> Actor {
-    Actor::manual(org.auth.user.id, org.role.clone())
+    Actor::manual(org.auth.user.id, org.role)
 }
 
 pub(crate) fn o2(ctx: &AppContext) -> Option<Client> {

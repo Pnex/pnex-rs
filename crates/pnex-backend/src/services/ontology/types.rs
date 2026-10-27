@@ -359,7 +359,7 @@ pub async fn delete(db: &DatabaseConnection, org_id: i64, key: &str) -> Result<(
         };
         txn.execute_raw(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            &format!("DELETE FROM {t} WHERE org_id = $1 AND {col} = $2"),
+            format!("DELETE FROM {t} WHERE org_id = $1 AND {col} = $2"),
             [org_id.into(), key.into()],
         ))
         .await?;

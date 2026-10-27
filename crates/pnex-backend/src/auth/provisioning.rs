@@ -73,7 +73,7 @@ async fn ensure_platform_admin(
         return Ok(user);
     }
     let email = user.email.to_lowercase();
-    if !platform_admin_emails().iter().any(|e| *e == email) {
+    if !platform_admin_emails().contains(&email) {
         return Ok(user);
     }
     let mut active: users::ActiveModel = user.into();

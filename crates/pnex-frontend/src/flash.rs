@@ -254,13 +254,13 @@ mod native {
         let bundled = app_dir
             .into_iter()
             .flat_map(|dir| [dir.join("esptool").join(EXE), dir.join(EXE)]);
-        let on_path = std::env::var_os("PATH")
+        let on_path: Vec<PathBuf> = std::env::var_os("PATH")
             .map(|paths| {
                 std::env::split_paths(&paths)
                     .map(|dir| dir.join(EXE))
                     .collect()
             })
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
         bundled.chain(on_path).find(|path| path.is_file())
     }
 

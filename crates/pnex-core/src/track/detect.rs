@@ -370,7 +370,7 @@ mod tests {
         let seg: Vec<TrackPoint> = (0..=40)
             .map(|s| p(s, 2.0, 48.0 + s as f64 * 0.0001))
             .collect();
-        let v = zone_visits(&[seg.clone()], inside);
+        let v = zone_visits(std::slice::from_ref(&seg), inside);
         assert_eq!(v.len(), 1, "{v:?}");
         assert!(v[0].entered && v[0].left);
         // Enters ~50 m before the centre (t≈15.5 s), leaves ~50 m after (t≈24.5 s).
