@@ -42,11 +42,18 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/crm.yaml"),
 ];
 
-pub fn shipped() -> Vec<Pack> {
+/// Parsed once per process: an install reads them for every type and link
+/// it writes (display layer, D368), and parsing them each time made an
+/// install take seconds.
+static SHIPPED_PACKS: std::sync::LazyLock<Vec<Pack>> = std::sync::LazyLock::new(|| {
     SHIPPED
         .iter()
         .map(|y| serde_saphyr::from_str(y).expect("shipped pack is valid YAML"))
         .collect()
+});
+
+pub fn shipped() -> Vec<Pack> {
+    SHIPPED_PACKS.clone()
 }
 
 pub fn parse(yaml: &str) -> Result<Pack> {

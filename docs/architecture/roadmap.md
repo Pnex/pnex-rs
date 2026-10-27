@@ -1092,10 +1092,12 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 - Assistant en direct pendant un rendez-vous (projet séparé).
 - Vision CRM/ERP : interventions terrain, planification des techniciens, mouvements et déploiements d'équipements, réparations et tarifs.
 
-**Point ouvert** — La suite `partner_watch` complète est passée de 165 s à
-772 s, et `imports_apply_thousands_of_records_quickly` y dépasse son
-budget (il passe seul en 112 s). À relancer sur une machine au repos avant
-le push, à profiler si l'écart demeure.
+**Point clos (2026-10-27)** — La suite `partner_watch` était passée de
+165 s à 772 s : chaque type ou lien écrit par une installation de pack
+relisait la couche d'affichage (D368) et réanalysait pour cela le YAML de
+tous les packs livrés. Ils sont analysés une fois par processus : la suite
+retombe à 118 s (`ontology` 72 → 31 s, `personal_data` 64 → 13 s), et
+l'installation d'un pack sur un serveur est d'autant plus rapide.
 
 ### P2.29 — Agents autonomes : gouvernance, passerelle LLM, bacs à sable (ajout 2026-10-23) — **PRD proposé, rien d'implémenté**
 
