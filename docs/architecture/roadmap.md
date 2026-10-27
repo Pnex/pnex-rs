@@ -1149,6 +1149,21 @@ d'`account-mapping.md` en gardant le CRM dans un pack.
 Écrans (bouton « Effacer », base légale affichée, vues dédiées) : hors de ce
 lot, l'application commerciale viendra sur l'API.
 
+### P2.32 — Due diligence, fusion-acquisition et solvabilité (ajout 2026-10-27) — **PRD proposé, rien d'implémenté**
+
+Doc : `due-diligence.md` (D468–D483, lots DD0–DD7). Un dossier de
+transaction (`case` étendu) sur 1 à N sociétés ; on y dépose n'importe
+quelle pièce (FEC, balance, liasse, bilans PDF, bilan social, contrats).
+Trois niveaux : ontologie (sociétés, contrats, tiers), grand livre en table
+dédiée (`fin_entries`, centimes `i64`, import en flux), et une couche pivot
+`fin_facts` (société × exercice × concept, origine et source) lue par un
+moteur de calcul pur (SIG, rentabilité, solvabilité, cycle, scores publiés).
+Parseurs déterministes d'abord, LLM ensuite et toujours à valider ; social
+agrégé seulement ; pro forma simulé avec éliminations listées ; une org par
+transaction tant que D188 manque. Premier lot de valeur sans LLM : DD1
+(parseur FEC) + DD2 (moteur et comparatif). Relecture du 2026-10-27
+(§14) : la file de propositions et l'import BODACC existent déjà.
+
 ## P3 — Horizons (décisions de phase explicites)
 
 Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
@@ -1520,3 +1535,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   effacement en coquille, opposition au moteur) et pack `crm`
   (opportunités, qualification, activités, plan de relance, brouillons
   relus, digest du matin). Codé en local, à commiter ; écrans hors lot.
+- **2026-10-27 (due diligence)** — Ajout de P2.32 (`due-diligence.md`,
+  D468–D483, lots DD0–DD7) : dossier de transaction, grand livre FEC,
+  faits financiers normalisés, moteur de ratios, flux, pro forma. PRD
+  rédigé en D329–D344, renuméroté (plage prise par `account-mapping.md`).

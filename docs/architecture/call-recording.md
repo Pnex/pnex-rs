@@ -183,7 +183,7 @@ La carte est casque côté téléphone et passerelle audio côté casque.
   sens ; relais des commandes (décrocher, raccrocher, volume, sonnerie,
   CLIP) ; latence ajoutée ~30–60 ms. À vérifier : deux liens SCO/eSCO
   simultanés sur le CC2564C.
-- **R4b, relais A2DP** (seulement si l'usage l'exige) : SBC seul, latence
+- **R4b, relais A2DP** (seulement si l'usage l'exige), plus AVRCP pour les boutons du casque : SBC seul, latence
   gênante en vidéo ; CPU du C6 probablement juste (piste ESP32-P4).
 - Limites : AirPods et casques multipoint dégradés, casques LE Audio seuls
   incompatibles. Alternative : carte + casque filaire pour les appels
@@ -211,7 +211,7 @@ La carte est casque côté téléphone et passerelle audio côté casque.
 
 | Option | Raison |
 |---|---|
-| Driver audio virtuel | Pilote noyau à signer ; le loopback suffit |
+| Driver audio virtuel (type VB-Cable) | Pilote noyau à signer ; le loopback suffit |
 | Appli mobile de capture | Bloquée par Android et iOS |
 | Bluetooth sur C3/C6 seul | Pas de Bluetooth Classic, donc pas de HFP |
 | ESP32 classique comme produit | Coexistence Wi-Fi/BT et RAM fragiles ; prototype seulement |

@@ -55,7 +55,7 @@ Un playbook B2B industriel typique a servi de banc d'essai. Ce qui s'y trouve et
 
 ### D329 — Pack `prospection_b2b` : étendre, ne pas créer
 
-Pack générique (`requires: [entreprises_fr]`), sans valeur propre à un vendeur.
+Pack générique (`requires: [entreprises, presence_web]` : le socle mondial D343 ; à l'origine `entreprises_fr`), sans valeur propre à un vendeur.
 
 - `organization` étendue (D306) :
   - `statut_compte` (enum : `client`, `prospect`, `cible`, `ancien_client`, `concurrent`, `partenaire`, `exclu`),
