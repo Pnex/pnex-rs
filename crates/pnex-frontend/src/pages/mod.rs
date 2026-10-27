@@ -36,6 +36,8 @@ pub mod gate;
 pub mod lab;
 pub mod lan_scan;
 pub mod login;
+pub mod mailbox_messages;
+pub mod mailboxes;
 pub mod map;
 pub mod media;
 /// Vision model registry (camera-video.md D81).

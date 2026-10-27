@@ -57,7 +57,15 @@ pub(super) fn MailReceivedForm(
                 }
             }
             if empty {
-                p { class: "text-xs text-amber-700", {t!("flows-mail-received-none")} }
+                p { class: "text-xs text-amber-700",
+                    {t!("flows-mail-received-none")}
+                    " "
+                    Link {
+                        to: crate::app::Route::Mailboxes {},
+                        class: "underline",
+                        {t!("flows-mail-received-open-mailboxes")}
+                    }
+                }
             }
             MailFilter {
                 label: t!("flows-mail-received-from"),

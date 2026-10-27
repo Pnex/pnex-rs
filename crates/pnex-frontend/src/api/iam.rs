@@ -223,6 +223,8 @@ pub struct ServiceAccount {
     pub name: String,
     #[serde(default)]
     pub description: String,
+    /// Identity of the account (owner of its mailboxes).
+    pub user_id: i64,
     pub active_keys: i64,
     pub created_at: String,
 }

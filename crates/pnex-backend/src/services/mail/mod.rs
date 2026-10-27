@@ -688,22 +688,27 @@ pub async fn test(db: &DatabaseConnection, ring: &Keyring, row: &Row) -> Mailbox
                 }
             }
         }
+        let junk = imap::junk_folder(&mut s)
+            .await
+            .filter(|j| !row.folders.iter().any(|f| f.eq_ignore_ascii_case(j)));
         imap::logout(s).await;
-        Ok(folders)
+        Ok((folders, junk))
     }
     .await;
     let latency_ms = started.elapsed().as_millis() as u64;
     match result {
-        Ok(folders) => MailboxTestResult {
+        Ok((folders, junk_folder)) => MailboxTestResult {
             ok: true,
             error: None,
             folders,
+            junk_folder,
             latency_ms,
         },
         Err(e) => MailboxTestResult {
             ok: false,
             error: Some(e),
             folders: Vec::new(),
+            junk_folder: None,
             latency_ms,
         },
     }

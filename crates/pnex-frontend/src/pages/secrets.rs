@@ -38,8 +38,7 @@ fn usage_route(kind: SecretConsumerKind) -> Route {
         SecretConsumerKind::GeoProvider => Route::OrgsCurrent {},
         SecretConsumerKind::BrowserEndpoint => Route::OrgsCurrent {},
         SecretConsumerKind::WebSearchProvider => Route::OrgsCurrent {},
-        // shortcut: no mailbox page yet (mail.md, backend first); point at the org page until it exists.
-        SecretConsumerKind::Mailbox => Route::OrgsCurrent {},
+        SecretConsumerKind::Mailbox => Route::Mailboxes {},
     }
 }
 

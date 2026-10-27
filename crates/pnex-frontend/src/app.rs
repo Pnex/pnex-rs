@@ -11,6 +11,8 @@
 use crate::pages::access::Access;
 use crate::pages::browser_agents::BrowserAgents;
 use crate::pages::edge_refs::EdgeRefs;
+use crate::pages::mailbox_messages::MailboxMessages;
+use crate::pages::mailboxes::Mailboxes;
 use crate::pages::proposals::Proposals;
 use crate::pages::web_sites::{WebSiteStudio, WebSites};
 use crate::pages::{
@@ -163,6 +165,13 @@ pub enum Route {
         // Web sites and their navigation studio (site-recipes.md D323–D326).
         #[route("/web-sites")]
         WebSites {},
+
+        // Mailboxes polled by PneX (mail.md D453).
+        #[route("/mailboxes")]
+        Mailboxes {},
+
+        #[route("/mailboxes/:id")]
+        MailboxMessages { id: String },
 
         #[route("/web-sites/:site")]
         WebSiteStudio { site: String },

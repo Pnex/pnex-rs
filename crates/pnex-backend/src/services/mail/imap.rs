@@ -158,6 +158,46 @@ pub async fn examine(s: &mut Session, folder: &str) -> Result<(u32, u32), Mailbo
     Ok((mb.uid_validity.unwrap_or(0), mb.exists))
 }
 
+/// The spam folder of the account: marked `\Junk` (RFC 6154), else named
+/// like one. `None` when the server lists nothing alike.
+pub async fn junk_folder(s: &mut Session) -> Option<String> {
+    let names: Vec<async_imap::types::Name> = match tokio::time::timeout(COMMAND_TIMEOUT, async {
+        s.list(Some(""), Some("*")).await?.try_collect().await
+    })
+    .await
+    {
+        Ok(Ok(n)) => n,
+        _ => return None,
+    };
+    let marked = names.iter().find(|n| {
+        n.attributes()
+            .iter()
+            .any(|a| matches!(a, async_imap::types::NameAttribute::Junk))
+    });
+    marked
+        .or_else(|| names.iter().find(|n| is_junk_name(n.name())))
+        .map(|n| n.name().to_string())
+}
+
+/// `INBOX.Spam`, `[Gmail]/Spam`, `Courrier indésirable`…: the last level
+/// of the name says spam.
+fn is_junk_name(name: &str) -> bool {
+    let leaf = name
+        .rsplit(['/', '.'])
+        .next()
+        .unwrap_or(name)
+        .to_lowercase();
+    [
+        "junk",
+        "spam",
+        "junk e-mail",
+        "junk email",
+        "courrier indésirable",
+        "indésirables",
+    ]
+    .contains(&leaf.trim())
+}
+
 /// One message fetched: its UID and its raw bytes (headers only above
 /// [`RAW_MAX_BYTES`], then `truncated`).
 pub struct Fetched {
@@ -254,6 +294,22 @@ pub async fn logout(mut s: Session) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn spam_folders_are_named_like_one() {
+        for n in [
+            "Junk",
+            "INBOX.Spam",
+            "[Gmail]/Spam",
+            "Courrier indésirable",
+            "Junk E-mail",
+        ] {
+            assert!(is_junk_name(n), "{n}");
+        }
+        for n in ["INBOX", "Spamalot/Archive", "Sent", "INBOX.Clients"] {
+            assert!(!is_junk_name(n), "{n}");
+        }
+    }
 
     #[test]
     fn folder_names_never_carry_a_command() {

@@ -2,15 +2,21 @@
 id: mailboxes
 title: Mailboxes — collect and file incoming mail
 kind: feature
-pages:
+pages: /mailboxes, /mailboxes/:id
 nodes: mail_received, ontology_query, object_upsert, link_upsert
 err_codes: mail-mailbox-not-found, mail-mailbox-name-taken, mail-no-mailbox, mail-mailbox-unknown, mail-mailbox-forbidden, mail-no-password, mail-unreachable, mail-tls-failed, mail-auth-failed, mail-folder-unknown, mail-protocol, mail-rate-exceeded
 tools:
-tags: mail, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
+tags: mail, junk, indésirables, e-mail, courriel, mailbox, boîte mail, inbox, IMAP, newsletter, abonnement, veille, forward, transfert, transféré, sales@, support@, shared mailbox, boîte partagée, agent mailbox, spam, phishing, DKIM, SPF, DMARC
 ---
 A **mailbox** is a source, like a stream: PneX polls its new mails every two minutes (IMAP over TLS, port 993), keeps them as plain text and hands them to the flows that listen. PneX **collects and files**; it does not send mail.
 
-Connecting a mailbox is not yet offered in the interface: ask an administrator of the organization.
+## The Mailboxes page
+**Mailboxes** (Devices menu) lists the mailboxes of the organization: who reads each one, its state (active, paused, in error with the reason) and when it was last polled.
+- **Add mailbox**: name, address, IMAP server (port 993, TLS only), username, password (typed, kept in the vault, or picked from the Secrets page), the polled folders (INBOX by default) and how many days PneX keeps the mails (90 by default).
+- **Test** connects and counts the mails of each folder, without fetching anything. It also names the server's spam folder when the mailbox does not poll it: a customer's mail filed as spam never reaches PneX until that folder is added to the polled folders.
+- **Pause** stops the polling; **Resume** starts it again and clears the last error.
+- **Delete** removes the mailbox and its mails from PneX, never from the mail server.
+- The name of a mailbox you read opens its **mails**: correspondent, subject, whether PneX verified the sender (DKIM), as plain text; click a row to read it. Attachments are listed, never opened.
 
 ## Whose mailbox, who reads it
 - **Your own mailbox**: you connect it and type its password (kept in the vault, never shown again). Only you read its mails; an administrator sees that it exists and its state, may pause or remove it, never reads it.

@@ -158,6 +158,10 @@ pub struct MailboxTestResult {
     /// Messages in each tested folder.
     #[serde(default)]
     pub folders: Vec<MailFolderCount>,
+    /// The server's spam folder when the mailbox does not poll it: a mail
+    /// of a customer filed as spam would never reach PneX.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub junk_folder: Option<String>,
     pub latency_ms: u64,
 }
 
@@ -450,13 +454,13 @@ pub fn is_automatic(headers: &[(String, String)], from: &str, content_type: &str
     if matches!(
         local.as_str(),
         "mailerdaemon" | "postmaster" | "bounce" | "bounces"
+            // Hosting panels and cron mail; never `alerts@`: a machine that
+            // alerts by mail is a wanted source (D453).
+            | "cpanel" | "whm" | "plesk" | "root" | "cron" | "daemon"
     ) || ["noreply", "donotreply", "nepasrepondre"]
         .iter()
         .any(|p| local.starts_with(p))
     {
-            // Hosting panels and cron mail; never `alerts@`: a machine that
-            // alerts by mail is a wanted source (D453).
-            | "cpanel" | "whm" | "plesk" | "root" | "cron" | "daemon"
         return true;
     }
     content_type
@@ -805,12 +809,12 @@ mod tests {
         assert!(is_automatic(&[], "no-reply@acme.fr", "text/plain"));
         assert!(is_automatic(&[], "Ne-Pas-Repondre@impots.fr", "text/plain"));
         assert!(!is_automatic(&[], "noemie@acme.fr", "text/plain"));
+        assert!(is_automatic(&[], "cpanel@radis.o2switch.net", "text/plain"));
+        assert!(!is_automatic(&[], "alerts@usine.fr", "text/plain"));
         assert!(is_automatic(
             &[],
             "a@b.fr",
             "multipart/report; report-type=delivery-status"
-        assert!(is_automatic(&[], "cpanel@radis.o2switch.net", "text/plain"));
-        assert!(!is_automatic(&[], "alerts@usine.fr", "text/plain"));
         ));
         assert!(!is_automatic(
             &h(&[("Subject", "Bonjour")]),

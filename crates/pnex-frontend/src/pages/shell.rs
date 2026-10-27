@@ -324,6 +324,7 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
         || at(Route::EdgeRefs {})
         || at(Route::BrowserAgents {})
         || matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. })
+        || matches!(route, Route::Mailboxes {} | Route::MailboxMessages { .. })
         || at(Route::Firmware {});
     let automation = matches!(route, Route::Flows { .. })
         || at(Route::Functions {})
@@ -528,6 +529,12 @@ fn Nav(on_navigate: Option<Callback<()>>, rail: bool) -> Element {
                     to: Route::WebSites {},
                     label: t!("nav-web-sites"),
                     active: matches!(route, Route::WebSites {} | Route::WebSiteStudio { .. }),
+                    on_navigate,
+                }
+                NavItem {
+                    to: Route::Mailboxes {},
+                    label: t!("nav-mailboxes"),
+                    active: matches!(route, Route::Mailboxes {} | Route::MailboxMessages { .. }),
                     on_navigate,
                 }
             }

@@ -10738,6 +10738,13 @@
             },
             "type": "array"
           },
+          "junk_folder": {
+            "description": "The server's spam folder when the mailbox does not poll it: a mail\nof a customer filed as spam would never reach PneX.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "latency_ms": {
             "format": "int64",
             "minimum": 0,
@@ -14106,18 +14113,18 @@
       "PageTemplate": {
         "description": "A page model shipped by a pack. `body` is a Markdown subset: `#`–`###`\nheadings, `-` and `1.` list items, paragraphs (no inline marks).",
         "properties": {
+          "bodies": {
+            "$ref": "#/components/schemas/BTreeMap"
+          },
           "body": {
+            "description": "Markdown in English; `bodies` holds the other languages (`fr`…) with\nthe same placeholders (D370).",
             "type": "string"
           },
           "description": {
             "type": "string"
           },
           "descriptions": {
-          "bodies": {
             "$ref": "#/components/schemas/BTreeMap"
-          },
-            "$ref": "#/components/schemas/BTreeMap"
-            "description": "Markdown in English; `bodies` holds the other languages (`fr`…) with\nthe same placeholders (D370).",
           },
           "key": {
             "type": "string"
