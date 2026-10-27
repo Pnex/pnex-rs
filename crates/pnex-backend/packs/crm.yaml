@@ -19,13 +19,18 @@
 # e-mail identifier of a person, else proposed under the account whose
 # website has the sender's domain (never a webmail). A mail whose authentication fails is only
 # proposed for linking; automatic mails and the org's own are left out.
+# Meetings received (D484): a mail carrying a meeting invitation becomes a
+# `rendez_vous` keyed by its iCalendar UID (an update moves it, a
+# cancellation marks it cancelled), and each organizer or attendee whose
+# address a person uses as e-mail identifier takes part in it; proposed
+# only when the sender is not authenticated. Nobody is created.
 # The morning digest lists the activities due and the open opportunities
 # with no activity for 14 days (edit `$today-14` in the flow): add the org's
 # notification node on its first port, then deploy.
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.4.0"
+version: "1.5.0"
 requires: [prospection_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
@@ -495,6 +500,67 @@ functions:
               "mail": mail,
               "par_domaine": msg.get("domaine", ""),
           }
+  - name: crm_rdv_prep
+    language: starlark
+    description: "A mail carrying a meeting invitation: the meeting keyed by the invitation's UID, the addresses of its organizer and attendees, and whether the sender may be trusted."
+    code: |
+      # Same rule as crm_mail_prep (mail.md D458).
+      def trusted(auth):
+          spf, dkim, dmarc = auth.get("spf", "none"), auth.get("dkim", "none"), auth.get("dmarc", "none")
+          if dmarc == "pass":
+              return True
+          if dmarc == "fail":
+              return False
+          return (spf == "pass" or dkim == "pass") and spf != "fail" and dkim != "fail"
+
+      def handle(inputs, msg):
+          m = msg["payload"]
+          inv = m.get("invitation") or {}
+          method = (inv.get("method", "") or "").upper()
+          # A reply only says whether one attendee comes.
+          if not inv.get("uid") or method == "REPLY":
+              return None
+          objet = (inv.get("summary", "") or m.get("subject", "") or "(sans objet)")[:500]
+          payload = {
+              "id_invitation": inv["uid"][:1024],
+              "objet": objet,
+              "statut": "annule" if method == "CANCEL" else "prevu",
+          }
+          if inv.get("start"):
+              payload["date"] = inv["start"]
+          if inv.get("location"):
+              payload["lieu"] = inv["location"][:255]
+          who = ([inv["organizer"]] if inv.get("organizer") else []) + inv.get("attendees", [])
+          addrs = []
+          for a in who:
+              addr = (a.get("address", "") or "").lower()
+              if addr and addr not in addrs:
+                  addrs.append(addr)
+          return {
+              "payload": payload,
+              "title": "rendez-vous · " + objet[:200],
+              "adresses": addrs,
+              "trusted": trusted(m.get("auth", {})),
+          }
+  - name: crm_rdv_participants
+    language: starlark
+    description: The meeting written; one address per message follows (payload = the list), the meeting kept for the links.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": [{"adresse": a} for a in msg.get("adresses", [])], "rdv": {"id": msg["object"]["id"], "objet": msg["object"]["title"]}}
+  - name: crm_rdv_lien
+    language: starlark
+    description: "The person found takes part in the meeting: written when the sender is trusted, proposed otherwise."
+    code: |
+      # @output lien any "Trusted sender: the person takes part"
+      # @output proposition any "Sender not authenticated: the link is proposed"
+      def handle(inputs, msg):
+          link = {"source_id": msg["object"]["id"], "target_id": msg["rdv"]["id"]}
+          if msg.get("trusted"):
+              return [{"payload": link}, None]
+          link["confidence"] = 40
+          link["evidence"] = {"reason": "sender not authenticated", "meeting": msg["rdv"]["objet"]}
+          return [None, {"payload": link}]
   - name: crm_journee_dues
     language: starlark
     description: Keeps the activities due on the message for the morning digest.
@@ -665,6 +731,26 @@ flows:
         - { id: linked, kind: link_upsert, config: { link_type: activite_sur } }
         - { id: each_proposed, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [proposed] }] }
         - { id: proposed, kind: link_upsert, config: { link_type: activite_sur, propose: true } }
+  - name: "CRM · meetings received"
+    note: "Each mail of the mailboxes you pick (node Mail received: choose them, you must read them) that carries a meeting invitation becomes a meeting (Meeting, keyed by the invitation id): date, purpose, place, planned or cancelled; an update of the invitation moves the same meeting. The organizer and each attendee whose address a person uses as e-mail identifier (identifier kind email, value in lower case) take part in it; when the sender's authentication fails the participation is only proposed, on the To validate page. Unknown addresses are left out: nobody is created. Pick the mailboxes, then deploy."
+    graph:
+      nodes:
+        - { id: mail, kind: mail_received, config: { skip_automatic: false }, outputs: [{ port: 0, targets: [prep] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: crm_rdv_prep, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: rendez_vous, key: id_invitation }, outputs: [{ port: 0, targets: [fan] }] }
+        - { id: fan, kind: pnex_function, config: { function_name: crm_rdv_participants, language: starlark }, outputs: [{ port: 0, targets: [each] }] }
+        - { id: each, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [who] }] }
+        - id: who
+          kind: ontology_query
+          config:
+            object_type: identifier
+            filters: [{ key: value, op: eq, value: "$msg.payload.adresse" }]
+            traverse: [{ link_type: uses_identifier, direction: in }]
+            limit: 1
+          outputs: [{ port: 0, targets: [link] }]
+        - { id: link, kind: pnex_function, config: { function_name: crm_rdv_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }, { port: 1, targets: [proposed] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: participe_a } }
+        - { id: proposed, kind: link_upsert, config: { link_type: participe_a, propose: true } }
   - name: "CRM · my day"
     note: "Each morning one digest (payload.texte, payload.nombre) of the activities due today or late and of the open opportunities with no activity for 14 days (edit $today-14 to change the delay). Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
     graph:

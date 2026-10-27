@@ -1045,3 +1045,80 @@ fn an_unknown_sender_is_proposed_under_the_account_of_its_domain() {
     );
     assert_eq!(r[1]["payload"][0]["evidence"]["domain"], "acme.fr");
 }
+
+/// `crm` « meetings received » (D484): an invitation becomes a meeting
+/// keyed by its UID, each address once, a reply is ignored, and
+/// authentication decides between a participation and a proposal.
+#[test]
+fn an_invitation_becomes_a_meeting_with_its_people() {
+    let mail = |method: &str, dmarc: &str| {
+        json!({"payload": {
+            "subject": "Invitation: Revue", "auth": {"spf": "pass", "dkim": "pass", "dmarc": dmarc},
+            "invitation": {"uid": "m1@acme.fr", "method": method, "summary": "Revue devis",
+                "start": "2026-10-27T20:00:00+01:00", "location": "Teams",
+                "organizer": {"address": "Elodie@Acme.fr"},
+                "attendees": [{"address": "alice@example.com"}, {"address": "elodie@acme.fr"}]}
+        }})
+    };
+    let prep = code_in(CRM, "crm_rdv_prep");
+    let r = execute(&prep, &mail("REQUEST", "pass"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        r["payload"],
+        json!({"id_invitation": "m1@acme.fr", "objet": "Revue devis", "statut": "prevu",
+            "date": "2026-10-27T20:00:00+01:00", "lieu": "Teams"})
+    );
+    assert_eq!(
+        r["adresses"],
+        json!(["elodie@acme.fr", "alice@example.com"])
+    );
+    assert_eq!(r["trusted"], true);
+    let r = execute(&prep, &mail("CANCEL", "fail"), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        (r["payload"]["statut"].clone(), r["trusted"].clone()),
+        (json!("annule"), json!(false))
+    );
+    for m in [
+        mail("REPLY", "pass"),
+        json!({"payload": {"subject": "Bonjour"}}),
+    ] {
+        assert!(execute(&prep, &m, 2000).unwrap().return_json.is_none());
+    }
+
+    let r = execute(
+        &code_in(CRM, "crm_rdv_participants"),
+        &json!({"object": {"id": "rdv1", "title": "rendez-vous · Revue"}, "adresses": ["a@x.fr", "b@y.fr"]}),
+        2000,
+    )
+    .unwrap()
+    .return_json
+    .unwrap();
+    assert_eq!(
+        r["payload"],
+        json!([{"adresse": "a@x.fr"}, {"adresse": "b@y.fr"}])
+    );
+    assert_eq!(r["rdv"]["id"], "rdv1");
+
+    let found = |trusted: bool| json!({"object": {"id": "p1"}, "rdv": {"id": "rdv1", "objet": "Revue"}, "trusted": trusted});
+    let lien = code_in(CRM, "crm_rdv_lien");
+    let r = execute(&lien, &found(true), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert_eq!(
+        r[0]["payload"],
+        json!({"source_id": "p1", "target_id": "rdv1"})
+    );
+    assert!(r[1].is_null());
+    let r = execute(&lien, &found(false), 2000)
+        .unwrap()
+        .return_json
+        .unwrap();
+    assert!(r[0].is_null());
+    assert_eq!(r[1]["payload"]["confidence"], 40);
+}

@@ -44,11 +44,13 @@
 # are the media analyses), its debrief page, and the criteria of the org's
 # sales playbook it covered (`critere_coaching`, the org's own list). The
 # coaching reads per criterion how many meetings covered it: aggregates of
-# the team's practice, never a score of a person.
+# the team's practice, never a score of a person. A meeting read from a
+# mail invitation (crm pack) is keyed by the invitation's iCalendar UID
+# (`id_invitation`): an update moves it, a cancellation marks it.
 key: prospection_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.5.0"
+version: "1.6.0"
 requires: [entreprises, presence_web]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
@@ -242,6 +244,7 @@ types:
         indexed: true
       - { key: lieu, name: Place, names: {fr: "Lieu"}, kind: text, max_len: 255 }
       - { key: suite, name: Next step, names: {fr: "Suite donnée"}, kind: text, max_len: 2000 }
+      - { key: id_invitation, name: Invitation id, names: {fr: "Identifiant de l'invitation"}, kind: text, max_len: 1024, unique: true }
   - key: critere_coaching
     name: Playbook criterion
     names: {fr: "Critère du playbook"}

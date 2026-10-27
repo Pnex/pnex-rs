@@ -156,6 +156,16 @@ La partie `text/calendar` d'un mail (en ligne ou jointe) est lue à la relève p
 - **Aucune réponse** à l'organisateur (accepter, refuser) : il faudrait l'envoi (M3).
 - Limite : une réunion passée s'affiche « en retard » au calendrier (état calculé pour la maintenance) tant qu'on ne la marque pas faite.
 
+### D484 — Une invitation reçue devient un rendez-vous de l'ontologie, avec ses participants connus
+
+Le calendrier (D466) reste à la demande d'un lecteur ; l'ontologie, elle, est remplie par un flow du pack `crm` (D462 : rien au moteur), **CRM · réunions reçues**, déployé par un membre sur les boîtes qu'il lit :
+
+- chaque mail qui porte une invitation (hors `REPLY`, qui ne dit que la réponse d'un participant) écrit un `rendez_vous` (pack `prospection_b2b` 1.6.0) clé = `id_invitation` (l'`UID`) : date, objet, lieu, statut `prevu` ; une mise à jour déplace le même objet, une annulation (`METHOD:CANCEL`) le passe `annule`, l'historique de l'objet garde le reste ;
+- l'organisateur et chaque participant dont l'adresse est l'identifiant e-mail d'une personne de l'org **participent** (`participe_a`) ; lien écrit quand l'expéditeur est authentifié (règle de `crm_mail_prep`, D458), **proposé** sinon (page « À valider », confiance 40) ;
+- une adresse inconnue est laissée de côté : personne n'est créé (même règle que D466, D467).
+
+Limites : une annulation envoyée à un seul participant retiré de la réunion (même `UID`) passe aussi le rendez-vous `annule` ; une invitation renvoyée après la réunion la remet `prevu`. Le transfert d'une invitation Outlook a un autre `UID` : c'est un second rendez-vous. Une « puce » d'événement Gmail n'est pas une invitation (texte localisé, sans participants ni identifiant) : seule son invitation jumelle, envoyée par Google Agenda aux invités, est lue.
+
 ## 4. Ce que le système ne fait pas
 
 - Pas de client mail complet (dossiers, règles, signatures) : PneX relève, relie et répond sous contrôle ; on lit ses mails dans sa messagerie.
@@ -214,6 +224,7 @@ La partie `text/calendar` d'un mail (en ligne ou jointe) est lue à la relève p
 | D465 | Une pièce jointe devient un média seulement à la demande d'un lecteur de la boîte qui peut ajouter des médias ; relue sur le serveur, vérifiée, passée par la liste blanche des dépôts |
 | D466 | Une invitation de réunion lue à la relève va au calendrier de l'org à la demande d'un lecteur ; clé = `UID` (mise à jour, annulation), participants rattachés aux personnes par identifiant e-mail |
 | D467 | Un expéditeur inconnu d'un domaine propre est proposé (jamais lié) sous le compte dont le site web confirmé a ce domaine ; webmails exclus |
+| D484 | Une invitation reçue devient un `rendez_vous` clé = `UID` (flow du pack `crm`), ses participants connus y participent (proposé si l'expéditeur n'est pas authentifié) ; annulation = statut `annule` ; personne n'est créé |
 
 ## 9. État
 
