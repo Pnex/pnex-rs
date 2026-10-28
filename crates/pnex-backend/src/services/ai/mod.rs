@@ -1,16 +1,15 @@
-//! Assistant IA intégré (2026-09-06) — chat multi-tools, connecteur par
-//! organisation, lecture OpenObserve, création/modification de **drafts**
-//! de flows.
+//! Built-in AI assistant (2026-09-06) — multi-tool chat, per-organization
+//! connector, OpenObserve reads, creation/editing of flow **drafts**.
 //!
-//! Garde-fous transversaux (décisions A1-A5, 2026-09-06) :
-//! - la surface exécutable par le LLM est **exactement**
-//!   [`crate::services::ai::tools::execute`] — un `match` fermé sur 10
-//!   outils lecture/écriture-draft ; pas de deploy, pas de suppression,
-//!   pas de commande device, aucun outil « générique » (http/sql) ;
-//! - la config LLM se résout **env > connecteur d'org > désactivé**
-//!   (`config::resolve`), kill-switch `settings.ai.enabled` ;
-//! - le chemin `flow_supervisor` / `POST /flows/{id}/deploy` n'est
-//!   référencé nulle part dans ce module.
+//! Cross-cutting safeguards (decisions A1-A5, 2026-09-06):
+//! - the surface executable by the LLM is **exactly**
+//!   [`crate::services::ai::tools::execute`] — a closed `match` over 10
+//!   read/draft-write tools; no deploy, no deletion,
+//!   no device command, no "generic" tool (http/sql);
+//! - the LLM config resolves as **env > org connector > disabled**
+//!   (`config::resolve`), kill-switch `settings.ai.enabled`;
+//! - the `flow_supervisor` / `POST /flows/{id}/deploy` path is
+//!   referenced nowhere in this module.
 
 pub mod agent;
 pub mod calendar_tools;

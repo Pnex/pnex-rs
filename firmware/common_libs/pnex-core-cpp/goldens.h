@@ -1,8 +1,8 @@
-// FICHIER GÉNÉRÉ — ne pas éditer à la main. Référence : pnex_core::control
-// (crates/pnex-core/src/control.rs). Regen :
+// GENERATED FILE — do not edit by hand. Reference: pnex_core::control
+// (crates/pnex-core/src/control.rs). Regen:
 //   PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors
-// Rejoué par firmware/core-cpp-tests (Unity, hôte) — golden vectors
-// Rust = tests C++ (D20 §6, edge-model.md §3 règle 2).
+// Replayed by firmware/core-cpp-tests (Unity, host) — golden vectors
+// Rust = C++ tests (D20 §6, edge-model.md §3 rule 2).
 #pragma once
 
 #include <cstddef>

@@ -1,52 +1,53 @@
-//! Login natif : navigateur système + pont backend (polling).
+//! Native login: system browser + backend bridge (polling).
 //!
-//! dioxus-desktop ouvre toute navigation http(s) dans le navigateur externe
-//! (`webbrowser::open` codé en dur dans son wrapper de navigation, sans
-//! interrupteur de config) : la webview embarquée est impossible sans fork.
-//! Pattern retenu (façon Bitwarden) : l'app génère le PKCE, ouvre le login
-//! Rauthy dans le navigateur avec `redirect_uri = {base}/api/v1/oauth2/native`
-//! (le pont backend, cf. contrôleur `oauth2.rs`) ; Rauthy y rapatrie le code,
-//! et l'app — restée en arrière-plan — le récupère par polling du pont,
-//! l'échange (verifier PKCE local) et ouvre la session : l'utilisateur
-//! retrouve l'app déjà connectée au retour.
+//! dioxus-desktop opens any http(s) navigation in the external browser
+//! (`webbrowser::open` hard-coded in its navigation wrapper, with no
+//! config switch): an embedded webview is impossible without a fork.
+//! Chosen pattern (Bitwarden style): the app generates the PKCE, opens the
+//! Rauthy login in the browser with `redirect_uri = {base}/api/v1/oauth2/native`
+//! (the backend bridge, see controller `oauth2.rs`); Rauthy sends the code there,
+//! and the app — left in the background — fetches it by polling the bridge,
+//! exchanges it (local PKCE verifier) and opens the session: the user
+//! finds the app already logged in on return.
 //!
-//! `webbrowser` est **vendu et patché** (`[patch.crates-io]`, cf.
-//! `vendor/patches/README.md`) : l'implémentation Android amont SIGABRT
-//! l'application (assert du crate `jni` sur les exceptions Java, constat
-//! 2026-09-08) — le patch la réécrit en JNI brut sans panic. C'est aussi ce
-//! qui rend sûrs les appels `webbrowser::open` codés en dur de
-//! dioxus-desktop (webview + liens `<a>`) : un seul point de passage.
+//! `webbrowser` is **vendored and patched** (`[patch.crates-io]`, see
+//! `vendor/patches/README.md`): the upstream Android implementation SIGABRTs
+//! the application (assert of the `jni` crate on Java exceptions, observed
+//! 2026-09-08) — the patch rewrites it in raw JNI without panic. It is also what
+//! makes the hard-coded `webbrowser::open` calls of dioxus-desktop safe
+//! (webview + `<a>` links): a single choke point.
 
+use dioxus_i18n::t;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::api::{auth, client, user};
 use crate::state;
 
-/// Un seul login à la fois (double-clic, re-entrée).
+/// A single login at a time (double click, re-entry).
 static LOGIN_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Démarre le login natif : navigateur système sur l'URL SSO absolue, puis
-/// polling du pont backend (`state` = code_challenge du flow, unique) pour
-/// récupérer le code d'autorisation et finaliser la session. Timeout 10 min.
+/// Starts the native login: system browser on the absolute SSO URL, then
+/// polling of the backend bridge (`state` = code_challenge of the flow, unique) to
+/// fetch the authorization code and finalise the session. 10 min timeout.
 pub fn open_login(abs_sso_url: String, state: String) {
     if LOGIN_ACTIVE.swap(true, Ordering::SeqCst) {
-        eprintln!("pnex-login: open_login ignoré (login déjà actif)");
+        eprintln!("pnex-login: open_login ignored (login already active)");
         return;
     }
-    eprintln!("pnex-login: open_login démarré (state={state})");
+    eprintln!("pnex-login: open_login started (state={state})");
+    // Resolved before the spawn: no t! inside a detached task.
+    let browser_error = t!("login-browser-error");
     dioxus::prelude::spawn(async move {
-        // Erreur explicite en toast : l'ouverture navigateur peut échouer
-        // (pas de navigateur sur l'appareil, ndk-context absent…) — jamais
-        // de clic muet. Le polling démarre QUAND MÊME : sur Android, un
-        // échec apparent de l'Intent peut masquer un lancement réussi
-        // (constat 2026-09-08 : exception post-lancement alors que Chrome
-        // s'ouvrait bel et bien) — dans le pire cas réel, le polling expire
-        // sans conséquence.
+        // Explicit error toast: opening the browser may fail
+        // (no browser on the device, ndk-context missing…) — never
+        // a silent click. Polling starts ANYWAY: on Android, an
+        // apparent Intent failure may hide a successful launch
+        // (observed 2026-09-08: post-launch exception while Chrome
+        // did open) — in the real worst case, polling expires
+        // harmlessly.
         if let Err(err) = webbrowser::open(&abs_sso_url) {
-            eprintln!(
-                "pnex-login: ouverture navigateur signalée échouée (polling maintenu) : {err}"
-            );
-            state::toasts::error(format!("navigateur : {err}"));
+            eprintln!("pnex-login: browser opening reported failed (polling kept): {err}");
+            state::toasts::error(format!("{browser_error}: {err}"));
         }
         for _ in 0..1200 {
             crate::util::sleep(std::time::Duration::from_millis(500)).await;
@@ -58,28 +59,28 @@ pub fn open_login(abs_sso_url: String, state: String) {
             .await;
             if let Ok(Some(value)) = polled {
                 if let Some(code) = value.get("code").and_then(|c| c.as_str()) {
-                    eprintln!("pnex-login: code capté, ouverture de session");
+                    eprintln!("pnex-login: code captured, opening session");
                     finish(code).await;
                     break;
                 }
             }
-            // En attente ou erreur réseau passagère : on réessaie jusqu'au
-            // timeout (10 min) — l'utilisateur a le droit d'être lent.
+            // Pending or transient network error: retry until the
+            // timeout (10 min) — the user is allowed to be slow.
         }
         LOGIN_ACTIVE.store(false, Ordering::SeqCst);
     });
 }
 
-/// Échange code+verifier → tokens → session. Le message d'erreur est relayé
-/// tel quel (convention projet) ; le succès est muet : `session::login`
-/// bascule l'UI et le polling s'arrête.
+/// Exchanges code+verifier → tokens → session. The error message is relayed
+/// as is (project convention); success is silent: `session::login`
+/// switches the UI and polling stops.
 async fn finish(code: &str) {
     let Some(verifier) = auth::take_pkce_verifier() else {
-        eprintln!("pnex-login: ABANDON — verifier PKCE introuvable");
+        eprintln!("pnex-login: ABORT — PKCE verifier not found");
         return;
     };
     let redirect = auth::redirect_uri();
-    eprintln!("pnex-login: exchange lancé (redirect={redirect})");
+    eprintln!("pnex-login: exchange started (redirect={redirect})");
     let outcome: Result<(), crate::api::error::ApiError> = async {
         let tokens = auth::exchange_code(code, &verifier, &redirect).await?;
         eprintln!("pnex-login: exchange OK, stockage tokens + user_info");
@@ -91,7 +92,7 @@ async fn finish(code: &str) {
     }
     .await;
     if let Err(err) = outcome {
-        eprintln!("pnex-login: exchange/user_info échoué : {err}");
+        eprintln!("pnex-login: exchange/user_info failed: {err}");
         state::toasts::error(err.to_string());
     }
     LOGIN_ACTIVE.store(false, Ordering::SeqCst);

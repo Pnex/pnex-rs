@@ -1,10 +1,10 @@
-//! Petits utilitaires portables wasm32/natif.
+//! Small portable wasm32/native utilities.
 
 use std::time::Duration;
 
-/// Date/heure locale « AAAA-MM-JJ HH:MM » — noms par défaut des créations
-/// (flows, dashboards). Via `Date` JS sur le web (chrono::Local panique sur
-/// wasm32 sans la feature wasmbind), chrono en natif (tests).
+/// Local date/time "YYYY-MM-DD HH:MM" — default names for new items
+/// (flows, dashboards). Via JS `Date` on the web (chrono::Local panics on
+/// wasm32 without the wasmbind feature), chrono natively (tests).
 pub fn now_label() -> String {
     #[cfg(target_arch = "wasm32")]
     {
@@ -69,9 +69,9 @@ pub fn now_label_secs() -> String {
     }
 }
 
-/// Attente portable : `futures_timer::Delay` panique sur wasm32
-/// (`Instant::now()` → « time not implemented on this platform ») —
-/// `gloo-timers` (setTimeout) côté navigateur.
+/// Portable sleep: `futures_timer::Delay` panics on wasm32
+/// (`Instant::now()` → "time not implemented on this platform") —
+/// `gloo-timers` (setTimeout) in the browser.
 pub async fn sleep(duration: Duration) {
     #[cfg(target_arch = "wasm32")]
     gloo_timers::future::TimeoutFuture::new(duration.as_millis().min(u32::MAX as u128) as u32)
@@ -80,11 +80,11 @@ pub async fn sleep(duration: Duration) {
     futures_timer::Delay::new(duration).await;
 }
 
-/// Déclenche le téléchargement navigateur d'octets (binaire firmware).
+/// Triggers a browser download of bytes (firmware binary).
 ///
-/// Data URI base64 plutôt que Blob/URL : zéro dépendance js-sys, et les
-/// binaires concernés (1–4 Mo) passent sans problème. No-op en natif (la
-/// cible desktop chosera sa propre boîte de dialogue).
+/// base64 data URI rather than Blob/URL: zero js-sys dependency, and the
+/// binaries involved (1–4 MB) go through fine. No-op natively (the
+/// desktop target will pick its own dialog).
 pub fn save_blob(filename: &str, bytes: &[u8]) {
     #[cfg(target_arch = "wasm32")]
     {
@@ -116,9 +116,9 @@ pub fn save_blob(filename: &str, bytes: &[u8]) {
     }
 }
 
-/// Hôte du serveur prérempli (formulaires de build) : l'origine courante
-/// du front — le backend sert le front en same-origin, le device doit
-/// pouvoir joindre cet hôte.
+/// Pre-filled server host (build forms): the current origin of the
+/// front — the backend serves the front same-origin, the device must
+/// be able to reach this host.
 pub fn default_host() -> String {
     #[cfg(target_arch = "wasm32")]
     {
@@ -133,10 +133,10 @@ pub fn default_host() -> String {
     }
 }
 
-/// Un hôte joignable par le navigateur mais pas par un device : boucle
-/// locale. Le wizard pré-remplit `localhost:5150` quand l'UI est ouverte
-/// sur la machine du serveur — un ESP8266 dialant `localhost` se connecte
-/// à LUI-MÊME (leçon du 2026-09-02, builds « échec de connexion »).
+/// A host reachable by the browser but not by a device: loopback.
+/// The wizard pre-fills `localhost:5150` when the UI is opened
+/// on the server machine — an ESP8266 dialing `localhost` connects
+/// to ITSELF (lesson of 2026-09-02, "connection failed" builds).
 pub fn is_loopback_host(host: &str) -> bool {
     let host = host.trim();
     host.starts_with("localhost")
@@ -145,12 +145,12 @@ pub fn is_loopback_host(host: &str) -> bool {
         || host == "::1"
 }
 
-/// Hôte prérempli pour les formulaires de build FIRMWARE : comme
-/// [`default_host`] mais vide sur une origine en boucle locale — le champ
-/// reste à remplir consciemment (IP LAN du serveur), l'UI affiche un
-/// avertissement si l'utilisateur saisit quand même une adresse locale.
-/// L'URL du snippet Python des customs garde [`default_host`] : un script
-/// sur le PC, lui, JOINT localhost.
+/// Pre-filled host for FIRMWARE build forms: like
+/// [`default_host`] but empty on a loopback origin — the field
+/// must be filled consciously (server LAN IP), the UI shows a
+/// warning if the user still types a local address.
+/// The customs' Python snippet URL keeps [`default_host`]: a script
+/// on the PC DOES reach localhost.
 pub fn default_device_host() -> String {
     if is_loopback_host(&default_host()) {
         String::new()
@@ -159,9 +159,9 @@ pub fn default_device_host() -> String {
     }
 }
 
-/// Copie dans le presse-papier navigateur : textarea temporaire hors écran
-/// puis `exec_command("copy")` (synchrone, sans API Clipboard ni promise —
-/// la valeur reste affichée et sélectionnable à côté). No-op en natif.
+/// Copies to the browser clipboard: off-screen temporary textarea
+/// then `exec_command("copy")` (synchronous, no Clipboard API nor promise —
+/// the value stays shown and selectable next to it). No-op natively.
 pub fn copy_text(text: &str) {
     #[cfg(target_arch = "wasm32")]
     {
@@ -183,7 +183,7 @@ pub fn copy_text(text: &str) {
         if let Some(body) = document.body() {
             let _ = body.append_child(&area);
             area.select();
-            // exec_command vit sur HtmlDocument (cast d'une seconde vue).
+            // exec_command lives on HtmlDocument (cast of a second view).
             if let Ok(html_doc) = document.clone().dyn_into::<web_sys::HtmlDocument>() {
                 let _ = html_doc.exec_command("copy");
             }
@@ -196,16 +196,16 @@ pub fn copy_text(text: &str) {
     }
 }
 
-/// Déclenche le téléchargement des octets d'un média : wasm → ancre `<a
-/// download>` sur URL `blob:` (gros fichiers — pas de base64, école
-/// save_blob) ; Android → MediaStore `Download/Pnex` via JNI (école
-/// capture.rs, cf. `download.rs`) ; autre natif : no-op. `true` si le
-/// téléchargement a été déclenché/enregistré.
+/// Triggers the download of a media's bytes: wasm → `<a
+/// download>` anchor on a `blob:` URL (large files — no base64, save_blob
+/// pattern); Android → MediaStore `Download/Pnex` via JNI (capture.rs
+/// pattern, see `download.rs`); other native: no-op. `true` if the
+/// download was triggered/saved.
 pub fn trigger_download(filename: &str, mime: &str, bytes: &[u8]) -> bool {
     #[cfg(target_arch = "wasm32")]
     {
         use web_sys::wasm_bindgen::JsCast as _;
-        let _ = mime; // seul le chemin natif consomme le mime (MediaStore)
+        let _ = mime; // only the native path consumes the mime (MediaStore)
         let Some(url) = bytes_to_blob_url(bytes) else {
             return false;
         };
@@ -224,9 +224,9 @@ pub fn trigger_download(filename: &str, mime: &str, bytes: &[u8]) -> bool {
         anchor.set_href(&url);
         anchor.set_download(filename);
         anchor.click();
-        // Révocation différée : immédiate, elle peut annuler le download
-        // démarré — 60 s puis fire-and-forget (closure fuie délibérément :
-        // one-shot). L'URL blob vit sinon jusqu'au déchargement du document.
+        // Deferred revocation: done immediately, it can cancel the started
+        // download — 60 s then fire-and-forget (closure deliberately leaked:
+        // one-shot). The blob URL otherwise lives until the document unloads.
         let Some(window) = web_sys::window() else {
             return true;
         };
@@ -238,25 +238,25 @@ pub fn trigger_download(filename: &str, mime: &str, bytes: &[u8]) -> bool {
             cb.as_ref().unchecked_ref(),
             60_000,
         );
-        std::mem::forget(cb); // one-shot : le callback doit survivre au fire
+        std::mem::forget(cb); // one-shot: the callback must outlive the fire
         true
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        // Android : MediaStore Download/Pnex (JNI) ; autre natif : le stub
-        // de download.rs renvoie false (desktop sans dialog natif — no-op,
-        // école save_blob).
+        // Android: MediaStore Download/Pnex (JNI); other native: the
+        // download.rs stub returns false (desktop with no native dialog — no-op,
+        // save_blob pattern).
         crate::download::save_to_downloads(filename, mime, bytes)
     }
 }
 
-/// URL `blob:` d'un endpoint d'octets authentifié — les `<img>` et les
-/// viewers WebGL ne peuvent pas poser d'en-têtes, l'octet est donc fetché
-/// par le client Rust (Bearer/X-Org-Id/refresh 401 gérés) puis converti en
-/// Blob JS (`js_sys` pur : `Reflect` sur `URL.createObjectURL`, aucune
-/// feature web-sys). `None` en cas d'échec (ou en natif : le blob vive dans
-/// la webview, CORS interdirait le fetch JS cross-origin — limitation V1,
-/// cf. docs/architecture/media.md).
+/// `blob:` URL of an authenticated bytes endpoint — `<img>` and WebGL
+/// viewers cannot set headers, so the bytes are fetched by the Rust
+/// client (Bearer/X-Org-Id/401 refresh handled) then converted into a JS
+/// Blob (pure `js_sys`: `Reflect` on `URL.createObjectURL`, no web-sys
+/// feature). `None` on failure (or natively: the blob would live in
+/// the webview, CORS would forbid the cross-origin JS fetch — V1 limitation,
+/// see docs/architecture/media.md).
 pub async fn media_blob_url(path: &str, content_type: Option<&str>) -> Option<String> {
     media_blob_url_tracked(path, content_type, None).await
 }
@@ -347,7 +347,7 @@ pub async fn media_blob_url_tracked(
     }
 }
 
-/// Convertit des octets en URL blob: (wasm uniquement).
+/// Converts bytes into a blob: URL (wasm only).
 #[cfg(target_arch = "wasm32")]
 fn bytes_to_blob_url(bytes: &[u8]) -> Option<String> {
     web_sys::Url::create_object_url_with_blob(&bytes_to_blob(bytes)?).ok()
@@ -361,9 +361,9 @@ fn bytes_to_blob(bytes: &[u8]) -> Option<web_sys::Blob> {
     web_sys::Blob::new_with_u8_array_sequence(&seq).ok()
 }
 
-/// Rect d'un élément DOM par id — (left, top, width, height). Wasm :
-/// `get_bounding_client_rect` ; natif : None (les marqueurs plats de la
-/// page annotations ne rendent qu'en web, école canvas_rect).
+/// Rect of a DOM element by id — (left, top, width, height). Wasm:
+/// `get_bounding_client_rect`; native: None (the flat markers of the
+/// annotations page only render on web, canvas_rect pattern).
 pub fn element_rect(element_id: &str) -> Option<(f64, f64, f64, f64)> {
     #[cfg(target_arch = "wasm32")]
     {

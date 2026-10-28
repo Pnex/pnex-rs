@@ -1,11 +1,11 @@
-//! Boucle d'agent bornée : messages → tool_calls → exécution → … jusqu'à
-//! une réponse textuelle finale ou la borne d'itérations (auquel cas on
-//! force une réponse sans outils).
+//! Bounded agent loop: messages → tool_calls → execution → … until
+//! a final text answer or the iteration bound (in which case an answer
+//! without tools is forced).
 //!
-//! Bornes : `MAX_ITERATIONS` appels LLM max par tour utilisateur (budget
-//! coût/latence borné par construction), `MAX_TOKENS` par appel, timeout
-//! HTTP par appel. L'historique est court (front n'envoie que le texte des
-//! tours précédents), pas de gestion de fenêtre de contexte.
+//! Bounds: `MAX_ITERATIONS` LLM calls max per user turn (cost/latency
+//! budget bounded by construction), `MAX_TOKENS` per call, HTTP timeout
+//! per call. History is short (the front only sends the text of
+//! previous turns), no context window management.
 
 use std::time::Duration;
 
@@ -14,11 +14,11 @@ use super::error::AiError;
 use super::provider::{AiChatRequest, Msg, Provider, Usage};
 use super::tools::{self, ToolDeps, ToolOutcome, ToolTrace};
 
-/// Nombre max d'appels LLM par tour utilisateur.
+/// Max number of LLM calls per user turn.
 pub const MAX_ITERATIONS: usize = 6;
-/// max_tokens par appel LLM.
+/// max_tokens per LLM call.
 pub const MAX_TOKENS: u32 = 4096;
-/// Timeout d'UN appel LLM.
+/// Timeout of ONE LLM call.
 pub const REQUEST_TIMEOUT_SECS: u64 = 90;
 
 /// Process-wide HTTP client of the agent loop (connection pool + TLS
@@ -52,17 +52,17 @@ pub fn shared_probe_http() -> &'static reqwest::Client {
     })
 }
 
-/// Réponse d'un tour utilisateur complet.
+/// Answer of a full user turn.
 pub struct AgentReply {
     pub answer: String,
-    /// Trace des outils exécutés (pour la bulle UI repliable).
+    /// Trace of the executed tools (for the collapsible UI bubble).
     pub tool_trace: Vec<ToolTrace>,
-    /// Somme des tokens de tous les appels du tour.
+    /// Sum of the tokens of all the turn's calls.
     pub usage: Usage,
 }
 
-/// Exécute un tour utilisateur : boucle jusqu'à une réponse textuelle ou
-/// à la borne d'itérations (dernier appel **sans outils** pour forcer la
+/// Runs a user turn: loops until a text answer or
+/// the iteration bound (last call **without tools** to force the
 /// conclusion).
 pub async fn run_turn(
     deps: &ToolDeps<'_>,
@@ -92,7 +92,7 @@ pub async fn run_turn(
             output_tokens: usage_total.output_tokens + turn.usage.output_tokens,
         };
 
-        // Réponse textuelle finale → tour terminé.
+        // Final text answer → turn done.
         if turn.tool_calls.is_empty() {
             return Ok(AgentReply {
                 answer: turn
@@ -103,7 +103,7 @@ pub async fn run_turn(
             });
         }
 
-        // ── Exécution séquentielle des outils demandés ──
+        // ── Sequential execution of the requested tools ──
         messages.push(Msg::Assistant {
             text: turn.text.clone(),
             tool_calls: turn.tool_calls.clone(),
@@ -113,7 +113,7 @@ pub async fn run_turn(
                 tools::execute(deps, &call.name, &call.arguments).await;
             match outcome {
                 Ok(outcome) => {
-                    tracing::info!(tool = %call.name, "outil assistant exécuté");
+                    tracing::info!(tool = %call.name, "assistant tool executed");
                     let summary = tools::summarize(&call.name, &outcome);
                     trace.push(ToolTrace {
                         name: call.name.clone(),
@@ -133,7 +133,7 @@ pub async fn run_turn(
                     });
                 }
                 Err(err) => {
-                    tracing::info!(tool = %call.name, erreur = %err.message, "outil assistant en échec");
+                    tracing::info!(tool = %call.name, erreur = %err.message, "assistant tool failed");
                     trace.push(ToolTrace {
                         name: call.name.clone(),
                         arguments: call.arguments.clone(),
@@ -155,10 +155,10 @@ pub async fn run_turn(
         }
     }
 
-    // Borne d'itérations atteinte : dernier appel SANS outils pour forcer
-    // une conclusion textuelle (le budget de l'agent reste borné).
+    // Iteration bound reached: last call WITHOUT tools to force
+    // a text conclusion (the agent budget stays bounded).
     messages.push(Msg::User {
-        text: "(borne d'outils atteinte pour ce tour — réponds maintenant à l'utilisateur sans appeler d'outil)"
+        text: "(tool limit reached for this turn — answer the user now without calling a tool)"
             .into(),
     });
     let req = AiChatRequest {

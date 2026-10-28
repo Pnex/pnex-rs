@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn field_spec_roundtrip_sans_options() {
         let json = r#"{"id":"url","label_i18n":"notify-field-url","type":"text","required":true}"#;
-        let spec: FieldSpec = serde_json::from_str(json).expect("désérialisable");
+        let spec: FieldSpec = serde_json::from_str(json).expect("deserializable");
         assert_eq!(spec.r#type, FieldType::Text);
         assert!(spec.options.is_empty());
         let back = serde_json::to_value(&spec).unwrap();

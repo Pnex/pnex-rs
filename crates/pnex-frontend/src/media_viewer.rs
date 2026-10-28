@@ -1,23 +1,23 @@
-//! Pont vers les viewers WebGL de la bibliothèque média (D21) —
-//! `assets/viewers.js` (bundle esbuild IIFE de pannellum WebGL1 (panoramas
-//! 360° équirect) et gsplat.js WebGL2 (splats .splat/.ply), chargé dans
-//! `main.rs` — pattern tron-gerbe.js).
+//! Bridge to the WebGL viewers of the media library (D21) —
+//! `assets/viewers.js` (esbuild IIFE bundle of pannellum WebGL1 (360°
+//! equirect panoramas) and gsplat.js WebGL2 (.splat/.ply splats), loaded in
+//! `main.rs` — tron-gerbe.js pattern).
 //!
-//! Le module JS module : `window.pnexViewers` :
-//!   - `panorama.mount(hostId, url)` → bool : pannellum dans le div hôte ;
-//!   - `panorama.unmount(hostId)` ;
-//!   - `splat.mount(hostId, url)` → bool : canvas WebGL2 gsplat.js ;
+//! The JS module: `window.pnexViewers`:
+//!   - `panorama.mount(hostId, url)` → bool: pannellum in the host div;
+//!   - `panorama.unmount(hostId)`;
+//!   - `splat.mount(hostId, url)` → bool: gsplat.js WebGL2 canvas;
 //!   - `splat.unmount(hostId)`.
 //!
-//! Échecs silencieux (script absent, hôte introuvable, WebGL manquant) →
-//! `false` : la page affiche le badge « aperçu indisponible » — jamais de
-//! panique UI (école tron.rs). Cible non-wasm32 : la webview native exécute
-//! le même JS via `document::eval` (prouvé par tron.rs) — l'aperçu marche
-//! donc aussi sur Android ; garde `task check` natif vert.
+//! Silent failures (missing script, host not found, missing WebGL) →
+//! `false`: the page shows the "preview unavailable" badge — never a
+//! UI panic (tron.rs school). Non-wasm32 target: the native webview runs
+//! the same JS via `document::eval` (proven by tron.rs) — so the preview
+//! also works on Android; keeps native `task check` green.
 
-/// Monte le viewer `kind` (`panorama` | `splat`) dans le div `host_id`.
-/// Retry 100 ms × 50 (le script peut finir de charger après le premier
-/// rendu — école tron.rs) ; `true` si monté.
+/// Mounts the `kind` viewer (`panorama` | `splat`) in the `host_id` div.
+/// Retry 100 ms × 50 (the script may finish loading after the first
+/// render — tron.rs school); `true` if mounted.
 pub async fn mount(kind: &str, host_id: &str, url: &str) -> bool {
     mount_impl(kind, host_id, url).await
 }
@@ -44,7 +44,7 @@ pub async fn mesh_call(
         .filter(|v| !v.is_null())
 }
 
-/// Démonte le viewer du hôte — fire-and-forget.
+/// Unmounts the host's viewer — fire-and-forget.
 pub fn unmount(host_id: &str) {
     unmount_impl(host_id);
 }
@@ -60,7 +60,7 @@ async fn mount_impl(kind: &str, host_id: &str, url: &str) -> bool {
     false
 }
 
-/// Un essai de mount — true si le viewer tourne.
+/// One mount attempt — true if the viewer runs.
 #[cfg(target_arch = "wasm32")]
 fn try_mount(kind: &str, host_id: &str, url: &str) -> bool {
     global_method("pnexViewers", kind)
@@ -78,7 +78,7 @@ fn try_mount(kind: &str, host_id: &str, url: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Résout `window.<objet>.<méthode>` (globales posées par viewers.js).
+/// Resolves `window.<object>.<method>` (globals set by viewers.js).
 #[cfg(target_arch = "wasm32")]
 fn global_method(object: &str, method: &str) -> Option<JsValue> {
     js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str(object))
@@ -86,7 +86,7 @@ fn global_method(object: &str, method: &str) -> Option<JsValue> {
         .and_then(|value| js_sys::Reflect::get(&value, &JsValue::from_str(method)).ok())
 }
 
-/// Import wasm-bindgen prélué (JsValue + JsCast).
+/// Prelude wasm-bindgen import (JsValue + JsCast).
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -101,10 +101,10 @@ fn unmount_impl(host_id: &str) {
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn mount_impl(kind: &str, host_id: &str, url: &str) -> bool {
-    // Échappement des apostrophes pour l'injection dans le JS.
+    // Escape apostrophes for injection into the JS.
     let host_id_q = host_id.replace('\'', "");
     let url_q = url.replace('\'', "%27");
-    // Journal fichier (smoke test device — le logger logcat est muet).
+    // File log (device smoke test — the logcat logger is silent).
     crate::capture360::filelog::log(&format!(
         "viewer mount {kind} host={host_id_q} url={} o",
         url.len()
@@ -120,7 +120,7 @@ async fn mount_impl(kind: &str, host_id: &str, url: &str) -> bool {
         }
         futures_timer::Delay::new(std::time::Duration::from_millis(100)).await;
     }
-    crate::capture360::filelog::log("viewer mount: ÉCHEC (50 essais)");
+    crate::capture360::filelog::log("viewer mount: FAILED (50 attempts)");
     false
 }
 
@@ -133,7 +133,7 @@ fn unmount_impl(host_id: &str) {
     });
 }
 
-/// Eval JS → bool (webview native — école tron.rs natif).
+/// JS eval → bool (native webview — native tron.rs school).
 #[cfg(not(target_arch = "wasm32"))]
 async fn eval_bool(js: String) -> bool {
     dioxus::document::eval(&js)

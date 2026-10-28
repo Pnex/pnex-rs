@@ -1,31 +1,31 @@
-//! Nœuds de flow PNEX — **cartes de régulation mixtes** pour le runtime
-//! EdgeLinkd headless :
+//! PNEX flow nodes — **mixed control cards** for the headless EdgeLinkd
+//! runtime:
 //!
-//! - `pnex-reg-tt-heat` : tout-ou-rien chauffage (hystérésis valeur + anti
-//!   court-cycle) ;
-//! - `pnex-reg-tt-cool` : tout-ou-rien clim (sens inversé) ;
-//! - `pnex-reg-pid` : PID, sortie relais time-proportional.
+//! - `pnex-reg-tt-heat`: on/off heating (value hysteresis + anti
+//!   short-cycle);
+//! - `pnex-reg-tt-cool`: on/off cooling (reversed direction);
+//! - `pnex-reg-pid`: PID, time-proportional relay output.
 //!
-//! ⚠ Ces nœuds sont **passifs** : la carte mixte décrite par la config est
-//! **un seul device** qui lit son propre capteur et pilote sa propre sortie
-//! avec le régulateur embarqué côté ESP (D13/D17 — aucune boucle serveur).
-//! Le nœud n'est qu'une surface d'authoring : sa config est castée au
-//! device par le backend (`ServerMsg::ControlConfig`, cf.
-//! docs/architecture/control-cards.md). Le nœud runtime existe pour
-//! rétablir le **fail-loud au build** : sans lui, le moteur dégraderait le
-//! type inconnu en nœud `unknown` (warn seul, no-op silencieux). Sa boucle
-//! `run()` consomme et jette les messages entrants — anti-engorgement si un
-//! producteur est câblé en amont.
+//! ⚠ These nodes are **passive**: the mixed card described by the config is
+//! **a single device** that reads its own sensor and drives its own output
+//! with the regulator embedded on the ESP (D13/D17 — no server loop).
+//! The node is only an authoring surface: its config is cast to the
+//! device by the backend (`ServerMsg::ControlConfig`, see
+//! docs/architecture/control-cards.md). The runtime node exists to
+//! restore **fail-loud at build**: without it, the engine would degrade the
+//! unknown type into an `unknown` node (warn only, silent no-op). Its
+//! `run()` loop consumes and drops incoming messages — anti-clogging if a
+//! producer is wired upstream.
 //!
-//! La config est validée au build via la **vraie** fonction
-//! `pnex_core::validate_graph` (une seule source de vérité avec le backend
-//! et l'éditeur wasm) — un graphe invalide est rejeté au déploiement
+//! The config is validated at build via the **real**
+//! `pnex_core::validate_graph` function (a single source of truth with the backend
+//! and the wasm editor) — an invalid graph is rejected at deployment
 //! (`BadFlowsJson` → `redeploy_failed` → exit(1) → respawn).
 
 pub mod regulator;
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit
-/// que l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees
+/// that linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
 #[cfg(test)]

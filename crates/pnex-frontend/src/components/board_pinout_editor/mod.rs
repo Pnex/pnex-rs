@@ -1,12 +1,12 @@
-//! Éditeur de pinout SVG (profils board v2) — remplace la grille de cartes
-//! `PinsPanel` pour les devices génériques.
+//! SVG pinout editor (board v2 profiles) — replaces the `PinsPanel` card
+//! grid for generic devices.
 //!
-//! La carte est dessinée depuis `GET /pinout` (section `board` + pins
-//! positionnées, enrichissement chip-caps calculé serveur) ; la sélection
-//! d'un pin affiche la `PinCard` existante comme panneau de configuration
-//! (toute la mécanique set_mode/write/subscribe/409 est réutilisée telle
-//! quelle — un nouveau visage, pas une nouvelle mécanique). Without a v2
-//! profile (`board: null`), falls back to `PinsPanel`.
+//! The board is drawn from `GET /pinout` (`board` section + positioned
+//! pins, chip-caps enrichment computed by the server); selecting a pin
+//! shows the existing `PinCard` as configuration panel (all the
+//! set_mode/write/subscribe/409 machinery is reused as is — a new face,
+//! not a new machinery). Without a v2 profile (`board: null`), falls back
+//! to `PinsPanel`.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -33,7 +33,7 @@ use panels::PinDrawer;
 use svg::{BoardSvg, Legend};
 use view::{board_ratio, layout_per_side, legend_of, pin_views, svg_height, svg_width};
 
-/// En-tête : nom de la variante + chip + badge connexion + picker écran.
+/// Header: variant name + chip + connection badge + screen picker.
 #[component]
 fn BoardHeader(
     pinout: Option<api::pins::Pinout>,
@@ -187,7 +187,7 @@ pub fn BoardPinoutEditor(device_pk: i64, can_write: bool) -> Element {
 
     let connected = pinout.as_ref().is_some_and(|p| p.connected);
     let on_changed = Callback::new(move |_: ()| reload.with_mut(|r| *r += 1));
-    // Légende de câblage de l'écran choisi (rôle → broche du profil).
+    // Wiring legend of the chosen screen (role → profile pin).
     let wiring = pinout.as_ref().and_then(|p| {
         let kind = p.board.as_ref().and_then(screen_state_kind);
         p.board
@@ -256,8 +256,8 @@ fn BoardLayout(
     let legend_items = legend_of(&views);
     let zoom = use_signal(|| preview::ZOOM_LEVELS[0]);
 
-    // Export SVG autonome (fichier partageable/imprimable) — le dessin est
-    // déjà un `<svg>` autonome (viewBox + attributs), on sérialise le DOM.
+    // Standalone SVG export (shareable/printable file) — the drawing is
+    // already a standalone `<svg>` (viewBox + attributes), we serialise the DOM.
     let on_export = move |_| {
         #[cfg(target_arch = "wasm32")]
         {

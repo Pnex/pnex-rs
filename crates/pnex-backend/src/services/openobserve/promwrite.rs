@@ -1,12 +1,12 @@
-//! Encodage Prometheus remote-write des points d'ingestion — l'ingestion
-//! télémétrie va dans les **metrics** OpenObserve (`/prometheus/api/v1/write`),
-//! pas dans les logs : les points deviennent des séries
+//! Prometheus remote-write encoding of ingestion points — telemetry
+//! ingestion goes into OpenObserve **metrics** (`/prometheus/api/v1/write`),
+//! not logs: points become series
 //! `metric_name{device_id, pred_dev, source_type, ts_source}`.
 //!
-//! Les structs prompb et `sanitize_metric_name` vivent dans pnex-core
-//! (features `prompb`/`naming`) — source unique partagée avec le nœud
-//! `metric` du runtime de flows (Phase 6), qui projette ses séries `etl_*`
-//! sur les mêmes structs.
+//! The prompb structs and `sanitize_metric_name` live in pnex-core
+//! (features `prompb`/`naming`) — single source shared with the flow
+//! runtime's `metric` node (Phase 6), which projects its `etl_*` series
+//! onto the same structs.
 
 use prost::Message;
 
@@ -14,7 +14,7 @@ use pnex_core::{sanitize_metric_name, Label, Sample, TimeSeries, WriteRequest};
 
 use crate::services::telemetry::TelemetryPoint;
 
-/// Un point → une série (labels dimensions, sample value + ts serveur ms).
+/// One point → one series (dimension labels, sample value + server ts ms).
 fn series_of(point: &TelemetryPoint) -> Option<TimeSeries> {
     let value: f64 = point.value.trim().parse().ok()?;
     let labels = vec![
@@ -48,7 +48,7 @@ fn series_of(point: &TelemetryPoint) -> Option<TimeSeries> {
     })
 }
 
-/// Encode un lot de points (None si tous non numériques).
+/// Encodes a batch of points (None if all are non-numeric).
 pub fn encode(points: &[TelemetryPoint]) -> Option<Vec<u8>> {
     let timeseries: Vec<TimeSeries> = points.iter().filter_map(series_of).collect();
     if timeseries.is_empty() {
@@ -114,8 +114,8 @@ mod tests {
         }
     }
 
-    /// Roundtrip : les points numériques sortent en séries nommées et
-    /// labellisées, les non numériques sont écartés.
+    /// Roundtrip: numeric points come out as named, labelled
+    /// series, non-numeric ones are discarded.
     #[test]
     fn roundtrip_series_et_labels() {
         let mut req = WriteRequest::decode(
@@ -177,8 +177,8 @@ mod tests {
         assert!(encode_labelled(&[]).is_none());
     }
 
-    /// Noms de métriques invalides assainis (tirets, espace, préfixe
-    /// chiffre) — les dimensions restent telles quelles.
+    /// Invalid metric names sanitized (dashes, space, digit
+    /// prefix) — dimensions stay as they are.
     #[test]
     fn noms_de_metriques_assainis() {
         assert_eq!(sanitize_metric_name("soil-moisture"), "soil_moisture");

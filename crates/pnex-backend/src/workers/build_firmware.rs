@@ -1,4 +1,4 @@
-//! Worker de build firmware (Phase 6) — consomme la queue PostgreSQL.
+//! Firmware build worker (Phase 6) — consumes the PostgreSQL queue.
 //!
 //! The worker runs the pipeline ([`pnex_firmware_builder::run_build`]) and
 //! writes the `running → succeeded|failed` transitions directly to
@@ -9,9 +9,8 @@
 //! **token and the encryption key are re-read from the database**. No
 //! secret value travels through `pg_loco_queue.task_data`.
 //!
-//! Échec de build → record `failed` + `perform` retourne `Ok(())` : les
-//! échecs de compilation sont déterministes, pas de rejeu (retries bornés
-//! — conception §1).
+//! Build failure → `failed` record + `perform` returns `Ok(())`: compile
+//! failures are deterministic, no replay (bounded retries — design §1).
 
 use async_trait::async_trait;
 use loco_rs::app::AppContext;
@@ -28,24 +27,24 @@ use crate::models::_entities::{
 use crate::services::firmware::{FirmwareSettings, PHASE_FAILED, PHASE_RUNNING, PHASE_SUCCEEDED};
 use crate::services::firmware_projects::{check_inputs, latest_revision};
 
-/// Charge utile du job. `build_record_id` est la seule clé nécessaire — le
-/// reste est figé au moment de la demande (le device peut avoir changé
-/// d'org entre-temps ; on compile pour l'org demandeur).
+/// Job payload. `build_record_id` is the only key needed — the rest is
+/// frozen at request time (the device may have changed org in the
+/// meantime; we compile for the requesting org).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildFirmwareArgs {
     pub build_record_id: i64,
     pub org_id: i64,
     pub device_id: String,
-    /// Sous-répertoire du workspace firmware (= predefined_device_name).
+    /// Subdirectory of the firmware workspace (= predefined_device_name).
     pub predefined_device_name: String,
-    /// SoC du board (offsets merge-bin).
+    /// SoC of the board (merge-bin offsets).
     pub soc: String,
-    /// PlatformIO board id de la variante — `None` = ini hardcodé inchangé.
+    /// PlatformIO board id of the variant — `None` = hardcoded ini unchanged.
     pub pio_board: Option<String>,
-    /// Id fil de la board (annonce firmware `PNEX_BOARD_NAME`).
+    /// Wire id of the board (firmware announce `PNEX_BOARD_NAME`).
     pub board_name: Option<String>,
-    /// Driver écran à compiler quand l'utilisateur l'a activé (define
-    /// `PNEX_SCREEN_{KIND}`=1) — `None` = pas d'écran.
+    /// Screen driver to compile when the user enabled it (define
+    /// `PNEX_SCREEN_{KIND}`=1) — `None` = no screen.
     #[serde(default)]
     pub screen: Option<pnex_firmware_builder::ScreenSpec>,
     pub wifi_ssid: String,
@@ -140,8 +139,8 @@ async fn set_failure(db: &sea_orm::DatabaseConnection, id: i64, failure: &Failur
     }
 }
 
-/// Pose une transition de phase (le worker est l'unique écrivain des
-/// phases running/succeeded/failed ; `queued` est posé par le contrôleur).
+/// Sets a phase transition (the worker is the only writer of the
+/// running/succeeded/failed phases; `queued` is set by the controller).
 async fn set_phase(
     db: &sea_orm::DatabaseConnection,
     id: i64,
@@ -151,7 +150,7 @@ async fn set_phase(
     let model = build_records::Entity::find_by_id(id)
         .one(db)
         .await?
-        .ok_or_else(|| Error::Message(format!("build record {id} introuvable")))?;
+        .ok_or_else(|| Error::Message(format!("build record {id} not found")))?;
     let mut record: build_records::ActiveModel = model.into();
     record.build_phase = Set(phase.to_string());
     record.firmware_bin_s3_key = Set(artifact_key);
@@ -176,7 +175,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                 tracing::info!(
                     build = args.build_record_id,
                     key = %artifact.key,
-                    "build firmware réussi"
+                    "firmware build succeeded"
                 );
                 set_phase(
                     &self.db,
@@ -233,7 +232,7 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
                     build = args.build_record_id,
                     code = failure.code,
                     erreur = %failure.log,
-                    "build firmware échoué"
+                    "firmware build failed"
                 );
                 set_phase(&self.db, args.build_record_id, PHASE_FAILED, None).await?;
                 set_failure(&self.db, args.build_record_id, &failure).await;
@@ -244,14 +243,14 @@ impl BackgroundWorker<BuildFirmwareArgs> for BuildFirmwareWorker {
 }
 
 impl BuildFirmwareWorker {
-    /// Exécute le pipeline complet pour les args du job.
+    /// Runs the full pipeline for the job args.
     /// Returns the artifact and, for a custom firmware device, the id of
     /// the revision compiled.
     async fn run(
         &self,
         args: &BuildFirmwareArgs,
     ) -> std::result::Result<(BuildArtifact, Option<i64>), Failure> {
-        // Token + clé relus en base (jamais via la queue).
+        // Token + key re-read from the database (never via the queue).
         let (registry, token) = device_registries::Entity::find()
             .filter(device_registries::Column::OrgId.eq(args.org_id))
             .filter(device_registries::Column::DeviceId.eq(&args.device_id))
@@ -262,7 +261,7 @@ impl BuildFirmwareWorker {
             .ok_or_else(|| {
                 Failure::new(
                     "build_device",
-                    format!("device {} introuvable", args.device_id),
+                    format!("device {} not found", args.device_id),
                 )
             })?;
         let (token, encryption_key) = token
@@ -270,7 +269,7 @@ impl BuildFirmwareWorker {
             .ok_or_else(|| {
                 Failure::new(
                     "build_device",
-                    format!("token du device {} introuvable", args.device_id),
+                    format!("token of device {} not found", args.device_id),
                 )
             })?;
 

@@ -2,9 +2,9 @@
 
 use super::*;
 
-// ── clustering (D37) — cœur pur, testé unitairement ──
+// ── clustering (D37) — pure core, unit-tested ──
 
-/// Taille de cellule de la grille en degrés : ≈ 64 px sur tuiles 512
+/// Grid cell size in degrees: ≈ 64 px on 512 tiles
 /// (`360 / (8 × 2^zoom)`).
 pub fn cell_size_deg(zoom: i32) -> f64 {
     let z = zoom.clamp(0, ZOOM_MAX) as f64;
@@ -19,8 +19,8 @@ pub struct ClusterPoint {
     pub emoji: String,
 }
 
-/// Un point individuel (`count == 1`, porteur d'id/label/emoji) ou un
-/// cluster (numéro + point représentatif = centroïde + échantillon).
+/// An individual point (`count == 1`, carrying id/label/emoji) or a
+/// cluster (count + representative point = centroid + sample).
 pub struct ClusterItem {
     pub lat: f64,
     pub lon: f64,
@@ -33,8 +33,8 @@ pub struct ClusterItem {
 }
 
 fn bucket(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
-    // (clé de cellule) → (somme lat, somme lon, n, id du 1er point, label,
-    // emoji) — tuple interne du clustering, local à cette fonction.
+    // (cell key) → (lat sum, lon sum, n, id of the 1st point, label,
+    // emoji) — internal clustering tuple, local to this function.
     #[allow(clippy::type_complexity)]
     let mut buckets: HashMap<(i64, i64), (f64, f64, u32, Option<Uuid>, String, String)> =
         HashMap::new();
@@ -70,8 +70,8 @@ fn bucket(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
     items
 }
 
-/// Agrège les points : individuels sous `CLUSTER_INDIVIDUAL_MAX`, sinon
-/// grille `cell` doublée jusqu'à tenir dans `CLUSTER_ITEMS_CAP`.
+/// Aggregates the points: individual under `CLUSTER_INDIVIDUAL_MAX`, otherwise
+/// a `cell` grid doubled until it fits in `CLUSTER_ITEMS_CAP`.
 pub fn cluster_points(points: &[ClusterPoint], cell: f64) -> Vec<ClusterItem> {
     if points.len() <= CLUSTER_INDIVIDUAL_MAX {
         return points
@@ -105,7 +105,7 @@ pub struct ClusterQuery {
     pub zoom: i32,
 }
 
-/// Items (pins individuels ou clusters) pour la bbox/zoom du viewport.
+/// Items (individual pins or clusters) for the viewport's bbox/zoom.
 pub async fn cluster_pins(
     db: &DatabaseConnection,
     org_id: i64,

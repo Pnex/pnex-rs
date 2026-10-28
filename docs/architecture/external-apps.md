@@ -67,7 +67,7 @@ Conséquences :
 | Ensembles d'objets | `POST /ontology/query` (D185) : filtres, `traverse` (4 sauts), `with_links`, `latest`, pagination 500. | Requête nommée et réutilisable, agrégats simples. |
 | Changements | Journal O2 `object_changes` (D184), au mieux, par objet, sans curseur. `GET /ontology/objects/{id}/changes` (200 derniers). | Flux à l'échelle de l'org, monotone, sans perte. |
 | Médias | `GET /media/{id}/content` et `/versions/{n}/content`, ETag fort (id de version), 304, `media:read` (Viewer). sha256 par version. Chaque média est un objet natif `media_asset`. | Rien côté moteur pour le lot 1. |
-| Preuves | `web_proofs` + `site_pages` (D408) ; pièces = médias. Lien `prouve_par` de l'objet page vers les médias des pièces (`link_parts`), si le pack le configure. | Accès « preuves d'un objet » pour tout objet ; le filtre `page_id` des preuves porte sur `site_pages.id`, **pas** sur l'objet page de l'ontologie (§7). |
+| Preuves | `web_proofs` + `site_pages` (D408) ; pièces = médias. Lien `proven_by` de l'objet page vers les médias des pièces (`link_parts`), si le pack le configure. | Accès « preuves d'un objet » pour tout objet ; le filtre `page_id` des preuves porte sur `site_pages.id`, **pas** sur l'objet page de l'ontologie (§7). |
 | Client | `task sdk` génère un client OpenAPI non commité ; `pnex-cli` est dynamique. | Client typé par les types de l'org. |
 | Miroir | Vigie recopie tout toutes les 15 min dans SQLite (`doc(key, body)`). | Miroir générique et incrémental. |
 
@@ -243,9 +243,9 @@ Other}`).
 **Constat sur l'existant** : le filtre `page_id` de
 `GET /extension/proofs` porte sur `site_pages.id`, une ligne du registre
 des pages, et non sur l'objet page de l'ontologie (`site_pages.object_id`).
-Un écart qui pointe `constate_dans` vers l'objet page ne permet donc pas
+Un écart qui pointe `observed_in` vers l'objet page ne permet donc pas
 de retrouver ses preuves par cette route. Le seul chemin aujourd'hui est
-`prouve_par`, de l'objet page vers les médias des pièces, posé au
+`proven_by`, de l'objet page vers les médias des pièces, posé au
 scellement si le pack le configure.
 
 **Décision** : un type de lien peut se déclarer **de preuve**
@@ -254,7 +254,7 @@ génériques :
 
 1. `GET /api/v1/ontology/objects/{id}/evidence` rend les preuves de
    **tout** objet : les médias atteints par des liens de preuve, à deux
-   sauts au plus (l'écart → `constate_dans` → la page → `prouve_par` →
+   sauts au plus (l'écart → `observed_in` → la page → `proven_by` →
    les pièces), avec pour chacun `captured_at`, `sha256`, genre, url
    d'origine, et le scellement de la preuve web quand il existe
    (`seq`, `manifest_sha256`, `prev_sha256`). `ontology:read` +
@@ -267,7 +267,7 @@ génériques :
    Shan : pas d'objet natif pour la preuve).
 
 Dans le pack `quali_watch` (seule partie propre au métier) :
-`constate_dans` et `prouve_par` passent `evidence: true`. Les règles
+`observed_in` et `proven_by` passent `evidence: true`. Les règles
 n'ont rien d'autre à faire.
 
 Livré (lot A4) :
@@ -284,8 +284,8 @@ Livré (lot A4) :
   posé par le même type de lien de preuve, si ce type admet
   `media_asset` comme cible, avec `captured_at` et `sha256_manifest`
   quand le type les déclare ; il ne dépend plus de `record.proof_link` ;
-- `quali_watch` 1.5.2 : `constate_dans` et `prouve_par` en `evidence`,
-  `constate_dans` gagne `captured_at` et `sha256_manifest`.
+- `quali_watch` 1.5.2 : `observed_in` et `proven_by` en `evidence`,
+  `observed_in` gagne `captured_at` et `sha256_manifest`.
 
 ## 8. Client et exemples (D438)
 
@@ -420,7 +420,7 @@ Deux listes motivées, dans la garde :
 
 **Constat du 2026-10-25** :
 
-- `quali_watch` et `presence_web` : **aucune** clé dans le code non test
+- `quali_watch` et `web_presence` : **aucune** clé dans le code non test
   du moteur.
 - Couplages réels, à traiter à part (gelés dans `COUPLED`) :
   - les **dossiers d'enquête** (`services/ontology/cases/`,
@@ -436,8 +436,8 @@ Deux listes motivées, dans la garde :
     (`statement`, `said_by`), profils vocaux (`person`) ;
   - les chemins d'introduction de la cartographie de comptes (D329,
     `ontology/api.rs`) nomment des liens d'`investigation`,
-    d'`entreprises` et de `prospection_b2b` (`knows`, `recommande`,
-    `employs`, `dirige`, `member_of`).
+    de `companies` et de `prospecting_b2b` (`knows`, `recommended`,
+    `employs`, `manages`, `member_of`).
   - Piste commune : un **rôle déclaré** par le pack (le type « personne »,
     le lien « appuie »…), que le moteur lit au lieu d'un nom, comme
     `evidence: true` (D437).

@@ -1,17 +1,17 @@
-//! Wrapper safe autour de l'API C brute de CoolProp.
+//! Safe wrapper around the raw CoolProp C API.
 //!
-//! Conventions implémentées ici (voir `vendor/CoolProp/src/CoolPropLib.cpp`) :
+//! Conventions implemented here (see `vendor/CoolProp/src/CoolPropLib.cpp`):
 //!
-//! * Chaque appel C est sérialisé derrière un mutex global : plusieurs points
-//!   d'entrée de CoolProp mutent la configuration process-global ou la
-//!   chaîne d'erreur globale, et le registre des handles AbstractState est
-//!   partagé.
-//! * L'errstring globale est *drainée* (la lire la vide) avant chaque appel
-//!   qui rapporte ses erreurs par ce biais, pour qu'un indicateur d'échec
-//!   après l'appel corresponde toujours à un message frais.
-//! * Les appels de style `errcode` mappent `0` → succès, tout le reste → le
-//!   message bufferisé.
-//! * Les scalaires `double` signalent l'échec en retournant `_HUGE`
+//! * Every C call is serialised behind a global mutex: several CoolProp
+//!   entry points mutate the process-global configuration or the
+//!   global error string, and the AbstractState handle registry is
+//!   shared.
+//! * The global errstring is *drained* (reading it clears it) before every call
+//!   that reports its errors that way, so that a failure indicator
+//!   after the call always matches a fresh message.
+//! * `errcode`-style calls map `0` → success, anything else → the
+//!   buffered message.
+//! * `double` scalars signal failure by returning `_HUGE`
 //!   (= `HUGE_VAL`).
 
 use std::ffi::{c_char, c_double, c_int, c_long, CString};
@@ -19,13 +19,13 @@ use std::sync::{Mutex, MutexGuard};
 
 use pnex_coolprop_sys as sys;
 
-/// Taille du buffer utilisé pour chaque out-param `message_buffer` / chaîne.
+/// Size of the buffer used for each `message_buffer` / string out-param.
 pub const ERRBUF: usize = 10_000;
 
-/// Sérialise tous les appels FFI CoolProp (voir la doc du module).
+/// Serialises all CoolProp FFI calls (see the module doc).
 static FFI: Mutex<()> = Mutex::new(());
 
-/// Erreur portant le message de CoolProp.
+/// Error carrying the CoolProp message.
 #[derive(Debug, Clone)]
 pub struct CoolPropError(pub String);
 
@@ -36,8 +36,8 @@ fn lock() -> MutexGuard<'static, ()> {
 }
 
 fn cstr(s: &str) -> CString {
-    // Les octets NUL intérieurs ne sont pas représentables dans une chaîne C ;
-    // on les retire plutôt que de paniquer sur une entrée utilisateur.
+    // Interior NUL bytes cannot be represented in a C string;
+    // strip them rather than panic on user input.
     CString::new(s.replace('\0', "")).expect("string with NUL bytes removed cannot fail")
 }
 
@@ -46,8 +46,8 @@ fn buffer_to_string(buf: &[u8]) -> String {
     String::from_utf8_lossy(&buf[..end]).into_owned()
 }
 
-/// Lit une chaîne de paramètre global ; `None` si CoolProp signale un échec.
-/// À appeler en tenant le verrou FFI.
+/// Reads a global parameter string; `None` if CoolProp signals a failure.
+/// Call while holding the FFI lock.
 fn global_param_string(param: &str) -> Option<String> {
     let p = cstr(param);
     let mut buf = vec![0u8; ERRBUF];
@@ -61,12 +61,12 @@ fn global_param_string(param: &str) -> Option<String> {
     (rc == 1).then(|| buffer_to_string(&buf))
 }
 
-/// Drain-and-return de l'errstring globale (la lire la vide dans CoolProp).
+/// Drain-and-return of the global errstring (reading it clears it in CoolProp).
 fn errstring() -> String {
     global_param_string("errstring").unwrap_or_default()
 }
 
-/// Décode le motif de résultat `errcode` / `message_buffer`.
+/// Decodes the `errcode` / `message_buffer` result pattern.
 fn check_errcode(errcode: c_long, msg: &[u8]) -> Result<()> {
     match errcode {
         0 => Ok(()),
@@ -80,9 +80,9 @@ fn check_errcode(errcode: c_long, msg: &[u8]) -> Result<()> {
     }
 }
 
-/// Draine l'errstring, exécute l'appel C void, relit l'errstring : les
-/// setters void (`set_config_*`, ...) ne rapportent leurs échecs *que* par
-/// ce biais.
+/// Drains the errstring, runs the void C call, re-reads the errstring: the
+/// void setters (`set_config_*`, ...) report their failures *only* that
+/// way.
 fn void_call_report_errstring<F>(f: F) -> Result<()>
 where
     F: FnOnce(),
@@ -106,7 +106,7 @@ fn fresh_errstring_or_default() -> String {
     }
 }
 
-/// Vérifie un scalaire `double` contre le sentinel d'échec `_HUGE`.
+/// Checks a `double` scalar against the `_HUGE` failure sentinel.
 fn check_scalar(v: f64) -> Result<f64> {
     if v.is_finite() {
         Ok(v)
@@ -116,7 +116,7 @@ fn check_scalar(v: f64) -> Result<f64> {
 }
 
 // ----------------------------------------------------------------------
-// Accesseurs de propriétés haut niveau
+// High-level property accessors
 // ----------------------------------------------------------------------
 
 /// `PropsSI(Output, Name1, Prop1, Name2, Prop2, FluidName)`
@@ -144,8 +144,8 @@ pub fn props_si(
     check_scalar(v)
 }
 
-/// `Props1SI(FluidName, Output)` — sortie à état unique sans entrée
-/// (ex. `"Tcrit"`, `"Pcrit"`, `"molar_mass"`).
+/// `Props1SI(FluidName, Output)` — single-state output with no input
+/// (e.g. `"Tcrit"`, `"Pcrit"`, `"molar_mass"`).
 pub fn props_1si(fluid: &str, output: &str) -> Result<f64> {
     let _g = lock();
     let _ = errstring();
@@ -154,9 +154,9 @@ pub fn props_1si(fluid: &str, output: &str) -> Result<f64> {
     check_scalar(v)
 }
 
-/// `PropsSImulti(...)` — PropsSI vectorisé. Retourne une ligne par point
-/// d'entrée, un élément par sortie (miroir du `[points][outputs]` CoolProp).
-#[allow(clippy::too_many_arguments)] // miroir de la signature C
+/// `PropsSImulti(...)` — vectorised PropsSI. Returns one row per input
+/// point, one element per output (mirrors CoolProp's `[points][outputs]`).
+#[allow(clippy::too_many_arguments)] // mirrors the C signature
 pub fn props_si_multi(
     outputs: &[String],
     name1: &str,
@@ -186,10 +186,10 @@ pub fn props_si_multi(
     let n_out = outputs.len().max(1);
     let n_pts = prop1.len().max(1);
     let mut result = vec![0f64; n_out * n_pts];
-    // Dimensions de capacité in/out : le wrapper C vérifie
-    // `_result.size() > *resdim1 || _result[0].size() > *resdim2` où les
-    // lignes sont les points d'entrée et les colonnes les sorties
-    // (IO CoolProp : [points][outputs]), puis y réécrit les tailles réelles.
+    // In/out capacity dimensions: the C wrapper checks
+    // `_result.size() > *resdim1 || _result[0].size() > *resdim2` where the
+    // rows are the input points and the columns the outputs
+    // (CoolProp IO: [points][outputs]), then writes the real sizes back.
     let (mut d1, mut d2) = (n_pts as c_long, n_out as c_long);
     unsafe {
         sys::PropsSImulti(
@@ -219,8 +219,8 @@ pub fn props_si_multi(
         .collect())
 }
 
-/// `Props1SImulti(...)` — Props1SI multi-fluides. Miroir du wrapper C, qui
-/// n'expose que la première ligne de résultats (voir CoolPropLib.cpp).
+/// `Props1SImulti(...)` — multi-fluid Props1SI. Mirrors the C wrapper, which
+/// only exposes the first row of results (see CoolPropLib.cpp).
 pub fn props_1_si_multi(
     outputs: &[String],
     backend: &str,
@@ -254,12 +254,12 @@ pub fn props_1_si_multi(
     Ok(result)
 }
 
-/// `PhaseSI(...)` — nom de la phase à un état donné.
+/// `PhaseSI(...)` — name of the phase at a given state.
 ///
-/// Note : le noyau C++ de CoolProp rapporte ici les échecs en écrivant
-/// `"unknown: <message d'erreur>"` dans le buffer *tout en retournant 1* ;
-/// cette orthographe est donc traitée comme une erreur (une vraie phase
-/// inconnue est la chaîne nue `"unknown"`).
+/// Note: CoolProp's C++ core reports failures here by writing
+/// `"unknown: <error message>"` into the buffer *while returning 1*;
+/// that spelling is therefore treated as an error (a real unknown
+/// phase is the bare string `"unknown"`).
 pub fn phase_si(name1: &str, prop1: f64, name2: &str, prop2: f64, fluid: &str) -> Result<String> {
     let _g = lock();
     let _ = errstring();
@@ -289,7 +289,7 @@ pub fn phase_si(name1: &str, prop1: f64, name2: &str, prop2: f64, fluid: &str) -
 }
 
 // ----------------------------------------------------------------------
-// Informations paramètres / fluides
+// Parameter / fluid information
 // ----------------------------------------------------------------------
 
 pub fn get_global_param_string(param: &str) -> Result<String> {
@@ -297,12 +297,12 @@ pub fn get_global_param_string(param: &str) -> Result<String> {
     global_param_string(param).ok_or_else(|| CoolPropError(fresh_errstring_or_default()))
 }
 
-/// Noms de tous les fluides de la bibliothèque Helmholtz-EOS de CoolProp,
+/// Names of all fluids of CoolProp's Helmholtz-EOS library,
 /// via `get_global_param_string("fluids_list")`.
 ///
-/// CoolProp joint les noms avec `LIST_STRING_DELIMITER` (`,` par défaut) ;
-/// comme pour [`abstract_state_fluid_names`], un délimiteur non par défaut
-/// configuré via `set_config_string` n'est pas honoré au découpage.
+/// CoolProp joins the names with `LIST_STRING_DELIMITER` (`,` by default);
+/// as for [`abstract_state_fluid_names`], a non-default delimiter
+/// configured via `set_config_string` is not honoured when splitting.
 pub fn fluids_list() -> Result<Vec<String>> {
     let raw = get_global_param_string("fluids_list")?;
     Ok(raw
@@ -313,14 +313,14 @@ pub fn fluids_list() -> Result<Vec<String>> {
         .collect())
 }
 
-/// `get_parameter_information_string(param, Output, n)` — nom long, unités ou
-/// rôle IO d'un paramètre.
+/// `get_parameter_information_string(param, Output, n)` — long name, units or
+/// IO role of a parameter.
 ///
-/// Quirk (fidèle au wrapper C) : le buffer de sortie sert aussi de
-/// *sélecteur d'entrée* pour le type d'information — il doit être
-/// pré-rempli avec `info` (`"long"`, `"short"`, `"units"` ou `"IO"`,
-/// casse exacte — `src/DataStructures.cpp` compare littéralement) avant
-/// l'appel.
+/// Quirk (faithful to the C wrapper): the output buffer also serves as the
+/// *input selector* for the information type — it must be
+/// pre-filled with `info` (`"long"`, `"short"`, `"units"` or `"IO"`,
+/// exact case — `src/DataStructures.cpp` compares literally) before
+/// the call.
 pub fn get_parameter_information_string(param: &str, info: &str) -> Result<String> {
     let _g = lock();
     let _ = errstring();
@@ -382,10 +382,10 @@ pub fn get_fluid_param_string_len(fluid: &str, param: &str) -> Result<i64> {
 // Configuration
 // ----------------------------------------------------------------------
 
-/// Clés de configuration acceptées par CoolProp v8.0.0 (source :
-/// `include/CoolProp/detail/configuration_keys.h`). Validée côté client car
-/// `config_string_to_key` lève `ValueError()` avec un message *vide* pour une
-/// clé inconnue, indistinguable d'un succès via l'errstring.
+/// Configuration keys accepted by CoolProp v8.0.0 (source:
+/// `include/CoolProp/detail/configuration_keys.h`). Validated client-side because
+/// `config_string_to_key` raises `ValueError()` with an *empty* message for an
+/// unknown key, indistinguishable from a success via the errstring.
 pub const VALID_CONFIG_KEYS: &[&str] = &[
     "ALLOW_SVDSBTL_IN_PROPSSI",
     "ALTERNATIVE_REFPROP_HMX_BNC_PATH",
@@ -474,7 +474,7 @@ pub fn set_departure_functions(string_data: &str) -> Result<()> {
     check_errcode(errcode, &msg)
 }
 
-/// Retourne 1 en succès, 0 en échec (l'errstring porte la raison).
+/// Returns 1 on success, 0 on failure (the errstring carries the reason).
 pub fn set_reference_state_s(refr: &str, reference_state: &str) -> Result<i64> {
     let _g = lock();
     let _ = errstring();
@@ -584,7 +584,7 @@ pub fn saturation_ancillary(
 }
 
 // ----------------------------------------------------------------------
-// Propriétés de l'air humide
+// Humid air properties
 // ----------------------------------------------------------------------
 
 pub fn haprops_si(
@@ -646,18 +646,18 @@ pub fn propssi_fortran(
 }
 
 // ----------------------------------------------------------------------
-// Wrappers de style FORTRAN 77
+// FORTRAN 77-style wrappers
 // ----------------------------------------------------------------------
 
 // ----------------------------------------------------------------------
-// AbstractState (accès stateful bas niveau)
+// AbstractState (low-level stateful access)
 // ----------------------------------------------------------------------
 
 fn err_call(errcode: c_long, msg: &[u8]) -> Result<()> {
     check_errcode(errcode, msg)
 }
 
-/// `AbstractState_factory` — retourne un nouveau handle.
+/// `AbstractState_factory` — returns a new handle.
 pub fn abstract_state_factory(backend: &str, fluids: &str) -> Result<i64> {
     let _g = lock();
     let (b, f) = (cstr(backend), cstr(fluids));
@@ -732,8 +732,8 @@ pub fn abstract_state_set_fractions(handle: i64, fractions: &[f64]) -> Result<()
     err_call(errcode, &msg)
 }
 
-/// `AbstractState_get_mole_fractions` — le nombre de composants est découvert
-/// via `fluid_names` (l'API C exige un buffer pré-alloué).
+/// `AbstractState_get_mole_fractions` — the number of components is discovered
+/// via `fluid_names` (the C API requires a pre-allocated buffer).
 pub fn abstract_state_get_mole_fractions(handle: i64) -> Result<Vec<f64>> {
     let _g = lock();
     let names = abstract_state_fluid_names_locked(handle)?;
@@ -757,7 +757,7 @@ pub fn abstract_state_get_mole_fractions(handle: i64) -> Result<Vec<f64>> {
     Ok(fr)
 }
 
-/// Comme [`abstract_state_fluid_names`] mais pour un appel verrouillé.
+/// Like [`abstract_state_fluid_names`] but for a locked call.
 fn abstract_state_fluid_names_locked(handle: i64) -> Result<Vec<String>> {
     let mut buf = vec![0u8; ERRBUF];
     let mut errcode = 0 as c_long;
@@ -1057,7 +1057,7 @@ pub fn abstract_state_first_two_phase_deriv(
     Ok(v)
 }
 
-/// Résultat de `AbstractState_update_and_common_out`.
+/// Result of `AbstractState_update_and_common_out`.
 pub struct CommonOut {
     pub t: Vec<f64>,
     pub p: Vec<f64>,
@@ -1289,7 +1289,7 @@ pub fn abstract_state_build_phase_envelope(handle: i64, level: &str) -> Result<(
     err_call(errcode, &msg)
 }
 
-/// Données d'enveloppe de phase de la variante à mémoire vérifiée.
+/// Phase envelope data of the checked-memory variant.
 pub struct PhaseEnvelope {
     pub t: Vec<f64>,
     pub p: Vec<f64>,
@@ -1303,8 +1303,8 @@ pub struct PhaseEnvelope {
     pub actual_components: usize,
 }
 
-/// `AbstractState_get_phase_envelope_data_checkedMemory` — rapporte le nombre
-/// réel de points et de composants. Exige que l'enveloppe ait été construite.
+/// `AbstractState_get_phase_envelope_data_checkedMemory` — reports the real
+/// number of points and components. Requires the envelope to have been built.
 pub fn abstract_state_get_phase_envelope(
     handle: i64,
     max_length: usize,
@@ -1361,10 +1361,10 @@ pub fn abstract_state_get_phase_envelope(
     })
 }
 
-/// `AbstractState_get_phase_envelope_data` — la variante brute : retourne
-/// exactement `length` points sans rapport de la taille réelle de
-/// l'enveloppe (les entrées en trop sont à zéro si l'enveloppe est plus
-/// courte que `length`).
+/// `AbstractState_get_phase_envelope_data` — the raw variant: returns
+/// exactly `length` points without reporting the real size of the
+/// envelope (the extra entries are zero if the envelope is shorter
+/// than `length`).
 pub fn abstract_state_get_phase_envelope_raw(
     handle: i64,
     length: usize,
@@ -1427,8 +1427,8 @@ pub fn abstract_state_build_spinodal(handle: i64) -> Result<()> {
     err_call(errcode, &msg)
 }
 
-/// Courbe spinodale. L'API C ne rapporte pas le nombre réel de points ;
-/// les entrées non remplies (à zéro) sont rognées heuristiquement.
+/// Spinodal curve. The C API does not report the real number of points;
+/// unfilled (zero) entries are trimmed heuristically.
 pub struct Spinodal {
     pub tau: Vec<f64>,
     pub delta: Vec<f64>,
@@ -1455,8 +1455,8 @@ pub fn abstract_state_get_spinodal(handle: i64, max_length: usize) -> Result<Spi
         );
     }
     err_call(errcode, &msg)?;
-    // Les entrées non remplies sont à zéro ; une vraie température réduite
-    // inverse est toujours positive, donc rognage au premier tau == 0.
+    // Unfilled entries are zero; a real inverse reduced temperature
+    // is always positive, hence trimming at the first tau == 0.
     let n = tau.iter().position(|&v| v == 0.0).unwrap_or(tau.len());
     tau.truncate(n);
     delta.truncate(n);
@@ -1464,7 +1464,7 @@ pub fn abstract_state_get_spinodal(handle: i64, max_length: usize) -> Result<Spi
     Ok(Spinodal { tau, delta, m1 })
 }
 
-/// Un point critique du mélange.
+/// A critical point of the mixture.
 pub struct CriticalPoint {
     pub t: f64,
     pub p: f64,
@@ -1497,9 +1497,9 @@ pub fn abstract_state_all_critical_points(
         );
     }
     err_call(errcode, &msg)?;
-    // L'API C ne rapporte pas combien de points ont été remplis ; les
-    // entrées non remplies sont à zéro et un vrai point critique a toujours
-    // T > 0 et p > 0.
+    // The C API does not report how many points were filled; the
+    // unfilled entries are zero and a real critical point always has
+    // T > 0 and p > 0.
     Ok(t.iter()
         .zip(&p)
         .zip(&rho)
@@ -1627,7 +1627,7 @@ pub fn abstract_state_saturated_vapor_keyed_output(handle: i64, param: i64) -> R
 }
 
 // ----------------------------------------------------------------------
-// Gestion de la bibliothèque de fluides
+// Fluid library management
 // ----------------------------------------------------------------------
 
 pub fn add_fluids_as_json(backend: &str, fluid_string: &str) -> Result<()> {
@@ -1653,7 +1653,7 @@ pub fn is_valid_fluid_string(name: &str) -> bool {
     unsafe { sys::C_is_valid_fluid_string(n.as_ptr()) != 0 }
 }
 
-/// `C_extract_backend` — découpe par ex. `"REFPROP::Water[0.5]&Ethane[0.5]"`.
+/// `C_extract_backend` — splits e.g. `"REFPROP::Water[0.5]&Ethane[0.5]"`.
 pub fn extract_backend(fluid_string: &str) -> Result<(String, String)> {
     let _g = lock();
     let fs = cstr(fluid_string);
@@ -1678,29 +1678,29 @@ pub fn extract_backend(fluid_string: &str) -> Result<(String, String)> {
 }
 
 // ----------------------------------------------------------------------
-// Aides « mélanges » (validation de spec, masses molaires)
+// "Mixture" helpers (spec validation, molar masses)
 // ----------------------------------------------------------------------
 
-/// Vérifie qu'une spec de fluide/mélange (`"Water"`,
+/// Checks that a fluid/mixture spec (`"Water"`,
 /// `"Propane[0.5]&Ethane[0.5]"`, `"HEOS::R410A"`, `"INCOMP::MEG[0.4]"`)
-/// est instanciable par CoolProp : un état de référence (300 K, 1 bar) est
-/// calculé avec la même syntaxe que PropsSI — finite ⇔ spec valide,
-/// sinon le message CoolProp est retourné. À appeler à la sauvegarde d'un
-/// mélange org (400 avec le message si rejet).
+/// can be instantiated by CoolProp: a reference state (300 K, 1 bar) is
+/// computed with the same syntax as PropsSI — finite ⇔ valid spec,
+/// otherwise the CoolProp message is returned. Call when saving an
+/// org mixture (400 with the message on rejection).
 pub fn validate_fluid_spec(spec: &str) -> Result<()> {
     props_si("Dmolar", "T", 300.0, "P", 101_325.0, spec)
         .map(|_| ())
         .map_err(|e| {
             if e.0.trim().is_empty() {
-                CoolPropError(format!("spec de fluide rejetée par CoolProp : {spec:?}"))
+                CoolPropError(format!("fluid spec rejected by CoolProp: {spec:?}"))
             } else {
                 e
             }
         })
 }
 
-/// Masses molaires (kg/mol) de fluides purs, dans l'ordre demandé.
-/// Premier échec CoolProp = erreur globale.
+/// Molar masses (kg/mol) of pure fluids, in the requested order.
+/// First CoolProp failure = global error.
 pub fn molar_masses(fluids: &[&str]) -> Result<Vec<f64>> {
     fluids
         .iter()
@@ -1709,7 +1709,7 @@ pub fn molar_masses(fluids: &[&str]) -> Result<Vec<f64>> {
 }
 
 // ----------------------------------------------------------------------
-// Accesseurs dépréciés (unités KSI)
+// Deprecated accessors (KSI units)
 // ----------------------------------------------------------------------
 
 #[cfg(test)]

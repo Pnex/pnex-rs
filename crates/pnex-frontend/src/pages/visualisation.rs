@@ -1,12 +1,12 @@
-//! Visualisation (2026-08-19) — courbes capteur par capteur depuis
-//! OpenObserve : catalogue des séries de l'org (`/api/v1/telemetry/catalog`)
-//! puis points par série sur une fenêtre preset (`/api/v1/telemetry/series`).
+//! Visualisation (2026-08-19) — sensor-by-sensor curves from
+//! OpenObserve: catalogue of the org's series (`/api/v1/telemetry/catalog`)
+//! then points per series over a preset window (`/api/v1/telemetry/series`).
 //!
-//! Chart SVG maison (aucune lib) : polyline + points, échelle Y globale
-//! sur toutes les séries actives — quick and dirty, objectif = valider la
-//! mécanique de collecte de bout en bout. Jusqu'à 6 séries superposées,
-//! polling 15 s (voir les données arriver live), télémétrie dégradée en
-//! encart (jamais de toast en boucle).
+//! Home-made SVG chart (no lib): polyline + points, global Y scale
+//! over all active series — quick and dirty, goal = validate the
+//! collection mechanics end to end. Up to 6 overlaid series,
+//! 15 s polling (see the data arrive live), degraded telemetry as a
+//! notice (never a looping toast).
 
 use std::time::Duration;
 
@@ -22,27 +22,27 @@ use crate::components::ui::FIELD_LABEL;
 use crate::state::org;
 use crate::util::sleep;
 
-/// Cadence de rafraîchissement (même choix que le dashboard : voir la
-/// donnée arriver sans marteler O2).
+/// Refresh rate (same choice as the dashboard: see the
+/// data arrive without hammering O2).
 const POLL_SECS: u64 = 15;
 
-/// Séries max superposées (taille de la palette).
+/// Max overlaid series (palette size).
 const MAX_SERIES: usize = 6;
 
-/// Fenêtres preset proposées (clé API, libellé i18n, secondes) —
-/// identiques à `WINDOWS` côté backend.
+/// Offered preset windows (API key, i18n label, seconds) —
+/// identical to `WINDOWS` on the backend side.
 const WINDOWS: &[(&str, &str, i64)] = &[
     ("1h", "vis-window-1h", 3600),
     ("6h", "vis-window-6h", 21_600),
     ("24h", "vis-window-24h", 86_400),
 ];
 
-/// Une série active côté page : clé d'ajout + points chargés.
+/// A series active on the page: add key + loaded points.
 #[derive(Clone)]
 struct ActiveSeries {
     metric: String,
     device_id: String,
-    /// `None` = requête en échec ou dégradée (encart global).
+    /// `None` = failed or degraded request (global notice).
     points: Option<Vec<TelemetryPoint>>,
 }
 
@@ -52,7 +52,7 @@ pub fn Visualisation() -> Element {
         return rsx! {};
     }
 
-    // Sélection courante des pickers + séries actives + fenêtre.
+    // Current picker selection + active series + window.
     let mut reload = use_signal(|| 0u32);
     let mut window = use_signal(|| 86_400i64);
     let mut sel_metric = use_signal(String::new);
@@ -60,8 +60,8 @@ pub fn Visualisation() -> Element {
     let mut active: Signal<Vec<(String, String)>> = use_signal(Vec::new);
     let mut polling = use_signal(|| false);
 
-    // Catalogue : re-run au changement d'org ou au reload (polling +
-    // bouton). Erreurs avalées → None (la page reste utilisable).
+    // Catalogue: re-run on org change or on reload (polling +
+    // button). Errors swallowed → None (the page stays usable).
     let catalog = use_resource(move || async move {
         let _ = reload();
         org::current()?;
@@ -72,10 +72,10 @@ pub fn Visualisation() -> Element {
         None => None,
     };
 
-    // Points : une requête par série active (≤ 6), séquentielles —
-    // charge triviale au rythme du polling. Les signaux sont lus dans la
-    // partie SYNCHRONE de la closure (pattern devices.rs) : l'abonnement
-    // au re-run est garanti sur active/window/reload.
+    // Points: one request per active series (≤ 6), sequential —
+    // trivial load at the polling rate. The signals are read in the
+    // SYNCHRONOUS part of the closure (devices.rs pattern): the re-run
+    // subscription is guaranteed on active/window/reload.
     let series = use_resource(move || {
         let _ = reload();
         let keys = active.read().clone();
@@ -102,7 +102,7 @@ pub fn Visualisation() -> Element {
         }
     });
 
-    // Polling auto-entretenu tant que la page est montée.
+    // Self-sustaining polling while the page is mounted.
     if !polling() {
         polling.set(true);
         spawn(async move {
@@ -112,9 +112,9 @@ pub fn Visualisation() -> Element {
         });
     }
 
-    // ── Tout est précalculé ici : les enfants rsx sont évalués
-    // paresseusement, on ne creuse pas les Option dedans.
-    // Métriques distinctes du catalogue (trié côté backend).
+    // ── Everything is precomputed here: rsx children are evaluated
+    // lazily, we do not dig into the Options inside.
+    // Distinct metrics of the catalogue (sorted backend side).
     let metrics: Vec<String> = cat
         .as_ref()
         .map(|c| {
@@ -124,21 +124,21 @@ pub fn Visualisation() -> Element {
             names
         })
         .unwrap_or_default();
-    // Sélections EFFECTIVES, calculées — jamais de `set` au rendu : le
-    // set Dioxus notifie sans comparer les valeurs, muter pendant le
-    // rendu tant que le catalogue est vide bouclait à l'infini et
-    // gelait toute l'app (retour user 2026-08-19 : « toutes les pages
-    // bloquées »). Piège des selects contrôlés réglé par la même passe :
-    // sans valeur effective, le select AFFICHE sa première option sans
-    // qu'elle soit « sélectionnée » (bouton Ajouter restait désactivé,
-    // aucun appel /series dans les logs serveur).
+    // EFFECTIVE selections, computed — never a `set` during render: the
+    // Dioxus set notifies without comparing values, mutating during
+    // render while the catalogue was empty looped forever and
+    // froze the whole app (user feedback 2026-08-19: "all pages
+    // frozen"). Controlled-select pitfall fixed by the same pass:
+    // without an effective value, the select SHOWS its first option without
+    // it being "selected" (Add button stayed disabled,
+    // no /series call in the server logs).
     let cur_metric = sel_metric();
     let eff_metric = if metrics.contains(&cur_metric) {
         cur_metric
     } else {
         metrics.first().cloned().unwrap_or_default()
     };
-    // Devices de la métrique effective.
+    // Devices of the effective metric.
     let devices: Vec<String> = cat
         .as_ref()
         .map(|c| {
@@ -163,7 +163,7 @@ pub fn Visualisation() -> Element {
             .iter()
             .any(|(m, d)| *m == eff_metric && *d == eff_device);
 
-    // Chargement des points : flatten de la ressource.
+    // Loading the points: flatten of the resource.
     let loaded = match series.read().as_ref() {
         Some(list) => list.clone(),
         None => Vec::new(),
@@ -219,7 +219,7 @@ pub fn Visualisation() -> Element {
                 span { class: "hidden text-xs text-gray-500 sm:inline", {t!("dash-auto-refresh")} }
             },
 
-            // Sélection : métrique × device × fenêtre + ajout
+            // Selection: metric × device × window + add
             div { class: "bg-white rounded-lg border border-line mb-8",
                 div { class: "p-6 border-b border-gray-200",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("vis-series")} }
@@ -303,7 +303,7 @@ pub fn Visualisation() -> Element {
                                 }
                             }
 
-                            // Séries actives (chips)
+                            // Active series (chips)
                             if !active.read().is_empty() {
                                 div { class: "flex flex-wrap gap-2 mt-4",
                                     for (index, (metric, device, label)) in chips.iter().enumerate() {
@@ -334,7 +334,7 @@ pub fn Visualisation() -> Element {
                 }
             }
 
-            // Courbe
+            // Curve
             div { class: "bg-white rounded-lg border border-line",
                 div { class: "p-6 border-b border-gray-200 flex items-center justify-between",
                     h2 { class: "text-lg font-semibold text-gray-900", {t!("vis-chart")} }
@@ -359,7 +359,7 @@ pub fn Visualisation() -> Element {
     }
 }
 
-/// Garde de session (même retour silencieux que les autres pages).
+/// Session guard (same silent return as the other pages).
 fn session_absent() -> bool {
     crate::state::session::user().is_none()
 }

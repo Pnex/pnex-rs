@@ -169,9 +169,9 @@ pub(super) async fn update_template(
     Ok(format::json(template_dto(updated)).into_response())
 }
 
-/// `DELETE /api/v1/notify/templates/{id}` — 204 ; les flows déployés
-/// gardent leur snapshot (re-déployer pour propager, école « save ≠
-/// déployé ») et le journal reste immuable (template_id sans FK).
+/// `DELETE /api/v1/notify/templates/{id}` — 204; deployed flows
+/// keep their snapshot (redeploy to propagate, "save ≠
+/// deployed" school) and the log stays immutable (template_id without FK).
 #[utoipa::path(
     delete,
     path = "/api/v1/notify/templates/{id}",
@@ -210,11 +210,11 @@ pub(super) struct PreviewBody {
     payload: serde_json::Value,
 }
 
-/// `POST /api/v1/notify/templates/{id}/preview` — rendu seul, **jamais
-/// d'envoi** ; les vars manquantes prennent leur `example` déclaré (D52).
-/// Body en `Bytes` parsé à la main (même école que le test de canal : un
-/// `Option<Json<T>>` casse sur les headers Content-Type injectés/dupliqués
-/// des clients de test).
+/// `POST /api/v1/notify/templates/{id}/preview` — render only, **never
+/// a send**; missing vars take their declared `example` (D52).
+/// Body as `Bytes` parsed by hand (same school as the channel test: an
+/// `Option<Json<T>>` breaks on the injected/duplicated Content-Type headers
+/// of test clients).
 #[utoipa::path(
     post,
     path = "/api/v1/notify/templates/{id}/preview",

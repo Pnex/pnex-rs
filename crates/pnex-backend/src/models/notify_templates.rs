@@ -1,5 +1,5 @@
-//! Template de notification org-scoped (D50) — sujet optionnel + corps
-//! minijinja, `vars` déclarées `[{name, example}]`. `name` unique par org.
+//! Org-scoped notification template (D50) — optional subject + minijinja
+//! body, declared `vars` `[{name, example}]`. `name` unique per org.
 
 pub use super::_entities::notify_templates::{ActiveModel, Column, Entity, Model};
 use sea_orm::entity::prelude::*;

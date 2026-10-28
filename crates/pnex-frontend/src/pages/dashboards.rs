@@ -1,8 +1,8 @@
-//! Page **Tableaux de bord** (studio SCADA, D24/D34/D40/D41) :
-//! liste D14 → sous-vues pilotées par signaux locaux (école
-//! `pages/flows.rs`) — **live** (rendu de la version courante, un seul
-//! polling 15 s via `series-batch`, dégradation par item) et **édition**
-//! (`components/dashboard_editor`, polling suspendu).
+//! **Dashboards** page (SCADA studio, D24/D34/D40/D41):
+//! D14 list → subviews driven by local signals (`pages/flows.rs`
+//! approach) — **live** (rendering of the current version, a single
+//! 15 s polling via `series-batch`, per-item degradation) and **edit**
+//! (`components/dashboard_editor`, polling suspended).
 
 use std::collections::HashMap;
 
@@ -32,8 +32,8 @@ use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::viz::{OPEN_DASHBOARD, VIZ_EDIT};
 use crate::state::{org, session, toasts};
 
-/// Cadence de rafraîchissement live (même choix que dashboard/
-/// visualisation : voir la donnée arriver sans marteler O2).
+/// Live refresh rate (same choice as dashboard/
+/// visualisation: see the data arrive without hammering O2).
 const POLL_SECS: u64 = 15;
 
 fn session_absent() -> bool {
@@ -50,17 +50,17 @@ pub fn Dashboards(id: String, mode: String) -> Element {
     let mut editing = use_signal(|| false);
     let mut reload = use_signal(|| 0u32);
 
-    // ── Deep-link `?id&:mode` (dioxus #2784 : props de route ≠ signaux,
-    // on les dépose dans les signaux globaux au mount). Un viewer qui
-    // force mode=edit retombe en live (D34) — l'éditeur le réinterdit de
-    // toute façon.
+    // ── `?id&:mode` deep link (dioxus #2784: route props ≠ signals,
+    // we drop them into the global signals at mount). A viewer that
+    // forces mode=edit falls back to live (D34) — the editor forbids it again
+    // anyway.
     //
-    // Garde `seeded` : l'effet consomme le deep-link UNE SEULE FOIS. Sans
-    // elle, chaque exécution ré-écrit OPEN_DASHBOARD depuis les props de
-    // route (fixes) → ré-arme l'effet → boucle infinie (main thread bloqué,
-    // « Page Unresponsive » — constat 2026-09-13, deep-link depuis le
-    // drawer POI). Les écritures mid-run de OPEN_DASHBOARD/VIZ_EDIT
-    // programment une 2ᵉ exécution : elle doit être un no-op.
+    // `seeded` guard: the effect consumes the deep link ONLY ONCE. Without
+    // it, each run rewrites OPEN_DASHBOARD from the route props
+    // (fixed) → re-arms the effect → infinite loop (main thread blocked,
+    // "Page Unresponsive" — observed 2026-09-13, deep link from the
+    // POI drawer). The mid-run writes to OPEN_DASHBOARD/VIZ_EDIT
+    // schedule a 2nd run: it must be a no-op.
     let mut deep_seeded = use_signal(|| false);
     use_effect(move || {
         if deep_seeded() {
@@ -78,8 +78,8 @@ pub fn Dashboards(id: String, mode: String) -> Element {
             let can_edit = VIZ_EDIT.cloned() && crate::state::access::can("dashboards:write");
             selected.set(Some(open_id));
             editing.set(can_edit);
-            // GlobalSignal : pas de `&mut` static — mutation via with_mut
-            // (méthode intrinsèque, mémoire projet).
+            // GlobalSignal: no `&mut` static — mutation via with_mut
+            // (intrinsic method, project memory).
             OPEN_DASHBOARD.with_mut(|v| *v = None);
             VIZ_EDIT.with_mut(|v| *v = false);
         }
@@ -128,7 +128,7 @@ pub fn Dashboards(id: String, mode: String) -> Element {
     }
 }
 
-// ─────────────────────────── Liste ───────────────────────────
+// ─────────────────────────── List ───────────────────────────
 
 #[component]
 fn ListView(
@@ -143,10 +143,10 @@ fn ListView(
     let mut delete_target = use_signal(|| None::<(String, String)>);
     let mut choosing = use_signal(|| false);
 
-    // Org, reload et page lus dans la partie SYNCHRONE de la closure
-    // (pattern devices.rs : abonnements garantis). FIX : `page()` n'était
-    // pas lue et aucun offset n'était passé — la pagination du Pager était
-    // câblée mais inerte (compteur changeant sans refetch).
+    // Org, reload and page read in the SYNCHRONOUS part of the closure
+    // (devices.rs pattern: guaranteed subscriptions). FIX: `page()` was
+    // not read and no offset was passed — the Pager's pagination was
+    // wired but inert (counter changing without refetch).
     let list = use_resource(move || {
         let offset = page() * PAGE_SIZE;
         let label = {
@@ -180,8 +180,8 @@ fn ListView(
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD). Some(None) =
-    // org absente (garde rendue côté rsx) → traité comme chargement.
+    // Synchronous read of the resource (CRUD foundation doctrine). Some(None) =
+    // no org (guard rendered in the rsx) → treated as loading.
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None | Some(None) => (None, false, 0, Vec::new()),
         Some(Some(Ok(paged))) => (
@@ -193,9 +193,9 @@ fn ListView(
         Some(Some(Err(err))) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
-    // Colonnes de la table — les closures d'action capturent on_open et la
-    // cible de suppression ; le style des anciens th/td bruts passe aux
-    // tokens du socle (th.th / td.td).
+    // Table columns — the action closures capture on_open and the
+    // delete target; the style of the old raw th/td moves to the
+    // foundation tokens (th.th / td.td).
     let columns = vec![
         Column::new(t!("db-name").to_string(), move |d: &VizDashboardSummary| {
             let labels = row_labels.get(&d.id).cloned().unwrap_or_default();
@@ -230,7 +230,7 @@ fn ListView(
         Column::new(
             String::new(),
             move |d: &VizDashboardSummary| {
-                // Un id cloné par bouton : chaque closure `move` consomme le sien.
+                // One cloned id per button: each `move` closure consumes its own.
                 let id_open = d.id.clone();
                 let id_edit = d.id.clone();
                 let id_delete = d.id.clone();
@@ -625,7 +625,7 @@ fn MobileSketch() -> Element {
     }
 }
 
-// ─────────────────────────── Vue live ───────────────────────────
+// ─────────────────────────── Live view ───────────────────────────
 
 #[component]
 fn LiveSubView(
@@ -646,13 +646,13 @@ fn LiveSubView(
     });
     let detail_loaded: Option<VizDashboard> = detail.read().as_ref().cloned().flatten();
 
-    // ── Specs du batch — déps trackées lues dans la partie synchrone de
-    // la closure (pattern devices.rs) : reload (cadence 15 s) ET la
-    // resource `detail` elle-même. Au premier rendu le détail est absent
-    // → sources vides ; si seule `reload` est abonnée, le batch ne repart
-    // qu'au premier tick (15 s d'écran vide en vue) — lire `detail` ici
-    // garantit le re-run dès qu'il se résout. Un SEUL timer 15 s pour
-    // tout le dashboard (D31).
+    // ── Batch specs — tracked deps read in the synchronous part of
+    // the closure (devices.rs pattern): reload (15 s rate) AND the
+    // `detail` resource itself. On the first render the detail is absent
+    // → empty sources; if only `reload` is subscribed, the batch only restarts
+    // on the first tick (15 s of empty screen in view) — reading `detail` here
+    // guarantees the re-run as soon as it resolves. A SINGLE 15 s timer for
+    // the whole dashboard (D31).
     // Type dashboard (D187): the object shown, and the current sensor of
     // each of its series properties.
     let object_id = use_signal(String::new);
@@ -694,8 +694,8 @@ fn LiveSubView(
         .and_then(|d| d.layout.object_type.clone());
     let values: HashMap<String, Option<Vec<TelemetryPoint>>> =
         batch.read().as_ref().cloned().flatten().unwrap_or_default();
-    // Dégradé = dérivé au rendu, JAMAIS un set de signal (boucle infinie,
-    // retour user 2026-08-19 « toutes les pages bloquées »).
+    // Degraded = derived at render, NEVER a signal set (infinite loop,
+    // user feedback 2026-08-19 "all pages frozen").
     let any_degraded = values.values().any(|v| v.is_none());
 
     // User-selectable auto-refresh (default 15 s) + "refresh now".
@@ -787,7 +787,7 @@ fn LiveSubView(
     }
 }
 
-// ─────────────────────────── Vue édition ───────────────────────────
+// ─────────────────────────── Edit view ───────────────────────────
 
 #[component]
 fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
@@ -800,8 +800,8 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
         }
     });
 
-    // Clone du state du resource AVANT le match : les temporaires de
-    // lecture ne survivent pas aux bras (école des pièges GenerationalRef).
+    // Clone of the resource state BEFORE the match: the read temporaries
+    // do not outlive the arms (GenerationalRef pitfalls approach).
     let state = detail.read().clone();
     match state {
         Some(Some(d)) => rsx! {
@@ -813,7 +813,7 @@ fn EditorSubView(dashboard_id: String, on_back: EventHandler<()>) -> Element {
                 on_changed: move |_| reload.with_mut(|r| *r += 1),
             }
         },
-        // Requête en échec (message déjà en toast) : retour possible.
+        // Failed request (message already in a toast): going back is possible.
         Some(None) => rsx! {
             div { class: "p-6",
                 button {

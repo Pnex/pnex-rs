@@ -5,7 +5,7 @@ use crate::components::ui::INPUT;
 // ───────────────────── address search (geo-layers.md §8) ─────────────────────
 
 /// Address search over the map, through the org's default geocoder (server
-/// proxy). A result recentres the map; « + POI » opens the creation form
+/// proxy). A result recentres the map; "+ POI" opens the creation form
 /// prefilled with the address and its coordinates.
 #[component]
 pub(super) fn AddressSearch(

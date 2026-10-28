@@ -1,11 +1,11 @@
 //! Telemetry batcher → OpenObserve (500 points / 10 s):
-//! le WS pousse ses points dans un canal (jamais bloqué), une tâche les
-//! groupe par org et flushe en **Prometheus remote-write**
-//! (`/api/{org}/prometheus/api/v1/write`, cf. promwrite.rs — les points
-//! atterrissent dans les metrics de l'org, pas dans les logs) — max
-//! `batch_max` points ou `batch_flush_secs` de délai. Credentials résolus
-//! par org (cache mémoire → base → provisioning idempotent). Échec flush :
-//! un retry, puis abandon loggé (la collecte n'est jamais bloquée par O2).
+//! the WS pushes its points into a channel (never blocked), a task groups
+//! them per org and flushes as **Prometheus remote-write**
+//! (`/api/{org}/prometheus/api/v1/write`, see promwrite.rs — points
+//! land in the org's metrics, not in the logs) — at most
+//! `batch_max` points or `batch_flush_secs` of delay. Credentials resolved
+//! per org (memory cache → database → idempotent provisioning). Flush failure:
+//! one retry, then a logged drop (collection is never blocked by O2).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,8 +21,8 @@ use crate::services::openobserve::{ensure_org_credentials, OpenobserveSettings, 
 use crate::services::settings::IngestSettings;
 use crate::services::telemetry::{self, TelemetryPoint, TelemetrySink};
 
-/// Pont canal → sink (try_send : canal plein = point abandonné, la boucle
-/// WS continue).
+/// Channel → sink bridge (try_send: full channel = point dropped, the WS
+/// loop goes on).
 struct ChannelSink(mpsc::Sender<TelemetryPoint>);
 
 impl TelemetrySink for ChannelSink {
@@ -64,12 +64,12 @@ pub async fn spawn_batcher(ctx: &AppContext) {
     telemetry::set_sink(chain);
 }
 
-/// Variante testable : db + client + réglages explicites.
+/// Testable variant: explicit db + client + settings.
 pub fn spawn_batcher_with(db: DatabaseConnection, client: Client, ingest: IngestSettings) {
     let (tx, rx) = mpsc::channel::<TelemetryPoint>(4096);
-    // Tap GPS (D38) : le sink installé met à jour `device_positions` pour
-    // les métriques `latitude`/`longitude`/`gps_*` AVANT de forwarder au
-    // batcher O2 — jamais bloquant, erreurs loggées (services/pois.rs).
+    // GPS tap (D38): the installed sink updates `device_positions` for
+    // the `latitude`/`longitude`/`gps_*` metrics BEFORE forwarding to the
+    // O2 batcher — never blocking, errors logged (services/pois.rs).
     telemetry::set_sink(crate::services::pois::GpsTapSink::new(
         db.clone(),
         Arc::new(ChannelSink(tx)),
@@ -77,8 +77,8 @@ pub fn spawn_batcher_with(db: DatabaseConnection, client: Client, ingest: Ingest
     tokio::spawn(run(db, client, ingest, rx));
 }
 
-/// Credentials de l'org : cache mémoire, sinon résolu via la base (et
-/// provisioning idempotent si nécessaire).
+/// The org's credentials: memory cache, otherwise resolved via the database (and
+/// idempotent provisioning if needed).
 async fn credentials_for(
     db: &DatabaseConnection,
     client: &Client,
@@ -91,21 +91,21 @@ async fn credentials_for(
     match ensure_org_credentials(db, client, org_id).await {
         Ok(c) => {
             creds.insert(org_id, c.clone());
-            // Self-healing flows : si ce credential vient d'être provisionné
-            // (1ʳᵉ ingestion de l'org), les flows déployés avant portent une
-            // estampille `pnex_o2_org` vide — la reprojection la comble sans
-            // attendre un deploy manuel. Erreurs : log seulement (le flux de
-            // télémétrie ne doit jamais dépendre du reprojection flows).
+            // Self-healing flows: if this credential was just provisioned
+            // (the org's 1st ingestion), flows deployed earlier carry an
+            // empty `pnex_o2_org` stamp — the reprojection fills it without
+            // waiting for a manual deploy. Errors: log only (the telemetry
+            // stream must never depend on the flow reprojection).
             let db = db.clone();
             tokio::spawn(async move {
                 if let Err(e) = crate::controllers::flows::reproject_and_signal(&db, org_id).await {
-                    tracing::warn!(err = %e, "reprojection flows post-provisioning O2 : échec");
+                    tracing::warn!(err = %e, "flow reprojection after O2 provisioning: failed");
                 }
             });
             Some(c)
         }
         Err(e) => {
-            tracing::warn!(org = org_id, err = %e, "provisioning O2 en échec — lot abandonné");
+            tracing::warn!(org = org_id, err = %e, "O2 provisioning failed — batch dropped");
             None
         }
     }
@@ -122,7 +122,7 @@ async fn flush(
         return;
     };
     let Some(body) = promwrite::encode(points) else {
-        return; // aucun point numérique dans le lot
+        return; // no numeric point in the batch
     };
     match client
         .ingest_prometheus(&cred.o2_org, &body, &cred.email_passcode)
@@ -132,7 +132,7 @@ async fn flush(
             tracing::debug!(org = org_id, n = points.len(), "flush O2 ok");
         }
         Err(first) => {
-            // Retry unique (réseau passager), puis abandon loggé.
+            // Single retry (transient network), then a logged drop.
             tokio::time::sleep(Duration::from_secs(1)).await;
             match client
                 .ingest_prometheus(&cred.o2_org, &body, &cred.email_passcode)
@@ -140,12 +140,12 @@ async fn flush(
             {
                 Ok(()) => {}
                 Err(second) => {
-                    // Invalide le cache : credentials périmés possibles
-                    // (user/passcode révoqués côté O2).
+                    // Invalidates the cache: credentials possibly stale
+                    // (user/passcode revoked on the O2 side).
                     creds.remove(&org_id);
                     tracing::warn!(
                         org = org_id, n = points.len(), err = %second,
-                        "flush O2 échoué après retry (1er : {first})"
+                        "O2 flush failed after retry (1st: {first})"
                     );
                 }
             }
@@ -186,7 +186,7 @@ async fn run(
                             force_flush = true;
                         }
                     }
-                    None => break, // canal fermé : dernier flush
+                    None => break, // channel closed: last flush
                 }
             }
             _ = tokio::time::sleep_until(next_flush) => {

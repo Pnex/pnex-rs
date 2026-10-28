@@ -1,12 +1,12 @@
-//! Tests E2E des cartes de régulation mixtes (control-cards) : cast
-//! `ControlConfig` au device WS mocké à l'announce et au deploy, re-cast au
-//! changement de seuil, rollback, suppression (`[]`), conflit cross-flows
-//! (plus petit flow_id gagne), dé-déploiement au set_mode du pin capteur.
+//! E2E tests for the mixed regulation cards (control-cards): `ControlConfig`
+//! cast to the mocked WS device on announce and on deploy, re-cast on
+//! threshold change, rollback, removal (`[]`), cross-flow conflict
+//! (smallest flow_id wins), undeploy on set_mode of the sensor pin.
 //!
-//! Harnais = `ws_device.rs` (client miroir rôle firmware) × `flows.rs`
-//! (env superviseur, moteur coupé : le cast est **indépendant du runtime**,
-//! le deploy y répond 503 après le sync — les deux sont assertés).
-//! Nécessite PostgreSQL (TEST_DATABASE_URL).
+//! Harness = `ws_device.rs` (mirror client in the firmware role) × `flows.rs`
+//! (supervisor env, engine off: the cast is **independent of the runtime**,
+//! the deploy answers 503 there after the sync — both are asserted).
+//! Requires PostgreSQL (TEST_DATABASE_URL).
 
 mod common;
 
@@ -16,14 +16,14 @@ use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
-// ─────────────────── Client miroir (rôle firmware carte mixte) ───────────────────
+// ─────────────────── Mirror client (mixed card firmware role) ───────────────────
 
 fn key_bytes(b64: &str) -> [u8; 32] {
     STANDARD
         .decode(b64)
-        .expect("clé b64")
+        .expect("b64 key")
         .try_into()
-        .expect("clé 32 o")
+        .expect("32-byte key")
 }
 
 // ─────────────────── Harnais ───────────────────
@@ -36,9 +36,9 @@ where
     let base = common::spawn_mock_rauthy().await;
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
-    // Moteur de flows coupé : le cast des régulations doit rester cohérent
-    // (décision control-cards — le sync/cast précède la projection et n'est
-    // jamais bloqué par le runtime).
+    // Flow engine off: the regulation cast must stay consistent
+    // (control-cards decision — the sync/cast precedes the projection and is
+    // never blocked by the runtime).
     unsafe { std::env::set_var("PNEX_FLOW_ENABLED", "false") };
     unsafe {
         std::env::set_var(
@@ -114,7 +114,7 @@ async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     .await
 }
 
-/// Announce → ProvisionAck (les cadences/ControlConfig suivent).
+/// Announce → ProvisionAck (the cadences/ControlConfig follow).
 async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core::PinSpec> {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
@@ -125,15 +125,15 @@ async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core:
     let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
     match msg {
         pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
-        other => panic!("ProvisionAck attendu, reçu : {other:?}"),
+        other => panic!("ProvisionAck expected, got: {other:?}"),
     }
 }
 
-/// Connect + announce avec **retry** : la libération du bail de la session
-/// précédente (anti-clone 4003) est asynchrone côté serveur — un reconnect
-/// immédiat après close peut se heurter à la fenêtre de garde (sous charge
-/// du suite complète surtout). Le device réessaie, comme le vrai firmware
-/// (backoff de reconnexion).
+/// Connect + announce with **retry**: releasing the previous session's lease
+/// (anti-clone 4003) is asynchronous on the server side — an immediate
+/// reconnect after close can hit the guard window (mostly under load of the
+/// full suite). The device retries, like the real firmware
+/// (reconnect backoff).
 async fn connect_announce_with_retry(
     server: &axum_test::TestServer,
     d: &Dev,
@@ -158,21 +158,21 @@ async fn connect_announce_with_retry(
         // Close (4003 probable) : on retente.
         let _ = attempt;
     }
-    panic!("announce impossible après retries (bail anti-clone toujours gardé ?)");
+    panic!("announce impossible after retries (anti-clone lease still held?)");
 }
 
-/// Skip les commandes non régulation (SetMode/Subscribe poussés au device)
-/// et retourne la carte du premier `ControlConfig` (une seule attendue).
+/// Skips non-regulation commands (SetMode/Subscribe pushed to the device)
+/// and returns the map of the first `ControlConfig` (only one expected).
 async fn expect_control_config(ws: &mut common::DevWs) -> pnex_core::ControlSpec {
     for _ in 0..10 {
         let raw = ws.recv_plain().await;
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
-            assert_eq!(configs.len(), 1, "une seule carte attendue : {configs:?}");
+            assert_eq!(configs.len(), 1, "a single card expected: {configs:?}");
             return configs.into_iter().next().expect("carte");
         }
     }
-    panic!("aucun ControlConfig reçu");
+    panic!("no ControlConfig received");
 }
 
 /// set_mode D1 (gpio 5) → digital_out, retour safe low.
@@ -189,7 +189,7 @@ async fn set_d1_output(server: &axum_test::TestServer, auth: &str, org: i64, d: 
     res.assert_status_ok();
 }
 
-/// Flow mono-carte tout-ou-rien (capteur A0, sortie D1).
+/// Single-card on/off flow (sensor A0, output D1).
 async fn create_reg_flow(
     server: &axum_test::TestServer,
     auth: &str,
@@ -222,7 +222,7 @@ async fn create_reg_flow(
     dto["id"].as_i64().expect("flow id")
 }
 
-/// Deploy → 503 attendu (moteur coupé) : le cast, lui, a déjà eu lieu.
+/// Deploy → 503 expected (engine off): the cast itself has already happened.
 async fn deploy_expect_503(server: &axum_test::TestServer, auth: &str, org: i64, flow_id: i64) {
     let res = server
         .post(&format!("/api/v1/flows/{flow_id}/deploy"))
@@ -235,9 +235,9 @@ async fn deploy_expect_503(server: &axum_test::TestServer, auth: &str, org: i64,
 
 // ─────────────────── Tests ───────────────────
 
-/// Deploy avec device connecté → `control_config` déchiffré avec les gpio
-/// résolus (A0→17 adc_in, D1→5 digital_out), alors même que le moteur ETL
-/// est coupé (503) : le sync/cast est indépendant du runtime.
+/// Deploy with a connected device → decrypted `control_config` with the gpio
+/// resolved (A0→17 adc_in, D1→5 digital_out), even though the ETL engine
+/// is off (503): the sync/cast is independent of the runtime.
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -269,8 +269,8 @@ async fn deploy_caste_control_config_au_device_connecte() {
     .await;
 }
 
-/// Device offline au deploy → rien ; au connect+announce, le desired-state
-/// est re-cast après le ProvisionAck (pas d'EEPROM côté carte).
+/// Device offline at deploy → nothing; on connect+announce, the desired-state
+/// is re-cast after the ProvisionAck (no EEPROM on the card side).
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -278,8 +278,8 @@ async fn offline_au_deploy_recast_a_l_announce() {
     with_app(|server, auth, _ctx| async move {
         let org = personal_org(&server, &auth).await;
         let dev = create_generic(&server, &auth, "gen-differe").await;
-        // set_mode nécessite une session : connecter, annoncer, régler D1,
-        // refermer — la carte est offline au deploy.
+        // set_mode needs a session: connect, announce, set D1,
+        // close again — the card is offline at deploy.
         {
             let mut ws = connect(&server, &dev).await;
             let _caps = announce_and_expect_provision(&mut ws).await;
@@ -290,8 +290,8 @@ async fn offline_au_deploy_recast_a_l_announce() {
             create_reg_flow(&server, &auth, org, "serre différé", "gen-differe", 21.0).await;
         deploy_expect_503(&server, &auth, org, flow_id).await;
 
-        // Reconnexion (retry anti-clone) : ProvisionAck puis ControlConfig
-        // (aucune cadence persistée entre les deux).
+        // Reconnect (anti-clone retry): ProvisionAck then ControlConfig
+        // (no cadence persisted in between).
         let (mut ws, _caps) = connect_announce_with_retry(&server, &dev).await;
         let spec = expect_control_config(&mut ws).await;
         assert_eq!(spec.kind, "tt_heat");
@@ -301,8 +301,8 @@ async fn offline_au_deploy_recast_a_l_announce() {
     .await;
 }
 
-/// Édition du seuil + redeploy → nouveau setpoint casté (la reconfig des
-/// seuils à chaud promise par le produit).
+/// Threshold edit + redeploy → new setpoint cast (the hot threshold
+/// reconfiguration promised by the product).
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -348,7 +348,7 @@ async fn edit_redeploy_recaste_nouveau_setpoint() {
     .await;
 }
 
-/// Rollback v1 → l'ancien setpoint est re-casté (remplacement complet).
+/// Rollback v1 → the old setpoint is re-cast (full replacement).
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -365,7 +365,7 @@ async fn rollback_recaste_ancien_setpoint() {
         deploy_expect_503(&server, &auth, org, flow_id).await;
         let _ = expect_control_config(&mut ws).await;
 
-        // v2 à 22 puis rollback v1 → 19 re-casté.
+        // v2 at 22 then rollback v1 → 19 re-cast.
         let updated = server
             .patch(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -398,9 +398,9 @@ async fn rollback_recaste_ancien_setpoint() {
     .await;
 }
 
-/// Suppression du flow déployé → `control_config` avec `configs: []` (les
-/// sorties du device repassent en safe — on arrête de réguler, on n'écrit
-/// jamais un pin).
+/// Deleting the deployed flow → `control_config` with `configs: []` (the
+/// device outputs go back to safe — we stop regulating, we never write
+/// a pin).
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -421,25 +421,25 @@ async fn suppression_caste_liste_vide() {
             .add_header("Authorization", format!("Bearer {auth}"))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        // Moteur coupé : le clear est casté AVANT la 503 de la projection
-        // (le cast est indépendant du runtime — c'est le contrat testé).
+        // Engine off: the clear is cast BEFORE the projection's 503
+        // (the cast is independent of the runtime — that's the tested contract).
         res.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
         for _ in 0..10 {
             let raw = ws.recv_plain().await;
             let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
             if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
-                assert!(configs.is_empty(), "clear attendu, reçu : {configs:?}");
+                assert!(configs.is_empty(), "clear expected, got: {configs:?}");
                 ws.close().await;
                 return;
             }
         }
-        panic!("control_config de clear attendu après suppression");
+        panic!("clear control_config expected after deletion");
     })
     .await;
 }
 
-/// Deux flows déployés régulant la MÊME sortie : plus petit flow_id gagne,
-/// l'autre est sauté (warn) — le cast ne contient qu'une carte.
+/// Two deployed flows regulating the SAME output: smallest flow_id wins,
+/// the other is skipped (warn) — the cast holds only one card.
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -453,12 +453,12 @@ async fn conflit_cross_flows_plus_petit_flow_id_gagne() {
 
         let flow_a = create_reg_flow(&server, &auth, org, "conflit A", "gen-conflit", 19.0).await;
         let flow_b = create_reg_flow(&server, &auth, org, "conflit B", "gen-conflit", 25.0).await;
-        assert!(flow_a < flow_b, "ordre de création → ids croissants");
+        assert!(flow_a < flow_b, "creation order → increasing ids");
         deploy_expect_503(&server, &auth, org, flow_a).await;
         let spec = expect_control_config(&mut ws).await;
         assert!((spec.setpoint - 19.0).abs() < 1e-9);
 
-        // Deploy de B : le set entier est recalculé — A (plus petit id) gagne.
+        // Deploy of B: the whole set is recomputed — A (smallest id) wins.
         deploy_expect_503(&server, &auth, org, flow_b).await;
         let spec = expect_control_config(&mut ws).await;
         assert!(
@@ -470,8 +470,8 @@ async fn conflit_cross_flows_plus_petit_flow_id_gagne() {
     .await;
 }
 
-/// set_mode in→out sur le pin capteur d'une carte déployée : le flow est
-/// dé-déployé automatiquement et le clear est casté (sortie → safe).
+/// set_mode in→out on the sensor pin of a deployed card: the flow is
+/// undeployed automatically and the clear is cast (output → safe).
 #[tokio::test]
 #[ignore = "known-broken harness: device WS handshake times out on a clean checkout (pre-existing, needs a dedicated debug session); run with --ignored + TEST_DATABASE_URL"]
 #[serial]
@@ -507,9 +507,9 @@ async fn set_mode_capteur_dedeploie_et_clear() {
         deploy_expect_503(&server, &auth, org, flow_id).await;
         let _ = expect_control_config(&mut ws).await;
 
-        // D2 (gpio 4) → digital_out : la carte perd son capteur. Moteur
-        // coupé → la 503 de la projection suit le dé-déploiement (le cast
-        // du clear a déjà eu lieu).
+        // D2 (gpio 4) → digital_out: the card loses its sensor. Engine
+        // off → the projection's 503 follows the undeploy (the cast
+        // of the clear has already happened).
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -521,17 +521,17 @@ async fn set_mode_capteur_dedeploie_et_clear() {
             .await;
         res.assert_status(axum_test::http::StatusCode::SERVICE_UNAVAILABLE);
 
-        // Le clear suit (le flow est dé-déployé par stop_flows_reading_pin).
+        // The clear follows (the flow is undeployed by stop_flows_reading_pin).
         for _ in 0..10 {
             let raw = ws.recv_plain().await;
             let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
             if let pnex_core::ServerMsg::ControlConfig { configs, .. } = msg {
-                assert!(configs.is_empty(), "clear attendu, reçu : {configs:?}");
+                assert!(configs.is_empty(), "clear expected, got: {configs:?}");
                 ws.close().await;
                 return;
             }
         }
-        panic!("control_config de clear attendu après set_mode du capteur");
+        panic!("clear control_config expected after the sensor's set_mode");
     })
     .await;
 }

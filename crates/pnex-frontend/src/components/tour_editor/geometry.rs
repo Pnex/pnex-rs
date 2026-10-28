@@ -1,26 +1,26 @@
-//! Géométrie du canevas de l'éditeur de tour : fonctions **pures** (testées)
-//! et la seule touche DOM, la mesure de l'origine du canevas `canvas_rect`
-//! (web-sys). École `flow_editor/geometry.rs` : l'SVG n'a **pas** de
-//! `view_box` — 1 unité utilisateur = 1 px CSS, donc
-//! `plan = (client − origine − pan) / zoom`.
+//! Tour editor canvas geometry: **pure** (tested) functions
+//! and the only DOM touch, measuring the canvas origin `canvas_rect`
+//! (web-sys). `flow_editor/geometry.rs` pattern: the SVG has **no**
+//! `view_box` — 1 user unit = 1 CSS px, hence
+//! `plan = (client − origin − pan) / zoom`.
 //!
-//! L'unité du plan est le **px natif de l'image du plan** ; les scènes sont
-//! stockées dans cette unité (stable par rapport au zoom/pan, portable au
-//! viewer). Le hit-test des scènes vit dans les pins eux-mêmes (composant
-//! `ScenePin`) — pas de fonction de hit-test ici.
+//! The plan unit is the **native px of the plan image**; scenes are
+//! stored in that unit (stable with respect to zoom/pan, portable to the
+//! viewer). Scene hit-testing lives in the pins themselves (`ScenePin`
+//! component) — no hit-test function here.
 
-/// Rayon d'un pin de scène (px plan, avant zoom).
+/// Radius of a scene pin (plan px, before zoom).
 pub const SCENE_RADIUS: f64 = 16.0;
-/// Bornes du zoom.
+/// Zoom bounds.
 pub const ZOOM_MIN: f64 = 0.05;
 pub const ZOOM_MAX: f64 = 4.0;
-/// Marge du fit initial.
+/// Margin of the initial fit.
 pub const FIT_PADDING: f64 = 24.0;
-/// Dimensions de repli d'un plan sans dimensions connues (px natifs).
+/// Fallback dimensions of a plan with no known dimensions (native px).
 pub const PLAN_FALLBACK: (f64, f64) = (2000.0, 1000.0);
 
-/// Transform initial « plan ajusté à la vue » : zoom = min des ratios
-/// bordés, pan = centrage. Retourne (pan, zoom).
+/// Initial "plan fitted to the view" transform: zoom = min of the
+/// padded ratios, pan = centering. Returns (pan, zoom).
 pub fn fit_transform(
     plan_w: f64,
     plan_h: f64,
@@ -41,7 +41,7 @@ pub fn fit_transform(
     (pan, zoom)
 }
 
-/// Convertit une position client (px écran) en position plan.
+/// Converts a client position (screen px) into a plan position.
 pub fn to_plan(
     client: (f64, f64),
     rect: (f64, f64, f64, f64),
@@ -54,8 +54,8 @@ pub fn to_plan(
     )
 }
 
-/// Nouveau zoom appliqué vers un point fixe de l'écran (le curseur) :
-/// `pan₂ = s − k·(s − pan₁)` avec `k = zoom₂ / zoom₁` (école flow_editor).
+/// New zoom applied toward a fixed screen point (the cursor):
+/// `pan₂ = s − k·(s − pan₁)` with `k = zoom₂ / zoom₁` (flow_editor pattern).
 pub fn zoom_pan_towards(
     pan: (f64, f64),
     zoom: f64,
@@ -69,7 +69,7 @@ pub fn zoom_pan_towards(
     )
 }
 
-/// Dimensions de rendu du plan (px natifs) — repli si inconnues.
+/// Render dimensions of the plan (native px) — fallback if unknown.
 pub fn plan_size(plan_w: Option<f64>, plan_h: Option<f64>) -> (f64, f64) {
     let w = plan_w.filter(|w| *w > 0.0).unwrap_or(PLAN_FALLBACK.0);
     let h = plan_h.filter(|h| *h > 0.0).unwrap_or(PLAN_FALLBACK.1);
@@ -84,8 +84,8 @@ pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
     Some((rect.left(), rect.top(), rect.width(), rect.height()))
 }
 
-/// Cible native : pas de canvas (l'éditeur ne tourne qu'en CSR web pour
-/// l'instant) — les gestes ne démarrent jamais sans rect.
+/// Native target: no canvas (the editor only runs in web CSR for
+/// now) — gestures never start without a rect.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
     None
@@ -190,10 +190,10 @@ mod tests {
     #[test]
     fn fit_centre_le_plan() {
         let ((pan_x, pan_y), zoom) = fit_transform(1000.0, 500.0, 1048.0, 548.0, 24.0);
-        assert!((zoom - 1.0).abs() < 1e-9, "plan déjà à l'échelle : {zoom}");
+        assert!((zoom - 1.0).abs() < 1e-9, "plan already at scale: {zoom}");
         assert!((pan_x - 24.0).abs() < 1e-9 && (pan_y - 24.0).abs() < 1e-9);
 
-        // Plan large : le zoom est borné par la largeur.
+        // Wide plan: the zoom is bounded by the width.
         let (_, zoom) = fit_transform(2000.0, 100.0, 1048.0, 548.0, 24.0);
         assert!((zoom - (1048.0 - 48.0) / 2000.0).abs() < 1e-9);
     }

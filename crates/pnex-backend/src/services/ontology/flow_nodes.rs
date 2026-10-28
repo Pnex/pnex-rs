@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn keep_best_never_lowers_an_open_link() {
-        let stored = serde_json::json!({"score": 100, "preuve_nda": true});
+        let stored = serde_json::json!({"score": 100, "nda_proof": true});
         let msg = |v: Value| {
             serde_json::json!({"score": v})
                 .as_object()

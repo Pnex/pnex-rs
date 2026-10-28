@@ -1,20 +1,20 @@
-//! Nommage des métriques et clés de payload — **source de vérité unique**
-//! partagée backend ↔ runtime de flows (Phase 6 ETL).
+//! Naming of metrics and payload keys — **single source of truth**
+//! shared backend ↔ flow runtime (Phase 6 ETL).
 //!
-//! Pourquoi centraliser : la lecture device du runtime cible les séries
-//! écrites par l'ingestion (`last_over_time(<label>{device_id="…"})`) — si les
-//! deux côtés ne normalisaient pas le label du pin à l'identique, le PromQL
-//! chercherait une série inexistante. Même exigence pour l'écriture `etl_` :
-//! le préfixe et le sanitize doivent coïncider partout.
+//! Why centralize: the runtime's device read targets the series
+//! written by ingestion (`last_over_time(<label>{device_id="…"})`) — if the
+//! two sides did not normalize the pin label identically, the PromQL
+//! would look for a non-existent series. Same requirement for the `etl_` write:
+//! the prefix and the sanitize must match everywhere.
 //!
-//! Tout est pur et sans dépendance (wasm32 inclus) — sauf
-//! [`normalize_measurement_name`], derrière la feature `naming` (table
-//! deunicode, inutile au bundle wasm du front).
+//! Everything is pure and dependency-free (wasm32 included) — except
+//! [`normalize_measurement_name`], behind the `naming` feature (deunicode
+//! table, useless in the front wasm bundle).
 
-/// Nom de métrique Prometheus valide (`[a-zA-Z_:][a-zA-Z0-9_:]*`) — sert de
-/// validation anti-injection avant toute interpolation dans une requête
-/// PromQL ; les noms hors charset sont rejetés plutôt que d'ouvrir une
-/// faille.
+/// Valid Prometheus metric name (`[a-zA-Z_:][a-zA-Z0-9_:]*`) — serves as
+/// anti-injection validation before any interpolation into a PromQL
+/// query; names outside the charset are rejected rather than opening a
+/// hole.
 pub fn valid_metric_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -22,9 +22,9 @@ pub fn valid_metric_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
 }
 
-/// Nom de métrique Prometheus valide : `[a-zA-Z_:][a-zA-Z0-9_:]*` — les
-/// caractères interdits deviennent `_`, un préfixe `_` interdit est
-/// évité (interdiction de ressembler aux séries internes).
+/// Valid Prometheus metric name: `[a-zA-Z_:][a-zA-Z0-9_:]*` — forbidden
+/// characters become `_`, a forbidden `_` prefix is
+/// avoided (must not look like internal series).
 pub fn sanitize_metric_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for (i, c) in name.chars().enumerate() {
@@ -41,10 +41,10 @@ pub fn sanitize_metric_name(name: &str) -> String {
     out
 }
 
-/// Valeur de label `device_id` sûre à interpoler dans un sélecteur
-/// PromQL : charset fermé (nos device_id sont des slugs), aucune
-/// quote/brace/backslash possible — l'injection PromQL est bloquée en
-/// amont, pas échappée.
+/// `device_id` label value safe to interpolate in a PromQL
+/// selector: closed charset (our device_ids are slugs), no
+/// quote/brace/backslash possible — PromQL injection is blocked
+/// upstream, not escaped.
 pub fn valid_device_label(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -53,12 +53,12 @@ pub fn valid_device_label(value: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
 }
 
-/// Assainit une clé de payload device → identifiant de variable calc
-/// (`[A-Za-z_][A-Za-z0-9_]*`) : « capteur-1 » + « D1 » → `capteur_1_D1`.
-/// Les caractères hors charset deviennent `_` (répétitions fondues ? non —
-/// un-à-un, même règle que [`sanitize_metric_name`]), un chiffre initial
-/// devient `_`, et une clé vide ressort « k » (jamais vide — une clé vide
-/// ne serait pas une variable calc référençable).
+/// Sanitizes a device payload key → calc variable identifier
+/// (`[A-Za-z_][A-Za-z0-9_]*`): "sensor-1" + "D1" → `sensor_1_D1`.
+/// Characters outside the charset become `_` (repeats collapsed? no —
+/// one-to-one, same rule as [`sanitize_metric_name`]), a leading digit
+/// becomes `_`, and an empty key comes out as "k" (never empty — an empty key
+/// would not be a referenceable calc variable).
 pub fn sanitize_key(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for (i, c) in raw.chars().enumerate() {
@@ -75,18 +75,18 @@ pub fn sanitize_key(raw: &str) -> String {
     out
 }
 
-/// Clé de payload d'une lecture device : `sanitize_key(device_id) + "_" +
-/// sanitize_key(pin)` — l'identifiant que les variables du nœud `calc`
-/// référencent, calculé par le runtime ET prévisualisé par l'éditeur (même
-/// fonction, donc même valeur).
+/// Payload key of a device read: `sanitize_key(device_id) + "_" +
+/// sanitize_key(pin)` — the identifier that the `calc` node variables
+/// reference, computed by the runtime AND previewed by the editor (same
+/// function, hence same value).
 pub fn device_payload_key(device_id: &str, pin: &str) -> String {
     format!("{}_{}", sanitize_key(device_id), sanitize_key(pin))
 }
 
-/// Nom final de la métrique écrite par un nœud `metric` : préfixe `etl_`
-/// forcé (l'« index dédié » des résultats ETL — idempotent si l'utilisateur
-/// a déjà saisi le préfixe), minuscules (même philosophie que la
-/// normalisation D16 des mesures), puis sanitize Prometheus.
+/// Final name of the metric written by a `metric` node: forced `etl_`
+/// prefix (the "dedicated index" of ETL results — idempotent if the user
+/// already typed the prefix), lowercase (same philosophy as the
+/// D16 measurement normalization), then Prometheus sanitize.
 pub fn etl_metric_name(name: &str) -> String {
     let lowered = name.to_lowercase();
     let stripped = lowered.strip_prefix("etl_").unwrap_or(&lowered);
@@ -96,14 +96,14 @@ pub fn etl_metric_name(name: &str) -> String {
 /// Measurement label normalization (D16): one source of truth, so the
 /// device link and the runtime's device reads produce the same series name.
 ///
-/// Trim, pliage des accents (deunicode), minuscules, tout non
-/// `[a-z0-9_:]` → `_` (répétitions fondues, `_` de bord supprimés).
-/// `Soil-Moisture`, `soil moisture` et `soil_moisture` → `soil_moisture`.
-/// Vide si le nom n'est que des séparateurs.
+/// Trim, accent folding (deunicode), lowercase, everything not
+/// `[a-z0-9_:]` → `_` (repeats collapsed, edge `_` removed).
+/// `Soil-Moisture`, `soil moisture` and `soil_moisture` → `soil_moisture`.
+/// Empty if the name is only separators.
 #[cfg(feature = "naming")]
 pub fn normalize_measurement_name(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
-    let mut pending_sep = false; // séparateur fondu, flushé devant du contenu
+    let mut pending_sep = false; // collapsed separator, flushed before content
     for c in deunicode::deunicode(raw.trim()).chars() {
         let c = c.to_ascii_lowercase();
         if c.is_ascii_lowercase() || c.is_ascii_digit() || c == ':' {
@@ -292,7 +292,7 @@ mod tests {
         assert_eq!(sanitize_key(""), "k");
         assert_eq!(device_payload_key("capteur-1", "D1"), "capteur_1_D1");
         assert_eq!(device_payload_key("a", "b"), "a_b");
-        // Unicité vérifiée en validation : deux lectures aux clés égales.
+        // Uniqueness checked in validation: two reads with equal keys.
         assert_eq!(
             device_payload_key("a-b", "c"),
             device_payload_key("a", "b-c")
@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn metriques_etl_prefixees() {
         assert_eq!(etl_metric_name("moyenne_serre"), "etl_moyenne_serre");
-        // Idempotent : l'utilisateur peut avoir déjà tapé le préfixe.
+        // Idempotent: the user may already have typed the prefix.
         assert_eq!(etl_metric_name("etl_temp"), "etl_temp");
         assert_eq!(etl_metric_name("Temp extérieure!"), "etl_temp_ext_rieure_");
         assert_eq!(etl_metric_name(""), "etl_m");
@@ -313,8 +313,8 @@ mod tests {
     fn normalisation_mesures() {
         assert_eq!(normalize_measurement_name("Soil-Moisture"), "soil_moisture");
         assert_eq!(normalize_measurement_name("soil moisture"), "soil_moisture");
-        // Accent folding (D16 contract): é→e,
-        // °C→degc — pas un filtrage naïf des caractères non-ASCII.
+        // Accent folding (D16 contract): é→e,  english-guard: allow (data)
+        // °C→degc — not a naive filtering of non-ASCII characters.
         assert_eq!(
             normalize_measurement_name("Température Extérieure"),
             "temperature_exterieure"

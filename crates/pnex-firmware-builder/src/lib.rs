@@ -1,20 +1,20 @@
-//! PNEX firmware-builder — orchestration des builds firmware ESP32/ESP8266.
+//! PNEX firmware-builder — orchestration of ESP32/ESP8266 firmware builds.
 //!
-//! La source du firmware est **embarquée dans le binaire**
-//! ([`embedded`]) : l'arborescence `firmware/` du monorepo est compilée
-//! dedans (`include_dir!`, convergence monorepo) — une version du serveur
-//! build exactement la version du firmware qui l'accompagne. Pipeline :
-//! extraction de la source embarquée → `pio run` → `esptool merge-bin` →
-//! dépôt de l'artefact dans un [`ArtifactStore`] (décision D5 v2 : backends
-//! `db` et `s3`, implémentés côté pnex-backend ; ici seul le contrat).
+//! The firmware source is **embedded in the binary**
+//! ([`embedded`]): the monorepo `firmware/` tree is compiled
+//! into it (`include_dir!`, monorepo convergence) — a server version
+//! builds exactly the firmware version that ships with it. Pipeline:
+//! extraction of the embedded source → `pio run` → `esptool merge-bin` →
+//! artifact stored in an [`ArtifactStore`] (decision D5 v2: `db` and `s3`
+//! backends, implemented in pnex-backend; only the contract here).
 //!
-//! Contrat de build du firmware (vérifié, cf.
-//! `docs/architecture/firmware-build.md` §2) : la config device passe en
-//! **variables d'environnement** du sous-process `pio run` — WIFI_SSID,
-//! WIFI_PASSWORD, HOST, TOKEN et DEVICE_ID en base64 (un SSID littéral
-//! avec espaces casserait le flag `-D`), always wss (D154) —
-//! jamais en argv (lisible via `ps`). Le workspace est un tmp par job,
-//! effacé au drop (secrets compilés dans les artefacts intermédiaires).
+//! Firmware build contract (verified, see
+//! `docs/architecture/firmware-build.md` §2): the device config goes through
+//! **environment variables** of the `pio run` subprocess — WIFI_SSID,
+//! WIFI_PASSWORD, HOST, TOKEN and DEVICE_ID in base64 (a literal SSID
+//! with spaces would break the `-D` flag), always wss (D154) —
+//! never in argv (readable via `ps`). The workspace is a tmp per job,
+//! wiped on drop (secrets compiled into the intermediate artifacts).
 
 mod custom;
 mod embedded;
@@ -32,7 +32,7 @@ pub use pipeline::{
 };
 pub use store::{artifact_key, ota_artifact_key, sanitize_segment, ArtifactStore, InMemoryStore};
 
-/// Étapes d'un build firmware (tracing par étape).
+/// Steps of a firmware build (tracing per step).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildStep {
     Compile,
@@ -40,22 +40,22 @@ pub enum BuildStep {
     Upload,
 }
 
-/// Erreurs possibles du builder.
+/// Possible builder errors.
 #[derive(Debug, thiserror::Error)]
 pub enum BuildError {
-    #[error("timeout du build")]
+    #[error("build timeout")]
     Timeout,
-    #[error("outil externe: {0}")]
+    #[error("external tool: {0}")]
     Tool(String),
-    #[error("source du firmware: {0}")]
+    #[error("firmware source: {0}")]
     Source(String),
-    #[error("artefact introuvable: {0}")]
+    #[error("artifact not found: {0}")]
     NotFound(String),
-    #[error("magasin d'artefacts: {0}")]
+    #[error("artifact store: {0}")]
     Store(String),
 }
 
-/// Résultat d'un build réussi — chemin logique dans l'`ArtifactStore`.
+/// Result of a successful build — logical path in the `ArtifactStore`.
 #[derive(Debug, Clone)]
 pub struct BuildArtifact {
     pub key: String,

@@ -1,5 +1,5 @@
-//! État global de l'assistant IA : statut (visibilité UI) hydraté au boot
-//! du shell, refreshed after a change of the LLM providers.
+//! Global state of the AI assistant: status (UI visibility) hydrated at shell
+//! boot, refreshed after a change of the LLM providers.
 
 use dioxus::prelude::*;
 
@@ -7,7 +7,7 @@ use crate::api;
 
 pub static AI_STATUS: GlobalSignal<Option<pnex_core::AiStatus>> = GlobalSignal::new(|| None);
 
-/// Interroge le statut et met à jour le signal (None en cas d'erreur).
+/// Queries the status and updates the signal (None on error).
 pub async fn refresh_status() {
     match api::ai::status().await {
         Ok(status) => AI_STATUS.with_mut(|s| *s = Some(status)),
@@ -15,9 +15,9 @@ pub async fn refresh_status() {
     }
 }
 
-/// Kill-switch actif côté serveur → le panneau est **caché** (A3).
-/// Statut pas encore hydraté (boot/échec) → caché aussi ; l'échec est
-/// réessayé au changement d'org (cf. AssistantPanel).
+/// Server-side kill-switch active → the panel is **hidden** (A3).
+/// Status not hydrated yet (boot/failure) → hidden too; the failure is
+/// retried on org change (see AssistantPanel).
 pub fn visible() -> bool {
     AI_STATUS.read().as_ref().is_some_and(|s| s.enabled)
 }

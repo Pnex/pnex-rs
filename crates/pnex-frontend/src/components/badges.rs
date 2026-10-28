@@ -1,10 +1,10 @@
-//! Aides de rendu « builds » partagées : badge de phase (colonne Firmware de
-//! la liste devices, wizard d'enregistrement, page Builds) et date locale
-//! compacte. Classes Tailwind littérales complètes (scan du CSS).
+//! Shared "builds" rendering helpers: phase badge (Firmware column of the
+//! devices list, registration wizard, Builds page) and compact local
+//! date. Full literal Tailwind classes (CSS scan).
 
 use dioxus_i18n::t;
 
-/// Badge (classes Tailwind littérales) + libellé i18n par phase.
+/// Badge (literal Tailwind classes) + i18n label per phase.
 pub fn phase_badge(phase: Option<&str>) -> (String, String) {
     let (class, key) = match phase {
         Some("queued") => ("bg-gray-100 text-gray-600", "builds-phase-queued"),
@@ -22,7 +22,7 @@ pub fn phase_badge(phase: Option<&str>) -> (String, String) {
     )
 }
 
-/// Date locale compacte (dernier changement de phase).
+/// Compact local date (last phase change).
 pub fn date_label(rfc3339: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(rfc3339)
         .map(|ts| {

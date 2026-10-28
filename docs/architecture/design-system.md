@@ -292,7 +292,7 @@ les règles plus anciennes qui les contredisent.
 | Ce qui a bougé sur un compte suivi : annonce légale, nouvel établissement, page modifiée (account-mapping.md D335) | Signal commercial | Commercial signal | pas « alerte » (= notification envoyée), pas « signal » seul (= signaux d'un dossier) |
 | Rencontre avec un compte, ses participants, son enregistrement (account-mapping.md, réunions) | Rendez-vous | Meeting | pas « réunion commerciale » ni « RDV » |
 | Point de la méthode de vente de l'org, suivi rendez-vous par rendez-vous | Critère du playbook | Playbook criterion | pas « note » ni « score » d'une personne : on agrège par critère |
-| Écriture proposée par une machine (import, flow, détecteur, modèle), en attente d'un humain (proposals.md D371) | Proposition ; la page « À valider » | Proposal ; « To validate » | pas « suggestion » ni « recommandation » (= lien `recommande`) |
+| Écriture proposée par une machine (import, flow, détecteur, modèle), en attente d'un humain (proposals.md D371) | Proposition ; la page « À valider » | Proposal ; « To validate » | pas « suggestion » ni « recommandation » (= lien `recommended`) |
 | Affaire suivie avec un compte, de la découverte à la signature (crm.md D449) | Opportunité | Opportunity | pas « affaire », pas « deal » |
 | Ce qui est fait ou à faire pour un compte : appel, mail, message… (crm.md D450) | Activité | Activity | pas « tâche » seule (= une nature d'activité) |
 | Étape du plan de relance de l'org : jour, nature, consigne (crm.md D450) | Étape de relance ; plan de relance | Follow-up step ; follow-up plan | pas « séquence » (= production), pas « cadence » (= lecture d'un pin) |

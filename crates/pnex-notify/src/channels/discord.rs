@@ -1,10 +1,10 @@
-//! Canal `discord` — webhook : POST JSON `{content, username?,
-//! allowed_mentions}`. Succès = 204 No Content.
+//! `discord` channel — webhook: JSON POST `{content, username?,
+//! allowed_mentions}`. Success = 204 No Content.
 //!
-//! D65 : l'URL du webhook **est** le secret (token dans le chemin) —
-//! classée champ `secret` write-only, jamais loggée. `allowed_mentions`
-//! vide neutralise les `@everyone` provenant d'un template. Le contenu
-//! est borné à 2000 chars — garde fail-loud `TooLarge` (D63).
+//! D65: the webhook URL **is** the secret (token in the path) —
+//! classified as a write-only `secret` field, never logged. An empty `allowed_mentions`
+//! neutralizes `@everyone` coming from a template. The content
+//! is bounded to 2000 chars — fail-loud `TooLarge` guard (D63).
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -15,7 +15,7 @@ use crate::{Channel, Message};
 
 pub struct DiscordChannel;
 
-/// Borne Discord webhook pour `content` (chars, pas octets).
+/// Discord webhook bound for `content` (chars, not bytes).
 const MAX_CHARS: usize = 2000;
 
 #[async_trait]
@@ -103,7 +103,7 @@ mod tests {
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
             "/api/webhooks/1/tok",
-            // Succès Discord = 204 No Content.
+            // Discord success = 204 No Content.
             post(move |Json(body): Json<Value>| {
                 let seen = seen_for_handler.clone();
                 async move {

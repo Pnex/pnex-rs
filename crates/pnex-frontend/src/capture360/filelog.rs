@@ -1,18 +1,18 @@
-//! Journal fichier pour le smoke test device — le logger logcat ne sort
-//! pas (constat 2026-09-09) et la ligne debug DOM est racy (re-render qui
-//! réinitialise le textContent toutes les 33 ms).
+//! File log for the device smoke test — the logcat logger does not come
+//! out (observed 2026-09-09) and the DOM debug line is racy (re-render that
+//! resets the textContent every 33 ms).
 //!
-//! Écrit en append dans `files/take360.log` — lisible via
+//! Appends to `files/take360.log` — readable via
 //! `adb shell run-as io.pnex.app cat files/take360.log`
-//! (APK debug-signé). Jamais de panic : tout échec dégrade en no-op.
+//! (debug-signed APK). Never a panic: any failure degrades to a no-op.
 
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 
 static LOG_PATH: OnceLock<Option<Mutex<std::path::PathBuf>>> = OnceLock::new();
 
-/// (interne) Chemin du fichier — résolu une fois (JNI getFilesDir, école
-/// capture.rs).
+/// (internal) File path — resolved once (JNI getFilesDir,
+/// capture.rs style).
 #[cfg(target_os = "android")]
 fn path() -> &'static Option<Mutex<std::path::PathBuf>> {
     LOG_PATH.get_or_init(|| {
@@ -75,16 +75,16 @@ fn path() -> &'static Option<Mutex<std::path::PathBuf>> {
     })
 }
 
-/// Desktop (smoke test natif éventuel) : le même fichier dans le répertoire
-/// temporaire — pas de JNI hors Android (check natif rouge sinon, constat
-/// 2026-09-10 : `jni`/`ndk_context` sont des deps cfg(android)).
+/// Desktop (possible native smoke test): the same file in the temporary
+/// directory — no JNI outside Android (native check red otherwise, observed
+/// 2026-09-10: `jni`/`ndk_context` are cfg(android) deps).
 #[cfg(not(target_os = "android"))]
 fn path() -> &'static Option<Mutex<std::path::PathBuf>> {
     LOG_PATH.get_or_init(|| Some(Mutex::new(std::env::temp_dir().join("pnex-take360.log"))))
 }
 
-/// Journalise une ligne (horodatée). Jamais de panic, jamais de blocage
-/// critique — tout échec est no-op.
+/// Logs a line (timestamped). Never a panic, never a critical
+/// block — any failure is a no-op.
 pub fn log(msg: &str) {
     let Some(mutex) = path() else { return };
     let Ok(path) = mutex.lock() else { return };

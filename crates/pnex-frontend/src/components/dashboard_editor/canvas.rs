@@ -7,10 +7,10 @@ use super::*;
 
 use crate::components::dashboard_widget::WidgetBody;
 
-/// Le canvas : un div **transformé** (translate + scale) porte le
-/// document ; les widgets sont des divs HTML absolus (rendu identique au
-/// live), les traits et accroches dans un SVG en surcouche. Toute la
-/// géométrie passe par `geometry::to_canvas` (1 unité = 1 px document).
+/// The canvas: a **transformed** div (translate + scale) carries the
+/// document; widgets are absolute HTML divs (same rendering as live),
+/// wires and anchors in an overlay SVG. All the geometry goes through
+/// `geometry::to_canvas` (1 unit = 1 document px).
 #[component]
 pub(super) fn CanvasView(cx: EditorCx) -> Element {
     crate::components::dom_rect::use_rect_tracker("dashboard-canvas");
@@ -50,7 +50,7 @@ pub(super) fn CanvasView(cx: EditorCx) -> Element {
             onkeydown: move |event| key_handler(event, cx),
 
             div { style: "transform: translate({pan_x}px, {pan_y}px) scale({zoom}); transform-origin: 0 0; width: {canvas.width}px; height: {canvas.height}px; background-color: {bg}; position: absolute;",
-                // ── Widgets (divs absolus, sous les accroches)
+                // ── Widgets (absolute divs, below the anchors)
                 for w in &widgets {
                     WidgetElement {
                         key: "{w.id}",
@@ -104,7 +104,7 @@ fn client_of(event: &PointerEvent) -> (f64, f64) {
     (point.x, point.y)
 }
 
-/// pointerdown fond : désélection + début du pan (école flow editor).
+/// Background pointerdown: deselection + pan start (as in the flow editor).
 fn canvas_pointer_down(event: PointerEvent, mut cx: EditorCx) {
     event.stop_propagation();
     let client = client_of(&event);
@@ -137,8 +137,8 @@ fn canvas_pointer_move(event: PointerEvent, mut cx: EditorCx) {
             let Some(rect) = geometry::canvas_rect() else {
                 return;
             };
-            // Snapshot SANS garder le garde de lecture vivant pendant la
-            // mutation (RefCell : read + with_mut simultanés = panic).
+            // Snapshot WITHOUT keeping the read guard alive during the
+            // mutation (RefCell: simultaneous read + with_mut = panic).
             let (wx, wy, cw, ch) = {
                 let l = cx.layout.read();
                 let Some(w) = geometry::widget_of(&l, &id) else {
@@ -160,8 +160,8 @@ fn canvas_pointer_move(event: PointerEvent, mut cx: EditorCx) {
 }
 
 fn canvas_pointer_up(event: PointerEvent, mut cx: EditorCx) {
-    // Pose d'un modèle draggué depuis la bibliothèque (le pointerup
-    // determinant est celui du canvas ; la palette désarme au sien).
+    // Drop of a model dragged from the library (the decisive pointerup is
+    // the canvas's; the palette disarms on its own).
     if let Some(tpl) = cx.drag_template.cloned() {
         let Some(rect) = geometry::canvas_rect() else {
             return;
@@ -185,7 +185,7 @@ fn canvas_pointer_up(event: PointerEvent, mut cx: EditorCx) {
     cx.interaction.set(Interaction::Idle);
 }
 
-/// Molette : zoom vers le curseur (copie `flow_editor::canvas_wheel`).
+/// Wheel: zoom towards the cursor (copy of `flow_editor::canvas_wheel`).
 fn canvas_wheel(event: WheelEvent, mut cx: EditorCx) {
     event.prevent_default();
     let delta_y = match event.delta() {
@@ -204,8 +204,8 @@ fn canvas_wheel(event: WheelEvent, mut cx: EditorCx) {
     cx.pan.set(pan);
 }
 
-/// Clavier : Delete/Backspace supprime la sélection, Échap désarme
-/// (undo/redo = boutons de la barre).
+/// Keyboard: Delete/Backspace deletes the selection, Escape disarms
+/// (undo/redo = toolbar buttons).
 fn key_handler(event: KeyboardEvent, mut cx: EditorCx) {
     let key = event.key();
     if key == Key::Delete || key == Key::Backspace {
@@ -254,7 +254,7 @@ fn WidgetElement(
         interaction,
         Interaction::Dragging { .. } | Interaction::Resizing { .. } | Interaction::Panning { .. }
     );
-    // Valeurs de la source primaire (photo figée en édition).
+    // Values of the primary source (frozen snapshot while editing).
     let points = w
         .source
         .first()
@@ -391,7 +391,7 @@ fn AnchorElement(
                     return;
                 };
                 if first.widget_id == endpoint.widget_id {
-                    // Re-clic sur la même accroche : désarmement.
+                    // Re-click on the same anchor: disarm.
                     cx.wire_draft.set(None);
                     return;
                 }

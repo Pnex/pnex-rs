@@ -1,6 +1,6 @@
 [package]
 name = "pnex-coolprop"
-description = "Wrapper safe autour de l'API C de CoolProp v8.0.0 (lié statiquement, in-process)"
+description = "Safe wrapper around the CoolProp v8.0.0 C API (statically linked, in-process)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

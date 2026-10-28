@@ -6,8 +6,8 @@
 //! - **Events**: the delivery journal read from OpenObserve (D86,
 //!   `components/notify_deliveries.rs`).
 //!
-//! École `pages/flows.rs` (squelette) + `resource_picker.rs` (onglets pill).
-//! Écriture réservée owner/admin (le serveur force, l'UI masque).
+//! `pages/flows.rs` pattern (skeleton) + `resource_picker.rs` (pill tabs).
+//! Writing reserved to owner/admin (the server enforces, the UI hides).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -32,8 +32,8 @@ enum Tab {
     Events,
 }
 
-/// Icône d'un kind — registre LOCAL au front (les specs de champs viennent
-/// du backend, les icônes restent locales, doctrine §3).
+/// Icon of a kind — registry LOCAL to the front (field specs come
+/// from the backend, icons stay local, doctrine §3).
 fn kind_icon(kind: &str) -> dioxus::prelude::Element {
     rsx! {
         match kind {
@@ -74,11 +74,11 @@ pub fn Notifications() -> Element {
     // D218: label filter ("name" or "name:value") of the active tab.
     let filter_label = use_signal(String::new);
     let filter_search = use_signal(String::new);
-    // Formulaire canal : (kind_info, canal existant ou None).
+    // Channel form: (kind_info, existing channel or None).
     let mut edit_channel =
         use_signal(|| None::<(pnex_core::NotifyKindInfo, Option<NotifyChannel>)>);
     let mut edit_template = use_signal(|| None::<Option<NotifyTemplate>>);
-    // Picker de kind à la création (doctrine §8 : tous les systèmes visibles).
+    // Kind picker on creation (doctrine §8: every system visible).
     let mut pick_kind = use_signal(|| false);
     let mut delete_target = use_signal(|| None::<(&'static str, String, String)>);
     // Channel filter of the Events tab (the channel "Journal" button
@@ -87,7 +87,7 @@ pub fn Notifications() -> Element {
 
     let can_write = crate::state::access::can("notify:write");
 
-    // Valeurs des signaux-modals lues AVANT le rsx (pas de `let` dans rsx).
+    // Modal-signal values read BEFORE the rsx (no `let` in rsx).
     let channel_modal = edit_channel.read().clone();
     let channel_modal_key = channel_modal
         .as_ref()
@@ -320,7 +320,7 @@ fn ChannelsTab(
     mut journal_channel: Signal<String>,
     mut tab: Signal<Tab>,
 ) -> Element {
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     // Every row is loaded (the Events tab filters on them): paged here.
     let (list_state, is_empty, count, rows) = match &*channels.value().read() {
         None => (None, false, 0, Vec::new()),
@@ -352,10 +352,10 @@ fn ChannelsTab(
             },
         );
 
-    // Test d'envoi en vol (id du canal) — l'état vit au niveau de la table
-    // (l'ancienne carte portait son signal local). La logique reste INLINE
-    // dans le handler : une closure cellule doit rester Fn (pas de `.set`
-    // hors handler).
+    // Test send in flight (channel id) — the state lives at table level
+    // (the old card carried its local signal). The logic stays INLINE
+    // in the handler: a cell closure must stay Fn (no `.set`
+    // outside a handler).
     let mut testing_id = use_signal(|| None::<String>);
 
     let toggle_enabled = move |channel: NotifyChannel| {
@@ -376,7 +376,7 @@ fn ChannelsTab(
     };
 
     let do_edit = move |channel: NotifyChannel| {
-        // Reprendre le kind_info du registre backend (formulaires dynamiques).
+        // Take the kind_info back from the backend registry (dynamic forms).
         spawn(async move {
             match api::notify::kinds().await {
                 Ok(list) => {
@@ -390,9 +390,9 @@ fn ChannelsTab(
         });
     };
 
-    // Colonnes de la table — canal, type (icône + label), statut (toggle
-    // enabled + dernier statut de livraison), actions (test, journal,
-    // édition, suppression).
+    // Table columns — channel, type (icon + label), status (enabled
+    // toggle + last delivery status), actions (test, journal,
+    // edit, delete).
     let columns = vec![
         Column::new(t!("notify-col-name").to_string(), move |ch: &NotifyChannel| {
             let labels = row_labels.get(&ch.id.to_string()).cloned().unwrap_or_default();
@@ -417,8 +417,8 @@ fn ChannelsTab(
                 let ch_toggle = ch.clone();
                 rsx! {
                     div { class: "flex flex-col items-start gap-1",
-                        // Toggle enabled (le serveur force) — badge cliquable
-                        // pour un writer.
+                        // Enabled toggle (the server enforces) — clickable badge
+                        // for a writer.
                         if can_write {
                             button {
                                 class: if ch.enabled {
@@ -529,7 +529,7 @@ fn ChannelsTab(
     }
 }
 
-/// Résultats typés pour les props de tabs (alias lisibles).
+/// Typed results for the tab props (readable aliases).
 type ChannelListResult = Result<Vec<NotifyChannel>, crate::api::error::ApiError>;
 type KindListResult = Result<Vec<pnex_core::NotifyKindInfo>, crate::api::error::ApiError>;
 
@@ -542,7 +542,7 @@ fn last_status_label(status: &str) -> String {
     }
 }
 
-/// Label local d'un kind (i18n `notify-kind-*`).
+/// Local label of a kind (i18n `notify-kind-*`).
 fn kind_label(kind: &str) -> &'static str {
     match kind {
         "websocket" => "notify-kind-websocket",
@@ -556,8 +556,8 @@ fn kind_label(kind: &str) -> &'static str {
     }
 }
 
-/// Description 1 ligne d'un kind (picker, i18n `notify-kind-*-desc`) —
-/// vide pour un kind inconnu.
+/// One-line description of a kind (picker, i18n `notify-kind-*-desc`) —
+/// empty for an unknown kind.
 fn kind_desc(kind: &str) -> &'static str {
     match kind {
         "websocket" => "notify-kind-websocket-desc",
@@ -571,9 +571,9 @@ fn kind_desc(kind: &str) -> &'static str {
     }
 }
 
-/// Picker de kind à la création — grille des systèmes de notification
-/// livrés (ordre du registre backend). L'utilisateur voit tous les
-/// systèmes et leur rôle avant d'arriver sur le formulaire (doctrine §8).
+/// Kind picker on creation — grid of the shipped notification
+/// systems (backend registry order). The user sees every
+/// system and its role before reaching the form (doctrine §8).
 #[component]
 fn KindPickerModal(
     kinds: Resource<KindListResult>,
@@ -653,7 +653,7 @@ fn TemplatesTab(
     mut edit_template: Signal<Option<Option<NotifyTemplate>>>,
     mut delete_target: Signal<Option<(&'static str, String, String)>>,
 ) -> Element {
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     // Every row is loaded (the Events tab filters on them): paged here.
     let (list_state, is_empty, count, rows) = match &*templates.value().read() {
         None => (None, false, 0, Vec::new()),
@@ -685,8 +685,8 @@ fn TemplatesTab(
             },
         );
 
-    // Colonnes de la table — les closures d'action capturent les signaux
-    // (Copy) de la page.
+    // Table columns — the action closures capture the page's
+    // (Copy) signals.
     let columns = vec![
         Column::new(t!("notify-col-name").to_string(), move |tpl: &NotifyTemplate| {
             let labels = row_labels.get(&tpl.id.to_string()).cloned().unwrap_or_default();
@@ -710,8 +710,8 @@ fn TemplatesTab(
         Column::new(
             t!("common-actions").to_string(),
             move |tpl: &NotifyTemplate| {
-                // Cloné avant les closures onclick (référence &T ne sort pas
-                // du corps de cellule).
+                // Cloned before the onclick closures (an &T reference does not
+                // leave the cell body).
                 let tpl_edit = tpl.clone();
                 let id_delete = tpl.id.to_string();
                 let name_delete = tpl.name.clone();

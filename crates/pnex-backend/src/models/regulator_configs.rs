@@ -18,8 +18,8 @@ impl ActiveModelBehavior for ActiveModel {
     }
 }
 
-// Matérialisation de projection : pas de logique métier ici — le cycle de
-// vie (recalcul intégral, cast) vit dans services/regulator.rs.
+// Projection materialization: no business logic here — the life
+// cycle (full recompute, cast) lives in services/regulator.rs.
 impl Model {}
 impl ActiveModel {}
 impl Entity {}

@@ -1,11 +1,11 @@
-//! Panneau d'édition du widget `thermo_chart` (inspecteur) — type de
-//! diagramme, fluide/mélange, points du cycle (chaque point = 2 sources
-//! métrique×device). Chaque mutation ré-aligne `widget.source` sur les
-//! sources des points (le series-batch agrège `source`, pas `options` —
-//! règle de validation `thermo_source_missing`).
+//! Editing panel of the `thermo_chart` widget (inspector) — diagram type,
+//! fluid/mixture, cycle points (each point = 2 metric×device
+//! sources). Every mutation re-aligns `widget.source` with the points'
+//! sources (series-batch aggregates `source`, not `options` —
+//! validation rule `thermo_source_missing`).
 //!
-//! Fichier séparé de `inspector.rs` (qui garde ses helpers privés) ; les
-//! mutations passent par `cx.layout.with_mut` comme ailleurs.
+//! File separate from `inspector.rs` (which keeps its private helpers);
+//! mutations go through `cx.layout.with_mut` as elsewhere.
 
 use std::collections::BTreeMap;
 
@@ -18,7 +18,7 @@ use pnex_core::{
 use super::state;
 use super::EditorCx;
 
-/// Réaligne `widget.source` sur les sources des points du cycle.
+/// Re-aligns `widget.source` with the sources of the cycle points.
 fn sync_thermo_sources(w: &mut Widget) {
     let Some(t) = w.options.thermo.as_ref() else {
         return;
@@ -52,7 +52,7 @@ fn sync_thermo_sources(w: &mut Widget) {
         .collect();
 }
 
-/// Patche les options thermo du widget sélectionné puis ré-aligne les
+/// Patches the thermo options of the selected widget then re-aligns the
 /// sources.
 fn patch_thermo(
     cx: &mut EditorCx,
@@ -77,12 +77,12 @@ pub fn ThermoPanel(
     metrics: BTreeMap<String, Vec<String>>,
     memory: BTreeMap<String, Vec<String>>,
 ) -> Element {
-    // Pickers fluide : mélanges de l'org + fluides CoolProp (plus de
-    // saisie libre — retour 2026-09-18). Le fetch vit dans le panneau :
-    // remount par sélection = 1 GET léger (fluids_list est côté serveur
-    // un appel C statique + une requête SQL), l'hisser coûterait un
-    // forage de props à travers InspectorBody→widget_panel. Hook appelé
-    // AVANT les early-returns (ordre des hooks dioxus).
+    // Fluid pickers: org mixtures + CoolProp fluids (no more free
+    // input — feedback 2026-09-18). The fetch lives in the panel:
+    // remount per selection = 1 light GET (fluids_list is server-side a
+    // static C call + one SQL query), hoisting it would cost
+    // prop drilling through InspectorBody→widget_panel. Hook called
+    // BEFORE the early returns (dioxus hook order).
     let fluid_choices = use_resource(|| async move { crate::api::thermo::fluids().await.ok() });
     let choices = fluid_choices
         .read()
@@ -98,8 +98,8 @@ pub fn ThermoPanel(
         return rsx! {};
     };
     let metric_names: Vec<String> = metrics.keys().cloned().collect();
-    // Un clone de capture par handler `move` (le corps du composant est un
-    // contexte FnMut rsx — cf. école library.rs).
+    // One capture clone per `move` handler (the component body is an
+    // rsx FnMut context — see library.rs pattern).
     let wid_diag = widget_id.clone();
     let wid_fluid = widget_id.clone();
     let wid_add = widget_id.clone();
@@ -108,7 +108,7 @@ pub fn ThermoPanel(
     let in_list =
         choices.mixtures.contains(&thermo.fluid) || choices.fluids.contains(&thermo.fluid);
     let is_psychro = thermo.diagram == "psychro";
-    // Un clone d'id par handler `move` (école library.rs).
+    // One id clone per `move` handler (library.rs pattern).
     let wid_round = widget_id.clone();
     let wid_unit = widget_id.clone();
     let round_value = match thermo.axis_decimals {
@@ -139,8 +139,8 @@ pub fn ThermoPanel(
                     {t!("insp-thermo-diagram-psychro")}
                 }
             }
-            // Fluide / mélange : picker (psychro = air humide figé, pas de
-            // fluide à choisir — HAPropsSI n'a pas de paramètre fluide).
+            // Fluid / mixture: picker (psychro = fixed humid air, no
+            // fluid to choose — HAPropsSI has no fluid parameter).
             span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-fluid")} }
             if is_psychro {
                 span { class: "block text-xs italic text-gray-500", {t!("insp-thermo-fluid-air")} }
@@ -162,8 +162,8 @@ pub fn ThermoPanel(
                         }
                     }
                     if !in_list && !thermo.fluid.is_empty() {
-                        // Valeur persistée hors catalogues (mélange supprimé,
-                        // spec inline) : visible et re-sélectionnable.
+                        // Persisted value outside the catalogues (deleted mixture,
+                        // inline spec): visible and re-selectable.
                         option { key: "{thermo.fluid}", value: "{thermo.fluid}", "{thermo.fluid}" }
                     }
                     if !choices.mixtures.is_empty() {
@@ -190,8 +190,8 @@ pub fn ThermoPanel(
                     }
                 }
             }
-            // Arrondi des axes (auto = significatif selon l'ordre de
-            // grandeur).
+            // Axis rounding (auto = significant according to the order of
+            // magnitude).
             span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-rounding")} }
             select {
                 class: "w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white",
@@ -222,9 +222,9 @@ pub fn ThermoPanel(
                     }
                 }
             }
-            // Unité d'affichage de la pression (p-h seulement) — absolu
-            // toujours : CoolProp calcule en Pa absolus, la conversion est
-            // cosmétique (÷1e5).
+            // Pressure display unit (p-h only) — always absolute:
+            // CoolProp computes in absolute Pa, the conversion is
+            // cosmetic (÷1e5).
             if thermo.diagram == "ph" {
                 span { class: "block text-xs font-medium text-gray-500",
                     {t!("insp-thermo-pressure-unit")}
@@ -261,13 +261,13 @@ pub fn ThermoPanel(
                     }
                 }
             }
-            // Points du cycle
+            // Cycle points
             span { class: "block text-xs font-medium text-gray-500", {t!("insp-thermo-points")} }
             for pi in 0..thermo.points.len() {
                 {
                     let pt = thermo.points[pi].clone();
-                    // Un clone d'id par handler `move` (école library.rs —
-                    // le corps du for rsx est une closure FnMut).
+                    // One id clone per `move` handler (library.rs pattern —
+                    // the rsx for body is an FnMut closure).
                     let wid_label = widget_id.clone();
                     let wid_del = widget_id.clone();
                     rsx! {

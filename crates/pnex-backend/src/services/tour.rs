@@ -1,13 +1,13 @@
-//! Écriture des tours (Studio) — point d'entrée **unique** des versions de
-//! parcours : le contrôleur HTTP (`controllers/tours.rs`) passe par ici,
-//! jamais d'écriture directe (école `services/flow.rs`).
+//! Tour writes (Studio) — the **single** entry point for tour versions:
+//! the HTTP controller (`controllers/tours.rs`) goes through here, never a
+//! direct write (`services/flow.rs` pattern).
 //!
-//! Sémantique : append-only (save = nouvelle version), concurrence optimiste
-//! (`expected_version_number` ≠ latest → 409). La validation est en deux
-//! étages : structurelle pure (`pnex_core::validate_tour_doc`) puis **en
-//! base** — chaque asset référencé doit exister dans l'org avec le kind
-//! requis (`panorama` pour les scènes, image quelconque — `floorplan` ou
-//! `photo` — pour les plans : n'importe quelle image s'affiche comme plan).
+//! Semantics: append-only (save = new version), optimistic concurrency
+//! (`expected_version_number` ≠ latest → 409). Validation has two
+//! stages: pure structural (`pnex_core::validate_tour_doc`) then **in the
+//! database** — each referenced asset must exist in the org with the
+//! required kind (`panorama` for scenes, any image — `floorplan` or
+//! `photo` — for plans: any image displays as a plan).
 
 use pnex_core::{TourDoc, TourViolation, TOUR_MODE_PANORAMA};
 use sea_orm::{
@@ -18,30 +18,30 @@ use uuid::Uuid;
 
 use crate::models::_entities::{media_assets, tour_versions, tours};
 
-/// Erreurs d'écriture d'un tour — le contrôleur les mappe en HTTP
-/// (400 champ/violations, 409 conflit, 500).
+/// Tour write errors — the controller maps them to HTTP
+/// (400 field/violations, 409 conflict, 500).
 #[derive(Debug)]
 pub enum TourWriteError {
-    /// Nom vide après trim.
+    /// Empty name after trim.
     NameRequired,
-    /// Nom > 200 caractères.
+    /// Name > 200 characters.
     NameTooLong,
     /// `validate_tour_doc` non satisfait (structurel).
     Doc(Vec<TourViolation>),
-    /// Asset référencé inexistant dans l'org (ou id non-UUID).
+    /// Referenced asset missing from the org (or non-UUID id).
     UnknownAsset { id: String },
-    /// Asset référencé avec un kind hors liste (`expected` : kinds admis).
+    /// Referenced asset with a kind outside the list (`expected`: allowed kinds).
     BadAssetKind {
         id: String,
         expected: &'static [&'static str],
     },
     /// Concurrence optimiste perdue.
     Conflict { expected: i64, current: i64 },
-    /// Échec base de données.
+    /// Database failure.
     Db,
 }
 
-/// Validation commune (nom + document structurel) avant toute écriture.
+/// Common validation (name + structural document) before any write.
 fn validate_tour_write(name: &str, doc: &TourDoc) -> Result<(), TourWriteError> {
     let name = name.trim();
     if name.is_empty() {
@@ -57,23 +57,23 @@ fn validate_tour_write(name: &str, doc: &TourDoc) -> Result<(), TourWriteError> 
     Ok(())
 }
 
-/// Kinds admis par usage — un plan d'étage s'affiche quel que soit son kind
-/// image (`floorplan` ou `photo` : n'importe quelle image convient), une
-/// scène exige un panorama (rendu équirectangulaire).
+/// Allowed kinds per usage — a floor plan displays whatever its image kind
+/// (`floorplan` or `photo`: any image will do), a scene requires a
+/// panorama (equirectangular rendering).
 const KINDS_PLAN: &[&str] = &["floorplan", "photo"];
 const KINDS_SCENE: &[&str] = &["panorama"];
 
-/// Validation **en base** : chaque `media_asset_id` référencé (plans et
-/// scènes) doit exister dans l'org avec un kind admis — **par usage** : un
-/// même asset cité comme plan ET comme scène est rejeté (aucune liste de
-/// kinds ne peut satisfaire les deux). Requête unique en vrac (pas de N+1).
+/// **Database** validation: each referenced `media_asset_id` (plans and
+/// scenes) must exist in the org with an allowed kind — **per usage**: the
+/// same asset cited as plan AND as scene is rejected (no kinds list can
+/// satisfy both). Single bulk query (no N+1).
 async fn validate_doc_assets(
     db: &DatabaseConnection,
     org_id: i64,
     doc: &TourDoc,
 ) -> Result<(), TourWriteError> {
-    // Usages dans l'ordre du document (plans d'abord, scènes ensuite) —
-    // l'erreur rapporte le premier usage fautif.
+    // Usages in document order (plans first, then scenes) —
+    // the error reports the first faulty usage.
     let mut usages: Vec<(Uuid, &'static [&'static str])> = Vec::new();
     for f in &doc.floors {
         if let Some(plan) = &f.plan {
@@ -131,8 +131,8 @@ async fn validate_doc_assets(
     Ok(())
 }
 
-/// Numéro de la dernière version d'un tour (0 si aucune — ne doit pas
-/// arriver : la création pose toujours v1).
+/// Number of the latest version of a tour (0 if none — should not
+/// happen: creation always sets v1).
 pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
     db: &C,
     tour_id: Uuid,
@@ -149,8 +149,8 @@ pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
         .unwrap_or(0))
 }
 
-/// Crée un tour **et sa version 1** (une transaction) — document minimal
-/// (un étage « RDC », aucune scène). Aucun effet de publication.
+/// Creates a tour **and its version 1** (one transaction) — minimal document
+/// (one "RDC" floor, no scene). No publication effect.
 pub async fn create_tour(
     db: &DatabaseConnection,
     org_id: i64,
@@ -190,14 +190,14 @@ pub async fn create_tour(
     tracing::info!(
         tour_id = tour.id.to_string().as_str(),
         org_id,
-        "tour créé (v1)"
+        "tour created (v1)"
     );
     Ok((tour, 1))
 }
 
-/// Enregistre une **nouvelle version** (append-only) avec concurrence
-/// optimiste : `expected_version_number` doit être la version courante
-/// (la dernière — école `append_version` des flows).
+/// Saves a **new version** (append-only) with optimistic concurrency:
+/// `expected_version_number` must be the current version
+/// (the latest — the flows' `append_version` pattern).
 #[allow(clippy::too_many_arguments)]
 pub async fn append_tour_version(
     db: &DatabaseConnection,
@@ -263,7 +263,7 @@ pub async fn append_tour_version(
     tracing::info!(
         tour_id = tour.id.to_string().as_str(),
         version = new_version.version_number,
-        "tour enregistré (nouvelle version)"
+        "tour saved (new version)"
     );
     Ok((tour, new_version.version_number))
 }

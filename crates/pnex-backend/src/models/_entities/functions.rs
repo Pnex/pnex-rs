@@ -1,5 +1,5 @@
-//! `SeaORM` Entity — fonction du registre « Fonctions » (identité, sans code).
-//! Style « hand-annotated codegen » (école `_entities/flows.rs`).
+//! `SeaORM` Entity — function of the "Functions" registry (identity, no code).
+//! "Hand-annotated codegen" style (`_entities/flows.rs` pattern).
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};

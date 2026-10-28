@@ -19,9 +19,9 @@
 | Run | Volume | Durée | Débit |
 |---|---|---|---|
 | `fc_certifications` (aperçu → appliqué, 2026-10-20) | 6 536 créations | 8 min 22 s | ≈ 13 objets/s |
-| `fc_partenaires` (préparé) | 3 583 créations + 14 413 liens | 8 min 39 s | ≈ 35 écritures/s |
-| `fc_certificateurs` (préparé) | 1 771 créations + 17 151 liens | 12 min 33 s | ≈ 25 écritures/s |
-| `fc_certificateurs` (flow 9, 2026-10-21) | 42 730 lignes | coupé à 1 h, `failed`, rien écrit | — |
+| `fc_partners` (préparé) | 3 583 créations + 14 413 liens | 8 min 39 s | ≈ 35 écritures/s |
+| `fc_certifiers` (préparé) | 1 771 créations + 17 151 liens | 12 min 33 s | ≈ 25 écritures/s |
+| `fc_certifiers` (flow 9, 2026-10-21) | 42 730 lignes | coupé à 1 h, `failed`, rien écrit | — |
 | test local après f46f748 | 2 000 objets + 2 000 liens | 7 s | ≈ 570 écritures/s |
 
 ### 1.2 Ce que fait f46f748 (et ce qu'il ne fait pas)
@@ -110,7 +110,7 @@ objets.
 
 **Volume FC (ordre de grandeur, org 4)** : ≈ 50 000 objets (6,5 k
 certifications, 38 k compétences, quelques milliers d'organisations) et
-≈ 70 000 liens (`porte`, `habilite_pour`, `competence_de`).
+≈ 70 000 liens (`holds`, `accredited_for`, `skill_of`).
 
 - Postgres : ≈ 50 k lignes `objects` (JSONB + index GIN) + 70 k `links`,
   de l'ordre de 100 à 200 Mo. Une fermeture ajoute 0 ligne (elle met à
@@ -239,7 +239,7 @@ sont déjà connus et réussis dans ce run est sautée.
    ensemblistes tiennent 100 000 lignes en secondes. **Q-I3 (appliquer par
    lots, perte du tout-ou-rien) est retirée.**
 
-Objectif d'acceptation : `fc_certificateurs` (42 730 lignes) appliqué en
+Objectif d'acceptation : `fc_certifiers` (42 730 lignes) appliqué en
 moins d'une minute sur dev.
 
 ### D348 — L'aperçu est le même calcul, sans commit

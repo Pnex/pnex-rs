@@ -1,23 +1,23 @@
-//! Arbre de dossiers du drawer POI — dossiers D42 (`map_pin → folder`,
-//! containment) contenant les objets attachés (arêtes `placed_on` pour
-//! média/tour/dashboard à la racine du POI ; containment pour tout objet
-//! rangé dans un dossier ; placements D43 pour les devices, dont le
-//! « location detail » reste éditable dans la ligne de l'arbre).
+//! Folder tree of the POI drawer — D42 folders (`map_pin → folder`,
+//! containment) holding the attached objects (`placed_on` edges for
+//! media/tour/dashboard at the POI root; containment for any object
+//! filed in a folder; D43 placements for devices, whose
+//! "location detail" stays editable in the tree row).
 //!
-//! Drag & drop à la poignée ⠿ — école pointer-events du dashboard_editor
-//! (`drag_template`) : pointerdown saisit, pointerup sur un dossier ou la
-//! zone racine dépose. Pas de drag HTML5 (touch hostile) ; pas de
-//! réordonnancement fin (`sort_key`, V1).
+//! Drag & drop with the ⠿ handle — dashboard_editor pointer-events school
+//! (`drag_template`): pointerdown grabs, pointerup on a folder or the
+//! root area drops. No HTML5 drag (touch-hostile); no fine
+//! reordering (`sort_key`, V1).
 //!
-//! Modèle de représentation :
-//! - objet à la racine du POI = arête `placed_on` (média/tour/dashboard) ou
-//!   placement D43 (device) — inchangé ;
-//! - objet dans un dossier = ligne containment + arête supprimée (le label
-//!   est recréé au retour à la racine) ;
-//! - dossier racine = parent `map_pin` ; imbriqué = parent folder.
+//! Representation model:
+//! - object at the POI root = `placed_on` edge (media/tour/dashboard) or
+//!   D43 placement (device) — unchanged;
+//! - object in a folder = containment row + edge deleted (the label
+//!   is recreated on return to the root);
+//! - root folder = `map_pin` parent; nested = folder parent.
 //!
-//! Les noms d'affichage de tous les kinds sont hydratés par le backend
-//! (`RefNode.name`) — pas de cache de noms côté client.
+//! Display names of all kinds are hydrated by the backend
+//! (`RefNode.name`) — no client-side name cache.
 
 use std::collections::{HashMap, HashSet};
 
@@ -38,8 +38,8 @@ use model::*;
 
 // ─────────────────────────── types ───────────────────────────
 
-/// Marche containment depuis le POI : dossiers racine puis sous-dossiers
-/// (boucle explicite — pas de récursion async). N+1 accepté (dossiers rares).
+/// Containment walk from the POI: root folders then subfolders
+/// (explicit loop — no async recursion). N+1 accepted (folders are rare).
 async fn walk_containment(poi_id: String) -> Result<TreeModel, ApiError> {
     let root = resources::get_containment("map_pin", &poi_id).await?;
     let root_folders: Vec<RefNode> = root
@@ -74,19 +74,19 @@ async fn walk_containment(poi_id: String) -> Result<TreeModel, ApiError> {
 
 // ─────────────────────────── mutations ───────────────────────────
 
-/// Exécute un dépôt drag & drop. `Ok(true)` = rangé (toast « in »),
-/// `Ok(false)` = remonté à la racine (toast « out »).
+/// Runs a drag & drop drop. `Ok(true)` = filed (toast "in"),
+/// `Ok(false)` = moved back to the root (toast "out").
 async fn move_item(item: &DragItem, target: &DropId, poi_id: &str) -> Result<bool, ApiError> {
     match target {
         DropId::Folder(fid) => {
             if item.kind == "folder" {
                 resources::set_parent("folder", &item.id, Some(("folder", fid))).await?;
             } else if item.kind == "device" {
-                // L'id containment device = PK (registre), pas le slug.
+                // The device containment id = PK (registry), not the slug.
                 resources::set_parent("device", &item.id, Some(("folder", fid))).await?;
             } else {
-                // Objet racine rangé : containment d'abord, puis l'arête
-                // `placed_on` part (l'ordre ne perd rien en cas d'échec).
+                // Root object filed: containment first, then the `placed_on`
+                // edge goes (the order loses nothing on failure).
                 resources::set_parent(&item.kind, &item.id, Some(("folder", fid))).await?;
                 if let Some(edge_id) = item.edge_id {
                     delete_edge_lenient(edge_id).await;
@@ -100,13 +100,13 @@ async fn move_item(item: &DragItem, target: &DropId, poi_id: &str) -> Result<boo
             } else if item.kind == "device" {
                 resources::set_parent("device", &item.id, None).await?;
             } else {
-                // Objet rangé remonté : arête `placed_on` recréée D'ABORD
-                // (409 = déjà là, succès — chemin idempotent), puis containment
-                // détaché. L'ordre inverse (constat 2026-09-13) orphelinait
-                // l'objet sur un échec de l'arête : parent containment vide +
-                // aucune arête → invisible de tous les arbres, rechargement
-                // compris. Un objet déjà racine est un no-op filtré en amont
-                // (`from == target`).
+                // Filed object moved back: `placed_on` edge recreated FIRST
+                // (409 = already there, success — idempotent path), then containment
+                // detached. The reverse order (finding 2026-09-13) orphaned
+                // the object when the edge failed: empty containment parent +
+                // no edge → invisible from every tree, reload
+                // included. An object already at the root is a no-op filtered
+                // upstream (`from == target`).
                 create_edge_lenient(
                     ("map_pin", poi_id),
                     (&item.kind, &item.id),
@@ -120,7 +120,7 @@ async fn move_item(item: &DragItem, target: &DropId, poi_id: &str) -> Result<boo
     }
 }
 
-/// `delete_edge` où le 404 est un succès (double-clic, autre onglet — D26).
+/// `delete_edge` where a 404 is a success (double click, other tab — D26).
 async fn delete_edge_lenient(edge_id: i64) {
     match resources::delete_edge(edge_id).await {
         Ok(_) => {}
@@ -129,10 +129,10 @@ async fn delete_edge_lenient(edge_id: i64) {
     }
 }
 
-/// `create_edge` où le doublon (409) est un succès — l'arête `placed_on`
-/// visée existe déjà, exactement le but. Les chemins de réparation (retour
-/// racine, éjection) restent ainsi idempotents : un re-dépôt ou un dépôt
-/// interrompu ne bloque jamais l'objet (409 bloquant = re-déposer impossible).
+/// `create_edge` where a duplicate (409) is a success — the targeted
+/// `placed_on` edge already exists, exactly the goal. Repair paths (back
+/// to root, eject) thus stay idempotent: a re-drop or an interrupted
+/// drop never blocks the object (blocking 409 = re-drop impossible).
 async fn create_edge_lenient(
     source: (&str, &str),
     target: (&str, &str),
@@ -146,11 +146,11 @@ async fn create_edge_lenient(
     Ok(())
 }
 
-/// Éjecte un objet rangé vers la racine du POI : arête `placed_on` recréée
-/// avec son nom d'affichage PUIS containment détaché (edge-first — un échec
-/// laisse l'objet rangé, jamais orphelin). Média/tour/dashboard uniquement
-/// pour l'arête (seuls ces kinds portent `placed_on`) ; les autres kinds
-/// (device rangé) ne subissent que le détachement de containment.
+/// Ejects a filed object to the POI root: `placed_on` edge recreated
+/// with its display name THEN containment detached (edge-first — a failure
+/// leaves the object filed, never orphaned). Media/tour/dashboard only
+/// for the edge (only these kinds carry `placed_on`); other kinds
+/// (filed device) only get the containment detach.
 async fn eject_object(
     poi_id: &str,
     id: &str,
@@ -167,9 +167,9 @@ async fn eject_object(
 
 // ─────────────────────────── vues ───────────────────────────
 
-/// Ligne prête à rendre : tout est résolu avant le rsx (école « rsx plat »).
-/// Payloads préclonés pour les closures ('static FnMut, jamais de `let`
-/// dans un `for` rsx).
+/// Row ready to render: everything is resolved before the rsx ("flat rsx"
+/// school). Payloads pre-cloned for the closures ('static FnMut, never a
+/// `let` in an rsx `for`).
 struct TreeRow {
     key: String,
     depth: usize,
@@ -178,54 +178,54 @@ struct TreeRow {
     has_children: bool,
     name: String,
     emoji: Option<String>,
-    /// Kind pour l'icône (`None` = dossier).
+    /// Kind for the icon (`None` = folder).
     icon_kind: Option<String>,
-    /// device_type pour les lignes device.
+    /// device_type for device rows.
     subtitle: Option<String>,
     is_device: bool,
     is_dead: bool,
     is_dragged: bool,
-    /// Dossier : clé d'expansion.
+    /// Folder: expansion key.
     toggle: Option<String>,
-    /// Poignée de drag.
+    /// Drag handle.
     drag: Option<DragItem>,
-    /// Dossier : cible de dépôt.
+    /// Folder: drop target.
     drop_id: Option<DropId>,
-    /// Objet aperçuable (média/tour/dashboard non mort) : cible du clic
-    /// ligne → panneau d'aperçu.
+    /// Previewable object (live media/tour/dashboard): target of the row
+    /// click → preview panel.
     preview: Option<PreviewTarget>,
-    /// Objet aperçuable : cible de l'étoile d'épinglage.
+    /// Previewable object: target of the pin star.
     pin_target: Option<PreviewTarget>,
-    /// Copie disjointe de `preview` pour le handler Detach (nettoyage
-    /// aperçu/épingle après détachement — captures disjointes par champ).
+    /// Disjoint copy of `preview` for the Detach handler (preview/pin
+    /// cleanup after detach — disjoint per-field captures).
     clear_target: Option<PreviewTarget>,
-    /// Ligne = objet actuellement affiché dans l'aperçu (surlignée).
+    /// Row = object currently shown in the preview (highlighted).
     is_previewed: bool,
-    /// Ligne = épingle courante (étoile remplie).
+    /// Row = current pin (filled star).
     is_pinned: bool,
     /// Objet : bouton Detach.
     detach: Option<Detach>,
-    /// Dossier : (id, name) pour la suppression.
+    /// Folder: (id, name) for deletion.
     delete: Option<(i64, String)>,
     /// Folder: (id, name) for the D42 labels modal (disjoint copy of
     /// `delete` so each handler captures its own field).
     labels: Option<(i64, String)>,
-    /// Device : placement pour l'édition de localité.
+    /// Device: placement for location editing.
     placement: Option<DevicePlacement>,
 }
 
-/// Contexte de construction des vues (données du drawer + état de drag).
+/// Context for building the views (drawer data + drag state).
 struct ViewCtx<'a> {
     model: &'a TreeModel,
     expanded: &'a HashSet<String>,
     dragging: &'a Option<DragItem>,
     /// pk containment → (slug, device_type).
     device_by_pk: HashMap<String, (String, String)>,
-    /// slug → placement (édition de localité dans l'arbre).
+    /// slug → placement (location editing in the tree).
     placement_by_slug: HashMap<String, DevicePlacement>,
-    /// Aperçu courant (surlignage de la ligne affichée).
+    /// Current preview (highlight of the displayed row).
     preview: &'a Option<PreviewTarget>,
-    /// Épingle courante (étoile remplie).
+    /// Current pin (filled star).
     pinned: &'a Option<PreviewTarget>,
 }
 
@@ -234,25 +234,25 @@ struct ViewCtx<'a> {
 #[component]
 pub fn PoiTreeSection(
     poi_id: String,
-    /// Arêtes `placed_on` du POI (poi_detail).
+    /// `placed_on` edges of the POI (poi_detail).
     links: Vec<VizLink>,
-    /// Placements D43 du POI (poi_detail).
+    /// D43 placements of the POI (poi_detail).
     placements: Vec<DevicePlacement>,
-    /// Index org des devices : (pk containment, slug, device_type) —
-    /// l'id containment device = PK entière, pas le slug.
+    /// Org index of devices: (containment pk, slug, device_type) —
+    /// the device containment id = integer PK, not the slug.
     devices: Vec<(String, String, String)>,
-    /// Version drawer (detail_version) — refetch de la marche containment.
+    /// Drawer version (detail_version) — refetch of the containment walk.
     version: Signal<u64>,
-    /// Objet affiché dans le panneau d'aperçu (bascule d'asset à asset).
+    /// Object shown in the preview panel (switches from asset to asset).
     mut preview: Signal<Option<PreviewTarget>>,
-    /// Épingle courante du POI (étoile remplie sur la ligne correspondante).
+    /// Current pin of the POI (filled star on the matching row).
     mut pinned: Signal<Option<PreviewTarget>>,
-    /// Clic ligne objet → ouvrir l'aperçu (read-only, panneau carte).
+    /// Object row click → open the preview (read-only, map panel).
     on_preview: EventHandler<PreviewTarget>,
-    /// Étoile ★ : pose ou retrait de l'épingle (toggle côté drawer).
+    /// Star ★: sets or removes the pin (toggle on the drawer side).
     on_pin: EventHandler<PreviewTarget>,
     on_attach: EventHandler<()>,
-    /// Refetch drawer + carte après mutation (idiome detail_version).
+    /// Refetch drawer + map after a mutation (detail_version idiom).
     on_mutated: EventHandler<()>,
 ) -> Element {
     let mut expanded = use_signal(HashSet::<String>::new);
@@ -262,8 +262,8 @@ pub fn PoiTreeSection(
     // Folder whose D42 labels are being edited (inherited by its content).
     let mut labels_folder = use_signal(|| None::<(i64, String)>);
 
-    // Marche containment, refetch à chaque bump de version (attach/detach/
-    // move/save de localité — le drawer bumppe `detail_version`).
+    // Containment walk, refetched on each version bump (attach/detach/
+    // move/location save — the drawer bumps `detail_version`).
     let poi_id_for_walk = poi_id.clone();
     let model = use_resource(move || {
         let id = poi_id_for_walk.clone();
@@ -271,8 +271,8 @@ pub fn PoiTreeSection(
         async move { walk_containment(id).await }
     });
 
-    // Déplié par défaut : racines au premier modèle (une seule fois —
-    // l'utilisateur garde la main ensuite).
+    // Expanded by default: roots on the first model (only once —
+    // the user stays in control afterwards).
     let mut seeded = use_signal(|| false);
     use_effect(move || {
         if seeded() {
@@ -291,8 +291,8 @@ pub fn PoiTreeSection(
         }
     });
 
-    // Snapshots possédés pour les closures 'static (une par closure — un
-    // `move` s'approprie sa capture ; jamais d'emprunt de props).
+    // Owned snapshots for the 'static closures (one per closure — a
+    // `move` takes ownership of its capture; never a borrow of props).
     let model_for_drop = model
         .value()
         .read()
@@ -308,14 +308,14 @@ pub fn PoiTreeSection(
     let poi_id_for_drop = poi_id.clone();
     let poi_id_for_delete = poi_id.clone();
     let poi_id_for_create = poi_id.clone();
-    // Éjection d'un objet rangé (Détacher) → recrée l'arête sur CE POI.
+    // Ejecting a filed object (Detach) → recreates the edge on THIS POI.
     let poi_id_for_eject = poi_id.clone();
 
-    // Dépôt d'un drag : gardes puis mutation + toast + refetch.
-    // Callback = Copy → capturable par plusieurs handlers du rsx.
+    // Drop of a drag: guards then mutation + toast + refetch.
+    // Callback = Copy → capturable by several rsx handlers.
     let perform_drop = Callback::new(move |(item, target): (DragItem, DropId)| {
-        // Garde cycle : un dossier ne se dépose pas dans lui-même ou un de
-        // ses descendants (le serveur répondrait 400).
+        // Cycle guard: a folder is not dropped into itself or one of
+        // its descendants (the server would answer 400).
         if let (DropId::Folder(dst), "folder") = (&target, item.kind.as_str()) {
             let mut forbidden = descendants_of(&model_for_drop.children, &item.id);
             forbidden.insert(item.id.clone());
@@ -324,12 +324,12 @@ pub fn PoiTreeSection(
                 return;
             }
         }
-        // Dépôt identique → no-op silencieux.
+        // Identical drop → silent no-op.
         if item.from == target {
             return;
         }
-        // Clones dans le corps : un `async move` qui déplace ses captures
-        // hors de la closure la rendrait FnOnce (handlers = FnMut).
+        // Clones in the body: an `async move` that moves its captures out
+        // of the closure would make it FnOnce (handlers = FnMut).
         let poi = poi_id_for_drop.clone();
         spawn(async move {
             match move_item(&item, &target, &poi).await {
@@ -341,16 +341,16 @@ pub fn PoiTreeSection(
         });
     });
 
-    // Suppression d'un dossier : sous-dossiers remontés sous le POI, objets
-    // éjectés à la racine (arête recréée), puis delete_folder.
+    // Deleting a folder: subfolders moved up under the POI, objects
+    // ejected to the root (edge recreated), then delete_folder.
     let perform_delete = move |(fid, _name): (i64, String)| {
-        // Clones dans le corps (voir perform_drop) — la closure reste FnMut.
+        // Clones in the body (see perform_drop) — the closure stays FnMut.
         let model = model_for_delete.clone();
         let poi = poi_id_for_delete.clone();
         spawn(async move {
             let fid_string = fid.to_string();
-            // 1. Sous-dossiers (toute profondeur) → racine du POI, sinon le
-            //    re-root org-wide de delete_folder les rendrait invisibles.
+            // 1. Subfolders (any depth) → POI root, otherwise the org-wide
+            //    re-root of delete_folder would make them invisible.
             let mut subfolders: Vec<String> = Vec::new();
             let mut queue: Vec<String> = vec![fid_string.clone()];
             let mut idx = 0;
@@ -375,16 +375,16 @@ pub fn PoiTreeSection(
                     toasts::error(format!("{err}"));
                 }
             }
-            // 2. Objets **directs** éjectés à la racine (arête `placed_on`
-            //    recréée avec leur nom) — les sous-dossiers remontés en 1
-            //    gardent leur contenu (containment intact).
+            // 2. **Direct** objects ejected to the root (`placed_on` edge
+            //    recreated with their name) — the subfolders moved up in 1
+            //    keep their content (containment intact).
             if let Some(kids) = model.children.get(&fid_string) {
                 for c in kids {
                     if c.kind == "folder" {
                         continue;
                     }
                     if c.kind == "device" {
-                        // Device : containment détaché, placement intact.
+                        // Device: containment detached, placement intact.
                         if let Err(err) = resources::set_parent("device", &c.id, None).await {
                             toasts::error(format!("{err}"));
                         }
@@ -395,7 +395,7 @@ pub fn PoiTreeSection(
                     }
                 }
             }
-            // 3. Le dossier lui-même.
+            // 3. The folder itself.
             match resources::delete_folder(fid).await {
                 Ok(_) => toasts::success(t!("poi-tree-folder-deleted").to_string()),
                 Err(err) => toasts::error(format!("{err}")),
@@ -404,8 +404,8 @@ pub fn PoiTreeSection(
         });
     };
 
-    // Création inline d'un dossier racine du POI.
-    // Callback = Copy → capturable par onclick ET onkeydown.
+    // Inline creation of a POI root folder.
+    // Callback = Copy → capturable by onclick AND onkeydown.
     let create_folder_now = Callback::new(move |(): ()| {
         let name = new_folder().trim().to_string();
         if name.is_empty() {
@@ -431,22 +431,22 @@ pub fn PoiTreeSection(
         });
     });
 
-    // Détachement unifié (arête / objet rangé / placement) — un seul Callback
-    // (Copy) réutilisable par les deux branches du rendu (div device / bouton
-    // objet). Objet rangé : Détacher = éjection vers la racine du POI (arête
-    // `placed_on` recréée — un détachement pur laissait l'objet orphelin,
-    // invisible de tous les arbres, constat 2026-09-13) ; device rangé :
-    // éjection du dossier seule (placement intact, amendement D43) ; device
-    // racine : le placement part. Les clones nécessaires au `spawn` sont
-    // faits dans le corps — un Callback possède ses captures, un clone par
-    // appel, jamais FnOnce.
+    // Unified detach (edge / filed object / placement) — a single Callback
+    // (Copy) reusable by both render branches (device div / object
+    // button). Filed object: Detach = ejection to the POI root (`placed_on`
+    // edge recreated — a pure detach left the object orphaned,
+    // invisible from every tree, finding 2026-09-13); filed device:
+    // ejection from the folder only (placement intact, D43 amendment); root
+    // device: the placement goes. The clones needed by `spawn` are
+    // made in the body — a Callback owns its captures, one clone per
+    // call, never FnOnce.
     let perform_detach = Callback::new(
         move |(detach, target, name): (Detach, Option<PreviewTarget>, String)| {
             let poi = poi_id_for_eject.clone();
             spawn(async move {
                 match detach {
                     Detach::Placement(placement_id) => {
-                        // 404 = déjà détaché (autre onglet) — succès lenient.
+                        // 404 = already detached (other tab) — lenient success.
                         match viz::delete_poi_placement(placement_id).await {
                             Ok(_) => {}
                             Err(err) if err.status == Some(404) => {}
@@ -455,8 +455,8 @@ pub fn PoiTreeSection(
                     }
                     Detach::Contained { kind, id } => {
                         if kind == "device" {
-                            // Device rangé : containment seul part, le placement
-                            // reste (le device redevient un device racine).
+                            // Filed device: only containment goes, the placement
+                            // stays (the device becomes a root device again).
                             if let Err(err) = resources::set_parent("device", &id, None).await {
                                 toasts::error(format!("{err}"));
                             }
@@ -468,8 +468,8 @@ pub fn PoiTreeSection(
                         delete_edge_lenient(edge_id).await;
                     }
                 }
-                // Aperçu/épingle pointaient sur l'objet détaché → nettoyage
-                // local immédiat.
+                // Preview/pin pointed at the detached object → immediate local
+                // cleanup.
                 if let Some(t) = target {
                     if let Some(p) = preview.cloned() {
                         if p.kind == t.kind && p.id == t.id {
@@ -487,7 +487,7 @@ pub fn PoiTreeSection(
         },
     );
 
-    // ── vues précalculées (jamais de `let` dans un `for` rsx) ──
+    // ── precomputed views (never a `let` in an rsx `for`) ──
     let model_for_views = model
         .value()
         .read()
@@ -513,7 +513,7 @@ pub fn PoiTreeSection(
     rsx! {
         div {
             class: "space-y-1.5",
-            // Toute relâche de pointeur hors d'une cible annule le drag.
+            // Any pointer release outside a target cancels the drag.
             onpointerup: move |_| {
                 if dragging().is_some() {
                     dragging.set(None);
@@ -535,7 +535,7 @@ pub fn PoiTreeSection(
                     }
                 }
             }
-            // Création inline d'un dossier racine
+            // Inline creation of a root folder
             div { class: "flex gap-1",
                 input {
                     class: "flex-1 min-w-0 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-signal-400",
@@ -555,8 +555,8 @@ pub fn PoiTreeSection(
             // Lignes d'arbre
             for row in views {
                 if row.is_device {
-                    // Device : pas un bouton (édition de localité dedans) —
-                    // poignée + carte placement D43.
+                    // Device: not a button (location editing inside) —
+                    // handle + D43 placement card.
                     div {
                         key: "{row.key}",
                         class: if row.is_dragged { "flex items-start gap-1 opacity-40" } else { "flex items-start gap-1" },
@@ -578,7 +578,7 @@ pub fn PoiTreeSection(
                                     device_type: row.subtitle.clone(),
                                     on_save_location: move |(placement_id, value): (i64, String)| {
                                         spawn(async move {
-                                            // Chaîne vide = effacement (null).
+                                            // Empty string = clear (null).
                                             let body = serde_json::json!(
                                                 { "location_detail" : if value.trim().is_empty() {
                                                 serde_json::Value::Null } else { serde_json::json!(value.trim()) }, }
@@ -601,9 +601,9 @@ pub fn PoiTreeSection(
                                 }
                             }
                         }
-                        // Détacher : device racine = placement part (device
-                        // libre, amendement D43) ; device rangé = éjection du
-                        // dossier (même sémantique que les autres objets).
+                        // Detach: root device = placement goes (free
+                        // device, D43 amendment); filed device = ejection from the
+                        // folder (same semantics as the other objects).
                         if row.detach.is_some() {
                             span {
                                 class: "shrink-0 text-xs text-red-600 hover:underline cursor-pointer pt-2",
@@ -632,8 +632,8 @@ pub fn PoiTreeSection(
                             }
                         },
                         onclick: move |_| {
-                            // Dossier : (dé)pliage ; objet aperçuable : bascule
-                            // du panneau d'aperçu (jamais de popup ni route).
+                            // Folder: expand/collapse; previewable object: switches
+                            // the preview panel (never a popup or route).
                             if let Some(fid) = row.toggle.clone() {
                                 let mut set = expanded.write();
                                 if !set.remove(&fid) {
@@ -671,9 +671,9 @@ pub fn PoiTreeSection(
                         if let Some(sub) = &row.subtitle {
                             span { class: "shrink-0 text-xs text-gray-500", {sub.clone()} }
                         }
-                        // Objet aperçuable : étoile d'épinglage (aperçu par
-                        // défaut à l'ouverture du POI — premier objet attaché
-                        // épinglé par le drawer).
+                        // Previewable object: pin star (default preview
+                        // when the POI opens — first attached object
+                        // pinned by the drawer).
                         if let Some(pin_target) = row.pin_target.clone() {
                             span {
                                 class: if row.is_pinned { "shrink-0 text-yellow-500 cursor-pointer hover:text-yellow-600 text-sm leading-none" } else { "shrink-0 text-gray-300 hover:text-yellow-500 cursor-pointer text-sm leading-none" },
@@ -728,7 +728,7 @@ pub fn PoiTreeSection(
                     }
                 }
             }
-            // Zone de dépôt racine
+            // Root drop area
             div {
                 class: "flex items-center gap-1 px-2 py-2 rounded border border-dashed border-gray-200 hover:bg-signal-50 transition-colors",
                 onpointerup: move |e| {
@@ -741,7 +741,7 @@ pub fn PoiTreeSection(
                 icons::Package { class: "w-3 h-3 shrink-0 text-gray-500" }
                 span { class: "text-xs text-gray-500", {t!("poi-tree-root-zone")} }
             }
-            // Confirmation de suppression de dossier
+            // Folder deletion confirmation
             if let Some((fid, name)) = pending_delete() {
                 ConfirmDialog {
                     key: "del-{fid}",
@@ -772,7 +772,7 @@ pub fn PoiTreeSection(
     }
 }
 
-/// Icône par kind (dossiers gérés à part avec emoji).
+/// Icon per kind (folders handled separately with an emoji).
 #[component]
 pub fn KindIcon(kind: String) -> Element {
     rsx! {
@@ -802,9 +802,9 @@ pub fn KindIcon(kind: String) -> Element {
     }
 }
 
-/// Carte placement D43 (déplacée de map.rs) — slug, type, édition inline du
-/// « location detail ». Le détachement vit au niveau de la ligne (bouton
-/// Détacher, amendement D43 2026-09-13) ; la carte ne porte que l'édition.
+/// D43 placement card (moved from map.rs) — slug, type, inline editing of
+/// the "location detail". Detaching lives at the row level (Detach
+/// button, D43 amendment 2026-09-13); the card only carries the editing.
 #[component]
 fn DevicePlacementRow(
     placement: DevicePlacement,

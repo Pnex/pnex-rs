@@ -1,7 +1,7 @@
-//! Tests du canal device `/ws/device` + endpoints pins/commands (Brick 0).
+//! Tests for the device channel `/ws/device` + pins/commands endpoints (Brick 0).
 //!
 //! Needs PostgreSQL (TEST_DATABASE_URL); the database is emptied between tests.
-//! Client miroir : chiffre les DeviceMsg / déchiffre les ServerMsg.
+//! Mirror client: encrypts DeviceMsg / decrypts ServerMsg.
 
 mod common;
 
@@ -13,14 +13,14 @@ use pnex_backend::services::telemetry::{self, TelemetryPoint, TelemetrySink};
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
 
-// ─────────────────── Client miroir (rôle firmware générique) ───────────────────
+// ─────────────────── Mirror client (generic firmware role) ───────────────────
 
 fn key_bytes(b64: &str) -> [u8; 32] {
     STANDARD
         .decode(b64)
-        .expect("clé b64")
+        .expect("b64 key")
         .try_into()
-        .expect("clé 32 o")
+        .expect("32-byte key")
 }
 
 fn close_code(msg: axum_test::WsMessage) -> Option<u16> {
@@ -73,7 +73,7 @@ struct Dev {
     key: [u8; 32],
 }
 
-/// Enregistre un device generic_esp8266 via l'API.
+/// Registers a generic_esp8266 device through the API.
 async fn create_generic(server: &axum_test::TestServer, auth: &str, device_id: &str) -> Dev {
     create_of(server, auth, device_id, "generic_esp8266").await
 }
@@ -153,7 +153,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org perso")
 }
 
-/// Announce → attend le ProvisionAck, retourne les caps reçues.
+/// Announce → waits for the ProvisionAck, returns the received caps.
 async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core::PinSpec> {
     let announce = serde_json::json!({
         "t": "announce", "chip": "esp8266", "board": "nodemcu", "fw": "0.1.0"
@@ -165,11 +165,11 @@ async fn announce_and_expect_provision(ws: &mut common::DevWs) -> Vec<pnex_core:
     let msg: pnex_core::ServerMsg = serde_json::from_str(&plain).expect("ServerMsg");
     match msg {
         pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
-        other => panic!("ProvisionAck attendu, reçu : {other:?}"),
+        other => panic!("ProvisionAck expected, got: {other:?}"),
     }
 }
 
-/// Connexion WS `/ws/device` (auth b64 query, comme le firmware).
+/// WS connection `/ws/device` (b64 query auth, like the firmware).
 async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     common::DevWs::connect(
         server,
@@ -180,10 +180,10 @@ async fn connect(server: &axum_test::TestServer, d: &Dev) -> common::DevWs {
     .await
 }
 
-/// Attend la libération effective de la session device (GET /pins
-/// connected=false) — la course close()-client → teardown serveur est
-/// asynchrone ; sans attente, un POST « offline » peut gagner la course et
-/// répondre 200 (flake observé 2026-09-13).
+/// Waits for the device session to be actually released (GET /pins
+/// connected=false) — the client close() → server teardown race is
+/// asynchronous; without waiting, an "offline" POST can win the race and
+/// answer 200 (flake seen 2026-09-13).
 async fn wait_offline(server: &axum_test::TestServer, auth: &str, org: i64, dev_id: i64) {
     for _ in 0..80 {
         let res = server
@@ -196,13 +196,13 @@ async fn wait_offline(server: &axum_test::TestServer, auth: &str, org: i64, dev_
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-    panic!("session jamais libérée après close()");
+    panic!("session never released after close()");
 }
 
 // ─────────────────── Tests ───────────────────
 
-/// Cycle nominal : Announce → ProvisionAck (pin map NodeMCU) → StateReport
-/// (mémoire last_values + sortie télémétrie) → GET /pins.
+/// Nominal cycle: Announce → ProvisionAck (NodeMCU pin map) → StateReport
+/// (last_values memory + telemetry output) → GET /pins.
 #[tokio::test]
 #[serial]
 async fn announce_provision_et_state_report() {
@@ -219,17 +219,17 @@ async fn announce_provision_et_state_report() {
         let a0 = caps.iter().find(|c| c.label == "A0").expect("A0");
         assert_eq!((a0.gpio, a0.mode), (17, pnex_core::Mode::AdcIn));
 
-        // StateReport D5=HIGH → mémoire + télémétrie (série d5, generic_gpio).
+        // StateReport D5=HIGH → memory + telemetry (series d5, generic_gpio).
         let report = serde_json::json!({"t": "state_report", "gpio": 14, "value": 1}).to_string();
         ws.send_plain(&report).await;
-        // StateReport D6 booléen (le firmware envoie true/false pour les pins
-        // digitaux) → télémétrie 1/0 (Prometheus n'a pas de booléens), UI
-        // garde le booléen brut pour l'affichage HIGH/LOW. Avant le fix, ce
-        // point était silencieusement jeté par le parse f64 de promwrite.
+        // Boolean StateReport D6 (the firmware sends true/false for digital
+        // pins) → telemetry 1/0 (Prometheus has no booleans), the UI
+        // keeps the raw boolean for the HIGH/LOW display. Before the fix, this
+        // point was silently dropped by promwrite's f64 parse.
         let report =
             serde_json::json!({"t": "state_report", "gpio": 12, "value": true}).to_string();
         ws.send_plain(&report).await;
-        // Attente active brève : la session traite les frames en tâche de fond.
+        // Brief active wait: the session processes frames in the background.
         let org = personal_org(&server, &auth).await;
         for _ in 0..40 {
             let res = server
@@ -249,8 +249,8 @@ async fn announce_provision_et_state_report() {
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-        // GET /pins final : 10 pins triés (A0, D0…D8 — l'ordre SQL est
-        // arbitraire), D5 numérique, D6 booléen brut, connected=true.
+        // Final GET /pins: 10 sorted pins (A0, D0…D8 — the SQL order is
+        // arbitrary), D5 numeric, D6 raw boolean, connected=true.
         let res = server
             .get(&format!("/api/v1/devices/{}/pins", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -271,40 +271,40 @@ async fn announce_provision_et_state_report() {
         assert_eq!(d5["mode"], serde_json::json!("digital_in"));
         let d6 = pins.iter().find(|p| p["label"] == "D6").expect("D6");
         assert_eq!(d6["last_value"], serde_json::json!(true));
-        // Télémétrie : d5 numérique 1 ET d6 booléen converti "1" (même sortie
-        // que l'ingest).
+        // Telemetry: d5 numeric 1 AND d6 boolean converted to "1" (same output
+        // as ingest).
         let pts = sink.0.lock().unwrap().clone();
         assert!(
             pts.iter().any(|p| p.metric_name == "d5"
                 && p.source_type == "generic_gpio"
                 && p.value == "1"
                 && p.device_id == "gen-jardin"),
-            "point télémétrie d5 attendu, reçu : {pts:?}"
+            "telemetry point d5 expected, got: {pts:?}"
         );
         assert!(
             pts.iter().any(|p| p.metric_name == "d6" && p.value == "1"),
-            "point télémétrie d6 (bool → 1) attendu, reçu : {pts:?}"
+            "telemetry point d6 (bool → 1) expected, got: {pts:?}"
         );
         ws.close().await;
     })
     .await;
 }
 
-/// set_mode → write : validation chip-caps AVANT push (400 avec raison),
-/// offline = 409 (jamais d'attente serveur, D17), mode persisté même offline
-/// (le prochain Announce l'appliquera au reconnect).
+/// set_mode → write: chip-caps validation BEFORE push (400 with a reason),
+/// offline = 409 (never a server-side wait, D17), mode persisted even offline
+/// (the next Announce will apply it on reconnect).
 #[tokio::test]
 #[serial]
 async fn commandes_validation_puis_offline_409() {
     with_app(|server, auth, _ctx| async move {
         let dev = create_generic(&server, &auth, "gen-relais").await;
         let org = personal_org(&server, &auth).await;
-        // Announce préalable : les instances (pins) n'existent qu'après.
+        // Prior Announce: the instances (pins) only exist afterwards.
         let mut ws = connect(&server, &dev).await;
         let _caps = announce_and_expect_provision(&mut ws).await;
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
-        // write sur un pin en digital_in → 400.
+        // write on a pin in digital_in → 400.
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -312,7 +312,7 @@ async fn commandes_validation_puis_offline_409() {
             .json(&serde_json::json!({"op": "write", "gpio": 5, "value": true}))
             .await;
         res.assert_status(axum_test::http::StatusCode::BAD_REQUEST);
-        // set_mode illégal : D8 = GPIO15 avec safe_state high → 400 (strapping).
+        // Illegal set_mode: D8 = GPIO15 with safe_state high → 400 (strapping).
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -329,8 +329,8 @@ async fn commandes_validation_puis_offline_409() {
                 .contains("strapping"),
             "raison chip-caps attendue"
         );
-        // set_mode légal mais device offline → 409 ; mode persisté quand même.
-        // (D5 = GPIO14 sur NodeMCU — le label D5 n'a jamais désigné GPIO5.)
+        // Legal set_mode but device offline → 409; mode persisted anyway.
+        // (D5 = GPIO14 on NodeMCU — the D5 label never meant GPIO5.)
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -341,7 +341,7 @@ async fn commandes_validation_puis_offline_409() {
             }))
             .await;
         res.assert_status(axum_test::http::StatusCode::CONFLICT);
-        // Le mode est persisté : GET /pins montre D5 digital_out.
+        // The mode is persisted: GET /pins shows D5 digital_out.
         let res = server
             .get(&format!("/api/v1/devices/{}/pins", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -355,8 +355,8 @@ async fn commandes_validation_puis_offline_409() {
             .find(|p| p["label"] == "D5")
             .expect("D5");
         assert_eq!(d5["mode"], serde_json::json!("digital_out"));
-        // write désormais légal sur D5 (gpio 14) mais toujours offline → 409
-        // (wait_offline déjà passé — la session reste fermée).
+        // write now legal on D5 (gpio 14) but still offline → 409
+        // (wait_offline already passed — the session stays closed).
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -368,7 +368,7 @@ async fn commandes_validation_puis_offline_409() {
     .await;
 }
 
-/// Anti-clone : deuxième session pendant la première → close 4003.
+/// Anti-clone: second session during the first → close 4003.
 #[tokio::test]
 #[serial]
 async fn anti_clone_4003() {
@@ -471,7 +471,7 @@ async fn announce_persiste_fw_version_et_ota_ready() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::ProvisionAck { .. }),
-            "ProvisionAck attendu, reçu : {msg:?}"
+            "ProvisionAck expected, got: {msg:?}"
         );
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
@@ -516,8 +516,8 @@ async fn announce_sans_cap_ota_reste_pas_admis() {
     .await;
 }
 
-/// Announce avec manifeste de capacités (D47) : admission inchangée
-/// (overlay = autorité du pin_slave, attestation journalisée) → ProvisionAck.
+/// Announce with a capability manifest (D47): admission unchanged
+/// (overlay = pin_slave authority, attestation journaled) → ProvisionAck.
 #[tokio::test]
 #[serial]
 async fn announce_avec_manifeste_accepte() {
@@ -538,16 +538,16 @@ async fn announce_avec_manifeste_accepte() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::ProvisionAck { ref caps, .. } if caps.len() == 10),
-            "ProvisionAck attendu, reçu : {msg:?}"
+            "ProvisionAck expected, got: {msg:?}"
         );
         ws.close().await;
     })
     .await;
 }
 
-/// StateReport étendu SANS cap_id (le pin_slave ne l'émet pas — deux pins
-/// digital_in partagent `digital_state`) : routage par label overlay
-/// inchangé, champs D46 tolérés.
+/// Extended StateReport WITHOUT cap_id (the pin_slave doesn't emit it — two
+/// digital_in pins share `digital_state`): routing by overlay label
+/// unchanged, D46 fields tolerated.
 #[tokio::test]
 #[serial]
 async fn state_report_etendu_route_par_label() {
@@ -581,16 +581,16 @@ async fn state_report_etendu_route_par_label() {
         assert!(
             pts.iter()
                 .any(|p| p.metric_name == "d5" && p.source_type == "generic_gpio"),
-            "routage label attendu, reçu : {pts:?}"
+            "label routing expected, got: {pts:?}"
         );
         ws.close().await;
     })
     .await;
 }
 
-/// cap_id présent (F3 : futur firmware par capacité) → série sémantique
-/// `{org}/{device}/{capacité}` (source_type generic_cap), LAST_VALUES reste
-/// alimenté par gpio (UI /pins — bascule douce §7).
+/// cap_id present (F3: future per-capability firmware) → semantic series
+/// `{org}/{device}/{capability}` (source_type generic_cap), LAST_VALUES stays
+/// fed by gpio (UI /pins — soft switchover §7).
 #[tokio::test]
 #[serial]
 async fn state_report_cap_route_le_sens() {
@@ -617,13 +617,13 @@ async fn state_report_cap_route_le_sens() {
         assert!(
             pts.iter()
                 .any(|p| p.metric_name == "temperature" && p.source_type == "generic_cap"),
-            "série par capacité attendue, reçu : {pts:?}"
+            "per-capability series expected, got: {pts:?}"
         );
         assert!(
             !pts.iter().any(|p| p.metric_name == "d5"),
-            "pas de série doublée par label quand cap_id routé"
+            "no series duplicated by label when cap_id is routed"
         );
-        // UI : LAST_VALUES toujours par gpio (bascule douce).
+        // UI: LAST_VALUES still per gpio (soft switchover).
         let org = personal_org(&server, &auth).await;
         let res = server
             .get(&format!("/api/v1/devices/{}/pins", dev.id))
@@ -643,9 +643,9 @@ async fn state_report_cap_route_le_sens() {
     .await;
 }
 
-/// RegState → séries O2 (F2 : lève la limite « journalisé, pas encore
-/// routé » du §8 de control-cards.md). Mesure NaN = pas de point (trou,
-/// jamais d'invention) ; out/cycles toujours émis.
+/// RegState → O2 series (F2: lifts the "journaled, not yet routed"
+/// limitation of control-cards.md §8). NaN measurement = no point (gap,
+/// never invented); out/cycles always emitted.
 #[tokio::test]
 #[serial]
 async fn reg_state_route_vers_o2() {
@@ -702,10 +702,10 @@ async fn reg_state_route_vers_o2() {
     .await;
 }
 
-/// Générique ESP32-C3 (Seeed XIAO ESP32C3) : admission overlay D0–D10 avec
-/// les chip-caps C3 — analog_in refusé sur D3 (GPIO5 = ADC2, cassé avec
-/// WiFi), safe_state: low refusé en digital_out sur D8/D9 (strapping
-/// boot-HIGH), analog_in admis sur D0 (GPIO2 = ADC1).
+/// Generic ESP32-C3 (Seeed XIAO ESP32C3): D0–D10 overlay admission with
+/// the C3 chip-caps — analog_in refused on D3 (GPIO5 = ADC2, broken with
+/// WiFi), safe_state: low refused as digital_out on D8/D9 (boot-HIGH
+/// strapping), analog_in admitted on D0 (GPIO2 = ADC1).
 #[tokio::test]
 #[serial]
 async fn admission_et_chip_caps_esp32c3() {
@@ -743,7 +743,7 @@ async fn admission_et_chip_caps_esp32c3() {
         .await
         .expect("predefined c3");
 
-        // Enregistrement + annonce : le ProvisionAck porte la carte D0–D10.
+        // Registration + announce: the ProvisionAck carries the D0–D10 card.
         let org = personal_org(&server, &auth).await;
         let res = server
             .post("/api/v1/devices")
@@ -764,7 +764,7 @@ async fn admission_et_chip_caps_esp32c3() {
             key: key_bytes(dto["device_token"]["encryption_key"].as_str().expect("key")),
         };
         let mut ws = connect(&server, &dev).await;
-        // Announce avec le chip réel du firmware C3 (miroir main.cpp).
+        // Announce with the real chip of the C3 firmware (mirrors main.cpp).
         let announce = serde_json::json!({
             "t": "announce", "chip": "esp32-c3", "board": "xiao_esp32c3", "fw": "1.0.0"
         })
@@ -774,7 +774,7 @@ async fn admission_et_chip_caps_esp32c3() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
-            other => panic!("ProvisionAck attendu, reçu : {other:?}"),
+            other => panic!("ProvisionAck expected, got: {other:?}"),
         };
         assert_eq!(caps.len(), 11, "11 pins D0–D10 attendus");
         // Profile order (physical header order), compared as a set.
@@ -787,7 +787,7 @@ async fn admission_et_chip_caps_esp32c3() {
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
 
-        // analog_in sur D3 (GPIO5 = ADC2) → 400 avec la raison chip-caps C3.
+        // analog_in on D3 (GPIO5 = ADC2) → 400 with the C3 chip-caps reason.
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -800,7 +800,7 @@ async fn admission_et_chip_caps_esp32c3() {
             "raison ADC2 attendue"
         );
 
-        // analog_in sur D0 (GPIO2 = ADC1) → légal (persisté, offline = 409).
+        // analog_in on D0 (GPIO2 = ADC1) → legal (persisted, offline = 409).
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -809,8 +809,8 @@ async fn admission_et_chip_caps_esp32c3() {
             .await;
         res.assert_status(axum_test::http::StatusCode::CONFLICT);
 
-        // safe_state: low en digital_out sur D9 (GPIO9, strapping boot-HIGH)
-        // → 400 ; high → légal (409 offline, persisté).
+        // safe_state: low as digital_out on D9 (GPIO9, boot-HIGH strapping)
+        // → 400; high → legal (409 offline, persisted).
         let res = server
             .post(&format!("/api/v1/devices/{}/commands", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -852,7 +852,7 @@ async fn custom_firmware_admits_declared_pins() {
         let dev = create_custom(&server, &auth, "custom-1").await;
         let mut ws = connect(&server, &dev).await;
 
-        // ── Announce avec pins déclarées (sketch = source) ──
+        // ── Announce with declared pins (sketch = source) ──
         let announce = serde_json::json!({
             "t": "announce", "chip": "esp32", "board": "ma_carte_maison", "fw": "1.0.0",
             "pins": [
@@ -867,25 +867,25 @@ async fn custom_firmware_admits_declared_pins() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
-            other => panic!("ProvisionAck attendu, reçu : {other:?}"),
+            other => panic!("ProvisionAck expected, got: {other:?}"),
         };
-        assert_eq!(caps.len(), 3, "3 pins déclarées admises");
+        assert_eq!(caps.len(), 3, "3 declared pins admitted");
         let by_label = |l: &str| caps.iter().find(|p| p.label == l).expect("label");
         let pump = by_label("pump");
         assert_eq!(pump.gpio, 5);
         assert_eq!(pump.mode, pnex_core::Mode::DigitalOut);
         assert_eq!(pump.safe_state, Some(pnex_core::SafeState::Low));
-        // Round-trip pullup : opts.porte la pullup déclarée (fix).
+        // Pullup round-trip: opts carries the declared pullup (fix).
         let door = by_label("door");
         assert_eq!(
             door.opts.as_ref().and_then(|o| o.pullup),
             Some(true),
-            "pullup déclarée écho dans ProvisionAck.opts"
+            "declared pullup echoed in ProvisionAck.opts"
         );
         let photo = by_label("photo");
         assert_eq!(photo.mode, pnex_core::Mode::AdcIn);
 
-        // ── Les pins admises sont visibles dans GET /pins (labels sketch) ──
+        // ── The admitted pins are visible in GET /pins (sketch labels) ──
         let res = server
             .get(&format!("/api/v1/devices/{}/pins", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -897,7 +897,7 @@ async fn custom_firmware_admits_declared_pins() {
         let labels: Vec<&str> = list.iter().filter_map(|p| p["label"].as_str()).collect();
         assert!(
             labels.contains(&"pump") && labels.contains(&"door") && labels.contains(&"photo"),
-            "labels du sketch attendus dans /pins : {labels:?}"
+            "sketch labels expected in /pins: {labels:?}"
         );
 
         // ── Strict chip-caps: flash pin 6 refused ──
@@ -911,10 +911,10 @@ async fn custom_firmware_admits_declared_pins() {
         let plain = raw.clone();
         assert!(
             plain.contains("flash SPI"),
-            "rejet chip-caps attendu pour gpio flash 6 : {plain}"
+            "chip-caps rejection expected for flash gpio 6: {plain}"
         );
 
-        // ── Prune : re-announce SANS « door » → 2 pins restantes ──
+        // ── Prune: re-announce WITHOUT "door" → 2 remaining pins ──
         let announce_prune = serde_json::json!({
             "t": "announce", "chip": "esp32", "board": "ma_carte_maison", "fw": "1.0.0",
             "pins": [
@@ -928,9 +928,9 @@ async fn custom_firmware_admits_declared_pins() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let caps = match msg {
             pnex_core::ServerMsg::ProvisionAck { caps, .. } => caps,
-            other => panic!("ProvisionAck attendu, reçu : {other:?}"),
+            other => panic!("ProvisionAck expected, got: {other:?}"),
         };
-        assert_eq!(caps.len(), 2, "door purgée : 2 pins restantes");
+        assert_eq!(caps.len(), 2, "door purged: 2 pins left");
 
         ws.close().await;
         wait_offline(&server, &auth, org, dev.id).await;
@@ -1060,7 +1060,7 @@ async fn announce_ota(ws: &mut common::DevWs, fw: &str) {
     let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
     assert!(
         matches!(msg, pnex_core::ServerMsg::ProvisionAck { .. }),
-        "ProvisionAck attendu, reçu : {msg:?}"
+        "ProvisionAck expected, got: {msg:?}"
     );
 }
 
@@ -1158,7 +1158,7 @@ async fn ota_cycle_complet_en_ligne() {
                 );
                 cmd_id.clone()
             }
-            other => panic!("OtaAvailable attendu, reçu : {other:?}"),
+            other => panic!("OtaAvailable expected, got: {other:?}"),
         };
 
         // Progress: downloading then flashing — the session processes the
@@ -1231,7 +1231,7 @@ async fn ota_cycle_complet_en_ligne() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         let cur = status.json::<serde_json::Value>()["current"].clone();
-        assert_eq!(cur, serde_json::json!(null), "terminal → pas de current");
+        assert_eq!(cur, serde_json::json!(null), "terminal → no current");
         let res = server
             .post(&format!("/api/v1/devices/{}/ota", dev.id))
             .add_header("Authorization", format!("Bearer {auth}"))
@@ -1297,7 +1297,7 @@ async fn ota_offline_pickup_a_l_annonce() {
             serde_json::from_str(&raw.clone()).expect("ServerMsg");
         assert!(
             matches!(msg, pnex_core::ServerMsg::OtaAvailable { .. }),
-            "OtaAvailable attendu (pickup), reçu : {msg:?}"
+            "OtaAvailable expected (pickup), got: {msg:?}"
         );
         ws.close().await;
     })
@@ -1346,7 +1346,7 @@ async fn ota_gardes_et_refus_device() {
         let msg: pnex_core::ServerMsg = serde_json::from_str(&raw.clone()).expect("ServerMsg");
         let cmd_id = match &msg {
             pnex_core::ServerMsg::OtaAvailable { cmd_id, .. } => cmd_id.clone(),
-            other => panic!("OtaAvailable attendu, reçu : {other:?}"),
+            other => panic!("OtaAvailable expected, got: {other:?}"),
         };
 
         // Device refuses (Ack{ok:false}) → assignment failed.

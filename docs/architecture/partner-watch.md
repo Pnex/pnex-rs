@@ -118,9 +118,9 @@ la précédente en avait N, chute de plus de 30 % des lignes en mode
 `import-schema-changed` / `import-suspicious-drop`, notification à l'org.
 Un run `snapshot` refusé ne ferme jamais rien.
 
-### D304 — Pack `entreprises_fr` : réutiliser, pas créer
+### D304 — Pack `companies_fr` : réutiliser, pas créer
 
-> **Amendé 2026-10-21 (D343, `account-mapping.md`)** : les champs communs, `etablissement_de`, `dirige` et la hiérarchie `groupe` passent au pack mondial `entreprises` ; `entreprises_fr` 2.0.0 en devient le pack France.
+> **Amendé 2026-10-21 (D343, `account-mapping.md`)** : les champs communs, `establishment_of`, `manages` et la hiérarchie `group` passent au pack mondial `companies` ; `companies_fr` 2.0.0 en devient le pack France.
 
 Pack générique (requires `investigation`) :
 
@@ -128,10 +128,10 @@ Pack générique (requires `investigation`) :
   forme juridique, NAF, état administratif, dates, NDA, Qualiopi ;
 - **établissement = `map_pin`** étendu (`siret` unique, siège, état) :
   chaque établissement apparaît dans la page Sites et sur la carte sans
-  travail en plus ; lien temporel `etablissement_de` (map_pin →
+  travail en plus ; lien temporel `establishment_of` (map_pin →
   organization, une cible) ;
 - **dirigeants** = `person` ou `organization` (holding présidente) reliée
-  par le lien temporel `dirige` (rôle en liste fermée, qualité du
+  par le lien temporel `manages` (rôle en liste fermée, qualité du
   registre, dates de mandat = validité du lien, source) ;
 - mappings livrés : API Recherche d'entreprises (unité légale,
   établissements, dirigeants), liste publique des organismes de formation
@@ -153,8 +153,8 @@ filiales : les mettre en containment forcerait un seul parent et
 mentirait. À la place :
 
 - un pack déclare des **hiérarchies** nommées : une liste ordonnée de
-  types de liens à suivre, avec leur sens (`etablissement_de` inverse,
-  `owns`, `dirige` inverse) ;
+  types de liens à suivre, avec leur sens (`establishment_of` inverse,
+  `owns`, `manages` inverse) ;
 - la fiche objet gagne une vue **Hiérarchie** : arbre calculé à la
   lecture (profondeur ≤ 6, 500 nœuds), un nœud à plusieurs parents
   apparaît sous chacun avec une marque « aussi sous … » ; à une date T
@@ -289,11 +289,11 @@ destinataire libre fait d'un flow un outil d'envoi en masse :
 ### D314 — Relances graduées : un patron, pas un moteur
 
 Aucun moteur de relance au noyau. Le patron (livré par le pack) :
-un objet « procédure » porte `niveau` et `prochaine_echeance` ; un flow
+un objet « procédure » porte `level` et `next_due` ; un flow
 quotidien (`inject` cron → `ontology_query` échéance passée) envoie la
 relance suivante (`pnex_notify` D313 + PDF `page_pdf`) puis avance
 l'objet (`object_upsert`). Un niveau marqué « validation humaine » crée
-une relance `a_valider` au lieu d'envoyer ; l'action `valider_envoi`
+une relance `to_validate` au lieu d'envoyer ; l'action `approve_send`
 (`action_trigger`) l'envoie. Ce qui manquait au noyau tient dans D312 et
 D313.
 
@@ -322,9 +322,9 @@ récepteur. Le SaaS vérifie la signature et l'horodatage.
 
 | Lot | Décisions | Sortie | Sert Quali-Watch |
 |---|---|---|---|
-| PW0 | D302, D306 | propriété unique, `extends:` dans les packs | pack `entreprises_fr` installable |
+| PW0 | D302, D306 | propriété unique, `extends:` dans les packs | pack `companies_fr` installable |
 | PW1 | D301, D303 | imports fichier + aperçu, puis URL/API planifiés | Excel, France Compétences, CPF, DGEFP |
-| PW2 | D304, D305 | pack `entreprises_fr` + vue Hiérarchie | fiche partenaire |
+| PW2 | D304, D305 | pack `companies_fr` + vue Hiérarchie | fiche partenaire |
 | PW3 | D307, D309 | crawl serveur + registre `site_pages` | pages pertinentes |
 | PW4 | D308, D310, D311 | preuve par l'agent, chaîne d'empreintes, diff | constats datés |
 | PW5 | D312 | nœuds ontologie | règles et relances en flows |
@@ -383,7 +383,7 @@ PW0–PW3 ne dépendent pas de l'IAM. PW7 attend I0, I1, I3, I4, I6 de
 | D301 | Imports | entité `object_imports`, sources fichier / URL / API, mapping YAML sans code, modes `incremental` / `snapshot`, aperçu puis application |
 | D302 | Clé naturelle | `PropertyDef.unique`, index unique par org × type |
 | D303 | Synchros | récurrence, journal des runs, refus sans écriture sur schéma changé ou chute suspecte |
-| D304 | `entreprises_fr` | `organization` étendue, établissement = `map_pin`, dirigeants par lien temporel `dirige`, données minimisées |
+| D304 | `companies_fr` | `organization` étendue, établissement = `map_pin`, dirigeants par lien temporel `manages`, données minimisées |
 | D305 | Hiérarchie | vue d'arbre calculée sur des liens déclarés par le pack, multi-parents, datée ; D180 inchangé |
 | D306 | Extension de type | `extends:` vers un type requis ou système, propriétés optionnelles seulement |
 | D307 | Crawl | mission `crawl_site` bornée à l'origine déclarée (amende D254), serveur par défaut, agent pour le rendu JS ; pertinence par `match` |
@@ -417,7 +417,7 @@ diff, du robots.txt, du nettoyage HTML.
   sont sérialisés par org. Rendre une propriété unique sur des doublons :
   409 `ontology-unique-duplicates` avec les premières valeurs.
 - **D306** : `extends:` accepte un type d'un pack requis **directement ou
-  non** (quali_watch étend `organization` via entreprises_fr) ; la propriété
+  non** (quali_watch étend `organization` via companies_fr) ; la propriété
   porte `pack` (groupée sous le nom du pack sur la fiche). Pas de
   désinstallation de pack au noyau : le masquage à la désinstallation
   reste à faire avec elle.
@@ -450,15 +450,15 @@ diff, du robots.txt, du nettoyage HTML.
   rôle actuel de l'auteur de l'import (R2) ; refus notifiés dans l'app
   (premier canal websocket de l'org). Fermeture sur `snapshot` refusée
   aussi quand des lignes sont en erreur.
-- **D304** : les dirigeants sont dédoublonnés par `identifiant_registre`
+- **D304** : les dirigeants sont dédoublonnés par `registry_id`
   (nom, prénoms, mois de naissance publié) ; la classification `personnelle`
   (D298) viendra avec l'IAM. Mapping livré : Recherche d'entreprises. Les
   mappings DGEFP, France Compétences et catalogue CPF attendent la
   vérification des dictionnaires de données (Q1 du PRD).
 - **D307–D309 / Q-PW4** : le registre `site_pages` reste au noyau **sans**
   type système ; une mission peut écrire ses pages pertinentes comme objets
-  d'un type de l'org (`record`, ex. `page_observee`) et relier chaque
-  partie de preuve (`proof_link`, ex. `prouve_par`). Crawl serveur
+  d'un type de l'org (`record`, ex. `observed_page`) et relier chaque
+  partie de preuve (`proof_link`, ex. `proven_by`). Crawl serveur
   séquentiel (un site après l'autre). L'exécutant agent suit le même
   parcours au rythme D258 (sans lecture du robots.txt : il navigue comme
   un humain).
@@ -497,7 +497,7 @@ diff, du robots.txt, du nettoyage HTML.
   les règles `qw_relance_suivante`, `qw_regle_adm_01`, `qw_lien`, les
   modèles « Quali-Watch · reminders » et « Quali-Watch · rule ADM-01 », et
   les modèles de page « Constat d'écart » et « Rapport partenaire ». Les
-  règles WEB-* (LLM, écart `a_valider` avec extrait et repère) ne sont pas
+  règles WEB-* (LLM, écart `to_validate` avec extrait et repère) ne sont pas
   livrées.
 
 ### Reste à faire

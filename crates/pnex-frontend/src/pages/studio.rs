@@ -1,9 +1,9 @@
-//! Studio (parcours 3D) — liste des tours de l'org et éditeur
-//! (`components/tour_editor/`, sous-vue pilotée par le signal local
-//! `selected` — pattern `flows.rs`).
+//! Studio (3D tours) — list of the org's tours and editor
+//! (`components/tour_editor/`, sub-view driven by the local signal
+//! `selected` — `flows.rs` pattern).
 //!
-//! Le scoping org vient du client (`X-Org-Id`), l'écriture est réservée
-//! owner/admin (le serveur force, l'UI masque).
+//! Org scoping comes from the client (`X-Org-Id`), writing is reserved
+//! to owner/admin (the server enforces, the UI hides).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -45,7 +45,7 @@ pub fn Studio() -> Element {
     // D42: effective label filter ("name" or "name:value").
     let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
-    // Cible de suppression (id, nom) — confirmation à la demande.
+    // Deletion target (id, name) — confirmation on demand.
     let mut delete_target = use_signal(|| None::<(String, String)>);
 
     let can_write = crate::state::access::can("tours:write");
@@ -78,7 +78,7 @@ pub fn Studio() -> Element {
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(paged)) => (
@@ -90,8 +90,8 @@ pub fn Studio() -> Element {
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
-    // Colonnes de la table — les closures d'action capturent les signaux
-    // (Copy) de la page.
+    // Table columns — the action closures capture the page's
+    // (Copy) signals.
     let columns = vec![
         Column::new(
             t!("studio-col-name").to_string(),
@@ -164,8 +164,8 @@ pub fn Studio() -> Element {
 
     rsx! {
         if let Some(tour_id) = selected() {
-            // Éditeur plein écran, HORS ListLayout (principe 1 de la
-            // coquille : plus d'« + Nouveau tour » en contexte d'édition).
+            // Full-screen editor, OUTSIDE ListLayout (shell principle 1:
+            // no more "+ New tour" in an editing context).
             crate::components::tour_editor::TourEditor {
                 key: "{tour_id}",
                 tour_id,
@@ -181,9 +181,9 @@ pub fn Studio() -> Element {
                 can_write,
                 add_label: Some(t!("studio-new").to_string()),
                 on_add: move |_| {
-                    // Création immédiate, sans modale : nom daté,
-                    // document minimal posé par le backend (un étage
-                    // « RDC »), ouverture directe de l'éditeur.
+                    // Immediate creation, no modal: dated name,
+                    // minimal document set by the backend (one
+                    // "RDC" floor), editor opened directly.
                     let params = pnex_core::CreateTour {
                         name: default_name("studio-default-name"),
                         description: None,
@@ -237,10 +237,10 @@ pub fn Studio() -> Element {
                         }
                         ListPager { count, page }
                     }
-                    // Modal de création supprimée : « + Nouveau » crée
-                    // directement (nom daté) et ouvre l'éditeur.
+                    // Creation modal removed: "+ New" creates
+                    // directly (dated name) and opens the editor.
 
-                    // Suppression confirmée d'une ligne.
+                    // Confirmed deletion of a row.
                     if let Some((tour_id, tour_name)) = delete_target() {
                         ConfirmDialog {
                             title: t!("studio-confirm-delete-title"),

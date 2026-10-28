@@ -3,10 +3,10 @@
 //! the user's private conversations (D145).
 //! The platform provides no LLM (D119): each org brings its own.
 //!
-//! Garde-fous : kill-switch (`settings.ai.enabled`) coupé → chat 403 sans
-//! requête DB ni requête LLM ; every tool needs its IAM permission
-//! (`services::ai::tools::execute`) ; **aucun** chemin de ce module
-//! vers deploy/delete/commandes.
+//! Safeguards: kill-switch (`settings.ai.enabled`) off → chat 403 without
+//! a DB query or an LLM request; every tool needs its IAM permission
+//! (`services::ai::tools::execute`); **no** path from this module
+//! to deploy/delete/commands.
 
 use axum::extract::{Path, Query, State};
 use axum::routing::{get, post, put};

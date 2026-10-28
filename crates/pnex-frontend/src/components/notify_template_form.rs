@@ -1,12 +1,12 @@
-//! Éditeur de template de notification (D52) — nom, sujet optionnel,
-//! corps, vars déclarées `{name, example}` (lignes ajoutables), bouton
-//! **Aperçu** (API preview, rendu seul) et **Test d'envoi** (canal choisi,
-//! template rendu — chemin pnex-notify unique).
+//! Notification template editor (D52) — name, optional subject,
+//! body, declared vars `{name, example}` (addable rows), **Preview**
+//! button (preview API, render only) and **Test send** (chosen channel,
+//! rendered template — single pnex-notify path).
 //!
-//! Aperçu et Test marchent aussi sur un brouillon non sauvegardé : le
-//! brouillon est créé côté serveur au premier clic (nom daté généré quand
-//! le champ nom est vide, école noms par défaut des créations) et
-//! l'éditeur bascule en mode mise à jour.
+//! Preview and Test also work on an unsaved draft: the
+//! draft is created server-side on the first click (dated name generated when
+//! the name field is empty, default-names-of-new-items pattern) and
+//! the editor switches to update mode.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -18,7 +18,7 @@ use crate::components::ui::BTN_PRIMARY;
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
-/// Lignes de vars éditables `(name, example)`.
+/// Editable var rows `(name, example)`.
 type VarRows = Vec<(String, String)>;
 
 #[component]
@@ -29,8 +29,8 @@ pub fn NotifyTemplateForm(
     on_saved: Callback<()>,
 ) -> Element {
     let is_edit = existing.is_some();
-    // Id du template tel que connu du serveur : celui de l'existant, ou
-    // celui du brouillon créé au premier Aperçu/Test (auto-sauvegarde).
+    // Template id as known by the server: the existing one's, or
+    // the draft's created on the first Preview/Test (auto-save).
     let saved_id = use_signal(|| existing.as_ref().map(|c| c.id.to_string()));
 
     let mut name = use_signal(|| {
@@ -69,11 +69,11 @@ pub fn NotifyTemplateForm(
     let mut preview_error = use_signal(|| None::<ApiError>);
     let mut body_error = use_signal(|| None::<ApiError>);
     let mut busy = use_signal(|| false);
-    // Test d'envoi : sélection du canal (None ou vide = pas lancé).
+    // Test send: channel selection (None or empty = not started).
     let mut test_target = use_signal(|| None::<String>);
     let test_channels = use_resource(move || async move { api::notify::list_channels().await });
 
-    // Aperçu (rendu seul) : auto-sauvegarde du brouillon au besoin.
+    // Preview (render only): auto-saves the draft if needed.
     let do_preview = move |_| {
         if busy() {
             return;
@@ -145,9 +145,9 @@ pub fn NotifyTemplateForm(
         });
     };
 
-    // Insertion d'une variable : nom auto `tpl_N` (incrémenté), ligne
-    // déclarée ajoutée, balise `{{ tpl_N }}` insérée à la position du
-    // curseur dans le corps (via le DOM, école document::eval).
+    // Inserting a variable: auto name `tpl_N` (incremented), declared
+    // row added, `{{ tpl_N }}` tag inserted at the cursor position
+    // in the body (via the DOM, document::eval pattern).
     let insert_variable = move |_| {
         let var_name = {
             let rows = vars.read();
@@ -182,8 +182,8 @@ pub fn NotifyTemplateForm(
         });
     };
 
-    // Test d'envoi sur le canal choisi : auto-sauvegarde du brouillon puis
-    // envoi du template rendu (pas le message built-in des canaux).
+    // Test send on the chosen channel: auto-saves the draft then
+    // sends the rendered template (not the channels' built-in message).
     let do_test = move |_| {
         let Some(channel_id) = test_target.cloned() else {
             return;
@@ -273,7 +273,7 @@ pub fn NotifyTemplateForm(
                     }
                 }
 
-                // Vars déclarées (lignes {name, example}).
+                // Declared vars ({name, example} rows).
                 div { class: "space-y-2",
                     div { class: "flex items-center justify-between",
                         p {
@@ -326,7 +326,7 @@ pub fn NotifyTemplateForm(
                     }
                 }
 
-                // Aperçu (rendu seul).
+                // Preview (render only).
                 div { class: "space-y-2",
                     button {
                         class: "px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50",
@@ -347,8 +347,8 @@ pub fn NotifyTemplateForm(
                     }
                 }
 
-                // Test d'envoi (canal choisi) — disponible aussi sur un
-                // brouillon (auto-sauvegardé au clic).
+                // Test send (chosen channel) — also available on a
+                // draft (auto-saved on click).
                 div { class: "border-t border-gray-200 pt-3 space-y-2",
                     label {
                         r#for: "notify-template-test-channel",
@@ -403,11 +403,11 @@ pub fn NotifyTemplateForm(
     }
 }
 
-/// Première Aperçu/Test sur un brouillon : les APIs de rendu et d'envoi
-/// travaillent sur une ligne sauvegardée — le brouillon est créé côté
-/// serveur (nom daté quand le champ est vide, suffixe `-N` sur conflit),
-/// le nom généré est reporté dans le champ et l'éditeur bascule en mode
-/// mise à jour. `on_changed` rafraîchit la liste derrière la modale.
+/// First Preview/Test on a draft: the render and send APIs
+/// work on a saved row — the draft is created server-side
+/// (dated name when the field is empty, `-N` suffix on conflict),
+/// the generated name is copied into the field and the editor switches to
+/// update mode. `on_changed` refreshes the list behind the modal.
 async fn ensure_saved(
     mut saved_id: Signal<Option<String>>,
     mut name: Signal<String>,
@@ -486,7 +486,7 @@ fn next_var_name(rows: &[(String, String)]) -> String {
     }
 }
 
-/// Lignes éditables → map de vars (trim ; noms vides ignorés).
+/// Editable rows → vars map (trim; empty names ignored).
 fn collect_vars(rows: VarRows) -> std::collections::BTreeMap<String, String> {
     rows.into_iter()
         .filter(|(name, _)| !name.trim().is_empty())

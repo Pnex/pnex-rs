@@ -1,10 +1,10 @@
-//! Tests couche d'organisation transverse (D42) : CRUD labels + validation,
-//! labels effectifs (héritage containment, override), containment (parent
-//! unique, cycle, re-parent), arêtes (validité par kind, doublon 409, purge
-//! symétrique), folders, filtre label effectif sur la liste médias,
-//! isolation org + rôles.
+//! Tests for the cross-cutting organisation layer (D42): label CRUD + validation,
+//! effective labels (containment inheritance, override), containment (single
+//! parent, cycle, re-parent), edges (validity per kind, duplicate 409, symmetric
+//! purge), folders, effective label filter on the media list,
+//! org isolation + roles.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -124,7 +124,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// Asset média (UUID) inséré via l'API upload.
+/// Media asset (UUID) inserted via the upload API.
 async fn create_media(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> String {
     let res = server
         .post("/api/v1/media?name=Test&filename=loop.jpg&kind=photo&content_type=application/octet-stream")
@@ -133,11 +133,11 @@ async fn create_media(server: &axum_test::TestServer, token: &str, org: i64, nam
         .add_header("X-Org-Id", org.to_string())
         .bytes(vec![0xFF, 0xD8, 0xFF, 0xD9].into())
         .await;
-    assert_eq!(res.status_code(), 201, "upload média : {}", res.text());
+    assert_eq!(res.status_code(), 201, "media upload: {}", res.text());
     let _ = name;
     res.json::<serde_json::Value>()["id"]
         .as_str()
-        .expect("id média")
+        .expect("media id")
         .to_string()
 }
 
@@ -164,7 +164,7 @@ async fn labels_roundtrip_validation_et_isolation() {
         assert_eq!(res.status_code(), 200, "{}", res.text());
         let body: serde_json::Value = res.json();
         assert_eq!(body["labels"]["site"], "serre");
-        // Validation : nom non normalise -> 400
+        // Validation: non-normalized name -> 400
         let res = server
             .put(&format!("/api/v1/resources/media_asset/{media}/labels"))
             .add_header("Content-Type", "application/json")
@@ -180,7 +180,7 @@ async fn labels_roundtrip_validation_et_isolation() {
             "invalid"
         );
 
-        // Isolation : bob ne voit pas les labels d'alice (404 masque)
+        // Isolation: bob doesn't see alice's labels (404 masks)
         let res = server
             .get(&format!("/api/v1/resources/media_asset/{media}/labels"))
             .add_header("Authorization", bearer(&env.bob))
@@ -300,7 +300,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         .await;
         let b = res.json::<serde_json::Value>()["id"].as_i64().unwrap();
 
-        // A dans B.
+        // A in B.
         let res = jput(
             &server,
             &env.alice,
@@ -311,7 +311,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
 
-        // Cycle : B dans A → 400 (A est descendant de B).
+        // Cycle: B in A → 400 (A is a descendant of B).
         let res = jput(
             &server,
             &env.alice,
@@ -323,7 +323,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         assert_eq!(res.status_code(), 400, "cycle refuse");
         assert_eq!(res.json::<serde_json::Value>()["error"], "resource-cycle");
 
-        // Parent unique : le média re-parenté de A → B (déplacement = 1 PUT).
+        // Single parent: the media re-parented from A → B (move = 1 PUT).
         let res = jput(
             &server,
             &env.alice,
@@ -346,10 +346,10 @@ async fn containment_parent_unique_cycle_et_reparent() {
         assert_eq!(body["parent"]["kind"], "folder");
         assert_eq!(body["parent"]["id"], b.to_string());
         assert_eq!(body["children"].as_array().unwrap().len(), 0);
-        // A est DANS B : le chemin du média (placé dans B) = [B] seulement.
+        // A is INSIDE B: the media's path (placed in B) = [B] only.
         assert_eq!(body["path"].as_array().unwrap().len(), 1, "chemin media>B");
 
-        // Détach : parent null → racine (sous-arbre intact, rien supprimé).
+        // Detach: null parent → root (subtree intact, nothing deleted).
         let res = jput(
             &server,
             &env.alice,
@@ -362,7 +362,7 @@ async fn containment_parent_unique_cycle_et_reparent() {
         let body: serde_json::Value = res.json();
         assert!(body["parent"].is_null());
 
-        // Parent inconnu → 404 masqué.
+        // Unknown parent → masked 404.
         let res = jput(
             &server,
             &env.alice,
@@ -378,8 +378,8 @@ async fn containment_parent_unique_cycle_et_reparent() {
 
 // ─────────────────────────── drawer POI ───────────────────────────
 
-/// Drawer POI : le POI contient des **dossiers** (pas d'objets directs) et
-/// les enfants portent leur nom d'affichage tous kinds (hydratation registre).
+/// POI drawer: the POI contains **folders** (no direct objects) and the
+/// children carry their display name for all kinds (registry hydration).
 #[tokio::test]
 #[serial]
 async fn map_pin_contient_folders_pas_objets() {
@@ -389,7 +389,7 @@ async fn map_pin_contient_folders_pas_objets() {
         let poi = create_poi(&server, &env.alice, org).await;
         let media = create_media(&server, &env.alice, org, "pano").await;
 
-        // Folder sous le POI → 200.
+        // Folder under the POI → 200.
         let res = jpost(
             &server,
             &env.alice,
@@ -410,7 +410,7 @@ async fn map_pin_contient_folders_pas_objets() {
         .await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
 
-        // Les enfants du POI portent le nom du folder.
+        // The POI's children carry the folder's name.
         let res = jget(
             &server,
             &env.alice,
@@ -423,7 +423,7 @@ async fn map_pin_contient_folders_pas_objets() {
         assert_eq!(body["children"][0]["kind"], "folder");
         assert_eq!(body["children"][0]["name"], "Électrique");
 
-        // Média directement sous le POI → 400 (map_pin ne contient que des
+        // Media directly under the POI → 400 (map_pin only contains
         // folders).
         let res = jput(
             &server,
@@ -433,10 +433,10 @@ async fn map_pin_contient_folders_pas_objets() {
             serde_json::json!({"parent": {"kind": "map_pin", "id": poi}}),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "objets directs refusés");
+        assert_eq!(res.status_code(), 400, "direct objects refused");
 
-        // Média dans le folder → 200, et le folder liste son nom d'affichage
-        // (hydratation registre, tous kinds).
+        // Media in the folder → 200, and the folder lists its display name
+        // (registry hydration, all kinds).
         let res = jput(
             &server,
             &env.alice,
@@ -458,7 +458,7 @@ async fn map_pin_contient_folders_pas_objets() {
         assert_eq!(body["children"][0]["kind"], "media_asset");
         assert_eq!(body["children"][0]["name"], "Test");
 
-        // Cycle : le POI ne peut pas être rangé dans son propre dossier.
+        // Cycle: the POI can't be filed into its own folder.
         let res = jput(
             &server,
             &env.alice,
@@ -467,7 +467,7 @@ async fn map_pin_contient_folders_pas_objets() {
             serde_json::json!({"parent": {"kind": "folder", "id": fid.to_string()}}),
         )
         .await;
-        assert_eq!(res.status_code(), 400, "cycle POI>dossier>POI refusé");
+        assert_eq!(res.status_code(), 400, "cycle POI>folder>POI refused");
     })
     .await;
 }
@@ -484,7 +484,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         let poi = create_poi(&server, &env.alice, org).await;
         let media = create_media(&server, &env.alice, org, "pano").await;
 
-        // Relation non déclarée (device n'a aucune relation) → 400.
+        // Undeclared relation (device has no relation) → 400.
         let res = jpost(
             &server,
             &env.alice,
@@ -502,10 +502,10 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         assert_eq!(
             res.status_code(),
             400,
-            "device n'a pas placed_on dans sa spec"
+            "device has no placed_on in its spec"
         );
 
-        // POI inconnu → 404 masqué.
+        // Unknown POI → masked 404.
         let res = jpost(
             &server,
             &env.alice,
@@ -522,7 +522,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         .await;
         assert_eq!(res.status_code(), 404);
 
-        // Arête OK + placement hotspot.
+        // Edge OK + hotspot placement.
         let res = jpost(
             &server,
             &env.alice,
@@ -556,9 +556,9 @@ async fn edges_validite_doublon_et_purge_symetrique() {
             }),
         )
         .await;
-        assert_eq!(res.status_code(), 409, "arête en double");
+        assert_eq!(res.status_code(), 409, "duplicate edge");
 
-        // Arête cross-org : bob cible le média d'alice → 404.
+        // Cross-org edge: bob targets alice's media → 404.
         let poi_b = create_poi(&server, &env.bob, org_b).await;
         let res = jpost(
             &server,
@@ -574,7 +574,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
             }),
         )
         .await;
-        assert_eq!(res.status_code(), 404, "cible cross-org masquée");
+        assert_eq!(res.status_code(), 404, "cross-org target masked");
 
         // PATCH placement.
         let res = jpost(
@@ -593,7 +593,7 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         .await;
         assert_eq!(res.status_code(), 404, "dashboard inconnu");
 
-        // Purge symétrique : suppression du MÉDIA (cible) purge l'arête.
+        // Symmetric purge: deleting the MEDIA (target) purges the edge.
         let res = jdelete(&server, &env.alice, org, &format!("/api/v1/media/{media}")).await;
         assert_eq!(res.status_code(), 204);
         let res = jget(
@@ -608,14 +608,14 @@ async fn edges_validite_doublon_et_purge_symetrique() {
         assert_eq!(
             res.json::<serde_json::Value>()["count"],
             0,
-            "purge symétrique : l'arête est partie avec sa cible"
+            "symmetric purge: the edge went away with its target"
         );
         let _ = edge_id;
     })
     .await;
 }
 
-/// POI géo minimal via l'API (helper local).
+/// Minimal geo POI via the API (local helper).
 async fn create_poi(server: &axum_test::TestServer, token: &str, org: i64) -> String {
     let res = jpost(
         server,
@@ -669,8 +669,8 @@ async fn recherche_effective_cross_kind_et_folders() {
         )
         .await;
 
-        // Device : étiqueté directement (sans folder) — kind vivant dans la
-        // recherche cross-kind.
+        // Device: labelled directly (no folder) — a live kind in the
+        // cross-kind search.
         let dev = create_device(&server, &env.alice, org, "cap-serre").await;
         let dev_id = dev["id"].as_i64().unwrap().to_string();
         let _ = jput(
@@ -695,7 +695,7 @@ async fn recherche_effective_cross_kind_et_folders() {
         // Own labels only (D218): the media in the folder inherits nothing.
         assert_eq!(body["count"], 2, "device + folder : {}", body);
 
-        // Kinds filtrés : device uniquement.
+        // Filtered kinds: device only.
         let res = jget(
             &server,
             &env.alice,
@@ -707,8 +707,8 @@ async fn recherche_effective_cross_kind_et_folders() {
         assert_eq!(body["count"], 1);
         assert_eq!(body["results"][0]["kind"], "device");
 
-        // Folders : liste + PATCH + delete (le folder labelé meurt, le
-        // média reste rooté).
+        // Folders: list + PATCH + delete (the labelled folder dies, the
+        // media stays rooted).
         let res = jget(&server, &env.alice, org, "/api/v1/resources/folders").await;
         assert_eq!(res.json::<serde_json::Value>()["count"], 1);
         let res = jpost(
@@ -728,7 +728,7 @@ async fn recherche_effective_cross_kind_et_folders() {
         )
         .await;
         assert_eq!(res.status_code(), 204);
-        // Le média dans « Serre » est toujours là (isolation folder).
+        // The media in "Serre" is still there (folder isolation).
         let res = jget(
             &server,
             &env.alice,
@@ -737,7 +737,7 @@ async fn recherche_effective_cross_kind_et_folders() {
         )
         .await;
         assert_eq!(res.status_code(), 200);
-        // Isolation : bob ne voit pas l'arbre d'alice.
+        // Isolation: bob does not see alice's tree.
         let res = jget(
             &server,
             &env.bob,
@@ -750,7 +750,7 @@ async fn recherche_effective_cross_kind_et_folders() {
     .await;
 }
 
-/// Device du catalogue (temp_sensor) attaché à l'org — helper local.
+/// Catalogue device (temp_sensor) attached to the org — local helper.
 async fn create_device(
     server: &axum_test::TestServer,
     token: &str,

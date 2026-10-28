@@ -1,29 +1,29 @@
-//! Écran « URL du serveur » — façon Bitwarden, natif uniquement (Android/
-//! desktop) : le front n'est pas servi par le backend sur ces cibles, donc
-//! pas de same-origin. Le web (wasm32) n'y passe jamais : URLs relatives,
-//! origine de la page.
+//! "Server URL" screen — Bitwarden style, native only (Android/
+//! desktop): the front is not served by the backend on these targets, so
+//! no same-origin. The web (wasm32) never goes through it: relative URLs,
+//! page origin.
 //!
-//! Affiché au boot quand `api::config::api_base()` est vide : saisie +
-//! validation du schéma http/https + probe `GET {base}/` (le backend Loco
-//! sert l'UI statique → toute réponse non-5xx prouve la joignabilité), puis
-//! persistance `pnex.api_base` via `storage::local()` — le seam `api::config`
-//! est le seul consommateur de la clé.
+//! Shown at boot when `api::config::api_base()` is empty: input +
+//! http/https scheme validation + probe `GET {base}/` (the Loco backend
+//! serves the static UI → any non-5xx response proves reachability), then
+//! persistence of `pnex.api_base` via `storage::local()` — the `api::config`
+//! seam is the only consumer of the key.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
 
-// Utiles uniquement côté natif (probe + persistance) — sur wasm l'écran
-// n'est jamais affiché et probe_and_store n'existe pas.
+// Only useful natively (probe + persistence) — on wasm the screen
+// is never shown and probe_and_store does not exist.
 #[cfg(not(target_arch = "wasm32"))]
 use crate::storage::{self, KeyValueStorage, KEY_API_BASE};
 
-/// Router de secours de l'écran : `false` → l'écran ServerUrl remplace le
-/// routeur (main.rs). Global (pas un signal local d'App) pour que la page de
-/// login — après logout — puisse rouvrir cet écran (« Changer de serveur »).
+/// Fallback router of the screen: `false` → the ServerUrl screen replaces the
+/// router (main.rs). Global (not a local App signal) so that the login
+/// page — after logout — can reopen this screen ("Change server").
 pub static SERVER_READY: GlobalSignal<bool> = GlobalSignal::new(|| !needs_setup());
 
-/// URL courante, pour préremplir la saisie (changement de serveur — l'URL
-/// est proposée en édition, jamais à retaper de zéro).
+/// Current URL, to prefill the input (server change — the URL is
+/// offered for editing, never retyped from scratch).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn current_base() -> String {
     storage::local().get(KEY_API_BASE).unwrap_or_default()
@@ -34,8 +34,8 @@ pub(crate) fn current_base() -> String {
     String::new()
 }
 
-/// Vrai quand l'écran doit s'afficher au boot (cible native, base URL non
-/// résolue). Sur wasm32 : toujours faux (same-origin).
+/// True when the screen must show at boot (native target, base URL not
+/// resolved). On wasm32: always false (same-origin).
 pub fn needs_setup() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
@@ -47,13 +47,13 @@ pub fn needs_setup() -> bool {
     }
 }
 
-/// Erreurs de configuration — énumérée pour rester traduisible : `t!()` est
-/// appelé dans le rsx, jamais dans le helper async (le dictionnaire i18n vit
-/// dans le scope du composant).
+/// Configuration errors — enumerated to stay translatable: `t!()` is
+/// called in the rsx, never in the async helper (the i18n dictionary lives
+/// in the component scope).
 #[derive(Clone)]
 pub(crate) enum SetupError {
     Format,
-    // Construit uniquement côté natif (probe_and_store n'existe pas en wasm).
+    // Built only natively (probe_and_store does not exist in wasm).
     #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     Probe(String),
     /// HTTPS server signed by an unknown CA that the server hands out: the
@@ -75,9 +75,9 @@ pub(crate) struct PendingCa {
 /// as an overlay by `App` whatever the screen underneath.
 pub(crate) static PENDING_CA: GlobalSignal<Option<PendingCa>> = GlobalSignal::new(|| None);
 
-/// Valide la saisie (schéma http/https), probe `GET {base}/` puis persiste
-/// la base dans `pnex.api_base`. Sur wasm32 : n'existe pas (écran jamais
-/// affiché).
+/// Validates the input (http/https scheme), probes `GET {base}/` then persists
+/// the base in `pnex.api_base`. On wasm32: does not exist (screen never
+/// shown).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) async fn probe_and_store(raw: &str) -> Result<(), SetupError> {
     let base = raw.trim().trim_end_matches('/').to_string();
@@ -86,9 +86,9 @@ pub(crate) async fn probe_and_store(raw: &str) -> Result<(), SetupError> {
         return Err(SetupError::Format);
     }
 
-    // Probe : toute réponse non-5xx prouve la joignabilité (le backend sert
-    // l'UI statique → 200 attendu sur `/` ; un 404 d'un autre service reste
-    // une preuve de joignabilité). Timeout court : réseau mobile.
+    // Probe: any non-5xx response proves reachability (the backend serves
+    // the static UI → 200 expected on `/`; a 404 from another service is still
+    // proof of reachability). Short timeout: mobile network.
     let client = crate::api::tls::client(Some(std::time::Duration::from_secs(10)));
     let response = match client.get(format!("{base}/")).send().await {
         Ok(response) => response,
@@ -203,23 +203,23 @@ fn domain_origin(origin: &str) -> Option<String> {
     })
 }
 
-/// Chemin unique « se connecter à ce serveur » : probe + persistance +
-/// porte de compatibilité (reset puis re-vérification) + bascule
-/// `SERVER_READY`. Emprunté par les trois points d'entrée : `ServerUrl`
-/// (premier lancement / changement), `SelfHostedSection` (login) et le scan
-/// LAN (`pages/lan_scan.rs`). La porte est remise en vérification AVANT la
-/// bascule : l'écran courant laisse place au spinner de `GateScreen`,
-/// jamais à un écran bloquant périmé (serveur précédent).
+/// Single "connect to this server" path: probe + persistence +
+/// compatibility gate (reset then re-check) + `SERVER_READY`
+/// switch. Used by the three entry points: `ServerUrl`
+/// (first launch / change), `SelfHostedSection` (login) and the LAN
+/// scan (`pages/lan_scan.rs`). The gate is put back into checking BEFORE the
+/// switch: the current screen gives way to the `GateScreen` spinner,
+/// never to a stale blocking screen (previous server).
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) async fn apply_server(raw: &str) -> Result<(), SetupError> {
     let base = canonical_base(raw).await;
     probe_and_store(&base).await?;
     crate::state::compat::reset();
-    // La vérification est DÉTACHÉE du scope appelant (`spawn_forever`, pas
-    // `spawn` ni await direct) : dès `SERVER_READY=true`, App remplace le
-    // sous-arbre courant (ServerUrl/login/scan) par la porte — une tâche
-    // liée au scope serait annulée en pleine vérification et GATE resterait
-    // figé sur Checking (constat 2026-09-09 sur device).
+    // The check is DETACHED from the calling scope (`spawn_forever`, not
+    // `spawn` nor a direct await): as soon as `SERVER_READY=true`, App replaces
+    // the current subtree (ServerUrl/login/scan) with the gate — a task
+    // bound to the scope would be cancelled mid-check and GATE would stay
+    // stuck on Checking (finding 2026-09-09 on device).
     dioxus::dioxus_core::spawn_forever(async {
         crate::state::compat::check().await;
     });
@@ -229,14 +229,14 @@ pub(crate) async fn apply_server(raw: &str) -> Result<(), SetupError> {
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) async fn apply_server(_raw: &str) -> Result<(), SetupError> {
-    // Web : same-origin, jamais appelé (garde de compilation).
+    // Web: same-origin, never called (compilation guard).
     Err(SetupError::Format)
 }
 
-/// Section « Serveur auto-hébergé » de la page de login (façon Bitwarden :
-/// la sélection du serveur vit DANS l'écran de connexion — pattern demandé
-/// 2026-09-09). Dépliable : input prérempli avec l'URL courante, probe +
-/// persistance au enregistrement. Web : same-origin, ne rend rien.
+/// "Self-hosted server" section of the login page (Bitwarden style:
+/// server selection lives IN the login screen — pattern requested
+/// 2026-09-09). Collapsible: input prefilled with the current URL, probe +
+/// persistence on save. Web: same-origin, renders nothing.
 #[component]
 pub(crate) fn SelfHostedSection() -> Element {
     if cfg!(target_arch = "wasm32") || crate::api::config::locked_server().is_some() {
@@ -260,8 +260,8 @@ pub(crate) fn SelfHostedSection() -> Element {
         error.set(None);
         saved.set(false);
         spawn(async move {
-            // apply_server (et non probe_and_store) : enregistrer = se
-            // connecter — bascule SERVER_READY + porte de compatibilité.
+            // apply_server (not probe_and_store): saving = connecting
+            // — SERVER_READY switch + compatibility gate.
             match apply_server(&raw).await {
                 Ok(()) => {
                     saved.set(true);
@@ -331,7 +331,7 @@ pub(crate) fn SelfHostedSection() -> Element {
 
 #[component]
 pub fn ServerUrl() -> Element {
-    // Prérempli avec l'URL courante si elle existe (changement de serveur).
+    // Prefilled with the current URL if it exists (server change).
     let mut url = use_signal(current_base);
     let mut busy = use_signal(|| false);
     let mut error: Signal<Option<SetupError>> = use_signal(|| None);
@@ -345,9 +345,9 @@ pub fn ServerUrl() -> Element {
         busy.set(true);
         error.set(None);
         spawn(async move {
-            // apply_server : probe + persistance + porte de compatibilité +
-            // bascule SERVER_READY (main.rs passe alors sur la porte, puis
-            // le routeur).
+            // apply_server: probe + persistence + compatibility gate +
+            // SERVER_READY switch (main.rs then moves to the gate, then
+            // the router).
             match apply_server(&raw).await {
                 Ok(()) => {}
                 Err(e) => error.set(Some(e)),
@@ -413,9 +413,9 @@ pub fn ServerUrl() -> Element {
                             }
                         }
 
-                        // Détection LAN des serveurs PNEX (natif) — premier
-                        // lancement sans URL connue : le scan trouve le
-                        // serveur auto-hébergé du réseau local.
+                        // LAN detection of PNEX servers (native) — first
+                        // launch without a known URL: the scan finds the
+                        // self-hosted server of the local network.
                         crate::pages::lan_scan::LanScanSection {}
 
                         div { class: "pt-6 border-t border-gray-200",

@@ -1,13 +1,13 @@
-//! Référentiels Edge — CRUD org-scoped des credentials WiFi et des hosts
-//! serveur PNeX. Alimente l'étape Config du wizard device (fin de la
-//! ressaisie à chaque ajout de device ; cf. `pnex_core::edge`).
+//! Edge references — org-scoped CRUD of WiFi credentials and PNeX server
+//! hosts. Feeds the Config step of the device wizard (no more re-typing
+//! on every device addition; see `pnex_core::edge`).
 //!
-//! École `controllers/notify.rs` : scoping org (404 masqué cross-org),
-//! writes gated by their IAM permission, 400 field by field. **Divergence assumée**
-//! vs notify : le POST est un **upsert** (200/201, jamais 409) — le (org,
-//! ssid) / (org, host) est la clé naturelle et l'ajout inline depuis le
-//! wizard ne doit jamais confler : re-sauver = mettre à jour le mot de
-//! passe (a host is returned as is).
+//! `controllers/notify.rs` school: org scoping (cross-org 404 masked),
+//! writes gated by their IAM permission, 400 field by field. **Deliberate divergence**
+//! from notify: the POST is an **upsert** (200/201, never 409) — (org,
+//! ssid) / (org, host) is the natural key and the inline addition from the
+//! wizard must never conflict: saving again = updating the
+//! password (a host is returned as is).
 //!
 //! The WiFi password lives in the secrets vault (secrets.md S6): only its
 //! reference is returned, never the value.
@@ -37,18 +37,18 @@ use pnex_core::{
     WifiCredential, WifiCredentialInput,
 };
 
-/// Port meta du serveur PNeX (binding par défaut, config/*.yaml) — cible du
-/// scan LAN.
+/// Meta port of the PNeX server (default binding, config/*.yaml) — target of the
+/// LAN scan.
 const SCAN_PORT: u16 = 5150;
-/// Timeout par sonde : une IP injoignable doit libérer le slot vite.
-/// (900 ms : SYN-drop typique, borne serrée sans abuser les faux négatifs.)
+/// Timeout per probe: an unreachable IP must free its slot fast.
+/// (900 ms: typical SYN-drop, tight bound without abusing false negatives.)
 const SCAN_TIMEOUT: Duration = Duration::from_millis(900);
-/// Parallélisme : 96 sondes simultanées — un hôte multi-interfaces
-/// (docker bridges, virbr) scanne plusieurs /24 : 1270 candidats ≈ 12 s
-/// pire cas, un /24 seul ≈ 2,5 s.
+/// Parallelism: 96 simultaneous probes — a multi-interface host
+/// (docker bridges, virbr) scans several /24: 1270 candidates ≈ 12 s
+/// worst case, a single /24 ≈ 2.5 s.
 const SCAN_CONCURRENCY: usize = 96;
 
-/// 400 champ-par-champ (école notify).
+/// 400 field by field (notify school).
 fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
@@ -147,7 +147,7 @@ fn validate_ssid(input: &WifiCredentialInput) -> Option<Response> {
     None
 }
 
-/// Réseaux ouverts hors scope v1 : a saved entry always has a password.
+/// Open networks out of v1 scope: a saved entry always has a password.
 fn password_required() -> Response {
     field_status("password", err_codes::FIELD_REQUIRED)
 }
@@ -156,7 +156,7 @@ fn vault_error(e: crate::services::secrets::store::StoreError) -> Result<Respons
     crate::controllers::secrets::store_error(e)
 }
 
-/// `GET /api/v1/edge/wifi-credentials` — référentiel de l'org (ssid ASC).
+/// `GET /api/v1/edge/wifi-credentials` — the org's references (ssid ASC).
 #[utoipa::path(
     get,
     path = "/api/v1/edge/wifi-credentials",
@@ -203,8 +203,8 @@ async fn list_wifi(
     .into_response())
 }
 
-/// `POST /api/v1/edge/wifi-credentials` — **upsert** sur (org, ssid)
-/// case-sensitive : existe → 200 (mdp mis à jour), absent → 201.
+/// `POST /api/v1/edge/wifi-credentials` — **upsert** on (org, ssid)
+/// case-sensitive: exists → 200 (password updated), absent → 201.
 #[utoipa::path(
     post,
     path = "/api/v1/edge/wifi-credentials",
@@ -300,8 +300,8 @@ async fn create_wifi(
     Ok((status, format::json(wifi_view(&ctx.db, &saved).await?)).into_response())
 }
 
-/// `PUT /api/v1/edge/wifi-credentials/{id}` — édition in-place (renommage
-/// possible, 409 si le ssid visé existe ailleurs) ; password absent =
+/// `PUT /api/v1/edge/wifi-credentials/{id}` — in-place edit (renaming
+/// possible, 409 if the targeted ssid exists elsewhere); password absent =
 /// unchanged.
 #[utoipa::path(
     put,
@@ -339,8 +339,8 @@ async fn update_wifi(
         return Err(Error::NotFound);
     };
     let ssid = input.ssid.trim().to_string();
-    // Renommage : le (org, ssid) visé existe déjà sur une AUTRE ligne → 409
-    // (l'index unique serait violé).
+    // Renaming: the targeted (org, ssid) already exists on ANOTHER row → 409
+    // (the unique index would be violated).
     let dup = WifiCredentials::find()
         .filter(wifi_credentials::Column::OrgId.eq(org.org.id))
         .filter(wifi_credentials::Column::Ssid.eq(&ssid))
@@ -397,8 +397,8 @@ async fn update_wifi(
         .into_response())
 }
 
-/// `DELETE /api/v1/edge/wifi-credentials/{id}` — 204 ; cross-org = 404
-/// masqué (le find est déjà filtré par org). Its dedicated secret goes
+/// `DELETE /api/v1/edge/wifi-credentials/{id}` — 204; cross-org = 404
+/// masked (the find is already filtered by org). Its dedicated secret goes
 /// with it.
 #[utoipa::path(
     delete,
@@ -478,7 +478,7 @@ fn validate_host(input: &PnexHostInput) -> Option<Response> {
     None
 }
 
-/// `GET /api/v1/edge/hosts` — référentiel de l'org (host ASC).
+/// `GET /api/v1/edge/hosts` — the org's references (host ASC).
 #[utoipa::path(
     get,
     path = "/api/v1/edge/hosts",
@@ -583,7 +583,7 @@ async fn create_host(
     };
     match am.insert(&ctx.db).await {
         Ok(saved) => Ok((StatusCode::CREATED, format::json(host_dto(&saved))).into_response()),
-        // Course d'upsert (cf. create_wifi).
+        // Upsert race (see create_wifi).
         Err(e) if is_unique_violation(&e) => {
             let m = PnexHosts::find()
                 .filter(pnex_hosts::Column::OrgId.eq(org.org.id))
@@ -598,9 +598,9 @@ async fn create_host(
     }
 }
 
-/// `PUT /api/v1/edge/hosts/{id}` — mise à jour in-place (id conservé) :
-/// renommage d'hôte. Conflit (org, host) avec une AUTRE
-/// entrée → 409.
+/// `PUT /api/v1/edge/hosts/{id}` — in-place update (id kept):
+/// host renaming. (org, host) conflict with ANOTHER
+/// entry → 409.
 #[utoipa::path(
     put,
     path = "/api/v1/edge/hosts/{id}",
@@ -663,7 +663,7 @@ async fn update_host(
     Ok((StatusCode::OK, format::json(host_dto(&saved))).into_response())
 }
 
-/// `DELETE /api/v1/edge/hosts/{id}` — 204 ; cross-org = 404 masqué.
+/// `DELETE /api/v1/edge/hosts/{id}` — 204; cross-org = 404 masked.
 #[utoipa::path(
     delete,
     path = "/api/v1/edge/hosts/{id}",
@@ -725,11 +725,11 @@ struct LanScanQuery {
     prefix: Option<String>,
 }
 
-/// `GET /api/v1/edge/lan-scan` — sonde les /24 des interfaces privées du
-/// serveur (ou la plage `?prefix=` explicite) et retourne les serveurs
-/// s'identifiant `pnex-server` (sonde meta du contrat, pas un simple port
-/// ouvert). Auth requis, lecture ouverte à tous les rôles : le scan ne
-/// révèle rien que le réseau du serveur n'expose déjà.
+/// `GET /api/v1/edge/lan-scan` — probes the /24 of the server's private
+/// interfaces (or the explicit `?prefix=` range) and returns the servers
+/// identifying as `pnex-server` (contract meta probe, not a mere open
+/// port). Auth required, read open to all roles: the scan reveals
+/// nothing the server's network does not already expose.
 ///
 /// Default range (no `?prefix=`): the /24 of the address the user reached
 /// the app at (`X-Forwarded-Host` / `Host`, e.g. `192.168.1.185` behind the
@@ -774,7 +774,7 @@ async fn lan_scan(
     .into_iter()
     .filter(|p| valid_prefix(p))
     .collect();
-    // Garde : jamais sonder une plage publique par inadvertance.
+    // Guard: never probe a public range by accident.
     if prefixes.is_empty() {
         return Ok(format::json(LanScanResult {
             prefixes: vec![],
@@ -808,8 +808,8 @@ async fn lan_scan(
         .map_err(|_| Error::InternalServerError)?;
     let mut hits = futures_util::stream::iter(candidates)
         .map(|url| {
-            // reqwest::Client est un Arc interne : cloner par future est
-            // négligeable et rend la closure FnMut.
+            // reqwest::Client is an internal Arc: cloning it per future is
+            // negligible and makes the closure FnMut.
             let client = client.clone();
             async move { probe_hit(&client, &url).await }
         })
@@ -824,8 +824,8 @@ async fn lan_scan(
     Ok(format::json(LanScanResult { prefixes, hits }).into_response())
 }
 
-/// Sonde `http://{ip}:{SCAN_PORT}{META_VERSION_PATH}` — ne retient que les
-/// serveurs dont le champ `service` du contrat vaut `pnex-server`.
+/// Probes `http://{ip}:{SCAN_PORT}{META_VERSION_PATH}` — keeps only the
+/// servers whose contract `service` field is `pnex-server`.
 async fn probe_hit(client: &reqwest::Client, base: &str) -> Option<LanScanHit> {
     let url = format!("{base}{META_VERSION_PATH}");
     let response = client.get(url).send().await.ok()?;
@@ -910,9 +910,9 @@ fn default_prefixes(
     out
 }
 
-/// Préfixes « a.b.c. » des IPv4 privées du serveur (auto-détection). Sur un
-/// déploiement conteneurisé (bridge 172.x), la plage vue est le bridge —
-/// cf. `default_prefixes`.
+/// "a.b.c." prefixes of the server's private IPv4s (auto-detection). On a
+/// containerized deployment (bridge 172.x), the range seen is the bridge —
+/// see `default_prefixes`.
 fn private_prefixes() -> Vec<String> {
     let mut prefixes: Vec<String> = if_addrs::get_if_addrs()
         .unwrap_or_default()

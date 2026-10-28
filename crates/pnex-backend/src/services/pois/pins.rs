@@ -41,7 +41,7 @@ pub async fn create_pin<C: sea_orm::ConnectionTrait>(
     pin.insert(db).await.map_err(|_| VizWriteError::Db)
 }
 
-/// PATCH partiel : `Option<Option<T>>` = absent / null / valeur (école sites).
+/// Partial PATCH: `Option<Option<T>>` = absent / null / value (sites pattern).
 pub struct UpdatePin<'a> {
     pub label: Option<&'a str>,
     pub emoji: Option<Option<&'a str>>,
@@ -49,12 +49,12 @@ pub struct UpdatePin<'a> {
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub metadata: Option<Option<serde_json::Value>>,
-    /// Aperçu épinglé : posé (kind+id) ou retiré (null) **ensemble**.
+    /// Pinned preview: set (kind+id) or removed (null) **together**.
     pub preview_kind: Option<Option<&'a str>>,
     pub preview_id: Option<Option<&'a str>>,
 }
 
-/// Kind d'aperçu valide, trimé (`None` si vide) — `Err` si hors liste.
+/// Valid preview kind, trimmed (`None` if empty) — `Err` if not in the list.
 fn validate_preview_kind(kind: &str) -> Result<Option<&str>, VizWriteError> {
     let kind = kind.trim();
     if kind.is_empty() {
@@ -78,7 +78,7 @@ pub async fn update_pin(
         am.label = Set(validate_label(Some(label))?);
     }
     match p.emoji {
-        // Some(None) = reset au pictogramme par défaut.
+        // Some(None) = reset to the default pictogram.
         Some(None) => am.emoji = Set(Some(PIN_EMOJI_DEFAULT.to_string())),
         Some(Some(e)) => am.emoji = Set(validate_emoji(Some(e))?),
         None => {}
@@ -99,8 +99,8 @@ pub async fn update_pin(
     if let Some(lon) = p.longitude {
         am.longitude = Set(Some(validate_lon(lon)?));
     }
-    // Aperçu épinglé : le couple (kind, id) vit ensemble — `null` sur l'un
-    // des deux débriefe les deux (désépinglage) ; une pose exige les deux.
+    // Pinned preview: the (kind, id) pair lives together — `null` on either
+    // one clears both (unpinning); setting requires both.
     match (p.preview_kind, p.preview_id) {
         (Some(None), _) | (_, Some(None)) => {
             am.preview_kind = Set(None);
@@ -129,8 +129,8 @@ pub async fn delete_pin(
     org_id: i64,
     pin: map_pins::Model,
 ) -> Result<(), DbErr> {
-    // D42 : purge **symétrique** de la couche d'organisation (labels +
-    // containment + arêtes des DEUX bouts) — remplace delete_links_for.
+    // D42: **symmetric** purge of the organisation layer (labels +
+    // containment + edges at BOTH ends) — replaces delete_links_for.
     crate::services::resources::purge_for(db, org_id, "map_pin", &pin.id.to_string()).await?;
     map_pins::Entity::delete_by_id(pin.id)
         .exec(db)
@@ -140,7 +140,7 @@ pub async fn delete_pin(
 
 // ─────────────────────────── listes + clustering ───────────────────────────
 
-/// Filtres communs liste / cluster.
+/// Common list / cluster filters.
 #[derive(Default)]
 pub struct PinFilters<'a> {
     pub search: Option<&'a str>,
@@ -262,7 +262,7 @@ fn filtered_pins_select(
     q
 }
 
-/// POI géo de l'org, filtrés bbox optionnelle (all filters in SQL).
+/// The org's geo POIs, filtered by optional bbox (all filters in SQL).
 pub(super) async fn filtered_pins(
     db: &DatabaseConnection,
     org_id: i64,

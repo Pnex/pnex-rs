@@ -58,8 +58,8 @@ struct Jwk {
     kty: String,
     #[serde(default)]
     alg: Option<String>,
-    /// Absents sur les clés non-RSA (Rauthy publie aussi des clés OKP/EdDSA
-    /// dans le même ensemble) — les entrées sans `n`/`e` sont ignorées.
+    /// Absent on non-RSA keys (Rauthy also publishes OKP/EdDSA keys
+    /// in the same set) — entries without `n`/`e` are skipped.
     #[serde(default)]
     n: Option<String>,
     #[serde(default)]
@@ -115,7 +115,7 @@ impl JwksVerifier {
             audiences: vec![settings.client_id.clone(), "account".into()],
             jwks_url: settings.jwks_url(),
             http: reqwest::Client::builder()
-                // Rauthy refuse les requêtes sans User-Agent (400).
+                // Rauthy rejects requests without a User-Agent (400).
                 .user_agent("pnex-server")
                 .timeout(std::time::Duration::from_secs(5))
                 .build()
@@ -275,7 +275,7 @@ impl JwksVerifier {
                     continue;
                 }
             }
-            // Clés non-RSA (OKP/EdDSA) : pas de composants n/e → ignorées.
+            // Non-RSA keys (OKP/EdDSA): no n/e components → skipped.
             let (Some(n), Some(e)) = (jwk.n, jwk.e) else {
                 continue;
             };
@@ -298,8 +298,8 @@ impl JwksVerifier {
     }
 }
 
-/// Registre process-global : un vérifieur par issuer (dev/test/prod peuvent
-/// pointer vers des IdP différents dans le même process de test). Read path
+/// Process-global registry: one verifier per issuer (dev/test/prod can
+/// point to different IdPs in the same test process). Read path
 /// is a shared lock, the write lock is only taken to insert a new issuer.
 static VERIFIERS: std::sync::OnceLock<RwLock<HashMap<String, Arc<JwksVerifier>>>> =
     std::sync::OnceLock::new();

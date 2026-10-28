@@ -1,6 +1,6 @@
-//! Modèles SeaORM — entities générées depuis le schéma (`cargo loco db
-//! entities`, à régénérer après chaque migration). La logique métier
-//! (hooks, validations) vit dans des modules services dédiés, pas ici.
+//! SeaORM models — entities generated from the schema (`cargo loco db
+//! entities`, to regenerate after each migration). Business logic
+//! (hooks, validations) lives in dedicated service modules, not here.
 
 pub mod _entities;
 pub mod ai_conversations;

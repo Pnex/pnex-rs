@@ -3,7 +3,7 @@
 //! listed in the flow node catalog under this dashboard — or links an
 //! existing control (shared state across surfaces, advanced). Plus the
 //! optional state source and "Create the flow" (a draft `control-source` →
-//! `device-write`, parcours §1.3).
+//! `device-write`, journey §1.3).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

@@ -1,47 +1,47 @@
-//! Pont caméra JS — getUserMedia dans la webview (module cfg Android).
+//! JS camera bridge — getUserMedia in the webview (Android cfg module).
 //!
-//! wry gère déjà le flux runtime-permission (RustWebChromeClient.kt mappe
-//! `VIDEO_CAPTURE` → `CAMERA` avec launcher Capacitor) et le contenu est
-//! servi via WebViewAssetLoader (contexte sécurisé) : côté Rust, il suffit
-//! d'injecter le JS (école `media_viewer.rs`, `document::eval`).
+//! wry already handles the runtime-permission flow (RustWebChromeClient.kt maps
+//! `VIDEO_CAPTURE` → `CAMERA` with a Capacitor launcher) and the content is
+//! served via WebViewAssetLoader (secure context): on the Rust side, injecting
+//! the JS is enough (`media_viewer.rs` pattern, `document::eval`).
 //!
-//! Séquence par frame : canvas réduit à ~1000 px → `toDataURL('image/jpeg')`
-//! → stash global → récupération par chunks de 128 KiB (on ne traverse pas
-//! le pont IPC avec de gros payloads non testés) → décodage base64 (crate
-//! `base64`, déjà dep).
+//! Per-frame sequence: canvas scaled to ~1000 px → `toDataURL('image/jpeg')`
+//! → global stash → fetched in 128 KiB chunks (we don't push large untested
+//! payloads through the IPC bridge) → base64 decoding (`base64` crate,
+//! already a dep).
 
 use base64::Engine as _;
 
-/// Plafond de largeur de frame (V2) : le canvas capture la piste pleine
-/// résolution jusqu'à 1080 de large (au-delà, downscale) — la hfov corrigée
-/// (43,7°) donne ~16 px/° à 720 ; 1080 porterait à ~25 px/°.
+/// Frame width cap (V2): the canvas captures the track at full
+/// resolution up to 1080 wide (beyond that, downscale) — the corrected hfov
+/// (43.7°) gives ~16 px/° at 720; 1080 would bring it to ~25 px/°.
 const FRAME_MAX_WIDTH: u32 = 1080;
-/// Qualité JPEG des frames.
+/// JPEG quality of the frames.
 const FRAME_QUALITY: f64 = 0.8;
-/// Taille des chunks base64 traversant le pont IPC.
+/// Size of the base64 chunks crossing the IPC bridge.
 const CHUNK: usize = 128 * 1024;
 
-/// Erreur du pont caméra.
+/// Camera bridge error.
 #[derive(Debug)]
 pub enum FrameError {
-    /// Permission refusée (NotAllowedError) ou pré-check perdu.
+    /// Permission denied (NotAllowedError) or pre-check lost.
     Permission,
-    /// Pas de caméra (NotFoundError / OverconstrainedError / track absent).
+    /// No camera (NotFoundError / OverconstrainedError / missing track).
     NoVideo,
-    /// Autre échec JS (détail pour le log).
+    /// Other JS failure (detail for the log).
     Unknown(String),
 }
 
-/// Ouvre la caméra arrière et l'attache au `<video>` (srcObject).
-/// Retourne (largeur, hauteur) du track (0 si inconnues).
+/// Opens the rear camera and attaches it to the `<video>` (srcObject).
+/// Returns the track's (width, height) (0 if unknown).
 ///
-/// ⚠️ PAS d'async dans l'eval : côté natif, `document::eval` ne await pas
-/// les promesses (pattern prouvé tron.rs/media_viewer.rs : return sync) —
-/// on lance getUserMedia en fire-and-forget (.then/.catch posent des
-/// globales) puis on sonde un eval SYNCHRONE.
+/// ⚠️ NO async in the eval: natively, `document::eval` does not await
+/// promises (proven tron.rs/media_viewer.rs pattern: sync return) —
+/// getUserMedia is fired and forgotten (.then/.catch set globals),
+/// then a SYNCHRONOUS eval polls.
 pub async fn open_camera(video_id: &str) -> Result<(u32, u32), FrameError> {
     let id_q = video_id.replace('\'', "");
-    // 1) Lancement fire-and-forget — le résultat atterrit dans
+    // 1) Fire-and-forget launch — the result lands in
     //    window.__p360Ready / __p360Err.
     let _ = dioxus::document::eval(&format!(
         "window.__p360Ready = false; \
@@ -93,11 +93,11 @@ pub async fn open_camera(video_id: &str) -> Result<(u32, u32), FrameError> {
     Err(FrameError::Unknown("getUserMedia : timeout".into()))
 }
 
-/// Capture la frame courante du `<video>` : canvas réduit + JPEG + base64
-/// récupéré par chunks.
+/// Captures the current `<video>` frame: scaled canvas + JPEG + base64
+/// fetched in chunks.
 pub async fn grab_frame(video_id: &str) -> Result<Vec<u8>, FrameError> {
     let id_q = video_id.replace('\'', "");
-    // 1) Rendu + stash, retour des métadonnées de découpage.
+    // 1) Render + stash, return the chunking metadata.
     let meta = eval_value(&format!(
         "const v = document.getElementById('{id_q}'); \
          if (!v || !v.videoWidth) return JSON.stringify({{ ok: false, err: 'NoVideo' }}); \
@@ -110,9 +110,9 @@ pub async fn grab_frame(video_id: &str) -> Result<Vec<u8>, FrameError> {
              len: window.__p360Frame.length, \
              chunks: Math.ceil(window.__p360Frame.length / {chunk}) }});",
         id_q = id_q,
-        // Pass-through jusqu'à 1080 de large : la piste getUserMedia peut
-        // livrer plus que le plafond historique 720 (les devices récents
-        // offrent 1080×1920 portrait) — pas de downscale inutile.
+        // Pass-through up to 1080 wide: the getUserMedia track may
+        // deliver more than the historical 720 cap (recent devices
+        // offer 1080×1920 portrait) — no needless downscale.
         frame_w = FRAME_MAX_WIDTH,
         quality = FRAME_QUALITY,
         chunk = CHUNK
@@ -123,13 +123,13 @@ pub async fn grab_frame(video_id: &str) -> Result<Vec<u8>, FrameError> {
     }
     let chunks = meta.get("chunks").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
     if chunks == 0 {
-        return Err(FrameError::Unknown("payload vide".into()));
+        return Err(FrameError::Unknown("empty payload".into()));
     }
 
-    // 2) Récupération chunk par chunk.
+    // 2) Fetch chunk by chunk.
     let mut payload = String::with_capacity(chunks * CHUNK);
     for i in 0..chunks {
-        // ⚠️ chunk = base64 BRUT — pas du JSON : eval_string, pas eval_value.
+        // ⚠️ chunk = RAW base64 — not JSON: eval_string, not eval_value.
         let piece = eval_string(&format!(
             "return window.__p360Frame.slice({start}, {end})",
             start = i * CHUNK,
@@ -139,10 +139,10 @@ pub async fn grab_frame(video_id: &str) -> Result<Vec<u8>, FrameError> {
         payload.push_str(&piece);
     }
 
-    // 3) Libère le stash global.
+    // 3) Free the global stash.
     let _ = dioxus::document::eval("window.__p360Frame = null").await;
 
-    // 4) Strip du préfixe data: + décodage base64.
+    // 4) Strip the data: prefix + base64 decoding.
     let Some(b64) = payload.strip_prefix("data:image/jpeg;base64,") else {
         return Err(FrameError::Unknown("missing data: prefix".into()));
     };
@@ -151,7 +151,7 @@ pub async fn grab_frame(video_id: &str) -> Result<Vec<u8>, FrameError> {
         .map_err(|e| FrameError::Unknown(format!("base64 : {e}")))
 }
 
-/// Arrête le flux caméra et déstash — fire-and-forget.
+/// Stops the camera stream and clears the stash — fire-and-forget.
 pub fn close_camera() {
     dioxus::prelude::spawn(async move {
         let _ = dioxus::document::eval(
@@ -162,7 +162,7 @@ pub fn close_camera() {
     });
 }
 
-/// eval JS → String brute (PAS de parse JSON — pour les payloads base64).
+/// JS eval → raw String (NO JSON parse — for base64 payloads).
 async fn eval_string(js: &str) -> Result<String, FrameError> {
     let value = dioxus::document::eval(js)
         .await
@@ -174,13 +174,13 @@ async fn eval_string(js: &str) -> Result<String, FrameError> {
     }
 }
 
-/// eval JS → serde_json::Value (le JS doit retourner une string JSON ou
-/// une valeur JSON-able ; échec → FrameError::Unknown).
+/// JS eval → serde_json::Value (the JS must return a JSON string or a
+/// JSON-able value; failure → FrameError::Unknown).
 async fn eval_value(js: &str) -> Result<serde_json::Value, FrameError> {
     let value = dioxus::document::eval(js)
         .await
         .map_err(|e| FrameError::Unknown(format!("eval : {e:?}")))?;
-    // Le pont dioxus peut livrer une string JSON ou un objet déjà parsé.
+    // The dioxus bridge may deliver a JSON string or an already parsed object.
     if value.is_string() {
         let s = value.as_str().unwrap_or("");
         serde_json::from_str(s).map_err(|e| FrameError::Unknown(format!("json : {e}")))

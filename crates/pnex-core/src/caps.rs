@@ -1,60 +1,60 @@
-//! Chip-caps par SoC — la table de contraintes **silicium** (Brick 0 §1/§2).
+//! Chip-caps per SoC — the **silicon** constraint table (Brick 0 §1/§2).
 //!
-//! Niveau « chip » du modèle 3 couches : chip-caps en **code** (ce fichier),
-//! overlay board en **data** (`mcu_boards.details`), capability instance en
+//! "Chip" level of the 3-layer model: chip-caps in **code** (this file),
+//! board overlay in **data** (`mcu_boards.details`), capability instance in
 //! **PG** (`device_capability_instances`).
 //!
-//! `validate` est le **point unique** de validation des pins : utilisé par le
-//! backend à l'admission (`Announce` → provisioning), avant chaque push de
-//! commande (POST commands) et au cast des cartes régulation (regulator.rs)
-//! — une op illégale est rejetée 400 avec raison, jamais poussée au device
+//! `validate` is the **single point** of pin validation: used by the
+//! backend at admission (`Announce` → provisioning), before every command
+//! push (POST commands) and when casting control cards (regulator.rs)
+//! — an illegal op is rejected 400 with a reason, never pushed to the device
 //! (brick0.md §6/§8).
 //!
-//! ESP8266 (P0) :
-//! - GPIO6–11 = flash SPI → **interdits** ;
-//! - GPIO0/2/15 = strapping pins (0/2 = HIGH attendu au boot, 15 = LOW) ;
-//! - GPIO16 : pas d'interrupt/PWM, **pulldown only** (pas de pull-up) ;
-//! - A0 = canal ADC unique 10-bit (0–1023), aucun GPIO physique — identifiant
-//!   fil convenu `A0_GPIO`.
+//! ESP8266 (P0):
+//! - GPIO6–11 = SPI flash → **forbidden**;
+//! - GPIO0/2/15 = strapping pins (0/2 = HIGH expected at boot, 15 = LOW);
+//! - GPIO16: no interrupt/PWM, **pulldown only** (no pull-up);
+//! - A0 = single 10-bit ADC channel (0–1023), no physical GPIO — agreed wire
+//!   identifier `A0_GPIO`.
 //!
-//! ESP32-C3 (P1, Seeed XIAO) :
-//! - GPIO11–17 = flash SPI interne → **interdits** ;
-//! - GPIO18/19 = USB D-/D+ (USB-JTAG/serial = le port de flash/monitor) →
-//!   **réservés** ;
-//! - GPIO2/8/9 = strapping boot-HIGH (pull-ups externes XIAO) — `safe_state:
-//!   low` interdit en digital_out (risque de boot en download mode) ;
-//! - analog_in limité aux GPIO0–4 (ADC1) — GPIO5 = ADC2, inutilisable avec
-//!   le WiFi actif.
+//! ESP32-C3 (P1, Seeed XIAO):
+//! - GPIO11–17 = internal SPI flash → **forbidden**;
+//! - GPIO18/19 = USB D-/D+ (USB-JTAG/serial = the flash/monitor port) →
+//!   **reserved**;
+//! - GPIO2/8/9 = boot-HIGH strapping (external XIAO pull-ups) — `safe_state:
+//!   low` forbidden in digital_out (risk of booting in download mode);
+//! - analog_in limited to GPIO0–4 (ADC1) — GPIO5 = ADC2, unusable with
+//!   WiFi active.
 use serde::{Deserialize, Serialize};
 
 use crate::proto::{Mode, ModeOpts, SafeState};
 
-/// Identifiant fil du canal ADC (« A0 ») — **aucun GPIO physique 17** sur
-/// l'ESP8266 : c'est l'adresse conventionnelle de l'ADC, utilisée par
-/// l'overlay NodeMCU et le firmware ( lecture `analogRead(A0)`).
+/// Wire identifier of the ADC channel ("A0") — **no physical GPIO 17** on
+/// the ESP8266: it is the conventional address of the ADC, used by
+/// the NodeMCU overlay and the firmware (`analogRead(A0)` read).
 pub const A0_GPIO: u16 = 17;
 
-/// GPIO strapping « doit être LOW au boot » (GPIO15 = D8).
+/// Strapping GPIO "must be LOW at boot" (GPIO15 = D8).
 pub const STRAPPING_LOW: u16 = 15;
-/// GPIOs strapping « doivent être HIGH au boot » (GPIO0 = D3, GPIO2 = D4).
+/// Strapping GPIOs "must be HIGH at boot" (GPIO0 = D3, GPIO2 = D4).
 pub const STRAPPING_HIGH: [u16; 2] = [0, 2];
-/// GPIOs de la flash SPI — interdits en capability (GPIO6–11).
+/// SPI flash GPIOs — forbidden as capability (GPIO6–11).
 pub const FLASH_PINS: [u16; 6] = [6, 7, 8, 9, 10, 11];
-/// GPIO sans pull-up interne (GPIO16 = D0 — pulldown only).
+/// GPIO without internal pull-up (GPIO16 = D0 — pulldown only).
 pub const NO_PULLUP: u16 = 16;
 
 // ─────────────────────── ESP32-C3 ───────────────────────
 
-/// Flash SPI interne (GPIO11–17) — interdits en capability (esp32-c3).
+/// Internal SPI flash (GPIO11–17) — forbidden as capability (esp32-c3).
 pub const C3_FLASH_PINS: [u16; 7] = [11, 12, 13, 14, 15, 16, 17];
-/// USB D-/D+ (GPIO18/19) — réservés : ce sont le port de flash/monitor USB
-/// (USB-JTAG/serial). Une capability dessus tuerait l'accès au device.
+/// USB D-/D+ (GPIO18/19) — reserved: they are the USB flash/monitor port
+/// (USB-JTAG/serial). A capability on them would kill access to the device.
 pub const C3_USB_PINS: [u16; 2] = [18, 19];
-/// Strapping boot-HIGH (GPIO2/8/9) — pull-ups externes XIAO ; forcer LOW au
-/// boot = risque de download mode.
+/// Boot-HIGH strapping (GPIO2/8/9) — external XIAO pull-ups; forcing LOW at
+/// boot = risk of download mode.
 pub const C3_STRAPPING_HIGH: [u16; 3] = [2, 8, 9];
-/// ADC1 (GPIO0–4) — seuls canaux ADC utilisables avec le WiFi actif
-/// (GPIO5 = ADC2, cassé avec WiFi actif).
+/// ADC1 (GPIO0–4) — the only ADC channels usable with WiFi active
+/// (GPIO5 = ADC2, broken with WiFi active).
 pub const C3_ADC1_PINS: [u16; 5] = [0, 1, 2, 3, 4];
 
 // ─────────────────────── ESP32-C6 ───────────────────────
@@ -75,20 +75,20 @@ pub const C6_ADC1_PINS: [u16; 7] = [0, 1, 2, 3, 4, 5, 6];
 // Custom firmware on a classic ESP32 (pio board `esp32dev`) — same rule
 // grid as the C3: protected strapping, ADC1 only, input-only without pull-up.
 
-/// Flash SPI (GPIO6–11) — interdits en capability (esp32 classique).
+/// SPI flash (GPIO6–11) — forbidden as capability (classic esp32).
 pub const ESP32_FLASH_PINS: [u16; 6] = [6, 7, 8, 9, 10, 11];
-/// GPIOs inexistants sur l'ESP32 classique (adressage troué).
+/// GPIOs that do not exist on the classic ESP32 (gapped addressing).
 const ESP32_ABSENT_PINS: [u16; 6] = [20, 24, 28, 29, 30, 31];
-/// Strapping boot-HIGH (GPIO0, GPIO15 — doivent être HIGH/flottant au
-/// boot) : `safe_state: low` interdit en digital_out.
+/// Boot-HIGH strapping (GPIO0, GPIO15 — must be HIGH/floating at
+/// boot): `safe_state: low` forbidden in digital_out.
 pub const ESP32_STRAPPING_HIGH: [u16; 2] = [0, 15];
-/// Strapping boot-LOW (GPIO12 = MTDI — tension flash ; GPIO2 = requis bas
-/// en download mode) : `safe_state: high` interdit en digital_out.
+/// Boot-LOW strapping (GPIO12 = MTDI — flash voltage; GPIO2 = required low
+/// in download mode): `safe_state: high` forbidden in digital_out.
 pub const ESP32_STRAPPING_LOW: [u16; 2] = [2, 12];
-/// Input-only (GPIO34–39) : pas de sortie, pas de pull-up interne.
+/// Input-only (GPIO34–39): no output, no internal pull-up.
 pub const ESP32_INPUT_ONLY: [u16; 6] = [34, 35, 36, 37, 38, 39];
-/// ADC1 (GPIO32–39) — seuls canaux utilisables avec le WiFi actif (ADC2
-/// cassé avec WiFi). 37/38 occupés par la PSRAM sur WROVER, libres en
+/// ADC1 (GPIO32–39) — the only channels usable with WiFi active (ADC2
+/// broken with WiFi). 37/38 taken by the PSRAM on WROVER, free on
 /// WROOM.
 pub const ESP32_ADC1_PINS: [u16; 8] = [32, 33, 34, 35, 36, 37, 38, 39];
 
@@ -114,7 +114,7 @@ pub const S3_INPUT_ONLY: [u16; 1] = [46];
 /// GPIO11–20, broken with WiFi).
 pub const S3_ADC1_PINS: [u16; 10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-/// SoC reconnus par les chip-caps — dérivé de `mcu_boards.soc`.
+/// SoCs known to the chip-caps — derived from `mcu_boards.soc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Soc {
     Esp8266,
@@ -125,8 +125,8 @@ pub enum Soc {
 }
 
 impl Soc {
-    /// Convention `mcu_boards.soc` / chip announce (« esp8266 »,
-    /// « esp32-c3 », « esp32 », « esp32-s3 ») → SoC. Unknown → `None`: the
+    /// `mcu_boards.soc` / chip announce convention ("esp8266",
+    /// "esp32-c3", "esp32", "esp32-s3") → SoC. Unknown → `None`: the
     /// call-sites fail closed (never a silent validation against another
     /// SoC's rules).
     pub fn from_board_soc(s: &str) -> Option<Self> {
@@ -140,8 +140,8 @@ impl Soc {
         }
     }
 
-    /// Nom fil canonique (« esp8266 », « esp32-c3 », « esp32 ») — chip
-    /// annoncé par la lib PneX et valeur persistée dans
+    /// Canonical wire name ("esp8266", "esp32-c3", "esp32") — chip
+    /// announced by the PneX lib and value persisted in
     /// `device_registries.soc` (SoC observed at the first announce).
     pub fn name(self) -> &'static str {
         match self {
@@ -173,13 +173,13 @@ pub fn is_console_pin(soc: Soc, gpio: u16) -> bool {
     matches!(soc, Soc::Esp8266 | Soc::Esp32) && (gpio == 1 || gpio == 3)
 }
 
-/// Pins valides en P0 (esp8266) = tout GPIO 0–16 sauf la flash, plus le canal ADC.
+/// Valid P0 (esp8266) pins = every GPIO 0–16 except the flash, plus the ADC channel.
 pub fn is_valid_gpio(gpio: u16) -> bool {
     gpio == A0_GPIO || (gpio <= 16 && !FLASH_PINS.contains(&gpio))
 }
 
-/// Pins valides esp32-c3 = GPIO0–10, 20, 21 (la flash 11–17 et l'USB 18/19
-/// sont réservés).
+/// Valid esp32-c3 pins = GPIO0–10, 20, 21 (the 11–17 flash and the 18/19 USB
+/// are reserved).
 pub fn is_valid_gpio_esp32c3(gpio: u16) -> bool {
     gpio <= 21 && !C3_FLASH_PINS.contains(&gpio) && !C3_USB_PINS.contains(&gpio)
 }
@@ -189,42 +189,42 @@ pub fn is_valid_gpio_esp32c6(gpio: u16) -> bool {
     gpio <= 23 && !C6_USB_PINS.contains(&gpio)
 }
 
-/// Violation des chip-caps — `reason()` donne le message fil/UI (français,
-/// relayé tel quel par le front : convention « erreurs relayées »).
+/// Chip-caps violation — `reason()` gives the wire/UI message (relayed
+/// as is by the front: "relayed errors" convention).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Violation {
-    /// GPIO inexistant ou hors adressage ESP8266.
+    /// GPIO that does not exist or is outside ESP8266 addressing.
     OutOfRange(u16),
     /// GPIO6–11 (flash SPI).
     FlashPins(u16),
     /// Octal PSRAM pins (esp32-s3: GPIO33–37).
     PsramPins(u16),
-    /// USB D-/D+ (esp32-c3 : 18/19) — réservés au port USB-JTAG/serial.
+    /// USB D-/D+ (esp32-c3: 18/19) — reserved for the USB-JTAG/serial port.
     UsbPins(u16),
     /// UART0 console pins kept by the generic firmware's `Serial` (see
     /// [`is_console_pin`]) — never user capabilities.
     ConsolePins(u16),
-    /// analog_in hors ADC1 (esp32-c3 : GPIO5 = ADC2, cassé avec WiFi).
+    /// analog_in outside ADC1 (esp32-c3: GPIO5 = ADC2, broken with WiFi).
     Adc2Wifi(u16),
-    /// Mode analogique hors A0.
+    /// Analog mode outside A0.
     AnalogOnlyOnA0(u16),
-    /// Mode digital sur A0 (l'ADC n'a pas de digital).
+    /// Digital mode on A0 (the ADC has no digital).
     AdcOnlyOnA0(u16),
-    /// `safe_state: high` sur GPIO15 — forcerait un boot en mode SD-card.
+    /// `safe_state: high` on GPIO15 — would force a boot in SD-card mode.
     StrappingLow(u16),
-    /// `safe_state: low` sur strapping boot-HIGH (esp32-c3 : GPIO2/8/9) —
-    /// risque de boot en download mode.
+    /// `safe_state: low` on boot-HIGH strapping (esp32-c3: GPIO2/8/9) —
+    /// risk of booting in download mode.
     StrappingHigh(u16),
-    /// Sortie demandée sur un pin input-only (esp32 : GPIO34–39).
+    /// Output requested on an input-only pin (esp32: GPIO34–39).
     InputOnlyPin(u16),
-    /// Pull-up demandée sur GPIO16 (n'existe pas physiquement).
+    /// Pull-up requested on GPIO16 (does not physically exist).
     NoPullUp(u16),
-    /// pwm_out demandé sur un GPIO sans timer waveform (esp8266 : GPIO16).
+    /// pwm_out requested on a GPIO without a waveform timer (esp8266: GPIO16).
     PwmUnsupportedPin(u16),
 }
 
 impl Violation {
-    /// Message fil/UI (relayé tel quel — convention « erreurs relayées »).
+    /// Wire/UI message (relayed as is — "relayed errors" convention).
     /// Canonical English display text (fallback; gpio embedded for
     /// non-i18n consumers).
     pub fn reason(&self) -> String {
@@ -498,7 +498,7 @@ pub fn pin_warnings(soc: Soc, gpio: u16) -> Vec<String> {
     match soc {
         Soc::Esp8266 => {
             if gpio == A0_GPIO {
-                return w; // convention ADC : rien à signaler
+                return w; // ADC convention: nothing to report
             }
             if FLASH_PINS.contains(&gpio) {
                 w.push(Violation::FlashPins(gpio).token());
@@ -583,20 +583,20 @@ pub fn pin_warnings(soc: Soc, gpio: u16) -> Vec<String> {
     w
 }
 
-/// Pin validé — sérialisé tel quel dans `constraints_snapshot` (jsonb) :
-/// ce qui a été validé à l'admission, rejouable par l'UI.
+/// Validated pin — serialized as is in `constraints_snapshot` (jsonb):
+/// what was validated at admission, replayable by the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidatedPin {
     pub gpio: u16,
     pub mode: Mode,
-    /// Pull-up effective (défaut false).
+    /// Effective pull-up (default false).
     pub pullup: bool,
-    /// Safe-state effective (défaut Low).
+    /// Effective safe-state (default Low).
     pub safe_state: SafeState,
 }
 
-/// Validation d'un pin contre les chip-caps du SoC — **point unique** utilisé
-/// à l'admission, avant chaque push de commande et au cast régulation
+/// Validation of a pin against the SoC chip-caps — **single point** used
+/// at admission, before every command push and at control cast
 /// (brick0.md §2/§6/§8).
 pub fn validate(
     soc: Soc,
@@ -669,7 +669,7 @@ fn validate_esp8266(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedP
         m if m != Mode::AdcIn && gpio == A0_GPIO => return Err(Violation::AdcOnlyOnA0(gpio)),
         _ => {}
     }
-    // GPIO16 : pas de timer waveform — digital only (interrupt/PWM exclus).
+    // GPIO16: no waveform timer — digital only (interrupt/PWM excluded).
     if mode == Mode::PwmOut && gpio == NO_PULLUP {
         return Err(Violation::PwmUnsupportedPin(gpio));
     }
@@ -700,7 +700,7 @@ fn validate_esp32c3(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedP
         return Err(Violation::OutOfRange(gpio));
     }
     match mode {
-        // ADC1 only (GPIO0–4) — GPIO5 = ADC2 cassé avec le WiFi actif.
+        // ADC1 only (GPIO0–4) — GPIO5 = ADC2 broken with WiFi active.
         Mode::AdcIn if !C3_ADC1_PINS.contains(&gpio) => return Err(Violation::Adc2Wifi(gpio)),
         _ => {}
     }
@@ -751,8 +751,8 @@ fn validate_esp32c6(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedP
     })
 }
 
-/// Pins valides esp32 (classique) = GPIO0–39 sauf flash 6–11 et les GPIOs
-/// inexistants (20, 24, 28–31).
+/// Valid esp32 (classic) pins = GPIO0–39 except flash 6–11 and the GPIOs
+/// that do not exist (20, 24, 28–31).
 pub fn is_valid_gpio_esp32(gpio: u16) -> bool {
     gpio <= 39 && !ESP32_FLASH_PINS.contains(&gpio) && !ESP32_ABSENT_PINS.contains(&gpio)
 }
@@ -768,7 +768,7 @@ fn validate_esp32(gpio: u16, mode: Mode, opts: &ModeOpts) -> Result<ValidatedPin
         return Err(Violation::ConsolePins(gpio));
     }
     match mode {
-        // ADC1 only (GPIO32–39) — ADC2 cassé avec le WiFi actif.
+        // ADC1 only (GPIO32–39) — ADC2 broken with WiFi active.
         Mode::AdcIn if !ESP32_ADC1_PINS.contains(&gpio) => return Err(Violation::Adc2Wifi(gpio)),
         _ => {}
     }
@@ -816,10 +816,10 @@ mod tests {
         let e = validate(s, 8, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(8)));
         assert!(e.reason().contains("flash SPI"));
-        // hors plage
+        // out of range
         let e = validate(s, 20, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(20)));
-        // analog only sur A0 (17) : digital refusé sur A0, analog refusé ailleurs
+        // analog only on A0 (17): digital refused on A0, analog refused elsewhere
         let e = validate(s, 17, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::AdcOnlyOnA0(17)));
         let e = validate(s, 5, Mode::AdcIn, &opts(None, None)).unwrap_err();
@@ -830,11 +830,11 @@ mod tests {
         // GPIO16 : pull-up inexistante
         let e = validate(s, 16, Mode::DigitalIn, &opts(Some(true), None)).unwrap_err();
         assert!(matches!(e, Violation::NoPullUp(16)));
-        // GPIO16 : pas de timer waveform — pwm_out refusé (digital only)
+        // GPIO16: no waveform timer — pwm_out refused (digital only)
         let e = validate(s, 16, Mode::PwmOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::PwmUnsupportedPin(16)));
         assert!(e.reason().contains("pwm_out"));
-        // pwm_out valide sur un GPIO libre
+        // pwm_out valid on a free GPIO
         assert!(validate(s, 5, Mode::PwmOut, &opts(None, None)).is_ok());
     }
 
@@ -844,27 +844,27 @@ mod tests {
         // flash SPI interne 11-17 interdite
         let e = validate(s, 12, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(12)));
-        // USB 18/19 réservés (port USB-JTAG/serial de flash/monitor)
+        // USB 18/19 reserved (USB-JTAG/serial flash/monitor port)
         let e = validate(s, 19, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::UsbPins(19)));
         assert!(e.reason().contains("USB"));
-        // hors plage (le C3 s'arrête à 21)
+        // out of range (the C3 stops at 21)
         let e = validate(s, 22, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(22)));
-        // ADC1 only : GPIO5 (ADC2) refusé en analog, GPIO0–4 admis
+        // ADC1 only: GPIO5 (ADC2) refused in analog, GPIO0–4 admitted
         let e = validate(s, 5, Mode::AdcIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::Adc2Wifi(5)));
         assert!(validate(s, 2, Mode::AdcIn, &opts(None, None)).is_ok());
         assert!(validate(s, 4, Mode::AdcIn, &opts(None, None)).is_ok());
-        // strapping boot-HIGH (2/8/9) : safe_state low interdit en digital_out
+        // boot-HIGH strapping (2/8/9): safe_state low forbidden in digital_out
         let e = validate(s, 9, Mode::DigitalOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(9)));
         let e = validate(s, 2, Mode::DigitalOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(2)));
-        // ... mais HIGH est permis, et les autres modes aussi (pas de drive)
+        // ... but HIGH is allowed, and so are the other modes (no drive)
         assert!(validate(s, 9, Mode::DigitalOut, &opts(None, Some(SafeState::High))).is_ok());
         assert!(validate(s, 8, Mode::DigitalIn, &opts(Some(true), None)).is_ok());
-        // pwm_out : mêmes règles strapping que digital_out
+        // pwm_out: same strapping rules as digital_out
         let e = validate(s, 9, Mode::PwmOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(9)));
         assert!(validate(s, 1, Mode::PwmOut, &opts(None, None)).is_ok());
@@ -898,29 +898,29 @@ mod tests {
         let e = validate(s, 35, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::PsramPins(35)));
         assert!(e.reason().contains("PSRAM"));
-        // USB 19/20 réservés (port USB-JTAG/serial de flash/monitor)
+        // USB 19/20 reserved (USB-JTAG/serial flash/monitor port)
         let e = validate(s, 20, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::UsbPins(20)));
-        // trous d'adressage 22-25 et hors plage
+        // addressing gaps 22-25 and out of range
         let e = validate(s, 23, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(23)));
         let e = validate(s, 49, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(49)));
-        // ADC1 only : GPIO1–10 admis, GPIO15 (ADC2) refusé
+        // ADC1 only: GPIO1–10 admitted, GPIO15 (ADC2) refused
         assert!(validate(s, 5, Mode::AdcIn, &opts(None, None)).is_ok());
         let e = validate(s, 15, Mode::AdcIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::Adc2Wifi(15)));
-        // GPIO46 input-only : sortie refusée, pull-up refusée
+        // GPIO46 input-only: output refused, pull-up refused
         let e = validate(s, 46, Mode::DigitalOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::InputOnlyPin(46)));
         let e = validate(s, 46, Mode::DigitalIn, &opts(Some(true), None)).unwrap_err();
         assert!(matches!(e, Violation::NoPullUp(46)));
-        // strapping boot-HIGH (0/3/45/46) : safe_state low interdit en sortie
+        // boot-HIGH strapping (0/3/45/46): safe_state low forbidden as output
         let e = validate(s, 3, Mode::DigitalOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(3)));
         let e = validate(s, 45, Mode::PwmOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(45)));
-        // ... mais HIGH est permis et les entrées aussi
+        // ... but HIGH is allowed, and so are inputs
         assert!(validate(s, 3, Mode::DigitalOut, &opts(None, Some(SafeState::High))).is_ok());
         assert!(validate(s, 0, Mode::DigitalIn, &opts(None, None)).is_ok());
         // pins libres : 10, 21, 38, 47, 48
@@ -928,7 +928,7 @@ mod tests {
         assert!(validate(s, 21, Mode::DigitalIn, &opts(Some(true), None)).is_ok());
         assert!(validate(s, 38, Mode::DigitalOut, &opts(None, None)).is_ok());
         assert!(validate(s, 48, Mode::PwmOut, &opts(None, None)).is_ok());
-        // modes affichés : GPIO46 jamais en sortie, GPIO8 tout sauf... adc1
+        // displayed modes: GPIO46 never as output, GPIO8 everything except... adc1
         let m = available_modes(s, 46);
         assert_eq!(m, vec![Mode::DigitalIn]);
         let m = available_modes(s, 8);
@@ -941,40 +941,40 @@ mod tests {
         // flash SPI 6-11 interdite
         let e = validate(s, 7, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::FlashPins(7)));
-        // GPIO inexistants (adressage troué)
+        // GPIOs that do not exist (gapped addressing)
         let e = validate(s, 20, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(20)));
         let e = validate(s, 31, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(31)));
         let e = validate(s, 40, Mode::DigitalIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::OutOfRange(40)));
-        // ADC1 only (32–39) : GPIO25 (ADC2) refusé, GPIO33 admis
+        // ADC1 only (32–39): GPIO25 (ADC2) refused, GPIO33 admitted
         let e = validate(s, 25, Mode::AdcIn, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::Adc2Wifi(25)));
         assert!(validate(s, 33, Mode::AdcIn, &opts(None, None)).is_ok());
-        // input-only (34–39) : sortie refusée, pull-up refusée
+        // input-only (34–39): output refused, pull-up refused
         let e = validate(s, 35, Mode::DigitalOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::InputOnlyPin(35)));
         assert!(e.reason().contains("input-only"));
         let e = validate(s, 34, Mode::DigitalIn, &opts(Some(true), None)).unwrap_err();
         assert!(matches!(e, Violation::NoPullUp(34)));
-        // ... mais digital_in sans pull-up et ADC1 passent sur input-only
+        // ... but digital_in without pull-up and ADC1 pass on input-only
         assert!(validate(s, 36, Mode::DigitalIn, &opts(None, None)).is_ok());
         assert!(validate(s, 39, Mode::AdcIn, &opts(None, None)).is_ok());
-        // strapping boot-HIGH (0, 15) : safe_state low interdit en digital_out
+        // boot-HIGH strapping (0, 15): safe_state low forbidden in digital_out
         let e = validate(s, 0, Mode::DigitalOut, &opts(None, Some(SafeState::Low))).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(0)));
         let e = validate(s, 15, Mode::DigitalOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::StrappingHigh(15)));
-        // strapping boot-LOW (2, 12) : safe_state high interdit en digital_out
+        // boot-LOW strapping (2, 12): safe_state high forbidden in digital_out
         let e = validate(s, 12, Mode::DigitalOut, &opts(None, Some(SafeState::High))).unwrap_err();
         assert!(matches!(e, Violation::StrappingLow(12)));
         let e = validate(s, 2, Mode::DigitalOut, &opts(None, Some(SafeState::High))).unwrap_err();
         assert!(matches!(e, Violation::StrappingLow(2)));
-        // ... modes autorisés sur les strapping : digital_in, out/High sur 0
+        // ... modes allowed on strapping pins: digital_in, out/High on 0
         assert!(validate(s, 12, Mode::DigitalIn, &opts(None, None)).is_ok());
         assert!(validate(s, 0, Mode::DigitalOut, &opts(None, Some(SafeState::High))).is_ok());
-        // pwm_out : input-only refusé, strapping et pin libre comme digital_out
+        // pwm_out: input-only refused, strapping and free pin like digital_out
         let e = validate(s, 35, Mode::PwmOut, &opts(None, None)).unwrap_err();
         assert!(matches!(e, Violation::InputOnlyPin(35)));
         let e = validate(s, 0, Mode::PwmOut, &opts(None, Some(SafeState::Low))).unwrap_err();
@@ -991,17 +991,17 @@ mod tests {
     #[test]
     fn modes_disponibles_esp8266() {
         let s = Soc::Esp8266;
-        // GPIO5 : in/out/pwm, pas d'analog
+        // GPIO5: in/out/pwm, no analog
         assert_eq!(
             available_modes(s, 5),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
         );
-        // GPIO16 : pas de timer waveform
+        // GPIO16: no waveform timer
         assert_eq!(
             available_modes(s, 16),
             vec![Mode::DigitalIn, Mode::DigitalOut]
         );
-        // A0 : analogique seulement
+        // A0: analog only
         assert_eq!(available_modes(s, A0_GPIO), vec![Mode::AdcIn]);
         // flash : rien
         assert!(available_modes(s, 8).is_empty());
@@ -1010,12 +1010,12 @@ mod tests {
     #[test]
     fn modes_disponibles_esp32c3() {
         let s = Soc::Esp32C3;
-        // GPIO2 strapping-high : sorties STRUCTURELLEMENT offertes (légales
-        // avec safe_state: high) même si validate(default) les refuserait
+        // GPIO2 strapping-high: outputs STRUCTURALLY offered (legal
+        // with safe_state: high) even if validate(default) would refuse them
         let m = available_modes(s, 2);
         assert!(m.contains(&Mode::DigitalOut) && m.contains(&Mode::PwmOut));
         assert!(m.contains(&Mode::AdcIn), "GPIO2 = ADC1");
-        // GPIO5 ADC2 : pas d'analog, mais in/out/pwm ok
+        // GPIO5 ADC2: no analog, but in/out/pwm ok
         assert_eq!(
             available_modes(s, 5),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
@@ -1027,15 +1027,15 @@ mod tests {
     #[test]
     fn modes_disponibles_esp32() {
         let s = Soc::Esp32;
-        // input-only 34-39 : in + analog, jamais de sortie
+        // input-only 34-39: in + analog, never an output
         assert_eq!(available_modes(s, 34), vec![Mode::DigitalIn, Mode::AdcIn]);
         assert_eq!(available_modes(s, 39), vec![Mode::DigitalIn, Mode::AdcIn]);
-        // 25/26 ADC2+DAC : pas d'analog_in (ADC2 cassé WiFi), sorties ok
+        // 25/26 ADC2+DAC: no analog_in (ADC2 broken with WiFi), outputs ok
         assert_eq!(
             available_modes(s, 25),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
         );
-        // 21/22 libres : tout sauf analog
+        // 21/22 free: everything except analog
         assert_eq!(
             available_modes(s, 21),
             vec![Mode::DigitalIn, Mode::DigitalOut, Mode::PwmOut]
@@ -1058,7 +1058,7 @@ mod tests {
             pin_fns(Soc::Esp32, 2),
             &[PinFn::Adc2, PinFn::Touch, PinFn::Led]
         );
-        // sérialisation snake_case pour le fil
+        // snake_case serialization for the wire
         assert_eq!(
             serde_json::to_value(PinFn::I2cSda).unwrap(),
             serde_json::json!("i2c_sda")
@@ -1100,9 +1100,9 @@ mod tests {
         assert!(w[0].starts_with("caps-strapping-low:"), "{w:?}");
         let w = pin_warnings(Soc::Esp32, 6);
         assert!(w[0].starts_with("caps-flash-pins:"), "{w:?}");
-        // A0 : rien à signaler
+        // A0: nothing to report
         assert!(pin_warnings(Soc::Esp8266, A0_GPIO).is_empty());
-        // pin libre : rien
+        // free pin: nothing
         assert!(pin_warnings(Soc::Esp8266, 5).is_empty());
     }
 }

@@ -1,27 +1,27 @@
-//! Matching de features par modèle IA léger (feature cargo `pose-model`,
+//! Feature matching by a lightweight AI model (cargo feature `pose-model`,
 //! server-only) — SuperPoint + LightGlue ONNX via ort.
 //!
-//! Le pipeline Quality du device reste 100 % pure Rust (feature absente : ni
-//! `ort`, ni binaire natif dans l'APK) ; le serveur charge SuperPoint +
-//! LightGlue depuis `deploy/models/` (committés) :
+//! The device Quality pipeline stays 100 % pure Rust (feature absent: neither
+//! `ort`, nor a native binary in the APK); the server loads SuperPoint +
+//! LightGlue from `deploy/models/` (committed):
 //!
-//! - `PoseModel::extract` : frame RGB → keypoints + descripteurs (SuperPoint,
-//!   gris redimensionné à `work_max_px` sur le plus grand côté, multiple de
-//!   8 — pooling /32 de SuperPoint) ;
-//! - `PoseModel::match_pair` : correspondances LightGlue (indices + score).
+//! - `PoseModel::extract`: RGB frame → keypoints + descriptors (SuperPoint,
+//!   grey resized to `work_max_px` on the longest side, multiple of
+//!   8 — SuperPoint's /32 pooling);
+//! - `PoseModel::match_pair`: LightGlue correspondences (indices + score).
 //!
-//! Les correspondances alimentent `crate::rotation::horn_ransac` (rotation
-//! relative, modèle rotation pure) puis le solve global
-//! `crate::align::refine_poses_model` — la pose capteur n'est plus qu'un
-//! prior, la preuve image décide.
+//! The correspondences feed `crate::rotation::horn_ransac` (relative
+//! rotation, pure-rotation model) then the global solve
+//! `crate::align::refine_poses_model` — the sensor pose is only a
+//! prior, the image evidence decides.
 //!
-//! ## Pourquoi ces modèles v1 (fabio-sim/LightGlue-ONNX)
+//! ## Why these v1 models (fabio-sim/LightGlue-ONNX)
 //!
-//! Formes dynamiques (N keypoints adaptatif) : on extrait UNE fois par frame
-//! (28 extractions pour 28 frames) et on ne paie le transformer que par
-//! paire. Les exports « pipeline » fusionnés v2/v3 recalculeraient
-//! l'extraction pour les DEUX images de CHAQUE paire (~80 extractions pour
-//! 28 frames — rédhibitoire sur RPi).
+//! Dynamic shapes (adaptive N keypoints): we extract ONCE per frame
+//! (28 extractions for 28 frames) and only pay for the transformer per
+//! pair. The merged v2/v3 "pipeline" exports would recompute
+//! the extraction for BOTH images of EACH pair (~80 extractions for
+//! 28 frames — prohibitive on RPi).
 
 #![cfg(feature = "pose-model")]
 
@@ -31,54 +31,54 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use thiserror::Error;
 
-/// Erreurs du modèle de pose.
+/// Pose model errors.
 #[derive(Debug, Error)]
 pub enum PoseModelError {
-    /// Fichier .onnx absent ou session infaisable.
-    #[error("chargement : {0}")]
+    /// Missing .onnx file or session impossible.
+    #[error("loading: {0}")]
     Load(String),
-    /// Échec d'inférence.
-    #[error("inférence : {0}")]
+    /// Inference failure.
+    #[error("inference: {0}")]
     Inference(String),
 }
 
-/// Modèle de pose : sessions SuperPoint (extracteur) + LightGlue (matcher).
-/// `Mutex` car `ort` rc.13 exige `&mut Session` pour `run` (l'API C est
-/// thread-safe, le binding ne l'expose pas) — dans un job le modèle est
-/// utilisé séquentiellement, entre jobs chaque worker a son instance.
+/// Pose model: SuperPoint (extractor) + LightGlue (matcher) sessions.
+/// `Mutex` because `ort` rc.13 requires `&mut Session` for `run` (the C API is
+/// thread-safe, the binding doesn't expose it) — within a job the model is
+/// used sequentially, across jobs each worker has its own instance.
 pub struct PoseModel {
     extractor: Mutex<Session>,
     matcher: Mutex<Session>,
 }
 
-/// Features d'une frame : keypoints en pixels de l'image de travail
-/// (`w`×`h`, multiple de 8) + descripteurs 256-dim (N×256, row-major).
+/// Features of a frame: keypoints in pixels of the working image
+/// (`w`×`h`, multiple of 8) + 256-dim descriptors (N×256, row-major).
 #[derive(Debug, Clone)]
 pub struct Features {
-    /// Largeur de l'image de travail (px).
+    /// Width of the working image (px).
     pub w: u32,
-    /// Hauteur de l'image de travail (px).
+    /// Height of the working image (px).
     pub h: u32,
-    /// Keypoints (u, v) en pixels de l'image de travail.
+    /// Keypoints (u, v) in pixels of the working image.
     pub kpts_px: Vec<[f32; 2]>,
-    /// Descripteurs N×256 row-major.
+    /// N×256 row-major descriptors.
     pub desc: Vec<f32>,
 }
 
-/// Une correspondance : indices dans `a.kpts_px` et `b.kpts_px`.
+/// One correspondence: indices into `a.kpts_px` and `b.kpts_px`.
 #[derive(Debug, Clone, Copy)]
 pub struct PointMatch {
     pub ia: usize,
     pub ib: usize,
-    /// Score de confiance LightGlue (0-1).
+    /// LightGlue confidence score (0-1).
     pub score: f32,
 }
 
 impl PoseModel {
-    /// Charge les deux sessions depuis `dir` (`superpoint.onnx` +
-    /// `superpoint_lightglue_fused_cpu.onnx`). Optimisation Level1 : les
-    /// exports sont déjà fused — Level3 n'apporte rien et ralentit le
-    /// chargement.
+    /// Loads both sessions from `dir` (`superpoint.onnx` +
+    /// `superpoint_lightglue_fused_cpu.onnx`). Level1 optimisation: the
+    /// exports are already fused — Level3 brings nothing and slows
+    /// loading.
     pub fn load(dir: &str) -> Result<Self, PoseModelError> {
         let load = |name: &str| -> Result<Session, PoseModelError> {
             let builder =
@@ -95,9 +95,9 @@ impl PoseModel {
         Ok(PoseModel { extractor, matcher })
     }
 
-    /// Extrait keypoints + descripteurs d'une frame RGB8. L'image de travail
-    /// garde l'aspect, plus grand côté ≤ `work_max_px`, bornes arrondies à
-    /// un multiple de 8 (pooling SuperPoint).
+    /// Extracts keypoints + descriptors of an RGB8 frame. The working image
+    /// keeps the aspect, longest side ≤ `work_max_px`, bounds rounded to
+    /// a multiple of 8 (SuperPoint pooling).
     pub fn extract(
         &self,
         rgb: &[u8],
@@ -135,7 +135,7 @@ impl PoseModel {
         }
         let dim = dshape[2] as usize; // 256
         let mut d = vec![0.0f32; n * dim];
-        // (1, N, 256) → N×256 row-major (déjà contigu, copie plane).
+        // (1, N, 256) → N×256 row-major (already contiguous, flat copy).
         d.copy_from_slice(&desc[..n * dim]);
 
         Ok(Features {
@@ -146,7 +146,7 @@ impl PoseModel {
         })
     }
 
-    /// Correspondances LightGlue d'une paire de frames (indices + score).
+    /// LightGlue correspondences of a frame pair (indices + score).
     pub fn match_pair(
         &self,
         a: &Features,
@@ -156,9 +156,9 @@ impl PoseModel {
         if na < 8 || nb < 8 {
             return Ok(Vec::new());
         }
-        // Keypoints NORMALISÉS [0,1] par axe (mesuré A/B sur capture réelle :
-        // 567 matches normalisés vs 44 en pixels bruts — l'export v1 "fused"
-        // attend la normalisation, la tailles d'image n'étant pas une entrée).
+        // Keypoints NORMALISED to [0,1] per axis (measured A/B on a real capture:
+        // 567 normalised matches vs 44 in raw pixels — the v1 "fused" export
+        // expects normalisation, the image size not being an input).
         let flat_a: Vec<f32> = a
             .kpts_px
             .iter()
@@ -198,14 +198,14 @@ impl PoseModel {
             .try_extract_tensor::<f32>()
             .map_err(|e| PoseModelError::Inference(e.to_string()))?;
 
-        // matches0 (M, 2) : indices (ia, ib) déjà filtrés (NonZero).
+        // matches0 (M, 2): indices (ia, ib) already filtered (NonZero).
         let m = mshape[0] as usize;
         let mut out = Vec::with_capacity(m);
         for k in 0..m {
             let (ia, ib) = (matches[2 * k], matches[2 * k + 1]);
             if ia < 0 || ib < 0 {
-                continue; // -1 = pas de correspondance (défensif : l'export
-                          // NonZero est censé les filtrer)
+                continue; // -1 = no correspondence (defensive: the
+                          // NonZero export is supposed to filter them)
             }
             out.push(PointMatch {
                 ia: ia as usize,
@@ -217,14 +217,14 @@ impl PoseModel {
     }
 }
 
-/// Dimensions de travail : plus grand côté ≤ `max_px`, les DEUX côtés
-/// arrondis à un multiple de 8 (pooling /32 de SuperPoint : H, W doivent
-/// être divisibles par 8 en sortie des strides cumulés), minimum 64.
+/// Working dimensions: longest side ≤ `max_px`, BOTH sides
+/// rounded to a multiple of 8 (SuperPoint's /32 pooling: H, W must
+/// be divisible by 8 at the output of the cumulated strides), minimum 64.
 #[must_use]
 pub fn work_size(width: u32, height: u32, max_px: u32) -> (u32, u32) {
     let big = width.max(height);
     let small = width.min(height) as f32;
-    // Jamais d'agrandissement : long = min(max_px, plus grand côté).
+    // Never upscale: long = min(max_px, longest side).
     let long = max_px.min(big).max(64);
     let short = ((long as f32 * small / big as f32).round() as u32).clamp(64, long);
     let round8 = |v: u32| ((v / 8) * 8).max(64);
@@ -235,8 +235,8 @@ pub fn work_size(width: u32, height: u32, max_px: u32) -> (u32, u32) {
     }
 }
 
-/// RGB8 → niveaux de gris f32 [0,1] par sous-échantillonnage moyenneur
-/// (box) — anti-aliasé, aucune dep (`image` n'a pas le resize sans
+/// RGB8 → f32 greyscale [0,1] by averaging subsampling
+/// (box) — anti-aliased, no dep (`image` has no resize without
 /// default-features).
 #[must_use]
 pub fn resize_gray(rgb: &[u8], width: u32, height: u32, ow: u32, oh: u32) -> Vec<f32> {
@@ -271,8 +271,8 @@ pub fn resize_gray(rgb: &[u8], width: u32, height: u32, ow: u32, oh: u32) -> Vec
 mod tests {
     use super::*;
 
-    /// work_size : aspect portrait 1080×1920 à max 896 → 504×896 (les deux
-    /// multiples de 8) ; paysage inverse ; minimum borné.
+    /// work_size: portrait aspect 1080×1920 at max 896 → 504×896 (both
+    /// multiples of 8); landscape the reverse; minimum bounded.
     #[test]
     fn taille_travail() {
         assert_eq!(work_size(1080, 1920, 896), (504, 896));
@@ -281,8 +281,8 @@ mod tests {
         assert_eq!(work_size(1080, 1920, 512), (288, 512));
     }
 
-    /// resize_gray : constante partout = constante partout, moyenne d'un
-    /// dégradé préservée, pas de débordement [0,1].
+    /// resize_gray: constant everywhere = constant everywhere, mean of a
+    /// gradient preserved, no overflow of [0,1].
     #[test]
     fn gris_moyenne() {
         let (w, h) = (64u32, 64u32);
@@ -298,7 +298,7 @@ mod tests {
         }
         let g = resize_gray(&rgb, w, h, 16, 16);
         assert!(g.iter().all(|&v| (0.0..=1.0).contains(&v)));
-        // Moyenne globale préservée (dégradé linéaire 0..252 → ~0.5).
+        // Global mean preserved (linear gradient 0..252 → ~0.5).
         let m = g.iter().sum::<f32>() / g.len() as f32;
         assert!((m - 0.492).abs() < 0.05, "moyenne = {m}");
     }

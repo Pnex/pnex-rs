@@ -12,7 +12,7 @@ pub async fn list() -> Result<Vec<OrgSummary>, ApiError> {
     client::request_all("/api/v1/orgs").await
 }
 
-/// `POST /api/v1/orgs` — création (créateur owner, tier Free).
+/// `POST /api/v1/orgs` — creation (creator is owner, Free tier).
 pub async fn create(name: &str) -> Result<OrgSummary, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -22,7 +22,7 @@ pub async fn create(name: &str) -> Result<OrgSummary, ApiError> {
     .await
 }
 
-/// `GET /api/v1/orgs/{id}` — détail avec membres.
+/// `GET /api/v1/orgs/{id}` — detail with members.
 pub async fn detail(id: i64) -> Result<OrgDetail, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/orgs/{id}"), None).await
 }
@@ -37,7 +37,7 @@ pub async fn rename(id: i64, name: &str) -> Result<(), ApiError> {
     .await
 }
 
-/// `DELETE /api/v1/orgs/{id}` — suppression (owner et dernier membre).
+/// `DELETE /api/v1/orgs/{id}` — deletion (owner and last member).
 pub async fn delete(id: i64) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -48,8 +48,8 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `POST /api/v1/orgs/{id}/members` — ajout par email d'un user déjà
-/// provisionné (il s'est connecté au moins une fois).
+/// `POST /api/v1/orgs/{id}/members` — adds by email a user already
+/// provisioned (who has logged in at least once).
 pub async fn add_member(id: i64, email: &str, role: OrgRole) -> Result<OrgMember, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -65,7 +65,7 @@ pub async fn add_member(id: i64, email: &str, role: OrgRole) -> Result<OrgMember
     .await
 }
 
-/// `PATCH /api/v1/orgs/{id}/members/{user_id}` — changement de rôle.
+/// `PATCH /api/v1/orgs/{id}/members/{user_id}` — role change.
 pub async fn update_member(id: i64, user_id: i64, role: OrgRole) -> Result<(), ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -75,7 +75,7 @@ pub async fn update_member(id: i64, user_id: i64, role: OrgRole) -> Result<(), A
     .await
 }
 
-/// `DELETE /api/v1/orgs/{id}/members/{user_id}` — retrait / départ volontaire.
+/// `DELETE /api/v1/orgs/{id}/members/{user_id}` — removal / voluntary leave.
 pub async fn remove_member(id: i64, user_id: i64) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,

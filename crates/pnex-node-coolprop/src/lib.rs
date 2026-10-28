@@ -1,18 +1,18 @@
-//! Nœud custom EdgeLinkd `pnex-coolprop` — propriétés thermophysiques
-//! in-process via [`pnex_coolprop`] (CoolProp v8.0.0 liée statiquement).
+//! Custom EdgeLinkd node `pnex-coolprop` — in-process thermophysical
+//! properties via [`pnex_coolprop`] (CoolProp v8.0.0 statically linked).
 //!
-//! Garde-fous :
-//! - la config est validée **au build du nœud** (spec non vide, entrées et
-//!   sorties résolues par noms CoolProp) — un graphe invalide échoue au
-//!   pré-flight `--check` avant tout deploy ;
-//! - le `msg` entrant suit le contrat device/calc (objet `clé → numérique`,
-//!   [`pnex_core::numeric_map_from_payload`]) — rejet sans panic ;
-//! - aucun secret, aucune lecture d'env : tout vient de la config du graphe
-//!   (la spec du mélange est figée à l'édition — D6).
+//! Safeguards:
+//! - the config is validated **at node build** (non-empty spec, inputs and
+//!   outputs resolved by CoolProp names) — an invalid graph fails at the
+//!   `--check` pre-flight before any deploy;
+//! - the incoming `msg` follows the device/calc contract (`key → numeric` object,
+//!   [`pnex_core::numeric_map_from_payload`]) — rejected without panic;
+//! - no secret, no env read: everything comes from the graph config
+//!   (the mixture spec is frozen at edit time — D6).
 //!
-//! État process-global CoolProp : chaque exécution fait des appels sous le
-//! mutex global du wrapper — sérialisation assumée, coût négligeable au
-//! rythme des flows ETL (pas de handle AbstractState statique).
+//! CoolProp process-global state: each execution makes calls under the
+//! wrapper's global mutex — serialization accepted, negligible cost at
+//! ETL flow rates (no static AbstractState handle).
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -29,8 +29,8 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit que
-/// l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees that
+/// linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
 #[derive(Debug, Deserialize)]
@@ -87,19 +87,19 @@ impl PnexCoolPropNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = PnexCoolPropNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-coolprop : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-coolprop: invalid config: {e}"))
         })?;
 
-        // Contrats au build : noms CoolProp résolus (fail-fast au --check).
+        // Build-time contracts: CoolProp names resolved (fail-fast at --check).
         if cfg.fluid_spec.trim().is_empty() {
             return Err(
-                EdgelinkError::BadFlowsJson("pnex-coolprop : fluid_spec requis".into()).into(),
+                EdgelinkError::BadFlowsJson("pnex-coolprop: fluid_spec required".into()).into(),
             );
         }
         for f in [&cfg.input1, &cfg.input2] {
             if pnex_coolprop::get_param_index(f).is_err() {
                 return Err(EdgelinkError::BadFlowsJson(format!(
-                    "pnex-coolprop : propriété d'entrée inconnue : {f:?}"
+                    "pnex-coolprop: unknown input property: {f:?}"
                 ))
                 .into());
             }
@@ -110,7 +110,7 @@ impl PnexCoolPropNode {
                 .is_some_and(|q| q.derivation != pnex_core::ThermoDerivation::Direct);
             if !derived && pnex_coolprop::get_param_index(o).is_err() {
                 return Err(EdgelinkError::BadFlowsJson(format!(
-                    "pnex-coolprop : sortie inconnue : {o:?}"
+                    "pnex-coolprop: unknown output: {o:?}"
                 ))
                 .into());
             }
@@ -213,7 +213,7 @@ impl PnexCoolPropNode {
     /// both inputs are known. Port 0 = object {output: value, …} (+ "phase"),
     /// then one scalar port per output, then the phase port.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
-        log::debug!("pnex-coolprop [{}] : réception d'un message", self.name());
+        log::debug!("pnex-coolprop [{}]: message received", self.name());
 
         // 1) Boundary: topic + payload, outside any lock.
         let (topic, payload) = {
@@ -221,7 +221,7 @@ impl PnexCoolPropNode {
             let payload = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
                     EdgelinkError::InvalidOperation(format!(
-                        "pnex-coolprop : payload non sérialisable : {e}"
+                        "pnex-coolprop: payload not serializable: {e}"
                     ))
                 })?),
                 None => None,
@@ -288,7 +288,7 @@ impl PnexCoolPropNode {
         let to_variant = |v: serde_json::Value| -> Result<Variant> {
             serde_json::from_value(v).map_err(|e| {
                 EdgelinkError::InvalidOperation(format!(
-                    "pnex-coolprop : résultat non convertible : {e}"
+                    "pnex-coolprop: result not convertible: {e}"
                 ))
                 .into()
             })
@@ -351,7 +351,7 @@ impl FlowNodeBehavior for PnexCoolPropNode {
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-coolprop [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-coolprop [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }
@@ -372,7 +372,7 @@ mod tests {
         let reg = RegistryBuilder::default().build().expect("registre");
         let meta = reg
             .get("pnex-coolprop")
-            .expect("nœud pnex-coolprop absent du registre");
+            .expect("pnex-coolprop node missing from the registry");
         assert_eq!(meta.type_, "pnex-coolprop");
     }
 

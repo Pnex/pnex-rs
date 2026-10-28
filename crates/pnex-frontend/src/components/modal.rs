@@ -1,6 +1,6 @@
-//! Modale générique — overlay + carte du pattern `ConfirmDialog`, corps
-//! libre. `max_width` est un littéral Tailwind passé par l'appelant
-//! (« max-w-md », « max-w-2xl ») pour rester visible au scan du CSS.
+//! Generic modal — overlay + card of the `ConfirmDialog` pattern, free
+//! body. `max_width` is a Tailwind literal passed by the caller
+//! ("max-w-md", "max-w-2xl") to stay visible to the CSS scan.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

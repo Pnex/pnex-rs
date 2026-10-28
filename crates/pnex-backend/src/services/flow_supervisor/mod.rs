@@ -4,17 +4,17 @@
 //! one supervisor = one runtime child running the flows of the orgs placed
 //! on that worker.
 //!
-//! Contrat avec l'enfant (cf. `crates/pnex-flow-runtime`) :
-//! - artefact projeté : `<state_dir>/flows.json` (écriture atomique) ;
-//! - rechargement à chaud : **SIGUSR1** (le runtime relit le fichier et
-//!   redéploie via `Engine::redeploy_flows` — aucune surface HTTP) ;
-//! - santé : `<state_dir>/runtime.json` écrit par l'enfant (pid, flow_rev,
-//!   redeploys) ; stdout JSON-lines rejoué en `tracing`.
+//! Contract with the child (see `crates/pnex-flow-runtime`):
+//! - projected artifact: `<state_dir>/flows.json` (atomic write);
+//! - hot reload: **SIGUSR1** (the runtime re-reads the file and
+//!   redeploys via `Engine::redeploy_flows` — no HTTP surface);
+//! - health: `<state_dir>/runtime.json` written by the child (pid, flow_rev,
+//!   redeploys); JSON-lines stdout replayed into `tracing`.
 //!
-//! Secrets : l'enfant ne reçoit que `PATH`, `HOME` + la allowlist
-//! d'environnement (`env_allowlist`, e.g. `VALKEY_URL`) + les creds
-//! OpenObserve **injectées depuis le yaml** (`settings.openobserve` — le
-//! serveur ne les a pas en env process) — jamais de secret dans `flows.json`
+//! Secrets: the child only receives `PATH`, `HOME` + the environment
+//! allowlist (`env_allowlist`, e.g. `VALKEY_URL`) + the OpenObserve creds
+//! **injected from the yaml** (`settings.openobserve` — the
+//! server does not have them in its process env) — never a secret in `flows.json`
 //! (PRD §8).
 
 use std::path::PathBuf;
@@ -31,18 +31,18 @@ use tokio::sync::oneshot;
 use crate::services::flow::FlowSettings;
 use pnex_core::{FlowArtifactMeta, FlowRuntimeStatus};
 
-/// Erreur de deploy structurée : `Check` = pré-flight rejeté par le runtime
-/// (→ 400 avec les erreurs moteur réelles par flow), `Runtime` = panne
-/// d'infra (503 `flow_runtime`).
+/// Structured deploy error: `Check` = pre-flight rejected by the runtime
+/// (→ 400 with the real engine errors per flow), `Runtime` = infra
+/// outage (503 `flow_runtime`).
 #[derive(Debug)]
 pub enum DeployError {
-    /// Tabs rejetés par le pré-flight **et bloquants** (filtrés par
-    /// `enforce_flow`) — (flow_id, erreur moteur réelle).
+    /// Tabs rejected by the pre-flight **and blocking** (filtered by
+    /// `enforce_flow`) — (flow_id, real engine error).
     Check(Vec<FlowCheckError>),
     Runtime(String),
 }
 
-/// Un tab rejeté par le pré-flight (`--check` du runtime).
+/// A tab rejected by the pre-flight (runtime `--check`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FlowCheckError {
     pub flow_id: i64,
@@ -67,9 +67,9 @@ pub struct DeployRequest {
     pub preflight_scope: Option<Value>,
 }
 
-/// Commandes adressées à la boucle de supervision.
+/// Commands sent to the supervision loop.
 enum SupervisorCmd {
-    /// Déployer un artefact (pré-flight + écriture + signal + acquittement).
+    /// Deploy an artifact (pre-flight + write + signal + acknowledgement).
     Deploy {
         req: DeployRequest,
         reply: oneshot::Sender<Result<(), DeployError>>,
@@ -159,9 +159,9 @@ impl Supervisor {
     }
 }
 
-/// État du runtime pour **un flow** : santé process (`runtime.json` : pid,
-/// vivant, rechargements) croisée avec la santé **par flow** (événements
-/// `flow_*` du stdout). Best-effort : état absent → `running=false`.
+/// Runtime state for **one flow**: process health (`runtime.json`: pid,
+/// alive, reloads) crossed with the **per-flow** health (`flow_*`
+/// stdout events). Best-effort: missing state → `running=false`.
 pub fn runtime_status(settings: &FlowSettings, flow_id: i64) -> FlowRuntimeStatus {
     let path = state_dir_of(settings).join("runtime.json");
     let mut status = FlowRuntimeStatus {
@@ -172,16 +172,16 @@ pub fn runtime_status(settings: &FlowSettings, flow_id: i64) -> FlowRuntimeStatu
         if let Ok(v) = serde_json::from_str::<Value>(&raw) {
             status.pid = v.get("pid").and_then(|p| p.as_u64()).map(|p| p as u32);
             status.restarts = v.get("redeploys").and_then(|r| r.as_u64()).unwrap_or(0);
-            // Santé process uniquement — PAS de version/flow ici : l'artefact
-            // est multi-flows et la version déployée d'un flow vit en DB
-            // (`flows.deployed_version_id`, remplie au deploy acquitté). Le
-            // handler `GET /flows/{id}/runtime` croise santé moteur × DB.
+            // Process health only — NO version/flow here: the artifact
+            // is multi-flow and a flow's deployed version lives in the DB
+            // (`flows.deployed_version_id`, filled on acknowledged deploy). The
+            // `GET /flows/{id}/runtime` handler crosses engine health × DB.
             let alive = status.pid.is_some_and(pid_alive);
             status.running = alive && v.get("running").and_then(|r| r.as_bool()).unwrap_or(false);
         }
     }
-    // Santé de l'engine de CE flow (None = inconnue — backend redémarré,
-    // pas encore d'annonce du runtime).
+    // Engine health of THIS flow (None = unknown — backend restarted,
+    // no announcement from the runtime yet).
     if let Some((engine_status, last_error)) = flow_engine_health(flow_id) {
         status.engine_status = Some(engine_status.dto());
         status.last_error = last_error;
@@ -308,7 +308,7 @@ fn claim_state_dir(mut settings: FlowSettings) -> (FlowSettings, Option<std::fs:
 }
 
 fn state_dir_of(settings: &FlowSettings) -> PathBuf {
-    // Chemin relatif résolu contre le cwd (cohérence dev/worker).
+    // Relative path resolved against the cwd (dev/worker consistency).
     PathBuf::from(&settings.state_dir)
 }
 
@@ -331,8 +331,8 @@ fn artifact_is_empty(artifact: &Value) -> bool {
 
 struct ChildProc {
     pid: u32,
-    /// Récepteur de fin de vie (description de l'exit — le watcher récolte
-    /// le process dans sa propre tâche).
+    /// End-of-life receiver (exit description — the watcher reaps
+    /// the process in its own task).
     exit_rx: std_mpsc::Receiver<String>,
 }
 
@@ -345,7 +345,7 @@ async fn run_supervisor(
     let dir = state_dir_of(&settings);
     let flows_path = dir.join("flows.json");
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        tracing::error!(dir=%dir.display(), error=%e, "répertoire d'état des flows inaccessible");
+        tracing::error!(dir=%dir.display(), error=%e, "flow state directory inaccessible");
         return;
     }
     // A previous process may have left an artifact behind: it is stale by
@@ -364,7 +364,7 @@ async fn run_supervisor(
         // (reset when the child lived long enough to be deemed stable).
         if let Some(c) = &child {
             if let Ok(status) = c.exit_rx.try_recv() {
-                tracing::warn!(pid=c.pid, status=%status, "runtime de flow arrêté");
+                tracing::warn!(pid=c.pid, status=%status, "flow runtime stopped");
                 let uptime = started_at.map(|t| t.elapsed()).unwrap_or_default();
                 if uptime >= Duration::from_secs(settings.restart_backoff_secs * 2) {
                     backoff = settings.restart_backoff_secs;
@@ -376,7 +376,7 @@ async fn run_supervisor(
             }
         }
 
-        // 2) Relance planifiée (crash, ou premier spawn d'un deploy).
+        // 2) Scheduled restart (crash, or first spawn of a deploy).
         if runtime_wanted && child.is_none() && tokio::time::Instant::now() >= respawn_at {
             match spawn_child(&settings, &flows_path, pending.clone()) {
                 Some(c) => {
@@ -391,7 +391,7 @@ async fn run_supervisor(
             }
         }
 
-        // 3) Commandes (non bloquant : on boucle à intervalle court).
+        // 3) Commands (non-blocking: we loop at a short interval).
         match rx.try_recv() {
             Ok(SupervisorCmd::Deploy { req, reply }) => {
                 let empty = artifact_is_empty(&req.artifact);
@@ -420,7 +420,7 @@ async fn run_supervisor(
                 let _ = reply.send(());
             }
             Err(TryRecvError::Disconnected) => {
-                tracing::info!("superviseur de flows : canal fermé, arrêt");
+                tracing::info!("flow supervisor: channel closed, stopping");
                 if let Some(c) = child.take() {
                     kill_child(c.pid);
                 }
@@ -569,7 +569,7 @@ async fn handle_deploy(
                 flow_id = meta.flow_id,
                 version = meta.version_number,
                 pid,
-                "flow déployé"
+                "flow deployed"
             );
             Ok(!alive)
         }
@@ -591,10 +591,10 @@ async fn handle_deploy(
     }
 }
 
-/// Pré-flight : `--check` du runtime sur le candidat (env identique à
-/// l'enfant — le check doit voir les mêmes nœuds/secrets). Retourne les
-/// tabs rejetés (vide = vert) ; `Err` = le pré-flight lui-même est en panne
-/// (runtime absent, timeout, pas de `check_done`).
+/// Pre-flight: runtime `--check` on the candidate (same env as
+/// the child — the check must see the same nodes/secrets). Returns the
+/// rejected tabs (empty = green); `Err` = the pre-flight itself is down
+/// (runtime missing, timeout, no `check_done`).
 async fn run_preflight(
     settings: &FlowSettings,
     candidate: &std::path::Path,
@@ -615,10 +615,8 @@ async fn run_preflight(
         .kill_on_drop(true);
     apply_runtime_env(&mut cmd, settings);
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("lancement du pré-flight : {e}"))?;
-    let mut stdout = tokio::io::BufReader::new(child.stdout.take().expect("stdout pipé"));
+    let mut child = cmd.spawn().map_err(|e| format!("pre-flight launch: {e}"))?;
+    let mut stdout = tokio::io::BufReader::new(child.stdout.take().expect("stdout piped"));
     let wait = async move {
         let mut violations = Vec::new();
         let mut lines = String::new();
@@ -639,7 +637,7 @@ async fn run_preflight(
                             message: v
                                 .get("error")
                                 .and_then(|e| e.as_str())
-                                .unwrap_or("tab rejeté par le runtime")
+                                .unwrap_or("tab rejected by the runtime")
                                 .to_string(),
                         });
                     }
@@ -654,8 +652,8 @@ async fn run_preflight(
     let secs = settings.check_timeout_secs;
     match tokio::time::timeout(Duration::from_secs(secs), wait).await {
         Ok((Ok(_), violations)) => Ok(violations),
-        Ok((Err(e), _)) => Err(format!("pré-flight : attente du runtime : {e}")),
-        Err(_) => Err(format!("pré-flight sans acquittement après {secs} s")),
+        Ok((Err(e), _)) => Err(format!("pre-flight: waiting for the runtime: {e}")),
+        Err(_) => Err(format!("pre-flight not acknowledged after {secs} s")),
     }
 }
 
@@ -665,11 +663,11 @@ mod tests {
 
     #[test]
     fn resolve_program_chemins() {
-        // Token sans `/` : recherche PATH, laissé tel quel.
+        // Token without `/`: PATH lookup, left as is.
         assert_eq!(resolve_program("pnex-flow-runtime"), "pnex-flow-runtime");
-        // Chemin inexistant : tel quel (erreur claire au spawn).
+        // Nonexistent path: as is (clear error at spawn).
         assert_eq!(resolve_program("./nulle-part/xyz"), "./nulle-part/xyz");
-        // Chemin du repo : résolu contre la racine monorepo.
+        // Repo path: resolved against the monorepo root.
         let abs = resolve_program("crates/pnex-core/Cargo.toml");
         assert!(abs.contains("Cargo.toml"), "{abs}");
         assert!(std::path::Path::new(&abs).exists(), "{abs}");
@@ -711,21 +709,24 @@ mod tests {
         let st = runtime_status(&s, 999_800);
         assert!(!st.running);
         assert_eq!(st.pid, None);
-        assert_eq!(st.engine_status, None, "santé flow inconnue sans événement");
+        assert_eq!(
+            st.engine_status, None,
+            "flow health unknown without an event"
+        );
     }
 
     #[test]
     fn runtime_status_ne_porte_pas_de_version() {
-        // Le runtime.json ne porte AUCUNE version/flow (artefact multi-flows
-        // — la version déployée d'un flow vit en DB). Un ancien fichier avec
-        // ces champs est lu sans erreur mais ignoré.
+        // runtime.json carries NO version/flow (multi-flow artifact
+        // — a flow's deployed version lives in the DB). An old file with
+        // these fields is read without error but ignored.
         let dir = std::env::temp_dir().join(format!("pnex-flow-legacy-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(
             dir.join("runtime.json"),
             format!(
                 r#"{{"pid":{},"running":true,"started_at":1,"redeploys":2,"flow_id":4,"version_number":26}}"#,
-                std::process::id() // vivant : le test de vie du pid passe
+                std::process::id() // alive: the pid liveness check passes
             ),
         )
         .unwrap();
@@ -734,26 +735,26 @@ mod tests {
             ..Default::default()
         };
         let st = runtime_status(&s, 999_810);
-        assert!(st.running, "pid vivant → moteur considéré démarré");
+        assert!(st.running, "live pid → engine considered started");
         assert_eq!(st.restarts, 2);
         assert_eq!(
             st.deployed_flow_id, None,
-            "version jamais lue du runtime.json"
+            "version never read from runtime.json"
         );
         assert_eq!(st.deployed_version_number, None);
-        assert_eq!(st.engine_status, None, "santé flow = événements uniquement");
+        assert_eq!(st.engine_status, None, "flow health = events only");
         assert_eq!(st.last_error, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn sante_par_flow_et_acquittement_deploy() {
-        // Sanité : la carte de santé est un global de test — ids dédiés.
+        // Sanity: the health map is a test global — dedicated ids.
         reset_flow_health_for_tests();
         let fid = 999_820;
         let pending: PendingAcks = Arc::default();
 
-        // flow_started : santé Running + acquitte un deploy en attente (Ok).
+        // flow_started: Running health + acknowledges a pending deploy (Ok).
         let (tx, mut rx) = oneshot::channel();
         pending.lock().expect("lock").insert(fid, tx);
         handle_runtime_line(
@@ -763,35 +764,35 @@ mod tests {
             &pending,
         );
         assert_eq!(
-            rx.try_recv().expect("ack résolu"),
+            rx.try_recv().expect("ack resolved"),
             Ok(()),
-            "flow_started doit acquitter le deploy"
+            "flow_started must acknowledge the deploy"
         );
-        let (status, last_error) = flow_engine_health(fid).expect("entrée de santé");
+        let (status, last_error) = flow_engine_health(fid).expect("health entry");
         assert_eq!(status, FlowEngineHealth::Running);
         assert_eq!(last_error, None);
 
-        // flow_error : santé Error + last_error, acquitte en Err (erreur
-        // moteur réelle remontée au contrôleur).
+        // flow_error: Error health + last_error, acknowledges with Err (real
+        // engine error passed up to the controller).
         let (tx, mut rx) = oneshot::channel();
         pending.lock().expect("lock").insert(fid, tx);
         handle_runtime_line(
             &format!(
-                r#"{{"event":"flow_error","flow":{fid},"tab":"pnexflow{fid}","error":"wire fantôme"}}"#
+                r#"{{"event":"flow_error","flow":{fid},"tab":"pnexflow{fid}","error":"ghost wire"}}"#
             ),
             &pending,
         );
         assert_eq!(
-            rx.try_recv().expect("ack résolu"),
-            Err("wire fantôme".to_string()),
-            "flow_error doit rejeter le deploy avec l'erreur réelle"
+            rx.try_recv().expect("ack resolved"),
+            Err("ghost wire".to_string()),
+            "flow_error must reject the deploy with the real error"
         );
-        let (status, last_error) = flow_engine_health(fid).expect("entrée de santé");
+        let (status, last_error) = flow_engine_health(fid).expect("health entry");
         assert_eq!(status, FlowEngineHealth::Error);
-        assert_eq!(last_error.as_deref(), Some("wire fantôme"));
+        assert_eq!(last_error.as_deref(), Some("ghost wire"));
 
-        // flow_stopped (retrait du tab — dé-déploiement) : ack Ok (le
-        // changement a été appliqué) + santé Stopped.
+        // flow_stopped (tab removal — undeploy): ack Ok (the
+        // change was applied) + Stopped health.
         let (tx, mut rx) = oneshot::channel();
         pending.lock().expect("lock").insert(fid, tx);
         handle_runtime_line(
@@ -799,11 +800,11 @@ mod tests {
             &pending,
         );
         assert_eq!(
-            rx.try_recv().expect("ack résolu"),
+            rx.try_recv().expect("ack resolved"),
             Ok(()),
             "retrait = acquittement"
         );
-        let (status, _) = flow_engine_health(fid).expect("entrée de santé");
+        let (status, _) = flow_engine_health(fid).expect("health entry");
         assert_eq!(status, FlowEngineHealth::Stopped);
     }
 
@@ -881,15 +882,15 @@ mod tests {
 
     #[test]
     fn feed_cap_ttls_et_sans_attribution() {
-        // Sans attribution flow : l'entrée est JETÉE (multi-org — pas de
-        // bucket « inconnu »).
+        // Without flow attribution: the entry is DROPPED (multi-org — no
+        // "unknown" bucket).
         push_debug(&serde_json::json!({
             "event": "debug", "node": "x", "node_red": "n1", "msg": "orpheline"
         }));
         assert!(debug_entries(999_901, 100).is_empty());
 
-        // Cap par flow : au-delà de DEBUG_CAP_PER_FLOW, les plus anciennes
-        // sortent.
+        // Per-flow cap: beyond DEBUG_CAP_PER_FLOW, the oldest ones
+        // go.
         for i in 0..(DEBUG_CAP_PER_FLOW + 10) {
             push_debug(&debug_line(999_902, &format!("m{i}")));
         }
@@ -897,11 +898,11 @@ mod tests {
         assert_eq!(entries.len(), 100);
         assert_eq!(entries.last().unwrap().msg, serde_json::json!("m209"));
         assert!(entries.len() < DEBUG_CAP_PER_FLOW);
-        // Le feed complet garde le cap exact.
+        // The full feed keeps the exact cap.
         let all = debug_entries(999_902, DEBUG_CAP_PER_FLOW + 50);
         assert_eq!(all.len(), DEBUG_CAP_PER_FLOW);
 
-        // Sources étanches : `pnex-display` passe tel quel, topic/msgid lus.
+        // Isolated sources: `pnex-display` passes as is, topic/msgid read.
         push_debug(&serde_json::json!({
             "event": "debug", "node": "abab", "node_red": "n7", "flow": 999_903,
             "name": "sonde", "msg": {"k": 1}, "source": "pnex-display",
@@ -913,7 +914,7 @@ mod tests {
         assert_eq!(e.node_id, "n7");
         assert_eq!(e.topic.as_deref(), Some("t"));
         assert_eq!(e.msgid.as_deref(), Some("m9"));
-        // ts RFC 3339 bien formé.
+        // Well-formed RFC 3339 ts.
         assert!(e.ts.len() == 20 && e.ts.ends_with('Z'), "{}", e.ts);
     }
 
@@ -929,6 +930,6 @@ mod tests {
     #[test]
     fn settings_debug_tools_defaut_faux() {
         let s = FlowSettings::default();
-        assert!(!s.debug_tools, "mode run par défaut");
+        assert!(!s.debug_tools, "run mode by default");
     }
 }

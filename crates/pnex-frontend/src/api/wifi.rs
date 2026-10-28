@@ -1,4 +1,4 @@
-//! Client API du référentiel WiFi (`pnex_core::edge`) — wizard device.
+//! API client of the WiFi registry (`pnex_core::edge`) — device wizard.
 
 use crate::api::client;
 use crate::api::error::ApiError;
@@ -10,8 +10,8 @@ pub async fn list() -> Result<Vec<WifiCredential>, ApiError> {
     client::request_all("/api/v1/edge/wifi-credentials").await
 }
 
-/// `POST /api/v1/edge/wifi-credentials` — upsert (200 ou 201, même
-/// traitement côté front).
+/// `POST /api/v1/edge/wifi-credentials` — upsert (200 or 201, same
+/// handling on the front).
 pub async fn create(input: WifiCredentialInput) -> Result<WifiCredential, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -33,8 +33,8 @@ pub async fn update(id: i64, input: WifiCredentialInput) -> Result<WifiCredentia
     .await
 }
 
-/// `DELETE /api/v1/edge/wifi-credentials/{id}` — 204 sans corps
-/// (`request_opt` : un `request` classique lèverait « réponse vide »).
+/// `DELETE /api/v1/edge/wifi-credentials/{id}` — 204 without body
+/// (`request_opt`: a classic `request` would raise "empty response").
 pub async fn delete(id: i64) -> Result<(), ApiError> {
     client::request_opt::<()>(
         reqwest::Method::DELETE,

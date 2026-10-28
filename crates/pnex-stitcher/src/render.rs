@@ -1,26 +1,26 @@
-//! Rendu équirectangulaire : warp sphérique + **sélection** (pas moyennage) +
-//! remplissage des pôles, précédé d'une **compensation de gain** inter-frames.
+//! Equirectangular render: spherical warp + **selection** (not averaging) +
+//! pole filling, preceded by an inter-frame **gain compensation**.
 //!
-//! Pour chaque pixel de sortie `(lon, lat)` → rayon unitaire monde → pour
-//! chaque frame éligible (pré-filtre par bande de latitude) → projection
-//! rectiligne → échantillonnage bilinéaire → pondération par distance au
-//! bord élevée à [`SELECT_POWER`]. Une puissance élevée fait dominer la frame
-//! qui voit le pixel le plus au centre (couture nette), tout en gardant un
-//! fondu étroit là où deux frames se valent. Les accumulateurs sont f32 par
-//! ligne de sortie (pas d'état inter-lignes) — mémoire bornée.
+//! For each output pixel `(lon, lat)` → world unit ray → for
+//! each eligible frame (latitude band pre-filter) → rectilinear
+//! projection → bilinear sampling → weighting by distance to the
+//! edge raised to [`SELECT_POWER`]. A high power makes the frame that
+//! sees the pixel most centrally dominate (sharp seam), while keeping a
+//! narrow feather where two frames are equal. The accumulators are f32 per
+//! output row (no inter-row state) — bounded memory.
 //!
-//! RENDU SÉRIAL, volontairement SANS rayon : le pool global rayon meurt en
-//! deadlock sur Android device (workers futex-blocked à l'init, constat
-//! 2026-09-09 — 4 threads `pnex-stitch` à 0 % CPU). À 1024 px de sortie le
-//! sérial passe en ~1-2 s sur ARM moderne.
+//! SERIAL RENDER, deliberately WITHOUT rayon: the global rayon pool
+//! deadlocks on Android devices (workers futex-blocked at init, finding
+//! 2026-09-09 — 4 `pnex-stitch` threads at 0 % CPU). At 1024 px output the
+//! serial render takes ~1-2 s on modern ARM.
 //!
-//! Repère : cf. [`crate::geom`].
+//! Frame of reference: see [`crate::geom`].
 
 use crate::project::{interior_weight, project_uvc, PreparedFrame};
 
-/// Exposant de sélection : `poids = interior^P`. Plus il est grand, plus la
-/// frame la plus centrale l'emporte franchement (couture nette, fondu
-/// étroit) ; plus il est petit, plus le recouvrement se moyenne (fantôme).
+/// Selection exponent: `weight = interior^P`. The larger it is, the more
+/// clearly the most central frame wins (sharp seam, narrow
+/// feather); the smaller it is, the more the overlap is averaged (ghost).
 pub const SELECT_POWER: f32 = 24.0;
 
 /// Near-saturated sample (any channel ≥ 250): a clipped value carries no
@@ -31,17 +31,17 @@ fn is_clipped(col: [f32; 3]) -> bool {
     col.iter().any(|&v| v >= 250.0)
 }
 
-/// Estime un gain d'exposition multiplicatif par frame et par canal en
-/// égalisant la moyenne dans les recouvrements (équivalent Rust pur du
-/// `GainCompensator` d'OpenCV). `channels = 1` égalise la luminance
-/// (Rec.601) et réplique le gain sur les 3 canaux (comportement Legacy) ;
-/// `channels = 3` résout R, G et B indépendamment (corrige les dérives de
-/// balance des blancs entre frames).
+/// Estimates a multiplicative exposure gain per frame and per channel by
+/// equalising the mean in the overlaps (pure Rust equivalent of OpenCV's
+/// `GainCompensator`). `channels = 1` equalises the luminance
+/// (Rec.601) and replicates the gain over the 3 channels (Legacy behaviour);
+/// `channels = 3` solves R, G and B independently (fixes white balance
+/// drifts between frames).
 ///
-/// Grille grossière de rayons ; pour chaque rayon vu par ≥ 2 frames (loin
-/// des bords), on accumule la valeur par paire. On résout ensuite des
-/// log-gains par relaxation (Gauss-Seidel), ancrés à moyenne nulle, puis
-/// `gain = exp(G)` borné à `[0.5, 2.0]`. Aucune dépendance d'algèbre.
+/// Coarse grid of rays; for each ray seen by ≥ 2 frames (far
+/// from the edges), we accumulate the value per pair. We then solve
+/// log-gains by relaxation (Gauss-Seidel), anchored at zero mean, then
+/// `gain = exp(G)` bounded to `[0.5, 2.0]`. No algebra dependency.
 #[must_use]
 pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> {
     let n = frames.len();
@@ -50,7 +50,7 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
         return gains;
     }
     let per_channel: bool = channels >= 3;
-    // Pour chaque canal traité : la valeur comparée (lum ou canal brut).
+    // For each processed channel: the compared value (lum or raw channel).
     let channel_of = |col: [f32; 3], c: usize| -> f64 {
         if per_channel {
             col[c] as f64
@@ -58,7 +58,7 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
             0.299 * col[0] as f64 + 0.587 * col[1] as f64 + 0.114 * col[2] as f64
         }
     };
-    // Le résultat du canal logique `c` se réplique sur ces canaux RGB.
+    // The result of logical channel `c` is replicated over these RGB channels.
     let mapped = |c: usize| -> usize {
         if per_channel {
             c
@@ -68,16 +68,16 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
     };
 
     for c in 0..if per_channel { 3 } else { 1 } {
-        // Accumulateurs par paire (a < b) : (somme_a, somme_b, compte).
+        // Per-pair accumulators (a < b): (somme_a, somme_b, compte).
         let mut pair: std::collections::HashMap<(usize, usize), (f64, f64, u32)> =
             std::collections::HashMap::new();
 
-        // Grille grossière sur la sphère (3° × 3°).
+        // Coarse grid on the sphere (3° × 3°).
         let mut lat = -87.0f32;
         while lat <= 87.0 {
             let mut lon = -180.0f32;
             while lon < 180.0 {
-                // Frames voyant ce rayon suffisamment au centre (évite vignettage/bords).
+                // Frames seeing this ray centrally enough (avoids vignetting/edges).
                 let mut seen: Vec<(usize, f64)> = Vec::new();
                 for (k, f) in frames.iter().enumerate() {
                     if lat < f.lat_min || lat > f.lat_max {
@@ -111,12 +111,12 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
             lat += 3.0;
         }
 
-        // Arêtes du graphe : delta_{a→b} = ln(mean_b/mean_a), poids = compte.
-        // On veut G_a + ln(mean_a) ≈ G_b + ln(mean_b) (valeurs égalisées).
+        // Graph edges: delta_{a→b} = ln(mean_b/mean_a), weight = count.
+        // We want G_a + ln(mean_a) ≈ G_b + ln(mean_b) (equalised values).
         let mut adj: Vec<Vec<(usize, f32, f32)>> = vec![Vec::new(); n];
         for (&(a, b), &(sa, sb, cnt)) in pair.iter() {
             if cnt < 12 {
-                continue; // recouvrement trop maigre → bruit
+                continue; // overlap too thin → noise
             }
             let (ma, mb) = (sa / cnt as f64, sb / cnt as f64);
             if ma <= 0.0 || mb <= 0.0 {
@@ -128,10 +128,10 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
             adj[b].push((a, w, -d_ab));
         }
 
-        // Relaxation de Gauss-Seidel EN PLACE (l'itération Jacobi oscille
-        // en permanence sur les graphes bipartis — anneau pair de frames —
-        // et ne converge jamais : gains restés neutres en V1, constat
-        // 2026-09-10). Ancrage moyenne nulle à chaque balayage.
+        // IN-PLACE Gauss-Seidel relaxation (Jacobi iteration oscillates
+        // forever on bipartite graphs — even ring of frames —
+        // and never converges: gains stayed neutral in V1, finding
+        // 2026-09-10). Zero-mean anchoring at each sweep.
         let mut g = vec![0.0f32; n];
         for _ in 0..80 {
             for k in 0..n {
@@ -162,12 +162,12 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
         }
     }
 
-    // Bornage couleur : quand une frame voit une zone peu colorée (plafond
-    // blanc), l'égalisation par canal se DÉCOUPLE et la correction R/G/B
-    // part dans les coins → image délavée (constat capture réelle
-    // 2026-09-10). La déviation de chaque canal est ramenée à ±15 % du gain
-    // de luminance (moyenne géométrique des canaux) — la correction de
-    // balance des blancs reste possible, la dérive non.
+    // Colour bounding: when a frame sees a weakly coloured area (white
+    // ceiling), per-channel equalisation DECOUPLES and the R/G/B correction
+    // goes off the charts → washed-out image (real capture finding
+    // 2026-09-10). The deviation of each channel is brought back to ±15 % of the
+    // luminance gain (geometric mean of the channels) — white balance
+    // correction stays possible, drift does not.
     if per_channel {
         for g3 in gains.iter_mut() {
             let lum = (g3[0] * g3[1] * g3[2]).cbrt();
@@ -180,11 +180,11 @@ pub fn estimate_gains(frames: &[PreparedFrame], channels: u32) -> Vec<[f32; 3]> 
     gains
 }
 
-/// Estime le gain **local** basse fréquence par frame (grille 3°) : pour
-/// chaque cellule vue par ≥ 2 frames, chaque frame est ramenée à la moyenne
-/// des frames couvrant la cellule — aplanit les gradients d'illumination
-/// intra-scène (fenêtre lumineuse vs mur sombre) responsables des jointures
-/// en rectangles. Deux lissages 3×3 sur la grille, clamp [0.7, 1.4].
+/// Estimates the low-frequency **local** gain per frame (3° grid): for
+/// each cell seen by ≥ 2 frames, each frame is brought back to the mean
+/// of the frames covering the cell — flattens the intra-scene illumination
+/// gradients (bright window vs dark wall) responsible for the rectangular
+/// joins. Two 3×3 smoothings on the grid, clamp [0.7, 1.4].
 pub fn estimate_local_gains(frames: &mut [PreparedFrame]) {
     let n = frames.len();
     if n < 2 {
@@ -193,7 +193,7 @@ pub fn estimate_local_gains(frames: &mut [PreparedFrame]) {
     for f in frames.iter_mut() {
         f.local_gain = vec![1.0; crate::project::LOCAL_GRID_W * crate::project::LOCAL_GRID_H];
     }
-    // Luminance gainée accumulée par cellule et par frame.
+    // Gained luminance accumulated per cell and per frame.
     let cells = crate::project::LOCAL_GRID_W * crate::project::LOCAL_GRID_H;
     let mut sums = vec![vec![0.0f64; n]; cells];
     let mut counts = vec![vec![0u32; n]; cells];
@@ -232,8 +232,8 @@ pub fn estimate_local_gains(frames: &mut [PreparedFrame]) {
         lat += 3.0;
     }
 
-    // Correction par frame et cellule : ramener chaque frame à la moyenne
-    // géométrique des frames couvrant la cellule (≥ 2 frames).
+    // Correction per frame and cell: bring each frame back to the geometric
+    // mean of the frames covering the cell (≥ 2 frames).
     let mut raw = vec![vec![1.0f32; n]; cells];
     for cell in 0..cells {
         let mut n_cov = 0usize;
@@ -256,8 +256,8 @@ pub fn estimate_local_gains(frames: &mut [PreparedFrame]) {
         }
     }
 
-    // Lissage : 2 passes de boîte 3×3 sur la grille (les cellules non
-    // couvertes gardent 1.0 dans la moyenne).
+    // Smoothing: 2 3×3 box passes on the grid (uncovered cells
+    // keep 1.0 in the mean).
     for (k, frame) in frames.iter_mut().enumerate() {
         let (gw, gh) = (crate::project::LOCAL_GRID_W, crate::project::LOCAL_GRID_H);
         let mut cur = raw_cell_grid(&raw, k, gw, gh);
@@ -284,7 +284,7 @@ pub fn estimate_local_gains(frames: &mut [PreparedFrame]) {
     }
 }
 
-/// Extrait la grille plate d'une frame depuis les valeurs brutes par cellule.
+/// Extracts the flat grid of a frame from the raw per-cell values.
 fn raw_cell_grid(raw: &[Vec<f32>], k: usize, gw: usize, gh: usize) -> Vec<f32> {
     let mut out = vec![1.0f32; gw * gh];
     for (cell, grid) in out.iter_mut().enumerate() {
@@ -294,11 +294,11 @@ fn raw_cell_grid(raw: &[Vec<f32>], k: usize, gw: usize, gh: usize) -> Vec<f32> {
     out
 }
 
-/// Rendu équirectangulaire 2:1 de largeur `out_width`.
+/// 2:1 equirectangular render of width `out_width`.
 ///
-/// Retourne le buffer RGB8, le nombre de pixels couverts par ligne et le
-/// masque pixel de couverture. Les frames peuvent être vides (rendu noir,
-/// couverture nulle) — `stitch` valide en amont.
+/// Returns the RGB8 buffer, the number of covered pixels per row and the
+/// per-pixel coverage mask. The frames may be empty (black render,
+/// zero coverage) — `stitch` validates upstream.
 #[must_use]
 pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, Vec<bool>) {
     let out_h = (out_width / 2).max(1);
@@ -306,7 +306,7 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
     let mut covered = vec![0u32; out_h as usize];
     let mut mask = vec![false; (out_width * out_h) as usize];
 
-    // Pré-filtre par ligne : indices de frames éligibles, calculés une fois.
+    // Per-row pre-filter: eligible frame indices, computed once.
     let eligible: Vec<Vec<usize>> = (0..out_h)
         .map(|j| {
             let lat = lat_of(j, out_h);
@@ -320,8 +320,8 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
         .collect();
 
     let row_len = (out_width * 3) as usize;
-    // Rendu sérial ligne par ligne (cf. docs module : rayon interdit sur
-    // device). La boucle retourne (compte couvert, masque pixel) par ligne.
+    // Serial row-by-row render (see module docs: rayon forbidden on
+    // device). The loop returns (covered count, pixel mask) per row.
     let per_row: Vec<(u32, Vec<bool>)> = rgb
         .chunks_mut(row_len)
         .enumerate()
@@ -340,8 +340,8 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
                     else {
                         continue;
                     };
-                    // Sélection : distance au bord ^ P. La frame qui voit le
-                    // pixel le plus au centre domine ; fondu étroit à la couture.
+                    // Selection: distance to the edge ^ P. The frame that sees the
+                    // pixel most centrally dominates; narrow feather at the seam.
                     let iw = interior_weight(f, u, v);
                     if iw <= 0.0 {
                         continue;
@@ -382,17 +382,17 @@ pub fn render(frames: &[PreparedFrame], out_width: u32) -> (Vec<u8>, Vec<u32>, V
     (rgb, covered, mask)
 }
 
-/// Habille le haut et le bas hors de la **bande solide** (les latitudes non
-/// couvertes par l'anneau de capture) proprement, au lieu d'étaler
-/// verticalement le bord de bande (qui donnait des traînées et un raccord
-/// ondulé « cassé »).
+/// Dresses the top and bottom outside the **solid band** (the latitudes not
+/// covered by the capture ring) cleanly, instead of vertically spreading
+/// the band edge (which gave streaks and a wavy "broken"
+/// join).
 ///
-/// Une capture mono-anneau ne couvre qu'une tranche de l'équirect : on ne
-/// peut pas inventer les calottes. On les rend donc *régulières* — couleur du
-/// bord lissée horizontalement (fin des traînées), fondu doux depuis la bande
-/// (fin du bord dur ondulé), convergence vers la teinte moyenne du bord vers
-/// le pôle (ciel/sol uni). Résultat : bande de contenu nette + calottes
-/// unies, plutôt qu'un letterbox déchiré.
+/// A single-ring capture only covers a slice of the equirect: we cannot
+/// invent the caps. So we render them *regular* — edge colour
+/// smoothed horizontally (end of the streaks), soft feather from the band
+/// (end of the wavy hard edge), convergence towards the mean edge hue towards
+/// the pole (plain sky/floor). Result: sharp content band + plain
+/// caps, rather than a torn letterbox.
 pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
     let out_h = covered.len();
     let w = out_width as usize;
@@ -401,8 +401,8 @@ pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
     }
     let row_len = w * 3;
 
-    // Bande « solide » : lignes largement couvertes (seuil dégressif si la
-    // couverture est faible). Tout ce qui est au-dessus/dessous est habillé.
+    // "Solid" band: widely covered rows (decreasing threshold if
+    // coverage is low). Everything above/below is dressed.
     let first_where = |t: f32| {
         covered
             .iter()
@@ -418,8 +418,8 @@ pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
         .find_map(|&t| Some((first_where(t)?, last_where(t)?)))
         .unwrap_or((0, out_h - 1));
 
-    // Copie lissée horizontalement (blur à recouvrement circulaire — la
-    // longitude boucle) de la ligne de bord : tue les traînées verticales.
+    // Horizontally smoothed copy (blur with circular wrap — the
+    // longitude wraps) of the edge row: kills the vertical streaks.
     let smoothed = |rgb: &[u8], j: usize| -> Vec<f32> {
         let r = (w / 32).max(1) as i32;
         let base = j * row_len;
@@ -449,12 +449,12 @@ pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
         [m[0] / w as f32, m[1] / w as f32, m[2] / w as f32]
     };
 
-    // Habillage supérieur : de la bande (bord lissé) vers le pôle (teinte unie).
+    // Top dressing: from the band (smoothed edge) towards the pole (plain hue).
     if top > 0 {
         let edge = smoothed(rgb, top);
         let mean = mean_of(&edge);
         for j in 0..top {
-            let a = j as f32 / top as f32; // 0 au pôle, 1 au bord de bande
+            let a = j as f32 / top as f32; // 0 at the pole, 1 at the band edge
             let dst = j * row_len;
             for i in 0..w {
                 for k in 0..3 {
@@ -465,13 +465,13 @@ pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
         }
     }
 
-    // Habillage inférieur : symétrique.
+    // Bottom dressing: symmetric.
     if bot < out_h - 1 {
         let edge = smoothed(rgb, bot);
         let mean = mean_of(&edge);
         let denom = (out_h - 1 - bot) as f32;
         for j in (bot + 1)..out_h {
-            let a = (out_h - 1 - j) as f32 / denom; // 1 sous la bande, 0 au pôle
+            let a = (out_h - 1 - j) as f32 / denom; // 1 below the band, 0 at the pole
             let dst = j * row_len;
             for i in 0..w {
                 for k in 0..3 {
@@ -483,14 +483,14 @@ pub fn fill_poles(rgb: &mut [u8], out_width: u32, covered: &[u32]) {
     }
 }
 
-/// Couverture de la **bande couverte** : fraction de pixels réellement
-/// couverts parmi les lignes contenant au moins un pixel couvert, mesurée
-/// AVANT remplissage (les trous intra-bande — retrait des coins en
-/// rectiligne, frame manquante — abaissent la métrique, c'est voulu).
+/// Coverage of the **covered band**: fraction of really covered pixels
+/// among the rows containing at least one covered pixel, measured
+/// BEFORE filling (intra-band holes — rectilinear corner insets,
+/// missing frame — lower the metric, that is intended).
 ///
-/// Un anneau horizontal ne couvre qu'une tranche de l'équirect : le seuil
-/// se juge DANS la bande, jamais sur la sphère entière (les pôles sont
-/// remplis ensuite par étalement).
+/// A horizontal ring only covers a slice of the equirect: the threshold
+/// is judged WITHIN the band, never over the whole sphere (the poles are
+/// filled afterwards by spreading).
 #[must_use]
 pub fn band_coverage(out_width: u32, covered: &[u32]) -> f32 {
     let total: u64 = covered.iter().filter(|&&c| c > 0).map(|&c| c as u64).sum();
@@ -501,14 +501,14 @@ pub fn band_coverage(out_width: u32, covered: &[u32]) -> f32 {
     total as f32 / (rows * out_width as u64) as f32
 }
 
-/// Comble les trous **intra-bande** par **extension verticale** : tout pixel
-/// non couvert reçoit la fusion des voisins couverts les plus proches
-/// au-dessus et en dessous (même colonne), pondérée par l'inverse des
-/// distances. Les structures verticales (murs, encadrements, plafond→mur)
-/// restent crédibles là où l'ancien remplissage horizontal (moyenne
-/// gauche/droite) étirait les bords en traînées « échelle » — constat
-/// capture réelle 3 anneaux 2026-09-10 (trou azimutal équateur ~33° :
-/// l'anneau n'a pas refermé, 15 frames × ~20° + hfov 43,7 < 360°).
+/// Fills **intra-band** holes by **vertical extension**: every uncovered
+/// pixel receives the blend of the nearest covered neighbours
+/// above and below (same column), weighted by the inverse of the
+/// distances. Vertical structures (walls, frames, ceiling→wall)
+/// stay credible where the former horizontal fill (left/right
+/// mean) stretched the edges into "ladder" streaks — finding from a
+/// real 3-ring capture 2026-09-10 (equator azimuthal hole ~33°:
+/// the ring did not close, 15 frames × ~20° + hfov 43.7 < 360°).
 pub fn fill_band_holes(rgb: &mut [u8], out_width: u32, mask: &[bool]) {
     let w = out_width as usize;
     let h = mask.len() / w;
@@ -517,9 +517,9 @@ pub fn fill_band_holes(rgb: &mut [u8], out_width: u32, mask: &[bool]) {
     }
     let row_len = w * 3;
 
-    // Extension verticale colonne par colonne (O(h) mémoire) : dist_up /
-    // dist_dn = distances aux voisins couverts au-dessus/en dessous
-    // (-1 = aucun).
+    // Column-by-column vertical extension (O(h) memory): dist_up /
+    // dist_dn = distances to the covered neighbours above/below
+    // (-1 = none).
     for i in 0..w {
         let mut dist_up = vec![-1i32; h];
         let mut dist_dn = vec![-1i32; h];
@@ -539,7 +539,7 @@ pub fn fill_band_holes(rgb: &mut [u8], out_width: u32, mask: &[bool]) {
             }
             dist_dn[j] = if last >= 0 { last - j as i32 } else { -1 };
         }
-        // Fusion pondérée 1/distance (le voisin le plus proche domine).
+        // 1/distance weighted blend (the nearest neighbour dominates).
         for j in 0..h {
             let (du, dd) = (dist_up[j], dist_dn[j]);
             if du < 0 && dd < 0 {
@@ -568,10 +568,10 @@ pub fn fill_band_holes(rgb: &mut [u8], out_width: u32, mask: &[bool]) {
         }
     }
 
-    // Lissage horizontal des pixels remplis (rayon 2) : l'extension colonne
-    // par colonne crée du fin striage vertical (voisins étendus issus de
-    // lignes de bord au contenu légèrement différent). Rayon court — on
-    // garde la transition vers le contenu réel aux bords du trou.
+    // Horizontal smoothing of the filled pixels (radius 2): the column-by-column
+    // extension creates fine vertical striping (extended neighbours from
+    // edge rows with slightly different content). Short radius — we
+    // keep the transition to the real content at the hole edges.
     let r = 2usize;
     let out = rgb.to_vec();
     for j in 0..h {
@@ -599,16 +599,16 @@ pub fn fill_band_holes(rgb: &mut [u8], out_width: u32, mask: &[bool]) {
     }
 }
 
-// ─────────────────────────── helpers sphère ───────────────────────────
+// ─────────────────────────── sphere helpers ───────────────────────────
 
-/// Miroir horizontal du buffer équirect (rgb + masque) — le handedness
-/// d'affichage standard (u croît en tournant à DROITE, sens horaire vu du
-/// ciel) s'obtient en inversant le mapping interne (u croît avec la lon
-/// ENU). Une seule inversion dans toute la chaîne, à la frontière de
-/// rendu : tout le pipeline interne (align NCC + sonde, solve, seams,
-/// multiband, gains) conserve la convention historique verrouillée par
-/// les sondes. Constat device 2026-09-11 : sans ce miroir, le panoramique
-/// sort « propre mais en miroir » gauche-droite.
+/// Horizontal mirror of the equirect buffer (rgb + mask) — the standard
+/// display handedness (u grows when turning RIGHT, clockwise seen from the
+/// sky) is obtained by inverting the internal mapping (u grows with ENU
+/// lon). A single inversion in the whole chain, at the render
+/// boundary: the whole internal pipeline (NCC align + probe, solve, seams,
+/// multiband, gains) keeps the historical convention locked by
+/// the probes. Device finding 2026-09-11: without this mirror, the panorama
+/// comes out "clean but mirrored" left-right.
 pub(crate) fn mirror_rows(rgb: &mut [u8], out_width: u32) {
     let w = out_width as usize;
     let h = rgb.len() / (w * 3);
@@ -622,8 +622,8 @@ pub(crate) fn mirror_rows(rgb: &mut [u8], out_width: u32) {
     }
 }
 
-/// Miroir horizontal du masque de couverture pixel — doit accompagner
-/// [`mirror_rows`] : `fill_band_holes` consomme rgb et masque ensemble.
+/// Horizontal mirror of the per-pixel coverage mask — must accompany
+/// [`mirror_rows`]: `fill_band_holes` consumes rgb and mask together.
 pub(crate) fn mirror_mask(mask: &mut [bool], out_width: u32) {
     let w = out_width as usize;
     let h = mask.len() / w;
@@ -635,25 +635,25 @@ pub(crate) fn mirror_mask(mask: &mut [bool], out_width: u32) {
     }
 }
 
-/// Latitude (degrés) du centre de la ligne de sortie `j`.
+/// Latitude (degrees) of the centre of output row `j`.
 pub(crate) fn lat_of(j: u32, out_h: u32) -> f32 {
     90.0 - (j as f32 + 0.5) * 180.0 / out_h as f32
 }
 
-/// Longitude (degrés) du centre du pixel de la colonne `i`.
+/// Longitude (degrees) of the centre of the pixel in column `i`.
 ///
-/// Convention INTERNE (align + sonde : u croît avec la longitude ENU).
-/// Le handedness d'affichage standard (u croît en tournant à DROITE,
-/// sens horaire vu du ciel) est appliqué au retour de [`render`] par
-/// miroir des rangées — cf. `mirror_rows` + sonde `rendu_handedness`.
-/// Sans ce miroir de sortie, le rendu était en MIROIR gauche-droite :
-/// auto-cohérent (coutures propres) mais inversé vs. la scène réelle,
-/// constat device 2026-09-11.
+/// INTERNAL convention (align + probe: u grows with ENU longitude).
+/// The standard display handedness (u grows when turning RIGHT,
+/// clockwise seen from the sky) is applied on return from [`render`] by
+/// mirroring the rows — see `mirror_rows` + probe `rendu_handedness`.
+/// Without this output mirror, the render was MIRRORED left-right:
+/// self-consistent (clean seams) but inverted vs. the real scene,
+/// device finding 2026-09-11.
 pub(crate) fn lon_of(i: u32, out_width: u32) -> f32 {
     -180.0 + (i as f32 + 0.5) * 360.0 / out_width as f32
 }
 
-/// Rayon unitaire monde depuis (lon, lat) en degrés.
+/// World unit ray from (lon, lat) in degrees.
 pub(crate) fn ray_of(lon_deg: f32, lat_deg: f32) -> [f32; 3] {
     let (lo, la) = (lon_deg.to_radians(), lat_deg.to_radians());
     let (sl, cl) = lo.sin_cos();
@@ -661,7 +661,7 @@ pub(crate) fn ray_of(lon_deg: f32, lat_deg: f32) -> [f32; 3] {
     [cp * cl, cp * sl, sp]
 }
 
-/// Échantillonnage bilinéaire RGB8 avec clamp aux bords.
+/// Bilinear RGB8 sampling with edge clamping.
 pub(crate) fn sample_bilinear(buf: &[u8], w: u32, h: u32, u: f32, v: f32) -> [f32; 3] {
     let x = u.clamp(0.0, (w - 1) as f32);
     let y = v.clamp(0.0, (h - 1) as f32);
@@ -694,13 +694,13 @@ pub(crate) fn sample_bilinear(buf: &[u8], w: u32, h: u32, u: f32, v: f32) -> [f3
 mod tests {
     use super::*;
 
-    /// Conventions sphère : ligne 0 = pôle nord, u croissant = tourner à
-    /// DROITE (lon décroissant de 180 → −180) — handedness standard des
-    /// équirects (cf. doc lon_of).
-    /// Conventions sphère (interne) : ligne 0 = pôle nord, lon croissant
-    /// de gauche à droite sur la grille (−180 → +180). Le handedness
-    /// d'affichage est appliqué à la frontière par `mirror_rows` (cf.
-    /// sonde `rendu_handedness`).
+    /// Sphere conventions: row 0 = north pole, increasing u = turning
+    /// RIGHT (lon decreasing from 180 → −180) — standard equirect
+    /// handedness (see lon_of doc).
+    /// Sphere conventions (internal): row 0 = north pole, lon increasing
+    /// from left to right on the grid (−180 → +180). The display
+    /// handedness is applied at the boundary by `mirror_rows` (see
+    /// probe `rendu_handedness`).
     #[test]
     fn conventions_sphere() {
         assert!((lat_of(0, 1024) - 89.9).abs() < 0.1);
@@ -711,8 +711,8 @@ mod tests {
         let r = ray_of(0.0, 90.0);
         assert!((r[2] - 1.0).abs() < 1e-6);
     }
-    /// Gains per-channel : une frame ×1,4 doit être ramenée ≈ ×1/1,4 par
-    /// l'égalisation des recouvrements (canaux indépendants).
+    /// Per-channel gains: a ×1.4 frame must be brought back ≈ ×1/1.4 by
+    /// the overlap equalisation (independent channels).
     #[test]
     fn gains_per_channel_egalise() {
         use crate::geom::euler_to_mat;
@@ -768,18 +768,18 @@ mod tests {
         }
         let frames = vec![frame(0, 1.0), frame(1, 1.4)];
         let gains = estimate_gains(&frames, 3);
-        // La jauge (ancrage log-moyen) répartit la correction entre les deux
-        // frames ; c'est le RATIO qui doit annuler l'écart d'exposition.
+        // The gauge (log-mean anchoring) splits the correction between the two
+        // frames; it is the RATIO that must cancel the exposure gap.
         let ratio = gains[1][0] / gains[0][0];
         eprintln!("DIAG gains = {gains:?}");
         assert!(
             (ratio - 1.0 / 1.4).abs() <= 0.03,
-            "ratio de gains = {ratio:.3}, attendu ≈ {:+.3}",
+            "gain ratio = {ratio:.3}, expected ≈ {:+.3}",
             1.0 / 1.4
         );
     }
 
-    /// Couverture de bande : pleine, partiellement trouée, vide.
+    /// Band coverage: full, partially holed, empty.
     #[test]
     fn couverture_bande() {
         let w = 100u32;

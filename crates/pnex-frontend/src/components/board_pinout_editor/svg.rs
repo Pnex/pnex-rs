@@ -7,10 +7,10 @@ use super::view::{board_h as pcb_h, board_w, PinView, BOARD_X, CHIP_H, CHIP_W};
 
 /// PCB + labeled chip + USB connector at the TOP — the shared silhouette
 /// used by the interactive editor (`BoardSvg`) and the wizard preview
-/// (`BoardPreviewModal`). CONVENTION (décision utilisateur 2026-09-21) :
-/// tout est stocké et dessiné **USB en haut** — les profils board posent
-/// `pos.index` 0 = coin USB et `side` = côté affiché, le rendu est donc un
-/// 1:1 sans aucune rotation (le YAML se lit comme la photo comme le SVG).
+/// (`BoardPreviewModal`). CONVENTION (user decision 2026-09-21):
+/// everything is stored and drawn **USB at the top** — board profiles set
+/// `pos.index` 0 = USB corner and `side` = displayed side, so rendering is
+/// 1:1 with no rotation at all (the YAML reads like the photo and the SVG).
 #[component]
 fn BoardSvgBase(views: Vec<PinView>, per_side: f64, ratio: f64, chip_label: String) -> Element {
     // PCB sized on the layout's per-side count (longest column of an
@@ -124,7 +124,7 @@ fn BoardSvgBase(views: Vec<PinView>, per_side: f64, ratio: f64, chip_label: Stri
                 }
             }
             // USB connector (top, centered) — no label, the drawing speaks
-            // for itself. Convention USB en haut : jamais de rotation ici.
+            // for itself. USB-at-the-top convention: never rotate here.
             rect {
                 x: "{cx - 26.0}",
                 y: "18",
@@ -149,7 +149,7 @@ fn BoardSvgBase(views: Vec<PinView>, per_side: f64, ratio: f64, chip_label: Stri
 
 /// Interactive board: silhouette + clickable pin chips. Key = position
 /// (`side-index`), never the label: power/GND pins share their label
-/// (3× `GND` sur le 38p) and duplicate keyed siblings panic the diff.
+/// (3× `GND` on the 38p) and duplicate keyed siblings panic the diff.
 #[component]
 pub(super) fn BoardSvg(
     views: Vec<PinView>,
@@ -171,7 +171,7 @@ pub(super) fn BoardSvg(
     }
 }
 
-/// Un chip de pin cliquable (pad + rect + bande couleur + label + badges).
+/// A clickable pin chip (pad + rect + color band + label + badges).
 #[component]
 fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element {
     let left = view.side == "left";
@@ -180,7 +180,7 @@ fn PinChip(view: PinView, mut selected_label: Signal<Option<String>>) -> Element
     } else {
         view.chip_x
     };
-    // Anneau « configuré » centré sur le pad (halo) — jamais décalé.
+    // "Configured" ring centered on the pad (halo) — never offset.
     let ring_x = view.x;
     let opacity = if view.reserved { "0.55" } else { "1" };
     let stroke = if view.selected {
@@ -295,8 +295,8 @@ fn badge_circle(y: f64, badge: &str, bx: &mut f64) -> Element {
     }
 }
 
-/// Label i18n d'une clé de légende — t! exige un littéral, donc match
-/// exhaustif (toute nouvelle capacité passe ici).
+/// i18n label of a legend key — t! requires a literal, hence an
+/// exhaustive match (every new capability goes through here).
 fn legend_label(key: &str) -> String {
     match key {
         "board-legend-gpio" => t!("board-legend-gpio").to_string(),
@@ -313,7 +313,7 @@ fn legend_label(key: &str) -> String {
     }
 }
 
-/// Légende des capacités présentes.
+/// Legend of the capabilities present.
 #[component]
 pub(super) fn Legend(items: Vec<(&'static str, &'static str)>) -> Element {
     rsx! {

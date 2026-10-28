@@ -160,7 +160,7 @@ La partie `text/calendar` d'un mail (en ligne ou jointe) est lue à la relève p
 
 Le calendrier (D466) reste à la demande d'un lecteur ; l'ontologie, elle, est remplie par un flow du pack `crm` (D462 : rien au moteur), **CRM · réunions reçues**, déployé par un membre sur les boîtes qu'il lit :
 
-- chaque mail qui porte une invitation (hors `REPLY`, qui ne dit que la réponse d'un participant) écrit un `meeting` (pack `prospection_b2b` 1.7.0) clé = `invitation_uid` (l'`UID`) : date, objet, lieu, statut `planned` ; une mise à jour déplace le même objet, une annulation (`METHOD:CANCEL`) le passe `cancelled`, l'historique de l'objet garde le reste ;
+- chaque mail qui porte une invitation (hors `REPLY`, qui ne dit que la réponse d'un participant) écrit un `meeting` (pack `prospecting_b2b` 1.7.0) clé = `invitation_uid` (l'`UID`) : date, objet, lieu, statut `planned` ; une mise à jour déplace le même objet, une annulation (`METHOD:CANCEL`) le passe `cancelled`, l'historique de l'objet garde le reste ;
 - l'organisateur et chaque participant dont l'adresse est l'identifiant e-mail d'une personne de l'org **participent** (`takes_part_in`) ; lien écrit quand l'expéditeur est authentifié (règle de `crm_mail_prep`, D458), **proposé** sinon (page « À valider », confiance 40) ;
 - une adresse inconnue est laissée de côté : personne n'est créé (même règle que D466, D467).
 
@@ -277,7 +277,7 @@ Aucun service officiel Microsoft n'est apparu à la recherche du 2026-10-26 ; le
 
 **Point 1 livré (D466)**, choix par défaut : calendrier de l'org (pas de calendrier par personne aujourd'hui), ajout à la demande.
 
-**Point 2 livré (D467, pack `crm` 1.4.0)** : le domaine d'une entreprise n'est pas saisi, il vient de son site web confirmé (pack `presence_web`, `site_web.domaine`, lien `a_pour_site`). Le flow **CRM · mails reçus** cherche d'abord une personne par identifiant e-mail ; s'il n'y en a aucune et que l'adresse n'est pas un webmail, il range le mail comme activité et **propose** son rattachement au compte dont le site a ce domaine, et à ses opportunités ouvertes (page « À valider », confiance 50, preuve = le domaine). Jamais lié d'office, même expéditeur authentifié : un clic humain valide, comme les sites candidats de la veille. Point 3 (LinkedIn) ouvert.
+**Point 2 livré (D467, pack `crm` 1.4.0)** : le domaine d'une entreprise n'est pas saisi, il vient de son site web confirmé (pack `web_presence`, `website.domain`, lien `has_website`). Le flow **CRM · mails reçus** cherche d'abord une personne par identifiant e-mail ; s'il n'y en a aucune et que l'adresse n'est pas un webmail, il range le mail comme activité et **propose** son rattachement au compte dont le site a ce domaine, et à ses opportunités ouvertes (page « À valider », confiance 50, preuve = le domaine). Jamais lié d'office, même expéditeur authentifié : un clic humain valide, comme les sites candidats de la veille. Point 3 (LinkedIn) ouvert.
 
 Demande : une invitation reçue ou transférée par mail apparaît au calendrier avec ses participants, et chaque correspondant est relié à sa personne, à son entreprise (par le domaine de son adresse) et, le cas échéant, à son profil LinkedIn.
 

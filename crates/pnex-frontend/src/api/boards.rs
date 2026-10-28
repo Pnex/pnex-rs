@@ -1,9 +1,9 @@
-//! `GET /api/v1/boards` — profils de board v2 (picker de variantes wizard).
+//! `GET /api/v1/boards` — v2 board profiles (wizard variant picker).
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Un pin d'un profil board (miroir du BoardPinDto backend).
+/// One pin of a board profile (mirror of the backend BoardPinDto).
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct BoardPinDto {
     pub label: String,
@@ -22,7 +22,7 @@ pub struct BoardPinDto {
     pub warnings: Vec<String>,
 }
 
-/// Une variante de board du catalogue.
+/// A board variant of the catalogue.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct Board {
     pub id: i64,
@@ -44,7 +44,7 @@ pub struct Board {
 }
 
 impl Board {
-    /// Écrans déclarés dans le profil (périphériques intégrés).
+    /// Screens declared in the profile (built-in peripherals).
     pub fn screens(&self) -> Vec<serde_json::Value> {
         self.peripherals
             .get("screens")

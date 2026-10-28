@@ -1,9 +1,9 @@
 use super::*;
 use crate::components::ui::{FIELD_LABEL, INPUT};
 
-/// Modal de création : nom + langage + description. Le code démarre du
-/// squelette du langage (`handle` obligatoire) — la version 1 est créée par
-/// le POST, l'éditeur s'ouvre directement dessus.
+/// Creation modal: name + language + description. The code starts from the
+/// language skeleton (`handle` mandatory) — version 1 is created by the
+/// POST, the editor opens directly on it.
 #[component]
 pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i64>) -> Element {
     let mut name = use_signal(String::new);
@@ -53,8 +53,8 @@ pub(super) fn CreateFunctionModal(on_close: Callback<()>, on_created: Callback<i
             on_close,
             on_submit: submit,
             busy: creating(),
-            // `valid` au défaut (true) : l'erreur inline name_error s'affiche
-            // après clic — le bouton ne doit pas être verrouillé avant.
+            // `valid` at its default (true): the inline name_error shows
+            // after a click — the button must not be locked before.
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("functions-field-name")} }
                 input {

@@ -1,8 +1,8 @@
-//! Erreurs d'envoi / rendu — [`NotifyError::retryable`] pilote la politique
-//! de retry (D53 : at-least-once, backoff 1s/5s/25s).
+//! Send / render errors — [`NotifyError::retryable`] drives the retry
+//! policy (D53: at-least-once, backoff 1s/5s/25s).
 //!
-//! Règle D54 : aucun message d'erreur ne cite la config du canal ni un
-//! secret (l'URL est loggable, le token jamais).
+//! D54 rule: no error message quotes the channel config or a
+//! secret (the URL is loggable, the token never).
 
 #[derive(Debug, thiserror::Error)]
 pub enum NotifyError {
@@ -19,8 +19,8 @@ pub enum NotifyError {
 }
 
 impl NotifyError {
-    /// `true` pour les échecs transitoires (réseau, timeout, 5xx, 429) —
-    /// seuls ceux-là méritent un retry ; un 4xx reproduira la même erreur.
+    /// `true` for transient failures (network, timeout, 5xx, 429) —
+    /// only those deserve a retry; a 4xx would reproduce the same error.
     pub fn retryable(&self) -> bool {
         match self {
             NotifyError::Network(_) => true,

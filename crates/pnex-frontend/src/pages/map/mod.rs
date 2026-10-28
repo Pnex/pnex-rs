@@ -1,17 +1,17 @@
-//! Carte globale POI-first (D35–D39) : vue plein écran de **tous** les POI
-//! de l'org, sidebar gauche repliable (recherche, filtres, « tout
-//! afficher »), **clustering backend** (D37 — jamais 500 points d'un coup),
-//! ajout d'un POI au clic carte (palette emoji), drawer de détail avec
-//! section unique **« objets attachés »** (device colonne D36 en 1ʳᵉ ligne,
-//! puis arêtes `placed_on` tous kinds confondus — média, tour, dashboard —
-//! via le registre D42 et les endpoints `/api/v1/resources/edges`), picker
-//! générique ongleté (`components/resource_picker.rs`), et couche GPS live
-//! des devices (D38, poll 15 s).
+//! POI-first global map (D35–D39): full-screen view of **all** the org's
+//! POIs, collapsible left sidebar (search, filters, "show
+//! all"), **backend clustering** (D37 — never 500 points at once),
+//! adding a POI on map click (emoji palette), detail drawer with a
+//! single **"attached objects"** section (D36 column device on the 1st row,
+//! then `placed_on` edges of all kinds — media, tour, dashboard —
+//! via the D42 registry and the `/api/v1/resources/edges` endpoints), generic
+//! tabbed picker (`components/resource_picker.rs`), and live GPS layer
+//! of the devices (D38, poll 15 s).
 //!
-//! Patterns : viewer JS `map_viewer` (badge, jamais panic), boucle de
-//! polling `MAP_POLL_ACTIVE` (école Phase A), drawer droite (école
-//! media.rs), polling REST 15 s (D31 — pas de WS navigateur), signaux
-//! possédés AVANT le rsx et passés **par valeur** aux helpers async.
+//! Patterns: JS viewer `map_viewer` (badge, never panic), polling loop
+//! `MAP_POLL_ACTIVE` (Phase A pattern), right drawer (media.rs
+//! pattern), REST polling 15 s (D31 — no browser WS), signals
+//! owned BEFORE the rsx and passed **by value** to the async helpers.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -38,7 +38,7 @@ use crate::util::sleep;
 const MAP_HOST: &str = "pnex-map-host";
 static MAP_POLL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Couche GPS : rafraîchie tous les ~15 s (école D31 : 50 ticks × 300 ms).
+/// GPS layer: refreshed every ~15 s (D31 pattern: 50 ticks × 300 ms).
 const POSITIONS_POLL_TICKS: u32 = 50;
 /// Retry delay of a failed points fetch (10 ticks × 300 ms = 3 s).
 const POINTS_RETRY_TICKS: u32 = 10;
@@ -61,13 +61,13 @@ impl PointsStatus {
     }
 }
 
-/// Palette de pictogrammes POI (curatée — capteurs, eau, énergie, accès,
-/// risque…) ; sur mobile le champ accepte aussi le clavier emoji natif.
+/// POI pictogram palette (curated — sensors, water, energy, access,
+/// risk…); on mobile the field also accepts the native emoji keyboard.
 const PALETTE: [&str; 12] = [
     "📍", "🌱", "🌡️", "💧", "⚡", "🚰", "🔥", "🚒", "⚠️", "🚪", "🔧", "📡",
 ];
 
-/// Centre par défaut (France) tant qu'aucun POI ne guide la vue.
+/// Default center (France) as long as no POI guides the view.
 pub(crate) const DEFAULT_CENTER: (f64, f64) = (2.4, 46.6);
 pub(crate) const DEFAULT_ZOOM: f64 = 5.0;
 
@@ -101,7 +101,7 @@ pub fn Map() -> Element {
             poi_page.set(0);
         }
     });
-    // POI ouvert dans le drawer de détail.
+    // POI open in the detail drawer.
     let mut selected = use_signal(|| None::<String>);
 
     // Global search deep link (D69): consume the requested POI id once
@@ -117,9 +117,9 @@ pub fn Map() -> Element {
             deep_link_done.set(true);
         }
     });
-    // Mode « ajouter » : le prochain clic carte ouvre le formulaire.
+    // "Add" mode: the next map click opens the form.
     let mut add_mode = use_signal(|| false);
-    // Coords captées par le clic carte (formulaire de création ouvert).
+    // Coords captured by the map click (creation form open).
     let mut pending_add = use_signal(|| None::<(f64, f64)>);
     // Address picked in the address search, prefilling the creation form.
     let mut suggested = use_signal(|| None::<pnex_core::geo::GeocodeResult>);
@@ -131,13 +131,13 @@ pub fn Map() -> Element {
     // Basemaps of the org (geo-layers.md L24–L26) and the one shown.
     let mut basemaps = use_signal(Vec::<pnex_core::geo::Basemap>::new);
     let mut basemap = use_signal(|| None::<uuid::Uuid>);
-    // Compteur d'événements (création/édition) → refetch liste.
+    // Event counter (create/edit) → list refetch.
     let mut reload = use_signal(|| 0u32);
-    // Compteur de changements de filtres → refetch cluster.
+    // Filter change counter → cluster refetch.
     let mut filters_rev = use_signal(|| 0u32);
     // Dernier zoom connu (clic cluster → zoom +2).
     let mut current_zoom = use_signal(|| DEFAULT_ZOOM);
-    // Dernier viewport connu (refetch cluster quand les filtres changent).
+    // Last known viewport (cluster refetch when the filters change).
     let mut last_view = use_signal(|| None::<(f64, f64, f64, f64, i32)>);
     // Couche GPS live (device_positions, D38).
     let mut positions = use_signal(Vec::<viz::DevicePosition>::new);
@@ -145,10 +145,10 @@ pub fn Map() -> Element {
     // their way, or that they failed and are retried).
     let mut points_status = use_signal(|| PointsStatus::Loading);
 
-    // Liste sidebar : réactive aux filtres + reload (use_resource suit les
-    // lectures de signaux de la closure).
+    // Sidebar list: reactive to filters + reload (use_resource tracks the
+    // signal reads of the closure).
     let list_resource = use_resource(move || async move {
-        // Création/édition/suppression POI → refetch de la liste.
+        // POI create/edit/delete → list refetch.
         reload();
         let filters = viz::PoiFilters {
             limit: Some(PAGE_SIZE),
@@ -158,7 +158,7 @@ pub fn Map() -> Element {
         viz::list_pois(&filters).await
     });
 
-    // Mount + boucle de polling (viewport → cluster ; clics ; GPS 15 s).
+    // Mount + polling loop (viewport → cluster; clicks; GPS 15 s).
     use_effect(move || {
         MAP_POLL_ACTIVE.store(true, Ordering::Relaxed);
         spawn(async move {
@@ -185,7 +185,7 @@ pub fn Map() -> Element {
             let mut tick = 0u32;
             let mut failed_at = 0u32;
             while MAP_POLL_ACTIVE.load(Ordering::Relaxed) {
-                // Viewport (moveend debouncé côté map.js) → refetch cluster.
+                // Viewport (moveend debounced in map.js) → cluster refetch.
                 if let Some(v) = map_viewer::take_viewport(view_seen).await {
                     view_seen = v.seq;
                     current_zoom.set(v.zoom);
@@ -206,10 +206,10 @@ pub fn Map() -> Element {
                     points_status.set(PointsStatus::from_fetch(ok));
                     failed_at = tick;
                 }
-                // Filtres changés OU données POI modifiées (création/édition/
-                // suppression, attach/detach device ou pano) → refetch cluster
-                // sur le dernier viewport connu (sinon le pin n'apparaît
-                // qu'au rechargement de la page).
+                // Filters changed OR POI data modified (create/edit/
+                // delete, attach/detach device or pano) → cluster refetch
+                // on the last known viewport (otherwise the pin only shows
+                // up on page reload).
                 let rev = filters_rev() as u64 + reload() as u64;
                 // A failed fetch is retried every few seconds on the same view.
                 let retry = points_status() == PointsStatus::Failed
@@ -225,7 +225,7 @@ pub fn Map() -> Element {
                         failed_at = tick;
                     }
                 }
-                // Clics (items et carte nue).
+                // Clicks (items and bare map).
                 if let Some(click) = map_viewer::take_click(click_seen).await {
                     click_seen = click.seq;
                     handle_click(selected, pending_add, current_zoom, add_mode, click).await;
@@ -236,8 +236,8 @@ pub fn Map() -> Element {
                     if let Ok(rows) = viz::device_positions().await {
                         positions.set(rows.clone());
                         if !pos_loaded {
-                            // Première couche GPS : arrivée après le premier
-                            // viewport → un redessin pour les afficher.
+                            // First GPS layer: arrived after the first
+                            // viewport → one redraw to show them.
                             pos_loaded = true;
                             if let Some((w, s, e, n, z)) = last_view() {
                                 let filters = current_filters(
@@ -261,7 +261,7 @@ pub fn Map() -> Element {
         map_viewer::unmount(MAP_HOST);
     });
 
-    // Valeurs possédées pour le rsx (pas de borrow traversant les closures).
+    // Owned values for the rsx (no borrow crossing the closures).
     // `None` while the first list fetch is in flight: "loading", not "empty".
     let list_loading = list_resource.read().is_none();
     let list_page = list_resource.read().clone().and_then(Result::ok);
@@ -370,7 +370,7 @@ pub fn Map() -> Element {
                     }
                 }
             }
-            // ── Carte plein écran ─────────────────────────────────
+            // ── Full-screen map ─────────────────────────────────
             div { class: "relative flex-1",
                 div {
                     id: MAP_HOST,
@@ -430,7 +430,7 @@ pub fn Map() -> Element {
                     }
                 }
             }
-            // ── Drawer détail POI ─────────────────────────────────
+            // ── POI detail drawer ─────────────────────────────────
             if let Some(id) = selected() {
                 PoiDetail {
                     key: "{id}",
@@ -439,14 +439,14 @@ pub fn Map() -> Element {
                     pinned,
                     on_close: move |_| {
                         selected.set(None);
-                        // Aperçu + épingle appartiennent au POI ouvert.
+                        // Preview + pin belong to the open POI.
                         preview.set(None);
                         pinned.set(None);
                     },
                     on_changed: move |_| reload += 1,
                 }
             }
-            // ── Modale de création (coords du clic carte) ────────
+            // ── Creation modal (coords of the map click) ────────
             if let Some((lat, lon)) = pending_add() {
                 PoiFormModal {
                     key: "create-{lat}-{lon}",
@@ -465,8 +465,8 @@ pub fn Map() -> Element {
                     },
                 }
             }
-            // ── Modales viewers (média + tour) ────────────────────
-            // (supprimées — l'aperçu intégré remplace modals et navigation)
+            // ── Viewer modals (media + tour) ────────────────────
+            // (removed — the built-in preview replaces modals and navigation)
         }
     }
 }
@@ -484,7 +484,7 @@ use detail::PoiDetail;
 use filters::{current_filters, handle_click, redraw_with, PoiRow};
 use form::PoiFormModal;
 use search::AddressSearch;
-// ───────────────────── viewer média attaché (modal) ─────────────────────
+// ───────────────────── attached media viewer (modal) ─────────────────────
 
 // ─────────────────────────── badge d'erreur carte ─────────────────────────
 

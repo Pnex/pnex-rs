@@ -11,10 +11,10 @@ use serde::Deserialize;
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Labels d'une ressource (propres).
+/// Labels of a resource (own).
 pub type LabelSet = BTreeMap<String, Option<String>>;
 
-/// Arête D42 (liens croisés avec placement).
+/// D42 edge (cross links with placement).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Edge {
     pub id: i64,
@@ -99,7 +99,7 @@ pub async fn get_labels(kind: &str, id: &str) -> Result<LabelSet, ApiError> {
     Ok(dto.labels)
 }
 
-/// `PUT /api/v1/resources/{kind}/{id}/labels` — remplace tout le doc.
+/// `PUT /api/v1/resources/{kind}/{id}/labels` — replaces the whole doc.
 pub async fn put_labels(kind: &str, id: &str, labels: &LabelSet) -> Result<LabelSet, ApiError> {
     #[derive(Deserialize)]
     struct Dto {
@@ -116,7 +116,7 @@ pub async fn put_labels(kind: &str, id: &str, labels: &LabelSet) -> Result<Label
 
 // ─────────────────────────── containment ───────────────────────────
 
-/// Nœud de l'arbre (parent/chemin/enfants).
+/// Tree node (parent/path/children).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct RefNode {
     pub kind: String,
@@ -145,7 +145,7 @@ pub async fn get_containment(kind: &str, id: &str) -> Result<Containment, ApiErr
     .await
 }
 
-/// `PUT …/containment` — (re)parente ; `None` = détache.
+/// `PUT …/containment` — (re)parents; `None` = detaches.
 pub async fn set_parent(
     kind: &str,
     id: &str,
@@ -185,7 +185,7 @@ pub async fn list_edges(
     client::request_all(&format!("/api/v1/resources/edges?{}", params.join("&"))).await
 }
 
-/// `POST /api/v1/resources/edges` — 201 ou 409 (doublon).
+/// `POST /api/v1/resources/edges` — 201 or 409 (duplicate).
 pub async fn create_edge(
     relation: &str,
     source: (&str, &str),
@@ -210,7 +210,7 @@ pub async fn create_edge(
 }
 
 /// `DELETE /api/v1/resources/edges/{id}`.
-/// 204 sans corps → `request_opt` (un `request` lèverait « réponse vide »).
+/// 204 without body → `request_opt` (a `request` would raise "empty response").
 pub async fn delete_edge(id: i64) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -238,8 +238,8 @@ pub async fn create_folder(name: &str, emoji: Option<&str>) -> Result<Folder, Ap
     .await
 }
 
-/// `DELETE /api/v1/resources/folders/{id}` — sous-arbre re-rooté.
-/// 204 sans corps → `request_opt` (un `request` lèverait « réponse vide »).
+/// `DELETE /api/v1/resources/folders/{id}` — subtree re-rooted.
+/// 204 without body → `request_opt` (a `request` would raise "empty response").
 pub async fn delete_folder(id: i64) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -250,8 +250,8 @@ pub async fn delete_folder(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `PATCH /api/v1/resources/folders/{id}` — `None` = champ absent ;
-/// `Some(None)` = efface l'emoji (idiom `Option<Option>` du contrôleur).
+/// `PATCH /api/v1/resources/folders/{id}` — `None` = absent field;
+/// `Some(None)` = clears the emoji (the controller's `Option<Option>` idiom).
 pub async fn patch_folder(
     id: i64,
     name: Option<&str>,

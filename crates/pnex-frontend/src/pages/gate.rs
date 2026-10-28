@@ -1,9 +1,9 @@
-//! Écran bloquant de la porte de compatibilité — rendu quand le serveur ne
-//! parle pas le même contrat d'API, n'est pas joignable, ou n'est pas PNEX
-//! (état `GATE` ≠ `Ok`). Refus propre plutôt qu'un boot plein d'erreurs API
-//! opaques : versions et contrats des deux côtés affichés, réessai possible,
-//! retour à la configuration serveur sur natif (web : same-origin, un seul
-//! serveur possible).
+//! Blocking screen of the compatibility gate — rendered when the server does
+//! not speak the same API contract, is unreachable, or is not PNEX
+//! (`GATE` state ≠ `Ok`). Clean refusal rather than a boot full of opaque API
+//! errors: versions and contracts of both sides shown, retry possible,
+//! back to the server configuration on native (web: same-origin, a single
+//! server possible).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -19,7 +19,7 @@ pub fn GateScreen() -> Element {
             div { class: "min-h-screen flex flex-col items-center justify-center bg-gray-50 space-y-4",
                 Gerbe { size: 44 }
                 p { class: "text-sm text-gray-500", {t!("gate-checking")} }
-                // Serveur en cours de vérification — rend l'attente lisible.
+                // Server being checked — makes the wait readable.
                 if !crate::api::config::api_base().is_empty() {
                     p { class: "text-xs text-gray-500", "{crate::api::config::api_base()}" }
                 }
@@ -64,9 +64,9 @@ pub fn GateScreen() -> Element {
     }
 }
 
-/// Message de l'état injoignable : détail technique relayé tel quel (règle
-/// du repo — jamais de traduction des messages d'erreur), l'identité « ce
-/// n'est pas un serveur PNEX » étant le seul cas spécifiquement traduit.
+/// Message of the unreachable state: technical detail relayed as is (repo
+/// rule — error messages are never translated), the "this is not a PNEX
+/// server" identity being the only specifically translated case.
 fn unreachable_message(error: &MetaError) -> String {
     let msg = match error {
         MetaError::Unreachable(detail) => detail.clone(),
@@ -79,8 +79,8 @@ fn unreachable_message(error: &MetaError) -> String {
     )
 }
 
-/// Gabarit commun des deux écrans bloquants — même école visuelle que
-/// `ServerUrl` (fond dégradé + carte blanche).
+/// Shared template of both blocking screens — same visual pattern as
+/// `ServerUrl` (gradient background + white card).
 #[component]
 fn gate_layout(
     accent_class: String,
@@ -121,8 +121,8 @@ fn gate_layout(
                                 },
                                 {t!("gate-retry")}
                             }
-                            // Web : same-origin, un seul serveur possible —
-                            // le changement de serveur n'a pas de sens.
+                            // Web: same-origin, a single server possible —
+                            // changing server makes no sense.
                             if !cfg!(target_arch = "wasm32") && crate::api::config::locked_server().is_none() {
                                 button {
                                     class: "w-full py-2.5 px-4 rounded-lg text-sm font-medium text-gray-700 \

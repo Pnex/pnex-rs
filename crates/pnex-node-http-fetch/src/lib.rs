@@ -1,32 +1,32 @@
-//! Nœud custom EdgeLinkd `pnex-http-fetch` (C1a) — requête HTTP client
-//! configurable « type curl » (amendement edge-model 2026-09-15 : la
-//! collecte web courante est un simple bloc de flow, pas un domaine).
+//! Custom EdgeLinkd node `pnex-http-fetch` (C1a) — configurable "curl-like"
+//! HTTP client request (edge-model amendment 2026-09-15: everyday
+//! web collection is a simple flow block, not a domain).
 //!
-//! Sémantique : la réponse **remplace** le payload (`payload` = corps auto-
-//! parsé JSON si le content-type en contient, sinon texte ; `statusCode` =
-//! code final après redirects). Le moteur ETL standard prend le relais.
-//! Body POST : `config.body` littéral, sinon le payload entrant (chaîne →
-//! tel quel, autre → sérialisé JSON + `content-type: application/json`
-//! surchargeable par header explicite). Pas de templating d'URL v1 — le
-//! calcul passe par un nœud calc amont.
+//! Semantics: the response **replaces** the payload (`payload` = body auto-
+//! parsed as JSON if the content-type contains it, otherwise text; `statusCode` =
+//! final code after redirects). The standard ETL engine takes over.
+//! POST body: literal `config.body`, otherwise the incoming payload (string →
+//! as is, other → serialized JSON + `content-type: application/json`
+//! overridable by an explicit header). No URL templating in v1 — the
+//! computation goes through an upstream calc node.
 //!
-//! Erreurs (`on_error`, école notify D53) : `reject` (défaut) → erreur
-//! réseau/timeout/HTTP ≥ 400/corps trop gros rejetée via `flow.handle_error`
-//! (flow_error isolé, le flow survit, jamais de crash-loop) ; `passthrough`
-//! → `payload` null + `statusCode` si dispo + `http_error` (raison), le
-//! graphe décide (switch/range).
+//! Errors (`on_error`, notify D53 pattern): `reject` (default) → network/timeout
+//! error/HTTP ≥ 400/oversized body rejected via `flow.handle_error`
+//! (isolated flow_error, the flow survives, never a crash-loop); `passthrough`
+//! → null `payload` + `statusCode` if available + `http_error` (reason), the
+//! graph decides (switch/range).
 //!
 //! Secrets (bearer, basic/proxy passwords, key header value): vault
 //! references in flows.json (secrets.md D115, lot S5). They are fetched
 //! from `PNEX_FLOW_SECRET_URL` on the first request (the backend serves a
 //! secret only once the flow is marked deployed, right after the runtime
 //! acknowledged the artifact), then kept in memory until the next deploy.
-//! Providers de
-//! scraping : mode proxy (`http://host:port` + user/pass) OU idiome « clé
-//! dans l'URL cible » (ScraperAPI/ZenRows) — pas besoin de proxy. Limites
-//! reqwest v1 : pas de SOCKS (feature off), pas de décompression gzip
-//! (aucun `Accept-Encoding` annoncé → réponse identity), redirects suivis
-//! (≤ 10, défaut reqwest).
+//! Scraping
+//! providers: proxy mode (`http://host:port` + user/pass) OR the "key
+//! in the target URL" idiom (ScraperAPI/ZenRows) — no proxy needed. reqwest
+//! v1 limits: no SOCKS (feature off), no gzip decompression
+//! (no `Accept-Encoding` announced → identity response), redirects followed
+//! (≤ 10, reqwest default).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,21 +47,21 @@ use pnex_core::{
     HttpFetchAuth, HttpFetchMethod, HttpFetchNodeConfig, HttpFetchOnError, SecretSlot,
 };
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit que
-/// l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees that
+/// linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
-/// Cap de taille du corps de réponse — un scraping qui dérape ne doit pas
-/// saturer la mémoire du runtime.
+/// Response body size cap — a runaway scraping must not
+/// saturate the runtime memory.
 const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Header carrying the flow runtime service token.
 const FLOW_TOKEN_HEADER: &str = "x-pnex-flow-token";
 
-/// Client HTTP du nœud (timeout total par requête + proxy éventuel), built
+/// The node's HTTP client (total timeout per request + optional proxy), built
 /// once its secrets are known. `proxy_password` = resolved proxy password.
-/// Fail-fast au pré-flight : proxy invalide = artefact refusé
-/// (`BadFlowsJson`), jamais un nœud silencieux.
+/// Fail-fast at pre-flight: invalid proxy = artefact refused
+/// (`BadFlowsJson`), never a silent node.
 fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwest::Client> {
     // Egress guard (R8, SEC-W3): internal addresses refused at resolution,
     // each redirect re-checked.
@@ -71,15 +71,15 @@ fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwe
         .timeout(Duration::from_secs(cfg.timeout_secs.max(1)))
         .connect_timeout(Duration::from_secs(10));
     match &cfg.proxy {
-        // « Direct » = direct : on ignore les HTTP_PROXY/HTTPS_PROXY de
-        // l'environnement (prévisible, et les tests tournent sans env).
+        // "Direct" = direct: ignore HTTP_PROXY/HTTPS_PROXY from
+        // the environment (predictable, and the tests run without env).
         pnex_core::HttpFetchProxy::None => {
             builder = builder.no_proxy();
         }
         pnex_core::HttpFetchProxy::Custom { url, username, .. } => {
             let mut proxy = reqwest::Proxy::all(url).map_err(|e| {
                 EdgelinkError::BadFlowsJson(format!(
-                    "pnex-http-fetch : proxy « {url} » invalide : {e}"
+                    "pnex-http-fetch: invalid proxy \"{url}\": {e}"
                 ))
             })?;
             if let Some(u) = username {
@@ -89,7 +89,7 @@ fn build_client(cfg: &HttpFetchNodeConfig, proxy_password: &str) -> Result<reqwe
         }
     }
     Ok(builder.build().map_err(|e| {
-        EdgelinkError::BadFlowsJson(format!("pnex-http-fetch : client HTTP impossible : {e}"))
+        EdgelinkError::BadFlowsJson(format!("pnex-http-fetch: HTTP client impossible: {e}"))
     })?)
 }
 
@@ -181,7 +181,7 @@ impl PnexHttpFetchNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = HttpFetchNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-http-fetch : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-http-fetch: invalid config: {e}"))
         })?;
         let org_id = Stamps::deserialize(&config.rest)
             .unwrap_or_default()
@@ -275,9 +275,9 @@ impl PnexHttpFetchNode {
             .await
     }
 
-    /// Raisonne l'échec selon `on_error` : reject → erreur rejetée (routée
-    /// vers `flow.handle_error`) ; passthrough → payload null + statusCode
-    /// si dispo + `http_error`, sortie normale.
+    /// Handles the failure according to `on_error`: reject → rejected error (routed
+    /// to `flow.handle_error`); passthrough → null payload + statusCode
+    /// if available + `http_error`, normal output.
     async fn fail(
         &self,
         reason: String,
@@ -314,7 +314,7 @@ impl PnexHttpFetchNode {
         }
     }
 
-    /// Un message entrant → requête HTTP → payload remplacé par la réponse.
+    /// One incoming message → HTTP request → payload replaced by the response.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
         log::debug!(
             "pnex-http-fetch [{}] : {:?} {}",
@@ -323,7 +323,7 @@ impl PnexHttpFetchNode {
             self.config.url
         );
 
-        // 1) Body : littéral de config, sinon payload entrant (POST only).
+        // 1) Body: config literal, otherwise incoming payload (POST only).
         let body: Option<(String, bool)> = match (&self.config.body, &self.config.method) {
             (Some(b), _) => Some((b.clone(), false)),
             (None, HttpFetchMethod::Get) => None,
@@ -332,20 +332,20 @@ impl PnexHttpFetchNode {
                 let json = match payload {
                     Some(v) => serde_json::to_value(&v).map_err(|e| {
                         EdgelinkError::InvalidOperation(format!(
-                            "pnex-http-fetch [{}] : payload non sérialisable : {e}",
+                            "pnex-http-fetch [{}]: payload not serializable: {e}",
                             self.name()
                         ))
                     })?,
                     None => serde_json::Value::Null,
                 };
                 match json {
-                    // Chaîne → corps brut ; null → pas de corps ; autre → JSON.
+                    // String → raw body; null → no body; other → JSON.
                     serde_json::Value::String(s) => Some((s, false)),
                     serde_json::Value::Null => None,
                     other => Some((
                         serde_json::to_string(&other).map_err(|e| {
                             EdgelinkError::InvalidOperation(format!(
-                                "pnex-http-fetch [{}] : corps JSON impossible : {e}",
+                                "pnex-http-fetch [{}]: JSON body impossible: {e}",
                                 self.name()
                             ))
                         })?,
@@ -355,14 +355,14 @@ impl PnexHttpFetchNode {
             }
         };
 
-        // 2) Requête : headers statiques, auth, body éventuel.
+        // 2) Request: static headers, auth, optional body.
         let method = reqwest::Method::from_bytes(match self.config.method {
             HttpFetchMethod::Get => b"GET",
             HttpFetchMethod::Post => b"POST",
         })
         .map_err(|e| {
             EdgelinkError::InvalidOperation(format!(
-                "pnex-http-fetch [{}] : méthode invalide : {e}",
+                "pnex-http-fetch [{}]: invalid method: {e}",
                 self.name()
             ))
         })?;
@@ -404,19 +404,19 @@ impl PnexHttpFetchNode {
             req = req.body(body);
         }
 
-        // 3) Envoi — erreur réseau/timeout → fail(reason, status=None).
+        // 3) Send — network error/timeout → fail(reason, status=None).
         let mut resp = match req.send().await {
             Ok(r) => r,
             Err(e) => {
                 return self
-                    .fail(format!("requête échouée : {e}"), None, msg, cancel)
+                    .fail(format!("request failed: {e}"), None, msg, cancel)
                     .await;
             }
         };
         let status = resp.status();
 
-        // 4) HTTP ≥ 400 → fail(status=code). Passthrough : le graphe branche
-        // sur statusCode ; reject : flow_error isolé.
+        // 4) HTTP ≥ 400 → fail(status=code). Passthrough: the graph branches
+        // on statusCode; reject: isolated flow_error.
         if status.is_client_error() || status.is_server_error() {
             return self
                 .fail(
@@ -428,13 +428,13 @@ impl PnexHttpFetchNode {
                 .await;
         }
 
-        // 5) Corps borné (cap 10 Mo) puis payload = auto-parse JSON si le
-        // content-type en contient, sinon texte (fallback silencieux).
+        // 5) Bounded body (10 MB cap) then payload = JSON auto-parse if the
+        // content-type contains it, otherwise text (silent fallback).
         if let Some(len) = resp.content_length() {
             if len as usize > MAX_RESPONSE_BYTES {
                 return self
                     .fail(
-                        format!("corps trop gros ({len} o > {MAX_RESPONSE_BYTES} o)"),
+                        format!("body too large ({len} B > {MAX_RESPONSE_BYTES} B)"),
                         Some(status.as_u16()),
                         msg,
                         cancel,
@@ -445,14 +445,14 @@ impl PnexHttpFetchNode {
         let mut bytes: Vec<u8> = Vec::new();
         while let Some(chunk) = resp.chunk().await.map_err(|e| {
             EdgelinkError::InvalidOperation(format!(
-                "pnex-http-fetch [{}] : lecture du corps interrompue : {e}",
+                "pnex-http-fetch [{}]: body read interrupted: {e}",
                 self.name()
             ))
         })? {
             if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
                 return self
                     .fail(
-                        format!("corps trop gros (> {MAX_RESPONSE_BYTES} o)"),
+                        format!("body too large (> {MAX_RESPONSE_BYTES} B)"),
                         Some(status.as_u16()),
                         msg,
                         cancel,
@@ -492,11 +492,11 @@ impl PnexHttpFetchNode {
     }
 }
 
-/// Frontière serde_json ↔ Variant du modèle edgelink (école pnex-node-device
-/// calc.rs) — jamais de panic sur une valeur inattendue.
+/// serde_json ↔ Variant boundary of the edgelink model (pnex-node-device
+/// calc.rs pattern) — never a panic on an unexpected value.
 fn variant_from_json(json: serde_json::Value) -> Result<Variant> {
     Ok(serde_json::from_value(json).map_err(|e| {
-        EdgelinkError::InvalidOperation(format!("pnex-http-fetch : valeur non convertible : {e}"))
+        EdgelinkError::InvalidOperation(format!("pnex-http-fetch: value not convertible: {e}"))
     })?)
 }
 
@@ -513,12 +513,12 @@ impl FlowNodeBehavior for PnexHttpFetchNode {
                 self.as_ref(),
                 cancel.child_token(),
                 |node: &PnexHttpFetchNode, msg: MsgHandle| async move {
-                    // `with_uow` route les erreurs vers `flow.handle_error` sans
-                    // les logger : on journalise ici pour l'exploitation.
+                    // `with_uow` routes errors to `flow.handle_error` without
+                    // logging them: we log here for operations.
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-http-fetch [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-http-fetch [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }
@@ -540,7 +540,7 @@ mod tests {
         let reg = RegistryBuilder::default().build().expect("registre");
         let meta = reg
             .get("pnex-http-fetch")
-            .expect("nœud pnex-http-fetch absent du registre");
+            .expect("pnex-http-fetch node missing from the registry");
         assert_eq!(meta.type_, "pnex-http-fetch");
     }
 
@@ -549,8 +549,8 @@ mod tests {
         registered();
     }
 
-    /// La config projetée (champs aplatis, modes taggés) est désérialisable
-    /// telle quelle par le nœud — le contrat projection → runtime.
+    /// The projected config (flattened fields, tagged modes) is deserializable
+    /// as is by the node — the projection → runtime contract.
     #[test]
     fn config_accepte_projection_aplatie() {
         let cfg: HttpFetchNodeConfig = serde_json::from_str(
@@ -565,13 +565,13 @@ mod tests {
                 "on_error": "passthrough"
             }"#,
         )
-        .expect("config projetée désérialisable");
+        .expect("projected config deserializable");
         assert_eq!(cfg.auth, HttpFetchAuth::Bearer { token: "t".into() });
         assert_eq!(cfg.timeout_secs, 15);
     }
 
-    /// Mode taggé inconnu → rejet explicite au build (pré-flight 400
-    /// engine_load avec l'erreur réelle).
+    /// Unknown tagged mode → explicit rejection at build (pre-flight 400
+    /// engine_load with the real error).
     #[test]
     fn config_rejete_mode_auth_inconnu() {
         let err = serde_json::from_str::<HttpFetchNodeConfig>(
@@ -581,8 +581,8 @@ mod tests {
         assert!(err.to_string().contains("unknown variant"), "{err}");
     }
 
-    /// Défauts : timeout 30 (pas 0 — sinon violation parasite côté éditeur
-    /// et timeout désactivé côté runtime).
+    /// Defaults: timeout 30 (not 0 — otherwise a spurious violation in the editor
+    /// and timeout disabled in the runtime).
     #[test]
     fn config_defaut_timeout_trente() {
         let cfg: HttpFetchNodeConfig = serde_json::from_str(r#"{"url": "https://x"}"#).unwrap();
@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(HttpFetchNodeConfig::default().timeout_secs, 30);
     }
 
-    /// Proxy invalide → client refusé au build (fail-fast pré-flight).
+    /// Invalid proxy → client refused at build (pre-flight fail-fast).
     #[test]
     fn client_rejete_proxy_invalide() {
         let cfg = HttpFetchNodeConfig {
@@ -613,7 +613,7 @@ mod tests {
         assert!(build_client(&ok, "p").is_ok());
     }
 
-    /// Le header `HttpFetchHeader` de config reste serde-only (wasm-safe).
+    /// The config header `HttpFetchHeader` stays serde-only (wasm-safe).
     #[test]
     fn headers_serde_roundtrip() {
         let hs = vec![

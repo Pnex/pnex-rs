@@ -1,15 +1,15 @@
-//! Pins & commandes devices génériques (Brick 0, brick0.md §6).
+//! Generic device pins & commands (Brick 0, brick0.md §6).
 //!
-//! - `GET /api/v1/devices/{id}/pins` — instances + labels overlay +
-//!   `last_value` (mémoire de session, absent si offline) ; viewer inclus ;
-//! - `POST /api/v1/devices/{id}/commands` — action **manuelle** (D17) :
-//!   `caps::validate` AVANT tout push (400 + raison si illégal), maj de
-//!   l'instance, downlink mpsc → le device répond Ack/StateReport.
+//! - `GET /api/v1/devices/{id}/pins` — instances + overlay labels +
+//!   `last_value` (session memory, absent if offline); viewer included;
+//! - `POST /api/v1/devices/{id}/commands` — **manual** action (D17):
+//!   `caps::validate` BEFORE any push (400 + reason if illegal), instance
+//!   update, mpsc downlink → the device answers Ack/StateReport.
 //!
-//! Le POST refuse proprement (409) si le device n'est pas connecté —
-//! jamais d'attente serveur (D17 : pas de boucle, action utilisateur).
-//! (L'endpoint `config-sector` a été retiré : décision du 2026-09-02,
-//! le générique est compilé par device — plus de secteur PNEXCFG1.)
+//! The POST cleanly refuses (409) if the device is not connected —
+//! never a server wait (D17: no loop, user action).
+//! (The `config-sector` endpoint was removed: decision of 2026-09-02,
+//! the generic firmware is compiled per device — no more PNEXCFG1 sector.)
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -34,8 +34,8 @@ pub fn routes() -> Routes {
         .add("/{id}/custom-commands", post(custom_command))
 }
 
-/// Device de l'org courante, sinon 404 (le 404 masque l'existence —
-/// même convention que devices.rs).
+/// Device of the current org, otherwise 404 (the 404 hides existence —
+/// same convention as devices.rs).
 async fn device_of_org(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -49,10 +49,10 @@ async fn device_of_org(
         .ok_or_else(|| Error::NotFound)
 }
 
-// ─────────────── pinout (éditeur de flows, éditeur SVG, Phase 6+) ───────────────
+// ─────────────── pinout (flow editor, SVG editor, Phase 6+) ───────────────
 
-/// Souscription d'une instance : `config.interval_ms` (> 0) — `None` si
-/// absente ou nulle (0 = désabonné, cf. op `subscribe`).
+/// Subscription of an instance: `config.interval_ms` (> 0) — `None` if
+/// absent or zero (0 = unsubscribed, see op `subscribe`).
 fn instance_interval_ms(config: &Option<serde_json::Value>) -> Option<u32> {
     config
         .as_ref()
@@ -62,8 +62,8 @@ fn instance_interval_ms(config: &Option<serde_json::Value>) -> Option<u32> {
         .map(|ms| ms as u32)
 }
 
-/// Mode par défaut d'un pin de profil non configuré (même dérivation que
-/// l'admission : digital_in si légal, sinon repli analogique — A0).
+/// Default mode of an unconfigured profile pin (same derivation as
+/// admission: digital_in if legal, otherwise analog fallback — A0).
 fn default_mode_str(soc: pnex_core::Soc, gpio: u16) -> Option<&'static str> {
     if pnex_core::caps::validate(soc, gpio, Mode::DigitalIn, &ModeOpts::default()).is_ok() {
         Some("digital_in")
@@ -74,8 +74,8 @@ fn default_mode_str(soc: pnex_core::Soc, gpio: u16) -> Option<&'static str> {
     }
 }
 
-/// Enrichissement affichage d'un pin (mux, flags, modes offerts, avertisse-
-/// ments) — dérivé des chip-caps serveur ; le front ne revalide jamais.
+/// Display enrichment of a pin (mux, flags, offered modes, warnings)
+/// — derived from the server chip-caps; the front never revalidates.
 fn display_enrichment(soc: Option<pnex_core::Soc>, gpio: i32) -> serde_json::Value {
     let empty: Vec<String> = Vec::new();
     match soc {
@@ -91,15 +91,15 @@ fn display_enrichment(soc: Option<pnex_core::Soc>, gpio: i32) -> serde_json::Val
     }
 }
 
-/// `GET /api/v1/devices/{id}/pinout` — pinout **lisible** du device pour
-/// l'éditeur de flows (Phase 6) : les pins des devices génériques depuis les
-/// instances configurées, complétés par l'overlay board pour les gpio non
-/// encore configurés (device jamais connecté — `load_overlay` lit la base,
-/// aucune connexion requise). Lecture pour tout membre de l'org.
+/// `GET /api/v1/devices/{id}/pinout` — **readable** device pinout for
+/// the flow editor (Phase 6): generic device pins from the
+/// configured instances, completed by the board overlay for gpios not
+/// yet configured (device never connected — `load_overlay` reads the DB,
+/// no connection required). Readable by any org member.
 ///
-/// `connected` = le device générique est-il connecté au serveur (WS) —
-/// l'éditeur de flows s'en sert pour distinguer « device hors ligne »
-/// (transient, reprend à la reconnexion) d'un pin réellement absent.
+/// `connected` = whether the generic device is connected to the server (WS) —
+/// the flow editor uses it to tell "device offline"
+/// (transient, resumes on reconnection) from a genuinely missing pin.
 #[utoipa::path(
     get,
     path = "/api/v1/devices/{id}/pinout",
@@ -126,9 +126,9 @@ async fn pinout(
     let peripherals = provisioning::device_peripherals(&device);
     let v2 = details.as_ref();
 
-    // Géométrie du profil v2 : gpio → (label, pos, kind, note) — enrichit
-    // les instances ET les pins du profil sans instance (y compris l'écran
-    // réservé, rendu grisé par l'éditeur).
+    // Geometry of the v2 profile: gpio → (label, pos, kind, note) — enriches
+    // the instances AND the profile pins without instance (including the
+    // reserved screen, rendered greyed out by the editor).
     let mut profile_pins: HashMap<i32, (String, serde_json::Value, &'static str)> = HashMap::new();
     let mut profile_power_pins: Vec<(String, serde_json::Value, &'static str)> = Vec::new();
     if let Some(p) = v2 {
@@ -159,7 +159,7 @@ async fn pinout(
         }
     }
 
-    // Réservation écran (périphériques activés) — pins grisées, sans mode.
+    // Screen reservation (enabled peripherals) — greyed-out pins, no mode.
     let reserved_set: HashSet<i32> = details
         .as_ref()
         .map(|d| d.reserved_gpios(&peripherals))
@@ -171,7 +171,7 @@ async fn pinout(
     let last: HashMap<i32, serde_json::Value> =
         ws_device::last_values(&ctx.config, device.id).await;
 
-    // 1) Instances (mode réel configuré) + géométrie/affichage du profil.
+    // 1) Instances (real configured mode) + profile geometry/display.
     let mut pins: Vec<(String, serde_json::Value)> = rows
         .iter()
         .map(|r| {
@@ -199,8 +199,8 @@ async fn pinout(
         })
         .collect();
 
-    // 2) Pins du profil sans instance (jamais configurés + écran réservé) —
-    //    défaut de la carte dérivé des chip-caps, même logique que l'admission.
+    // 2) Profile pins without instance (never configured + reserved screen) —
+    //    board default derived from the chip-caps, same logic as admission.
     //    Skipped for a custom firmware: its sketch owns the pins, only the
     //    declared ones (instances) exist.
     let sketch_owned = device.firmware_project_id.is_some();
@@ -233,8 +233,8 @@ async fn pinout(
                 m.insert(k.clone(), v.clone());
             }
         }
-        // Pin réservé écran : aucun mode proposé + raison nominative en
-        // avertissement (le front le rend grisé, non configurable).
+        // Screen-reserved pin: no mode offered + named reason as a
+        // warning (the front renders it greyed out, not configurable).
         if reserved {
             if let Some(m) = obj.as_object_mut() {
                 m.insert("available_modes".into(), serde_json::json!([]));
@@ -251,8 +251,8 @@ async fn pinout(
         pins.push((label.clone(), obj));
     }
 
-    // 3) Pins d'alim/masse/reset du profil (gpio null) — rendus par le SVG,
-    //    non configurables.
+    // 3) Power/ground/reset pins of the profile (gpio null) — rendered by the SVG,
+    //    not configurable.
     for (label, pos, kind) in &profile_power_pins {
         pins.push((
             label.clone(),
@@ -332,7 +332,7 @@ async fn pinout(
     }))
 }
 
-/// Instance par gpio pour un device (helper de lecture).
+/// Instance per gpio for a device (read helper).
 async fn instances_of(
     db: &DatabaseConnection,
     device_registry_id: i64,
@@ -525,9 +525,9 @@ async fn pins(
             }
         })
         .collect();
-    // Tri naturel des labels (A0 < D0 < D1 < … < D8) : l'ordre SQL est
-    // arbitraire et changeait d'un poll à l'autre — les cartes de l'UI
-    // se mélangeaient (retour utilisateur 2026-09-03).
+    // Natural sort of labels (A0 < D0 < D1 < … < D8): the SQL order is
+    // arbitrary and changed from one poll to the next — the UI cards
+    // got shuffled (user feedback 2026-09-03).
     dtos.sort_by_key(|p| pin_sort_key(&p.label));
     format::json(PinsResponse {
         pins: dtos,
@@ -535,8 +535,8 @@ async fn pins(
     })
 }
 
-/// Clé de tri « naturel » d'un label de pin : préfixe alphabétique puis
-/// numéro (A0 < D0 < … < D8) — comparable aux tris de fichiers explorateur.
+/// "Natural" sort key of a pin label: alphabetic prefix then
+/// number (A0 < D0 < … < D8) — comparable to file explorer sorting.
 fn pin_sort_key(label: &str) -> (String, u32) {
     let split = label
         .find(|c: char| c.is_ascii_digit())
@@ -545,7 +545,7 @@ fn pin_sort_key(label: &str) -> (String, u32) {
     (alpha.to_ascii_lowercase(), num.parse().unwrap_or(u32::MAX))
 }
 
-/// Config jsonb → ModeOpts (défauts si absent/illisible).
+/// Config jsonb → ModeOpts (defaults if absent/unreadable).
 fn pin_cfg(r: &device_capability_instances::Model) -> ModeOpts {
     r.config
         .as_ref()
@@ -592,7 +592,7 @@ struct CommandBody {
     confirm_stop_flows: Option<bool>,
 }
 
-/// Génération cmd_id (RPC ThingsBoard-like : l'UI peut tracer la commande).
+/// cmd_id generation (ThingsBoard-like RPC: the UI can trace the command).
 fn new_cmd_id() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
@@ -625,8 +625,8 @@ async fn commands(
     if super::edge_agents::is_software(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
     }
-    // SoC du board — la validation silicium dépend du SoC (flash/USB/strapping
-    // divergent entre esp8266 et esp32-c3).
+    // Board SoC — silicon validation depends on the SoC (flash/USB/strapping
+    // differ between esp8266 and esp32-c3).
     let soc = crate::services::provisioning::device_soc(&ctx.db, &device).await?;
     let cmd: CommandBody = serde_json::from_str(&body).map_err(|e| {
         bad_request_args(
@@ -635,9 +635,9 @@ async fn commands(
             serde_json::json!({ "detail": e.to_string() }),
         )
     })?;
-    // Garde périphérique (écran intégré) : un gpio consommé par un
-    // périphérique ACTIVÉ est refusé avec raison explicite, même si une
-    // instance périmée traînait — plus parlant que « gpio non admis ».
+    // Peripheral guard (built-in screen): a gpio used by an
+    // ENABLED peripheral is refused with an explicit reason, even if a
+    // stale instance lingered — clearer than "gpio not admitted".
     if let Some(details) = provisioning::load_board_details(&ctx.db, &device).await? {
         let peripherals = provisioning::device_peripherals(&device);
         if let Some(reason) = details.reserved_reason(cmd.gpio, &peripherals) {
@@ -667,13 +667,13 @@ async fn commands(
         .unwrap_or_default();
     let _ = &mut cfg;
 
-    // Impacts sur les flows déployés (rempli par set_mode — Phase 6).
+    // Impacts on deployed flows (filled by set_mode — Phase 6).
     let mut flow_impacts: Vec<(i64, String)> = Vec::new();
     let msg = match cmd.op.as_str() {
         "set_mode" => {
             let mode = str_to_mode_local(cmd.mode.as_deref().unwrap_or(""));
             let opts = cmd.opts.unwrap_or_default();
-            // Point unique de validation (brick0.md §2) — AVANT toute maj/push.
+            // Single validation point (brick0.md §2) — BEFORE any update/push.
             // pnex-core owns the per-violation code (`caps-*`) and the
             // canonical English reason; `$value` carries the gpio.
             let validated = pnex_core::caps::validate(soc, cmd.gpio, mode, &opts).map_err(|v| {
@@ -683,10 +683,10 @@ async fn commands(
                     serde_json::json!({ "value": cmd.gpio.to_string() }),
                 )
             })?;
-            // Garde « config device ↔ flows déployés » : le changement de
-            // mode demande l'arrêt préalable des flows qui utilisent la pin
-            // (409 listant les flows ; `confirm_stop_flows` = confirmation
-            // UI « arrêter et appliquer »).
+            // "Device config ↔ deployed flows" guard: the mode change
+            // requires stopping the flows that use the pin first
+            // (409 listing the flows; `confirm_stop_flows` = UI confirmation
+            // "stop and apply").
             let impacted = super::flows::flows_impacted_by_pin(
                 &ctx,
                 org.org.id,
@@ -711,9 +711,9 @@ async fn commands(
             cfg.pullup = opts.pullup;
             cfg.safe_state = opts.safe_state;
             persist_instance(&ctx.db, row, mode, &cfg, None, Some(validated)).await?;
-            // Dépendances pin ↔ flows : arrêt effectif des flows impactés
-            // (base = source de vérité, avant même le push device) —
-            // l'utilisateur vient de confirmer.
+            // Pin ↔ flows dependencies: actual stop of the impacted flows
+            // (DB = source of truth, even before the device push) —
+            // the user just confirmed.
             flow_impacts = super::flows::stop_flows_reading_pin(
                 &ctx,
                 org.org.id,
@@ -750,8 +750,8 @@ async fn commands(
                     }
                 }
                 Mode::PwmOut => {
-                    // Duty % 0..=100 (abstraction matérielle — le firmware
-                    // met à l'échelle en 8-bit).
+                    // Duty % 0..=100 (hardware abstraction — the firmware
+                    // scales to 8-bit).
                     let Some(duty) = v.as_f64() else {
                         return Err(bad_request(
                             "pin-write-duty-type",
@@ -836,8 +836,8 @@ async fn commands(
             ));
         }
     };
-    // Downlink : 409 si pas de session vivante (offline) — jamais d'attente
-    // serveur (D17 : pas de boucle, action utilisateur).
+    // Downlink: 409 if no live session (offline) — never a server
+    // wait (D17: no loop, user action).
     if !ws_device::push_command(device.id, msg).await {
         return Err(custom_error(
             StatusCode::CONFLICT,
@@ -846,8 +846,8 @@ async fn commands(
             None,
         ));
     }
-    // Réponse enrichie : les flows arrêtés par le changement de mode
-    // (Phase 6) — l'UI les signale explicitement.
+    // Enriched response: the flows stopped by the mode change
+    // (Phase 6) — the UI reports them explicitly.
     format::json(CommandSent {
         sent: true,
         flow_impacts: (!flow_impacts.is_empty()).then(|| {
@@ -957,8 +957,8 @@ pub(crate) fn announced_command(device: &device_registries::Model, name: &str) -
         })
 }
 
-/// Maj de l'instance (mode/config/snapshot) — la base est la source de
-/// vérité, appliquée AVANT le push (le device applique ensuite).
+/// Instance update (mode/config/snapshot) — the DB is the source of
+/// truth, applied BEFORE the push (the device applies afterwards).
 #[allow(clippy::too_many_arguments)]
 async fn persist_instance(
     db: &DatabaseConnection,

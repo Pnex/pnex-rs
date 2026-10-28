@@ -66,7 +66,7 @@ fn record_dto(r: build_records::Model) -> pnex_core::BuildRecord {
     }
 }
 
-/// Intervalle min du tier de l'org (None = pas de contrainte).
+/// Min interval of the org's tier (None = no constraint).
 async fn min_build_interval(db: &DatabaseConnection, org: &OrgContext) -> Result<Option<i64>> {
     if !crate::controllers::devices::tiers_enforced() {
         return Ok(None);
@@ -209,7 +209,7 @@ async fn create(
     if super::edge_agents::is_software(&ctx.db, &device).await {
         return Err(super::edge_agents::unsupported_action());
     }
-    // Board figée du device : soc merge-bin + pio_board +
+    // Frozen board of the device: soc merge-bin + pio_board +
     // PNEX_BOARD_NAME. No pio_board on the board → per-project fallback.
     let frozen_board = if let Some(bid) = device.board_id {
         mcu_boards::Entity::find_by_id(bid)
@@ -243,9 +243,9 @@ async fn create(
             _ => None,
         });
     let board_name = Some(board_row.name.clone());
-    // Écran à compiler — résolution unique : profil v2 de la board figée
-    // (builtin prioritaire, kind inconnu fail-closed), sinon déclaration du
-    // modèle prédéfini (boîtes noires). `None` = pas d'écran.
+    // Screen to compile — single resolution: v2 profile of the frozen board
+    // (builtin first, unknown kind fail-closed), otherwise the predefined
+    // model's declaration (black boxes). `None` = no screen.
     let screen = {
         let details = crate::services::provisioning::load_board_details(&ctx.db, &device)
             .await
@@ -304,7 +304,7 @@ async fn create(
     .await
     .map_err(|_| Error::InternalServerError)?;
 
-    // Intervalle min : depuis le DERNIER build réussi de l'org (tous devices).
+    // Min interval: since the org's LAST successful build (all devices).
     if let Some(min_secs) = min_interval {
         if let Some(last) = build_records::Entity::find()
             .filter(build_records::Column::OrgId.eq(org.org.id))
@@ -393,7 +393,7 @@ async fn create(
     // Committed before the enqueue: the worker (possibly inline) reads it.
     txn.commit().await.map_err(|_| Error::InternalServerError)?;
 
-    // Enqueue (ForegroundBlocking : exécution inline — utile aux tests).
+    // Enqueue (ForegroundBlocking: inline execution — useful for tests).
     let args = BuildFirmwareArgs {
         build_record_id: record.id,
         org_id: org.org.id,
@@ -446,7 +446,7 @@ struct ListBuildsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/build-records` — records de l'org, paginés (D14).
+/// `GET /api/v1/build-records` — the org's records, paginated (D14).
 #[utoipa::path(
     get,
     path = "/api/v1/build-records",

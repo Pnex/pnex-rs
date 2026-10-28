@@ -1,12 +1,12 @@
-//! Pont vers le glue JS esptool-js (`js/flasher.js`, bundlé esbuild en
-//! `assets/flasher.js`) — flash firmware via Web Serial (Chromium uniquement).
+//! Bridge to the esptool-js JS glue (`js/flasher.js`, bundled by esbuild as
+//! `assets/flasher.js`) — firmware flash via Web Serial (Chromium only).
 //!
-//! Le module JS expose deux globales :
-//!   - `window.pnexFlashSupported()` → Web Serial dispo ?
-//!   - `window.pnexFlash(entries, onEvent)` → promise du flow complet
-//!     (requestPort → sync → writeFlash @0x0 → hard reset) ;
-//!     `onEvent` reçoit des chaînes JSON décodées ici en `FlashEvent`
-//!     (serde_json — pas de dépendance serde-wasm-bindgen).
+//! The JS module exposes two globals:
+//!   - `window.pnexFlashSupported()` → Web Serial available?
+//!   - `window.pnexFlash(entries, onEvent)` → promise of the full flow
+//!     (requestPort → sync → writeFlash @0x0 → hard reset);
+//!     `onEvent` receives JSON strings decoded here into `FlashEvent`
+//!     (serde_json — no serde-wasm-bindgen dependency).
 //!
 //! Desktop targets: no Web Serial in the webview — the flash runs the
 //! esptool binary shipped with the app (`native` module). Android: stub.
@@ -40,20 +40,20 @@ impl FlashError {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 
-/// Événement du flow de flash, sérialisé en JSON par `js/flasher.js`
+/// Event of the flash flow, serialized as JSON by `js/flasher.js`
 /// (`{"type":"stage","stage":"write"}`, `{"type":"progress","percent":42}`…).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FlashEvent {
-    /// Changement d'étape : `connect` | `write` | `reset`.
+    /// Stage change: `connect` | `write` | `reset`.
     Stage {
         stage: String,
     },
-    /// Chip détecté au sync (ex. « ESP32-D0WD-V3 ») — affiché tel quel.
+    /// Chip detected at sync (e.g. "ESP32-D0WD-V3") — displayed as is.
     Chip {
         chip: String,
     },
-    /// Progression d'écriture, 0-100.
+    /// Write progress, 0-100.
     Progress {
         percent: u8,
     },
@@ -63,8 +63,8 @@ pub enum FlashEvent {
     },
 }
 
-/// Web Serial disponible ? Chrome/Edge/Opera uniquement — false sur
-/// Firefox/Safari et sur toute cible non-web.
+/// Web Serial available? Chrome/Edge/Opera only — false on
+/// Firefox/Safari and on any non-web target.
 #[cfg(target_arch = "wasm32")]
 pub fn supported() -> bool {
     global_function("pnexFlashSupported")
@@ -73,9 +73,9 @@ pub fn supported() -> bool {
         .unwrap_or(false)
 }
 
-/// Flash les `entries` [(adresse, octets)] en un seul writeFlash (firmware
-/// de ports natif. Doit être appelé depuis un handler de clic :
-/// `requestPort()` exige un geste utilisateur.
+/// Flashes the `entries` [(address, bytes)] in a single writeFlash (native
+/// ports firmware. Must be called from a click handler:
+/// `requestPort()` requires a user gesture.
 #[cfg(target_arch = "wasm32")]
 pub async fn flash<F>(entries: Vec<(u32, Vec<u8>)>, mut on_event: F) -> Result<(), FlashError>
 where
@@ -86,9 +86,9 @@ where
         detail: Some("window.pnexFlash absent".to_string()),
     })?;
 
-    // [{ data: Uint8Array, address: Number }, ...] — un seul writeFlash
-    // esptool-js, toutes entrées confondues (aujourd'hui : l'image unique
-    // @0x0 ; le multi-entrées reste disponible si besoin).
+    // [{ data: Uint8Array, address: Number }, ...] — a single esptool-js
+    // writeFlash, all entries together (today: the single image @0x0; the
+    // multi-entry form stays available if needed).
     let entries_array = js_sys::Array::new();
     for (address, bytes) in entries {
         let array = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
@@ -99,8 +99,8 @@ where
         entries_array.push(&entry);
     }
 
-    // Callback d'événements : la Closure reste vivante jusqu'au retour de
-    // l'await (locale possédée), le JS n'en garde qu'un emprunt.
+    // Event callback: the Closure stays alive until the await returns
+    // (owned local), the JS only keeps a borrow of it.
     let closure = Closure::wrap(Box::new(move |json: String| {
         if let Ok(event) = serde_json::from_str::<FlashEvent>(&json) {
             on_event(event);
@@ -122,7 +122,7 @@ where
     Ok(())
 }
 
-/// Résout une fonction globale exposée par le bundle flasher.js.
+/// Resolves a global function exposed by the flasher.js bundle.
 #[cfg(target_arch = "wasm32")]
 fn global_function(name: &str) -> Option<js_sys::Function> {
     js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str(name))
@@ -130,7 +130,7 @@ fn global_function(name: &str) -> Option<js_sys::Function> {
         .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
 }
 
-/// Message lisible d'une `JsValue` d'erreur (rejet de promise ou exception).
+/// Readable message of an error `JsValue` (promise rejection or exception).
 #[cfg(target_arch = "wasm32")]
 fn js_error_message(value: &JsValue) -> String {
     if let Some(error) = value.dyn_ref::<js_sys::Error>() {
@@ -475,8 +475,8 @@ mod native {
 mod tests {
     use super::FlashEvent;
 
-    /// Contrat JSON du glue `js/flasher.js` — toute divergence cassera ces
-    /// décodages (le JS n'est pas couvert par les tests Rust).
+    /// JSON contract of the `js/flasher.js` glue — any divergence will break
+    /// these decodings (the JS is not covered by the Rust tests).
     #[test]
     fn decode_evenements_flasher_js() {
         assert_eq!(

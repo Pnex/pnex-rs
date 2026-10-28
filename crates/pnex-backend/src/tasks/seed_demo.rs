@@ -1,12 +1,12 @@
-//! Seed **démo** par org — un environnement réaliste pour tester les listes
-//! et la pagination (D14) : 105 devices, 12 flows, 12 fonctions, 12 tours,
-//! 12 dashboards, 12 médias (PNG 1×1 réel en stockage), 12 mélanges,
-//! 12 canaux webhook et 12 templates. Inserts directs (hors quotas tier —
-//! un environnement démo n'est pas un usage de production).
+//! **Demo** seed per org — a realistic environment to test lists and
+//! pagination (D14): 105 devices, 12 flows, 12 functions, 12 tours,
+//! 12 dashboards, 12 media (real 1×1 PNG in storage), 12 mixtures,
+//! 12 webhook channels and 12 templates. Direct inserts (bypassing tier
+//! quotas — a demo environment is not production usage).
 //!
-//! Usage : `cargo loco task seed_demo` (depuis crates/pnex-backend).
-//! Idempotent : si des devices `demo-*` existent déjà dans l'org, la task
-//! ne fait rien (le nettoyage se fait à la main en base si besoin).
+//! Usage: `cargo loco task seed_demo` (from crates/pnex-backend).
+//! Idempotent: if `demo-*` devices already exist in the org, the task
+//! does nothing (cleanup is done by hand in the database if needed).
 
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -18,15 +18,15 @@ use crate::models::_entities::{
 };
 use crate::services::media::{sha256_hex, MediaSettings};
 
-/// PNG 1×1 transparent (70 octets) — blob réaliste pour les médias de démo.
+/// Transparent 1×1 PNG (70 bytes) — realistic blob for the demo media.
 const DEMO_PNG: &[u8] = &[
     137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0,
     0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 218, 99, 100, 96, 248, 95, 15, 0, 2,
     135, 1, 128, 235, 71, 186, 146, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130,
 ];
 
-/// Code JS d'une fonction de démo (directives complètes — le save serveur
-/// n'est pas emprunté : inserts directs).
+/// JS code of a demo function (complete directives — the server save is
+/// not used: direct inserts).
 const DEMO_JS: &str = r#"// @input temperature number "Measured temperature (°C)"
 // @input threshold number=20 "Alert threshold"
 // @output heating number "1 when heating is requested, 0 otherwise"
@@ -49,43 +49,49 @@ impl Task for SeedDemo {
     async fn run(&self, ctx: &AppContext, _vars: &task::Vars) -> Result<()> {
         let db = &ctx.db;
 
-        // ── Org cible : celle d'admin@example.com (compte de dev) ──
+        // ── Target org: admin@example.com's (dev account) ──
         let user = users::Entity::find()
             .filter(users::Column::Email.eq("admin@example.com"))
             .one(db)
             .await?
-            .ok_or_else(|| Error::string("utilisateur admin@example.com introuvable (se connecter une fois à l'app d'abord)"))?;
+            .ok_or_else(|| {
+                Error::string("user admin@example.com not found (log in to the app once first)")
+            })?;
         let member = organization_members::Entity::find()
             .filter(organization_members::Column::UserId.eq(user.id))
             .one(db)
             .await?
-            .ok_or_else(|| Error::string("aucune organisation pour admin@example.com"))?;
+            .ok_or_else(|| Error::string("no organization for admin@example.com"))?;
         let org_id = member.org_id;
         println!("  org cible : #{org_id} (admin@example.com)");
 
-        // ── Garde idempotence : déjà seedé ? ──
+        // ── Idempotence guard: already seeded? ──
         let existing = device_registries::Entity::find()
             .filter(device_registries::Column::OrgId.eq(org_id))
             .filter(device_registries::Column::DeviceId.starts_with("demo-"))
             .one(db)
             .await?;
         if existing.is_some() {
-            println!("✅ Déjà seedé (devices demo-* présents) — rien à faire.");
+            println!("✅ Already seeded (demo-* devices present) — nothing to do.");
             return Ok(());
         }
 
-        // ── Devices : 105 (pagination réelle sur 11 pages) ──
+        // ── Devices: 105 (real pagination over 11 pages) ──
         let predefined = predefined_devices::Entity::find()
             .filter(predefined_devices::Column::Name.eq("generic_esp8266"))
             .one(db)
             .await?
-            .ok_or_else(|| Error::string("predefined device generic_esp8266 absent (lancer `cargo loco task seed` d'abord)"))?;
+            .ok_or_else(|| {
+                Error::string(
+                    "predefined device generic_esp8266 missing (run `cargo loco task seed` first)",
+                )
+            })?;
         for i in 1..=105 {
             device_registries::ActiveModel {
                 device_id: Set(format!("demo-sensor-{i:03}")),
                 org_id: Set(org_id),
                 predefined_device_id: Set(predefined.id),
-                active: Set(i % 7 != 0), // ~1 sur 7 inactif (variété badge)
+                active: Set(i % 7 != 0), // ~1 in 7 inactive (badge variety)
                 allow_dynamic_measurements: Set(false),
                 max_unique_measurements: Set(10),
                 ..Default::default()
@@ -95,7 +101,7 @@ impl Task for SeedDemo {
         }
         println!("  devices : 105");
 
-        // ── Flows basiques : 12 (status variés pour les badges) ──
+        // ── Basic flows: 12 (varied statuses for the badges) ──
         let statuses = [
             "draft", "draft", "draft", "draft", "draft", "draft", "draft", "draft", "deployed",
             "deployed", "stopped", "error",
@@ -127,7 +133,7 @@ impl Task for SeedDemo {
         }
         println!("  flows : 12");
 
-        // ── Fonctions : 12 (js, v1 avec code squelette) ──
+        // ── Functions: 12 (js, v1 with skeleton code) ──
         for i in 1..=12 {
             let function = functions::ActiveModel {
                 org_id: Set(org_id),
@@ -156,7 +162,7 @@ impl Task for SeedDemo {
         }
         println!("  fonctions : 12");
 
-        // ── Tours : 12 (doc par défaut, mode panorama) ──
+        // ── Tours: 12 (default doc, panorama mode) ──
         for i in 1..=12 {
             let tour = tours::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
@@ -188,7 +194,7 @@ impl Task for SeedDemo {
         }
         println!("  tours : 12");
 
-        // ── Dashboards : 12 (layout vide — canvas vide au live) ──
+        // ── Dashboards: 12 (empty layout — empty canvas when live) ──
         for i in 1..=12 {
             let dashboard = dashboards::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
@@ -213,7 +219,7 @@ impl Task for SeedDemo {
         }
         println!("  dashboards : 12");
 
-        // ── Médias : 12 photos (PNG 1×1 réel en stockage) ──
+        // ── Media: 12 photos (real 1×1 PNG in storage) ──
         let settings = MediaSettings::from_config(&ctx.config);
         let store = settings.store().map_err(|e| {
             Error::string(&format!("media storage unavailable: {e} (check RustFS)"))
@@ -233,7 +239,7 @@ impl Task for SeedDemo {
             store
                 .put(&key, axum::body::Bytes::from_static(DEMO_PNG))
                 .await
-                .map_err(|e| Error::string(&format!("écriture blob {key} impossible : {e}")))?;
+                .map_err(|e| Error::string(&format!("cannot write blob {key}: {e}")))?;
             let version = media_versions::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
                 asset_id: Set(asset.id),
@@ -252,9 +258,9 @@ impl Task for SeedDemo {
             a.current_version_id = Set(Some(version.id));
             a.update(db).await?;
         }
-        println!("  médias : 12 (PNG 1×1 réels)");
+        println!("  media: 12 (real 1×1 PNGs)");
 
-        // ── Mélanges : 12 (Propane/Ethane 50/50, base molaire) ──
+        // ── Mixtures: 12 (Propane/Ethane 50/50, molar basis) ──
         for i in 1..=12 {
             fluid_mixtures::ActiveModel {
                 org_id: Set(org_id),
@@ -274,9 +280,9 @@ impl Task for SeedDemo {
             .insert(db)
             .await?;
         }
-        println!("  mélanges : 12");
+        println!("  mixtures: 12");
 
-        // ── Canaux webhook : 12 (enabled variés) ──
+        // ── Webhook channels: 12 (varied enabled) ──
         for i in 1..=12 {
             notify_channels::ActiveModel {
                 id: Set(uuid::Uuid::new_v4()),
@@ -286,7 +292,7 @@ impl Task for SeedDemo {
                 config: Set(serde_json::json!({
                     "url": "https://example.invalid/demo-hook"
                 })),
-                enabled: Set(i % 3 != 0), // 2 sur 3 actifs (variété badge)
+                enabled: Set(i % 3 != 0), // 2 in 3 active (badge variety)
                 ..Default::default()
             }
             .insert(db)
@@ -312,7 +318,7 @@ impl Task for SeedDemo {
         }
         println!("  templates : 12");
 
-        println!("✅ Seed démo terminé (org #{org_id}) — les listes paginent désormais.");
+        println!("✅ Demo seed done (org #{org_id}) — the lists now paginate.");
         Ok(())
     }
 }

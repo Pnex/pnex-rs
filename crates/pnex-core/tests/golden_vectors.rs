@@ -1,31 +1,31 @@
-//! Golden vectors Rust = C++ (D20 §6, edge-model.md §3 règle 2).
+//! Golden vectors Rust = C++ (D20 §6, edge-model.md §3 rule 2).
 //!
-//! `pnex_core::control` est la **référence** (spécification exécutable des
-//! cartes de régulation) ; ce test rejoue des scénarios figés et vérifie
-//! que les deux artefacts générés sont à jour :
+//! `pnex_core::control` is the **reference** (executable specification of the
+//! control cards); this test replays frozen scenarios and checks
+//! that the two generated artifacts are up to date:
 //!
-//! - `crates/pnex-core/goldens/golden_vectors.json` — données de référence ;
-//! - `firmware/common_libs/pnex-core-cpp/goldens.h` — mêmes données en
-//!   tableaux C++, rejouées par `firmware/core-cpp-tests` (Unity, hôte).
+//! - `crates/pnex-core/goldens/golden_vectors.json` — reference data;
+//! - `firmware/common_libs/pnex-core-cpp/goldens.h` — same data as
+//!   C++ arrays, replayed by `firmware/core-cpp-tests` (Unity, host).
 //!
-//! Regen : `PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors`
-//! (les valeurs non finies — NaN/Inf — sont exclues des vecteurs : le
-//! fail-safe NaN est testé nativement de chaque côté, le JSON ne les
-//! transporte pas).
+//! Regen: `PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors`
+//! (non-finite values — NaN/Inf — are excluded from the vectors: the
+//! NaN fail-safe is tested natively on each side, JSON does not
+//! carry them).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use pnex_core::{pid_step, relay_window, tt_step};
 
-// ───────────────────────── Scénarios figés ─────────────────────────
+// ───────────────────────── Frozen scenarios ─────────────────────────
 
 struct TtScenario {
     name: &'static str,
     heat: bool,
     setpoint: f64,
     deadband: f64,
-    /// (measurement, current_on) — expected calculé par la référence.
+    /// (measurement, current_on) — expected computed by the reference.
     steps: &'static [(f64, bool)],
 }
 
@@ -48,8 +48,8 @@ struct RelayScenario {
 }
 
 const TT: &[TtScenario] = &[
-    // Hystérésis asymétrique : ON sous consigne − deadband, OFF au retour à
-    // la consigne ; frontières exclues incluses.
+    // Asymmetric hysteresis: ON below setpoint − deadband, OFF when back at
+    // the setpoint; excluded boundaries included.
     TtScenario {
         name: "chauffage_hysteresis",
         heat: true,
@@ -57,15 +57,15 @@ const TT: &[TtScenario] = &[
         deadband: 0.5,
         steps: &[
             (18.4, false), // < 18.5 → ON
-            (18.6, false), // bande morte → OFF
+            (18.6, false), // dead band → OFF
             (18.6, true),  // < 19 → reste ON
             (18.99, true),
-            (19.0, true),     // retour exact à la consigne → OFF
-            (18.5, false),    // frontière : 18.5 < 18.5 est faux → OFF
-            (18.4999, false), // juste sous la frontière → ON
+            (19.0, true),     // exact return to the setpoint → OFF
+            (18.5, false),    // boundary: 18.5 < 18.5 is false → OFF
+            (18.4999, false), // just below the boundary → ON
         ],
     },
-    // Clim : sens inversé, frontière 26.5 exclue.
+    // Cooling: inverted direction, boundary 26.5 excluded.
     TtScenario {
         name: "clim_inversee",
         heat: false,
@@ -76,10 +76,10 @@ const TT: &[TtScenario] = &[
             (26.4, false),
             (26.1, true),
             (26.0, true),
-            (26.5, false), // 26.5 > 26.5 est faux → OFF
+            (26.5, false), // 26.5 > 26.5 is false → OFF
         ],
     },
-    // Fail-safe : deadband ≤ 0 → jamais ON.
+    // Fail-safe: deadband ≤ 0 → never ON.
     TtScenario {
         name: "deadband_zero_ne_s_allume_jamais",
         heat: true,
@@ -97,8 +97,8 @@ const TT: &[TtScenario] = &[
 ];
 
 const PID: &[PidScenario] = &[
-    // 1er échantillon (D=0), convergence, overshoot (duty 0, intégrale
-    // bornée bas), puis ré-arme par room_min.
+    // 1st sample (D=0), convergence, overshoot (duty 0, integral
+    // bounded low), then re-armed by room_min.
     PidScenario {
         name: "convergence_overshoot_re_arme",
         setpoint: 20.0,
@@ -113,7 +113,7 @@ const PID: &[PidScenario] = &[
             (5.0, 25.0),
         ],
     },
-    // Anti-windup : intégrale plafonnée à room_max = 100 − P.
+    // Anti-windup: integral capped at room_max = 100 − P.
     PidScenario {
         name: "anti_windup_saturation_haute",
         setpoint: 20.0,
@@ -122,7 +122,7 @@ const PID: &[PidScenario] = &[
         kd: 0.0,
         steps: &[(1.0, 0.0); 8],
     },
-    // Intégrale bornée bas : room_min = −P.
+    // Integral bounded low: room_min = −P.
     PidScenario {
         name: "borne_basse_integrale",
         setpoint: 20.0,
@@ -131,7 +131,7 @@ const PID: &[PidScenario] = &[
         kd: 0.0,
         steps: &[(1.0, 100.0); 4],
     },
-    // Dérivée sur la mesure : changer la consigne ne kick pas la sortie.
+    // Derivative on the measurement: changing the setpoint does not kick the output.
     PidScenario {
         name: "kick_de_consigne_absent",
         setpoint: 20.0,
@@ -140,7 +140,7 @@ const PID: &[PidScenario] = &[
         kd: 5.0,
         steps: &[(1.0, 19.0), (1.0, 18.0)],
     },
-    // dt ≤ 0 : dérivée dégradée à 0 même avec un prev.
+    // dt ≤ 0: derivative degraded to 0 even with a prev.
     PidScenario {
         name: "dt_nul_sans_derivee",
         setpoint: 20.0,
@@ -184,7 +184,7 @@ const RELAY: &[RelayScenario] = &[
     },
 ];
 
-// ─────────────────── Exécution par la référence ───────────────────
+// ─────────────────── Execution by the reference ───────────────────
 
 struct TtOut {
     measurement: f64,
@@ -265,12 +265,12 @@ fn run_relay() -> Vec<(&'static str, f64, f64, Vec<RelayOut>)> {
         .collect()
 }
 
-// ─────────────────────── Rendu des artefacts ───────────────────────
+// ─────────────────────── Artifact rendering ───────────────────────
 
-/// Format C++ d'un double : représentation shortest-roundtrip de Rust
-/// ({:?}) — littéral double C++ valide ; NaN/Inf exclus des vecteurs.
+/// C++ format of a double: Rust shortest-roundtrip representation
+/// ({:?}) — valid C++ double literal; NaN/Inf excluded from the vectors.
 fn cpp_f64(v: f64) -> String {
-    assert!(v.is_finite(), "les vecteurs ne transportent pas NaN/Inf");
+    assert!(v.is_finite(), "the vectors do not carry NaN/Inf");
     format!("{v:?}")
 }
 
@@ -345,11 +345,11 @@ fn render_json() -> String {
 
 fn render_cpp_header() -> String {
     let mut s = String::from(
-        "// FICHIER GÉNÉRÉ — ne pas éditer à la main. Référence : pnex_core::control\n\
-         // (crates/pnex-core/src/control.rs). Regen :\n\
+        "// GENERATED FILE — do not edit by hand. Reference: pnex_core::control\n\
+         // (crates/pnex-core/src/control.rs). Regen:\n\
          //   PNEX_REGEN_GOLDENS=1 cargo test -p pnex-core --test golden_vectors\n\
-         // Rejoué par firmware/core-cpp-tests (Unity, hôte) — golden vectors\n\
-         // Rust = tests C++ (D20 §6, edge-model.md §3 règle 2).\n\
+         // Replayed by firmware/core-cpp-tests (Unity, host) — golden vectors\n\
+         // Rust = C++ tests (D20 §6, edge-model.md §3 rule 2).\n\
          #pragma once\n\n\
          #include <cstddef>\n\n\
          namespace pnex_goldens {\n\n",
@@ -464,7 +464,7 @@ fn golden_paths() -> (PathBuf, PathBuf) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     (
         manifest.join("goldens/golden_vectors.json"),
-        // Le header C++ vit près du miroir ; monter d'un cran = racine repo.
+        // The C++ header lives next to the mirror; going up one level = repo root.
         manifest
             .join("../../firmware/common_libs/pnex-core-cpp/goldens.h")
             .canonicalize()
@@ -474,8 +474,8 @@ fn golden_paths() -> (PathBuf, PathBuf) {
     )
 }
 
-/// Garde-fou : les artefacts générés correspondent exactement à la
-/// référence courante. `PNEX_REGEN_GOLDENS=1` réécrit les deux fichiers.
+/// Safeguard: the generated artifacts match the current reference
+/// exactly. `PNEX_REGEN_GOLDENS=1` rewrites both files.
 #[test]
 fn golden_vectors_sont_a_jour() {
     let _guard = REGEN_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -484,21 +484,21 @@ fn golden_vectors_sont_a_jour() {
         std::fs::create_dir_all(json_path.parent().unwrap()).expect("mkdir goldens");
         std::fs::write(&json_path, render_json()).expect("write json");
         std::fs::write(&cpp_path, render_cpp_header()).expect("write header");
-        println!("goldens régénérés : {}", json_path.display());
+        println!("goldens regenerated: {}", json_path.display());
         return;
     }
     let committed_json =
-        std::fs::read_to_string(&json_path).expect("golden_vectors.json absent — lance la regen");
+        std::fs::read_to_string(&json_path).expect("golden_vectors.json missing — run the regen");
     let committed_cpp =
-        std::fs::read_to_string(&cpp_path).expect("goldens.h absent — lance la regen");
+        std::fs::read_to_string(&cpp_path).expect("goldens.h missing — run the regen");
     assert_eq!(
         committed_json,
         render_json(),
-        "golden_vectors.json périmé — regen"
+        "golden_vectors.json stale — regen"
     );
     assert_eq!(
         committed_cpp,
         render_cpp_header(),
-        "goldens.h périmé — regen"
+        "goldens.h stale — regen"
     );
 }

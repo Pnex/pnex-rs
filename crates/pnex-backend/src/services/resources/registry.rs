@@ -1,12 +1,12 @@
-//! Registre des kinds vivants (D42) — **le** point d'extension de la couche.
+//! Registry of living kinds (D42) — **the** extension point of the layer.
 //!
 //! Rules are derived from the type definitions in `pnex_core::ontology`
 //! (D176, lot L0); this module only adds a resolver per type. No `match` on
 //! kinds in the engine.
 //!
-//! Découplage device (D17) : le résolveur device **lit** `device_registries`
-//! (existence org), n'y écrit jamais — taguer/organiser n'a aucun effet sur
-//! le firmware ni sur le contrat `pnex_api_contract::CONTRACT`.
+//! Device decoupling (D17): the device resolver **reads** `device_registries`
+//! (org existence), never writes to it — tagging/organising has no effect on
+//! the firmware nor on the `pnex_api_contract::CONTRACT` contract.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -26,9 +26,9 @@ use pnex_core::resources::{
     KIND_TOUR,
 };
 
-// ─────────────────────────── résolveurs ───────────────────────────
+// ─────────────────────────── resolvers ───────────────────────────
 
-/// Existence+tenancy d'une ressource (une table par kind — école viz_links).
+/// Existence+tenancy of a resource (one table per kind — viz_links pattern).
 #[async_trait]
 pub trait KindResolver: Send + Sync {
     async fn resolve(
@@ -38,9 +38,9 @@ pub trait KindResolver: Send + Sync {
         id: &str,
     ) -> Result<bool, sea_orm::DbErr>;
 
-    /// Nom d'affichage (labels d'arbre du drawer POI) — `None` = inconnu.
-    /// Redondant avec [`Self::resolve`] (même ligne lue) : accepté, les
-    /// listes d'arbre sont courtes.
+    /// Display name (tree labels of the POI drawer) — `None` = unknown.
+    /// Redundant with [`Self::resolve`] (same row read): accepted, tree
+    /// lists are short.
     async fn display_name(
         &self,
         db: &DatabaseConnection,
@@ -260,20 +260,20 @@ impl Registry {
         Self { kinds, links }
     }
 
-    /// Spec + résolveur d'un kind, sinon `None` (kind inconnu).
+    /// Spec + resolver of a kind, else `None` (unknown kind).
     pub fn entry(&self, kind: &str) -> Option<&KindEntry> {
         self.kinds.get(kind)
     }
 
-    /// Kinds enregistrés (triés, pour les listes API).
+    /// Registered kinds (sorted, for API lists).
     pub fn kinds(&self) -> Vec<&str> {
         let mut ks: Vec<&str> = self.kinds.keys().map(String::as_str).collect();
         ks.sort_unstable();
         ks
     }
 
-    /// La règle « child_kind peut vivre dans parent_kind ? » — chemin unique
-    /// par lequel le moteur interroge la validité (jamais de match).
+    /// The rule "can child_kind live in parent_kind?" — the single path
+    /// through which the engine queries validity (never a match).
     pub fn allows_containment(&self, parent_kind: &str, child_kind: &str) -> bool {
         self.kinds.get(parent_kind).is_some_and(|e| {
             e.def

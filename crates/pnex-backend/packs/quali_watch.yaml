@@ -1,64 +1,65 @@
-# Since 1.3.0 `site_web` and `a_pour_site` belong to `presence_web`
+# Since 2.0.0 every identifier is English (breaking).
+# Since 1.3.0 `website` and `has_website` belong to `web_presence`
 # (web-presence.md D363), taken over on upgrade without moving any data.
 # Business pack "Partner network watch" (partner-watch.md D300–D316, product
 # Quali-Watch): a certifier watches the training organizations it accredits.
 # Nothing of it enters the core (D190): certifications, observed pages, CPF
 # offers, rules, findings, procedures and reminders are pack types.
 # The certifier itself is an `organization` of the org, linked to its
-# certifications by `porte`.
+# certifications by `holds`.
 # A finding produced by an LLM rule is never confirmed on its own (D316):
-# it is `a_valider`, quotes its excerpt word for word and keeps where it
-# was found (`constate_dans.locator`) and the rule version.
+# it is `to_validate`, quotes its excerpt word for word and keeps where it
+# was found (`observed_in.locator`) and the rule version.
 # Reminders follow the D314 pattern: a procedure carries its level and next
 # due date, a daily flow sends the next reminder and moves the procedure on;
-# levels needing a human create an `a_valider` reminder that the
-# `valider_envoi` action sends.
+# levels needing a human create a `to_validate` reminder that the
+# `approve_send` action sends.
 # The partner network import reads the certifier's sheet (one row per
 # partner × certification, pnex-quali-watch/import-excel.md) as a snapshot:
 # a row gone closes its accreditation, nothing is deleted.
 # France Compétences open data (ingestion.md D317–D321) arrives through the
 # steps of the imports themselves (data-pipelines.md D344, web-presence.md
 # D359): each night the zip of data.gouv.fr is resolved, downloaded,
-# extracted, inspected, filtered (the certifiers of the `certificateurs`
+# extracted, inspected, filtered (the certifiers of the `certifiers`
 # setting, then the certifications they hold) and imported by
-# fc_certificateurs, fc_fiches and fc_partenaires (a partner gone from the
+# fc_certifiers, fc_sheets and fc_partners (a partner gone from the
 # open data closes its accreditation); the SIRENE import then enriches the
 # organizations. Accreditations are linked at SIREN level (Q-I2 open).
 # The same night run reads the content of the sheets: RNCP skill blocks
-# (fc_blocs, CSV of the same zip) and, from the RS XML export, each
+# (fc_blocks, CSV of the same zip) and, from the RS XML export, each
 # competency of a sheet (one per paragraph of CAPACITES_ATTESTEES, keyed
 # RS0101-C3), objectives, prerequisites, jury, graduates, and the state of
 # each accreditation (fc_rs_xml). The XML <ACTIF> is not trusted: the sheet
-# status comes from the CSV Standard (fc_fiches).
+# status comes from the CSV Standard (fc_sheets).
 # Programmes (the certifier's reference and each partner's) and their
-# modules are compared competency by competency through `couvre`: the
+# modules are compared competency by competency through `covers`: the
 # cross-table is a computed view, not a type (pnex-quali-watch PRD §5.7).
 # Rules and reminders ship as functions and flow models (D316): created at
 # install when the org has none of that name, as drafts, never deployed by
-# the install (D123). A deterministic rule writes its finding `propose`
+# the install (D123). A deterministic rule writes its finding `proposed`
 # (create only: a reviewed finding is never reset); an LLM rule must write
-# `a_valider` with its word-for-word excerpt and locator.
+# `to_validate` with its word-for-word excerpt and locator.
 key: quali_watch
 name: Partner network watch
 names: {fr: "Veille du réseau de partenaires"}
-version: "1.7.0"
-requires: [entreprises_fr, presence_web]
+version: "2.0.0"
+requires: [companies_fr, web_presence]
 extends:
   - type: organization
     properties:
-      - { key: contact_conformite_email, name: Compliance contact e-mail, names: {fr: "E-mail du contact conformité"}, kind: text, max_len: 254 }
-      - { key: contact_conformite_nom, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 255 }
-      - { key: contact_telephone, name: Phone, names: {fr: "Téléphone"}, kind: text, max_len: 64 }
-      - { key: charge_reseau_email, name: Network officer e-mail, names: {fr: "E-mail du chargé de réseau"}, kind: text, max_len: 254 }
+      - { key: compliance_contact_email, name: Compliance contact e-mail, names: {fr: "E-mail du contact conformité"}, kind: text, max_len: 254 }
+      - { key: compliance_contact_name, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 255 }
+      - { key: contact_phone, name: Phone, names: {fr: "Téléphone"}, kind: text, max_len: 64 }
+      - { key: network_manager_email, name: Network officer e-mail, names: {fr: "E-mail du chargé de réseau"}, kind: text, max_len: 254 }
       # Qualiopi categories other than training actions (DGEFP list), for
       # the rule on a Qualiopi mention out of its category.
-      - { key: qualiopi_bilans, name: Qualiopi skills assessments, names: {fr: "Qualiopi bilans de compétences"}, kind: bool }
+      - { key: qualiopi_assessments, name: Qualiopi skills assessments, names: {fr: "Qualiopi bilans de compétences"}, kind: bool }
       - { key: qualiopi_vae, name: Qualiopi VAE, names: {fr: "Qualiopi VAE"}, kind: bool }
-      - { key: qualiopi_apprentissage, name: Qualiopi apprenticeship, names: {fr: "Qualiopi apprentissage"}, kind: bool }
+      - { key: qualiopi_apprenticeship, name: Qualiopi apprenticeship, names: {fr: "Qualiopi apprentissage"}, kind: bool }
 description: Certifications, partner websites, observed pages with dated proofs, CPF offers, rules, findings and graduated reminders.
 descriptions: {fr: "Certifications, sites des partenaires, pages observées avec preuves datées, offres CPF, règles, écarts et relances graduées."}
 settings:
-  - key: certificateurs
+  - key: certifiers
     name: Certifiers followed
     names: {fr: "Certificateurs suivis"}
     description: SIRET of the certifiers whose France Compétences sheets are imported each night, comma-separated; empty = every certifier of the open data.
@@ -72,14 +73,14 @@ settings:
     descriptions: {fr: "Codes contrôlés par les règles et suivis par les imports réseau (registre des entreprises, DGEFP, CPF), séparés par des virgules (RS0101, RNCP34567) ; vide = toutes les certifications portées par un certificateur de l'organisation."}
     kind: text
     default: ""
-  - key: regles_inactives
+  - key: disabled_rules
     name: Rules turned off
     names: {fr: "Règles désactivées"}
     description: Codes of the rules that write no finding, comma-separated (WEB-05, COL-01).
     descriptions: {fr: "Codes des règles qui n'écrivent aucun écart, séparés par des virgules (WEB-05, COL-01)."}
     kind: text
     default: ""
-  - key: site_entier
+  - key: whole_site
     name: Whole website checked
     names: {fr: "Site entier contrôlé"}
     description: Off, the website rules (WEB-*) only read the pages that cite one of the certifications watched; on, every relevant page of the site (Qualiopi auditor use).
@@ -94,53 +95,53 @@ types:
     may_be_contained_in: [folder]
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
-      - { key: repertoire, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], labels: {rncp: {fr: "RNCP", en: "RNCP"}, rs: {fr: "RS", en: "RS"}}, indexed: true }
+      - { key: register, name: Register, names: {fr: "Répertoire"}, kind: enum, values: [rncp, rs], labels: {rncp: {fr: "RNCP", en: "RNCP"}, rs: {fr: "RS", en: "RS"}}, indexed: true }
       # The register holds titles over 500 characters (2026-10-24 export).
-      - { key: intitule, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 2000 }
+      - { key: official_title, name: Exact title, names: {fr: "Intitulé exact"}, kind: text, max_len: 2000 }
       # Digits of the code (0101): the value the CPF catalogue is queried by.
-      - { key: numero, name: Number, names: {fr: "Numéro"}, kind: text, max_len: 12 }
-      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: text, max_len: 32 }
-      - { key: date_enregistrement, name: Registered on, names: {fr: "Enregistrée le"}, kind: date }
-      - { key: date_echeance, name: Expires on, names: {fr: "Échéance"}, kind: date }
-      - { key: statut, name: Status, names: {fr: "Statut"}, kind: enum, values: [actif, inactif, echu], labels: {actif: {fr: "Actif", en: "Active"}, inactif: {fr: "Inactif", en: "Inactive"}, echu: {fr: "Échu", en: "Expired"}}, indexed: true }
-      - { key: url_fiche, name: Register page, names: {fr: "Fiche du répertoire"}, kind: url }
-      - { key: objectifs, name: Objectives and context, names: {fr: "Objectifs et contexte"}, kind: text, max_len: 50000 }
-      - { key: prerequis, name: Entry prerequisites, names: {fr: "Prérequis"}, kind: text, max_len: 50000 }
+      - { key: number, name: Number, names: {fr: "Numéro"}, kind: text, max_len: 12 }
+      - { key: level, name: Level, names: {fr: "Niveau"}, kind: text, max_len: 32 }
+      - { key: registered_on, name: Registered on, names: {fr: "Enregistrée le"}, kind: date }
+      - { key: expires_on, name: Expires on, names: {fr: "Échéance"}, kind: date }
+      - { key: status, name: Status, names: {fr: "Statut"}, kind: enum, values: [active, inactive, expired], labels: {active: {fr: "Actif", en: "Active"}, inactive: {fr: "Inactif", en: "Inactive"}, expired: {fr: "Échu", en: "Expired"}}, indexed: true }
+      - { key: sheet_url, name: Register page, names: {fr: "Fiche du répertoire"}, kind: url }
+      - { key: objectives, name: Objectives and context, names: {fr: "Objectifs et contexte"}, kind: text, max_len: 50000 }
+      - { key: prerequisites, name: Entry prerequisites, names: {fr: "Prérequis"}, kind: text, max_len: 50000 }
       - { key: jury, name: Jury, names: {fr: "Jury"}, kind: text, max_len: 10000 }
-      - { key: nb_certifies, name: Graduates (last year), names: {fr: "Certifiés (dernière année)"}, kind: number, min: 0 }
+      - { key: certified_count, name: Graduates (last year), names: {fr: "Certifiés (dernière année)"}, kind: number, min: 0 }
       # The register gives a title here as often as a link: text.
       - { key: url_description, name: Certifier description, names: {fr: "Descriptif du certificateur"}, kind: text, max_len: 2048 }
-  - key: page_observee
+  - key: observed_page
     name: Observed page
     names: {fr: "Page observée"}
     icon: file-text
     may_be_contained_in: [folder]
     properties:
       - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 2048, required: true, unique: true }
-      - { key: titre, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
-      - { key: premiere_vue, name: First seen, names: {fr: "Vue la première fois"}, kind: date_time }
-      - { key: derniere_vue, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
-      - { key: empreinte_texte, name: Text fingerprint, names: {fr: "Empreinte du texte"}, kind: text, max_len: 64 }
-      - { key: pertinente, name: Relevant, names: {fr: "Pertinente"}, kind: bool }
-      - { key: codes_cites, name: Codes quoted, names: {fr: "Codes cités"}, kind: text, max_len: 1000 }
+      - { key: heading, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
+      - { key: first_seen, name: First seen, names: {fr: "Vue la première fois"}, kind: date_time }
+      - { key: last_seen, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
+      - { key: text_fingerprint, name: Text fingerprint, names: {fr: "Empreinte du texte"}, kind: text, max_len: 64 }
+      - { key: relevant, name: Relevant, names: {fr: "Pertinente"}, kind: bool }
+      - { key: cited_codes, name: Codes quoted, names: {fr: "Codes cités"}, kind: text, max_len: 1000 }
       # The registry states (D309), written by the crawl's `record`.
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [listed, relevant, captured, gone], labels: {listed: {fr: "Listée", en: "Listed"}, relevant: {fr: "Pertinente", en: "Relevant"}, captured: {fr: "Capturée", en: "Captured"}, gone: {fr: "Disparue", en: "Gone"}}, indexed: true }
-  - key: offre_cpf
+      - { key: state, name: State, names: {fr: "État"}, kind: enum, values: [listed, relevant, captured, gone], labels: {listed: {fr: "Listée", en: "Listed"}, relevant: {fr: "Pertinente", en: "Relevant"}, captured: {fr: "Capturée", en: "Captured"}, gone: {fr: "Disparue", en: "Gone"}}, indexed: true }
+  - key: cpf_offer
     name: CPF offer
     names: {fr: "Offre CPF"}
     icon: tag
     may_be_contained_in: [folder]
     properties:
       - { key: id_action, name: Action id, names: {fr: "Identifiant de l'action"}, kind: text, max_len: 64, required: true, unique: true }
-      - { key: intitule, name: Title, names: {fr: "Intitulé"}, kind: text, max_len: 500 }
-      - { key: prix, name: Price, names: {fr: "Prix"}, kind: money }
-      - { key: duree_heures, name: Duration, names: {fr: "Durée"}, kind: number, unit: h, min: 0 }
-      - { key: ville, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
-      - { key: modalite, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte], labels: {presentiel: {fr: "Présentiel", en: "On site"}, distanciel: {fr: "Distanciel", en: "Remote"}, mixte: {fr: "Mixte", en: "Blended"}} }
-      - { key: vue_le, name: Seen on, names: {fr: "Vue le"}, kind: date }
+      - { key: official_title, name: Title, names: {fr: "Intitulé"}, kind: text, max_len: 500 }
+      - { key: price, name: Price, names: {fr: "Prix"}, kind: money }
+      - { key: duration_hours, name: Duration, names: {fr: "Durée"}, kind: number, unit: h, min: 0 }
+      - { key: city, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
+      - { key: delivery_mode, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [on_site, remote, blended], labels: {on_site: {fr: "Présentiel", en: "On site"}, remote: {fr: "Distanciel", en: "Remote"}, blended: {fr: "Mixte", en: "Blended"}} }
+      - { key: seen_on, name: Seen on, names: {fr: "Vue le"}, kind: date }
       - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14 }
-      - { key: a_distance, name: Remote sessions, names: {fr: "Sessions à distance"}, kind: bool }
-  - key: regle
+      - { key: remote, name: Remote sessions, names: {fr: "Sessions à distance"}, kind: bool }
+  - key: compliance_rule
     name: Rule
     names: {fr: "Règle"}
     icon: landmark
@@ -148,49 +149,49 @@ types:
     write_role: admin
     properties:
       - { key: code, name: Code, names: {fr: "Code"}, kind: text, max_len: 16, required: true, unique: true }
-      - { key: libelle, name: Label, names: {fr: "Libellé"}, kind: text, max_len: 500 }
-      - { key: type, name: Kind, names: {fr: "Nature"}, kind: enum, values: [deterministe, llm], labels: {deterministe: {fr: "Déterministe", en: "Deterministic"}, llm: {fr: "LLM", en: "LLM"}} }
-      - { key: gravite_defaut, name: Default severity, names: {fr: "Gravité par défaut"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}} }
+      - { key: label, name: Label, names: {fr: "Libellé"}, kind: text, max_len: 500 }
+      - { key: type, name: Kind, names: {fr: "Nature"}, kind: enum, values: [deterministic, llm], labels: {deterministic: {fr: "Déterministe", en: "Deterministic"}, llm: {fr: "LLM", en: "LLM"}} }
+      - { key: default_severity, name: Default severity, names: {fr: "Gravité par défaut"}, kind: enum, values: [info, minor, major, critical], labels: {info: {fr: "Info", en: "Info"}, minor: {fr: "Mineur", en: "Minor"}, major: {fr: "Majeur", en: "Major"}, critical: {fr: "Critique", en: "Critical"}} }
       - { key: reference, name: Legal or contractual reference, names: {fr: "Référence légale ou contractuelle"}, kind: text, max_len: 2000 }
       - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
       - { key: active, name: Active, names: {fr: "Active"}, kind: bool }
-  - key: ecart
+  - key: finding
     name: Finding
     names: {fr: "Écart"}
     icon: flag
     may_be_contained_in: [folder]
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
-      - { key: attendu, name: Expected, names: {fr: "Attendu"}, kind: text, max_len: 2000 }
-      - { key: constate, name: Observed, names: {fr: "Constaté"}, kind: text, max_len: 2000 }
-      - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
-      - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}}, indexed: true }
-      - key: etat
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+      - { key: expected, name: Expected, names: {fr: "Attendu"}, kind: text, max_len: 2000 }
+      - { key: observed, name: Observed, names: {fr: "Constaté"}, kind: text, max_len: 2000 }
+      - { key: excerpt, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
+      - { key: severity, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, minor, major, critical], labels: {info: {fr: "Info", en: "Info"}, minor: {fr: "Mineur", en: "Minor"}, major: {fr: "Majeur", en: "Major"}, critical: {fr: "Critique", en: "Critical"}}, indexed: true }
+      - key: state
         name: State
         names: {fr: "État"}
         kind: enum
-        values: [propose, a_valider, confirme, en_relance, corrige, clos, rejete]
-        labels: {propose: {fr: "Proposé", en: "Proposed"}, a_valider: {fr: "À valider", en: "To validate"}, confirme: {fr: "Confirmé", en: "Confirmed"}, en_relance: {fr: "En relance", en: "Being chased"}, corrige: {fr: "Corrigé", en: "Fixed"}, clos: {fr: "Clos", en: "Closed"}, rejete: {fr: "Rejeté", en: "Rejected"}}
+        values: [proposed, to_validate, confirmed, reminding, fixed, closed, rejected]
+        labels: {proposed: {fr: "Proposé", en: "Proposed"}, to_validate: {fr: "À valider", en: "To validate"}, confirmed: {fr: "Confirmé", en: "Confirmed"}, reminding: {fr: "En relance", en: "Being chased"}, fixed: {fr: "Corrigé", en: "Fixed"}, closed: {fr: "Clos", en: "Closed"}, rejected: {fr: "Rejeté", en: "Rejected"}}
         required: true
         indexed: true
-      - { key: detecte_le, name: Detected on, names: {fr: "Détecté le"}, kind: date_time }
-      - { key: regle_version, name: Rule version, names: {fr: "Version de la règle"}, kind: number, min: 1 }
-      - { key: confiance, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
+      - { key: detected_on, name: Detected on, names: {fr: "Détecté le"}, kind: date_time }
+      - { key: rule_version, name: Rule version, names: {fr: "Version de la règle"}, kind: number, min: 1 }
+      - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
     actions:
-      - key: valider
+      - key: validate
         name: Confirm
         names: {fr: "Valider"}
         params:
-          - { key: gravite, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, mineur, majeur, critique], labels: {info: {fr: "Info", en: "Info"}, mineur: {fr: "Mineur", en: "Minor"}, majeur: {fr: "Majeur", en: "Major"}, critique: {fr: "Critique", en: "Critical"}} }
-          - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
-      - key: rejeter
+          - { key: severity, name: Severity, names: {fr: "Gravité"}, kind: enum, values: [info, minor, major, critical], labels: {info: {fr: "Info", en: "Info"}, minor: {fr: "Mineur", en: "Minor"}, major: {fr: "Majeur", en: "Major"}, critical: {fr: "Critique", en: "Critical"}} }
+          - { key: comment, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
+      - key: reject
         name: Reject
         names: {fr: "Rejeter"}
         confirm: true
         params:
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [faux_positif, hors_perimetre, accepte_par_le_client], labels: {faux_positif: {fr: "Faux positif", en: "False positive"}, hors_perimetre: {fr: "Hors périmètre", en: "Out of scope"}, accepte_par_le_client: {fr: "Accepté par le client", en: "Accepted by the customer"}}, required: true }
-          - { key: commentaire, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
-      - key: reverifier
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: enum, values: [false_positive, out_of_scope, accepted_by_client], labels: {false_positive: {fr: "Faux positif", en: "False positive"}, out_of_scope: {fr: "Hors périmètre", en: "Out of scope"}, accepted_by_client: {fr: "Accepté par le client", en: "Accepted by the customer"}}, required: true }
+          - { key: comment, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 2000 }
+      - key: recheck
         name: Check again
         names: {fr: "Revérifier"}
   - key: procedure
@@ -199,111 +200,111 @@ types:
     icon: workflow
     may_be_contained_in: [folder]
     properties:
-      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [aucun, r1, r2, r3, r4, retrait_propose], labels: {aucun: {fr: "Aucun", en: "None"}, r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, retrait_propose: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, indexed: true }
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [ouverte, en_attente_validation, suspendue, close], labels: {ouverte: {fr: "Ouverte", en: "Open"}, en_attente_validation: {fr: "En attente de validation", en: "Awaiting validation"}, suspendue: {fr: "Suspendue", en: "Suspended"}, close: {fr: "Close", en: "Closed"}}, required: true, indexed: true }
-      - { key: prochaine_echeance, name: Next due date, names: {fr: "Prochaine échéance"}, kind: date, indexed: true }
-      - { key: ouverte_le, name: Opened on, names: {fr: "Ouverte le"}, kind: date }
-      - { key: close_le, name: Closed on, names: {fr: "Close le"}, kind: date }
-      - { key: motif_cloture, name: Closing reason, names: {fr: "Motif de clôture"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], labels: {corrige: {fr: "Corrigé", en: "Fixed"}, retrait_effectue: {fr: "Retrait effectué", en: "Withdrawn"}, fin_partenariat: {fr: "Fin de partenariat", en: "Partnership ended"}} }
+      - { key: level, name: Level, names: {fr: "Niveau"}, kind: enum, values: [none, r1, r2, r3, r4, removal_proposed], labels: {none: {fr: "Aucun", en: "None"}, r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, removal_proposed: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, indexed: true }
+      - { key: state, name: State, names: {fr: "État"}, kind: enum, values: [open, awaiting_validation, suspended, closed], labels: {open: {fr: "Ouverte", en: "Open"}, awaiting_validation: {fr: "En attente de validation", en: "Awaiting validation"}, suspended: {fr: "Suspendue", en: "Suspended"}, closed: {fr: "Close", en: "Closed"}}, required: true, indexed: true }
+      - { key: next_due, name: Next due date, names: {fr: "Prochaine échéance"}, kind: date, indexed: true }
+      - { key: opened_on, name: Opened on, names: {fr: "Ouverte le"}, kind: date }
+      - { key: closed_on, name: Closed on, names: {fr: "Close le"}, kind: date }
+      - { key: closing_reason, name: Closing reason, names: {fr: "Motif de clôture"}, kind: enum, values: [fixed, removal_done, partnership_end], labels: {fixed: {fr: "Corrigé", en: "Fixed"}, removal_done: {fr: "Retrait effectué", en: "Withdrawn"}, partnership_end: {fr: "Fin de partenariat", en: "Partnership ended"}} }
       - { key: contact_email, name: Compliance contact, names: {fr: "Contact conformité"}, kind: text, max_len: 254 }
-      - { key: copie_email, name: Copy to, names: {fr: "Copie à"}, kind: text, max_len: 254 }
+      - { key: email_copy, name: Copy to, names: {fr: "Copie à"}, kind: text, max_len: 254 }
     actions:
-      - key: valider_envoi
+      - key: approve_send
         name: Approve sending
         names: {fr: "Valider l'envoi"}
         confirm: true
         params:
-          - { key: relance_id, name: Reminder, names: {fr: "Relance"}, kind: ref, to_type: relance, required: true }
-          - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
-      - key: envoyer_maintenant
+          - { key: reminder_id, name: Reminder, names: {fr: "Relance"}, kind: ref, to_type: reminder, required: true }
+          - { key: changed_text, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
+      - key: send_now
         name: Send now
         names: {fr: "Envoyer maintenant"}
         confirm: true
         params:
-          - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}}, required: true }
-      - key: suspendre
+          - { key: level, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}}, required: true }
+      - key: suspend
         name: Suspend
         names: {fr: "Suspendre"}
         params:
-          - { key: jusqu_au, name: Until, names: {fr: "Jusqu'au"}, kind: date }
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
-      - key: reprendre
+          - { key: until, name: Until, names: {fr: "Jusqu'au"}, kind: date }
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500, required: true }
+      - key: resume
         name: Resume
         names: {fr: "Reprendre"}
         params:
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500 }
-      - key: marquer_corrige
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: text, max_len: 500 }
+      - key: mark_fixed
         name: Mark as fixed
         names: {fr: "Marquer corrigé"}
         params:
-          - { key: source, name: Reported by, names: {fr: "Signalé par"}, kind: enum, values: [partenaire, client], labels: {partenaire: {fr: "Partenaire", en: "Partner"}, client: {fr: "Client", en: "Customer"}}, required: true }
-      - key: clore
+          - { key: source, name: Reported by, names: {fr: "Signalé par"}, kind: enum, values: [partner, customer], labels: {partner: {fr: "Partenaire", en: "Partner"}, customer: {fr: "Client", en: "Customer"}}, required: true }
+      - key: close
         name: Close
         names: {fr: "Clore"}
         confirm: true
         params:
-          - { key: motif, name: Reason, names: {fr: "Motif"}, kind: enum, values: [corrige, retrait_effectue, fin_partenariat], labels: {corrige: {fr: "Corrigé", en: "Fixed"}, retrait_effectue: {fr: "Retrait effectué", en: "Withdrawn"}, fin_partenariat: {fr: "Fin de partenariat", en: "Partnership ended"}}, required: true }
-  - key: relance
+          - { key: reason, name: Reason, names: {fr: "Motif"}, kind: enum, values: [fixed, removal_done, partnership_end], labels: {fixed: {fr: "Corrigé", en: "Fixed"}, removal_done: {fr: "Retrait effectué", en: "Withdrawn"}, partnership_end: {fr: "Fin de partenariat", en: "Partnership ended"}}, required: true }
+  - key: reminder
     name: Reminder
     names: {fr: "Relance"}
     icon: newspaper
     may_be_contained_in: [folder]
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
-      - { key: niveau, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4, retrait_propose], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, retrait_propose: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, required: true }
-      - { key: envoyee_le, name: Sent on, names: {fr: "Envoyée le"}, kind: date_time }
-      - { key: destinataire, name: Recipient, names: {fr: "Destinataire"}, kind: text, max_len: 254 }
-      - { key: modele, name: Template, names: {fr: "Modèle"}, kind: text, max_len: 255 }
-      - { key: etat, name: State, names: {fr: "État"}, kind: enum, values: [a_valider, envoyee, echec], labels: {a_valider: {fr: "À valider", en: "To validate"}, envoyee: {fr: "Envoyée", en: "Sent"}, echec: {fr: "Échec", en: "Failed"}}, required: true, indexed: true }
-      - { key: texte_modifie, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
-      - { key: lien_corrige_ouvert_le, name: Fix link opened on, names: {fr: "Lien « corrigé » ouvert le"}, kind: date_time }
-  - key: competence
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, unique: true }
+      - { key: level, name: Level, names: {fr: "Niveau"}, kind: enum, values: [r1, r2, r3, r4, removal_proposed], labels: {r1: {fr: "R1", en: "R1"}, r2: {fr: "R2", en: "R2"}, r3: {fr: "R3", en: "R3"}, r4: {fr: "R4", en: "R4"}, removal_proposed: {fr: "Retrait proposé", en: "Withdrawal proposed"}}, required: true }
+      - { key: sent_on, name: Sent on, names: {fr: "Envoyée le"}, kind: date_time }
+      - { key: recipient, name: Recipient, names: {fr: "Destinataire"}, kind: text, max_len: 254 }
+      - { key: template, name: Template, names: {fr: "Modèle"}, kind: text, max_len: 255 }
+      - { key: state, name: State, names: {fr: "État"}, kind: enum, values: [to_validate, sent, failed], labels: {to_validate: {fr: "À valider", en: "To validate"}, sent: {fr: "Envoyée", en: "Sent"}, failed: {fr: "Échec", en: "Failed"}}, required: true, indexed: true }
+      - { key: changed_text, name: Edited text, names: {fr: "Texte modifié"}, kind: text, max_len: 4000 }
+      - { key: fix_link_opened_on, name: Fix link opened on, names: {fr: "Lien « corrigé » ouvert le"}, kind: date_time }
+  - key: skill
     name: Competency
     names: {fr: "Compétence"}
     icon: cube
     may_be_contained_in: [folder]
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 64, required: true, unique: true }
-      - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
-      - { key: libelle, name: Official wording, names: {fr: "Libellé officiel"}, kind: text, max_len: 10000 }
-      - { key: nature, name: Kind, names: {fr: "Nature"}, kind: enum, values: [competence, bloc], labels: {competence: {fr: "Compétence", en: "Skill"}, bloc: {fr: "Bloc", en: "Block"}}, indexed: true }
-  - key: programme
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 64, required: true, unique: true }
+      - { key: rank, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
+      - { key: label, name: Official wording, names: {fr: "Libellé officiel"}, kind: text, max_len: 10000 }
+      - { key: nature, name: Kind, names: {fr: "Nature"}, kind: enum, values: [skill, skill_block], labels: {skill: {fr: "Compétence", en: "Skill"}, skill_block: {fr: "Bloc", en: "Block"}}, indexed: true }
+  - key: syllabus
     name: Programme
     names: {fr: "Programme"}
     icon: layers
     may_be_contained_in: [folder]
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
-      - { key: role, name: Role, names: {fr: "Rôle"}, kind: enum, values: [reference, partenaire], labels: {reference: {fr: "Référence", en: "Reference"}, partenaire: {fr: "Partenaire", en: "Partner"}}, indexed: true }
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: role, name: Role, names: {fr: "Rôle"}, kind: enum, values: [reference, partner], labels: {reference: {fr: "Référence", en: "Reference"}, partner: {fr: "Partenaire", en: "Partner"}}, indexed: true }
       - { key: version, name: Version, names: {fr: "Version"}, kind: number, min: 1 }
       - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
-      - { key: format, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [presentiel, distanciel, mixte], labels: {presentiel: {fr: "Présentiel", en: "On site"}, distanciel: {fr: "Distanciel", en: "Remote"}, mixte: {fr: "Mixte", en: "Blended"}} }
-      - { key: heures_synchrones, name: Live hours, names: {fr: "Heures synchrones"}, kind: number, unit: h, min: 0 }
-      - { key: heures_preparation, name: Preparation hours, names: {fr: "Heures de préparation"}, kind: number, unit: h, min: 0 }
-      - { key: heures_total, name: Total hours, names: {fr: "Heures au total"}, kind: number, unit: h, min: 0 }
-      - { key: recu_le, name: Received on, names: {fr: "Reçu le"}, kind: date }
+      - { key: format, name: Delivery, names: {fr: "Modalité"}, kind: enum, values: [on_site, remote, blended], labels: {on_site: {fr: "Présentiel", en: "On site"}, remote: {fr: "Distanciel", en: "Remote"}, blended: {fr: "Mixte", en: "Blended"}} }
+      - { key: live_hours, name: Live hours, names: {fr: "Heures synchrones"}, kind: number, unit: h, min: 0 }
+      - { key: prep_hours, name: Preparation hours, names: {fr: "Heures de préparation"}, kind: number, unit: h, min: 0 }
+      - { key: total_hours, name: Total hours, names: {fr: "Heures au total"}, kind: number, unit: h, min: 0 }
+      - { key: received_on, name: Received on, names: {fr: "Reçu le"}, kind: date }
   - key: module
     name: Module
     names: {fr: "Module"}
     icon: file-text
     may_be_contained_in: [folder]
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
-      - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
-      - { key: titre, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
-      - { key: heures, name: Hours, names: {fr: "Heures"}, kind: number, unit: h, min: 0 }
-      - { key: contenu, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 20000 }
-      - { key: cas_pratique, name: Case study, names: {fr: "Cas pratique"}, kind: text, max_len: 4000 }
-      - { key: livrable, name: Deliverable, names: {fr: "Livrable"}, kind: text, max_len: 2000 }
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: rank, name: Rank, names: {fr: "Rang"}, kind: number, min: 0 }
+      - { key: heading, name: Title, names: {fr: "Titre"}, kind: text, max_len: 500 }
+      - { key: hours, name: Hours, names: {fr: "Heures"}, kind: number, unit: h, min: 0 }
+      - { key: content, name: Content, names: {fr: "Contenu"}, kind: text, max_len: 20000 }
+      - { key: case_study, name: Case study, names: {fr: "Cas pratique"}, kind: text, max_len: 4000 }
+      - { key: deliverable, name: Deliverable, names: {fr: "Livrable"}, kind: text, max_len: 2000 }
 link_types:
-  - key: porte
+  - key: holds
     name: holds
     names: {fr: "porte"}
     inverse_name: is held by
     inverse_names: {fr: "est portée par"}
     from_types: [organization]
     to_types: [certification]
-  - key: habilite_pour
+  - key: accredited_for
     name: is accredited for
     names: {fr: "est habilité pour"}
     inverse_name: accredits
@@ -311,73 +312,73 @@ link_types:
     from_types: [organization]
     to_types: [certification]
     attributes:
-      - { key: perimetre, name: Scope, names: {fr: "Périmètre"}, kind: enum, values: [preparation, evaluation, les_deux], labels: {preparation: {fr: "Préparation", en: "Preparation"}, evaluation: {fr: "Évaluation", en: "Assessment"}, les_deux: {fr: "Les deux", en: "Both"}} }
-      - { key: declaree_fc, name: Declared to France Compétences, names: {fr: "Déclarée à France Compétences"}, kind: bool }
-      - { key: reference_convention, name: Agreement reference, names: {fr: "Référence de la convention"}, kind: text, max_len: 255 }
-      - { key: date_fin, name: Accredited until, names: {fr: "Habilité jusqu'au"}, kind: date }
+      - { key: scope, name: Scope, names: {fr: "Périmètre"}, kind: enum, values: [preparation, assessment, both], labels: {preparation: {fr: "Préparation", en: "Preparation"}, assessment: {fr: "Évaluation", en: "Assessment"}, both: {fr: "Les deux", en: "Both"}} }
+      - { key: declared_fc, name: Declared to France Compétences, names: {fr: "Déclarée à France Compétences"}, kind: bool }
+      - { key: agreement_ref, name: Agreement reference, names: {fr: "Référence de la convention"}, kind: text, max_len: 255 }
+      - { key: ends_on, name: Accredited until, names: {fr: "Habilité jusqu'au"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 255 }
-      - { key: etat_fc, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [actif, inactif], labels: {actif: {fr: "Actif", en: "Active"}, inactif: {fr: "Inactif", en: "Inactive"}} }
-      - { key: date_actif, name: Active since, names: {fr: "Actif depuis"}, kind: date }
-      - { key: date_etat, name: State changed on, names: {fr: "État modifié le"}, kind: date }
-  - key: page_de
+      - { key: fc_state, name: France Compétences state, names: {fr: "État France Compétences"}, kind: enum, values: [active, inactive], labels: {active: {fr: "Actif", en: "Active"}, inactive: {fr: "Inactif", en: "Inactive"}} }
+      - { key: active_since, name: Active since, names: {fr: "Actif depuis"}, kind: date }
+      - { key: state_date, name: State changed on, names: {fr: "État modifié le"}, kind: date }
+  - key: page_of
     name: is a page of
     names: {fr: "est une page de"}
     inverse_name: has as page
     inverse_names: {fr: "a pour page"}
-    from_types: [page_observee]
-    to_types: [site_web]
+    from_types: [observed_page]
+    to_types: [website]
     one_target: true
-  - key: prouve_par
+  - key: proven_by
     name: is proven by
     names: {fr: "est prouvée par"}
     inverse_name: proves
     inverse_names: {fr: "prouve"}
-    from_types: [page_observee]
+    from_types: [observed_page]
     to_types: [media_asset]
     evidence: true
     attributes:
       - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
       - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
       - { key: kind, name: Part, names: {fr: "Partie"}, kind: enum, values: [capture, html, text], labels: {capture: {fr: "Capture", en: "Screenshot"}, html: {fr: "HTML", en: "HTML"}, text: {fr: "Texte", en: "Text"}} }
-  - key: offre_de
+  - key: offer_of
     name: is an offer of
     names: {fr: "est une offre de"}
     inverse_name: offers
     inverse_names: {fr: "propose"}
-    from_types: [offre_cpf]
+    from_types: [cpf_offer]
     to_types: [organization]
     one_target: true
     attributes:
-      - { key: rapproche_par, name: Matched by, names: {fr: "Rapprochée par"}, kind: enum, values: [siret, nda, nom], labels: {siret: {fr: "SIRET", en: "SIRET"}, nda: {fr: "NDA", en: "NDA"}, nom: {fr: "Nom", en: "Name"}} }
-  - key: porte_sur
-    name: is about
+      - { key: matched_by, name: Matched by, names: {fr: "Rapprochée par"}, kind: enum, values: [siret, nda, name], labels: {siret: {fr: "SIRET", en: "SIRET"}, nda: {fr: "NDA", en: "NDA"}, name: {fr: "Nom", en: "Name"}} }
+  - key: offer_for
+    name: is an offer for
     names: {fr: "porte sur"}
     inverse_name: is the subject of
     inverse_names: {fr: "fait l'objet de"}
-    from_types: [offre_cpf]
+    from_types: [cpf_offer]
     to_types: [certification]
-  - key: concerne
+  - key: concerns
     name: concerns
     names: {fr: "concerne"}
     inverse_name: is concerned by
     inverse_names: {fr: "est concerné par"}
-    from_types: [ecart]
+    from_types: [finding]
     to_types: [organization]
     one_target: true
-  - key: sur
+  - key: finding_on
     name: bears on
     names: {fr: "porte sur la certification"}
     inverse_name: has as finding
     inverse_names: {fr: "a pour écart"}
-    from_types: [ecart]
+    from_types: [finding]
     to_types: [certification]
-  - key: constate_dans
+  - key: observed_in
     name: is observed in
     names: {fr: "est constaté dans"}
     inverse_name: shows
     inverse_names: {fr: "montre"}
-    from_types: [ecart]
-    to_types: [page_observee, offre_cpf, media_asset, programme, module]
+    from_types: [finding]
+    to_types: [observed_page, cpf_offer, media_asset, syllabus, module]
     # Evidence (external-apps.md D437): a finding seen in a page gets the
     # parts of the page's next sealed proof, with their seal.
     evidence: true
@@ -385,22 +386,22 @@ link_types:
       - { key: locator, name: Locator, names: {fr: "Repère"}, kind: text, max_len: 255 }
       - { key: captured_at, name: Captured at, names: {fr: "Capturée le"}, kind: date_time }
       - { key: sha256_manifest, name: Manifest SHA-256, names: {fr: "SHA-256 du manifeste"}, kind: text, max_len: 64 }
-  - key: selon
+  - key: per
     name: follows the rule
     names: {fr: "selon la règle"}
     inverse_name: produced
     inverse_names: {fr: "a produit"}
-    from_types: [ecart]
-    to_types: [regle]
+    from_types: [finding]
+    to_types: [compliance_rule]
     one_target: true
-  - key: traite_par
+  - key: handled_by
     name: is handled by
     names: {fr: "est traité par"}
     inverse_name: handles
     inverse_names: {fr: "traite"}
-    from_types: [ecart]
+    from_types: [finding]
     to_types: [procedure]
-  - key: procedure_de
+  - key: procedure_of
     name: is a procedure of
     names: {fr: "est une procédure de"}
     inverse_name: has as procedure
@@ -408,72 +409,72 @@ link_types:
     from_types: [procedure]
     to_types: [organization]
     one_target: true
-  - key: relance_de
+  - key: reminder_of
     name: is a reminder of
     names: {fr: "est une relance de"}
     inverse_name: has as reminder
     inverse_names: {fr: "a pour relance"}
-    from_types: [relance]
+    from_types: [reminder]
     to_types: [procedure]
     one_target: true
-  - key: competence_de
+  - key: skill_of
     name: is a competency of
     names: {fr: "est une compétence de"}
     inverse_name: has as competency
     inverse_names: {fr: "a pour compétence"}
-    from_types: [competence]
+    from_types: [skill]
     to_types: [certification]
     one_target: true
-  - key: programme_pour
+  - key: syllabus_for
     name: prepares for
     names: {fr: "prépare à"}
     inverse_name: is prepared by
     inverse_names: {fr: "est préparée par"}
-    from_types: [programme]
+    from_types: [syllabus]
     to_types: [certification]
     one_target: true
-  - key: programme_de
+  - key: syllabus_of
     name: is a programme of
     names: {fr: "est un programme de"}
     inverse_name: has as programme
     inverse_names: {fr: "a pour programme"}
-    from_types: [programme]
+    from_types: [syllabus]
     to_types: [organization]
     one_target: true
-  - key: module_de
+  - key: module_of
     name: is a module of
     names: {fr: "est un module de"}
     inverse_name: has as module
     inverse_names: {fr: "a pour module"}
     from_types: [module]
-    to_types: [programme]
+    to_types: [syllabus]
     one_target: true
-  - key: couvre
+  - key: covers
     name: covers
     names: {fr: "couvre"}
     inverse_name: is covered by
     inverse_names: {fr: "est couverte par"}
     from_types: [module]
-    to_types: [competence]
+    to_types: [skill]
     attributes:
-      - { key: rapproche_par, name: Matched by, names: {fr: "Rapproché par"}, kind: enum, values: [code_cite, intitule, llm, humain], labels: {code_cite: {fr: "Code cité", en: "Quoted code"}, intitule: {fr: "Intitulé", en: "Title"}, llm: {fr: "LLM", en: "LLM"}, humain: {fr: "Humain", en: "Human"}} }
-      - { key: extrait, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
-      - { key: confiance, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
-      - { key: valide, name: Validated, names: {fr: "Validé"}, kind: bool }
+      - { key: matched_by, name: Matched by, names: {fr: "Rapproché par"}, kind: enum, values: [code_cited, official_title, llm, human], labels: {code_cited: {fr: "Code cité", en: "Quoted code"}, official_title: {fr: "Intitulé", en: "Title"}, llm: {fr: "LLM", en: "LLM"}, human: {fr: "Humain", en: "Human"}} }
+      - { key: excerpt, name: Excerpt (word for word), names: {fr: "Extrait (mot pour mot)"}, kind: text, max_len: 2000 }
+      - { key: confidence, name: Confidence, names: {fr: "Confiance"}, kind: number, min: 0, max: 1 }
+      - { key: valid, name: Validated, names: {fr: "Validé"}, kind: bool }
 hierarchies:
-  - key: reseau
+  - key: network
     name: Network
     names: {fr: "Réseau"}
     steps:
-      - { link: habilite_pour, inverse: true }
-      - { link: a_pour_site }
-      - { link: page_de, inverse: true }
+      - { link: accredited_for, inverse: true }
+      - { link: has_website }
+      - { link: page_of, inverse: true }
 imports:
   - name: Partner network (sheet)
     source: file
     mode: snapshot
     mapping:
-      key: reseau_partenaires
+      key: partner_network
       name: Partner network
       names: {fr: "Réseau des partenaires"}
       objects:
@@ -484,10 +485,10 @@ imports:
           properties:
             siren: { from: siret, convert: [digits, "left:9", luhn] }
             nda: { from: nda, convert: [digits] }
-            contact_conformite_email: { from: contact_conformite_email, convert: [email] }
-            contact_conformite_nom: contact_conformite_nom
-            contact_telephone: contact_telephone
-            charge_reseau_email: { from: charge_reseau_email, convert: [email] }
+            compliance_contact_email: { from: contact_conformite_email, convert: [email] }
+            compliance_contact_name: contact_conformite_nom
+            contact_phone: contact_telephone
+            network_manager_email: { from: charge_reseau_email, convert: [email] }
         - as: cert
           type: certification
           key: code
@@ -495,24 +496,24 @@ imports:
           properties:
             code: { from: code_certification, convert: [trim, upper] }
         - as: site
-          type: site_web
-          key: domaine
+          type: website
+          key: domain
           each: { from: site_web, convert: ["split:;"] }
           properties:
-            url_racine: { from: ".", convert: [url_origin] }
-            domaine: { from: ".", convert: [domain] }
+            root_url: { from: ".", convert: [url_origin] }
+            domain: { from: ".", convert: [domain] }
       links:
-        - type: habilite_pour
+        - type: accredited_for
           from: org
           to: cert
           valid_from: { from: date_debut_habilitation, convert: ["date:%d/%m/%Y"] }
           attributes:
-            perimetre: perimetre
-            declaree_fc: { from: declaree_france_competences, convert: [{ enum: { oui: "true", non: "false" } }] }
-            reference_convention: reference_convention
-            date_fin: { from: date_fin_habilitation, convert: ["date:%d/%m/%Y"] }
+            scope: { from: perimetre, convert: [{ enum: { les_deux: both, preparation: preparation, evaluation: assessment, both: both, assessment: assessment } }] }
+            declared_fc: { from: declaree_france_competences, convert: [{ enum: { oui: "true", non: "false" } }] }
+            agreement_ref: reference_convention
+            ends_on: { from: date_fin_habilitation, convert: ["date:%d/%m/%Y"] }
             source: { value: "import" }
-        - { type: a_pour_site, from: org, to: site }
+        - { type: has_website, from: org, to: site }
   - name: France Compétences · certifiers
     source: file
     mode: incremental
@@ -523,8 +524,8 @@ imports:
         - { step: file_download }
         - { step: archive_extract, entries: ["*Certificateurs*.csv"] }
         - { step: table_inspect, entry: "*Certificateurs*.csv", expected_columns: [Numero_Fiche, Siret_Certificateur, Nom_Certificateur] }
-        - { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, setting: quali_watch.certificateurs, convert: [digits] }
-      key: fc_certificateurs
+        - { step: rows_filter, entry: "*Certificateurs*.csv", column: Siret_Certificateur, op: in, setting: quali_watch.certifiers, convert: [digits] }
+      key: fc_certifiers
       name: France Compétences certifiers
       names: {fr: "Certificateurs France Compétences"}
       format: csv
@@ -541,10 +542,10 @@ imports:
           key: code
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
-            numero: { from: Numero_Fiche, convert: [digits] }
-            repertoire: { from: Numero_Fiche, convert: [trim, upper, "left:2", { enum: { RN: rncp, RS: rs } }] }
+            number: { from: Numero_Fiche, convert: [digits] }
+            register: { from: Numero_Fiche, convert: [trim, upper, "left:2", { enum: { RN: rncp, RS: rs } }] }
       links:
-        - { type: porte, from: org, to: cert, close_missing: false }
+        - { type: holds, from: org, to: cert, close_missing: false }
   - name: France Compétences · sheets
     source: file
     mode: incremental
@@ -556,7 +557,7 @@ imports:
         - { step: archive_extract, entries: ["*Standard*.csv"] }
         - { step: table_inspect, entry: "*Standard*.csv", expected_columns: [Numero_Fiche, Intitule, Nomenclature_Europe_Niveau, Date_Decision, Date_Fin_Enregistrement, Date_Effet, Actif] }
         - { step: rows_filter, entry: "*Standard*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
-      key: fc_fiches
+      key: fc_sheets
       name: France Compétences sheets
       names: {fr: "Fiches France Compétences"}
       format: csv
@@ -570,13 +571,13 @@ imports:
           missing: skip
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
-            numero: { from: Numero_Fiche, convert: [digits] }
-            intitule: { from: Intitule, convert: [trim], invalid: skip }
-            niveau: { from: Nomenclature_Europe_Niveau, convert: [trim] }
+            number: { from: Numero_Fiche, convert: [digits] }
+            official_title: { from: Intitule, convert: [trim], invalid: skip }
+            level: { from: Nomenclature_Europe_Niveau, convert: [trim] }
             # RS sheets leave Date_Effet empty: Date_Decision then.
-            date_enregistrement: { concat: [Date_Effet, Date_Decision], sep: "|", convert: ["before:|", "date:%d/%m/%Y"] }
-            date_echeance: { from: Date_Fin_Enregistrement, convert: ["date:%d/%m/%Y"] }
-            statut: { from: Actif, convert: [{ enum: { ACTIVE: actif, INACTIVE: inactif } }] }
+            registered_on: { concat: [Date_Effet, Date_Decision], sep: "|", convert: ["before:|", "date:%d/%m/%Y"] }
+            expires_on: { from: Date_Fin_Enregistrement, convert: ["date:%d/%m/%Y"] }
+            status: { from: Actif, convert: [{ enum: { ACTIVE: active, INACTIVE: inactive } }] }
   - name: France Compétences · partners
     source: file
     mode: snapshot
@@ -588,7 +589,7 @@ imports:
         - { step: archive_extract, entries: ["*Partenaires*.csv"] }
         - { step: table_inspect, entry: "*Partenaires*.csv", expected_columns: [Numero_Fiche, Nom_Partenaire, Siret_Partenaire, Habilitation_Partenaire] }
         - { step: rows_filter, entry: "*Partenaires*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
-      key: fc_partenaires
+      key: fc_partners
       name: France Compétences partners
       names: {fr: "Partenaires France Compétences"}
       format: csv
@@ -607,15 +608,15 @@ imports:
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
       links:
-        - type: habilite_pour
+        - type: accredited_for
           from: org
           to: cert
           attributes:
-            perimetre: { from: Habilitation_Partenaire, convert: [{ enum: { HABILITATION_ORGA_FORM: les_deux, HABILITATION_FORMER: preparation, HABILITATION_ORGANISER: evaluation } }] }
-            declaree_fc: { value: true }
+            scope: { from: Habilitation_Partenaire, convert: [{ enum: { HABILITATION_ORGA_FORM: both, HABILITATION_FORMER: preparation, HABILITATION_ORGANISER: assessment } }] }
+            declared_fc: { value: true }
             source: { value: france_competences }
           # Several SIRET of one SIREN with different scopes: both.
-          on_conflict: { perimetre: les_deux }
+          on_conflict: { scope: both }
   - name: France Compétences · skill blocks
     source: file
     mode: snapshot
@@ -627,7 +628,7 @@ imports:
         - { step: archive_extract, entries: ["*Blocs_De_Comp*.csv"] }
         - { step: table_inspect, entry: "*Blocs_De_Comp*.csv", expected_columns: [Numero_Fiche, Bloc_Competences_Code, Bloc_Competences_Libelle] }
         - { step: rows_filter, entry: "*Blocs_De_Comp*.csv", column: Numero_Fiche, op: in_objects, object_type: certification, property: code, convert: [trim, upper] }
-      key: fc_blocs
+      key: fc_blocks
       name: France Compétences skill blocks
       names: {fr: "Blocs de compétences France Compétences"}
       format: csv
@@ -640,17 +641,17 @@ imports:
           properties:
             code: { from: Numero_Fiche, convert: [trim, upper] }
         - as: bloc
-          type: competence
-          key: cle
+          type: skill
+          key: ref
           title: { from: Bloc_Competences_Libelle, convert: [trim] }
           close_missing: true
           properties:
-            cle: { from: Bloc_Competences_Code, convert: [trim, upper] }
-            rang: { from: Bloc_Competences_Code, convert: [trim, upper, "after:BC", digits] }
-            libelle: { from: Bloc_Competences_Libelle, convert: [trim] }
-            nature: { value: bloc }
+            ref: { from: Bloc_Competences_Code, convert: [trim, upper] }
+            rank: { from: Bloc_Competences_Code, convert: [trim, upper, "after:BC", digits] }
+            label: { from: Bloc_Competences_Libelle, convert: [trim] }
+            nature: { value: skill_block }
       links:
-        - { type: competence_de, from: bloc, to: cert }
+        - { type: skill_of, from: bloc, to: cert }
   - name: France Compétences · RS sheets (XML)
     source: file
     mode: snapshot
@@ -676,26 +677,26 @@ imports:
           missing: skip
           properties:
             code: { from: NUMERO_FICHE, convert: [trim, upper] }
-            objectifs: { from: OBJECTIFS_CONTEXTE, convert: [trim] }
-            prerequis: { from: PREREQUIS_ENTREE_FORMATION, convert: [trim] }
+            objectives: { from: OBJECTIFS_CONTEXTE, convert: [trim] }
+            prerequisites: { from: PREREQUIS_ENTREE_FORMATION, convert: [trim] }
             # The first jury described, whatever the access route.
             jury: { concat: [SI_JURY_FC.COMPOSITION, SI_JURY_FI.COMPOSITION, SI_JURY_VAE.COMPOSITION, SI_JURY_CQ.COMPOSITION, SI_JURY_CL.COMPOSITION], sep: "|", convert: ["before:|"] }
             # The latest year: the register lists them in no set order.
-            nb_certifies: { from: STATISTIQUES_PROMOTIONS.STATISTIQUES_PROMOTION, convert: ["max_by:ANNEE", "field:NOMBRE_CERTIFIES"] }
+            certified_count: { from: STATISTIQUES_PROMOTIONS.STATISTIQUES_PROMOTION, convert: ["max_by:ANNEE", "field:NOMBRE_CERTIFIES"] }
             url_description: { from: LIEN_URL_DESCRIPTION, convert: [trim], invalid: skip }
         - as: comp
-          type: competence
-          key: cle
+          type: skill
+          key: ref
           needs: cert
           close_missing: true
           # One competency per paragraph (runs of 3 blanks or more).
           each: { from: CAPACITES_ATTESTEES, convert: ["split_spaces:3"] }
           title: "."
           properties:
-            cle: { concat: ["^NUMERO_FICHE", "#"], sep: "-C", convert: [upper] }
-            rang: "#"
-            libelle: "."
-            nature: { value: competence }
+            ref: { concat: ["^NUMERO_FICHE", "#"], sep: "-C", convert: [upper] }
+            rank: "#"
+            label: "."
+            nature: { value: skill }
         - as: org
           type: organization
           key: siren
@@ -705,30 +706,30 @@ imports:
           properties:
             siren: { from: SIRET_PARTENAIRE, convert: [digits, "left:9"] }
       links:
-        - { type: competence_de, from: comp, to: cert }
-        # Only completes the accreditations fc_partenaires opened.
-        - type: habilite_pour
+        - { type: skill_of, from: comp, to: cert }
+        # Only completes the accreditations fc_partners opened.
+        - type: accredited_for
           from: org
           to: cert
           create: false
           close_missing: false
           attributes:
-            etat_fc: { from: ETAT_HABILITATION, convert: [trim, { enum: { Actif: actif, Inactif: inactif } }] }
-            date_actif: { from: DATE_ACTIF, convert: ["date:%d/%m/%Y"] }
-            date_etat: { from: DATE_DERNIERE_MODIFICATION_ETAT, convert: ["date:%d/%m/%Y"] }
+            fc_state: { from: ETAT_HABILITATION, convert: [trim, { enum: { Actif: active, Inactif: inactive } }] }
+            active_since: { from: DATE_ACTIF, convert: ["date:%d/%m/%Y"] }
+            state_date: { from: DATE_DERNIERE_MODIFICATION_ETAT, convert: ["date:%d/%m/%Y"] }
           # Several SIRET of one SIREN: active when one of them is.
-          on_conflict: { etat_fc: actif }
+          on_conflict: { fc_state: active }
   - name: Company register · network (SIRENE)
     source: api
     source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
     max_pages: 200
     mapping:
-      key: qw_recherche_entreprises
+      key: qw_company_search
       name: Company register (network)
       names: {fr: "Recherche d'entreprises (réseau)"}
       format: json
       rows: results
-      per_object: { type: organization, property: siren, param: q, linked: [habilite_pour, porte], setting: { key: quali_watch.certifications, property: code } }
+      per_object: { type: organization, property: siren, param: q, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: ul
           type: organization
@@ -738,16 +739,16 @@ imports:
           missing: skip
           properties:
             siren: siren
-            forme_juridique: nature_juridique
+            legal_form: nature_juridique
             naf: activite_principale
-            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, C: cesse } }] }
-            date_creation: date_creation
-            date_cessation: date_fermeture
-            effectif_tranche: tranche_effectif_salarie
-            effectif_min: { from: tranche_effectif_salarie, convert: [&qw_effectif_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
-            effectif_max: { from: tranche_effectif_salarie, convert: [&qw_effectif_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
-            pays: { value: FR }
-            code_activite: { from: activite_principale, convert: ["left:5"] }
+            administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, C: ceased } }] }
+            created_on: date_creation
+            ceased_on: date_fermeture
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [&qw_headcount_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [&qw_headcount_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
+            country: { value: FR }
+            activity_code: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
         - as: siege
           type: map_pin
@@ -756,11 +757,11 @@ imports:
           location: { lat: siege.latitude, lon: siege.longitude }
           properties:
             siret: siege.siret
-            siege: { value: true }
-            etat_administratif: { from: siege.etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
-            effectif_tranche: siege.tranche_effectif_salarie
-            effectif_min: { from: siege.tranche_effectif_salarie, convert: [*qw_effectif_min] }
-            effectif_max: { from: siege.tranche_effectif_salarie, convert: [*qw_effectif_max] }
+            head_office: { value: true }
+            administrative_state: { from: siege.etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
+            headcount_band: siege.tranche_effectif_salarie
+            headcount_min: { from: siege.tranche_effectif_salarie, convert: [*qw_headcount_min] }
+            headcount_max: { from: siege.tranche_effectif_salarie, convert: [*qw_headcount_max] }
         - as: etab
           type: map_pin
           key: siret
@@ -769,19 +770,19 @@ imports:
           location: { lat: latitude, lon: longitude }
           properties:
             siret: siret
-            siege: est_siege
-            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
-            effectif_tranche: tranche_effectif_salarie
-            effectif_min: { from: tranche_effectif_salarie, convert: [*qw_effectif_min] }
-            effectif_max: { from: tranche_effectif_salarie, convert: [*qw_effectif_max] }
+            head_office: est_siege
+            administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [*qw_headcount_min] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [*qw_headcount_max] }
         - as: personne
           type: person
-          key: identifiant_registre
+          key: registry_id
           each: dirigeants
           when: { from: type_dirigeant, equals: personne physique }
           title: { concat: [prenoms, nom] }
           properties:
-            identifiant_registre: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
+            registry_id: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
         - as: holding
           type: organization
           key: siren
@@ -791,9 +792,9 @@ imports:
           properties:
             siren: siren
       links:
-        - { type: etablissement_de, from: siege, to: ul }
-        - { type: etablissement_de, from: etab, to: ul }
-        - type: dirige
+        - { type: establishment_of, from: siege, to: ul }
+        - { type: establishment_of, from: etab, to: ul }
+        - type: manages
           from: personne
           to: ul
           attributes: &qw_mandate
@@ -804,16 +805,16 @@ imports:
                 - enum:
                     "président": president
                     "président de sas": president
-                    "directeur général": directeur_general
-                    "directeur général délégué": dg_delegue
-                    "gérant": gerant
-                    "co-gérant": gerant
-                    "administrateur": administrateur
-                    "membre du directoire": membre_directoire
-                    "*": autre
-            qualite: qualite
+                    "directeur général": ceo
+                    "directeur général délégué": deputy_ceo
+                    "gérant": manager
+                    "co-gérant": manager
+                    "administrateur": director
+                    "membre du directoire": board_member
+                    "*": other
+            capacity: qualite
             source: { value: "recherche-entreprises.api.gouv.fr" }
-        - type: dirige
+        - type: manages
           from: holding
           to: ul
           attributes: *qw_mandate
@@ -827,7 +828,7 @@ imports:
       names: {fr: "Organismes de formation (DGEFP)"}
       format: json
       rows: results
-      per_object: { type: organization, property: siren, linked: [habilite_pour, porte], setting: { key: quali_watch.certifications, property: code } }
+      per_object: { type: organization, property: siren, linked: [accredited_for, holds], setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: of
           type: organization
@@ -840,10 +841,10 @@ imports:
             nda: { from: numerodeclarationactivite, convert: [digits] }
             qualiopi: { from: certifications_actionsdeformation, convert: [{ enum: { "true": "true", "*": "false" } }] }
             qualiopi_categories: { concat: [certifications.0, certifications.1, certifications.2, certifications.3], sep: "; " }
-            qualiopi_bilans: { from: certifications_bilansdecompetences, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_assessments: { from: certifications_bilansdecompetences, convert: [{ enum: { "true": "true", "*": "false" } }] }
             qualiopi_vae: { from: certifications_vae, convert: [{ enum: { "true": "true", "*": "false" } }] }
-            qualiopi_apprentissage: { from: certifications_actionsdeformationparapprentissage, convert: [{ enum: { "true": "true", "*": "false" } }] }
-            qualiopi_maj: { from: informationsdeclarees_datedernieredeclaration, convert: ["date:%d/%m/%Y"] }
+            qualiopi_apprenticeship: { from: certifications_actionsdeformationparapprentissage, convert: [{ enum: { "true": "true", "*": "false" } }] }
+            qualiopi_updated: { from: informationsdeclarees_datedernieredeclaration, convert: ["date:%d/%m/%Y"] }
   - name: CPF catalogue · RS certifications
     source: api
     source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:{value}"
@@ -853,7 +854,7 @@ imports:
       name: CPF offers (RS)
       names: {fr: "Offres CPF (RS)"}
       format: json
-      per_object: { type: certification, property: numero, only: { property: repertoire, values: [rs] }, setting: { key: quali_watch.certifications, property: code } }
+      per_object: { type: certification, property: number, only: { property: register, values: [rs] }, setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: cert
           type: certification
@@ -868,20 +869,20 @@ imports:
           properties:
             siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
         - as: offre
-          type: offre_cpf
+          type: cpf_offer
           key: id_action
           title: { concat: [nom_of, intitule_formation], sep: " · " }
           properties:
             id_action: { from: numero_formation, convert: [trim] }
-            intitule: { from: intitule_formation, convert: [trim, "left:500"] }
+            official_title: { from: intitule_formation, convert: [trim, "left:500"] }
             siret: { from: siret, convert: [digits] }
-            prix: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
-            duree_heures: { from: nombre_heures_total_mean, invalid: skip }
-            a_distance: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
-            vue_le: date_extract
+            price: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
+            duration_hours: { from: nombre_heures_total_mean, invalid: skip }
+            remote: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
+            seen_on: date_extract
       links:
-        - { type: offre_de, from: offre, to: org, attributes: { rapproche_par: { value: siret } } }
-        - { type: porte_sur, from: offre, to: cert }
+        - { type: offer_of, from: offre, to: org, attributes: { matched_by: { value: siret } } }
+        - { type: offer_for, from: offre, to: cert }
   - name: CPF catalogue · RNCP certifications
     source: api
     source_url: "https://opendata.caissedesdepots.fr/api/explore/v2.1/catalog/datasets/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RNCP&refine=code_rncp:{value}"
@@ -891,7 +892,7 @@ imports:
       name: CPF offers (RNCP)
       names: {fr: "Offres CPF (RNCP)"}
       format: json
-      per_object: { type: certification, property: numero, only: { property: repertoire, values: [rncp] }, setting: { key: quali_watch.certifications, property: code } }
+      per_object: { type: certification, property: number, only: { property: register, values: [rncp] }, setting: { key: quali_watch.certifications, property: code } }
       objects:
         - as: cert
           type: certification
@@ -906,32 +907,32 @@ imports:
           properties:
             siren: { from: siret, convert: [digits, "left:9", luhn], invalid: skip }
         - as: offre
-          type: offre_cpf
+          type: cpf_offer
           key: id_action
           title: { concat: [nom_of, intitule_formation], sep: " · " }
           properties:
             id_action: { from: numero_formation, convert: [trim] }
-            intitule: { from: intitule_formation, convert: [trim, "left:500"] }
+            official_title: { from: intitule_formation, convert: [trim, "left:500"] }
             siret: { from: siret, convert: [digits] }
-            prix: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
-            duree_heures: { from: nombre_heures_total_mean, invalid: skip }
-            a_distance: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
-            vue_le: date_extract
+            price: { from: frais_ttc_tot_mean, convert: ["money:EUR"], invalid: skip }
+            duration_hours: { from: nombre_heures_total_mean, invalid: skip }
+            remote: { from: nb_session_a_distance, convert: [{ enum: { "0": "false", "*": "true" } }] }
+            seen_on: date_extract
       links:
-        - { type: offre_de, from: offre, to: org, attributes: { rapproche_par: { value: siret } } }
-        - { type: porte_sur, from: offre, to: cert }
+        - { type: offer_of, from: offre, to: org, attributes: { matched_by: { value: siret } } }
+        - { type: offer_for, from: offre, to: cert }
 functions:
-  - name: qw_relance_suivante
+  - name: qw_next_reminder
     language: starlark
     description: Next reminder of an open procedure whose due date passed (r1 to r4 every 15 days, r3 and r4 wait for a human).
     code: |
       # Next reminder of an open procedure whose due date passed (D314):
       # r1, r2, r3, r4 every 15 days; r3 and r4 wait for a human
-      # (`a_valider`, sent by the `valider_envoi` action).
+      # (`to_validate`, sent by the `approve_send` action).
       # @output procedure any "The procedure moved on (object write by id)"
-      # @output relance any "The reminder (object write by its key)"
+      # @output reminder any "The reminder (object write by its key)"
 
-      STEPS = ["aucun", "r1", "r2", "r3", "r4"]
+      STEPS = ["none", "r1", "r2", "r3", "r4"]
       HUMAN = ["r3", "r4"]
       DELAY_DAYS = 15
 
@@ -972,61 +973,61 @@ functions:
       def handle(inputs, msg):
           p = msg["payload"]
           o = msg["object"]
-          level = p.get("niveau", "aucun")
+          level = p.get("level", "none")
           if level not in STEPS or level == "r4":
               return None
           nxt = STEPS[STEPS.index(level) + 1]
           human = nxt in HUMAN
-          today = msg.get("today", p.get("prochaine_echeance", "1970-01-01"))
+          today = msg.get("today", p.get("next_due", "1970-01-01"))
           procedure = {
               "payload": {
-                  "niveau": nxt,
-                  "prochaine_echeance": date(days(today) + DELAY_DAYS),
-                  "etat": "en_attente_validation" if human else "ouverte",
+                  "level": nxt,
+                  "next_due": date(days(today) + DELAY_DAYS),
+                  "state": "awaiting_validation" if human else "open",
               },
               "object_id": o["id"],
               "expected_version": o["version"],
           }
-          relance = {
+          reminder = {
               "payload": {
-                  "cle": o["id"] + ":" + nxt,
-                  "niveau": nxt,
-                  "etat": "a_valider" if human else "envoyee",
-                  "envoyee_le": "" if human else msg.get("now", ""),
-                  "destinataire": p.get("contact_email", ""),
+                  "ref": o["id"] + ":" + nxt,
+                  "level": nxt,
+                  "state": "to_validate" if human else "sent",
+                  "sent_on": "" if human else msg.get("now", ""),
+                  "recipient": p.get("contact_email", ""),
               },
               "title": o["title"] + " · " + nxt,
               "procedure_id": o["id"],
           }
-          return [procedure, relance]
-  - name: qw_regle_adm_01
+          return [procedure, reminder]
+  - name: qw_rule_adm_01
     language: starlark
     description: "ADM-01: a partner whose legal unit ceased, as a finding to review."
     code: |
       # ADM-01: a partner whose legal unit ceased (company register) while it
       # may still be accredited. Deterministic rule: the finding is
-      # `propose`, with the rule version (D316).
+      # `proposed`, with the rule version (D316).
       RULE = "ADM-01"
       VERSION = 1
 
       def handle(inputs, msg):
           p = msg["payload"]
           o = msg["object"]
-          ceased = p.get("date_cessation", "")
+          ceased = p.get("ceased_on", "")
           return {
               "payload": {
-                  "cle": RULE + ":" + p.get("siren", o["id"]),
-                  "attendu": "Partenaire en activité",
-                  "constate": "Unité légale cessée" + (" le " + ceased if ceased else ""),
-                  "gravite": "critique",
-                  "etat": "propose",
-                  "detecte_le": msg.get("now", ""),
-                  "regle_version": VERSION,
+                  "ref": RULE + ":" + p.get("siren", o["id"]),
+                  "expected": "Partner in business",
+                  "observed": "Legal unit ceased" + (" on " + ceased if ceased else ""),
+                  "severity": "critical",
+                  "state": "proposed",
+                  "detected_on": msg.get("now", ""),
+                  "rule_version": VERSION,
               },
               "title": RULE + " · " + o["title"],
               "organization_id": o["id"],
           }
-  - name: qw_lien
+  - name: qw_link
     language: starlark
     description: Link payload from the object just written to the procedure or organization the message names.
     code: |
@@ -1035,15 +1036,15 @@ functions:
       def handle(inputs, msg):
           target = msg.get("procedure_id", msg.get("organization_id", ""))
           return {"payload": {"source_id": msg["object"]["id"], "target_id": target}}
-  - name: qw_regles_reseau
+  - name: qw_network_rules
     language: starlark
     description: "Registry rules of the network: ADM-01, ADM-02, CPF-01, CPF-02, CPF-03, REG-01, REG-02 (findings to review)."
     code: |
       # Registry rules of the network (network-check.md D410): ADM-01, ADM-02,
       # CPF-01, CPF-02, CPF-03, REG-01 and REG-02, from one message holding the
-      # org's certifications with their accreditations (habilite_pour), offers
-      # (porte_sur) and certifiers (porte). Registry facts: findings `propose`.
-      # @output ecarts any "The findings, as a list (split them one per message)"
+      # org's certifications with their accreditations (accredited_for), offers
+      # (about) and certifiers (holds). Registry facts: findings `proposed`.
+      # @output findings any "The findings, as a list (split them one per message)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1066,22 +1067,22 @@ functions:
           return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
 
       def active(code):
-          return code not in setting_list("quali_watch.regles_inactives")
+          return code not in setting_list("quali_watch.disabled_rules")
 
-      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
+      def finding(rule, severity, state, key, title, expected, observed, quote, targets, now):
           return {
               "props": {
-                  "cle": (rule + ":" + key)[:255],
-                  "attendu": attendu[:2000],
-                  "constate": constate[:2000],
-                  "extrait": extrait[:2000],
-                  "gravite": gravite,
-                  "etat": etat,
-                  "detecte_le": now,
-                  "regle_version": VERSION,
+                  "ref": (rule + ":" + key)[:255],
+                  "expected": expected[:2000],
+                  "observed": observed[:2000],
+                  "excerpt": quote[:2000],
+                  "severity": severity,
+                  "state": state,
+                  "detected_on": now,
+                  "rule_version": VERSION,
               },
               "title": (rule + " · " + title)[:250],
-              "liens": liens,
+              "link_targets": targets,
           }
 
       VERSION = 1
@@ -1097,7 +1098,7 @@ functions:
               if codes:
                   if code in codes:
                       out.append(r)
-              elif links(r, "porte"):
+              elif links(r, "holds"):
                   out.append(r)
           return out
 
@@ -1109,10 +1110,10 @@ functions:
               cp = cert["properties"]
               code = (cp.get("code", "") or "").upper()
               certifiers = {}
-              for l in links(cert, "porte"):
+              for l in links(cert, "holds"):
                   certifiers[l["other"]["properties"].get("siren", "") or ""] = True
               habs = {}
-              for l in links(cert, "habilite_pour"):
+              for l in links(cert, "accredited_for"):
                   org = l["other"]
                   siren = org["properties"].get("siren", "") or ""
                   if siren:
@@ -1120,86 +1121,86 @@ functions:
               for siren, h in habs.items():
                   org, a = h["org"], h["a"]
                   op = org["properties"]
-                  liens = {"concerne": org["id"], "sur": cert["id"]}
+                  targets = {"concerns": org["id"], "finding_on": cert["id"]}
                   name = org["title"] + " · " + code
-                  if active("ADM-01") and op.get("etat_administratif", "") == "cesse":
-                      ceased = op.get("date_cessation", "") or ""
-                      found.append(finding("ADM-01", "critique", "propose", siren + ":" + code, name,
-                          "Partenaire en activité", "Unité légale cessée" + (" le " + ceased if ceased else "") + ", habilitation ouverte",
-                          "", liens, now))
-                  if active("ADM-02") and op.get("qualiopi_maj", "") and op.get("qualiopi") != True:
-                      found.append(finding("ADM-02", "critique", "propose", siren, org["title"],
-                          "Certification Qualiopi « actions de formation »",
-                          "Absente de la liste publique des organismes de formation (DGEFP, " + op.get("qualiopi_maj", "") + ")",
-                          op.get("qualiopi_categories", "") or "", {"concerne": org["id"]}, now))
-                  if active("REG-01") and a.get("declaree_fc") != True:
-                      found.append(finding("REG-01", "info", "propose", siren + ":" + code, name,
-                          "Habilitation déclarée à France Compétences",
-                          "Habilitation connue (" + (a.get("source", "") or "client") + ") absente des données ouvertes de France Compétences",
-                          "", liens, now))
-              for l in links(cert, "porte_sur"):
+                  if active("ADM-01") and op.get("administrative_state", "") == "ceased":
+                      ceased = op.get("ceased_on", "") or ""
+                      found.append(finding("ADM-01", "critical", "proposed", siren + ":" + code, name,
+                          "Partner in business", "Legal unit ceased" + (" on " + ceased if ceased else "") + ", accreditation open",
+                          "", targets, now))
+                  if active("ADM-02") and op.get("qualiopi_updated", "") and op.get("qualiopi") != True:
+                      found.append(finding("ADM-02", "critical", "proposed", siren, org["title"],
+                          "Qualiopi certification for training actions",
+                          "Missing from the public list of training organizations (DGEFP, " + op.get("qualiopi_updated", "") + ")",
+                          op.get("qualiopi_categories", "") or "", {"concerns": org["id"]}, now))
+                  if active("REG-01") and a.get("declared_fc") != True:
+                      found.append(finding("REG-01", "info", "proposed", siren + ":" + code, name,
+                          "Accreditation declared to France Compétences",
+                          "Accreditation known (" + (a.get("source", "") or "customer") + ") missing from the France Compétences open data",
+                          "", targets, now))
+              for l in links(cert, "offer_for"):
                   offer = l["other"]
                   pp = offer["properties"]
                   siren = (pp.get("siret", "") or "")[:9]
                   if not siren or siren in certifiers:
                       continue
-                  seen = pp.get("vue_le", "") or today
-                  liens = {"concerne": "", "sur": cert["id"], "constate_dans": offer["id"]}
+                  seen = pp.get("seen_on", "") or today
+                  targets = {"concerns": "", "finding_on": cert["id"], "observed_in": offer["id"]}
                   label = offer["title"] + " · " + code
-                  extrait = (pp.get("intitule", "") or "") + " · " + (pp.get("siret", "") or "")
+                  quote = (pp.get("official_title", "") or "") + " · " + (pp.get("siret", "") or "")
                   h = habs.get(siren)
                   if h == None:
                       if active("CPF-01"):
-                          found.append(finding("CPF-01", "critique", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
-                              "Offre CPF d'un organisme habilité sur " + code,
-                              "Organisme (SIREN " + siren + ") sans habilitation ouverte sur " + code,
-                              extrait, liens, now))
+                          found.append(finding("CPF-01", "critical", "proposed", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                              "CPF offer by an organization accredited for " + code,
+                              "Organization (SIREN " + siren + ") without an open accreditation for " + code,
+                              quote, targets, now))
                       continue
-                  liens["concerne"] = h["org"]["id"]
+                  targets["concerns"] = h["org"]["id"]
                   a = h["a"]
-                  if active("CPF-02") and a.get("perimetre", "") == "evaluation":
-                      found.append(finding("CPF-02", "majeur", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
-                          "Préparation à " + code + " dans le périmètre de l'habilitation",
-                          "Habilité à organiser l'évaluation seulement, offre de formation au CPF",
-                          extrait, liens, now))
-                  end = a.get("date_fin", "") or ""
+                  if active("CPF-02") and a.get("scope", "") == "assessment":
+                      found.append(finding("CPF-02", "major", "proposed", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                          "Preparation for " + code + " within the accreditation scope",
+                          "Accredited to run the assessment only, training offered on the CPF",
+                          quote, targets, now))
+                  end = a.get("ends_on", "") or ""
                   if active("CPF-03") and end and end < seen:
-                      found.append(finding("CPF-03", "critique", "propose", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
-                          "Aucune offre CPF après la fin d'habilitation (" + end + ")",
-                          "Offre vue au catalogue le " + seen, extrait, liens, now))
-                  if active("REG-02") and a.get("etat_fc", "") == "inactif":
-                      found.append(finding("REG-02", "critique", "propose", siren + ":" + code, label,
-                          "Aucune activité sur une habilitation inactive",
-                          "Habilitation inactive chez France Compétences" + (" depuis le " + a.get("date_etat", "") if a.get("date_etat", "") else "") + ", offre CPF vue le " + seen,
-                          extrait, liens, now))
-          return {"ecarts": found}
-  - name: qw_contexte
+                      found.append(finding("CPF-03", "critical", "proposed", siren + ":" + code + ":" + (pp.get("id_action", "") or ""), label,
+                          "No CPF offer after the accreditation end (" + end + ")",
+                          "Offer seen in the catalogue on " + seen, quote, targets, now))
+                  if active("REG-02") and a.get("fc_state", "") == "inactive":
+                      found.append(finding("REG-02", "critical", "proposed", siren + ":" + code, label,
+                          "No activity on an inactive accreditation",
+                          "Accreditation inactive at France Compétences" + (" since " + a.get("state_date", "") if a.get("state_date", "") else "") + ", CPF offer seen on " + seen,
+                          quote, targets, now))
+          return {"findings": found}
+  - name: qw_context
     language: starlark
     description: The certifications watched, their exact titles and certifiers, for the website rules.
     code: |
       # The certifications watched, with their exact title and their
-      # certifiers' names, kept in msg.reseau for the website rules.
+      # certifiers' names, kept in msg.network for the website rules.
       def setting_list(key):
           raw = pack_setting(key, "") or ""
           return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
 
       def handle(inputs, msg):
           codes = setting_list("quali_watch.certifications")
-          reseau = {}
+          network = {}
           for r in msg.get("payload", []) or []:
               p = r["properties"]
               code = (p.get("code", "") or "").upper()
-              porte = [l for l in r.get("links", {}).get("porte", []) if l.get("direction") == "in"]
-              if (codes and code not in codes) or (not codes and not porte):
+              holders = [l for l in r.get("links", {}).get("holds", []) if l.get("direction") == "in"]
+              if (codes and code not in codes) or (not codes and not holders):
                   continue
-              reseau[code] = {
+              network[code] = {
                   "id": r["id"],
-                  "intitule": p.get("intitule", "") or "",
-                  "statut": p.get("statut", "") or "",
-                  "certificateurs": [l["other"]["title"] for l in porte],
+                  "official_title": p.get("official_title", "") or "",
+                  "status": p.get("status", "") or "",
+                  "certifiers": [l["other"]["title"] for l in holders],
               }
-          return {"payload": {}, "reseau": reseau}
-  - name: qw_cibles
+          return {"payload": {}, "network": network}
+  - name: qw_targets
     language: starlark
     description: One crawl target per partner with a confirmed website, with what makes a page relevant.
     code: |
@@ -1210,42 +1211,42 @@ functions:
       CPF = ["mon compte formation", "moncompteformation", "eligible au cpf", "eligible cpf", "financable cpf", "financable par le cpf"]
 
       def handle(inputs, msg):
-          reseau = msg.get("reseau", {}) or {}
+          network = msg.get("network", {}) or {}
           l = msg.get("links", {}) or {}
-          sites = [s for s in l.get("a_pour_site", []) if s.get("direction") == "out"]
-          if not sites or not reseau:
+          sites = [s for s in l.get("has_website", []) if s.get("direction") == "out"]
+          if not sites or not network:
               return None
           # shortcut: the first website of a partner only; split per site when
           # partners with several websites show up.
           site = sites[0]["other"]
-          url = site["properties"].get("url_racine", "") or ("https://" + (site["properties"].get("domaine", "") or ""))
+          url = site["properties"].get("root_url", "") or ("https://" + (site["properties"].get("domain", "") or ""))
           habs = {}
-          for h in l.get("habilite_pour", []):
+          for h in l.get("accredited_for", []):
               if h.get("direction") != "out":
                   continue
               code = (h["other"]["properties"].get("code", "") or "").upper()
-              if code in reseau:
+              if code in network:
                   habs[code] = h.get("attributes", {}) or {}
           rules = []
-          for code, c in reseau.items():
+          for code, c in network.items():
               num = code[4:] if code.startswith("RNCP") else code[2:]
               prefix = code[:len(code) - len(num)]
               rules.append({"kind": "regex", "value": "(?i)\\b" + prefix + "\\s?" + num + "\\b"})
-              if c["intitule"]:
-                  rules.append({"kind": "phrase", "value": c["intitule"][:200]})
-              for name in c["certificateurs"][:3]:
+              if c["official_title"]:
+                  rules.append({"kind": "phrase", "value": c["official_title"][:200]})
+              for name in c["certifiers"][:3]:
                   rules.append({"kind": "phrase", "value": name[:200]})
           for w in CPF:
               rules.append({"kind": "phrase", "value": w})
           rules.append({"kind": "word", "value": "cpf"})
           p = msg.get("payload", {})
           partner = {"id": msg["object"]["id"], "title": msg["object"]["title"], "siren": p.get("siren", "") or "",
-                     "qualiopi": p.get("qualiopi"), "qualiopi_maj": p.get("qualiopi_maj", "") or "",
-                     "qualiopi_bilans": p.get("qualiopi_bilans"), "qualiopi_vae": p.get("qualiopi_vae"),
-                     "qualiopi_apprentissage": p.get("qualiopi_apprentissage"), "habilitations": habs,
+                     "qualiopi": p.get("qualiopi"), "qualiopi_updated": p.get("qualiopi_updated", "") or "",
+                     "qualiopi_assessments": p.get("qualiopi_assessments"), "qualiopi_vae": p.get("qualiopi_vae"),
+                     "qualiopi_apprenticeship": p.get("qualiopi_apprenticeship"), "accreditations": habs,
                      "site": site["id"]}
-          return {"payload": {"url": url, "match": rules[:50], "link_to": site["id"]}, "partenaire": partner, "links": None}
-  - name: qw_regles_web
+          return {"payload": {"url": url, "match": rules[:50], "link_to": site["id"]}, "partner": partner, "links": None}
+  - name: qw_web_rules
     language: starlark
     description: "Website rules on crawled pages: WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08, and COL-01 on the site summary."
     code: |
@@ -1253,8 +1254,8 @@ functions:
       # relevant page (WEB-01, WEB-02, WEB-03, WEB-04, WEB-05, WEB-06, WEB-08)
       # or the site summary (COL-01). The page text is data from an unknown
       # site: only compared, never obeyed. A rule reading a page writes its
-      # finding `a_valider` with a word-for-word excerpt of the page (D409).
-      # @output ecarts any "The findings, as a list (split them one per message)"
+      # finding `to_validate` with a word-for-word excerpt of the page (D409).
+      # @output findings any "The findings, as a list (split them one per message)"
       FOLD = {"à": "a", "â": "a", "ä": "a", "á": "a", "é": "e", "è": "e", "ê": "e", "ë": "e",
               "î": "i", "ï": "i", "ô": "o", "ö": "o", "ù": "u", "û": "u", "ü": "u", "ç": "c",
               "œ": "oe", "æ": "ae", "’": "'"}
@@ -1277,22 +1278,22 @@ functions:
           return [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()]
 
       def active(code):
-          return code not in setting_list("quali_watch.regles_inactives")
+          return code not in setting_list("quali_watch.disabled_rules")
 
-      def finding(rule, gravite, etat, key, title, attendu, constate, extrait, liens, now):
+      def finding(rule, severity, state, key, title, expected, observed, quote, targets, now):
           return {
               "props": {
-                  "cle": (rule + ":" + key)[:255],
-                  "attendu": attendu[:2000],
-                  "constate": constate[:2000],
-                  "extrait": extrait[:2000],
-                  "gravite": gravite,
-                  "etat": etat,
-                  "detecte_le": now,
-                  "regle_version": VERSION,
+                  "ref": (rule + ":" + key)[:255],
+                  "expected": expected[:2000],
+                  "observed": observed[:2000],
+                  "excerpt": quote[:2000],
+                  "severity": severity,
+                  "state": state,
+                  "detected_on": now,
+                  "rule_version": VERSION,
               },
               "title": (rule + " · " + title)[:250],
-              "liens": liens,
+              "link_targets": targets,
           }
 
       VERSION = 1
@@ -1305,11 +1306,11 @@ functions:
       # Qualiopi mark charter / RNQ reading guide; take them from that
       # reference text once provided.
       QUALIOPI_CATS = [
-          ("qualiopi_bilans", ["bilan de competences", "bilans de competences"], "bilans de compétences"),
+          ("qualiopi_assessments", ["bilan de competences", "bilans de competences"], "skills assessments"),
           ("qualiopi_vae", ["validation des acquis de l experience", "vae"], "VAE"),
-          ("qualiopi_apprentissage", ["contrat d apprentissage", "contrats d apprentissage", "formation par apprentissage",
+          ("qualiopi_apprenticeship", ["contrat d apprentissage", "contrats d apprentissage", "formation par apprentissage",
                                       "formations par apprentissage", "actions de formation par apprentissage",
-                                      "centre de formation d apprentis", "cfa", "alternance"], "apprentissage"),
+                                      "centre de formation d apprentis", "cfa", "alternance"], "apprenticeship"),
       ]
 
       def codes_in(tokens):
@@ -1371,30 +1372,30 @@ functions:
       def summary(msg, p):
           if not active("COL-01"):
               return []
-          partner = msg.get("partenaire", {}) or {}
+          partner = msg.get("partner", {}) or {}
           why = ""
           if p.get("blocked"):
-              why = "Collecte arrêtée (" + p["blocked"] + ") après " + str(p.get("pages", 0)) + " page(s)"
+              why = "Crawl stopped (" + p["blocked"] + ") after " + str(p.get("pages", 0)) + " page(s)"
           elif not p.get("relevant"):
-              why = str(p.get("pages", 0)) + " page(s) lue(s), aucune pertinente"
+              why = str(p.get("pages", 0)) + " page(s) read, none relevant"
           if not why:
               return []
-          return [finding("COL-01", "info", "propose", (partner.get("siren", "") or "") + ":" + p.get("url", ""),
-              partner.get("title", "") + " · " + p.get("url", ""), "Site lisible avec au moins une page pertinente",
-              why, "", {"concerne": partner.get("id", "")}, msg.get("now", ""))]
+          return [finding("COL-01", "info", "proposed", (partner.get("siren", "") or "") + ":" + p.get("url", ""),
+              partner.get("title", "") + " · " + p.get("url", ""), "Readable website with at least one relevant page",
+              why, "", {"concerns": partner.get("id", "")}, msg.get("now", ""))]
 
       def handle(inputs, msg):
           p = msg.get("payload", {}) or {}
           if "mission_id" in p:
-              return {"ecarts": summary(msg, p)}
+              return {"findings": summary(msg, p)}
           text = p.get("text", "") or ""
           if not text:
               return None
           now = msg.get("now", "")
           today = msg.get("today", now[:10])
-          partner = msg.get("partenaire", {}) or {}
-          reseau = msg.get("reseau", {}) or {}
-          habs = partner.get("habilitations", {}) or {}
+          partner = msg.get("partner", {}) or {}
+          network = msg.get("network", {}) or {}
+          habs = partner.get("accreditations", {}) or {}
           padded = " " + norm(text) + " "
           tokens = padded.split()
           cited = codes_in(tokens)
@@ -1404,16 +1405,16 @@ functions:
           # By default a certifier only checks what concerns its own
           # certifications: a page citing none of them writes no WEB finding.
           ours = [False]
-          whole_site = pack_setting("quali_watch.site_entier", False) == True
-          def add(rule, gravite, code, attendu, constate, i, cert_id):
+          whole_site = pack_setting("quali_watch.whole_site", False) == True
+          def add(rule, severity, code, expected, observed, i, cert_id):
               if not active(rule):
                   return
-              liens = {"concerne": partner.get("id", ""), "sur": cert_id, "constate_dans": p.get("object_id", "") or ""}
-              found.append(finding(rule, gravite, "a_valider", (partner.get("siren", "") or "") + ":" + code + ":" + page,
-                  partner.get("title", "") + " · " + code, attendu, constate + " (" + p.get("url", "") + ")",
-                  excerpt(text, i), liens, now))
-          for code, c in reseau.items():
-              title = norm(c.get("intitule", ""))
+              targets = {"concerns": partner.get("id", ""), "finding_on": cert_id, "observed_in": p.get("object_id", "") or ""}
+              found.append(finding(rule, severity, "to_validate", (partner.get("siren", "") or "") + ":" + code + ":" + page,
+                  partner.get("title", "") + " · " + code, expected, observed + " (" + p.get("url", "") + ")",
+                  excerpt(text, i), targets, now))
+          for code, c in network.items():
+              title = norm(c.get("official_title", ""))
               has_code = code in cited
               has_title = len(title) > 3 and (" " + title + " ") in padded
               if not has_code and not has_title:
@@ -1421,44 +1422,44 @@ functions:
               ours[0] = True
               i_code = at(text, code_needles(code))
               h = habs.get(code)
-              end = (h or {}).get("date_fin", "") or ""
-              accredited = h != None and (h.get("etat_fc", "") or "") != "inactif" and not (end and end < today)
+              end = (h or {}).get("ends_on", "") or ""
+              accredited = h != None and (h.get("fc_state", "") or "") != "inactive" and not (end and end < today)
               if has_code and not accredited:
-                  why = "aucune habilitation ouverte" if h == None else ("habilitation inactive chez France Compétences" if h.get("etat_fc", "") == "inactif" else "habilitation terminée le " + end)
-                  add("WEB-08", "critique", code, "Aucune offre de " + code + " sans habilitation active", "Page qui présente " + code + " : " + why, i_code, c["id"])
-              if cpf and (not accredited or c.get("statut", "") not in ("", "actif")):
-                  add("WEB-04", "critique", code, code + " présentée comme éligible au CPF seulement par un organisme habilité, sur une fiche active",
-                      "Mention du CPF sur une page de " + code + (" (fiche " + c.get("statut", "") + ")" if c.get("statut", "") not in ("", "actif") else " sans habilitation active"),
+                  why = "no open accreditation" if h == None else ("accreditation inactive at France Compétences" if h.get("fc_state", "") == "inactive" else "accreditation ended on " + end)
+                  add("WEB-08", "critical", code, "No offer of " + code + " without an active accreditation", "Page presenting " + code + ": " + why, i_code, c["id"])
+              if cpf and (not accredited or c.get("status", "") not in ("", "active")):
+                  add("WEB-04", "critical", code, code + " presented as CPF eligible only by an accredited organization, on an active sheet",
+                      "CPF mentioned on a page about " + code + (" (sheet " + c.get("status", "") + ")" if c.get("status", "") not in ("", "active") else " without an active accreditation"),
                       at(text, ["mon compte formation", "cpf"]), c["id"])
               if has_title and not has_code:
                   others = [k for k in cited.keys() if k != code]
                   if others:
-                      add("WEB-02", "majeur", code, "Code " + code + " cité avec l'intitulé", "Intitulé cité avec un autre code : " + ", ".join(others[:3]), at(text, code_needles(others[0])), c["id"])
+                      add("WEB-02", "major", code, "Code " + code + " quoted with the title", "Title quoted with another code: " + ", ".join(others[:3]), at(text, code_needles(others[0])), c["id"])
                   else:
-                      add("WEB-02", "majeur", code, "Code " + code + " cité avec l'intitulé", "Intitulé cité sans le code de la fiche", at(text, [c.get("intitule", "")[:40]]), c["id"])
+                      add("WEB-02", "major", code, "Code " + code + " quoted with the title", "Title quoted without the sheet code", at(text, [c.get("official_title", "")[:40]]), c["id"])
               if has_code and not has_title and title:
-                  add("WEB-01", "majeur", code, "Intitulé exact : « " + c.get("intitule", "") + " »", "Code cité sans l'intitulé exact de la fiche", i_code, c["id"])
-              if has_code and c.get("certificateurs"):
-                  named = [n for n in c["certificateurs"] if len(norm(n)) > 2 and (" " + norm(n) + " ") in padded]
+                  add("WEB-01", "major", code, "Exact title: \"" + c.get("official_title", "") + "\"", "Code quoted without the exact title of the sheet", i_code, c["id"])
+              if has_code and c.get("certifiers"):
+                  named = [n for n in c["certifiers"] if len(norm(n)) > 2 and (" " + norm(n) + " ") in padded]
                   if not named:
-                      add("WEB-03", "majeur", code, "Certificateur cité : " + ", ".join(c["certificateurs"][:2]), "Code cité sans le nom du certificateur", i_code, c["id"])
+                      add("WEB-03", "major", code, "Certifier named: " + ", ".join(c["certifiers"][:2]), "Code quoted without the certifier name", i_code, c["id"])
           if not (ours[0] or whole_site):
-              return {"ecarts": found}
+              return {"findings": found}
           if cited or cpf:
               for w in PROMISES:
                   if (" " + w + " ") in padded:
-                      add("WEB-05", "critique", "promesse", "Aucune promesse ni avantage contre une inscription", "Mention « " + w + " »", at(text, [w, w.replace(" ", "")]), "")
+                      add("WEB-05", "critical", "promise", "No promise or benefit in exchange for enrolling", "Mention \"" + w + "\"", at(text, [w, w.replace(" ", "")]), "")
                       break
-          if " qualiopi " in padded and partner.get("qualiopi_maj"):
+          if " qualiopi " in padded and partner.get("qualiopi_updated"):
               for key, words, label in QUALIOPI_CATS:
                   claim = first_in(padded, words) if partner.get(key) != True else ""
                   if claim:
-                      add("WEB-06", "mineur", "qualiopi-" + key, "Qualiopi affiché pour les catégories certifiées seulement",
-                          "Qualiopi affiché avec la catégorie « " + label + " » (mention « " + claim + " »), non certifiée (DGEFP " + partner.get("qualiopi_maj", "") + ")",
+                      add("WEB-06", "minor", "qualiopi-" + key, "Qualiopi shown for the certified categories only",
+                          "Qualiopi shown with the category \"" + label + "\" (mention \"" + claim + "\"), not certified (DGEFP " + partner.get("qualiopi_updated", "") + ")",
                           at_phrase(text, claim), "")
                       break
-          return {"ecarts": found}
-  - name: qw_ecart
+          return {"findings": found}
+  - name: qw_finding
     language: starlark
     description: One finding of a rule list, as the message the finding write takes.
     code: |
@@ -1468,30 +1469,30 @@ functions:
           e = msg.get("payload", {}) or {}
           if not e.get("props"):
               return None
-          return {"payload": e["props"], "title": e.get("title", ""), "liens": e.get("liens", {}),
+          return {"payload": e["props"], "title": e.get("title", ""), "link_targets": e.get("link_targets", {}),
                   "object": None, "object_id": None, "links": None}
-  - name: qw_liens
+  - name: qw_links
     language: starlark
     description: Links of a finding just written to its partner, certification and evidence.
     code: |
       # Links of the finding just written: to its partner, its certification
       # and where it was seen (page or CPF offer); an absent end stays silent.
-      # @output concerne any "Finding → organization"
-      # @output sur any "Finding → certification"
-      # @output constate_dans any "Finding → page or offer"
+      # @output concerns any "Finding → organization"
+      # @output finding_on any "Finding → certification"
+      # @output observed_in any "Finding → page or offer"
       def handle(inputs, msg):
           o = msg.get("object", {}) or {}
-          l = msg.get("liens", {}) or {}
+          l = msg.get("link_targets", {}) or {}
           if not o.get("id"):
               return None
           out = {}
-          for k in ["concerne", "sur", "constate_dans"]:
+          for k in ["concerns", "finding_on", "observed_in"]:
               if l.get(k, ""):
                   out[k] = {"source_id": o["id"], "target_id": l[k]}
           return out
 flows:
   - name: "Quali-Watch · reminders"
-    note: "Each morning the procedures whose due date passed move to the next reminder. For the automatic levels, add a Notification node after the reminder write (e-mail channel allowing recipients from flows, recipient field: destinataire, report PDF attached), then deploy."
+    note: "Each morning the procedures whose due date passed move to the next reminder. For the automatic levels, add a Notification node after the reminder write (e-mail channel allowing recipients from flows, recipient field: recipient, report PDF attached), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 6 * * *" }, outputs: [{ port: 0, targets: [due] }] }
@@ -1500,18 +1501,18 @@ flows:
           config:
             object_type: procedure
             filters:
-              - { key: prochaine_echeance, op: lte, value: "$today" }
-              - { key: etat, op: eq, value: ouverte }
+              - { key: next_due, op: lte, value: "$today" }
+              - { key: state, op: eq, value: open }
             limit: 500
           outputs: [{ port: 0, targets: [next] }]
         - id: next
           kind: pnex_function
-          config: { function_name: qw_relance_suivante, language: starlark }
+          config: { function_name: qw_next_reminder, language: starlark }
           outputs: [{ port: 0, targets: [proc] }, { port: 1, targets: [rel] }]
         - { id: proc, kind: object_upsert, config: { object_type: procedure, key: id } }
-        - { id: rel, kind: object_upsert, config: { object_type: relance, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
-        - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: relance_de } }
+        - { id: rel, kind: object_upsert, config: { object_type: reminder, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: qw_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: reminder_of } }
   - name: "Quali-Watch · rule ADM-01"
     note: "Each morning the ceased partners become findings to review (create only), linked to their organization."
     graph:
@@ -1521,13 +1522,13 @@ flows:
           kind: ontology_query
           config:
             object_type: organization
-            filters: [{ key: etat_administratif, op: eq, value: cesse }]
+            filters: [{ key: administrative_state, op: eq, value: ceased }]
             limit: 500
           outputs: [{ port: 0, targets: [rule] }]
-        - { id: rule, kind: pnex_function, config: { function_name: qw_regle_adm_01, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
-        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
-        - { id: link, kind: pnex_function, config: { function_name: qw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: concerne } }
+        - { id: rule, kind: pnex_function, config: { function_name: qw_rule_adm_01, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: qw_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: concerns } }
   - name: "Quali-Watch · network rules"
     note: "Each morning the registry facts of your network become findings to review, created once and never reset: ceased partner (ADM-01), Qualiopi missing (ADM-02), CPF offer by a non-accredited organization (CPF-01), out of scope (CPF-02), after the accreditation end (CPF-03), accreditation unknown to France Compétences (REG-01), inactive accreditation still selling (REG-02). Run the network imports first (company register, DGEFP, CPF catalogue). Replaces « rule ADM-01 »: deploy one of the two."
     graph:
@@ -1535,16 +1536,16 @@ flows:
         - { id: tick, kind: inject, config: { cron: "30 5 * * *" }, outputs: [{ port: 0, targets: [net] }] }
         - id: net
           kind: ontology_query
-          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [habilite_pour, porte_sur, porte] }
+          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [accredited_for, offer_for, holds] }
           outputs: [{ port: 0, targets: [rules] }]
-        - { id: rules, kind: pnex_function, config: { function_name: qw_regles_reseau, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: rules, kind: pnex_function, config: { function_name: qw_network_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
         - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
-        - { id: one, kind: pnex_function, config: { function_name: qw_ecart, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
-        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
-        - { id: links, kind: pnex_function, config: { function_name: qw_liens, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
-        - { id: l_org, kind: link_upsert, config: { link_type: concerne } }
-        - { id: l_cert, kind: link_upsert, config: { link_type: sur } }
-        - { id: l_seen, kind: link_upsert, config: { link_type: constate_dans } }
+        - { id: one, kind: pnex_function, config: { function_name: qw_finding, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: qw_links, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
+        - { id: l_org, kind: link_upsert, config: { link_type: concerns } }
+        - { id: l_cert, kind: link_upsert, config: { link_type: finding_on } }
+        - { id: l_seen, kind: link_upsert, config: { link_type: observed_in } }
   - name: "Quali-Watch · website check"
     note: "Each Sunday night the confirmed website of each partner is walked on the server (robots.txt obeyed, 2 s a page, 200 pages at most): pages citing your codes, exact titles, certifier names or the CPF are kept as observed pages with a sealed proof, then checked: exact title (WEB-01), code (WEB-02), certifier named (WEB-03), CPF eligibility (WEB-04), forbidden promises (WEB-05), Qualiopi category (WEB-06), accreditation still active (WEB-08), and a site with nothing relevant (COL-01). Findings read on a page are to validate, with their excerpt word for word. Find the websites first (Web presence · find websites)."
     graph:
@@ -1552,34 +1553,34 @@ flows:
         - { id: tick, kind: inject, config: { cron: "0 2 * * 0" }, outputs: [{ port: 0, targets: [certs] }] }
         - id: certs
           kind: ontology_query
-          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [porte] }
+          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, output: array, with_links: [holds] }
           outputs: [{ port: 0, targets: [context] }]
-        - { id: context, kind: pnex_function, config: { function_name: qw_contexte, language: starlark }, outputs: [{ port: 0, targets: [partners] }] }
+        - { id: context, kind: pnex_function, config: { function_name: qw_context, language: starlark }, outputs: [{ port: 0, targets: [partners] }] }
         - id: partners
           kind: ontology_query
-          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, traverse: [{ link_type: habilite_pour, direction: in }], with_links: [a_pour_site, habilite_pour] }
+          config: { object_type: certification, filters: [{ key: code, op: in, value: "$setting.quali_watch.certifications" }], limit: 500, traverse: [{ link_type: accredited_for, direction: in }], with_links: [has_website, accredited_for] }
           outputs: [{ port: 0, targets: [targets] }]
-        - { id: targets, kind: pnex_function, config: { function_name: qw_cibles, language: starlark }, outputs: [{ port: 0, targets: [crawl] }] }
+        - { id: targets, kind: pnex_function, config: { function_name: qw_targets, language: starlark }, outputs: [{ port: 0, targets: [crawl] }] }
         - id: crawl
           kind: site_crawl
           config:
             max_pages: 200
             record:
-              type: page_observee
-              properties: { url: url, title: titre, first_seen: premiere_vue, last_seen: derniere_vue, text_hash: empreinte_texte, relevant: pertinente, state: etat }
-              link_type: page_de
-              proof_link: prouve_par
+              type: observed_page
+              properties: { url: url, title: heading, first_seen: first_seen, last_seen: last_seen, text_hash: text_fingerprint, relevant: relevant, state: state }
+              link_type: page_of
+              proof_link: proven_by
           outputs: [{ port: 0, targets: [rules] }, { port: 1, targets: [rules] }]
-        - { id: rules, kind: pnex_function, config: { function_name: qw_regles_web, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
+        - { id: rules, kind: pnex_function, config: { function_name: qw_web_rules, language: starlark }, outputs: [{ port: 0, targets: [split] }] }
         - { id: split, kind: json_split, config: { keys: [], auto: false }, outputs: [{ port: 0, targets: [one] }] }
-        - { id: one, kind: pnex_function, config: { function_name: qw_ecart, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
-        - { id: finding, kind: object_upsert, config: { object_type: ecart, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
-        - { id: links, kind: pnex_function, config: { function_name: qw_liens, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
-        - { id: l_org, kind: link_upsert, config: { link_type: concerne } }
-        - { id: l_cert, kind: link_upsert, config: { link_type: sur } }
-        - { id: l_seen, kind: link_upsert, config: { link_type: constate_dans } }
+        - { id: one, kind: pnex_function, config: { function_name: qw_finding, language: starlark }, outputs: [{ port: 0, targets: [finding] }] }
+        - { id: finding, kind: object_upsert, config: { object_type: finding, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [links] }] }
+        - { id: links, kind: pnex_function, config: { function_name: qw_links, language: starlark }, outputs: [{ port: 0, targets: [l_org] }, { port: 1, targets: [l_cert] }, { port: 2, targets: [l_seen] }] }
+        - { id: l_org, kind: link_upsert, config: { link_type: concerns } }
+        - { id: l_cert, kind: link_upsert, config: { link_type: finding_on } }
+        - { id: l_seen, kind: link_upsert, config: { link_type: observed_in } }
 page_templates:
-  - key: constat_ecart
+  - key: finding_report
     name: Finding report
     names: {fr: "Constat d'écart"}
     description: One finding, its proof and what is expected.
@@ -1633,7 +1634,7 @@ page_templates:
         - Adresse de la page
         - Capture pleine page et horodatage du serveur
         - Empreinte SHA-256 du manifeste et rang dans la chaîne des preuves
-  - key: rapport_partenaire
+  - key: partner_report
     name: Partner report
     names: {fr: "Rapport partenaire"}
     description: State, findings and reminders of one partner.

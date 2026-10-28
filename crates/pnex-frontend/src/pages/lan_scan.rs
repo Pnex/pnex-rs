@@ -1,5 +1,5 @@
-//! Détection LAN des serveurs PNEX — natif uniquement (wasm : `rsx!{}` vide,
-//! même garde que `SelfHostedSection`).
+//! LAN discovery of PNEX servers — native only (wasm: empty `rsx!{}`,
+//! same guard as `SelfHostedSection`).
 //!
 //! Probes `GET {base}{META_VERSION_PATH}` on the 254 hosts of a /24, 48
 //! hosts in parallel, short timeout per probe. Each host is probed on both
@@ -11,10 +11,10 @@
 //! a result goes through the single `apply_server` path (probe + storage +
 //! compatibility gate + `SERVER_READY`).
 //!
-//! Sous-réseau sondé : dérivé de l'URL serveur courante si c'est une IP
-//! privée, sinon détection JNI de l'interface active (Android), sinon
-//! `192.168.1.` éditable. JNI brut même école que `storage::imp` : jamais de
-//! panic, dégradation silencieuse en fallback.
+//! Probed subnet: derived from the current server URL if it is a private
+//! IP, else JNI detection of the active interface (Android), else an
+//! editable `192.168.1.`. Raw JNI in the same way as `storage::imp`: never
+//! a panic, silent degradation to the fallback.
 
 use std::net::Ipv4Addr;
 use std::time::Duration;
@@ -30,16 +30,16 @@ use crate::pages::server_url::{apply_server, current_base};
 /// PNEX server port (default binding, config/*.yaml) — plain HTTP fallback
 /// when the host has no TLS edge.
 const SCAN_PORT: u16 = 5150;
-/// Timeout par sonde : une IP injoignable doit libérer le slot vite.
+/// Timeout per probe: an unreachable IP must free its slot quickly.
 const SCAN_TIMEOUT: Duration = Duration::from_millis(1200);
-/// Parallélisme : 48 sondes simultanées → /24 complet en quelques secondes
-/// (réseau WiFi mobile inclus).
+/// Parallelism: 48 simultaneous probes → full /24 in a few seconds
+/// (mobile WiFi network included).
 const SCAN_CONCURRENCY: usize = 48;
-/// Préfixe de repli (le plus commun des réseaux domestiques) — éditable.
+/// Fallback prefix (the most common among home networks) — editable.
 const DEFAULT_PREFIX: &str = "192.168.1.";
 
-/// Un serveur PNEX détecté : base URL (`http://192.168.1.16:5150`) + carte
-/// d'identité renvoyée par le endpoint meta.
+/// A detected PNEX server: base URL (`http://192.168.1.16:5150`) + identity
+/// card returned by the meta endpoint.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ScanHit {
     pub url: String,
@@ -54,11 +54,11 @@ pub(crate) fn LanScanSection() -> Element {
 
     let mut scanning = use_signal(|| false);
     let mut prefix = use_signal(default_prefix);
-    // `None` = pas encore scanné (rien d'affiché), `Some(vec)` = résultat.
+    // `None` = not scanned yet (nothing shown), `Some(vec)` = result.
     let mut hits = use_signal(|| None::<Vec<ScanHit>>);
     let mut error = use_signal(|| None::<String>);
-    // Progression déterminée : chaque sonde résolue incrémente `done`
-    // (total = candidats réellement sondés, fixé au démarrage du scan).
+    // Determinate progress: each resolved probe increments `done`
+    // (total = candidates actually probed, set when the scan starts).
     let mut done = use_signal(|| 0usize);
     let mut total = use_signal(|| 0usize);
 
@@ -135,9 +135,9 @@ pub(crate) fn LanScanSection() -> Element {
     }
 }
 
-/// Une ligne de résultat : URL + version, badge de compatibilité de contrat
-/// et bouton « Se connecter » (désactivé si le contrat du serveur diffère —
-/// la porte refuserait la connexion).
+/// A result row: URL + version, contract compatibility badge and a
+/// "Connect" button (disabled if the server's contract differs — the gate
+/// would refuse the connection).
 #[component]
 fn ScanRow(hit: ScanHit) -> Element {
     let ScanHit { url, info } = hit;
@@ -180,10 +180,10 @@ fn ScanRow(hit: ScanHit) -> Element {
     }
 }
 
-/// Sonde la plage et retourne les serveurs PNEX détectés, triés par URL.
-/// Le serveur courant (si configuré) est toujours sondé, même hors plage.
-/// La progression est publiée dans les signals `total` (candidats) et `done`
-/// (sondes résolues) pour la barre de progression de `LanScanSection`.
+/// Probes the range and returns the detected PNEX servers, sorted by URL.
+/// The current server (if configured) is always probed, even outside the range.
+/// Progress is published in the `total` (candidates) and `done` (resolved
+/// probes) signals for the progress bar of `LanScanSection`.
 async fn run_scan(
     prefix: &str,
     mut done: Signal<usize>,
@@ -204,8 +204,8 @@ async fn run_scan(
 
     let mut found: Vec<ScanHit> = futures::stream::iter(candidates)
         .map(|urls| {
-            // reqwest::Client est un Arc interne : cloner par future est
-            // négligeable et rend la closure FnMut.
+            // reqwest::Client is an internal Arc: cloning per future is
+            // negligible and makes the closure FnMut.
             let client = client.clone();
             async move {
                 // Both schemes probed concurrently: a dead host costs one
@@ -234,16 +234,16 @@ async fn run_scan(
     Ok(found)
 }
 
-/// Préfixe « a.b.c. » prérempli : URL serveur courante si c'est une IP
-/// privée, sinon détection JNI de l'interface active (Android), sinon repli.
+/// Prefilled "a.b.c." prefix: current server URL if it is a private IP,
+/// else JNI detection of the active interface (Android), else fallback.
 fn default_prefix() -> String {
     prefix_from_base(&current_base())
         .or_else(detect_prefix)
         .unwrap_or_else(|| DEFAULT_PREFIX.to_string())
 }
 
-/// `http://192.168.1.16:5150` → `Some("192.168.1.")` — IP privée
-/// uniquement (un nom d'hôte ou une IP publique ne dérivent pas de plage).
+/// `http://192.168.1.16:5150` → `Some("192.168.1.")` — private IP only
+/// (a host name or a public IP does not yield a range).
 fn prefix_from_base(base: &str) -> Option<String> {
     let host = reqwest::Url::parse(base).ok()?.host_str()?.to_string();
     let ip: Ipv4Addr = host.parse().ok()?;
@@ -286,11 +286,11 @@ fn is_shadowed_by_https(url: &str, all: &[String]) -> bool {
         })
 }
 
-/// Interface réseau active de l'appareil (Android) — JNI brut, miroir de
-/// `storage::imp::app_files_dir` : attach JVM daemon, `(**env).v1_1` partout,
-/// `ExceptionCheck`/`Clear` après tout appel pouvant lever, jamais de panic.
-/// Retourne le préfixe « a.b.c. » de la première IPv4 site-locale (Java :
-/// 10/8, 172.16/12, 192.168/16 — tout ce qui n'est pas IPv4 répond `false`).
+/// Active network interface of the device (Android) — raw JNI, mirror of
+/// `storage::imp::app_files_dir`: daemon JVM attach, `(**env).v1_1` everywhere,
+/// `ExceptionCheck`/`Clear` after every call that may throw, never a panic.
+/// Returns the "a.b.c." prefix of the first site-local IPv4 (Java:
+/// 10/8, 172.16/12, 192.168/16 — anything that is not IPv4 answers `false`).
 #[cfg(target_os = "android")]
 fn detect_prefix() -> Option<String> {
     type EnvPtr = *mut ::jni::sys::JNIEnv;
@@ -299,8 +299,8 @@ fn detect_prefix() -> Option<String> {
     let vm = ctx.vm() as *mut ::jni::sys::JavaVM;
 
     unsafe {
-        // Threads du glue déjà attachés : GetEnv suffit ; sinon attach
-        // daemon en filet de sécurité (tâches async de l'exécuteur).
+        // Glue threads already attached: GetEnv is enough; otherwise a
+        // daemon attach as a safety net (async tasks of the executor).
         let mut env: EnvPtr = std::ptr::null_mut();
         let status = ((**vm).v1_2.GetEnv)(
             vm,
@@ -321,7 +321,7 @@ fn detect_prefix() -> Option<String> {
                     .cast_mut(),
             );
             if attached != ::jni::sys::JNI_OK || env.is_null() {
-                eprintln!("pnex-lan-scan: attach JVM impossible — plage par défaut");
+                eprintln!("pnex-lan-scan: JVM attach failed — default range");
                 return None;
             }
         }
@@ -349,7 +349,7 @@ fn detect_prefix() -> Option<String> {
                 return None;
             }
 
-            // hasMoreElements / nextElement — partagés par les deux énumérations.
+            // hasMoreElements / nextElement — shared by both enumerations.
             let en_class = ((**env).v1_1.FindClass)(env, c"java/util/Enumeration".as_ptr());
             if en_class.is_null() {
                 return None;
@@ -414,8 +414,8 @@ fn detect_prefix() -> Option<String> {
                     }
 
                     let addr_class = ((**env).v1_1.GetObjectClass)(env, addr);
-                    // isSiteLocalAddress() : false pour tout non-IPv4 — pas
-                    // besoin de tester le type concret (Inet4Address).
+                    // isSiteLocalAddress(): false for any non-IPv4 — no
+                    // need to test the concrete type (Inet4Address).
                     let mid_site = ((**env).v1_1.GetMethodID)(
                         env,
                         addr_class,
@@ -468,8 +468,8 @@ fn detect_prefix() -> Option<String> {
     }
 }
 
-/// Hors Android : pas de détection d'interface — repli sur le préfixe
-/// éditable (desktop non activé, web non concerné).
+/// Outside Android: no interface detection — fallback to the editable
+/// prefix (desktop not enabled, web not concerned).
 #[cfg(not(target_os = "android"))]
 fn detect_prefix() -> Option<String> {
     None
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn candidats_plage_non_privee_refusee() {
-        // Jamais sonder une plage publique par inadvertance.
+        // Never probe a public range by mistake.
         assert!(lan_candidates("8.8.8.").is_empty());
         assert!(lan_candidates("172.32.").is_empty());
     }

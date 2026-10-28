@@ -1,8 +1,8 @@
-//! Tests des couches d'annotations (D55–D60) : cycle création/save/409,
-//! versions append-only, publish/unpublish, validation (assets + devices),
-//! read model (union couches publiées, dead device), isolation org, rôles.
+//! Annotation layer tests (D55–D60): create/save/409 cycle,
+//! append-only versions, publish/unpublish, validation (assets + devices),
+//! read model (union of published layers, dead device), org isolation, roles.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -15,7 +15,7 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app (école `tests/media.rs::with_app` : env posées AVANT le boot).
+/// Boots the app (`tests/media.rs::with_app` pattern: env set BEFORE boot).
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
@@ -53,7 +53,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// Personal org of the user (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -77,12 +77,12 @@ fn gpano_jpeg() -> Vec<u8> {
     out
 }
 
-/// JPEG minimal sans GPano (plan d'étage / photo simple).
+/// Minimal JPEG without GPano (floor plan / simple photo).
 fn plain_jpeg() -> Vec<u8> {
     vec![0xFF, 0xD8, 0xFF, 0xD9]
 }
 
-/// Upload octet-stream (POST /api/v1/media) — pour les assets des scènes.
+/// Octet-stream upload (POST /api/v1/media) — for the scene assets.
 async fn upload(
     server: &axum_test::TestServer,
     token: &str,
@@ -136,8 +136,8 @@ async fn save_layer(
         .await
 }
 
-/// Trois items : device (equirect sur pano), pin (flat sur photo), note
-/// (equirect sur pano) — cibles `pac-01`.
+/// Three items: device (equirect on pano), pin (flat on photo), note
+/// (equirect on pano) — targets `pac-01`.
 fn doc_avec_items(pano_id: &str, photo_id: &str, device: &str) -> serde_json::Value {
     serde_json::json!({
         "items": [
@@ -202,7 +202,7 @@ async fn create_device(
             "predefined_device_name": "generic_esp8266",
         }))
         .await;
-    assert_eq!(res.status_code(), 201, "device créé : {}", res.text());
+    assert_eq!(res.status_code(), 201, "device created: {}", res.text());
     res.json::<serde_json::Value>()["id"]
         .as_i64()
         .expect("device pk")
@@ -244,12 +244,12 @@ async fn cycle_creation_save_versions_409() {
         assert_eq!(
             created["doc"]["items"].as_array().unwrap().len(),
             0,
-            "doc vide"
+            "empty doc"
         );
         assert!(created["published_version_number"].is_null());
         let layer_id = created["id"].as_str().unwrap().to_string();
 
-        // Liste + search + envelope D14.
+        // List + search + D14 envelope.
         let listed: serde_json::Value = server
             .get("/api/v1/annotation-layers?search=salle")
             .add_header("Authorization", bearer(&env.alice))
@@ -265,7 +265,7 @@ async fn cycle_creation_save_versions_409() {
             .json();
         assert_eq!(listed["count"], 0);
 
-        // Save v2 avec items.
+        // Save v2 with items.
         let doc = doc_avec_items(&pano_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
         assert_eq!(res.status_code(), 200, "save v2 : {}", res.text());
@@ -287,7 +287,7 @@ async fn cycle_creation_save_versions_409() {
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "annot-version-conflict");
 
-        // Historique : 2 versions, la plus recente d'abord ; v1 vide.
+        // History: 2 versions, the most recent first; v1 empty.
         let versions: serde_json::Value = server
             .get(&format!("/api/v1/annotation-layers/{layer_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -317,7 +317,7 @@ async fn cycle_creation_save_versions_409() {
         assert_eq!(old["doc_version_number"], 1);
         assert_eq!(old["latest_version_number"], 2);
 
-        // Version inconnue -> 404.
+        // Unknown version -> 404.
         let res = server
             .get(&format!("/api/v1/annotation-layers/{layer_id}/versions/9"))
             .add_header("Authorization", bearer(&env.alice))
@@ -325,7 +325,7 @@ async fn cycle_creation_save_versions_409() {
             .await;
         assert_eq!(res.status_code(), 404);
 
-        // Publish (defaut = latest v2) puis unpublish.
+        // Publish (default = latest v2) then unpublish.
         let res = publish_layer(&server, &env.alice, org, &layer_id).await;
         assert_eq!(res.status_code(), 200, "publish : {}", res.text());
         let published: serde_json::Value = res.json();
@@ -339,7 +339,7 @@ async fn cycle_creation_save_versions_409() {
         let unpublished: serde_json::Value = res.json();
         assert!(unpublished["published_version_number"].is_null());
 
-        // Delete -> 204 puis 404.
+        // Delete -> 204 then 404.
         let _ = device;
         let res = server
             .delete(&format!("/api/v1/annotation-layers/{layer_id}"))
@@ -405,7 +405,7 @@ async fn validation_doc_assets_et_devices() {
             "{codes:?}"
         );
 
-        // Asset inconnu (UUID bien forme mais hors org) -> 400.
+        // Unknown asset (well-formed UUID but outside the org) -> 400.
         let res = save_layer(
             &server,
             &env.alice,
@@ -420,10 +420,10 @@ async fn validation_doc_assets_et_devices() {
         assert_eq!(body["error"], "annotation-layer-invalid");
         assert_eq!(body["errors"]["violations"][0]["code"], "unknown_asset");
 
-        // Geometrie equirect sur un asset photo -> 400 kind panorama requis.
+        // Equirect geometry on a photo asset -> 400 panorama kind required.
         let doc = doc_avec_items(&photo_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc.clone()).await;
-        assert_eq!(res.status_code(), 400, "equirect sur photo -> 400");
+        assert_eq!(res.status_code(), 400, "equirect on photo -> 400");
         let violation = &res.json::<serde_json::Value>()["errors"]["violations"][0];
         assert_eq!(violation["code"], "asset_kind_mismatch");
         assert!(
@@ -431,7 +431,7 @@ async fn validation_doc_assets_et_devices() {
             "message kind panorama"
         );
 
-        // Device inconnu -> 400.
+        // Unknown device -> 400.
         let res = save_layer(
             &server,
             &env.alice,
@@ -446,7 +446,7 @@ async fn validation_doc_assets_et_devices() {
         assert_eq!(violation["code"], "unknown_device");
         assert_eq!(violation["subject"], "ghost", "message device inconnu");
 
-        // id non-UUID -> inconnu (pas de panic).
+        // non-UUID id -> unknown (no panic).
         let res = save_layer(
             &server,
             &env.alice,
@@ -458,7 +458,7 @@ async fn validation_doc_assets_et_devices() {
         .await;
         assert_eq!(res.status_code(), 400);
 
-        // Tout est valide -> 200 v2 (device pac-01 cree, items coherents).
+        // All valid -> 200 v2 (device pac-01 created, consistent items).
         let _ = create_device(&server, &env.alice, org, "pac-01").await;
         let doc = doc_avec_items(&pano_id, &photo_id, "pac-01");
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
@@ -498,8 +498,8 @@ async fn read_model_union_et_dead_device() {
             .to_string();
         let device_pk = create_device(&server, &env.alice, org, "pac-01").await;
 
-        // Couche A : publiee (3 items). Couche B : brouillon (1 item sur le
-        // pano) — doit rester absente du read model.
+        // Layer A: published (3 items). Layer B: draft (1 item on the
+        // pano) — must stay absent from the read model.
         let a = create_layer(&server, &env.alice, org, "Circulation").await;
         let a_id = a["id"].as_str().unwrap().to_string();
         let res = save_layer(
@@ -527,7 +527,7 @@ async fn read_model_union_et_dead_device() {
         let res = save_layer(&server, &env.alice, org, &b_id, 1, doc_b).await;
         assert_eq!(res.status_code(), 200, "save B : {}", res.text());
 
-        // Union : seuls les items de A (a1 + a3 sur le pano) ; B exclu.
+        // Union: only the items of A (a1 + a3 on the pano); B excluded.
         let body = read_annotations(&server, &env.alice, org, &pano_id)
             .await
             .json::<serde_json::Value>();
@@ -543,9 +543,9 @@ async fn read_model_union_et_dead_device() {
             "pk device vivant"
         );
         assert_eq!(items[1]["id"], "a3");
-        assert!(items[1]["resolved"].is_null(), "note : pas de resolution");
+        assert!(items[1]["resolved"].is_null(), "note: no resolution");
 
-        // Photo : a2 (pin gpio 4) résolu sur le device pac-01.
+        // Photo: a2 (gpio pin 4) resolved on device pac-01.
         let body = read_annotations(&server, &env.alice, org, &photo_id)
             .await
             .json::<serde_json::Value>();
@@ -554,7 +554,7 @@ async fn read_model_union_et_dead_device() {
         assert_eq!(items[0]["target"]["pin_gpio"], 4);
         assert_eq!(items[0]["resolved"]["device_label"], "pac-01");
 
-        // Asset inconnu -> 404 masque.
+        // Unknown asset -> masked 404.
         let res = read_annotations(
             &server,
             &env.alice,
@@ -564,8 +564,8 @@ async fn read_model_union_et_dead_device() {
         .await;
         assert_eq!(res.status_code(), 404);
 
-        // Reference morte toleree : device supprime sous nos pieds (D57,
-        // cible faible — dead: true, jamais 500).
+        // Dead reference tolerated: device deleted under our feet (D57,
+        // weak target — dead: true, never 500).
         let res = server
             .delete(&format!("/api/v1/devices/{device_pk}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -576,7 +576,7 @@ async fn read_model_union_et_dead_device() {
             .await
             .json::<serde_json::Value>();
         let items = body["items"].as_array().unwrap();
-        assert_eq!(items.len(), 2, "les items survivent au device");
+        assert_eq!(items.len(), 2, "the items survive the device");
         assert_eq!(items[0]["resolved"]["dead"], true, "device disparu -> dead");
         assert!(
             items[0]["resolved"]["device_pk"].is_null(),
@@ -587,7 +587,7 @@ async fn read_model_union_et_dead_device() {
             "slug conserve"
         );
 
-        // Depublication : les items quittent tous les viewers.
+        // Unpublishing: the items leave all the viewers.
         let res = server
             .post(&format!("/api/v1/annotation-layers/{a_id}/unpublish"))
             .add_header("Authorization", bearer(&env.alice))
@@ -613,7 +613,7 @@ async fn isolation_org_et_roles() {
         let org1 = personal_org(&server, &env.alice).await;
         let org2 = personal_org(&server, &env.bob).await;
 
-        // Cross-org : GET/PATCH/publish → 404 masqué (jamais 403).
+        // Cross-org: GET/PATCH/publish → masked 404 (never 403).
         let created = create_layer(&server, &env.alice, org1, "Prive alice").await;
         let layer_id = created["id"].as_str().unwrap().to_string();
         let res = server
@@ -643,14 +643,14 @@ async fn isolation_org_et_roles() {
             .await;
         assert_eq!(res.status_code(), 404, "publish cross-org masque");
 
-        // Sans X-Org-Id -> 400.
+        // Without X-Org-Id -> 400.
         let res = server
             .get("/api/v1/annotation-layers")
             .add_header("Authorization", bearer(&env.alice))
             .await;
         assert_eq!(res.status_code(), 400);
 
-        // Org partagée : alice owner, bob viewer (école tenant_isolation).
+        // Shared org: alice owner, bob viewer (tenant_isolation pattern).
         let created_org: serde_json::Value = server
             .post("/api/v1/orgs")
             .add_header("Content-Type", "application/json")
@@ -666,7 +666,7 @@ async fn isolation_org_et_roles() {
             .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
             .await;
 
-        // Lecture OK pour un viewer, écriture 403 (read model inclus).
+        // Read OK for a viewer, write 403 (read model included).
         let pano_id = upload(
             &server,
             &env.alice,
@@ -682,7 +682,7 @@ async fn isolation_org_et_roles() {
         let created = create_layer(&server, &env.alice, shared_org, "Partage").await;
         let shared_layer = created["id"].as_str().unwrap().to_string();
         let res = publish_layer(&server, &env.alice, shared_org, &shared_layer).await;
-        assert_eq!(res.status_code(), 200, "publish v1 vide : {}", res.text());
+        assert_eq!(res.status_code(), 200, "publish empty v1: {}", res.text());
 
         let res = server
             .get(&format!("/api/v1/annotation-layers/{shared_layer}"))
@@ -694,7 +694,7 @@ async fn isolation_org_et_roles() {
         assert_eq!(
             res.status_code(),
             200,
-            "viewer lit le read model (0 items, doc v1 vide)"
+            "viewer reads the read model (0 items, empty v1 doc)"
         );
         assert_eq!(
             res.json::<serde_json::Value>()["items"]
@@ -724,7 +724,7 @@ async fn isolation_org_et_roles() {
             .await;
         assert_eq!(res.status_code(), 403, "viewer delete -> 403");
 
-        // Tour inconnu → 404 (owner lui-même).
+        // Unknown tour → 404 (the owner themselves).
         let res = server
             .get("/api/v1/annotation-layers/00000000-0000-0000-0000-0000000000ff")
             .add_header("Authorization", bearer(&env.alice))
@@ -765,7 +765,7 @@ async fn ensemble_annote_media_associe() {
             .unwrap()
             .to_string();
 
-        // Création avec média déclaré + lecture du lien.
+        // Creation with a declared media + reading the link.
         let res = server
             .post("/api/v1/annotation-layers")
             .add_header("Content-Type", "application/json")
@@ -781,7 +781,7 @@ async fn ensemble_annote_media_associe() {
         assert_eq!(layer["media_asset_id"], serde_json::json!(pano_id));
         let layer_id = layer["id"].as_str().unwrap().to_string();
 
-        // Save d'un item sur le média déclaré : OK (device ciblé créé avant).
+        // Save of an item on the declared media: OK (targeted device created before).
         let _device_pk = create_device(&server, &env.alice, org, "pac-01").await;
         let doc = serde_json::json!({ "items": [{
             "id": "a1", "media_asset_id": pano_id,
@@ -791,9 +791,13 @@ async fn ensemble_annote_media_associe() {
             "target": {"type": "device", "device_id": "pac-01"},
         }]});
         let res = save_layer(&server, &env.alice, org, &layer_id, 1, doc).await;
-        assert_eq!(res.status_code(), 200, "save ancré sur le média déclaré");
+        assert_eq!(
+            res.status_code(),
+            200,
+            "save anchored on the declared media"
+        );
 
-        // Item ancré sur un AUTRE média : refusé (un ensemble = un média).
+        // Item anchored on ANOTHER media: refused (one set = one media).
         let bad = serde_json::json!({ "items": [{
             "id": "a1", "media_asset_id": photo_id,
             "kind": "note",
@@ -802,9 +806,13 @@ async fn ensemble_annote_media_associe() {
             "target": {"type": "note", "text": "x"},
         }]});
         let res = save_layer(&server, &env.alice, org, &layer_id, 2, bad).await;
-        assert_eq!(res.status_code(), 400, "item hors média déclaré -> 400");
+        assert_eq!(
+            res.status_code(),
+            400,
+            "item outside the declared media -> 400"
+        );
 
-        // Filtre list?media= : l'ensemble apparaît pour son média.
+        // list?media= filter: the set shows up for its media.
         let res = server
             .get(&format!("/api/v1/annotation-layers?media={pano_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -820,10 +828,10 @@ async fn ensemble_annote_media_associe() {
             .collect();
         assert!(
             medias.contains(&pano_id.as_str()),
-            "le filtre media= ramène l'ensemble : {page}"
+            "the media= filter returns the set: {page}"
         );
 
-        // Un média sans ensemble : liste vide.
+        // A media without a set: empty list.
         let res = server
             .get(&format!("/api/v1/annotation-layers?media={photo_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -833,15 +841,15 @@ async fn ensemble_annote_media_associe() {
         assert_eq!(
             page["results"].as_array().unwrap().len(),
             0,
-            "aucun ensemble sur ce média"
+            "no set on this media"
         );
     })
     .await;
 }
 
-/// Ensemble rattaché à un TOUR : création avec tour_id, save
-/// d'un item ancré sur un média de scène, refus hors tour, filtre
-/// ?tour=.
+/// Set attached to a TOUR: creation with tour_id, save
+/// of an item anchored on a scene media, refusal outside the tour,
+/// ?tour= filter.
 #[tokio::test]
 #[serial]
 async fn ensemble_annote_tour_associe() {
@@ -872,7 +880,7 @@ async fn ensemble_annote_tour_associe() {
             .unwrap()
             .to_string();
 
-        // Tour avec une scène sur le pano (v2 : doc avec scène).
+        // Tour with one scene on the pano (v2: doc with a scene).
         let tour_id = server
             .post("/api/v1/tours")
             .add_header("Content-Type", "application/json")
@@ -904,11 +912,11 @@ async fn ensemble_annote_tour_associe() {
         assert_eq!(
             res.status_code(),
             200,
-            "version tour avec scène : {}",
+            "tour version with scene: {}",
             res.text()
         );
 
-        // Création d'un ensemble rattaché AU TOUR.
+        // Creation of a set attached TO THE TOUR.
         let res = server
             .post("/api/v1/annotation-layers")
             .add_header("Content-Type", "application/json")
@@ -925,7 +933,7 @@ async fn ensemble_annote_tour_associe() {
         assert!(layer["media_asset_id"].is_null());
         let layer_id = layer["id"].as_str().unwrap().to_string();
 
-        // Save d'un item ancré sur le média de la scène : OK.
+        // Save of an item anchored on the scene media: OK.
         let doc = serde_json::json!({ "items": [{
             "id": "a1", "media_asset_id": pano_id,
             "kind": "note",
@@ -937,11 +945,11 @@ async fn ensemble_annote_tour_associe() {
         assert_eq!(
             res.status_code(),
             200,
-            "save sur média de scène : {}",
+            "save on scene media: {}",
             res.text()
         );
 
-        // Item ancré sur un média HORS tour : refusé (AnchorMismatch).
+        // Item anchored on a media OUTSIDE the tour: refused (AnchorMismatch).
         let bad = serde_json::json!({ "items": [{
             "id": "a1", "media_asset_id": photo_id,
             "kind": "note",
@@ -957,7 +965,7 @@ async fn ensemble_annote_tour_associe() {
             res.text()
         );
 
-        // XOR : média ET tour -> 400.
+        // XOR: media AND tour -> 400.
         let res = server
             .post("/api/v1/annotation-layers")
             .add_header("Content-Type", "application/json")
@@ -972,11 +980,11 @@ async fn ensemble_annote_tour_associe() {
         assert_eq!(
             res.status_code(),
             400,
-            "média ET tour -> 400 : {}",
+            "media AND tour -> 400: {}",
             res.text()
         );
 
-        // Filtre list?tour= : l'ensemble apparaît pour son tour.
+        // list?tour= filter: the set shows up for its tour.
         let res = server
             .get(&format!("/api/v1/annotation-layers?tour={tour_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -992,7 +1000,7 @@ async fn ensemble_annote_tour_associe() {
             .collect();
         assert!(
             tours_seen.contains(&tour_id.as_str()),
-            "le filtre tour= ramène l'ensemble : {page}"
+            "the tour= filter returns the set: {page}"
         );
     })
     .await;

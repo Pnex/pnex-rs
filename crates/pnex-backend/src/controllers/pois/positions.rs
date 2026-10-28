@@ -12,8 +12,8 @@ pub(super) struct PositionsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/device-positions` — dernière position par device (couche
-/// live de la carte, poll 15 s côté front).
+/// `GET /api/v1/device-positions` — last position per device (live
+/// map layer, 15 s poll on the front).
 #[utoipa::path(
     get,
     path = "/api/v1/device-positions",

@@ -1,7 +1,7 @@
-//! Tests de valeurs golden : physique connue, contre-vérifiée entre chemins
-//! indépendants (scalaire vs multi vs shim FORTRAN vs AbstractState).
+//! Golden value tests: known physics, cross-checked between independent
+//! paths (scalar vs multi vs FORTRAN shim vs AbstractState).
 //!
-//! Adapté de coolprop-rs (tests HTTP) en appels directs du wrapper safe.
+//! Adapted from coolprop-rs (HTTP tests) into direct calls of the safe wrapper.
 
 use pnex_coolprop::{
     abstract_state_factory, abstract_state_free, abstract_state_keyed_output,
@@ -9,7 +9,7 @@ use pnex_coolprop::{
     props_1si, props_si, props_si_multi, propssi_fortran, saturation_ancillary,
 };
 
-/// Point d'ébullition normal de l'eau d'après l'EOS IAPWS-95 utilisée par
+/// Normal boiling point of water according to the IAPWS-95 EOS used by
 /// CoolProp.
 const WATER_NBP_K: f64 = 373.12429584768442;
 
@@ -25,9 +25,9 @@ fn water_molar_mass() {
     assert!((m - 0.01801528).abs() < 1e-7, "molar mass = {m}");
 }
 
-/// L'exemple du README CoolProp, cohérent sur chaque chemin capable de le
-/// calculer : PropsSI (défaut et préfixé HEOS), PropsSImulti et le shim
-/// FORTRAN.
+/// The CoolProp README example, consistent on every path able to
+/// compute it: PropsSI (default and HEOS-prefixed), PropsSImulti and the
+/// FORTRAN shim.
 #[test]
 fn mixture_example_consistent_across_paths() {
     let scalar =
@@ -63,9 +63,9 @@ fn mixture_example_consistent_across_paths() {
     assert!((multi[0][0] - scalar).abs() < 1e-6 * scalar.abs());
 }
 
-/// Un update AbstractState PT doit converger avec PropsSI pour le même état.
-/// Les indices de paire d'entrée et de paramètre sont résolus par l'API
-/// (l'ordre des enums C n'est pas une API stable — ne jamais hardcoder).
+/// A PT AbstractState update must converge with PropsSI for the same state.
+/// Input pair and parameter indices are resolved through the API
+/// (the C enum order is not a stable API — never hardcode).
 #[test]
 fn abstract_state_agrees_with_props_si() {
     let handle = abstract_state_factory("HEOS", "Water").expect("factory");
@@ -85,7 +85,7 @@ fn abstract_state_agrees_with_props_si() {
     abstract_state_free(handle).expect("free");
 }
 
-/// L'ancillaire de saturation approche la pression d'ébullition de l'EOS.
+/// The saturation ancillary approaches the EOS boiling pressure.
 #[test]
 fn saturation_ancillary_close_to_eos() {
     let ancillary = saturation_ancillary("Water", "P", 0, "T", WATER_NBP_K).expect("ancillary");
@@ -97,10 +97,10 @@ fn saturation_ancillary_close_to_eos() {
     );
 }
 
-/// `get_parameter_information_string` décrit les paramètres connus.
+/// `get_parameter_information_string` describes the known parameters.
 ///
-/// Quirk : le buffer de sortie sert de sélecteur d'entrée — ici `"long"`
-/// (casse exacte, cf. `src/DataStructures.cpp`) pour la description longue.
+/// Quirk: the output buffer serves as an input selector — here `"long"`
+/// (exact case, see `src/DataStructures.cpp`) for the long description.
 #[test]
 fn parameter_info_descriptions() {
     for (param, fragment) in [
@@ -115,8 +115,8 @@ fn parameter_info_descriptions() {
     }
 }
 
-/// Garde-fou : les noms de paires/paramètres se résolvent en indices valides,
-/// les inconnus sont rejetés (contrat du wrapper, sans indices magiques).
+/// Safeguard: pair/parameter names resolve to valid indices,
+/// unknown ones are rejected (wrapper contract, no magic indices).
 #[test]
 fn input_pair_and_param_indices_resolve() {
     assert!(get_input_pair_index("PT_INPUTS").expect("PT_INPUTS") >= 0);

@@ -1,6 +1,6 @@
 //! Partner network watch, core bricks (partner-watch.md): natural keys
 //! (D302), pack extensions of required and system types (D306), the
-//! `entreprises_fr` and `quali_watch` packs and their hierarchy (D304,
+//! `companies_fr` and `quali_watch` packs and their hierarchy (D304,
 //! D305), declarative imports with preview, application, snapshot
 //! closing and roles (D301).
 //!
@@ -146,12 +146,12 @@ async fn natural_keys_extensions_and_hierarchy() {
             .iter()
             .find(|p| p["key"] == "siren")
             .cloned()
-            .expect("siren added by entreprises_fr");
-        assert_eq!((siren["unique"].clone(), siren["pack"].clone()), (json!(true), json!("entreprises_fr")));
+            .expect("siren added by companies_fr");
+        assert_eq!((siren["unique"].clone(), siren["pack"].clone()), (json!(true), json!("companies_fr")));
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/map_pin", &env.alice, org, None).await;
         assert!(t["def"]["properties"].as_array().unwrap().iter().any(|p| p["key"] == "siret"), "{t}");
         // Installing again (same version) changes nothing.
-        install(&server, &env.alice, org, "entreprises_fr").await;
+        install(&server, &env.alice, org, "companies_fr").await;
         // D316: the pack's rules and flow models, flows as drafts only.
         let count = |sql: String| {
             let db = env.db.clone();
@@ -164,7 +164,7 @@ async fn natural_keys_extensions_and_hierarchy() {
                     .unwrap()
             }
         };
-        // quali_watch 9 + presence_web 6 functions; 4 + 1 flows (the
+        // quali_watch 9 + web_presence 6 functions; 4 + 1 flows (the
         // ingestion flow is retired, D359).
         assert_eq!(count(format!("SELECT count(*)::bigint AS n FROM functions WHERE org_id = {org}")).await, 15);
         assert_eq!(
@@ -216,13 +216,13 @@ async fn natural_keys_extensions_and_hierarchy() {
         let pid = p["id"].as_str().unwrap();
         for body in [
             json!({"link_type": "owns", "source_id": bid, "target_id": aid}),
-            json!({"link_type": "dirige", "source_id": pid, "target_id": aid, "attributes": {"role": "president"}}),
-            json!({"link_type": "dirige", "source_id": pid, "target_id": bid, "attributes": {"role": "gerant"}}),
+            json!({"link_type": "manages", "source_id": pid, "target_id": aid, "attributes": {"role": "president"}}),
+            json!({"link_type": "manages", "source_id": pid, "target_id": bid, "attributes": {"role": "manager"}}),
         ] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
         }
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{bid}/hierarchy?key=groupe"), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{bid}/hierarchy?key=group"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let titles: Vec<(String, u64)> = h["nodes"]
             .as_array()
@@ -235,49 +235,49 @@ async fn natural_keys_extensions_and_hierarchy() {
         let jeanne: Vec<&Value> = h["nodes"].as_array().unwrap().iter().filter(|n| n["title"] == "Jeanne Martin").collect();
         assert_eq!(jeanne.len(), 2, "under the holding and under ACME: {h}");
         assert!(jeanne.iter().any(|n| n["also_under"] == json!(["ACME SAS"]) || n["also_under"] == json!(["Holding"])));
-        assert!(h["hierarchies"].as_array().unwrap().iter().any(|x| x["key"] == "reseau"));
+        assert!(h["hierarchies"].as_array().unwrap().iter().any(|x| x["key"] == "network"));
     })
     .await;
 }
 
-/// account-mapping.md D343: an org on `entreprises_fr` 1.0.0 (shared fields
-/// and links owned by it) upgrades onto the worldwide `entreprises` pack,
+/// account-mapping.md D343: an org on `companies_fr` 1.0.0 (shared fields
+/// and links owned by it) upgrades onto the worldwide `companies` pack,
 /// which takes those keys over; objects keep their values.
 #[tokio::test]
 #[serial]
 async fn country_pack_hands_shared_keys_to_the_worldwide_pack() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "entreprises_fr").await;
-        let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789", "etat_administratif": "actif"})).await;
+        install(&server, &env.alice, org, "companies_fr").await;
+        let (st, a) = object(&server, &env.alice, org, "organization", "ACME", json!({"siren": "123456789", "administrative_state": "active"})).await;
         assert_eq!(st, 201, "{a}");
-        // Back to the 1.0.0 layout: everything owned by `entreprises_fr`.
+        // Back to the 1.0.0 layout: everything owned by `companies_fr`.
         for sql in [
             format!(
-                "UPDATE object_type_versions SET definition = replace(definition::text, '\"pack\": \"entreprises\"', '\"pack\": \"entreprises_fr\"')::jsonb \
+                "UPDATE object_type_versions SET definition = replace(definition::text, '\"pack\": \"companies\"', '\"pack\": \"companies_fr\"')::jsonb \
                  WHERE object_type_id IN (SELECT id FROM object_types WHERE org_id = {org})"
             ),
-            format!("UPDATE link_types SET pack_key = 'entreprises_fr' WHERE org_id = {org} AND pack_key = 'entreprises'"),
-            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'entreprises'"),
-            format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'entreprises_fr'"),
+            format!("UPDATE link_types SET pack_key = 'companies_fr' WHERE org_id = {org} AND pack_key = 'companies'"),
+            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'companies'"),
+            format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'companies_fr'"),
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/organization", &env.alice, org, None).await;
-        assert!(!t.to_string().contains("\"pack\":\"entreprises\""), "{t}");
+        assert!(!t.to_string().contains("\"pack\":\"companies\""), "{t}");
 
-        install(&server, &env.alice, org, "entreprises_fr").await;
+        install(&server, &env.alice, org, "companies_fr").await;
         let (_, t) = call(&server, "GET", "/api/v1/ontology/types/organization", &env.alice, org, None).await;
         let owner = |k: &str| t["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == k).map(|p| p["pack"].clone());
-        assert_eq!(owner("etat_administratif"), Some(json!("entreprises")));
-        assert_eq!(owner("siren"), Some(json!("entreprises_fr")));
-        assert_eq!(owner("code_activite"), Some(json!("entreprises")));
+        assert_eq!(owner("administrative_state"), Some(json!("companies")));
+        assert_eq!(owner("siren"), Some(json!("companies_fr")));
+        assert_eq!(owner("activity_code"), Some(json!("companies")));
         let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
-        let dirige = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "dirige").cloned();
-        assert_eq!(dirige.map(|d| d["pack_key"].clone()), Some(json!("entreprises")), "{l}");
+        let dirige = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "manages").cloned();
+        assert_eq!(dirige.map(|d| d["pack_key"].clone()), Some(json!("companies")), "{l}");
         let aid = a["id"].as_str().unwrap();
         let (_, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{aid}"), &env.alice, org, None).await;
-        assert_eq!(o["properties"]["etat_administratif"], "actif", "{o}");
+        assert_eq!(o["properties"]["administrative_state"], "active", "{o}");
     })
     .await;
 }
@@ -291,8 +291,8 @@ async fn group_links_from_gleif_and_wikidata() {
     with_app(|server, env| async move {
         use sea_orm::Statement;
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "entreprises_fr").await;
-        install(&server, &env.alice, org, "prospection_b2b").await;
+        install(&server, &env.alice, org, "companies_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
         let base = mock_registers().await;
         let sql = |s: String| env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, s));
         for (from, to) in [("https://api.gleif.org/api/v1", format!("{base}/gleif")), ("https://query.wikidata.org", format!("{base}/wd"))] {
@@ -323,17 +323,17 @@ async fn group_links_from_gleif_and_wikidata() {
         // The LEI first; the parent is not known yet, no link.
         let lei = run("Legal entity identifiers (GLEIF)").await;
         assert_eq!(props_of(&env.db, org, "organization", "siren", "429853351").await["lei"], "969500YMMRBQ5N157D72");
-        assert!(!filiales(meca["id"].as_str().unwrap()).await.contains("filiale_de"));
+        assert!(!filiales(meca["id"].as_str().unwrap()).await.contains("subsidiary_of"));
         // The parents GLEIF names are created (French: by SIREN).
         run("Parent companies (GLEIF)").await;
         let mere = props_of(&env.db, org, "organization", "siren", "513149161").await;
-        assert_eq!((mere["lei"].as_str(), mere["pays"].as_str()), (Some("969500ST98AQCLGNQS21"), Some("FR")), "{mere}");
+        assert_eq!((mere["lei"].as_str(), mere["country"].as_str()), (Some("969500ST98AQCLGNQS21"), Some("FR")), "{mere}");
         // Next turn: one link, direct and ultimate parent being the same.
         run("Legal entity identifiers (GLEIF)").await;
-        let edges = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'filiale_de' AND valid_to IS NULL")).await.unwrap();
+        let edges = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'subsidiary_of' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(edges.rows_affected(), 1);
         let l = filiales(meca["id"].as_str().unwrap()).await;
-        assert!(l.contains("consolidation_directe"), "{l}");
+        assert!(l.contains("direct_consolidation"), "{l}");
 
         // Turns: the cursor stops at the last company queried, then wraps.
         let cursor = || async {
@@ -352,9 +352,9 @@ async fn group_links_from_gleif_and_wikidata() {
         // (proposals.md D375): nothing enters the graph before a human.
         run("Parents and subsidiaries (Wikidata)").await;
         let sae = props_of(&env.db, org, "organization", "siren", "414815217").await;
-        assert_eq!(sae["pays"], "FR", "{sae}");
+        assert_eq!(sae["country"], "FR", "{sae}");
         let sid = safran["id"].as_str().unwrap();
-        assert!(!filiales(sid).await.contains("filiale_de"));
+        assert!(!filiales(sid).await.contains("subsidiary_of"));
         let (st, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
         assert_eq!((st, p["count"].clone()), (200, json!(2)), "{p}");
         assert!(p.to_string().contains("Agence des participations"), "{p}");
@@ -367,7 +367,7 @@ async fn group_links_from_gleif_and_wikidata() {
         run("Parents and subsidiaries (Wikidata)").await;
         let (_, p) = call(&server, "GET", &format!("/api/v1/proposals?object_id={sid}"), &env.alice, org, None).await;
         assert_eq!(p["count"], 1, "{p}");
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=groupe_commercial", safran["id"].as_str().unwrap()), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/hierarchy?key=sales_group", safran["id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         assert!(h.to_string().contains("Safran Aircraft Engines"), "{h}");
     })
@@ -375,7 +375,7 @@ async fn group_links_from_gleif_and_wikidata() {
 }
 
 /// account-mapping.md D337: a saved search of the company register, paged,
-/// brings new targets (`cible`) and leaves known accounts' status alone.
+/// brings new targets (`target`) and leaves known accounts' status alone.
 #[tokio::test]
 #[serial]
 async fn target_list_enters_new_accounts_as_targets() {
@@ -385,7 +385,7 @@ async fn target_list_enters_new_accounts_as_targets() {
         use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "prospection_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let hit = |siren: &str, name: &str| json!({
             "siren": siren, "nom_complet": name, "nature_juridique": "5710",
             "activite_principale": "25.62B", "etat_administratif": "A",
@@ -411,7 +411,7 @@ async fn target_list_enters_new_accounts_as_targets() {
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         env.db.execute_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "UPDATE object_imports SET source_url = replace(source_url, 'https://recherche-entreprises.api.gouv.fr', '{base}') WHERE org_id = {org}"))).await.unwrap();
-        let (st, c) = object(&server, &env.alice, org, "organization", "Mecachrome France", json!({"siren": "429853351", "statut_compte": "client"})).await;
+        let (st, c) = object(&server, &env.alice, org, "organization", "Mecachrome France", json!({"siren": "429853351", "account_status": "customer"})).await;
         assert_eq!(st, 201, "{c}");
 
         let (id, _) = import_named(&server, &env.alice, org, "Target list (company register search)").await;
@@ -420,14 +420,14 @@ async fn target_list_enters_new_accounts_as_targets() {
         let r = settle_within(&server, &env.alice, org, &id, r["id"].as_str().unwrap(), 300).await;
         assert_eq!((r["run"]["state"].as_str(), r["run"]["rows"].as_u64()), (Some("applied"), Some(3)), "{r}");
         let client = props_of(&env.db, org, "organization", "siren", "429853351").await;
-        assert_eq!((client["statut_compte"].as_str(), client["effectif_min"].as_f64()), (Some("client"), Some(1000.0)), "{client}");
-        assert_eq!(client["ca_dernier"]["amount"].as_f64(), Some(343838577.0), "{client}");
+        assert_eq!((client["account_status"].as_str(), client["headcount_min"].as_f64()), (Some("customer"), Some(1000.0)), "{client}");
+        assert_eq!(client["last_revenue"]["amount"].as_f64(), Some(343838577.0), "{client}");
         for siren in ["329936793", "931711311"] {
             let o = props_of(&env.db, org, "organization", "siren", siren).await;
-            assert_eq!((o["statut_compte"].as_str(), o["code_activite"].as_str()), (Some("cible"), Some("25.62")), "{o}");
+            assert_eq!((o["account_status"].as_str(), o["activity_code"].as_str()), (Some("target"), Some("25.62")), "{o}");
         }
         let pin = props_of(&env.db, org, "map_pin", "siret", "93171131100011").await;
-        assert_eq!(pin["effectif_min"].as_f64(), Some(500.0), "{pin}");
+        assert_eq!(pin["headcount_min"].as_f64(), Some(500.0), "{pin}");
     })
     .await;
 }
@@ -440,7 +440,7 @@ async fn target_list_enters_new_accounts_as_targets() {
 async fn group_coverage_and_status_colours() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "prospection_b2b").await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
         let mk = |title: &'static str, props: Value| {
             let (server, token) = (&server, env.alice.clone());
             async move {
@@ -449,25 +449,25 @@ async fn group_coverage_and_status_colours() {
                 o["id"].as_str().unwrap().to_string()
             }
         };
-        let mother = mk("Groupe", json!({"statut_compte": "client", "utilisateurs_actuels": 50, "potentiel_utilisateurs": 5000})).await;
-        let covered = mk("Filiale suivie", json!({"statut_compte": "prospect"})).await;
-        let gap = mk("Filiale nue", json!({"statut_compte": "cible", "potentiel_utilisateurs": 800})).await;
+        let mother = mk("Groupe", json!({"account_status": "customer", "current_users": 50, "potential_users": 5000})).await;
+        let covered = mk("Filiale suivie", json!({"account_status": "prospect"})).await;
+        let gap = mk("Filiale nue", json!({"account_status": "target", "potential_users": 800})).await;
         let (_, p) = object(&server, &env.alice, org, "person", "Contact", json!({})).await;
         let link = |kind: &str, from: &str, to: &str| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": {}});
-        for body in [link("filiale_de", &covered, &mother), link("filiale_de", &gap, &mother), link("employs", &covered, p["id"].as_str().unwrap())] {
+        for body in [link("subsidiary_of", &covered, &mother), link("subsidiary_of", &gap, &mother), link("employs", &covered, p["id"].as_str().unwrap())] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
         }
 
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/hierarchy?key=sales_group"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let node = |id: &str| h["nodes"].as_array().unwrap().iter().find(|n| n["id"] == id).cloned().unwrap();
-        assert_eq!(node(&mother)["marks"], json!([{"property": "statut_compte", "value": "client", "color": "green", "labels": {"fr": "Client", "en": "Customer"}}]));
+        assert_eq!(node(&mother)["marks"], json!([{"property": "account_status", "value": "customer", "color": "green", "labels": {"fr": "Client", "en": "Customer"}}]));
         assert_eq!((node(&gap)["white_space"].clone(), node(&covered)["white_space"].clone()), (json!(true), Value::Null), "{h}");
         assert_eq!((h["has_coverage"].clone(), h["white_space"].clone()), (json!(true), json!(1)));
         let totals: Vec<(String, f64)> = h["totals"].as_array().unwrap().iter()
             .map(|t| (t["property"].as_str().unwrap().to_string(), t["total"].as_f64().unwrap())).collect();
-        assert_eq!(totals, [("utilisateurs_actuels".to_string(), 50.0), ("potentiel_utilisateurs".to_string(), 5800.0)]);
+        assert_eq!(totals, [("current_users".to_string(), 50.0), ("potential_users".to_string(), 5800.0)]);
         assert_eq!(h["counts"].as_array().unwrap().len(), 3, "{h}");
 
         let (st, g) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/graph"), &env.alice, org, None).await;
@@ -486,7 +486,7 @@ async fn group_coverage_and_status_colours() {
             "SELECT id::text AS id, version FROM objects WHERE org_id = {org} AND type_key = 'map_pin' AND native_id = '{pin}'"))).await.unwrap().unwrap();
         let (oid, version) = (row.try_get::<String>("", "id").unwrap(), row.try_get::<i32>("", "version").unwrap());
         let (st, r) = call(&server, "PUT", &format!("/api/v1/ontology/objects/{oid}"), &env.alice, org,
-            Some(json!({"properties": {"statut_site": "client"}, "expected_version": version}))).await;
+            Some(json!({"properties": {"establishment_status": "customer"}, "expected_version": version}))).await;
         assert_eq!(st, 200, "{r}");
         let (st, c) = call(&server, "GET", "/api/v1/pois/cluster?bbox=0.0,46.0,2.0,48.0&zoom=10", &env.alice, org, None).await;
         assert_eq!(st, 200, "{c}");
@@ -512,9 +512,9 @@ async fn group_coverage_and_status_colours() {
         assert_eq!(path(&mother, "").await.0, 200);
         // Several starts: whoever follows an account (here "Moi", on the group).
         let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
-            Some(link("suit_le_compte", &me, &mother))).await;
+            Some(link("follows_account", &me, &mother))).await;
         assert_eq!(st, 201, "{r}");
-        let url = format!("/api/v1/ontology/path?from_links=suit_le_compte&to={covered}&links={people}");
+        let url = format!("/api/v1/ontology/path?from_links=follows_account&to={covered}&links={people}");
         let (st, r) = call(&server, "GET", &url, &env.alice, org, None).await;
         assert_eq!(st, 200, "{r}");
         let titles: Vec<&str> = r["path"].as_array().unwrap().iter().map(|o| o["title"].as_str().unwrap()).collect();
@@ -525,35 +525,35 @@ async fn group_coverage_and_status_colours() {
         // D340: an account plan filled from the account, linked to it.
         // D370: the page speaks the author's language, English by default.
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{mother}/pages"), &env.alice, org,
-            Some(json!({"template": "plan_de_compte"}))).await;
+            Some(json!({"template": "account_plan"}))).await;
         assert_eq!((st, page["title"].as_str()), (201, Some("Account plan — Groupe")), "{page}");
         let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         assert!(String::from_utf8_lossy(&snap).contains("Account plan — Groupe"));
         let (st, page) = call(&server, "POST", &format!("/api/v1/ontology/objects/{mother}/pages"), &env.alice, org,
-            Some(json!({"template": "plan_de_compte", "lang": "fr-FR"}))).await;
+            Some(json!({"template": "account_plan", "lang": "fr-FR"}))).await;
         assert_eq!(st, 201, "{page}");
         assert_eq!(page["title"], "Plan de compte — Groupe");
         let snap = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, format!(
             "SELECT snapshot FROM docs WHERE id = '{}'", page["id"].as_str().unwrap()))).await.unwrap().unwrap()
             .try_get::<Vec<u8>>("", "snapshot").unwrap();
         let text = String::from_utf8_lossy(&snap);
-        for want in ["Plan de compte — Groupe", "Filiale nue", "utilisateurs actuels 50", "potentiel utilisateurs 5800"] {
+        for want in ["Plan de compte — Groupe", "Filiale nue", "current users 50", "potential users 5800"] {
             assert!(text.contains(want), "{want} missing");
         }
         assert!(!text.contains("{{"), "every placeholder filled");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mother}/links"), &env.alice, org, None).await;
-        assert!(l.to_string().contains("page_sur"), "{l}");
+        assert!(l.to_string().contains("page_about"), "{l}");
         // A template of another type is refused.
         let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/objects/{}/pages", p["id"].as_str().unwrap()), &env.alice, org,
-            Some(json!({"template": "plan_de_compte"}))).await;
+            Some(json!({"template": "account_plan"}))).await;
         assert_eq!(st, 400);
     })
     .await;
 }
 
-/// web-presence.md D363: `presence_web` takes `site_web` and `a_pour_site`
+/// web-presence.md D363: `web_presence` takes `website` and `has_website`
 /// over from an org on `quali_watch` 1.2.0, objects and links in place.
 #[tokio::test]
 #[serial]
@@ -561,38 +561,38 @@ async fn presence_web_takes_websites_over() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
         install(&server, &env.alice, org, "quali_watch").await;
-        let (st, site) = object(&server, &env.alice, org, "site_web", "of.fr", json!({"url_racine": "https://of.fr/", "domaine": "of.fr"})).await;
+        let (st, site) = object(&server, &env.alice, org, "website", "of.fr", json!({"root_url": "https://of.fr/", "domain": "of.fr"})).await;
         assert_eq!(st, 201, "{site}");
         // Back to the 1.2.0 layout: the two keys owned by `quali_watch`.
         for sql in [
-            format!("UPDATE object_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'site_web'"),
-            format!("UPDATE link_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'a_pour_site'"),
-            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'presence_web'"),
+            format!("UPDATE object_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'website'"),
+            format!("UPDATE link_types SET pack_key = 'quali_watch' WHERE org_id = {org} AND key = 'has_website'"),
+            format!("DELETE FROM packs WHERE org_id = {org} AND key = 'web_presence'"),
             format!("UPDATE packs SET version = '1.2.0' WHERE org_id = {org} AND key = 'quali_watch'"),
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
         install(&server, &env.alice, org, "quali_watch").await;
-        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
-        assert_eq!(t["pack_key"], "presence_web", "{t}");
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/website", &env.alice, org, None).await;
+        assert_eq!(t["pack_key"], "web_presence", "{t}");
         let (_, l) = call(&server, "GET", "/api/v1/ontology/link-types?limit=100", &env.alice, org, None).await;
-        let site_link = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "a_pour_site").cloned().unwrap();
-        assert_eq!(site_link["pack_key"], "presence_web");
-        assert!(site_link["def"]["attributes"].to_string().contains("valide_par"), "{site_link}");
+        let site_link = l["results"].as_array().unwrap().iter().find(|x| x["def"]["key"] == "has_website").cloned().unwrap();
+        assert_eq!(site_link["pack_key"], "web_presence");
+        assert!(site_link["def"]["attributes"].to_string().contains("validated_by"), "{site_link}");
         let (st, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}", site["id"].as_str().unwrap()), &env.alice, org, None).await;
-        assert_eq!((st, o["properties"]["domaine"].as_str()), (200, Some("of.fr")), "{o}");
+        assert_eq!((st, o["properties"]["domain"].as_str()), (200, Some("of.fr")), "{o}");
 
         // D376: the candidate status left the link: a candidate is a proposal.
-        assert!(!site_link["def"]["attributes"].to_string().contains("\"statut\""), "{site_link}");
+        assert!(!site_link["def"]["attributes"].to_string().contains("\"status\""), "{site_link}");
 
         // D368: the org's layer over the pack's settings, kept by reinstall.
-        let url = "/api/v1/ontology/packs/presence_web/settings";
-        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"seuil_confirme": 70}}))).await;
+        let url = "/api/v1/ontology/packs/web_presence/settings";
+        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"confirm_threshold": 70}}))).await;
         assert_eq!(st, 200, "{p}");
         let get = |p: &Value, k: &str| p["settings"].as_array().unwrap().iter().find(|s| s["key"] == k).cloned().unwrap();
-        assert_eq!((get(&p, "seuil_confirme")["value"].clone(), get(&p, "seuil_confirme")["overridden"].clone()), (json!(70), json!(true)), "{p}");
-        assert_eq!(get(&p, "seuil_propose")["value"], json!(40));
-        for bad in [json!({"inconnu": 1}), json!({"seuil_confirme": 500}), json!({"seuil_confirme": "70"})] {
+        assert_eq!((get(&p, "confirm_threshold")["value"].clone(), get(&p, "confirm_threshold")["overridden"].clone()), (json!(70), json!(true)), "{p}");
+        assert_eq!(get(&p, "propose_threshold")["value"], json!(40));
+        for bad in [json!({"inconnu": 1}), json!({"confirm_threshold": 500}), json!({"confirm_threshold": "70"})] {
             let (st, e) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": bad}))).await;
             assert_eq!(st, 400, "{e}");
         }
@@ -603,29 +603,29 @@ async fn presence_web_takes_websites_over() {
         let flow_id = format!("SELECT id FROM flows WHERE org_id = {org} AND name = 'Web presence · find websites'");
         for sql in [
             format!("UPDATE function_versions SET code = code || E'\\n# older' WHERE function_id = ({})", fv("pw_score")),
-            format!("INSERT INTO function_versions (created_at, updated_at, function_id, org_id, version_number, code, inputs, outputs, note) SELECT now(), now(), function_id, org_id, version_number + 1, code || E'\\n# mine', inputs, outputs, 'my fix' FROM function_versions WHERE function_id = ({}) ORDER BY version_number DESC LIMIT 1", fv("pw_lien")),
+            format!("INSERT INTO function_versions (created_at, updated_at, function_id, org_id, version_number, code, inputs, outputs, note) SELECT now(), now(), function_id, org_id, version_number + 1, code || E'\\n# mine', inputs, outputs, 'my fix' FROM function_versions WHERE function_id = ({}) ORDER BY version_number DESC LIMIT 1", fv("pw_link")),
             format!("UPDATE flow_versions SET graph = jsonb_set(graph, '{{nodes}}', '[]') WHERE flow_id = ({flow_id})"),
         ] {
             env.db.execute_unprepared(&sql).await.unwrap();
         }
         // D370: the org names and colours a value of a pack's enum.
-        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
+        let (_, t) = call(&server, "GET", "/api/v1/ontology/types/website", &env.alice, org, None).await;
         let mut def = t["def"].clone();
         for p in def["properties"].as_array_mut().unwrap() {
-            if p["key"] == "etat_collecte" {
-                p["labels"] = json!({"bloque": {"fr": "Bloqué par le site"}});
-                p["colors"] = json!({"bloque": "red"});
+            if p["key"] == "crawl_state" {
+                p["labels"] = json!({"blocked": {"fr": "Bloqué par le site"}});
+                p["colors"] = json!({"blocked": "red"});
             }
         }
-        let (st, t2) = call(&server, "PUT", "/api/v1/ontology/types/site_web", &env.alice, org, Some(json!({"def": def, "expected_version": t["version"]}))).await;
+        let (st, t2) = call(&server, "PUT", "/api/v1/ontology/types/website", &env.alice, org, Some(json!({"def": def, "expected_version": t["version"]}))).await;
         assert_eq!(st, 200, "{t2}");
-        env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'presence_web'")).await.unwrap();
-        let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/presence_web/install", &env.alice, org, None).await;
-        assert_eq!((st, up["kept"].clone()), (200, json!(["pw_lien"])), "the org's own version is named");
-        let (_, t3) = call(&server, "GET", "/api/v1/ontology/types/site_web", &env.alice, org, None).await;
-        let etat = t3["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == "etat_collecte").unwrap().clone();
-        assert_eq!((etat["labels"]["bloque"]["fr"].clone(), etat["colors"]["bloque"].clone()), (json!("Bloqué par le site"), json!("red")), "kept across the upgrade: {etat}");
-        let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "presence_web").unwrap();
+        env.db.execute_unprepared(&format!("UPDATE packs SET version = '1.0.0' WHERE org_id = {org} AND key = 'web_presence'")).await.unwrap();
+        let (st, up) = call(&server, "POST", "/api/v1/ontology/packs/web_presence/install", &env.alice, org, None).await;
+        assert_eq!((st, up["kept"].clone()), (200, json!(["pw_link"])), "the org's own version is named");
+        let (_, t3) = call(&server, "GET", "/api/v1/ontology/types/website", &env.alice, org, None).await;
+        let etat = t3["def"]["properties"].as_array().unwrap().iter().find(|p| p["key"] == "crawl_state").unwrap().clone();
+        assert_eq!((etat["labels"]["blocked"]["fr"].clone(), etat["colors"]["blocked"].clone()), (json!("Bloqué par le site"), json!("red")), "kept across the upgrade: {etat}");
+        let shipped = pnex_backend::services::ontology::packs::shipped().into_iter().find(|p| p.key == "web_presence").unwrap();
         let code_of = |name: &str| shipped.functions.iter().find(|f| f.name == name).unwrap().code.clone();
         let latest = |sql: String| {
             let db = env.db.clone();
@@ -636,33 +636,33 @@ async fn presence_web_takes_websites_over() {
         };
         let last_fn = |name: &str| format!("SELECT version_number AS n, code AS t FROM function_versions WHERE function_id = ({}) ORDER BY version_number DESC LIMIT 1", fv(name));
         assert_eq!(latest(last_fn("pw_score")).await, (2, code_of("pw_score")), "unedited function upgraded");
-        assert!(latest(last_fn("pw_lien")).await.1.ends_with("# mine"), "edited function kept");
+        assert!(latest(last_fn("pw_link")).await.1.ends_with("# mine"), "edited function kept");
         let (n, author) = latest(format!("SELECT version_number AS n, author AS t FROM flow_versions WHERE flow_id = ({flow_id}) ORDER BY version_number DESC LIMIT 1")).await;
-        assert_eq!((n, author.as_str()), (2, "pack:presence_web"), "unedited flow upgraded");
-        install(&server, &env.alice, org, "presence_web").await;
+        assert_eq!((n, author.as_str()), (2, "pack:web_presence"), "unedited flow upgraded");
+        install(&server, &env.alice, org, "web_presence").await;
         assert_eq!(latest(last_fn("pw_score")).await.0, 2, "a same-version reinstall writes nothing");
         let in_force = pnex_backend::services::ontology::packs::org_settings(&env.db, org).await.unwrap();
-        assert_eq!(in_force["presence_web.seuil_confirme"], json!(70), "kept across the upgrade");
-        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"seuil_confirme": null}}))).await;
-        assert_eq!((st, get(&p, "seuil_confirme")["value"].clone(), get(&p, "seuil_confirme")["overridden"].clone()), (200, json!(80), json!(false)));
+        assert_eq!(in_force["web_presence.confirm_threshold"], json!(70), "kept across the upgrade");
+        let (st, p) = call(&server, "PATCH", url, &env.alice, org, Some(json!({"values": {"confirm_threshold": null}}))).await;
+        assert_eq!((st, get(&p, "confirm_threshold")["value"].clone(), get(&p, "confirm_threshold")["overridden"].clone()), (200, json!(80), json!(false)));
         let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/maintenance/settings", &env.alice, org, Some(json!({"values": {}}))).await;
         assert_eq!(st, 404, "not installed");
         // The org's edits stay listed, and it can take the pack's version.
         let (_, list) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
-        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "presence_web").unwrap().clone();
-        assert_eq!(pw["kept"], json!(["pw_lien"]), "{pw}");
-        let take = "/api/v1/ontology/packs/presence_web/take";
+        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "web_presence").unwrap().clone();
+        assert_eq!(pw["kept"], json!(["pw_link"]), "{pw}");
+        let take = "/api/v1/ontology/packs/web_presence/take";
         let (st, e) = call(&server, "POST", take, &env.alice, org, Some(json!({"names": ["pw_score"]}))).await;
         assert_eq!(st, 400, "not edited: {e}");
-        let (st, p) = call(&server, "POST", take, &env.alice, org, Some(json!({"names": ["pw_lien"]}))).await;
+        let (st, p) = call(&server, "POST", take, &env.alice, org, Some(json!({"names": ["pw_link"]}))).await;
         assert_eq!((st, p.get("kept").cloned()), (200, None), "{p}");
-        assert_eq!(latest(last_fn("pw_lien")).await.1, code_of("pw_lien"), "the pack's version");
+        assert_eq!(latest(last_fn("pw_link")).await.1, code_of("pw_link"), "the pack's version");
         // A function of the org that only shares a pack function's name is
         // its own: never listed as edited.
-        let fid: i64 = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, fv("pw_lien"))).await.unwrap().unwrap().try_get("", "id").unwrap();
+        let fid: i64 = env.db.query_one_raw(sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, fv("pw_link"))).await.unwrap().unwrap().try_get("", "id").unwrap();
         env.db.execute_unprepared(&format!("UPDATE function_versions SET note = 'mine', code = code || 'x' WHERE function_id = {fid}")).await.unwrap();
         let (_, list) = call(&server, "GET", "/api/v1/ontology/packs", &env.alice, org, None).await;
-        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "presence_web").unwrap().clone();
+        let pw = list["results"].as_array().unwrap().iter().find(|p| p["key"] == "web_presence").unwrap().clone();
         assert_eq!(pw.get("kept"), None, "{pw}");
     })
     .await;
@@ -679,7 +679,7 @@ async fn legal_announcements_become_signals() {
         use sea_orm::Statement;
         use std::collections::HashMap;
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "prospection_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let seen = asked.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -713,7 +713,7 @@ async fn legal_announcements_become_signals() {
             "UPDATE object_imports SET source_url = replace(source_url, \
              'https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records', '{base}/records') \
              WHERE org_id = {org}"))).await.unwrap();
-        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "statut_compte": "client"})).await;
+        let (_, meca) = object(&server, &env.alice, org, "organization", "MECACHROME FRANCE", json!({"siren": "429853351", "account_status": "customer"})).await;
         object(&server, &env.alice, org, "organization", "Inconnue", json!({"siren": "999999999"})).await;
 
         let (id, _) = import_named(&server, &env.alice, org, "Legal announcements (BODACC)").await;
@@ -726,21 +726,21 @@ async fn legal_announcements_become_signals() {
         run().await;
         // Followed accounts only: the unknown company is not asked about.
         assert_eq!(asked.lock().unwrap().len(), 1, "{:?}", asked.lock().unwrap());
-        let modif = props_of(&env.db, org, "signal_commercial", "cle", "B20260114713").await;
-        assert_eq!((modif["kind"].as_str(), modif["etat"].as_str()), (Some("annonce_legale"), Some("a_valider")), "{modif}");
-        assert_eq!(modif["extrait"], "modification survenue sur le capital (augmentation)");
-        assert_eq!(modif["resume"], "Modifications diverses — Avis initial");
-        let opening = props_of(&env.db, org, "signal_commercial", "cle", "A2026000001").await;
-        assert_eq!(opening["kind"], "nouvel_etablissement", "{opening}");
+        let modif = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
+        assert_eq!((modif["kind"].as_str(), modif["state"].as_str()), (Some("legal_notice"), Some("to_validate")), "{modif}");
+        assert_eq!(modif["excerpt"], "modification survenue sur le capital (augmentation)");
+        assert_eq!(modif["summary"], "Modifications diverses — Avis initial");
+        let opening = props_of(&env.db, org, "sales_signal", "ref", "A2026000001").await;
+        assert_eq!(opening["kind"], "new_establishment", "{opening}");
         let (_, l) = call(&server, "GET", &format!("/api/v1/ontology/objects/{}/links", meca["id"].as_str().unwrap()), &env.alice, org, None).await;
-        assert!(l.to_string().matches("signal_sur").count() >= 2, "{l}");
+        assert!(l.to_string().matches("signal_about").count() >= 2, "{l}");
 
         // A human retains it; the next run leaves that alone.
         env.db.execute_unprepared(&format!(
-            "UPDATE objects SET properties = properties || '{{\"etat\": \"retenu\"}}' WHERE org_id = {org} AND properties ->> 'cle' = 'B20260114713'")).await.unwrap();
+            "UPDATE objects SET properties = properties || '{{\"state\": \"retained\"}}' WHERE org_id = {org} AND properties ->> 'ref' = 'B20260114713'")).await.unwrap();
         run().await;
-        let modif = props_of(&env.db, org, "signal_commercial", "cle", "B20260114713").await;
-        assert_eq!(modif["etat"], "retenu");
+        let modif = props_of(&env.db, org, "sales_signal", "ref", "B20260114713").await;
+        assert_eq!(modif["state"], "retained");
     })
     .await;
 }
@@ -752,10 +752,10 @@ async fn legal_announcements_become_signals() {
 async fn meeting_debrief_and_coaching() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Installs beside the partner watch, whose `couvre` is another link.
+        // Installs beside the partner watch, whose `covers` is another link.
         install(&server, &env.alice, org, "quali_watch").await;
-        install(&server, &env.alice, org, "prospection_b2b").await;
-        install(&server, &env.alice, org, "prospection_fr").await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
+        install(&server, &env.alice, org, "prospecting_b2b_fr").await;
         let mk = |t: &'static str, title: &'static str, props: Value| {
             let (server, token) = (&server, env.alice.clone());
             async move {
@@ -764,9 +764,9 @@ async fn meeting_debrief_and_coaching() {
                 o["id"].as_str().unwrap().to_string()
             }
         };
-        let account = mk("organization", "Usine Nord", json!({"statut_compte": "prospect"})).await;
+        let account = mk("organization", "Usine Nord", json!({"account_status": "prospect"})).await;
         let meeting = mk("meeting", "Découverte Usine Nord", json!({"status": "held", "purpose": "Découverte", "date": "2026-10-20T09:00:00Z"})).await;
-        let director = mk("person", "Directrice d'usine", json!({"persona": "decideur"})).await;
+        let director = mk("person", "Directrice d'usine", json!({"persona": "decision_maker"})).await;
         let criterion = mk("coaching_criterion", "Faire parler du turnover", json!({"persona": "sponsor", "active": true})).await;
         let link = |kind: &str, from: &str, to: &str, attrs: Value| json!({"link_type": kind, "source_id": from, "target_id": to, "attributes": attrs});
         for body in [
@@ -870,21 +870,21 @@ async fn mock_registers() -> String {
 async fn prospection_pack_maps_a_commercial_group() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        install(&server, &env.alice, org, "prospection_b2b").await;
-        let (st, e) = object(&server, &env.alice, org, "organization", "Bad", json!({"statut_compte": "lead"})).await;
+        install(&server, &env.alice, org, "prospecting_b2b").await;
+        let (st, e) = object(&server, &env.alice, org, "organization", "Bad", json!({"account_status": "lead"})).await;
         assert_eq!(st, 400, "{e}");
-        let (st, m) = object(&server, &env.alice, org, "organization", "Mother", json!({"lei": "529900T8BM49AURSDO55", "pays": "DE", "statut_compte": "client"})).await;
+        let (st, m) = object(&server, &env.alice, org, "organization", "Mother", json!({"lei": "529900T8BM49AURSDO55", "country": "DE", "account_status": "customer"})).await;
         assert_eq!(st, 201, "{m}");
-        let (_, f) = object(&server, &env.alice, org, "organization", "Filiale FR", json!({"pays": "FR", "code_activite": "28.41", "statut_compte": "prospect"})).await;
-        let (_, g) = object(&server, &env.alice, org, "organization", "Usine Lyon SAS", json!({"pays": "FR", "effectif_min": 250, "effectif_max": 499})).await;
+        let (_, f) = object(&server, &env.alice, org, "organization", "Filiale FR", json!({"country": "FR", "activity_code": "28.41", "account_status": "prospect"})).await;
+        let (_, g) = object(&server, &env.alice, org, "organization", "Usine Lyon SAS", json!({"country": "FR", "headcount_min": 250, "headcount_max": 499})).await;
         let (mid, fid, gid) = (m["id"].as_str().unwrap(), f["id"].as_str().unwrap(), g["id"].as_str().unwrap());
         // D331: a direct and an ultimate parent coexist, each with its nature.
-        for (from, to, nature) in [(fid, mid, "consolidation_directe"), (gid, fid, "consolidation_directe"), (gid, mid, "consolidation_ultime")] {
-            let body = json!({"link_type": "filiale_de", "source_id": from, "target_id": to, "attributes": {"nature": nature, "source": "gleif.org"}});
+        for (from, to, nature) in [(fid, mid, "direct_consolidation"), (gid, fid, "direct_consolidation"), (gid, mid, "ultimate_consolidation")] {
+            let body = json!({"link_type": "subsidiary_of", "source_id": from, "target_id": to, "attributes": {"nature": nature, "source": "gleif.org"}});
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org, Some(body)).await;
             assert_eq!(st, 201, "{r}");
         }
-        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mid}/hierarchy?key=groupe_commercial"), &env.alice, org, None).await;
+        let (st, h) = call(&server, "GET", &format!("/api/v1/ontology/objects/{mid}/hierarchy?key=sales_group"), &env.alice, org, None).await;
         assert_eq!(st, 200, "{h}");
         let nodes: Vec<(&str, u64)> = h["nodes"]
             .as_array()
@@ -901,7 +901,7 @@ async fn prospection_pack_maps_a_commercial_group() {
 }
 
 const MAPPING: &str = r#"
-key: reseau
+key: network
 name: Partner network
 objects:
   - as: org
@@ -917,13 +917,13 @@ objects:
     properties:
       code: { from: code_certification, convert: [trim, upper] }
 links:
-  - type: habilite_pour
+  - type: accredited_for
     from: org
     to: cert
     valid_from: { from: date_debut_habilitation, convert: ["date:%d/%m/%Y"] }
     attributes:
-      perimetre: perimetre
-      declaree_fc: { from: declaree_france_competences, convert: [{enum: {oui: "true", non: "false"}}] }
+      scope: { from: perimetre, convert: [{enum: {les_deux: both, preparation: preparation, evaluation: assessment}}] }
+      declared_fc: { from: declaree_france_competences, convert: [{enum: {oui: "true", non: "false"}}] }
 "#;
 
 async fn preview(
@@ -1067,7 +1067,7 @@ async fn imports_preview_apply_and_close_missing_links() {
         let row = env.db.query_one_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
-                     AND relation = 'habilite_pour' AND valid_to IS NULL AND source_ref LIKE 'import:{id}@%'"),
+                     AND relation = 'accredited_for' AND valid_to IS NULL AND source_ref LIKE 'import:{id}@%'"),
         )).await.unwrap().unwrap();
         assert_eq!(row.try_get::<i64>("", "n").unwrap(), 2);
 
@@ -1089,7 +1089,7 @@ async fn imports_preview_apply_and_close_missing_links() {
         let row = env.db.query_one_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
-                     AND relation = 'habilite_pour' AND valid_to IS NOT NULL"),
+                     AND relation = 'accredited_for' AND valid_to IS NOT NULL"),
         )).await.unwrap().unwrap();
         assert_eq!(row.try_get::<i64>("", "n").unwrap(), 1, "closed, never deleted");
 
@@ -1324,7 +1324,7 @@ async fn import_runs_its_own_steps() {
         let (_, imp) = call(&server, "GET", &format!("/api/v1/ontology/imports/{import_id}"), &env.alice, org, None).await;
         assert!(imp["next_run_at"].is_string() && imp["mapping"].as_str().unwrap().contains("source_resolve"), "{imp}");
         let (st, p) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
-            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+            Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
         assert_eq!(st, 200, "{p}");
 
         // R2: a viewer starts nothing.
@@ -1344,7 +1344,7 @@ async fn import_runs_its_own_steps() {
         let names: Vec<&str> = r["steps"].as_array().unwrap().iter().map(|s| s["step"].as_str().unwrap()).collect();
         assert_eq!(names, ["source_resolve", "file_download", "archive_extract", "table_inspect", "rows_filter"], "{r}");
         let links = format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
-            AND relation = 'porte' AND valid_to IS NULL");
+            AND relation = 'holds' AND valid_to IS NULL");
         assert_eq!(count(q(links).await.unwrap()), 2);
         // Journaled under the run, the staging emptied at its end.
         let steps = format!("SELECT count(*)::bigint AS n FROM ingest_steps WHERE org_id = {org} \
@@ -1401,10 +1401,10 @@ async fn deploy_ontology_nodes(db: &DatabaseConnection, org: i64) -> i64 {
               "filters": [{"key": "code", "op": "in", "value": "$msg.payload.codes"}]}},
             {"id": "u", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren"}},
             {"id": "v", "kind": "object_upsert", "config": {"object_type": "organization", "key": "siren", "propose": true}},
-            {"id": "l", "kind": "link_upsert", "config": {"link_type": "habilite_pour"}},
-            {"id": "s", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true}},
-            {"id": "p", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "skip_closed": true, "propose": true}},
-            {"id": "c", "kind": "link_upsert", "config": {"link_type": "a_pour_site", "close": true}}
+            {"id": "l", "kind": "link_upsert", "config": {"link_type": "accredited_for"}},
+            {"id": "s", "kind": "link_upsert", "config": {"link_type": "has_website", "skip_closed": true}},
+            {"id": "p", "kind": "link_upsert", "config": {"link_type": "has_website", "skip_closed": true, "propose": true}},
+            {"id": "c", "kind": "link_upsert", "config": {"link_type": "has_website", "close": true}}
         ] })),
         ..Default::default()
     }
@@ -1478,33 +1478,33 @@ async fn flow_nodes_write_as_their_deployed_node() {
         assert_eq!((st, again["created"].clone(), again["object"]["title"].clone()), (200, json!(false), json!("Beta")), "{again}");
 
         let link = json!({"node": node("l"), "source_id": a["object"]["id"], "target_id": cert["id"],
-                          "attributes": {"perimetre": "evaluation"}});
+                          "attributes": {"scope": "assessment"}});
         let (st, l1) = internal(&server, "link", link.clone()).await;
         assert_eq!(st, 200, "{l1}");
         let mut again = link.clone();
-        again["attributes"] = json!({"perimetre": "les_deux"});
+        again["attributes"] = json!({"scope": "both"});
         let (st, l2) = internal(&server, "link", again).await;
         assert_eq!((st, l2["id"].clone()), (200, l1["id"].clone()), "an open link is updated, not doubled");
-        assert_eq!(l2["attributes"]["perimetre"], "les_deux");
+        assert_eq!(l2["attributes"]["scope"], "both");
 
         // web-presence.md D362: a rejected candidate is closed with its
         // reason, and a skip_closed node never opens it again.
-        let (st, site) = object(&server, &env.alice, org, "site_web", "acme.fr", json!({"url_racine": "https://acme.fr/", "domaine": "acme.fr"})).await;
+        let (st, site) = object(&server, &env.alice, org, "website", "acme.fr", json!({"root_url": "https://acme.fr/", "domain": "acme.fr"})).await;
         assert_eq!(st, 201, "{site}");
         let pair = |id: &str, attrs: Value| json!({"node": node(id), "source_id": a["object"]["id"], "target_id": site["id"], "attributes": attrs});
         let (st, open) = internal(&server, "link", pair("s", json!({"score": 55}))).await;
         assert_eq!((st, open["valid_to"].clone()), (200, Value::Null), "{open}");
-        let (st, closed) = internal(&server, "link", pair("c", json!({"valide_par": "Alice"}))).await;
+        let (st, closed) = internal(&server, "link", pair("c", json!({"validated_by": "Alice"}))).await;
         assert_eq!(st, 200, "{closed}");
         assert!(closed["valid_to"].is_string(), "{closed}");
-        assert_eq!((closed["attributes"]["valide_par"].as_str(), closed["attributes"]["score"].as_f64()), (Some("Alice"), Some(55.0)));
+        assert_eq!((closed["attributes"]["validated_by"].as_str(), closed["attributes"]["score"].as_f64()), (Some("Alice"), Some(55.0)));
         let (st, again) = internal(&server, "link", pair("s", json!({"score": 90}))).await;
         assert_eq!((st, again["id"].clone(), again["attributes"]["score"].clone()), (200, closed["id"].clone(), json!(55)), "{again}");
         let open_links = env.db.execute_unprepared(&format!(
-            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'has_website' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);
         // D375: a proposing node writes no link, it proposes one.
-        let (_, site2) = object(&server, &env.alice, org, "site_web", "acme2.fr", json!({"url_racine": "https://acme2.fr/", "domaine": "acme2.fr"})).await;
+        let (_, site2) = object(&server, &env.alice, org, "website", "acme2.fr", json!({"root_url": "https://acme2.fr/", "domain": "acme2.fr"})).await;
         let req = json!({"node": node("p"), "source_id": a["object"]["id"], "target_id": site2["id"], "attributes": {"score": 60}, "confidence": 60});
         let (st, r) = internal(&server, "link", req.clone()).await;
         assert_eq!((st, r["proposed"].clone()), (200, json!(true)), "{r}");
@@ -1512,27 +1512,27 @@ async fn flow_nodes_write_as_their_deployed_node() {
         // The model's opinion arrives after: same values, the open proposal takes it.
         let mut req2 = req.clone();
         req2["confidence"] = json!(70);
-        req2["evidence"] = json!({"avis_llm": "OUI, mentions légales"});
+        req2["evidence"] = json!({"llm_opinion": "OUI, mentions légales"});
         let (st, r2) = internal(&server, "link", req2).await;
         assert_eq!((st, r2["proposal_id"].clone()), (200, Value::Null), "{r2}");
         let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", r["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
-        assert_eq!((got["evidence"]["avis_llm"].clone(), got["confidence"].clone(), got["status"].clone()),
+        assert_eq!((got["evidence"]["llm_opinion"].clone(), got["confidence"].clone(), got["status"].clone()),
             (json!("OUI, mentions légales"), json!(70.0), json!("proposed")), "{got}");
         let open_links = env.db.execute_unprepared(&format!(
-            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'has_website' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 0);
         // D377: the same open proposal with an org rule is accepted without
         // a human, the rule kept as the reason.
         let mut req3 = req.clone();
-        req3["accept"] = json!("presence_web.seuil_confirme >= 80 (score 90)");
+        req3["accept"] = json!("web_presence.confirm_threshold >= 80 (score 90)");
         let (st, r3) = internal(&server, "link", req3).await;
         assert_eq!((st, r3["proposal_id"].clone()), (200, r["proposal_id"].clone()), "{r3}");
         let (_, got) = call(&server, "GET", &format!("/api/v1/proposals/{}", r["proposal_id"].as_str().unwrap()), &env.alice, org, None).await;
         assert_eq!((got["status"].clone(), got["decided_by"].clone(), got["reason"].clone()),
-            (json!("accepted"), Value::Null, json!("presence_web.seuil_confirme >= 80 (score 90)")), "{got}");
+            (json!("accepted"), Value::Null, json!("web_presence.confirm_threshold >= 80 (score 90)")), "{got}");
         assert!(got["decided_at"].is_string() && got["applied"].is_string(), "{got}");
         let open_links = env.db.execute_unprepared(&format!(
-            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'a_pour_site' AND valid_to IS NULL")).await.unwrap();
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'has_website' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(open_links.rows_affected(), 1);
 
         let (st, r) = internal(&server, "query", json!({"node": node("q"), "values": [["RNCP12345", "RS1"]]})).await;
@@ -1833,7 +1833,7 @@ async fn open_data_ingestion_chain() {
         let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
         // Q-I1: the client certifier's SIRET, a pack setting.
         let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
-            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+            Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
         assert_eq!(st, 200);
         let run = |name: &'static str| {
             let (server, token) = (&server, env.alice.clone());
@@ -1866,36 +1866,36 @@ async fn open_data_ingestion_chain() {
         assert_eq!(step(&rp, "rows_filter")["rows_out"], 6, "{rp}");
 
         // The ontology: certifications of the client with their sheet,
-        // its `porte` links, the partners' accreditations and scopes.
+        // its `holds` links, the partners' accreditations and scopes.
         let (_, certs) = call(&server, "POST", "/api/v1/ontology/query", &env.alice, org,
             Some(json!({"type_key": "certification", "limit": 10}))).await;
         let by_code = |code: &str| certs["rows"].as_array().unwrap().iter()
             .find(|r| r["object"]["properties"]["code"] == code).cloned().unwrap_or(Value::Null);
         assert_eq!(certs["count"], 2, "{certs}");
         let p = &by_code("RS6765")["object"]["properties"];
-        assert_eq!((p["repertoire"].clone(), p["statut"].clone()), (json!("rs"), json!("actif")), "{p}");
-        assert_eq!(p["intitule"], "Télépilote de drone");
-        assert_eq!(p["date_enregistrement"], "2024-01-15", "Date_Decision when Date_Effet is empty");
-        assert_eq!(by_code("RS6766")["object"]["properties"]["statut"], "inactif");
+        assert_eq!((p["register"].clone(), p["status"].clone()), (json!("rs"), json!("active")), "{p}");
+        assert_eq!(p["official_title"], "Télépilote de drone");
+        assert_eq!(p["registered_on"], "2024-01-15", "Date_Decision when Date_Effet is empty");
+        assert_eq!(by_code("RS6766")["object"]["properties"]["status"], "inactive");
         let links = |relation: &str| format!("SELECT count(*)::bigint AS n FROM resource_edges WHERE org_id = {org} \
             AND relation = '{relation}' AND valid_to IS NULL");
-        assert_eq!(count(q(links("porte")).await.unwrap()), 2);
-        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
+        assert_eq!(count(q(links("holds")).await.unwrap()), 2);
+        assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3, "two SIRET of one SIREN, one link");
         // A SIREN failing its check digit: the row is a warning, not an error.
         assert_eq!(rp["run"]["counts"]["warnings"], 1, "{rp}");
         let aftral = format!("SELECT count(*)::bigint AS n FROM objects WHERE org_id = {org} \
             AND type_key = 'organization' AND properties ->> 'siren' = '305405046'");
         assert_eq!(count(q(aftral).await.unwrap()), 0);
         let scope = q(format!("SELECT e.attributes AS a FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
-            WHERE e.org_id = {org} AND e.relation = 'habilite_pour' AND o.properties ->> 'siren' = '333333334'"))
+            WHERE e.org_id = {org} AND e.relation = 'accredited_for' AND o.properties ->> 'siren' = '333333334'"))
             .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
-        assert_eq!((scope["perimetre"].clone(), scope["declaree_fc"].clone()), (json!("evaluation"), json!(true)), "{scope}");
+        assert_eq!((scope["scope"].clone(), scope["declared_fc"].clone()), (json!("assessment"), json!(true)), "{scope}");
         // Two establishments of one SIREN, one preparing, one assessing:
         // one link covering both, whatever the row order (Q-I2).
         let both = q(format!("SELECT e.attributes AS a FROM resource_edges e JOIN objects o ON o.id = e.source_object_id \
-            WHERE e.org_id = {org} AND e.relation = 'habilite_pour' AND o.properties ->> 'siren' = '222222226'"))
+            WHERE e.org_id = {org} AND e.relation = 'accredited_for' AND o.properties ->> 'siren' = '222222226'"))
             .await.unwrap().unwrap().try_get::<Value>("", "a").unwrap();
-        assert_eq!(both["perimetre"], "les_deux", "{both}");
+        assert_eq!(both["scope"], "both", "{both}");
 
         // A known partner whose SIREN turns invalid in the export: left out
         // with a warning, its accreditation neither closed nor updated.
@@ -1906,20 +1906,20 @@ async fn open_data_ingestion_chain() {
         let c = &rk["run"]["counts"];
         assert_eq!((rk["run"]["state"].clone(), c["warnings"].clone(), c["closed"].clone()),
             (json!("applied"), json!(3), json!(0)), "{rk}");
-        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 3);
+        assert_eq!(count(q(links("accredited_for")).await.unwrap()), 3);
 
         // A partner gone from the open data: its accreditation closes.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["333"]));
         let r3 = run(partners).await;
         assert_eq!(r3["run"]["counts"]["closed"], 1, "{r3}");
-        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
+        assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
 
         // Most of the network gone at once: refused, nothing closed.
         // (AFTRAL out too: a row left out by its key keeps its sheet's links.)
         *zip.lock().unwrap() = fc_zip(&fc_partners(&["111", "222", "305"]));
         let r4 = run(partners).await;
         assert_eq!(r4["run"]["state_code"], "ingest-suspicious-closures", "{r4}");
-        assert_eq!(count(q(links("habilite_pour")).await.unwrap()), 2);
+        assert_eq!(count(q(links("accredited_for")).await.unwrap()), 2);
 
         // A changed shape stops the steps before the import.
         *zip.lock().unwrap() = fc_zip(&fc_partners(&[]).replace("Habilitation_Partenaire", "Habilitation"));
@@ -2095,7 +2095,7 @@ async fn france_competences_sheet_content() {
         // Accreditations opened by fc_partenaires: A and B, not C.
         for siren in ["111111111", "222222222"] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
-                Some(json!({"link_type": "habilite_pour", "source_id": ids[siren], "target_id": ids["RS0101"]}))).await;
+                Some(json!({"link_type": "accredited_for", "source_id": ids[siren], "target_id": ids["RS0101"]}))).await;
             assert_eq!(st, 201, "{r}");
         }
 
@@ -2105,8 +2105,8 @@ async fn france_competences_sheet_content() {
         assert_eq!((p["run"]["counts"]["created"].clone(), p["run"]["counts"]["links_opened"].clone()), (json!(2), json!(2)), "{p}");
         let (_, r) = apply(&server, &env.alice, org, &id, &p, &v).await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
-        let b = props_of(&env.db, org, "competence", "cle", "RNCP183BC02").await;
-        assert_eq!((b["rang"].as_f64(), b["nature"].clone()), (Some(2.0), json!("bloc")), "{b}");
+        let b = props_of(&env.db, org, "skill", "ref", "RNCP183BC02").await;
+        assert_eq!((b["rank"].as_f64(), b["nature"].clone()), (Some(2.0), json!("skill_block")), "{b}");
 
         // RS sheets: RS56 is not one of the org's, nothing of it is written.
         let (id, v) = import_named(&server, &env.alice, org, "France Compétences · RS sheets (XML)").await;
@@ -2120,28 +2120,28 @@ async fn france_competences_sheet_content() {
             (json!(6), json!(6), json!(2), json!(1)), "{p}");
         let (_, r) = apply(&server, &env.alice, org, &id, &p, &v).await;
         assert_eq!(r["run"]["state"], "applied", "{r}");
-        let c3 = props_of(&env.db, org, "competence", "cle", "RS0101-C3").await;
-        assert_eq!(c3["rang"].as_f64(), Some(3.0), "{c3}");
-        assert!(c3["libelle"].as_str().unwrap().starts_with("Optimiser les différents contenus"), "{c3}");
-        assert_eq!(props_of(&env.db, org, "competence", "cle", "RS56-C1").await, Value::Null);
+        let c3 = props_of(&env.db, org, "skill", "ref", "RS0101-C3").await;
+        assert_eq!(c3["rank"].as_f64(), Some(3.0), "{c3}");
+        assert!(c3["label"].as_str().unwrap().starts_with("Optimiser les différents contenus"), "{c3}");
+        assert_eq!(props_of(&env.db, org, "skill", "ref", "RS56-C1").await, Value::Null);
         let cert = props_of(&env.db, org, "certification", "code", "RS0101").await;
-        assert_eq!(cert["nb_certifies"].as_f64(), Some(64.0), "{cert}");
+        assert_eq!(cert["certified_count"].as_f64(), Some(64.0), "{cert}");
         assert_eq!(cert["jury"], json!("Le jury de certification est composé de trois personnes."), "{cert}");
-        assert!(cert["objectifs"].as_str().unwrap().starts_with("La certification s’adresse"), "{cert}");
+        assert!(cert["objectives"].as_str().unwrap().starts_with("La certification s’adresse"), "{cert}");
         let edges = env.db.query_all_raw(sea_orm::Statement::from_string(
             sea_orm::DatabaseBackend::Postgres,
             format!("SELECT source_id, attributes FROM resource_edges WHERE org_id = {org} \
-                     AND relation = 'habilite_pour' AND valid_to IS NULL ORDER BY source_id"),
+                     AND relation = 'accredited_for' AND valid_to IS NULL ORDER BY source_id"),
         )).await.unwrap();
         let states: Vec<(String, Value, Value)> = edges.iter().map(|r| {
             let a = r.try_get::<Value>("", "attributes").unwrap();
-            (r.try_get::<String>("", "source_id").unwrap(), a["etat_fc"].clone(), a["date_etat"].clone())
+            (r.try_get::<String>("", "source_id").unwrap(), a["fc_state"].clone(), a["state_date"].clone())
         }).collect();
         assert_eq!(states.len(), 2, "no accreditation opened for C: {states:?}");
         // Edges are matched by organization: their ids are random UUIDs.
         let of = |siren: &str| states.iter().find(|s| s.0 == ids[siren]).cloned().unwrap();
         // A: one SIRET still active wins over the inactive one.
-        assert_eq!((of("111111111").1, of("222222222").1), (json!("actif"), json!("inactif")), "{states:?}");
+        assert_eq!((of("111111111").1, of("222222222").1), (json!("active"), json!("inactive")), "{states:?}");
         assert_eq!(of("222222222").2, json!("2026-05-12"));
 
         // A description over its 2,048 characters (`invalid: skip`): a
@@ -2224,7 +2224,7 @@ async fn partners_import_memory() {
         let q = |sql: String| env.db.query_one_raw(Statement::from_string(sea_orm::DatabaseBackend::Postgres, sql));
         let _ = q;
         let (st, _) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
-            Some(json!({"values": {"certificateurs": "80259488700019"}}))).await;
+            Some(json!({"values": {"certifiers": "80259488700019"}}))).await;
         assert_eq!(st, 200);
         // Runs a pack import with its own steps; returns the run.
         let run = |name: &'static str| {
@@ -2408,10 +2408,10 @@ async fn network_registers_and_query() {
             sql(format!("UPDATE object_imports SET source_url = replace(source_url, '{from}', '{to}') WHERE org_id = {org}")).await.unwrap();
         }
         let (_, cert) = object(&server, &env.alice, org, "certification", "RS0101",
-            json!({"code": "RS0101", "numero": "0101", "repertoire": "rs", "intitule": "Piloter le référencement d'un site"})).await;
+            json!({"code": "RS0101", "number": "0101", "register": "rs", "official_title": "Piloter le référencement d'un site"})).await;
         // D422: another certification of the network, not in the setting.
         let (_, other_cert) = object(&server, &env.alice, org, "certification", "RS9999",
-            json!({"code": "RS9999", "numero": "9999", "repertoire": "rs", "intitule": "Autre"})).await;
+            json!({"code": "RS9999", "number": "9999", "register": "rs", "official_title": "Autre"})).await;
         let other = with_luhn("44455566");
         let mut ids = std::collections::HashMap::new();
         for (name, siren) in [("OF EXEMPLE", &partner), ("CERTIF EXEMPLE", &certifier), ("STRANGER", &stranger), ("OTHER", &other)] {
@@ -2419,13 +2419,13 @@ async fn network_registers_and_query() {
             assert_eq!(st, 201, "{r}");
             ids.insert(name, r["id"].as_str().unwrap().to_string());
         }
-        for (link, from, attrs) in [("habilite_pour", "OF EXEMPLE", json!({"perimetre": "les_deux", "etat_fc": "actif"})), ("porte", "CERTIF EXEMPLE", json!({}))] {
+        for (link, from, attrs) in [("accredited_for", "OF EXEMPLE", json!({"scope": "both", "fc_state": "active"})), ("holds", "CERTIF EXEMPLE", json!({}))] {
             let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
                 Some(json!({"link_type": link, "source_id": ids[from], "target_id": cert["id"], "attributes": attrs}))).await;
             assert_eq!(st, 201, "{r}");
         }
         let (st, r) = call(&server, "POST", "/api/v1/ontology/links", &env.alice, org,
-            Some(json!({"link_type": "habilite_pour", "source_id": ids["OTHER"], "target_id": other_cert["id"], "attributes": {"perimetre": "les_deux", "etat_fc": "actif"}}))).await;
+            Some(json!({"link_type": "accredited_for", "source_id": ids["OTHER"], "target_id": other_cert["id"], "attributes": {"scope": "both", "fc_state": "active"}}))).await;
         assert_eq!(st, 201, "{r}");
         let (st, r) = call(&server, "PATCH", "/api/v1/ontology/packs/quali_watch/settings", &env.alice, org,
             Some(json!({"values": {"certifications": " rs0101 ; "}}))).await;
@@ -2451,8 +2451,8 @@ async fn network_registers_and_query() {
         want.sort();
         assert_eq!(got, want);
         let p = props_of(&env.db, org, "organization", "siren", &partner).await;
-        assert_eq!((p["nda"].as_str(), p["qualiopi"].as_bool(), p["qualiopi_bilans"].as_bool()), (Some("11000000000"), Some(true), Some(false)), "{p}");
-        assert_eq!((p["qualiopi_categories"].as_str(), p["qualiopi_maj"].as_str()), (Some("Actions de formations"), Some("2026-04-11")), "{p}");
+        assert_eq!((p["nda"].as_str(), p["qualiopi"].as_bool(), p["qualiopi_assessments"].as_bool()), (Some("11000000000"), Some(true), Some(false)), "{p}");
+        assert_eq!((p["qualiopi_categories"].as_str(), p["qualiopi_updated"].as_str()), (Some("Actions de formations"), Some("2026-04-11")), "{p}");
         assert!(p.get("qualiopi_vae").is_none(), "a null flag writes nothing: {p}");
 
         // D405: one offer per training, the outsider created.
@@ -2460,11 +2460,11 @@ async fn network_registers_and_query() {
         assert!(r["diff"]["errors"].as_array().is_none_or(|e| e.is_empty()), "{r}");
         let cpf: Vec<String> = asked.lock().unwrap().iter().filter(|a| a.starts_with("cpf:")).cloned().collect();
         assert_eq!(cpf, vec!["cpf:0101".to_string()], "the setting's certification only");
-        let o = props_of(&env.db, org, "offre_cpf", "id_action", "P_SEO").await;
-        assert_eq!((o["duree_heures"].as_f64(), o["a_distance"].as_bool(), o["vue_le"].as_str()), (Some(7.0), Some(true), Some("2026-10-23")), "{o}");
+        let o = props_of(&env.db, org, "cpf_offer", "id_action", "P_SEO").await;
+        assert_eq!((o["duration_hours"].as_f64(), o["remote"].as_bool(), o["seen_on"].as_str()), (Some(7.0), Some(true), Some("2026-10-23")), "{o}");
         let outsider = props_of(&env.db, org, "organization", "siren", &outsider_siret[..9]).await;
         assert!(outsider.is_object(), "the outsider selling the certification exists");
-        let n = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'offre_de' AND valid_to IS NULL")).await.unwrap();
+        let n = sql(format!("SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'offer_of' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(n.rows_affected(), 2);
 
         // D402: the partners of RS0101 with their accreditations, and the
@@ -2473,11 +2473,11 @@ async fn network_registers_and_query() {
         let flow = deploy_graph(&env.db, org, json!([
             {"id": "net", "kind": "ontology_query", "config": {"object_type": "certification",
               "filters": [{"key": "code", "op": "in", "value": ["RS0101"]}],
-              "traverse": [{"link_type": "habilite_pour", "direction": "in"}],
-              "with_links": ["habilite_pour", "a_pour_site"]}},
+              "traverse": [{"link_type": "accredited_for", "direction": "in"}],
+              "with_links": ["accredited_for", "has_website"]}},
             {"id": "offers", "kind": "ontology_query", "config": {"object_type": "certification",
               "filters": [{"key": "code", "op": "in", "value": ["RS0101"]}],
-              "with_links": ["porte_sur", "porte"]}},
+              "with_links": ["offer_for", "holds"]}},
             {"id": "watched", "kind": "ontology_query", "config": {"object_type": "certification",
               "filters": [{"key": "code", "op": "in", "value": "$setting.quali_watch.certifications"}]}}
         ])).await;
@@ -2485,15 +2485,15 @@ async fn network_registers_and_query() {
         let (st, r) = internal(&server, "query", json!({"node": node("net")})).await;
         assert_eq!((st, r["count"].clone()), (200, json!(1)), "{r}");
         assert_eq!(r["rows"][0]["object"]["title"], "OF EXEMPLE");
-        let h = &r["rows"][0]["links"]["habilite_pour"][0];
-        assert_eq!((h["direction"].as_str(), h["attributes"]["perimetre"].as_str(), h["other"]["properties"]["code"].as_str()),
-            (Some("out"), Some("les_deux"), Some("RS0101")), "{r}");
-        assert!(r["rows"][0]["links"].get("a_pour_site").is_none(), "no site, no key: {r}");
+        let h = &r["rows"][0]["links"]["accredited_for"][0];
+        assert_eq!((h["direction"].as_str(), h["attributes"]["scope"].as_str(), h["other"]["properties"]["code"].as_str()),
+            (Some("out"), Some("both"), Some("RS0101")), "{r}");
+        assert!(r["rows"][0]["links"].get("has_website").is_none(), "no site, no key: {r}");
         let (st, r) = internal(&server, "query", json!({"node": node("offers")})).await;
         assert_eq!(st, 200, "{r}");
         let l = &r["rows"][0]["links"];
-        assert_eq!(l["porte_sur"].as_array().map(Vec::len), Some(2), "{r}");
-        assert_eq!((l["porte_sur"][0]["direction"].as_str(), l["porte"][0]["other"]["title"].as_str()), (Some("in"), Some("CERTIF EXEMPLE")), "{r}");
+        assert_eq!(l["offer_for"].as_array().map(Vec::len), Some(2), "{r}");
+        assert_eq!((l["offer_for"][0]["direction"].as_str(), l["holds"][0]["other"]["title"].as_str()), (Some("in"), Some("CERTIF EXEMPLE")), "{r}");
         // D423: the setting's certifications only, every one when empty.
         let (st, r) = internal(&server, "query", json!({"node": node("watched")})).await;
         assert_eq!((st, r["count"].clone(), r["rows"][0]["object"]["title"].clone()), (200, json!(1), json!("RS0101")), "{r}");

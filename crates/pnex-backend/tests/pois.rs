@@ -1,10 +1,10 @@
-//! Tests carte POI-first (D35–D39, D43) : CRUD POI, placements devices
-//! multiples + déplacement + détachement (D43 et amendement), clustering
-//! backend (D37), liens (D39 → D42 `resource_edges`), positions GPS (D38 —
-//! observe + manuel), isolation org (404 masqué), rôles (viewer lecture
-//! seule), enveloppe D14.
+//! POI-first map tests (D35–D39, D43): POI CRUD, multiple device
+//! placements + move + detach (D43 and amendment), backend clustering
+//! (D37), links (D39 → D42 `resource_edges`), GPS positions (D38 —
+//! observed + manual), org isolation (masked 404), roles (read-only
+//! viewer), D14 envelope.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -54,7 +54,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// The user's personal org (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -65,7 +65,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// Device du catalogue (`temp_sensor`, école builds.rs) attaché à l'org.
+/// Catalogue device (`temp_sensor`, as in builds.rs) attached to the org.
 async fn create_device(
     server: &axum_test::TestServer,
     token: &str,
@@ -107,7 +107,7 @@ async fn create_poi(
         .await
 }
 
-/// D43 : attache un device existant à un POI (POST /pois/{id}/devices).
+/// D43: attaches an existing device to a POI (POST /pois/{id}/devices).
 async fn attach_device(
     server: &axum_test::TestServer,
     token: &str,
@@ -147,7 +147,7 @@ async fn cycle_complet_poi() {
     with_app(|server, _db, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // 201 + emoji par défaut 📍 + location_detail.
+        // 201 + default emoji 📍 + location_detail.
         let res = server
             .post("/api/v1/pois")
             .add_header("Content-Type", "application/json")
@@ -163,14 +163,14 @@ async fn cycle_complet_poi() {
         assert_eq!(res.status_code(), 201, "create : {}", res.text());
         let poi = res.json::<serde_json::Value>();
         let poi_id = poi["id"].as_str().expect("id").to_string();
-        assert_eq!(poi["emoji"], "📍", "emoji par défaut");
+        assert_eq!(poi["emoji"], "📍", "default emoji");
         assert_eq!(poi["mode"], "geo");
         assert_eq!(
             poi["location_detail"], "Bât. A — Étage 2 — Salle 204",
-            "localisation libre bâtiment"
+            "free-form building location"
         );
 
-        // Liste : enveloppe D14 + search insensible à la casse.
+        // List: D14 envelope + case-insensitive search.
         let listed: serde_json::Value = server
             .get("/api/v1/pois?limit=10&offset=0")
             .add_header("Authorization", bearer(&env.alice))
@@ -187,7 +187,7 @@ async fn cycle_complet_poi() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 1, "search insensible à la casse");
+        assert_eq!(listed["count"], 1, "case-insensitive search");
         let listed: serde_json::Value = server
             .get("/api/v1/pois?search=absent")
             .add_header("Authorization", bearer(&env.alice))
@@ -196,7 +196,7 @@ async fn cycle_complet_poi() {
             .json();
         assert_eq!(listed["count"], 0);
 
-        // PATCH : déplacement + emoji custom + location_detail → null.
+        // PATCH: move + custom emoji + location_detail → null.
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -215,7 +215,7 @@ async fn cycle_complet_poi() {
         assert_eq!(patched["emoji"], "🌱");
         assert!(patched["location_detail"].is_null(), "null double-Option");
 
-        // PATCH reset emoji ("" → défaut) + 404 cross-org plus bas.
+        // PATCH reset emoji ("" → default) + cross-org 404 further down.
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -226,7 +226,7 @@ async fn cycle_complet_poi() {
         assert_eq!(
             res.json::<serde_json::Value>()["emoji"],
             "📍",
-            "reset défaut"
+            "reset to default"
         );
 
         // DELETE → 204 → 404.
@@ -241,12 +241,12 @@ async fn cycle_complet_poi() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "supprimé = 404 masqué");
+        assert_eq!(res.status_code(), 404, "deleted = masked 404");
     })
     .await;
 }
 
-// ──────────────── aperçu épinglé ────────────────
+// ──────────────── pinned preview ────────────────
 
 #[tokio::test]
 #[serial]
@@ -274,7 +274,7 @@ async fn pin_apercu_poi() {
             .expect("id")
             .to_string();
 
-        // Pose du pin (couple kind+id) → 200 + écho des champs.
+        // Setting the pin (kind+id pair) → 200 + fields echoed.
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -290,13 +290,13 @@ async fn pin_apercu_poi() {
         assert_eq!(dto["preview_kind"], "media_asset");
         assert_eq!(dto["preview_id"], "11111111-2222-3333-4444-555555555555");
 
-        // GET detail → les champs survivent au round-trip.
+        // GET detail → the fields survive the round-trip.
         let dto: serde_json::Value = headers(server.get(&format!("/api/v1/pois/{poi_id}")))
             .await
             .json();
         assert_eq!(dto["preview_kind"], "media_asset");
 
-        // Kind hors liste → 400 preview_kind.
+        // Kind outside the list → 400 preview_kind.
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -312,7 +312,7 @@ async fn pin_apercu_poi() {
         assert_eq!(body["error"], "field-invalid");
         assert_eq!(body["errors"]["fields"]["preview_kind"], "invalid");
 
-        // Pose sans id → 400 (le couple vit ensemble).
+        // Pose without an id → 400 (the pair lives together).
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -320,9 +320,9 @@ async fn pin_apercu_poi() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({ "preview_kind": "tour" }))
             .await;
-        assert_eq!(res.status_code(), 400, "kind sans id : {}", res.text());
+        assert_eq!(res.status_code(), 400, "kind without an id: {}", res.text());
 
-        // Désépinglage : null sur l'un des deux champs → les deux cleared.
+        // Unpinning: null on either field → both cleared.
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -332,7 +332,7 @@ async fn pin_apercu_poi() {
             .await;
         assert_eq!(res.status_code(), 200, "unpin : {}", res.text());
         let dto = res.json::<serde_json::Value>();
-        assert!(dto["preview_kind"].is_null(), "kind cleared avec l'id");
+        assert!(dto["preview_kind"].is_null(), "kind cleared with the id");
         assert!(dto["preview_id"].is_null());
 
         // Deleting the pinned resource drops the pin (no viewer on a dead id).
@@ -354,7 +354,7 @@ async fn pin_apercu_poi() {
     .await;
 }
 
-// ──────────────── D43 : placements multiples + déplacement ────────────────
+// ──────────────── D43: multiple placements + move ────────────────
 
 #[tokio::test]
 #[serial]
@@ -364,8 +364,8 @@ async fn placements_multiples_et_deplacement() {
         create_device(&server, &env.alice, org, "soil-01").await;
         create_device(&server, &env.alice, org, "soil-02").await;
 
-        // POI A ; le champ device_id hérité de D36 est ignoré à la création
-        // (l'attache se fait délibérément via POST /pois/{id}/devices).
+        // POI A; the device_id field inherited from D36 is ignored on creation
+        // (attaching is deliberately done via POST /pois/{id}/devices).
         let res = create_poi(&server, &env.alice, org, "POI A", 45.7, 4.8).await;
         assert_eq!(res.status_code(), 201, "A : {}", res.text());
         let poi_a = res.json::<serde_json::Value>()["id"]
@@ -377,7 +377,7 @@ async fn placements_multiples_et_deplacement() {
                 .as_array()
                 .expect("devices")
                 .is_empty(),
-            "POI neuf sans device"
+            "new POI without a device"
         );
         let res = create_poi(&server, &env.alice, org, "POI B", 45.8, 4.9).await;
         assert_eq!(res.status_code(), 201, "B : {}", res.text());
@@ -386,7 +386,7 @@ async fn placements_multiples_et_deplacement() {
             .expect("id B")
             .to_string();
 
-        // Deux devices sur le même POI (D43 : plusieurs possibles).
+        // Two devices on the same POI (D43: several allowed).
         let res = attach_device(&server, &env.alice, org, &poi_a, "soil-01").await;
         assert_eq!(res.status_code(), 201, "soil-01 : {}", res.text());
         let placement = res.json::<serde_json::Value>();
@@ -397,7 +397,7 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             res.status_code(),
             201,
-            "second device sur le même POI : {}",
+            "second device on the same POI: {}",
             res.text()
         );
         let listed: serde_json::Value = server
@@ -412,7 +412,7 @@ async fn placements_multiples_et_deplacement() {
             "POI multi-devices"
         );
 
-        // Device inconnu → 400 champ device_id.
+        // Unknown device → 400 device_id field.
         let res = attach_device(&server, &env.alice, org, &poi_a, "inexistant-01").await;
         assert_eq!(res.status_code(), 400, "device inconnu : {}", res.text());
         assert_eq!(
@@ -420,21 +420,16 @@ async fn placements_multiples_et_deplacement() {
             "not-found"
         );
 
-        // Déjà placé — même POI ou autre — → 409 porteur du placement courant
-        // (le front propose le déplacement, jamais silencieux).
+        // Already placed — same POI or another — → 409 carrying the current placement
+        // (the front offers the move, never silent).
         let res = attach_device(&server, &env.alice, org, &poi_a, "soil-01").await;
-        assert_eq!(
-            res.status_code(),
-            409,
-            "re-attach même POI : {}",
-            res.text()
-        );
+        assert_eq!(res.status_code(), 409, "re-attach same POI: {}", res.text());
         // The current placement travels in `errors.args` (strings).
         let body = res.json::<serde_json::Value>();
         assert_eq!(body["error"], "poi-device-already-placed");
         let conflict = &body["errors"]["args"];
         assert_eq!(conflict["device_id"], "soil-01");
-        assert_eq!(conflict["current_pin_id"], poi_a, "même POI");
+        assert_eq!(conflict["current_pin_id"], poi_a, "same POI");
         assert_eq!(conflict["current_pin_label"], "POI A");
         assert!(
             conflict["current_placement_id"]
@@ -446,11 +441,11 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             res.status_code(),
             409,
-            "device déjà placé ailleurs : {}",
+            "device already placed elsewhere: {}",
             res.text()
         );
 
-        // location_detail par placement : set puis clear (null double-Option).
+        // location_detail per placement: set then clear (null double-Option).
         let res = server
             .patch(&format!("/api/v1/pois/placements/{placement_id}"))
             .add_header("Content-Type", "application/json")
@@ -473,8 +468,8 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(res.status_code(), 200, "clear : {}", res.text());
         assert!(res.json::<serde_json::Value>()["location_detail"].is_null());
 
-        // Déplacement de soil-01 vers B (un retrait parmi deux désormais —
-        // le détachement existe aussi, amendement D43).
+        // Moving soil-01 to B (one removal out of two now —
+        // detaching exists too, D43 amendment).
         let res = server
             .patch(&format!("/api/v1/pois/placements/{placement_id}"))
             .add_header("Content-Type", "application/json")
@@ -492,7 +487,7 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             listed["devices"].as_array().expect("devices").len(),
             1,
-            "A a perdu soil-01 (move, pas copie)"
+            "A lost soil-01 (move, not copy)"
         );
         let listed_b: serde_json::Value = server
             .get(&format!("/api/v1/pois/{poi_b}"))
@@ -503,10 +498,10 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             listed_b["devices"].as_array().expect("devices")[0]["device_id"],
             "soil-01",
-            "B a gagné soil-01"
+            "B gained soil-01"
         );
 
-        // POI cible inconnu → 400 champ pin_id ; placement inconnu → 404.
+        // Unknown target POI → 400 pin_id field; unknown placement → 404.
         let res = server
             .patch(&format!("/api/v1/pois/placements/{placement_id}"))
             .add_header("Content-Type", "application/json")
@@ -525,10 +520,10 @@ async fn placements_multiples_et_deplacement() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({ "location_detail": "nulle part" }))
             .await;
-        assert_eq!(res.status_code(), 404, "placement inconnu masqué");
+        assert_eq!(res.status_code(), 404, "unknown placement masked");
 
-        // Détachement (amendement D43, 2026-09-13) : soil-01 redevient
-        // libre, puis se rattache où l'on veut — ici de retour sur B.
+        // Detach (D43 amendment, 2026-09-13): soil-01 becomes free again,
+        // then reattaches wherever we want — here back on B.
         let res = server
             .delete(&format!("/api/v1/pois/placements/{placement_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -544,13 +539,13 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             listed["devices"].as_array().expect("devices").len(),
             1,
-            "A n'a plus que soil-02 (soil-01 détaché)"
+            "A only has soil-02 left (soil-01 detached)"
         );
         let res = attach_device(&server, &env.alice, org, &poi_b, "soil-01").await;
         assert_eq!(
             res.status_code(),
             201,
-            "re-attach après detach : {}",
+            "re-attach after detach: {}",
             res.text()
         );
         let res = server
@@ -558,10 +553,10 @@ async fn placements_multiples_et_deplacement() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "placement inconnu masqué");
+        assert_eq!(res.status_code(), 404, "unknown placement masked");
 
-        // Suppression du POI → cascade des placements : soil-01 redevient
-        // plaçable (il « doit être replacé », avertissement côté UI).
+        // Deleting the POI → placements cascade: soil-01 becomes placeable
+        // again (it "must be placed again", warning on the UI side).
         let res = server
             .delete(&format!("/api/v1/pois/{poi_b}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -572,13 +567,13 @@ async fn placements_multiples_et_deplacement() {
         assert_eq!(
             res.status_code(),
             201,
-            "cascade POI delete : soil-01 replaçable : {}",
+            "cascade POI delete: soil-01 placeable again: {}",
             res.text()
         );
         let placement_id = res.json::<serde_json::Value>()["id"].as_i64().expect("id");
 
-        // Hardening repris du test D36 : location_detail > 255, latitude
-        // hors WGS84, emoji trop long.
+        // Hardening taken from the D36 test: location_detail > 255, latitude
+        // outside WGS84, emoji too long.
         let res = server
             .patch(&format!("/api/v1/pois/placements/{placement_id}"))
             .add_header("Content-Type", "application/json")
@@ -619,7 +614,7 @@ async fn cluster_pois_et_filtres() {
         create_device(&server, &env.alice, org, "soil-01").await;
         create_device(&server, &env.alice, org, "soil-02").await;
 
-        // 3 POI à Lyon (dont 1 avec 2 devices attachés — D43), 1 à Paris.
+        // 3 POIs in Lyon (one with 2 attached devices — D43), 1 in Paris.
         let _ = create_poi(&server, &env.alice, org, "Lyon 1", 45.7640, 4.8356).await;
         let res = create_poi(&server, &env.alice, org, "Lyon 2 device", 45.7650, 4.8360).await;
         assert_eq!(res.status_code(), 201, "{}", res.text());
@@ -633,13 +628,13 @@ async fn cluster_pois_et_filtres() {
         assert_eq!(
             res.status_code(),
             201,
-            "2 devices sur Lyon 2 : {}",
+            "2 devices on Lyon 2: {}",
             res.text()
         );
         let _ = create_poi(&server, &env.alice, org, "Paris", 48.8566, 2.3522).await;
 
-        // Grille de 205 POI serrés à Lyon (dépasse CLUSTER_INDIVIDUAL_MAX,
-        // un cluster ne peut apparaître qu'au-dessus du seuil).
+        // Grid of 205 tight POIs in Lyon (exceeds CLUSTER_INDIVIDUAL_MAX,
+        // a cluster can only appear above the threshold).
         for i in 0..205 {
             let res = server
                 .post("/api/v1/pois")
@@ -655,8 +650,8 @@ async fn cluster_pois_et_filtres() {
             assert_eq!(res.status_code(), 201, "grille {i} : {}", res.text());
         }
 
-        // Zoom 10 : cellule ~0.044° ≫ écart intra-grille → agrégation
-        // (Paris est hors de cette bbox).
+        // Zoom 10: cell ~0.044° ≫ intra-grid spacing → aggregation
+        // (Paris is outside this bbox).
         let res = get_cluster(&server, &env.alice, org, "").await;
         assert_eq!(res.status_code(), 200, "{}", res.text());
         let body = res.json::<serde_json::Value>();
@@ -664,20 +659,20 @@ async fn cluster_pois_et_filtres() {
         let items = body["items"].as_array().expect("items");
         assert!(
             items.len() < body["total"].as_u64().unwrap() as usize,
-            "aggregé à zoom bas"
+            "aggregated at low zoom"
         );
         assert!(
             items.iter().any(|i| i["count"].as_u64() == Some(207)),
-            "une seule cellule occupée à zoom 10"
+            "a single occupied cell at zoom 10"
         );
         assert!(
             items.iter().all(|i| i["id"].is_null()),
             "cluster ≠ point individuel"
         );
         let summed: u64 = items.iter().filter_map(|i| i["count"].as_u64()).sum();
-        assert_eq!(summed, 207, "aucun point perdu");
+        assert_eq!(summed, 207, "no point lost");
 
-        // Bbox élargie à Paris : cluster Lyon (207) + singleton Paris (1).
+        // Bbox widened to Paris: Lyon cluster (207) + Paris singleton (1).
         let res = server
             .get("/api/v1/pois/cluster?bbox=2.0,44.0,6.0,50.0&zoom=10")
             .add_header("Authorization", bearer(&env.alice))
@@ -687,41 +682,38 @@ async fn cluster_pois_et_filtres() {
         assert_eq!(body["total"], 208);
         let items = body["items"].as_array().expect("items");
         assert_eq!(items.len(), 2, "1 cluster + 1 singleton");
-        assert_eq!(items[0]["count"], 207, "trié par densité desc");
+        assert_eq!(items[0]["count"], 207, "sorted by density desc");
         assert_eq!(items[1]["count"], 1);
         assert!(items[1]["id"].is_string(), "singleton porte son id");
 
-        // Zoom 22 : cellule minuscule → points individuels avec ids.
+        // Zoom 22: tiny cell → individual points with ids.
         let res = server
             .get("/api/v1/pois/cluster?bbox=4.83,45.75,4.85,45.78&zoom=22")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
         let body = res.json::<serde_json::Value>();
-        assert_eq!(body["total"], 207, "bbox Lyon serrée");
+        assert_eq!(body["total"], 207, "tight Lyon bbox");
         let items = body["items"].as_array().expect("items");
         assert!(items.iter().all(|i| i["count"] == 1), "individuels");
-        assert!(items.iter().all(|i| i["id"].is_string()), "id présent");
+        assert!(items.iter().all(|i| i["id"].is_string()), "id present");
 
-        // Filtre has_device : seul Lyon 2 (2 placements = compté UNE fois).
+        // has_device filter: only Lyon 2 (2 placements = counted ONCE).
         let body = get_cluster(&server, &env.alice, org, "has_device=true")
             .await
             .json::<serde_json::Value>();
-        assert_eq!(
-            body["total"], 1,
-            "filtre has_device, pas de doublon de jointure"
-        );
+        assert_eq!(body["total"], 1, "has_device filter, no join duplicate");
 
-        // Filtre search : par label…
+        // search filter: by label…
         let body = get_cluster(&server, &env.alice, org, "search=lyon")
             .await
             .json::<serde_json::Value>();
         assert_eq!(body["total"], 2, "filtre search");
-        // …et par slug d'un device placé (D43 : haystack via placements).
+        // …and by the slug of a placed device (D43: haystack via placements).
         let body = get_cluster(&server, &env.alice, org, "search=soil-01")
             .await
             .json::<serde_json::Value>();
-        assert_eq!(body["total"], 1, "search par slug placé");
+        assert_eq!(body["total"], 1, "search by placed slug");
 
         // invalid bbox -> 400 per-field error.
         let res = server
@@ -729,18 +721,18 @@ async fn cluster_pois_et_filtres() {
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 400, "west>east rejeté");
+        assert_eq!(res.status_code(), 400, "west>east rejected");
         let res = server
             .get("/api/v1/pois/cluster?bbox=4.0,44.0&zoom=10")
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 400, "bbox incomplète");
+        assert_eq!(res.status_code(), 400, "incomplete bbox");
     })
     .await;
 }
 
-// ──────────────────── D39 → D42 : liens (arêtes `placed_on`) ────────────────────
+// ──────────────────── D39 → D42: links (`placed_on` edges) ────────────────────
 
 #[tokio::test]
 #[serial]
@@ -751,7 +743,7 @@ async fn positions_observees() {
         let device = create_device(&server, &env.alice, org, "tracker-01").await;
         let registry_id = device["id"].as_i64().expect("registry id");
 
-        // Couche vide au départ.
+        // Empty layer at the start.
         let listed: serde_json::Value = server
             .get("/api/v1/device-positions")
             .add_header("Authorization", bearer(&env.alice))
@@ -760,8 +752,8 @@ async fn positions_observees() {
             .json();
         assert_eq!(listed["count"], 0);
 
-        // Chemin d'ingestion : trames `latitude` puis `longitude` séparées
-        // (convention D38) via le service observé par le tap du sink.
+        // Ingestion path: separate `latitude` then `longitude` frames
+        // (D38 convention) via the service observed by the sink tap.
         let point = |metric: &str, value: &str| TelemetryPoint {
             org_id: org,
             device_registry_id: registry_id,
@@ -777,7 +769,7 @@ async fn positions_observees() {
         svc::observe(&db, &point("latitude", "45.764043"))
             .await
             .expect("observe lat");
-        // Pas encore de paire → rien en base.
+        // No pair yet → nothing in the database.
         let listed: serde_json::Value = server
             .get("/api/v1/device-positions")
             .add_header("Authorization", bearer(&env.alice))
@@ -795,15 +787,15 @@ async fn positions_observees() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 1, "paire complète = position");
+        assert_eq!(listed["count"], 1, "complete pair = position");
         let pos = &listed["results"].as_array().expect("results")[0];
         assert_eq!(pos["device_id"], "tracker-01");
         assert_eq!(pos["source"], "telemetry");
         let lat = pos["latitude"].as_f64().expect("lat");
         assert!((lat - 45.764043).abs() < 1e-5, "lat : {lat}");
 
-        // Filtre has_position : le POI portant le tracker devient visible
-        // (attache D43 : create puis POST devices).
+        // has_position filter: the POI carrying the tracker becomes visible
+        // (D43 attachment: create then POST devices).
         let res = create_poi(&server, &env.alice, org, "POI tracker", 45.76, 4.83).await;
         assert_eq!(res.status_code(), 201, "{}", res.text());
         let poi_id = res.json::<serde_json::Value>()["id"]
@@ -823,20 +815,20 @@ async fn positions_observees() {
     .await;
 }
 
-// ─────────────────────────── isolation + rôles ───────────────────────────
+// ─────────────────────────── isolation + roles ───────────────────────────
 
 #[tokio::test]
 #[serial]
 async fn isolation_org_et_roles_viewer() {
     with_app(|server, _db, env| async move {
-        // Boot JIT des deux users.
+        // JIT boot of both users.
         for token in [&env.alice, &env.bob] {
             server
                 .get("/api/v1/user-info")
                 .add_header("Authorization", bearer(token))
                 .await;
         }
-        // Org partagée : alice owner, bob viewer (école tenant_isolation).
+        // Shared org: alice owner, bob viewer (as in tenant_isolation).
         let created: serde_json::Value = server
             .post("/api/v1/orgs")
             .add_header("Content-Type", "application/json")
@@ -844,7 +836,7 @@ async fn isolation_org_et_roles_viewer() {
             .json(&serde_json::json!({ "name": "Atelier Co" }))
             .await
             .json();
-        let shared_org = created["id"].as_i64().expect("id org partagée");
+        let shared_org = created["id"].as_i64().expect("shared org id");
         server
             .post(&format!("/api/v1/orgs/{shared_org}/members"))
             .add_header("Content-Type", "application/json")
@@ -859,14 +851,14 @@ async fn isolation_org_et_roles_viewer() {
             .expect("id")
             .to_string();
 
-        // Bob sur SON org : le POI d'alice est 404 masqué (lecture/écriture).
+        // Bob on HIS org: alice's POI is a masked 404 (read/write).
         let bob_org = personal_org(&server, &env.bob).await;
         let res = server
             .get(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", bob_org.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org masked");
         let res = server
             .patch(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Content-Type", "application/json")
@@ -881,7 +873,7 @@ async fn isolation_org_et_roles_viewer() {
             .add_header("X-Org-Id", bob_org.to_string())
             .await;
         assert_eq!(res.status_code(), 404);
-        // Liste de bob vide (pas de fuite).
+        // Bob's list empty (no leak).
         let listed: serde_json::Value = server
             .get("/api/v1/pois")
             .add_header("Authorization", bearer(&env.bob))
@@ -890,7 +882,7 @@ async fn isolation_org_et_roles_viewer() {
             .json();
         assert_eq!(listed["count"], 0);
 
-        // Dans l'org partagée : bob viewer lit, mais n'écrit pas.
+        // In the shared org: bob the viewer reads, but doesn't write.
         let _ = create_poi(&server, &env.alice, shared_org, "POI Commun", 45.7, 4.8).await;
         let listed: serde_json::Value = server
             .get("/api/v1/pois")
@@ -898,7 +890,7 @@ async fn isolation_org_et_roles_viewer() {
             .add_header("X-Org-Id", shared_org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 1, "viewer lit la liste");
+        assert_eq!(listed["count"], 1, "viewer reads the list");
         let res = server
             .post("/api/v1/pois")
             .add_header("Content-Type", "application/json")
@@ -906,8 +898,8 @@ async fn isolation_org_et_roles_viewer() {
             .add_header("X-Org-Id", shared_org.to_string())
             .json(&serde_json::json!({"label": "Interdit", "latitude": 45.7, "longitude": 4.8}))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer n'écrit pas");
-        // Viewer ne peut pas attacher un device non plus (D43).
+        assert_eq!(res.status_code(), 403, "viewer doesn't write");
+        // A viewer cannot attach a device either (D43).
         create_device(&server, &env.alice, shared_org, "soil-shared").await;
         let listed: serde_json::Value = server
             .get("/api/v1/pois")
@@ -917,11 +909,11 @@ async fn isolation_org_et_roles_viewer() {
             .json();
         let shared_poi = listed["results"].as_array().expect("results")[0]["id"]
             .as_str()
-            .expect("id POI partagé")
+            .expect("shared POI id")
             .to_string();
         let res = attach_device(&server, &env.bob, shared_org, &shared_poi, "soil-shared").await;
-        assert_eq!(res.status_code(), 403, "viewer n'attache pas");
-        // Viewer ne peut pas détacher non plus (amendement D43).
+        assert_eq!(res.status_code(), 403, "viewer does not attach");
+        // A viewer can't detach either (D43 amendment).
         let res = attach_device(&server, &env.alice, shared_org, &shared_poi, "soil-shared").await;
         assert_eq!(res.status_code(), 201, "alice attache : {}", res.text());
         let detach_id = res.json::<serde_json::Value>()["id"].as_i64().expect("id");
@@ -930,7 +922,7 @@ async fn isolation_org_et_roles_viewer() {
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", shared_org.to_string())
             .await;
-        assert_eq!(res.status_code(), 403, "viewer ne détache pas");
+        assert_eq!(res.status_code(), 403, "viewer doesn't detach");
         let res = server
             .delete(&format!("/api/v1/pois/{poi_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -939,7 +931,7 @@ async fn isolation_org_et_roles_viewer() {
         assert_eq!(
             res.status_code(),
             404,
-            "POI d'alice invisible depuis l'org partagée"
+            "alice's POI invisible from the shared org"
         );
     })
     .await;

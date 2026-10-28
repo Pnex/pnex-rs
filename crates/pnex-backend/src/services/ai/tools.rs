@@ -1,14 +1,14 @@
-//! Registre des outils de l'assistant IA — **la seule surface d'exécution
-//! des sorties du LLM**.
+//! AI assistant tool registry — **the only execution surface of the
+//! LLM outputs**.
 //!
-//! Garde-fou structurel : `execute` est un `match` fermé sur exactement les
-//! 11 outils déclarés dans `tool_specs()`. Il n'existe ni outil générique
-//! (http/sql), ni chemin vers `flow_supervisor` (deploy), ni suppression,
-//! ni commande device. Tout nom hors de ce match → erreur « outil inconnu »
-//! renvoyée au modèle (qui s'excuse et se corrige).
+//! Structural safeguard: `execute` is a closed `match` over exactly the
+//! 11 tools declared in `tool_specs()`. There is no generic tool
+//! (http/sql), no path to `flow_supervisor` (deploy), no deletion,
+//! no device command. Any name outside this match → "unknown tool" error
+//! returned to the model (which apologizes and corrects itself).
 //!
-//! Chaque outil est scoping org via `ToolDeps.org_id` (jamais de paramètre
-//! org côté modèle); every tool first needs its permission of the IAM
+//! Every tool is org-scoped via `ToolDeps.org_id` (never an org parameter
+//! on the model side); every tool first needs its permission of the IAM
 //! registry (`pnex_api_contract::iam::TOOLS`), checked by the engine.
 
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
@@ -21,17 +21,17 @@ use crate::models::_entities::{
 use crate::services::ai::provider::ToolSpec;
 use crate::services::flow;
 
-/// Dépendances injectées par le contrôleur (déjà authentifiées).
+/// Dependencies injected by the controller (already authenticated).
 pub struct ToolDeps<'a> {
     pub db: &'a DatabaseConnection,
-    /// Org du membre qui parle à l'assistant (scoping systématique).
+    /// Org of the member talking to the assistant (systematic scoping).
     pub org_id: i64,
     /// What the member holds in the org: the engine checks each tool's
     /// registry permission against it before running the tool (iam.md D291).
     pub grants: crate::services::iam::Grants,
-    /// Auteur tracé dans `flow_versions.author`.
+    /// Author recorded in `flow_versions.author`.
     pub author: Option<String>,
-    /// Client O2 résolu (`None` = télémétrie dégradée).
+    /// Resolved O2 client (`None` = degraded telemetry).
     pub o2: Option<&'a crate::services::openobserve::client::Client>,
     /// App config (live caches, flow cluster); `None` in unit tests.
     pub config: Option<&'a loco_rs::config::Config>,
@@ -43,12 +43,12 @@ pub struct ToolDeps<'a> {
     pub actor: Option<crate::services::ontology::Actor>,
 }
 
-/// Résultat d'exécution : la valeur JSON vue par le modèle + l'id du flow
-/// touché (pour le deep-link « Ouvrir dans l'éditeur » côté UI).
+/// Execution result: the JSON value seen by the model + the id of the touched
+/// flow (for the "Open in the editor" deep-link in the UI).
 #[derive(Debug)]
 pub struct ToolOutcome {
     pub value: Value,
-    /// Positionné par create_flow/update_flow.
+    /// Set by create_flow/update_flow.
     pub flow_id: Option<i64>,
 }
 
@@ -122,7 +122,7 @@ pub(super) fn internal<E: std::fmt::Display>(context: &'static str) -> impl FnOn
     }
 }
 
-/// Trace d'un outil, renvoyée au front (bulle repliable ✓/✗).
+/// Trace of a tool, returned to the front (collapsible ✓/✗ bubble).
 #[derive(Clone, Debug)]
 pub struct ToolTrace {
     pub name: String,
@@ -133,7 +133,7 @@ pub struct ToolTrace {
     /// Fluent key of a successful call's summary, rendered by the UI with
     /// `args` (see [`TraceSummary`]).
     pub summary_key: Option<&'static str>,
-    /// Flow touché — pilote le bouton « Ouvrir dans l'éditeur ».
+    /// Touched flow — drives the "Open in the editor" button.
     pub flow_id: Option<i64>,
     /// Machine code of a coded refusal (`ai-flow-running`…).
     pub code: Option<&'static str>,
@@ -141,12 +141,12 @@ pub struct ToolTrace {
     pub args: Option<Value>,
 }
 
-/// Les 10 outils du registre (liste figée, ordre du tableau de conception).
+/// The 10 registry tools (frozen list, order of the design table).
 pub fn tool_specs() -> Vec<ToolSpec> {
     vec![
         ToolSpec {
             name: "list_devices",
-            description: "Liste les devices de l'organisation (id interne, slug, modèle, actif).",
+            description: "Lists the organization's devices (internal id, slug, model, active).",
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -155,18 +155,18 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "get_device_pins",
-            description: "Détail des pins d'un device (gpio, label, mode) — id = id interne renvoyé par list_devices.",
+            description: "Detail of a device's pins (gpio, label, mode) — id = internal id returned by list_devices.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "device_id": {"type": "integer", "description": "id interne du device (list_devices)"}
+                    "device_id": {"type": "integer", "description": "internal device id (list_devices)"}
                 },
                 "required": ["device_id"]
             }),
         },
         ToolSpec {
             name: "list_flows",
-            description: "Liste les flows de l'organisation (nom, statut draft/deployed, versions).",
+            description: "Lists the organization's flows (name, draft/deployed status, versions).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -177,11 +177,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "get_flow",
-            description: "Détail d'un flow (graphe complet de la dernière version) — id = id interne renvoyé par list_flows.",
+            description: "Detail of a flow (full graph of the latest version) — id = internal id returned by list_flows.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "flow_id": {"type": "integer", "description": "id interne du flow (list_flows)"}
+                    "flow_id": {"type": "integer", "description": "internal flow id (list_flows)"}
                 },
                 "required": ["flow_id"]
             }),
@@ -197,13 +197,13 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "query_telemetry",
-            description: "Points d'une série télémétrie OpenObserve (métrique × device) sur une fenêtre, + résumé statistique. Utilise la même source que la page Visualisation.",
+            description: "Points of an OpenObserve telemetry series (metric × device) over a window, + statistical summary. Uses the same source as the Visualization page.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "metric": {"type": "string", "description": "nom de la métrique (ex. soil_moisture, a0 — voir le catalogue dans le contexte)"},
-                    "device_id": {"type": "string", "description": "slug du device (dimension device_id des séries)"},
-                    "window": {"type": "string", "enum": ["1h", "6h", "24h"], "description": "fenêtre glissante"}
+                    "metric": {"type": "string", "description": "metric name (e.g. soil_moisture, a0 — see the catalog in the context)"},
+                    "device_id": {"type": "string", "description": "device slug (device_id dimension of the series)"},
+                    "window": {"type": "string", "enum": ["1h", "6h", "24h"], "description": "sliding window"}
                 },
                 "required": ["metric", "device_id", "window"]
             }),
@@ -543,7 +543,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "validate_flow_graph",
-            description: "Valide un graphe de flow (structure, nœuds, câblage) SANS le sauvegarder — renvoie les violations à corriger. À appeler avant chaque create_flow/update_flow.",
+            description: "Validates a flow graph (structure, nodes, wiring) WITHOUT saving it — returns the violations to fix. Call it before every create_flow/update_flow.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -554,24 +554,24 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "validate_calc_expression",
-            description: "Valide la syntaxe d'une expression calc (formule du nœud calc) SANS la sauvegarder. La casse des clés device n'est vérifiable que dans le graphe : utiliser validate_flow_graph après branchement au device.",
+            description: "Validates the syntax of a calc expression (formula of the calc node) WITHOUT saving it. The case of device keys can only be checked in the graph: use validate_flow_graph after wiring to the device.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "expression": {"type": "string", "description": "expression (variables = clés du payload device, ex. probe_1_A0)"}
+                    "expression": {"type": "string", "description": "expression (variables = device payload keys, e.g. probe_1_A0)"}
                 },
                 "required": ["expression"]
             }),
         },
         ToolSpec {
             name: "create_flow",
-            description: "Crée un flow NOUVEAU en brouillon (draft, version 1) — jamais déployé. Le graphe doit être validé au préalable (validate_flow_graph).",
+            description: "Creates a NEW flow as a draft (version 1) — never deployed. The graph must be validated first (validate_flow_graph).",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "nom du flow"},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 200, "description": "flow name"},
                     "graph": {"type": "object", "description": "graphe FlowGraph {nodes: [...]}"},
-                    "device_id": {"type": "integer", "description": "id interne optionnel du device attaché (list_devices)"}
+                    "device_id": {"type": "integer", "description": "optional internal id of the attached device (list_devices)"}
                 },
                 "required": ["name", "graph"]
             }),
@@ -582,9 +582,9 @@ pub fn tool_specs() -> Vec<ToolSpec> {
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "flow_id": {"type": "integer", "description": "id interne du flow (list_flows)"},
+                    "flow_id": {"type": "integer", "description": "internal flow id (list_flows)"},
                     "expected_version": {"type": "integer", "description": "latest_version_number returned by get_flow"},
-                    "graph": {"type": "object", "description": "graphe FlowGraph complet de la nouvelle version"},
+                    "graph": {"type": "object", "description": "full FlowGraph graph of the new version"},
                     "note": {"type": "string", "description": "note de version optionnelle"}
                 },
                 "required": ["flow_id", "expected_version", "graph"]
@@ -593,7 +593,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
     ]
 }
 
-// ───────────────────────── Extraction d'arguments ─────────────────────────
+// ───────────────────────── Argument extraction ─────────────────────────
 
 fn arg_str(args: &Value, key: &str) -> Result<String, String> {
     args.get(key)
@@ -613,11 +613,11 @@ fn arg_value<'a>(args: &'a Value, key: &str) -> Result<&'a Value, String> {
         .ok_or_else(|| format!("argument '{key}' missing"))
 }
 
-// ─────────────────────────── Exécution ───────────────────────────
+// ─────────────────────────── Execution ───────────────────────────
 
-/// Exécute un outil du registre. `match` **fermé** — tout autre nom est
-/// refusé. Les erreurs (String) sont rendues au modèle comme résultat
-/// d'outil en échec ; il se corrige et répond à l'utilisateur.
+/// Runs a registry tool. **Closed** `match` — any other name is
+/// refused. The errors (String) are returned to the model as a failed tool
+/// result; it corrects itself and answers the user.
 pub async fn execute(
     deps: &ToolDeps<'_>,
     name: &str,
@@ -1252,10 +1252,10 @@ pub fn summarize(name: &str, out: &ToolOutcome) -> TraceSummary {
 
 // ─────────────────────────── Outils : devices ───────────────────────────
 
-/// Cap défensif du listing devices (le contexte du prompt en liste déjà
-/// quelques-uns ; ici c'est la vue complète mais bornée).
+/// Defensive cap of the device listing (the prompt context already lists
+/// a few; here it is the full but bounded view).
 const DEVICES_CAP: usize = 50;
-/// Cap du listing flows.
+/// Cap of the flows listing.
 const FLOWS_CAP: usize = 20;
 
 async fn list_devices(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
@@ -1286,7 +1286,7 @@ async fn list_devices(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
 
 async fn get_device_pins(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let device_id = arg_i64(args, "device_id")?;
-    // Scoping org : le device doit appartenir à l'org (404 équivalent).
+    // Org scoping: the device must belong to the org (404 equivalent).
     let Some(device) = device_registries::Entity::find()
         .filter(device_registries::Column::OrgId.eq(deps.org_id))
         .filter(device_registries::Column::Id.eq(device_id))
@@ -1413,8 +1413,8 @@ async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
     )
     .await
     .map_err(|e| {
-        // Les 400 anti-injection/nom invalide deviennent une erreur outil
-        // exploitable par le modèle ; les autres erreurs aussi (jamais de 500 brut).
+        // The anti-injection/invalid-name 400s become a tool error
+        // the model can use; the other errors too (never a raw 500).
         e.to_string()
     })?;
     let points: Vec<Value> = resp
@@ -1446,9 +1446,9 @@ async fn query_telemetry(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcom
 
 // ─────────────────── Outils statiques (pnex-core) ───────────────────
 
-/// Documentation statique des nœuds — doct elle est construite depuis les
-/// formes de config réelles de `pnex-core/src/flow.rs` (un test vérifie que
-/// chaque variante de `FlowNodeKind` est mentionnée).
+/// Static node documentation — built from the real config shapes of
+/// `pnex-core/src/flow.rs` (a test checks that every `FlowNodeKind`
+/// variant is mentioned).
 /// Channels and templates of the org, as references for a pnex_notify node.
 /// Channel settings (tokens, topics, webhooks) are never exposed to the model.
 async fn list_notifications(deps: &ToolDeps<'_>) -> Result<ToolOutcome, ToolError> {
@@ -1611,7 +1611,7 @@ fn validate_calc_expression(args: &Value) -> Result<ToolOutcome, ToolError> {
     })
 }
 
-// ─────────────────── Outils d'écriture (drafts uniquement) ───────────────────
+// ─────────────────── Write tools (drafts only) ───────────────────
 
 async fn create_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, ToolError> {
     let name = arg_str(args, "name")?;
@@ -1647,7 +1647,7 @@ async fn update_flow(deps: &ToolDeps<'_>, args: &Value) -> Result<ToolOutcome, T
     let graph: pnex_core::FlowGraph = serde_json::from_value(arg_value(args, "graph")?.clone())
         .map_err(|e| format!("unreadable graph (FlowGraph expected): {e}"))?;
     let note = args.get("note").and_then(Value::as_str).map(str::to_string);
-    // Scoping org : le flow doit appartenir à l'org.
+    // Org scoping: the flow must belong to the org.
     let Some(row) = flows::Entity::find_by_id(flow_id)
         .filter(flows::Column::OrgId.eq(deps.org_id))
         .one(deps.db)
@@ -1707,8 +1707,8 @@ pub(super) fn flow_running_error(flows: &[(i64, String)]) -> ToolError {
     }
 }
 
-/// Erreurs d'écriture → messages lisibles par le modèle (violations
-/// détaillées : le modèle se corrige tout seul).
+/// Write errors → messages readable by the model (detailed
+/// violations: the model corrects itself).
 fn flow_write_error_string(e: flow::FlowWriteError) -> String {
     use crate::services::flow::FlowWriteError as E;
     match e {
@@ -1741,8 +1741,8 @@ const ASSISTANT_WRITER: crate::services::secrets::flow::GraphWriter<'static> =
 mod tests {
     use super::*;
 
-    /// Le registre est **exactement** l'ensemble autorisé : c'est l'assertion
-    /// structurelle du garde-fou « pas de deploy / suppression / commandes ».
+    /// The registry is **exactly** the allowed set: it is the structural
+    /// assertion of the "no deploy / deletion / commands" safeguard.
     #[test]
     fn registre_ne_contient_que_des_outils_autorises() {
         let names: Vec<&str> = tool_specs().iter().map(|t| t.name).collect();
@@ -1815,8 +1815,8 @@ mod tests {
                 "update_flow",
             ]
         );
-        // Aucun nom ne suggère une action interdite — assertion en profondeur
-        // (un futur « deploy_flow » ajouté à tool_specs casserait ce test).
+        // No name suggests a forbidden action — in-depth assertion
+        // (a future "deploy_flow" added to tool_specs would break this test).
         for name in &names {
             for forbidden in [
                 "deploy",
@@ -1829,14 +1829,14 @@ mod tests {
             ] {
                 assert!(
                     !name.contains(forbidden),
-                    "outil interdit détecté dans le registre: {name}"
+                    "forbidden tool found in the registry: {name}"
                 );
             }
         }
     }
 
-    /// `execute` refuse tout ce qui n'est pas le registre — y compris des
-    /// noms tentants (« deploy_flow », « run_sql », « http »).
+    /// `execute` refuses anything that is not the registry — including
+    /// tempting names ("deploy_flow", "run_sql", "http").
     #[tokio::test]
     async fn execute_refuse_les_noms_hors_registre() {
         // Refused before any query: no database needed.
@@ -1863,10 +1863,10 @@ mod tests {
         ] {
             let err = execute(&deps, name, &serde_json::json!({}))
                 .await
-                .expect_err("outil interdit doit échouer");
+                .expect_err("forbidden tool must fail");
             assert!(err.message.contains("unknown tool"), "{name} → {err:?}");
         }
-        // Un outil de lecture simple fonctionne sans rien d'autre.
+        // A simple read tool works without anything else.
         let out = execute(&deps, "describe_node_types", &serde_json::json!({}))
             .await
             .expect("describe_node_types statique");

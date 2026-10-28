@@ -1,6 +1,6 @@
 # Business pack "Sales follow-up" (crm.md D448–D452): the opportunities of
 # an account, who takes part in them, what was done and what is left to do,
-# in the same graph as the account map (`prospection_b2b`). The pack gives
+# in the same graph as the account map (`prospecting_b2b`). The pack gives
 # the shape, the org gives the playbook: stages are stable keys the org
 # relabels (D370), qualification criteria and follow-up plans are objects
 # of the org, the pack ships none.
@@ -10,7 +10,7 @@
 # Activities are done by people. The follow-up plan (`follow_up_step`: day,
 # kind, instruction) becomes one activity to do per step when an
 # opportunity enters `qualification`, unless every person involved objected
-# (`opposition_le`). Mails and network messages due by tomorrow get a draft
+# (`opposed_on`). Mails and network messages due by tomorrow get a draft
 # written by the org's LLM; nothing is ever sent by the platform: a person
 # reads it, sends it and marks the activity done.
 # Mails received (mail.md D462): the flow model files each new mail of
@@ -27,11 +27,12 @@
 # The morning digest lists the activities due and the open opportunities
 # with no activity for 14 days (edit `$today-14` in the flow): add the org's
 # notification node on its first port, then deploy.
+# Since 2.0.0 every identifier is English (breaking).
 key: crm
 name: Sales follow-up
 names: {fr: "Suivi commercial"}
-version: "1.6.0"
-requires: [prospection_b2b]
+version: "2.0.0"
+requires: [prospecting_b2b]
 description: "Opportunities of an account, their stages and qualification, the people involved, activities and follow-up plans, a morning digest. Questions: which opportunities had no activity for two weeks? What is due today? Which criteria are missing on this opportunity?"
 descriptions: {fr: "Les opportunités d'un compte, leurs étapes et leur qualification, les personnes impliquées, les activités et les plans de relance, un digest du matin. Questions : quelles opportunités n'ont eu aucune activité depuis deux semaines ? Qu'y a-t-il à faire aujourd'hui ? Quels critères manquent sur cette opportunité ?"}
 link_types:
@@ -72,7 +73,7 @@ link_types:
     inverse_name: led to
     inverse_names: {fr: "a donné"}
     from_types: [opportunity]
-    to_types: [signal_commercial, meeting]
+    to_types: [sales_signal, meeting]
   - key: meeting_for
     name: is a meeting for
     names: {fr: "est un rendez-vous pour"}
@@ -223,7 +224,7 @@ functions:
           o = msg["object"]
           links = msg.get("links", {})
           people = [l for l in links.get("involved_in", []) if l.get("direction") == "in"]
-          opposed = [l for l in people if l.get("other", {}).get("properties", {}).get("opposition_le")]
+          opposed = [l for l in people if l.get("other", {}).get("properties", {}).get("opposed_on")]
           accounts = [l["other"]["title"] for l in links.get("opportunity_with", []) if l.get("direction") == "out"]
           roles = [l.get("attributes", {}).get("role", "") for l in people if l not in opposed]
           mark = {"payload": {"follow_up_started_on": msg.get("today", "")}, "object_id": o["id"]}
@@ -456,7 +457,7 @@ functions:
           return [None, {"payload": links}]
   - name: crm_mail_domain
     language: starlark
-    description: "A sender no person uses as identifier: the domain of their address, unless a webmail, to find the account by its website (presence_web)."
+    description: "A sender no person uses as identifier: the domain of their address, unless a webmail, to find the account by its website (web_presence)."
     code: |
       WEBMAIL = ["gmail.com", "googlemail.com", "hotmail.com", "hotmail.fr", "outlook.com",
                  "outlook.fr", "live.com", "live.fr", "msn.com", "yahoo.com", "yahoo.fr",
@@ -708,9 +709,9 @@ flows:
         - id: account
           kind: ontology_query
           config:
-            object_type: site_web
-            filters: [{ key: domaine, op: eq, value: "$msg.domain" }]
-            traverse: [{ link_type: a_pour_site, direction: in }]
+            object_type: website
+            filters: [{ key: domain, op: eq, value: "$msg.domain" }]
+            traverse: [{ link_type: has_website, direction: in }]
             limit: 3
             with_links: [opportunity_with]
           outputs: [{ port: 0, targets: [act_account] }]

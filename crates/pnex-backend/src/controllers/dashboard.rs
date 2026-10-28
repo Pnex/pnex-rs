@@ -1,9 +1,9 @@
-//! `GET /api/v1/dashboard/summary` — une seule requête pour la page
-//! Dashboard du front (une requête wasm = un timer, un chemin d'erreur).
+//! `GET /api/v1/dashboard/summary` — a single request for the front's
+//! Dashboard page (one wasm request = one timer, one error path).
 //!
-//! Lecture seule : tout membre de l'org (viewer inclus). La section
-//! télémétrie est dégradée par conception (`available: false` sans O2)
-//! — cf. services/dashboard.rs.
+//! Read-only: any org member (viewer included). The telemetry
+//! section is degraded by design (`available: false` without O2)
+//! — see services/dashboard.rs.
 
 use axum::extract::State;
 use axum::routing::get;

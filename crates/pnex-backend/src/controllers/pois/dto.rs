@@ -6,7 +6,7 @@ fn d2f(d: Option<sea_orm::entity::prelude::Decimal>) -> Option<f64> {
     d.and_then(|v| f64::try_from(v).ok())
 }
 
-/// Noms d'affichage des cibles d'arêtes, clé `(target_kind, target_id)`
+/// Display names of edge targets, key `(target_kind, target_id)`
 /// (batch [`svc::link_target_labels`]).
 pub(super) type TargetLabels = std::collections::HashMap<(String, String), Option<String>>;
 
@@ -29,9 +29,9 @@ pub(super) fn link_dto(
     l: &crate::models::_entities::resource_edges::Model,
     labels: Option<&TargetLabels>,
 ) -> LinkDto {
-    // `labels` absente = hydratation en échec → ligne « grise » (label None,
-    // dead false — jamais « supprimée » par précaution) ; clé absente de la
-    // map résolue = cible introuvable dans l'org → `target_dead`.
+    // `labels` absent = hydration failed → "grey" row (label None,
+    // dead false — never "deleted" out of caution); key absent from the
+    // resolved map = target not found in the org → `target_dead`.
     let resolved = labels.and_then(|m| m.get(&(l.target_kind.clone(), l.target_id.clone())));
     let (target_label, target_dead) = match (labels.is_some(), resolved) {
         (_, Some(Some(name))) => (Some(name.clone()), false),

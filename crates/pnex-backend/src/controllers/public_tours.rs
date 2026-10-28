@@ -1,15 +1,15 @@
-//! Tours publics — consommation d'un parcours **publié** via son lien de
-//! partage, **sans authentification** (aucun extracteur `OrgContext` — école
-//! `controllers/health.rs`).
+//! Public tours — consumption of a **published** tour via its share
+//! link, **without authentication** (no `OrgContext` extractor —
+//! `controllers/health.rs` pattern).
 //!
-//! Garde-fous : le token (32 hex) est la seule clé d'entrée ; 404 **uniforme**
-//! pour token inconnu, tour dépublié, asset non référencé ou version
-//! inconnue — pas d'énumération. Les octets repassent par le MediaStore
-//! (`fs`/RustFS, D5/D21), jamais par la base.
+//! Safeguards: the token (32 hex) is the only entry key; **uniform** 404
+//! for unknown token, unpublished tour, unreferenced asset or unknown
+//! version — no enumeration. The bytes go back through the MediaStore
+//! (`fs`/RustFS, D5/D21), never through the DB.
 //!
-//! Cache : le document est `no-store` (le même token peut servir un doc
-//! différent après re-publication) ; les octets sont `immutable` (l'URL
-//! porte `?v=n` et une version média est append-only — immuable).
+//! Cache: the document is `no-store` (the same token can serve a different
+//! doc after re-publication); the bytes are `immutable` (the URL
+//! carries `?v=n` and a media version is append-only — immutable).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -23,13 +23,13 @@ use uuid::Uuid;
 
 use crate::models::_entities::{media_assets, media_versions, tour_versions, tours};
 
-/// 404 uniforme — token inconnu, non publié, asset non référencé, version
-/// inconnue ou doc corrompu : la même réponse partout (pas d'énumération).
+/// Uniform 404 — unknown token, unpublished, unreferenced asset, unknown
+/// version or corrupt doc: the same response everywhere (no enumeration).
 fn not_found() -> Error {
     Error::NotFound
 }
 
-/// Tour publié depuis son token, sinon None.
+/// Published tour from its token, otherwise None.
 async fn find_published_by_token(
     db: &DatabaseConnection,
     token: &str,
@@ -43,7 +43,7 @@ async fn find_published_by_token(
         return Ok(None);
     };
     let Some(published_id) = tour.published_version_id else {
-        return Ok(None); // partagé mais dépublié → 404 uniforme
+        return Ok(None); // shared but unpublished → uniform 404
     };
     let Some(version) = tour_versions::Entity::find_by_id(published_id)
         .one(db)
@@ -55,12 +55,12 @@ async fn find_published_by_token(
     Ok(Some((tour, version)))
 }
 
-/// Document publié typé, sinon None (doc corrompu → 404 uniforme).
+/// Typed published document, otherwise None (corrupt doc → uniform 404).
 fn published_doc(version: &tour_versions::Model) -> Option<pnex_core::TourDoc> {
     serde_json::from_value(version.doc.clone()).ok()
 }
 
-/// Assets référencés par le doc (plans d'étage + scènes), dédupliqués.
+/// Assets referenced by the doc (floor plans + scenes), deduplicated.
 fn referenced_assets(doc: &pnex_core::TourDoc) -> Vec<Uuid> {
     let mut ids: Vec<Uuid> = Vec::new();
     for f in &doc.floors {
@@ -80,8 +80,8 @@ fn referenced_assets(doc: &pnex_core::TourDoc) -> Vec<Uuid> {
     ids
 }
 
-/// `GET /api/v1/public/tours/{token}` — la version publiée + la carte des
-/// assets référencés (version **courante** de chacun au moment de l'appel).
+/// `GET /api/v1/public/tours/{token}` — the published version + the map of
+/// referenced assets (**current** version of each at call time).
 #[utoipa::path(
     get,
     path = "/api/v1/public/tours/{token}",
@@ -104,7 +104,7 @@ async fn detail(State(ctx): State<AppContext>, Path(token): Path<String>) -> Res
         return Err(not_found());
     };
 
-    // Résolution des versions courantes (2 requêtes en vrac, pas de N+1).
+    // Resolution of current versions (2 bulk queries, no N+1).
     let ids = referenced_assets(&doc);
     let assets: HashMap<String, pnex_core::PublicAssetRef> = if ids.is_empty() {
         Default::default()
@@ -163,8 +163,8 @@ struct AssetQuery {
     v: Option<i64>,
 }
 
-/// `GET /api/v1/public/tours/{token}/assets/{asset_id}?v=n` — octets d'un
-/// asset référencé par le doc publié. `v` absent = version courante.
+/// `GET /api/v1/public/tours/{token}/assets/{asset_id}?v=n` — bytes of an
+/// asset referenced by the published doc. `v` absent = current version.
 /// Only the versioned URL is cached as immutable (O74).
 #[utoipa::path(
     get,
@@ -191,9 +191,9 @@ async fn asset(
     let Some(doc) = published_doc(&version) else {
         return Err(not_found());
     };
-    // Autorisation : l'asset doit être référencé par le doc publié — et
-    // rester dans l'org du tour (re-vérification explicite, pas de confiance
-    // dans le doc seul).
+    // Authorization: the asset must be referenced by the published doc — and
+    // stay within the tour's org (explicit re-check, no trust in the doc
+    // alone).
     if !referenced_assets(&doc).contains(&asset_id) {
         return Err(not_found());
     }
@@ -206,7 +206,7 @@ async fn asset(
         return Err(not_found());
     };
 
-    // Version demandée, sinon courante.
+    // Requested version, otherwise current.
     let version_row = match q.v {
         Some(n) => {
             let Some(v) = media_versions::Entity::find()

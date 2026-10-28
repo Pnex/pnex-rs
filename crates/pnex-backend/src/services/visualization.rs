@@ -1,20 +1,20 @@
-//! Lecture télémétrie pour la page Visualisation (2026-08-19) — **la
-//! manière formalisée de requêter OpenObserve** (à la InfluxDB : une
-//! série sur une fenêtre) derrière `GET /api/v1/telemetry/catalog` et
+//! Telemetry reads for the Visualisation page (2026-08-19) — **the
+//! formalised way to query OpenObserve** (InfluxDB-style: one series over a
+//! window) behind `GET /api/v1/telemetry/catalog` and
 //! `GET /api/v1/telemetry/series`.
 //!
-//! (Le module `services::telemetry` est le côté INGEST — point de
-//! mesure + sink ; celui-ci est le côté LECTURE, ne pas confondre.)
+//! (The `services::telemetry` module is the INGEST side — measurement
+//! point + sink; this one is the READ side, don't confuse them.)
 //!
-//! Constats e2e v0.92.1 (réutilisés du dashboard) : pas de sélecteur
-//! regex sur `__name__` → découverte via `/streams?type=metrics` puis
-//! une requête par nom ; lecture en Basic root (passcode refusé) ;
-//! `query_range` accepte le nom nu et l'égalité `device_id="…"`, et ne
-//! remplit pas les trous entre deux pas.
+//! e2e findings v0.92.1 (reused from the dashboard): no regex selector on
+//! `__name__` → discovery via `/streams?type=metrics` then one query per
+//! name; reads in Basic root (passcode refused); `query_range` accepts the
+//! bare name and the `device_id="…"` equality, and does not fill gaps
+//! between two steps.
 //!
-//! Doctrine dashboard : jamais de provisioning ni de 500 depuis le
-//! chemin lecture — credentials via `provisioned_credentials` (read
-//! only), échec/timeout O2 → `available: false`.
+//! Dashboard doctrine: never provisioning nor a 500 from the read path —
+//! credentials via `provisioned_credentials` (read only), O2
+//! failure/timeout → `available: false`.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -340,44 +340,43 @@ fn points_of(samples: &[PromRangeSample]) -> Vec<TelemetryPoint> {
     points
 }
 
-/// Fenêtre du catalogue (dernière valeur par série pour montrer que la
-/// donnée est vivante).
+/// Catalog window (latest value per series to show that the data is
+/// alive).
 const CATALOG_WINDOW: &str = "24h";
 /// [`CATALOG_WINDOW`] in seconds (SQL last-seen lookup).
 const CATALOG_WINDOW_SECS: i64 = 86_400;
 
-/// Timeout de TOUT le chemin O2 (catalogue ou une série) — dégradé
-/// silencieux au-delà, jamais de page qui traîne.
+/// Timeout of the WHOLE O2 path (catalog or one series) — silent
+/// degradation beyond it, never a lingering page.
 const O2_TIMEOUT: Duration = Duration::from_secs(5);
 
-/// Nombre max de métriques énumérées dans le catalogue (défensif : les
-/// pickers restent lisibles même avec des métriques dynamiques).
+/// Max number of metrics listed in the catalog (defensive: the pickers
+/// stay readable even with dynamic metrics).
 const METRICS_CAP: usize = 50;
 
-/// Points max rendus par série (défensif — le pas choisi vise déjà ~120).
+/// Max points rendered per series (defensive — the chosen step already aims at ~120).
 const POINTS_CAP: usize = 240;
 
-/// Fenêtres proposées, en secondes — alignées sur
-/// `pnex_core::VIZ_WINDOW_PRESETS` (source unique : les widgets SCADA
-/// valident la même liste que cette lecture). Le pas de la query
-/// `query_range` est `window / 120` (30 s / 3 m / 12 m / 30 m…).
+/// Offered windows, in seconds — aligned with
+/// `pnex_core::VIZ_WINDOW_PRESETS` (single source: SCADA widgets validate
+/// the same list as this read). The `query_range` query step is
+/// `window / 120` (30 s / 3 m / 12 m / 30 m…).
 pub const WINDOWS: &[(&str, i64)] = pnex_core::VIZ_WINDOW_PRESETS;
 
-/// Budget global d'un batch (toutes specs) — au-delà, les items restants
-/// sont dégradés (le front garde un dashboard réactif plutôt qu'une page
-/// qui traîne).
+/// Global budget of a batch (all specs) — beyond it, the remaining items
+/// are degraded (the front keeps a responsive dashboard rather than a
+/// lingering page).
 pub(crate) const BATCH_TIMEOUT: Duration = Duration::from_secs(8);
 
-/// Valeur de label `device_id` sûre à interpoler dans un sélecteur
-/// PromQL : charset fermé (nos device_id sont des slugs), aucune
-/// quote/brace/backslash possible — l'injection PromQL est bloquée en
-/// amont, pas échappée. Vit dans pnex-core (`naming`) : source unique avec
-/// le runtime de flows.
+/// `device_id` label value safe to interpolate into a PromQL selector:
+/// closed charset (our device_ids are slugs), no quote/brace/backslash
+/// possible — PromQL injection is blocked upstream, not escaped. Lives in
+/// pnex-core (`naming`): single source shared with the flow runtime.
 use pnex_core::valid_device_label;
 
-/// Séries disponibles de l'org (métrique × device, dernière valeur sur
-/// 24 h) — alimente les sélecteurs de la page Visualisation.
-/// `client: None` (O2 non configuré) → catalogue dégradé.
+/// Available series of the org (metric × device, latest value over
+/// 24 h) — feeds the selectors of the Visualisation page.
+/// `client: None` (O2 not configured) → degraded catalog.
 pub async fn series_catalog(
     db: &DatabaseConnection,
     client: Option<&Client>,
@@ -391,8 +390,8 @@ pub async fn series_catalog(
     let Some(client) = client else {
         return degraded;
     };
-    // Lecture seule : une org sans données n'est pas provisionnée, on ne
-    // provisionne pas depuis le chemin HTTP utilisateur.
+    // Read only: an org without data is not provisioned, and we don't
+    // provision from the user HTTP path.
     let Some(creds) = openobserve::provisioned_credentials(db, org_id)
         .await
         .ok()
@@ -432,7 +431,7 @@ pub async fn series_catalog(
                 tracing::debug!(org_id, metric = %name, error = %e, "last seen not queried");
                 Arc::default()
             });
-            // Une métrique injoignable n'emporte pas les autres.
+            // One unreachable metric does not take the others down.
             match res {
                 Ok(samples) => {
                     // Labelled series (D171) are offered by label set, the
@@ -460,13 +459,13 @@ pub async fn series_catalog(
     let (mut catalog, mut label_sets) = match fetch {
         Ok(Ok(found)) => found,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, erreur = %e, "catalogue : O2 en échec, télémétrie dégradée");
+            tracing::warn!(org_id, erreur = %e, "catalog: O2 failed, telemetry degraded");
             return degraded;
         }
         Err(_) => {
             tracing::warn!(
                 org_id,
-                "catalogue : chemin O2 expiré (5 s), télémétrie dégradée"
+                "catalog: O2 path timed out (5 s), telemetry degraded"
             );
             return degraded;
         }
@@ -485,10 +484,10 @@ pub async fn series_catalog(
     }
 }
 
-/// Points d'UNE série (métrique × device) sur une fenêtre preset —
-/// `window` est la clé de [`WINDOWS`] ; les paramètres sont validés
-/// (anti-injection PromQL) AVANT toute construction de requête, donc
-/// y compris quand O2 n'est pas configuré (`client: None` → dégradé).
+/// Points of ONE series (metric × device) over a preset window —
+/// `window` is the key of [`WINDOWS`]; parameters are validated
+/// (PromQL anti-injection) BEFORE any query is built, so also when O2 is
+/// not configured (`client: None` → degraded).
 pub async fn series_points(
     db: &DatabaseConnection,
     client: Option<&Client>,
@@ -551,18 +550,18 @@ pub async fn series_points(
     let samples = match fetch {
         Ok(Ok(samples)) => samples,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, metric, erreur = %e, "série : O2 en échec, dégradé");
+            tracing::warn!(org_id, metric, erreur = %e, "series: O2 failed, degraded");
             return Ok(degraded(metric, device_id));
         }
         Err(_) => {
-            tracing::warn!(org_id, metric, "série : chemin O2 expiré (5 s), dégradé");
+            tracing::warn!(org_id, metric, "series: O2 path timed out (5 s), degraded");
             return Ok(degraded(metric, device_id));
         }
     };
 
-    // Le sélecteur device_id ne laisse normalement qu'une série ; on
-    // fusionne défensivement toutes celles rendues (points réels, valeurs
-    // non numériques skippées).
+    // The device_id selector normally leaves a single series; we
+    // defensively merge all returned ones (real points, non-numeric
+    // values skipped).
     let points = points_of(&samples);
     Ok(TelemetrySeriesResponse {
         available: true,
@@ -572,12 +571,12 @@ pub async fn series_points(
     })
 }
 
-/// `POST /api/v1/telemetry/series/query` (D31, studio SCADA) — un appel
-/// pour toutes les sources d'un dashboard. Validation anti-injection
-/// **par spec** AVANT toute construction de requête (et y compris sans
-/// O2 configuré) : une spec invalide est **dégradée au niveau item**
-/// (`available: false`), jamais une 400 globale — un widget mal réglé ne
-/// doit pas priver l'écran des autres. Queries run with bounded
+/// `POST /api/v1/telemetry/series/query` (D31, SCADA studio) — one call
+/// for all the sources of a dashboard. Anti-injection validation **per
+/// spec** BEFORE any query is built (even without O2 configured): an
+/// invalid spec is **degraded at item level** (`available: false`), never
+/// a global 400 — one misconfigured widget must not deprive the screen of
+/// the others. Queries run with bounded
 /// concurrency ([`O2_CONCURRENCY`], per-pod TTL cache) under a global
 /// budget ([`BATCH_TIMEOUT`]); past it, the remaining items stay degraded.
 pub async fn series_batch(
@@ -592,8 +591,8 @@ pub async fn series_batch(
         device_id: s.device_id.clone(),
         points: vec![],
     };
-    // Forme valide ? (charset + preset) — l'ordre de la réponse suit
-    // l'ordre des specs.
+    // Valid shape? (charset + preset) — the response order follows the
+    // specs order.
     let queries: Vec<Option<String>> = specs
         .iter()
         .map(|s| {
@@ -607,8 +606,8 @@ pub async fn series_batch(
     let any_valid = queries.iter().any(Option::is_some);
     let mut results: Vec<TelemetrySeriesResponse> = specs.iter().map(degraded_item).collect();
     if !any_valid {
-        // Tout invalide (ou batch vide) : pas de provisioning ni de
-        // requête — même doctrine que le chemin unitaire.
+        // All invalid (or empty batch): no provisioning nor query —
+        // same doctrine as the single-series path.
         return pnex_core::SeriesBatchResponse {
             available: false,
             results,
@@ -676,7 +675,7 @@ pub async fn series_batch(
     if fetch.is_err() {
         tracing::warn!(
             org_id,
-            "batch : budget global expiré (8 s), items restants dégradés"
+            "batch: global budget expired (8 s), remaining items degraded"
         );
     }
     pnex_core::SeriesBatchResponse {

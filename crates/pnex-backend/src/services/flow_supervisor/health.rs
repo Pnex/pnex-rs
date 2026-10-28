@@ -2,18 +2,18 @@
 
 use super::*;
 
-// ──────────────── Santé par flow (ferme « N engines, 1 process ») ────────────────
+// ──────────────── Per-flow health (closes « N engines, 1 process ») ────────────────
 
-/// État de l'engine d'un flow, dérivé des événements stdout du runtime.
+/// State of a flow's engine, derived from the runtime's stdout events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowEngineHealth {
-    /// `flow_started` — engine chargé et démarré (ou confirmation idempotente).
+    /// `flow_started` — engine loaded and started (or idempotent confirmation).
     Running,
-    /// `flow_error` — build/démarrage en échec. Si un last-good tournait, il
-    /// continue d'ingérer (nuance : le chip peut montrer « error » avec une
-    /// ingestion qui continue sur l'ancienne version).
+    /// `flow_error` — build/start failed. If a last-good was running, it
+    /// keeps ingesting (nuance: the chip may show "error" while
+    /// ingestion continues on the old version).
     Error,
-    /// `flow_stopped` — tab disparu de l'artefact (dé-déploiement, retrait).
+    /// `flow_stopped` — tab gone from the artifact (undeploy, removal).
     Stopped,
 }
 
@@ -42,10 +42,10 @@ struct FlowHealthEntry {
     last_error: Option<String>,
 }
 
-/// Santé par flow : alimentée par les événements `flow_*` du stdout du
-/// runtime (le runtime ré-annonce tous les tabs au boot d'un enfant — un
-/// respawn self-heals la carte). Mémoire du process backend uniquement :
-/// pas de version ici non plus, la vérité « version déployée » reste la DB.
+/// Per-flow health: fed by the `flow_*` events of the runtime's stdout
+/// (the runtime re-announces all tabs when a child boots — a
+/// respawn self-heals the map). Backend process memory only:
+/// no version here either, the "deployed version" truth stays in the DB.
 static FLOW_HEALTH: OnceLock<std::sync::Mutex<std::collections::HashMap<i64, FlowHealthEntry>>> =
     OnceLock::new();
 
@@ -53,7 +53,7 @@ fn health() -> &'static std::sync::Mutex<std::collections::HashMap<i64, FlowHeal
     FLOW_HEALTH.get_or_init(std::sync::Mutex::default)
 }
 
-/// Sonde de test/utilitaire : état courant d'un flow (None = inconnu).
+/// Test/utility probe: current state of a flow (None = unknown).
 pub fn flow_engine_health(flow_id: i64) -> Option<(FlowEngineHealth, Option<String>)> {
     health()
         .lock()
@@ -62,13 +62,13 @@ pub fn flow_engine_health(flow_id: i64) -> Option<(FlowEngineHealth, Option<Stri
         .map(|e| (e.status, e.last_error.clone()))
 }
 
-/// Sonde de test : vide la carte de santé (isolation entre tests).
+/// Test probe: clears the health map (isolation between tests).
 pub fn reset_flow_health_for_tests() {
     health().lock().expect("lock flow health").clear();
 }
 
-/// Ingère un événement `flow_started`/`flow_error`/`flow_stopped` :
-/// met à jour la santé par flow.
+/// Ingests a `flow_started`/`flow_error`/`flow_stopped` event:
+/// updates the per-flow health.
 pub(super) fn record_flow_health(v: &Value) {
     let Some(fid) = v.get("flow").and_then(|f| f.as_i64()) else {
         return;
@@ -94,15 +94,15 @@ pub(super) fn record_flow_health(v: &Value) {
     tracing::debug!(
         flow_id = fid,
         status = status.as_str(),
-        "santé engine de flow mise à jour"
+        "flow engine health updated"
     );
 }
 
-// ─────────────── Acquittement deploy par flow (oneshot par flow) ───────────────
+// ─────────────── Per-flow deploy acknowledgement (oneshot per flow) ───────────────
 
-/// Dépile l'acquittement d'un deploy sur `flow_started`/`flow_error`/
-/// `flow_stopped` (retrait du tab : le changement a été appliqué — c'est
-/// l'ack des dé-déploiements).
+/// Pops a deploy's acknowledgement on `flow_started`/`flow_error`/
+/// `flow_stopped` (tab removal: the change was applied — this is
+/// the ack for undeploys).
 pub(super) fn resolve_deploy_ack(v: &Value, pending: &PendingAcks) {
     let Some(fid) = v.get("flow").and_then(|f| f.as_i64()) else {
         return;

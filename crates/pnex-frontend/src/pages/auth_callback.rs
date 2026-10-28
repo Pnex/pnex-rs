@@ -1,10 +1,10 @@
-//! Callback OAuth (`/auth/callback?code=…`) : échange le code contre des
-//! tokens (PKCE, verifier en sessionStorage), récupère le `user-info` (le
-//! JIT provisioning côté backend crée l'org personnelle à cette occasion),
-//! établit la session puis redirige vers le tableau de bord.
+//! OAuth callback (`/auth/callback?code=…`): exchanges the code for
+//! tokens (PKCE, verifier in sessionStorage), fetches the `user-info` (the
+//! backend JIT provisioning creates the personal org on that occasion),
+//! establishes the session then redirects to the dashboard.
 //!
-//! Les segments query du routeur sont infaillibles : absents → chaîne vide,
-//! on teste `is_empty()` et non l'existence.
+//! The router query segments are infallible: missing → empty string,
+//! so we test `is_empty()` and not existence.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -52,10 +52,10 @@ pub fn AuthCallback(code: String, error: String, error_description: String) -> E
     }
 }
 
-/// Échange + session + navigation. Le message d'erreur renvoyé est celui du
-/// serveur, tel quel (convention projet) ; les conditions purement locales
-/// (code/verifier absents) renvoient une chaîne vide, la page affiche alors
-/// le libellé générique.
+/// Exchange + session + navigation. The returned error message is the
+/// server's, as is (project convention); purely local conditions
+/// (code/verifier missing) return an empty string, the page then shows
+/// the generic label.
 async fn run(
     code: &str,
     error: &str,

@@ -124,7 +124,7 @@ pub(super) async fn predefined_list(
     );
     let page = pagination::PageParams::from_map(&params);
 
-    // Liens next/previous : rejouer les filtres actifs.
+    // next/previous links: replay the active filters.
     let mut filters: Vec<(String, String)> = caps_filter
         .iter()
         .map(|c| ("capabilities".to_string(), c.clone()))
@@ -142,8 +142,8 @@ pub(super) async fn predefined_list(
         }
     }
 
-    // Résolution des filtres par nom → id (type, board). Nom inconnu →
-    // liste vide cohérente avec le count.
+    // Resolution of name filters → id (type, board). Unknown name →
+    // empty list consistent with the count.
     let empty_page = |page: pagination::PageParams, filters: &[(String, String)]| {
         format::json(pagination::envelope(
             "/api/v1/predefined-devices",
@@ -204,7 +204,7 @@ pub(super) async fn predefined_list(
         query = query.filter(predefined_devices::Column::Revision.eq(r));
     }
     if !caps_filter.is_empty() {
-        // OU sur la M2M : id IN (sous-requête des liens vers les caps visées).
+        // OR over the M2M: id IN (subquery of the links to the targeted caps).
         let sub = predefined_device_capabilities::Entity::find()
             .left_join(device_capabilities::Entity)
             .filter(device_capabilities::Column::Name.is_in(caps_filter))
@@ -213,8 +213,8 @@ pub(super) async fn predefined_list(
         query = query.filter(predefined_devices::Column::Id.in_subquery(sub.into_query()));
     }
     if let Some(s) = search_f.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        // Recherche OU multi-champs, poussée en SQL (ILIKE PG = insensible à
-        // la casse) pour rester compatible avec le LIMIT/OFFSET base.
+        // Multi-field OR search, pushed down to SQL (PG ILIKE = case
+        // insensitive) to stay compatible with the database LIMIT/OFFSET.
         let pat = format!("%{s}%");
         let text_or_refs = sea_orm::Condition::any()
             .add(
@@ -291,7 +291,7 @@ pub(super) async fn predefined_list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Hydration de la page uniquement.
+    // Hydration of the page only.
     let type_names: HashMap<i64, String> = device_types::Entity::find()
         .all(&ctx.db)
         .await

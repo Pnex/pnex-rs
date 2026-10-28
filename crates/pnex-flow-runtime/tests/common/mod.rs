@@ -1,5 +1,5 @@
-//! Harnais commun des tests E2E du runtime : spawn du vrai binaire
-//! (`CARGO_BIN_EXE_pnex-flow-runtime`) + collecte des événements JSON stdout.
+//! Common harness for the runtime E2E tests: spawns the real binary
+//! (`CARGO_BIN_EXE_pnex-flow-runtime`) + collects the stdout JSON events.
 
 #![allow(dead_code)]
 
@@ -15,13 +15,13 @@ pub struct RuntimeProc {
 }
 
 impl RuntimeProc {
-    /// Spawn le runtime headless sur un flows.json, stdout parsé ligne à ligne
-    /// dans un thread dédié (le process ne se bloque jamais sur stdout).
+    /// Spawns the headless runtime on a flows.json, stdout parsed line by line
+    /// in a dedicated thread (the process never blocks on stdout).
     pub fn spawn(flows_path: &Path, home: &Path) -> RuntimeProc {
         Self::spawn_with_env(flows_path, home, [])
     }
 
-    /// Variante avec variables d'environnement additionnelles (e.g. VALKEY_URL).
+    /// Variant with additional environment variables (e.g. VALKEY_URL).
     pub fn spawn_with_env<const N: usize>(
         flows_path: &Path,
         home: &Path,
@@ -41,7 +41,7 @@ impl RuntimeProc {
             .spawn()
             .expect("spawn pnex-flow-runtime");
 
-        let stdout = child.stdout.take().expect("stdout pipé");
+        let stdout = child.stdout.take().expect("piped stdout");
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
@@ -58,7 +58,7 @@ impl RuntimeProc {
         RuntimeProc { child, lines: rx }
     }
 
-    /// Attend (avec délai global) qu'une ligne satisfasse le prédicat.
+    /// Waits (with a global timeout) for a line matching the predicate.
     pub fn wait_for(
         &self,
         pred: impl Fn(&serde_json::Value) -> bool,
@@ -75,16 +75,16 @@ impl RuntimeProc {
                     }
                 }
                 Err(TryRecvError::Empty) => std::thread::sleep(Duration::from_millis(25)),
-                Err(TryRecvError::Disconnected) => panic!("runtime terminé prématurément"),
+                Err(TryRecvError::Disconnected) => panic!("runtime exited prematurely"),
             }
         }
-        panic!("événement attendu non reçu après {timeout:?}");
+        panic!("expected event not received after {timeout:?}");
     }
 }
 
 impl Drop for RuntimeProc {
     fn drop(&mut self) {
-        // SIGINT (arrêt propre) puis SIGKILL en secours.
+        // SIGINT (clean stop) then SIGKILL as backup.
         unsafe {
             libc::kill(self.child.id() as libc::pid_t, libc::SIGINT);
         }
@@ -101,9 +101,9 @@ impl Drop for RuntimeProc {
     }
 }
 
-/// flows.json Node-RED minimal : tab + inject(0.1 s, payload texte) + debug.
-/// NB : pas de prop `topic` — sans valeur, le désérialiseur EdgeLinkd la
-/// refuse (`invalid type: null, expected a string`).
+/// Minimal Node-RED flows.json: tab + inject(0.1 s, text payload) + debug.
+/// NB: no `topic` prop — without a value, the EdgeLinkd deserialiser
+/// refuses it (`invalid type: null, expected a string`).
 pub fn inject_debug_flows(payload: &str) -> String {
     serde_json::json!([
         { "id": "pnexflow1", "type": "tab", "label": "test", "pnex_flow_id": 1 },

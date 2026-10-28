@@ -1,9 +1,9 @@
-//! Réglages firmware (Phase 6) — `settings.firmware` de la config Loco,
-//! champ par champ avec défauts (pattern `IngestSettings`).
+//! Firmware settings (Phase 6) — `settings.firmware` of the Loco config,
+//! field by field with defaults (`IngestSettings` pattern).
 //!
-//! Source du firmware : **embarquée dans le binaire** (convergence
-//! monorepo — cf. `pnex_firmware_builder::embedded`). Pas de sélecteur :
-//! une version du serveur compile la version du firmware qui l'accompagne.
+//! Firmware source: **embedded in the binary** (monorepo
+//! convergence — see `pnex_firmware_builder::embedded`). No selector:
+//! a server version compiles the firmware version that ships with it.
 //!
 //! Artifacts live in the S3 object store (`services::artifact_store`,
 //! `settings.storage`).
@@ -16,22 +16,22 @@ use serde::Deserialize;
 
 use crate::services::artifact_store::S3Config;
 
-/// Phases canoniques d'un build (colonne `build_phase`, minuscules).
+/// Canonical build phases (`build_phase` column, lowercase).
 pub const PHASE_QUEUED: &str = "queued";
 pub const PHASE_RUNNING: &str = "running";
 pub const PHASE_SUCCEEDED: &str = "succeeded";
 pub const PHASE_FAILED: &str = "failed";
 
-/// Réglages résolus du worker de build.
+/// Resolved settings of the build worker.
 #[derive(Clone, Debug)]
 pub struct FirmwareSettings {
     /// Artifact object store (`settings.storage`, secret masked in Debug).
     pub storage: S3Config,
-    /// `pio` ou `uv run pio` (split sur espaces, pas de guillemets).
+    /// `pio` or `uv run pio` (split on spaces, no quotes).
     pub pio_cmd: String,
-    /// `esptool` ou `python -m esptool`.
+    /// `esptool` or `python -m esptool`.
     pub esptool_cmd: String,
-    /// Budget global du build.
+    /// Global build budget.
     pub timeout_secs: u64,
     /// Custom firmware IDE (custom-firmware.md D91): disabled unless the
     /// operator turns it on — compiling user C++ runs user code on the
@@ -104,7 +104,7 @@ struct CustomPartial {
     allow_network: Option<bool>,
 }
 
-/// Forme sérialisable partielle de `settings.firmware` (tout optionnel).
+/// Partial serializable form of `settings.firmware` (all optional).
 #[derive(Default, Deserialize)]
 struct FirmwarePartial {
     pio_cmd: Option<String>,
@@ -128,7 +128,7 @@ impl Default for FirmwareSettings {
 }
 
 impl FirmwareSettings {
-    /// `settings.firmware` optionnelle — défauts champ par champ.
+    /// Optional `settings.firmware` — defaults field by field.
     pub fn from_config(config: &Config) -> Self {
         let partial: FirmwarePartial = config
             .settings

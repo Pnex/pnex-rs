@@ -1,32 +1,32 @@
-//! Codec JPEG — décodage RGB8 et encodage qualité fixée, via la crate
-//! `image` (feature jpeg seule : pas de décodeurs superflus embarqués).
+//! JPEG codec — RGB8 decoding and fixed-quality encoding, via the
+//! `image` crate (jpeg feature only: no superfluous decoders embedded).
 
 use image::codecs::jpeg::JpegEncoder;
 use thiserror::Error;
 
-/// Erreurs du codec et du stitching (cf. [`crate::stitch`]).
+/// Codec and stitching errors (see [`crate::stitch`]).
 #[derive(Debug, Error)]
 pub enum JpegError {
-    /// Données illisibles ou dimensions incohérentes.
-    #[error("JPEG illisible : {0}")]
+    /// Unreadable data or inconsistent dimensions.
+    #[error("unreadable JPEG: {0}")]
     Decode(#[from] image::ImageError),
-    /// Buffer RGB incompatible avec les dimensions annoncées.
-    #[error("buffer RGB incompatible : {got} octets, attendu {expected}")]
+    /// RGB buffer incompatible with the announced dimensions.
+    #[error("incompatible RGB buffer: {got} bytes, expected {expected}")]
     Buffer {
-        /// Taille reçue.
+        /// Received size.
         got: usize,
-        /// Taille attendue (w·h·3).
+        /// Expected size (w·h·3).
         expected: usize,
     },
-    /// Échec d'encodage.
-    #[error("encodage JPEG : {0}")]
+    /// Encoding failure.
+    #[error("JPEG encoding: {0}")]
     Encode(String),
 }
 
-/// Décode un JPEG en RGB8.
+/// Decodes a JPEG into RGB8.
 ///
-/// # Erreurs
-/// [`JpegError::Decode`] si les octets ne sont pas un image décodable.
+/// # Errors
+/// [`JpegError::Decode`] if the bytes are not a decodable image.
 pub fn decode_jpeg_rgb(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), JpegError> {
     let img = image::load_from_memory(bytes)?;
     let rgb = img.to_rgb8();
@@ -34,12 +34,12 @@ pub fn decode_jpeg_rgb(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), JpegError> {
     Ok((rgb.into_raw(), w, h))
 }
 
-/// Décode un JPEG en RGB8, en plafonnant la largeur à `max_width`
-/// (downscale bilinéaire au-delà — la FOV est inchangée, seule la densité
-/// de pixels baisse). Pour l'aperçu device multi-anneaux : 45 frames
-/// 1080×1920 décodées pleine résolution ≈ 280 Mo ×2 par le clone du
-/// stitcher → swap-thrash (même piège que le constat 2048 du 2026-09-09).
-/// À 540 de large, 45 frames ≈ 70 Mo ×2 : borné.
+/// Decodes a JPEG into RGB8, capping the width at `max_width`
+/// (bilinear downscale beyond — the FOV is unchanged, only the pixel
+/// density drops). For the multi-ring device preview: 45 frames
+/// 1080×1920 decoded at full resolution ≈ 280 MB ×2 through the stitcher's
+/// clone → swap-thrash (same trap as the 2048 finding of 2026-09-09).
+/// At 540 wide, 45 frames ≈ 70 MB ×2: bounded.
 #[must_use]
 pub fn decode_jpeg_rgb_capped(bytes: &[u8], max_width: u32) -> (Vec<u8>, u32, u32) {
     let img = match image::load_from_memory(bytes) {
@@ -62,11 +62,11 @@ pub fn decode_jpeg_rgb_capped(bytes: &[u8], max_width: u32) -> (Vec<u8>, u32, u3
     (resized.into_raw(), w, h)
 }
 
-/// Encode un buffer RGB8 en JPEG à la qualité demandée (0-100).
+/// Encodes an RGB8 buffer to JPEG at the requested quality (0-100).
 ///
-/// # Erreurs
-/// [`JpegError::Buffer`] si `rgb.len() != w·h·3`, [`JpegError::Encode`]
-/// en cas d'échec d'encodage.
+/// # Errors
+/// [`JpegError::Buffer`] if `rgb.len() != w·h·3`, [`JpegError::Encode`]
+/// on encoding failure.
 pub fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Result<Vec<u8>, JpegError> {
     let expected = width as usize * height as usize * 3;
     if rgb.len() != expected {
@@ -76,7 +76,7 @@ pub fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Result<V
         });
     }
     let img = image::RgbImage::from_raw(width, height, rgb.to_vec())
-        .ok_or_else(|| JpegError::Encode("dimensions incohérentes".into()))?;
+        .ok_or_else(|| JpegError::Encode("inconsistent dimensions".into()))?;
     let mut out = Vec::new();
     img.write_with_encoder(JpegEncoder::new_with_quality(&mut out, quality))
         .map_err(|e| JpegError::Encode(e.to_string()))?;
@@ -87,7 +87,7 @@ pub fn encode_jpeg(rgb: &[u8], width: u32, height: u32, quality: u8) -> Result<V
 mod tests {
     use super::*;
 
-    /// Cycle encode → decode aux dimensions exactes.
+    /// Encode → decode cycle at exact dimensions.
     #[test]
     fn aller_retour() {
         let (w, h) = (8u32, 4u32);
@@ -98,7 +98,7 @@ mod tests {
         assert_eq!(rgb2.len(), rgb.len());
     }
 
-    /// Buffer trop court → erreur claire (pas de panic).
+    /// Buffer too short → clear error (no panic).
     #[test]
     fn buffer_incoherent() {
         assert!(matches!(

@@ -1,14 +1,14 @@
 #!/bin/sh
-# Runtime de flow de fixture (tests D18) — remplace pnex-flow-runtime.
+# Fixture flow runtime (D18 tests) — replaces pnex-flow-runtime.
 #
-# Contrat identique au vrai binaire : args `<flows.json> --home <dir>`,
-# runtime.json (santé process), événements par flow (`flow_started` émis
-# pour TOUS les tabs au boot et à chaque SIGUSR1 — le vrai runtime ré-annonce
-# tous ses tabs à chaque cycle, c'est par là que le superviseur acquitte les
-# deploys), SIGINT/SIGTERM = sortie propre.
-# `--check` = pré-flight : rapport `check_flow` par tab, exit 1 si un tab
-# porte le marqueur de test `"pnex-check-fail"` (any string value). Le contenu de
-# l'artefact projeté reste vérifiable en lisant flows.json.
+# Same contract as the real binary: args `<flows.json> --home <dir>`,
+# runtime.json (process health), per-flow events (`flow_started` emitted
+# for ALL tabs at boot and on each SIGUSR1 — the real runtime re-announces
+# all its tabs on each cycle, that is how the supervisor acknowledges
+# deploys), SIGINT/SIGTERM = clean exit.
+# `--check` = pre-flight: `check_flow` report per tab, exit 1 if a tab
+# carries the test marker `"pnex-check-fail"` (any string value). The content of
+# the projected artifact stays checkable by reading flows.json.
 
 # ── Args : [--check] <flows.json> [--home <dir>] ─────────────────────────
 CHECK=0
@@ -16,16 +16,16 @@ if [ "$1" = "--check" ]; then
   CHECK=1
   shift
 fi
-# Mode test-fonction : réponse canned — le contrat contrôleur (200 ok:true /
-# 503 gate) se teste là ; la vraie exécution JS/Starlark est couverte par les
-# tests du crate runtime + le smoke binaire.
+# Function-test mode: canned reply — the controller contract (200 ok:true /
+# 503 gate) is tested here; the real JS/Starlark execution is covered by the
+# runtime crate tests + the binary smoke test.
 if [ "$1" = "--test-function" ]; then
   printf '{"ok":true,"outputs":[{"payload":{"echo":true}}],"logs":[],"duration_ms":1}\n'
   exit 0
 fi
-# Mode validation compile-only : réponse canned `ok:true` — le contrat
-# contrôleur (200 ok:true / 503 gate) se teste là ; les vrais diagnostics
-# sont couverts par les tests du crate runtime + pnex-node-starlark.
+# Compile-only validation mode: canned `ok:true` reply — the controller
+# contract (200 ok:true / 503 gate) is tested here; the real diagnostics
+# are covered by the runtime crate tests + pnex-node-starlark.
 if [ "$1" = "--check-function" ]; then
   printf '{"ok":true,"diagnostics":[]}\n'
   exit 0
@@ -41,9 +41,9 @@ while [ "$#" -gt 0 ]; do
 done
 mkdir -p "$STATE_DIR"
 
-# ── Mode pré-flight : `--check <flows.json>` ─────────────────────────────
-# Un check_flow par tab ; ok=false si la section du tab (entre son
-# `"pnex_flow_id"` et le tab suivant) contient le marqueur de test.
+# ── Pre-flight mode: `--check <flows.json>` ─────────────────────────────
+# One check_flow per tab; ok=false if the tab's section (between its
+# `"pnex_flow_id"` and the next tab) contains the test marker.
 if [ "$CHECK" = 1 ]; then
   out=$(awk -v marker='"pnex-check-fail"' '
     /"pnex_flow_id": *[0-9]+/ {
@@ -76,8 +76,8 @@ write_state() {
   mv "$STATE_DIR/runtime.json.tmp" "$STATE_DIR/runtime.json"
 }
 
-# flow_started pour TOUS les tabs de l'artefact (boot et rechargements) —
-# sort -u : les nœuds custom portent aussi pnex_flow_id.
+# flow_started for ALL tabs of the artifact (boot and reloads) —
+# sort -u: custom nodes carry pnex_flow_id too.
 flow_ids() {
   sed -n 's/.*"pnex_flow_id": *\([0-9]*\).*/\1/p' "$FLOWS" | sort -u
 }
@@ -88,9 +88,9 @@ emit_flow_started_all() {
   done
 }
 
-# Tabs connus au cycle précédent (persistés dans STATE_DIR) : émettre
-# flow_stopped pour les ids disparus, comme le vrai runtime (ferme — le
-# retrait d'un tab de l'artefact stoppe cet engine, les autres continuent).
+# Tabs known at the previous cycle (persisted in STATE_DIR): emit
+# flow_stopped for the vanished ids, like the real runtime (ferme —
+# removing a tab from the artifact stops that engine, the others go on).
 sync_tabs() {
   if [ -f "$STATE_DIR/tabs.prev" ]; then
     for f in $(cat "$STATE_DIR/tabs.prev"); do
@@ -106,8 +106,8 @@ on_usr1() {
   write_state
   sync_tabs
   emit_flow_started_all
-  # Ligne debug immédiate après rechargement : le feed du panneau reflète
-  # l'artefact frais sans attendre le tick suivant.
+  # Immediate debug line after a reload: the panel feed reflects the
+  # fresh artifact without waiting for the next tick.
   printf '{"event":"debug","node":"deadbeef","node_red":"n2","flow":%s,"name":"n2","msg":"reload","msgid":"m1"}\n' "$(flow_ids | head -1)"
 }
 
@@ -118,9 +118,9 @@ write_state
 sync_tabs
 emit_flow_started_all
 printf '{"event":"fixture_started"}\n'
-# Ligne debug d'amorce : permet au feed du panneau d'être non vide dès le
-# deploy (le seq backend, le ts et l'attribution `flow` viennent du
-# superviseur — honnêtes : flow dérivé de l'artefact).
+# Priming debug line: lets the panel feed be non-empty right from the
+# deploy (the backend seq, the ts and the `flow` attribution come from the
+# supervisor — honest: flow derived from the artifact).
 printf '{"event":"debug","node":"deadbeef","node_red":"n2","flow":%s,"name":"n2","msg":"bonjour","msgid":"m1"}\n' "$(flow_ids | head -1)"
 while :; do
   sleep 1

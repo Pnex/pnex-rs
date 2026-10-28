@@ -1,34 +1,34 @@
-//! Blending multi-bandes (pipeline Quality) — mécanique exacte du
-//! `MultiBandBlender` d'OpenCV, en Rust pur séquentiel.
+//! Multi-band blending (Quality pipeline) — exact mechanics of
+//! OpenCV's `MultiBandBlender`, in sequential pure Rust.
 //!
-//! Chaque frame fournit son image warpée **masquée par la carte de
-//! propriété binaire** (poids = masque seul : un poids lisse biaiserait la
-//! position de couture décidée par le DP). On accumule, par niveau :
+//! Each frame provides its warped image **masked by the binary ownership
+//! map** (weight = mask only: a smooth weight would bias the
+//! seam position decided by the DP). We accumulate, per level:
 //!
-//! - numérateur += pyramide de Laplace de `img ⊙ mask` ;
-//! - dénominateur += pyramide **gaussienne** de `mask`.
+//! - numerator += Laplacian pyramid of `img ⊙ mask`;
+//! - denominator += **Gaussian** pyramid of `mask`.
 //!
-//! puis on normalise par niveau et on collapse (upsample + somme du
-//! grossier au fin). Niveaux fins : masque quasi binaire → hautes
-//! fréquences commutent net (pas de double exposition) ; niveaux grossiers :
-//! rampes larges → exposition/colorimétrie fondent sur une largeur de
-//! couture. C'est ce qui tue à la fois le fantôme du moyennage et la marche
-//! du fondu étroit.
+//! then we normalise per level and collapse (upsample + sum from
+//! coarse to fine). Fine levels: nearly binary mask → high
+//! frequencies switch sharply (no double exposure); coarse levels:
+//! wide ramps → exposure/colorimetry melt over a seam
+//! width. That is what kills both the averaging ghost and the step
+//! of the narrow feather.
 //!
-//! Dénominateur ≈ 0 (hors bande, trous) → pixel non couvert, rendu au
-//! [`crate::render::fill_band_holes`]/[`crate::render::fill_poles`] **après**
-//! le blend (le masque retourné pilote les fills). Le sous-échantillonnage
-//! horizontal boucle (raccord λ = ±180), sinon artifact de couture verticale
-//! à la colonne 0.
+//! Denominator ≈ 0 (out of band, holes) → uncovered pixel, left to
+//! [`crate::render::fill_band_holes`]/[`crate::render::fill_poles`] **after**
+//! the blend (the returned mask drives the fills). Horizontal subsampling
+//! wraps (λ = ±180 join), otherwise a vertical seam artefact
+//! at column 0.
 
 use crate::project::PreparedFrame;
 use crate::render::{lat_of, lon_of, sample_bilinear};
 use crate::seam::OwnerMap;
 
-/// Blend multi-bandes de toutes les frames selon la carte de propriété.
+/// Multi-band blend of all frames according to the ownership map.
 ///
-/// Retourne le RGB8 final et le masque de couverture (`den > 0` au niveau
-/// fin) — les fills passent après, sur ce masque.
+/// Returns the final RGB8 and the coverage mask (`den > 0` at the fine
+/// level) — the fills run afterwards, on this mask.
 #[must_use]
 pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8>, Vec<bool>) {
     let w = owner.width;
@@ -41,7 +41,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
     }
     let n_levels = levels.clamp(1, 8) as usize;
 
-    // Tailles par niveau (division plafonnée).
+    // Sizes per level (ceiling division).
     let sizes: Vec<(u32, u32)> = (0..=n_levels)
         .scan((w, h), |s, _| {
             let cur = *s;
@@ -50,7 +50,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         })
         .collect();
 
-    // Accumulateurs : numérateur RGB f32 + dénominateur poids, par niveau.
+    // Accumulators: RGB f32 numerator + weight denominator, per level.
     let mut num: Vec<Vec<f32>> = sizes
         .iter()
         .map(|&(lw, lh)| vec![0.0f32; (lw * lh) as usize * 3])
@@ -59,12 +59,12 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         .iter()
         .map(|&(lw, lh)| vec![0.0f32; (lw * lh) as usize])
         .collect();
-    // Accumulateurs du chemin plat (levels ≤ 1 : crossfade du fondu).
+    // Flat path accumulators (levels ≤ 1: feather crossfade).
     let mut flat_num = vec![0.0f32; npix * 3];
     let mut flat_den = vec![0.0f32; npix];
 
     for (k, f) in frames.iter().enumerate() {
-        // 1) Masque binaire de propriété (cf. docs module).
+        // 1) Binary ownership mask (see module docs).
         let mut img = vec![0.0f32; npix * 3];
         let mut mask = vec![0.0f32; npix];
         let j_top =
@@ -82,13 +82,13 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
                 }
             }
         }
-        // 2) Fondu ÉTROIT le long de la couture (~4×SEAM_FEATHER_PX de
-        // rampe) : les masques binaires produisaient des coupures DURES des
-        // objets (chaise/écran/radiateur traversés par la couture) et des
-        // marches d'exposition en blocs — la diffusion multibande large,
-        // elle, recrée les fantômes (retirée 2026-09-11). Le fondu court
-        // crossfade les deux frames sur une largeur où leur désaccord
-        // résiduel (~quelques px) reste invisible.
+        // 2) NARROW feather along the seam (~4×SEAM_FEATHER_PX of
+        // ramp): binary masks produced HARD cuts of
+        // objects (chair/screen/radiator crossed by the seam) and
+        // blocky exposure steps — wide multi-band diffusion,
+        // for its part, recreates ghosts (removed 2026-09-11). The short feather
+        // crossfades the two frames over a width where their residual
+        // disagreement (~a few px) stays invisible.
         feather_mask(&mut mask, w, h, SEAM_FEATHER_PX);
         // 3) Content wherever the pyramid can reach, not only where the
         // weight is > 0: Laplacian/Gaussian levels spread each pixel over
@@ -98,7 +98,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         // every seam at 5 — real capture beb93c42, 2026-09-28). Like
         // OpenCV's MultiBandBlender, the IMAGE extends over the footprint
         // and only the WEIGHTS are masked.
-        // Projection impossible (rayon hors capteur) → poids annulé.
+        // Projection impossible (ray off the sensor) → weight zeroed.
         let reach = if n_levels <= 1 { 0 } else { 2u32 << n_levels };
         let near = dilate_support(&mask, w, h, reach);
         for j in 0..h {
@@ -123,11 +123,11 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
             }
         }
 
-        // Niveaux ≤ 1 : moyenne pondérée PURE (crossfade du fondu étroit).
-        // La pyramide Laplacienne AMPLIFIE une rampe étroite (le résidu
-        // haute fréquence de la discontinuité divisé par un poids faible
-        // → bandes claires/sombres le long des coutures, constat
-        // 2026-09-11) — elle n'a de sens qu'avec des rampes larges (≥2).
+        // Levels ≤ 1: PURE weighted mean (narrow feather crossfade).
+        // The Laplacian pyramid AMPLIFIES a narrow ramp (the high-frequency
+        // residue of the discontinuity divided by a small weight
+        // → light/dark bands along the seams, finding
+        // 2026-09-11) — it only makes sense with wide ramps (≥2).
         if n_levels <= 1 {
             for (o, &m) in mask.iter().enumerate() {
                 if m <= 0.0 {
@@ -142,12 +142,12 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
             continue;
         }
 
-        // Marche pyramidale : on ne garde que 2 niveaux consécutifs à la
-        // fois (le pic mémoire reste les accumulateurs, pas les pyramides).
+        // Pyramid walk: we only keep 2 consecutive levels at a
+        // time (the memory peak stays the accumulators, not the pyramids).
         let (mut prev_rgb, mut prev_mask) = (img, mask);
         for l in 0..=n_levels {
             if l == n_levels {
-                // G[top] pondéré par la Gaussienne du masque de la frame.
+                // G[top] weighted by the Gaussian of the frame's mask.
                 for (idx, (d, s)) in num[l].iter_mut().zip(&prev_rgb).enumerate() {
                     *d += s * prev_mask[idx / 3];
                 }
@@ -157,14 +157,14 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
             let next_size = sizes[l + 1];
             let next_rgb = reduce_rgb(&prev_rgb, sizes[l], next_size);
             let next_mask = reduce_1(&prev_mask, sizes[l], next_size);
-            // Laplacien L[l] = G[l] − expand(G[l+1]) = prev_rgb − lap — le
-            // signe était INVERSÉ (lap − prev_rgb = −L : le collapse
-            // SOUSTRAIT le détail, reconstruction fausse dès qu'il y a de
-            // la HF). Pondéré par la Gaussienne du masque : sinon chaque
-            // frame déverse son contenu PLEIN dans le recouvrement
-            // (double-comptage → 100+200 « = » 300 → halos blancs saturés
-            // autour des lumières, constat 2026-09-11 ; diagnostic par
-            // portage Python isolé de la pyramide).
+            // Laplacian L[l] = G[l] − expand(G[l+1]) = prev_rgb − lap — the
+            // sign was INVERTED (lap − prev_rgb = −L: the collapse
+            // SUBTRACTED the detail, wrong reconstruction as soon as there is
+            // HF). Weighted by the mask's Gaussian: otherwise each
+            // frame pours its FULL content into the overlap
+            // (double counting → 100+200 "=" 300 → saturated white halos
+            // around lights, finding 2026-09-11; diagnosed by an
+            // isolated Python port of the pyramid).
             let lap = expand_rgb(&next_rgb, next_size, sizes[l]);
             for (idx, (dst, (a, b))) in num[l].iter_mut().zip(lap.iter().zip(&prev_rgb)).enumerate()
             {
@@ -176,7 +176,7 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         }
     }
 
-    // Chemin plat : normalisation directe (pas de collapse).
+    // Flat path: direct normalisation (no collapse).
     if n_levels <= 1 {
         for (o, &dv) in flat_den.iter().enumerate() {
             if dv > 1e-6 {
@@ -189,16 +189,16 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
                 rgb[o * 3 + 1] = g.round().clamp(0.0, 255.0) as u8;
                 rgb[o * 3 + 2] = b.round().clamp(0.0, 255.0) as u8;
             }
-            // Seuil BAS : avec les masques fondus, l'anneau extérieur de la
-            // rampe a un poids 0,1-0,5 mais un contenu RÉEL — le déclarer
-            // non couvert le livre au fill qui l'étale en bande blanche
-            // (constat 2026-09-11). 0.5 ne valait que pour du binaire.
+            // LOW threshold: with feathered masks, the outer ring of the
+            // ramp has a weight of 0.1-0.5 but REAL content — declaring it
+            // uncovered hands it to the fill which spreads it as a white band
+            // (finding 2026-09-11). 0.5 only held for binary masks.
             covered[o] = dv > 0.05;
         }
         return (rgb, covered);
     }
 
-    // Normalisation par niveau puis collapse (du grossier vers le fin).
+    // Per-level normalisation then collapse (from coarse to fine).
     let mut cur = {
         let n = &num[n_levels];
         let d = &den[n_levels];
@@ -218,8 +218,8 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         out
     };
     for l in (0..n_levels).rev() {
-        // expand produit un NOUVEAU buffer à la taille du niveau `l` (le
-        // collapse ne peut pas se faire en place : les tailles diffèrent).
+        // expand produces a NEW buffer at the size of level `l` (the
+        // collapse cannot be done in place: the sizes differ).
         let mut next = expand_rgb(&cur, sizes[l + 1], sizes[l]);
         let n = &num[l];
         let d = &den[l];
@@ -248,36 +248,36 @@ pub fn blend(frames: &[PreparedFrame], owner: &OwnerMap, levels: u32) -> (Vec<u8
         px[1] = (src[1].round().clamp(0.0, 255.0)) as u8;
         px[2] = (src[2].round().clamp(0.0, 255.0)) as u8;
     }
-    // Couverture : dénominateur du niveau fin (masque binaire accumulé).
+    // Coverage: fine-level denominator (accumulated binary mask).
     for (c, &dv) in covered.iter_mut().zip(&den[0]) {
         *c = dv > 0.5;
     }
     (rgb, covered)
 }
 
-// ─────────────────────────── pyramides ───────────────────────────
+// ─────────────────────────── pyramids ───────────────────────────
 
-/// Demi-largeur du fondu de couture (px) : la rampe fait ~2× cette valeur.
-/// Étroit par choix — un fondu large recrée la diffusion en fantômes
-/// (cf. défaut LEVELS≥2, retiré 2026-09-11).
+/// Half-width of the seam feather (px): the ramp is ~2× this value.
+/// Narrow by choice — a wide feather recreates the ghosting diffusion
+/// (see LEVELS≥2 defect, removed 2026-09-11).
 pub const SEAM_FEATHER_PX: u32 = 6;
 
-/// Étale un masque binaire en rampe douce : `passes` érosions-dilations
-/// approximées par boîte 3×3 sur le front (la rampe finit en pente douce
-/// 0→1 sur ~2×radius). Horizontal bouclant (la longitude boucle),
-/// vertical clampé.
+/// Spreads a binary mask into a soft ramp: `passes` erosion-dilations
+/// approximated by a 3×3 box on the front (the ramp ends in a soft slope
+/// 0→1 over ~2×radius). Horizontal wrapping (longitude wraps),
+/// vertical clamped.
 fn feather_mask(mask: &mut [f32], w: u32, h: u32, radius: u32) {
     if radius == 0 || w == 0 || h == 0 {
         return;
     }
-    // 2 passes de boîte (H circulaire + V clampée) : la rampe 0→1 fait
-    // ~2×(2×radius) px. `cur` = entrée de chaque passe, résultat dans cur.
+    // 2 box passes (circular H + clamped V): the 0→1 ramp spans
+    // ~2×(2×radius) px. `cur` = input of each pass, result in cur.
     let r = radius as i64;
     let (uw, uh) = (w as usize, h as usize);
     let mut cur = mask.to_vec();
     let mut next = vec![0.0f32; mask.len()];
     for _ in 0..2 {
-        // horizontal wrap : cur → next
+        // horizontal wrap: cur → next
         for j in 0..uh {
             let base = j * uw;
             for i in 0..uw {
@@ -289,7 +289,7 @@ fn feather_mask(mask: &mut [f32], w: u32, h: u32, radius: u32) {
                 next[base + i] = acc / (2 * r + 1) as f32;
             }
         }
-        // vertical clamp : next → cur
+        // vertical clamp: next → cur
         for j in 0..uh {
             let base = j * uw;
             for i in 0..uw {
@@ -343,11 +343,11 @@ fn dilate_support(mask: &[f32], w: u32, h: u32, radius: u32) -> Vec<bool> {
     out
 }
 
-/// Noyau de Burt [1,4,6,4,1]/16.
+/// Burt kernel [1,4,6,4,1]/16.
 const H: [f32; 5] = [1.0 / 16.0, 4.0 / 16.0, 6.0 / 16.0, 4.0 / 16.0, 1.0 / 16.0];
 
-/// Sous-échantillonnage ×2 (1 plan) : horizontal circulaire (la longitude
-/// boucle), vertical clampé.
+/// ×2 subsampling (1 plane): circular horizontal (longitude
+/// wraps), clamped vertical.
 fn reduce_1(src: &[f32], size: (u32, u32), dst_size: (u32, u32)) -> Vec<f32> {
     let (w, h) = size;
     let (dw, dh) = dst_size;
@@ -394,14 +394,14 @@ fn reduce_rgb(src: &[f32], size: (u32, u32), dst_size: (u32, u32)) -> Vec<f32> {
     dst
 }
 
-/// Position fine → (indice grossier, phase 0|1) : x = 2·c + f.
+/// Fine position → (coarse index, phase 0|1): x = 2·c + f.
 fn div_mod2(x: i64) -> (i64, i64) {
     (x.div_euclid(2), x.rem_euclid(2))
 }
 
 fn expand_rgb(src: &[f32], size: (u32, u32), dst_size: (u32, u32)) -> Vec<f32> {
-    // 3 canaux entrelacés : on interpole chaque canal par l'indexation
-    // commune (les mêmes poids s'appliquent).
+    // 3 interleaved channels: we interpolate each channel through the
+    // shared indexing (the same weights apply).
     let (w, h) = size;
     let (dw, dh) = dst_size;
     let mut dst = vec![0.0f32; (dw * dh) as usize * 3];
@@ -474,8 +474,8 @@ mod tests {
         );
     }
 
-    /// Gain unitaire des opérations pyramidales : reduce et expand
-    /// reproduisent une image constante (condition lap = g − expand∘reduce).
+    /// Unit gain of the pyramid operations: reduce and expand
+    /// reproduce a constant image (condition lap = g − expand∘reduce).
     #[test]
     fn gain_unitaire_pyramide() {
         let size = (16u32, 8u32);
@@ -490,10 +490,10 @@ mod tests {
         assert!(back3.iter().all(|&v| (v - 42.0).abs() < 1e-4));
     }
 
-    /// Deux frames CONSTANTES en recouvrement total : la sortie doit être
-    /// le crossfade 100 → 150 → 200 — JAMAIS ~300 (double-comptage du
-    /// contenu plein dans le recouvrement, bug du numérateur non pondéré
-    /// par le masque, constat 2026-09-11).
+    /// Two CONSTANT frames in full overlap: the output must be
+    /// the crossfade 100 → 150 → 200 — NEVER ~300 (double counting of
+    /// full content in the overlap, bug of the numerator not weighted
+    /// by the mask, finding 2026-09-11).
     #[test]
     fn recouvrement_constant_sans_double_comptage() {
         let (w, h) = (64u32, 32u32);
@@ -501,8 +501,8 @@ mod tests {
             .map(|k| {
                 let v = if k == 0 { 100.0 } else { 200.0 };
                 let img = vec![v; (w * h * 3) as usize];
-                // Masques binaires complémentaires par moitié, fondus par
-                // la pyramide : recouvrement total des deux frames.
+                // Complementary binary masks per half, feathered by
+                // the pyramid: full overlap of the two frames.
                 let mut mask = vec![0.0f32; (w * h) as usize];
                 let lim = if k == 0 {
                     w as usize / 2 + 8
@@ -519,7 +519,7 @@ mod tests {
                 (v, img, mask)
             })
             .collect();
-        // Accumulation (identique à blend) puis collapse.
+        // Accumulation (identical to blend) then collapse.
         let n_levels = 2usize;
         let mut sizes = vec![(w, h)];
         for _ in 0..n_levels {
@@ -594,8 +594,8 @@ mod tests {
             }
             cur = next;
         }
-        // Colonne 0 (plein masque frame 0) = 100 ; colonne w−1 = 200 ;
-        // le centre = entre les deux. JAMAIS ≥ 250 (double-comptage).
+        // Column 0 (full mask frame 0) = 100; column w−1 = 200;
+        // the centre = between the two. NEVER ≥ 250 (double counting).
         let at = |i: usize| cur[(16 * w as usize + i) * 3];
         println!(
             "profil: {}",
@@ -611,10 +611,10 @@ mod tests {
             "col w-4 = {}",
             at(w as usize - 4)
         );
-        assert!(cur.iter().all(|&v| v < 250.0), "double-comptage détecté");
+        assert!(cur.iter().all(|&v| v < 250.0), "double counting detected");
     }
 
-    /// div_mod2 : recouvrement pair/impair.
+    /// div_mod2: even/odd overlap.
     #[test]
     fn div_mod2_phases() {
         assert_eq!(div_mod2(0), (0, 0));
@@ -623,11 +623,11 @@ mod tests {
         assert_eq!(div_mod2(5), (2, 1));
     }
 
-    /// Identité de reconstruction : lap_l = g_l − expand(g_{l+1}), accumulé
-    /// comme dans blend (num) puis normalisé par la pyramide gaussienne du
-    /// masque (den) et collapse — doit restituer l'image au centre d'un
-    /// masque rectangle (≥ 2^levels du bord : au-delà, le ratio du niveau
-    /// grossier tire légitimement vers la moyenne visible).
+    /// Reconstruction identity: lap_l = g_l − expand(g_{l+1}), accumulated
+    /// as in blend (num) then normalised by the mask's Gaussian pyramid
+    /// (den) and collapsed — must restore the image at the centre of a
+    /// rectangular mask (≥ 2^levels from the edge: beyond that, the coarse level's
+    /// ratio legitimately pulls towards the visible mean).
     #[test]
     fn reconstruction_identite() {
         let (w, h) = (64u32, 32u32);
@@ -636,8 +636,8 @@ mod tests {
         for j in 0..h as usize {
             for i in 0..w as usize {
                 let o = (j * w as usize + i) * 3;
-                // Octave fine ajoutée : un sinus doux seul passait sous la
-                // tolérance et ne détectait pas le signe inversé.
+                // Fine octave added: a smooth sine alone passed under the
+                // tolerance and did not detect the inverted sign.
                 let v = 60.0 + 30.0 * ((i as f32) * 0.2).sin() + 10.0 * ((i as f32) * 1.7).sin();
                 img[o] = v;
                 img[o + 1] = v;
@@ -721,13 +721,13 @@ mod tests {
             cur = next;
         }
 
-        // Intérieur sûr (≥ 2^levels du bord du masque).
+        // Safe interior (≥ 2^levels from the mask edge).
         let o = (8 * w as usize + 32) * 3;
         let want = 60.0 + 30.0 * (32.0f32 * 0.2).sin() + 10.0 * (32.0f32 * 1.7).sin();
         let got = cur[o];
         assert!(
             (got - want).abs() <= 3.0,
-            "reconstruction (col 32) : {got:.1} ≠ {want:.1}"
+            "reconstruction (col 32): {got:.1} ≠ {want:.1}"
         );
     }
 }

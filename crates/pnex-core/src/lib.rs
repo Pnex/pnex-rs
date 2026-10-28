@@ -1,11 +1,11 @@
-//! PNEX core — types partagés backend ↔ frontend.
+//! PNEX core — types shared backend ↔ frontend.
 //!
-//! Contraintes :
-//! - ce crate DOIT compiler pour `x86_64-unknown-linux-gnu` **et**
-//!   `wasm32-unknown-unknown` ;
-//! - donc **aucune dépendance native** (pas de tokio, std::net, std::fs, … au
-//!   niveau des types exposés) ;
-//! - il ne contient que des DTO/constantes partagés, pas de logique métier.
+//! Constraints:
+//! - this crate MUST compile for `x86_64-unknown-linux-gnu` **and**
+//!   `wasm32-unknown-unknown`;
+//! - hence **no native dependency** (no tokio, std::net, std::fs, … at the
+//!   level of the exposed types);
+//! - it only holds shared DTOs/constants, no business logic.
 
 pub mod agent;
 /// Edge agent contract (D95).
@@ -27,13 +27,13 @@ pub use builds::*;
 pub mod dashboard;
 pub use dashboard::*;
 
-/// Documents viz « dashboard » (studio SCADA, D35/D36) — layout canvas
-/// libre + validation partagée front/back.
+/// Viz "dashboard" documents (SCADA studio, D35/D36) — free canvas
+/// layout + validation shared front/back.
 pub mod viz;
 pub use viz::*;
 
-/// Mélanges de fluides personnalisés — DTO + validation partagée
-/// front/back (conversion massique→molaire côté serveur via CoolProp).
+/// Custom fluid mixtures — DTO + validation shared
+/// front/back (mass→molar conversion on the server via CoolProp).
 pub mod fluid_mixture;
 pub use fluid_mixture::*;
 
@@ -50,9 +50,9 @@ pub use devices::*;
 /// device types, capabilities.
 pub mod catalog;
 
-/// Référentiels Edge — credentials WiFi + hosts serveur PNeX org-scoped,
-/// piochés par l'étape Config du wizard device (payload `CreateBuild`
-/// inchangé). wasm-safe (serde seul).
+/// Edge references — WiFi credentials + org-scoped PNeX server hosts,
+/// picked by the Config step of the device wizard (`CreateBuild` payload
+/// unchanged). wasm-safe (serde only).
 pub mod edge;
 pub use edge::*;
 
@@ -60,9 +60,9 @@ pub use edge::*;
 pub mod secrets;
 pub use secrets::*;
 
-/// Fonctions utilisateur versionnées (registre « Fonctions », groupe
-/// « Automation ») — directives d'interface, codegen wrapper JS, DTOs et
-/// contrat du CLI de test. wasm-safe (serde + serde_json seuls).
+/// Versioned user functions ("Functions" registry, "Automation"
+/// group) — interface directives, JS wrapper codegen, DTOs and
+/// test CLI contract. wasm-safe (serde + serde_json only).
 pub mod firmware;
 
 pub mod functions;
@@ -72,27 +72,27 @@ pub use functions::*;
 /// allowlist. wasm-safe.
 pub mod pages;
 
-/// Flows ETL (décision D18) — modèle typé + validation + projection flows.json.
+/// ETL flows (decision D18) — typed model + validation + flows.json projection.
 pub mod flow;
 pub use flow::*;
 
-/// Studio — document de parcours de visite 3D (mode panorama), versionné
-/// école flows ; assets média référencés par UUID (jamais dupliqués, D21).
+/// Studio — 3D visit tour document (panorama mode), versioned
+/// flows school; media assets referenced by UUID (never duplicated, D21).
 pub mod tour;
 pub use tour::*;
 
-/// Annotations sur médias (D55–D60) — couches versionnées ancrées sur
-/// `media_asset_id`, cibles faibles résolues au read ; doctrine
+/// Media annotations (D55–D60) — versioned layers anchored on
+/// `media_asset_id`, weak targets resolved at read; doctrine
 /// `docs/architecture/annotations.md`.
 pub mod annotation;
 pub use annotation::*;
 
-/// Évaluateur d'expressions calc (nœud `calc`) — pur, wasm-safe, zéro dep.
+/// Calc expression evaluator (`calc` node) — pure, wasm-safe, zero dep.
 pub mod calc;
 pub use calc::*;
 
-/// Nommage métriques/clés — source de vérité unique backend ↔ runtime
-/// (`normalize_measurement_name` derrière la feature `naming`).
+/// Metric/key naming — single source of truth backend ↔ runtime
+/// (`normalize_measurement_name` behind the `naming` feature).
 pub mod naming;
 pub use naming::*;
 
@@ -169,8 +169,8 @@ pub mod lab;
 pub mod last_cache;
 pub use last_cache::*;
 
-/// Messages prompb (remote-write OpenObserve) — feature `prompb`, jamais
-/// compilée pour le front wasm.
+/// prompb messages (OpenObserve remote-write) — `prompb` feature, never
+/// compiled for the wasm front.
 #[cfg(feature = "prompb")]
 pub mod prompb;
 #[cfg(feature = "prompb")]
@@ -205,28 +205,28 @@ pub use pagination::*;
 /// Signed OTA images (SEC-18): message bound to device + version + digest.
 pub mod ota_sig;
 
-/// Protocole fil `/ws/device` (Brick 0) — source de vérité du contrat device.
+/// `/ws/device` wire protocol (Brick 0) — source of truth of the device contract.
 pub mod proto;
 pub use proto::*;
 
-/// Notifications (D49–D54, amendées 2026-09-14) — contrat `notify-kinds.v1`
-/// (FieldSpec des formulaires canaux), DTO canaux/templates/livraisons,
-/// frame du bus WS. wasm-safe (uuid serde-only, pas de v4).
+/// Notifications (D49–D54, amended 2026-09-14) — `notify-kinds.v1` contract
+/// (FieldSpec of the channel forms), channel/template/delivery DTOs,
+/// WS bus frame. wasm-safe (uuid serde-only, no v4).
 pub mod notify;
 pub use notify::*;
 
-/// Math de référence des cartes de régulation (TT + PID) — spécification
-/// exécutable que le firmware `regulator` (C++) reproduit à l'identique
-/// (golden vectors). Pur, wasm-safe, jamais exécuté côté serveur (D13/D17 :
-/// la boucle tourne sur le device).
+/// Reference math of the control cards (TT + PID) — executable
+/// specification that the `regulator` firmware (C++) reproduces identically
+/// (golden vectors). Pure, wasm-safe, never executed on the server (D13/D17:
+/// the loop runs on the device).
 pub mod control;
 pub use control::*;
 
-/// Chip-caps ESP8266 — validation des pins (point unique, Brick 0).
+/// ESP8266 chip-caps — pin validation (single point, Brick 0).
 pub mod caps;
 pub use caps::*;
 
-/// Overlays board en data (`mcu_boards.details`) — types partagés (Brick 0).
+/// Board overlays as data (`mcu_boards.details`) — shared types (Brick 0).
 pub mod boards;
 pub use boards::*;
 
@@ -289,7 +289,7 @@ pub struct HealthReady {
     pub cache: HealthState,
 }
 
-/// Identifiant d'une organisation PNEX (le tenant, décision D2).
+/// Identifier of a PNEX organization (the tenant, decision D2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OrgId(pub i64);
 

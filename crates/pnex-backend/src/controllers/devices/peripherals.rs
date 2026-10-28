@@ -30,8 +30,8 @@ pub(super) async fn update_peripherals(
     let Some(device) = find_device(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // Sources de la capacité écran : profil v2 de la board figée, ou le
-    // modèle prédéfini lui-même (boîtes noires à écran).
+    // Sources of the screen capability: v2 profile of the frozen board, or the
+    // predefined model itself (black boxes with a screen).
     let profile_screens = crate::services::provisioning::load_board_details(&ctx.db, &device)
         .await?
         .map(|p| p.peripherals.screens)
@@ -122,13 +122,13 @@ pub(super) async fn update_peripherals(
     format::json(pnex_core::DevicePeripheralsUpdated {
         screen: kind.clone(),
         screen_kind: kind,
-        // Le define firmware ne prendra effet qu'au prochain build.
+        // The firmware define only takes effect at the next build.
         rebuild_required: true,
     })
 }
 
-/// Capacité écran du modèle (`predefined_devices.peripherals` jsonb, ex.
-/// `{"screen": {"kind": "ssd1306"}}`) → kind du driver.
+/// Screen capability of the model (`predefined_devices.peripherals` jsonb, e.g.
+/// `{"screen": {"kind": "ssd1306"}}`) → driver kind.
 pub(super) fn screen_capability(pd: &predefined_devices::Model) -> Option<String> {
     pd.peripherals
         .as_ref()

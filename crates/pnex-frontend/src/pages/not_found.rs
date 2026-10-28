@@ -1,4 +1,4 @@
-//! Route inconnue — renvoyée par le routeur (`/:..route`).
+//! Unknown route — returned by the router (`/:..route`).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

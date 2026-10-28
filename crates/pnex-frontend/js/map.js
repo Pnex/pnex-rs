@@ -1,28 +1,28 @@
-//! Carte géo POI-first (D27 + D35–D37) — bundle esbuild IIFE de
+//! POI-first geo map (D27 + D35–D37) — esbuild IIFE bundle of
 //! maplibre-gl 6.x, mounted on `window.pnexMap` (viewers.js / flasher.js
 //! pattern). Loaded by `main.rs`.
 //!
 //! The basemap style is the org's default geo provider (geo-layers.md
 //! L24–L26), chosen by the page; empty = plain background.
 //!
-//! Les items sont des **markers HTML** (pas des layers symbol) : le texte
-//! maplibre est rendu en SDF monochrome — un emoji couleur n'y passe pas ;
-//! un élément DOM l'affiche nativement et reçoit le clic. Trois formes :
-//! - pin      → emoji + label (POI) ;
-//! - cluster  → rond bleu avec le NUMÉRO (clustering backend D37) ;
-//! - position → device GPS live (couches filtrées).
+//! Items are **HTML markers** (not symbol layers): maplibre text is
+//! rendered as monochrome SDF — a colour emoji does not survive it; a DOM
+//! element shows it natively and receives the click. Three shapes:
+//! - pin      → emoji + label (POI);
+//! - cluster  → blue circle with the NUMBER (backend clustering D37);
+//! - position → live GPS device (filtered layers).
 //!
-//! Événements vers Rust (poll côté pont, école tron.rs : pas de closure
-//! traversante, marche wasm + natif via document::eval) :
-//! - clic item/carte : `window.__pnexMapLastClick = {seq, host, kind, id,
-//!   label, lng, lat}` — `kind` ∈ `pin|cluster|position|map` (`map` = clic
-//!   carte nue, coords renseignées) ;
-//! - viewport : `window.__pnexMapView = {seq, west, south, east, north,
-//!   zoom}` sur `moveend` (debounce 300 ms) → refetch du cluster côté page.
+//! Events to Rust (polled on the bridge side, tron.rs pattern: no closure
+//! crossing over, works on wasm + native via document::eval):
+//! - item/map click: `window.__pnexMapLastClick = {seq, host, kind, id,
+//!   label, lng, lat}` — `kind` ∈ `pin|cluster|position|map` (`map` = click
+//!   on the bare map, coords filled in);
+//! - viewport: `window.__pnexMapView = {seq, west, south, east, north,
+//!   zoom}` on `moveend` (300 ms debounce) → page-side cluster refetch.
 //!
-//! Échecs silencieux : script absent, hôte introuvable, WebGL manquant,
-//! erreur du style → `false` + `error(hostId)` renseigné — la page affiche
-//! le badge « carte indisponible », jamais de panic.
+//! Silent failures: missing script, host not found, no WebGL, style
+//! error → `false` + `error(hostId)` set — the page shows the
+//! "map unavailable" badge, never a panic.
 // maplibre-gl 6.x is ESM-only (no CJS entry): the old require() here was
 // left as a runtime __require stub by esbuild (IIFE) and threw in the
 // browser — the static import below is the only reliable source.
@@ -161,8 +161,8 @@ maplibreGl.setWorkerUrl(
 
   function emitClick(kind, id, label, lng, lat) {
     window.__pnexMapSeq = (window.__pnexMapSeq || 0) + 1;
-    // Chaîne JSON : lue uniformément par le pont wasm (as_string) et
-    // le pont natif (document::eval → as_string).
+    // JSON string: read uniformly by the wasm bridge (as_string) and
+    // the native bridge (document::eval → as_string).
     window.__pnexMapLastClick = JSON.stringify({
       seq: window.__pnexMapSeq,
       kind: kind,
@@ -247,13 +247,13 @@ maplibreGl.setWorkerUrl(
 
   var api = {
     /**
-     * Monte une carte dans le div hôte.
+     * Mounts a map in the host div.
      * opts: { styleUrl, center: [lon, lat], zoom }
-     * → true si monté.
+     * → true if mounted.
      */
     mount: function (hostId, opts) {
-      // Le pont wasm passe la opts en CHAÎNE JSON (document::eval natif la
-      // parse déjà) — accepter les deux formes.
+      // The wasm bridge passes opts as a JSON STRING (native document::eval
+      // already parses it) — accept both forms.
       if (typeof opts === 'string') {
         try { opts = JSON.parse(opts); } catch (e) { return false; }
       }
@@ -287,12 +287,12 @@ maplibreGl.setWorkerUrl(
         map.on('error', function (e) {
           setErr(host, (e && e.error && e.error.message) || 'map');
         });
-        // Clic carte nue (hors marker — les markers stoppent la propagation)
-        // : mode ajout POI côté page.
+        // Click on the bare map (outside markers — markers stop propagation)
+        // : page-side POI add mode.
         map.on('click', function (e) {
           emitClick('map', null, '', e.lngLat.lng, e.lngLat.lat);
         });
-        // Viewport → refetch cluster (debounce : fini les rafales de moveend).
+        // Viewport → cluster refetch (debounce: no more moveend bursts).
         var viewTimer = null;
         var pushView = function () {
           var c = map.getCenter();
@@ -321,20 +321,20 @@ maplibreGl.setWorkerUrl(
         return true;
       } catch (e) {
         setErr(host, String(e));
-        try { if (host._pnexMap) host._pnexMap.remove(); } catch (err) { /* déjà mort */ }
+        try { if (host._pnexMap) host._pnexMap.remove(); } catch (err) { /* already dead */ }
         host._pnexMap = null;
         return false;
       }
     },
 
     /**
-     * Remplace tous les markers (pins POI, clusters numérotés, positions
-     * GPS live). item: {kind:'pin'|'cluster'|'position', lon, lat, label,
+     * Replaces all markers (POI pins, numbered clusters, live GPS
+     * positions). item: {kind:'pin'|'cluster'|'position', lon, lat, label,
      * emoji, count, id}.
      */
     setItems: function (hostId, items) {
-      // Le pont wasm passe les items en CHAÎNE JSON (document::eval natif la
-      // parse déjà) — accepter les deux formes (piège identique à mount).
+      // The wasm bridge passes items as a JSON STRING (native document::eval
+      // already parses it) — accept both forms (same trap as mount).
       if (typeof items === 'string') {
         try { items = JSON.parse(items); } catch (e) { return false; }
       }
@@ -343,7 +343,7 @@ maplibreGl.setWorkerUrl(
       var ml = maplibreMod();
       if (!host || !map || !ml) return false;
       (host._pnexMapMarkers || []).forEach(function (m) {
-        try { m.remove(); } catch (e) { /* déjà retiré */ }
+        try { m.remove(); } catch (e) { /* already removed */ }
       });
       host._pnexMapMarkers = [];
       (items || []).forEach(function (p) {
@@ -372,7 +372,7 @@ maplibreGl.setWorkerUrl(
       return true;
     },
 
-    /** Remplace les markers (compat Phase A : = setItems en mode pin). */
+    /** Replaces the markers (Phase A compat: = setItems in pin mode). */
     setPins: function (hostId, pins) {
       var items = (pins || []).map(function (p) {
         return Object.assign({ kind: 'pin' }, p);
@@ -417,7 +417,7 @@ maplibreGl.setWorkerUrl(
       return true;
     },
 
-    /** Centre la carte (doux) sur un point. */
+    /** Centres the map (smoothly) on a point. */
     flyTo: function (hostId, lon, lat, zoom) {
       var host = hostOf(hostId);
       var map = host && host._pnexMap;
@@ -430,17 +430,17 @@ maplibreGl.setWorkerUrl(
       return true;
     },
 
-    /** Dernier clic item/carte (pollé par le pont Rust). */
+    /** Last item/map click (polled by the Rust bridge). */
     lastClick: function () {
       return window.__pnexMapLastClick || null;
     },
 
-    /** Dernier viewport (moveend debouncé, pollé par le pont Rust). */
+    /** Last viewport (debounced moveend, polled by the Rust bridge). */
     lastView: function () {
       return window.__pnexMapView || null;
     },
 
-    /** Code d'erreur du dernier mount (lib|webgl|map|…) ou null. */
+    /** Error code of the last mount (lib|webgl|map|…) or null. */
     error: function (hostId) {
       var host = hostOf(hostId);
       return (host && host._pnexMapError) || null;
@@ -449,7 +449,7 @@ maplibreGl.setWorkerUrl(
     unmount: function (hostId) {
       var host = hostOf(hostId);
       if (host && host._pnexMap) {
-        try { host._pnexMap.remove(); } catch (e) { /* déjà mort */ }
+        try { host._pnexMap.remove(); } catch (e) { /* already dead */ }
         host._pnexMap = null;
         host._pnexMapMarkers = [];
       }

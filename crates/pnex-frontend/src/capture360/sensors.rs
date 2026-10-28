@@ -1,41 +1,41 @@
-//! Capteur d'orientation Android — FFI brut `ndk-sys` (la crate `ndk` 0.9
-//! n'expose pas de wrapper sensor, cf. exploration).
+//! Android orientation sensor — raw `ndk-sys` FFI (the `ndk` 0.9 crate
+//! exposes no sensor wrapper, see exploration).
 //!
-//! Thread dédié : ALooper préparé sur ce thread, file d'événements du
-//! SensorManager NDK (pas de classes Java). Rotation vector
-//! (TYPE_ROTATION_VECTOR = 11, fallback geomagnetic = 20) à 30 Hz, converti
-//! en (yaw, pitch, roll) convention `pnex-stitcher` :
+//! Dedicated thread: ALooper prepared on this thread, NDK SensorManager
+//! event queue (no Java classes). Rotation vector
+//! (TYPE_ROTATION_VECTOR = 11, geomagnetic fallback = 20) at 30 Hz, converted
+//! to (yaw, pitch, roll) in the `pnex-stitcher` convention:
 //!
-//! 1. `R = quat_to_mat(q)` : device→monde (X est, Y nord, Z ciel) ;
-//! 2. caméra arrière : optique = −Z device, droite image = +X device, bas
-//!    image = −Y device → `M = S·Rᵀ` avec `S = diag(1, −1, −1)` : rangées
-//!    de M = (R col1, −R col2, −R col3) ;
-//! 3. `euler_from_mat(M)` → (yaw, pitch, roll), yaw relatif au zéro de
-//!    session (moyenne des premiers échantillons).
+//! 1. `R = quat_to_mat(q)`: device→world (X east, Y north, Z sky);
+//! 2. back camera: optical axis = −Z device, image right = +X device, image
+//!    down = −Y device → `M = S·Rᵀ` with `S = diag(1, −1, −1)`: rows
+//!    of M = (R col1, −R col2, −R col3);
+//! 3. `euler_from_mat(M)` → (yaw, pitch, roll), yaw relative to the session
+//!    zero (mean of the first samples).
 //!
-//! Les signes restants (sens de rotation demandé, point guideur) sont
-//! isolés dans `guidance.rs` (ROTATION_DIR) — calibrés au smoke test
-//! device. Si l'anneau sort inversé ou retourné, retourner les constantes
-//! ICI.
+//! The remaining signs (requested rotation direction, guide dot) are
+//! isolated in `guidance.rs` (ROTATION_DIR) — calibrated at the device
+//! smoke test. If the ring comes out reversed or flipped, flip the
+//! constants THERE.
 
 use super::state;
 use crate::capture::{attach_env, package_name};
 use pnex_stitcher::geom::{euler_from_mat, quat_to_mat, Mat3};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Types de capteurs Android (ASensorEvent.type_).
+/// Android sensor types (ASensorEvent.type_).
 const TYPE_ROTATION_VECTOR: i32 = 11;
 const TYPE_GEOMAGNETIC_ROTATION_VECTOR: i32 = 20;
 
-/// Période demandée : 30 Hz.
+/// Requested period: 30 Hz.
 const PERIOD_US: i32 = 33_333;
-/// Nombre d'échantillons pour le zéro de session.
+/// Number of samples for the session zero.
 const ZERO_SAMPLES: usize = 5;
 
-/// Vrai tant que le thread capteur est attendu en vie.
+/// True while the sensor thread is expected to be alive.
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Démarre le thread capteur. `false` si déjà lancé.
+/// Starts the sensor thread. `false` if already running.
 pub fn start() -> bool {
     if RUNNING.swap(true, Ordering::Relaxed) {
         return false;
@@ -48,27 +48,27 @@ pub fn start() -> bool {
         .is_ok()
 }
 
-/// Arrête le thread capteur (demande d'arrêt + libère le flag de vie).
+/// Stops the sensor thread (stop request + releases the liveness flag).
 pub fn stop() {
     state::CANCEL.store(true, Ordering::Relaxed);
     RUNNING.store(false, Ordering::Relaxed);
 }
 
-/// Rangées de `M = S·Rᵀ` : (R col1, −R col2, −R col3) — cf. docs module.
+/// Rows of `M = S·Rᵀ`: (R col1, −R col2, −R col3) — see module docs.
 fn back_camera_matrix(r: Mat3) -> Mat3 {
     Mat3([
         r.0[0], r.0[3], r.0[6], // droite image = +X device
-        -r.0[1], -r.0[4], -r.0[7], // bas image = écran −Y device
+        -r.0[1], -r.0[4], -r.0[7], // image down = screen −Y device
         -r.0[2], -r.0[5], -r.0[8], // axe optique = −Z device
     ])
 }
 
-/// Corps du thread : boucle ALooper + file d'événements capteur.
+/// Thread body: ALooper loop + sensor event queue.
 ///
-/// Journalise en logcat via le hook de panic global (PNEX-PANIC) ; en cas
-/// d'absence du capteur, pose `ERROR_CODE = 3` et sort.
+/// Logs to logcat via the global panic hook (PNEX-PANIC); if the
+/// sensor is missing, sets `ERROR_CODE = 3` and exits.
 fn sensor_loop() {
-    // 1) Nom de package (JNI, école capture.rs) pour le manager NDK.
+    // 1) Package name (JNI, capture.rs pattern) for the NDK manager.
     let pkg = attach_env().and_then(|env| unsafe {
         let ctx = ndk_context::try_android_context()?;
         package_name(env, ctx.context() as jni::sys::jobject)
@@ -80,9 +80,9 @@ fn sensor_loop() {
         return sensor_missing();
     };
 
-    // 2) Manager + capteur (rotation vector, fallback geomagnetic).
-    // SAFETY : FFI ndk-sys — signatures vérifiées dans ndk-sys 0.6 ; le
-    // manager est un singleton thread-safe côté NDK.
+    // 2) Manager + sensor (rotation vector, geomagnetic fallback).
+    // SAFETY: ndk-sys FFI — signatures checked against ndk-sys 0.6; the
+    // manager is a thread-safe singleton on the NDK side.
     let manager = unsafe { ndk_sys::ASensorManager_getInstanceForPackage(pkg_c.as_ptr()) };
     if manager.is_null() {
         return sensor_missing();
@@ -99,18 +99,18 @@ fn sensor_loop() {
         return sensor_missing();
     }
 
-    // 3) ALooper sur CE thread + file d'événements (pas de callback :
+    // 3) ALooper on THIS thread + event queue (no callback:
     //    ALLOW_NON_CALLBACKS + pollAll).
     let looper =
         unsafe { ndk_sys::ALooper_prepare(ndk_sys::ALOOPER_PREPARE_ALLOW_NON_CALLBACKS as i32) };
     if looper.is_null() {
         return sensor_missing();
     }
-    // Ident LOOPER_ID_USER (3) — le pattern NDK standard sans callback :
-    // pollAll remontera l'ident de la queue quand des événements arrivent.
-    // (ALOOPER_POLL_CALLBACK = -2 est réservé aux queues AVEC callback —
-    // avec lui, pollAll ne remonte jamais les événements : pose=false
-    // constaté device 2026-09-09.)
+    // Ident LOOPER_ID_USER (3) — the standard NDK pattern without callback:
+    // pollAll returns the queue's ident when events arrive.
+    // (ALOOPER_POLL_CALLBACK = -2 is reserved for queues WITH a callback —
+    // with it, pollAll never returns the events: pose=false
+    // observed on device 2026-09-09.)
     const LOOPER_ID_USER: i32 = 3;
     let queue = unsafe {
         ndk_sys::ASensorManager_createEventQueue(
@@ -129,15 +129,15 @@ fn sensor_loop() {
         ndk_sys::ASensorEventQueue_setEventRate(queue, sensor, PERIOD_US);
     }
 
-    // 4) Boucle : drain des événements → conversion → atomics. Sortie sur
-    //    CANCEL (démontage overlay / fin d'anneau).
+    // 4) Loop: drain events → conversion → atomics. Exits on
+    //    CANCEL (overlay unmount / end of ring).
     let mut zero_samples: Vec<f32> = Vec::new();
     let mut zero_yaw: Option<f32> = None;
     let mut zero_pitch: Option<f32> = None;
     let mut last_log_ms: u64 = 0;
 
     while !state::CANCEL.load(Ordering::Relaxed) {
-        // 100 ms : borne de réveil pour voir CANCEL (timeout = −3).
+        // 100 ms: wake-up bound to notice CANCEL (timeout = −3).
         let mut fd: i32 = 0;
         let mut events: i32 = 0;
         let mut data: *mut std::ffi::c_void = std::ptr::null_mut();
@@ -151,7 +151,7 @@ fn sensor_loop() {
         };
         let _ = (fd, events);
         match ident {
-            // LOOPER_ID_USER = 3 : événements capteur prêts.
+            // LOOPER_ID_USER = 3: sensor events ready.
             3 => {
                 drain(
                     queue,
@@ -161,7 +161,7 @@ fn sensor_loop() {
                     &mut last_log_ms,
                 );
             }
-            // ALOOPER_POLL_TIMEOUT = −3, erreur = −1 : recheck CANCEL.
+            // ALOOPER_POLL_TIMEOUT = −3, error = −1: recheck CANCEL.
             _ => {}
         }
     }
@@ -173,7 +173,7 @@ fn sensor_loop() {
     }
 }
 
-/// Vide la file : conversion quaternion → pose relative → atomics.
+/// Drains the queue: quaternion conversion → relative pose → atomics.
 fn drain(
     queue: *mut ndk_sys::ASensorEventQueue,
     zero_samples: &mut Vec<f32>,
@@ -200,12 +200,12 @@ fn drain(
             if ev.type_ != TYPE_ROTATION_VECTOR && ev.type_ != TYPE_GEOMAGNETIC_ROTATION_VECTOR {
                 continue;
             }
-            // SAFETY : union bindgen — `data` pour les types rotation.
+            // SAFETY: bindgen union — `data` for the rotation types.
             let q = unsafe { ev.__bindgen_anon_1.__bindgen_anon_1.data };
             let (yaw_abs_deg, pitch, roll) =
                 euler_from_mat(back_camera_matrix(quat_to_mat([q[0], q[1], q[2], q[3]])));
-            // Zéro de session : moyenne des N premiers (yaw, pitch) — la
-            // posture de départ devient l'origine (yaw ET pitch).
+            // Session zero: mean of the first N (yaw, pitch) — the
+            // starting posture becomes the origin (yaw AND pitch).
             let yaw_rel = match zero_yaw {
                 Some(z) => super::guidance::wrap180(yaw_abs_deg - *z),
                 None => {
@@ -226,9 +226,9 @@ fn drain(
             state::POSE_PITCH.store((pitch_rel * 1000.0) as i32, Ordering::Relaxed);
             state::POSE_ROLL.store((roll * 1000.0) as i32, Ordering::Relaxed);
             state::POSE_TICK.store(state::now_ms(), Ordering::Relaxed);
-            // Smoke test des signes (1 Hz) : yaw relatif doit croître dans
-            // le sens où l'utilisateur tourne, pitch ≈ élévation du regard,
-            // roll ≈ 0 téléphone droit.
+            // Sign smoke test (1 Hz): relative yaw must grow in the
+            // direction the user turns, pitch ≈ gaze elevation,
+            // roll ≈ 0 with the phone upright.
             let now = state::now_ms();
             if now.saturating_sub(*last_log_ms) >= 1000 {
                 *last_log_ms = now;
@@ -241,7 +241,7 @@ fn drain(
     }
 }
 
-/// Capteur absent : erreur dédiée et fin du thread.
+/// Missing sensor: dedicated error and thread exit.
 fn sensor_missing() {
     state::ERROR_CODE.store(3, Ordering::Relaxed);
     state::POSE_TICK.store(0, Ordering::Relaxed);
@@ -251,8 +251,8 @@ fn sensor_missing() {
 mod tests {
     use super::Mat3;
 
-    /// Rangées de M = S·Rᵀ pour R = identité : avant = −Z monde, droite =
-    /// +X monde (câblage caméra arrière portrait, cf. docs module).
+    /// Rows of M = S·Rᵀ for R = identity: forward = −Z world, right =
+    /// +X world (portrait back-camera wiring, see module docs).
     #[test]
     fn back_camera_matrix_convention() {
         let r = Mat3::IDENTITY;

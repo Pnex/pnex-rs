@@ -1,11 +1,11 @@
-//! Tests des endpoints `/api/v1/telemetry/*` de la page Visualisation
-//! (2026-08-19) : sans OpenObserve configuré (section absente de
-//! test.yaml), les deux endpoints répondent 200 dégradés
-//! (`available: false`), jamais 500 ; les paramètres sont validés
-//! (anti-injection PromQL) ; X-Org-Id requis.
+//! Tests for the Visualisation page's `/api/v1/telemetry/*` endpoints
+//! (2026-08-19): without OpenObserve configured (section missing from
+//! test.yaml), both endpoints answer a degraded 200
+//! (`available: false`), never 500; the parameters are validated
+//! (PromQL anti-injection); X-Org-Id required.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Le parcours disponible (available:true) contre le mock O2 vit dans
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! The available path (available:true) against the O2 mock lives in
 //! tests/openobserve.rs.
 
 mod common;
@@ -18,7 +18,7 @@ struct Env {
     alice: String,
 }
 
-/// Boot l'app + seed du catalogue minimal (même harnais que dashboard.rs).
+/// Boots the app + seeds the minimal catalogue (same harness as dashboard.rs).
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
@@ -77,18 +77,18 @@ async fn series(
         .await
 }
 
-/// Sans O2 configuré : catalogue et série répondent 200 dégradés
-/// (`available: false`, listes vides) — jamais 500 depuis la branche
-/// télémétrie. Les paramètres hostiles sont rejetés en 400 AVANT toute
-/// construction de requête PromQL (injection impossible), et X-Org-Id
-/// reste requis.
+/// Without O2 configured: catalogue and series answer a degraded 200
+/// (`available: false`, empty lists) — never 500 from the telemetry
+/// branch. Hostile parameters are rejected with 400 BEFORE any PromQL
+/// query is built (injection impossible), and X-Org-Id
+/// stays required.
 #[tokio::test]
 #[serial]
 async fn telemetry_degrade_et_validation_sans_o2() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Catalogue dégradé.
+        // Degraded catalogue.
         let res = server
             .get("/api/v1/telemetry/catalog")
             .add_header("Authorization", bearer(&env.alice))
@@ -99,7 +99,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "telemetry-unavailable");
 
-        // Série dégradée avec des paramètres valides.
+        // Degraded series with valid parameters.
         let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "24h").await;
         assert_eq!(res.status_code(), 503);
         assert_eq!(
@@ -107,10 +107,10 @@ async fn telemetry_degrade_et_validation_sans_o2() {
             "telemetry-unavailable"
         );
 
-        // Anti-injection PromQL : charset fermé métrique/device + fenêtre
-        // preset — tout le reste est rejeté avant d'atteindre O2. Les
-        // payloads hostiles sont percent-encodés (un client réel encode
-        // forcément ces caractères, le serveur décode puis valide).
+        // PromQL anti-injection: closed metric/device charset + preset
+        // window — everything else is rejected before reaching O2. The
+        // hostile payloads are percent-encoded (a real client necessarily
+        // encodes these characters, the server decodes then validates).
         let res = series(
             &server,
             &env.alice,
@@ -120,7 +120,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
             "24h",
         )
         .await;
-        assert_eq!(res.status_code(), 400, "métrique hostile rejetée");
+        assert_eq!(res.status_code(), 400, "hostile metric rejected");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "field-invalid");
         assert_eq!(body["errors"]["fields"]["metric"], "invalid");
@@ -133,17 +133,17 @@ async fn telemetry_degrade_et_validation_sans_o2() {
             "24h",
         )
         .await;
-        assert_eq!(res.status_code(), 400, "device_id hostile rejeté");
+        assert_eq!(res.status_code(), 400, "hostile device_id rejected");
         let res = series(&server, &env.alice, org, "soil_moisture", "esp-001", "90d").await;
-        assert_eq!(res.status_code(), 400, "fenêtre non preset rejetée");
+        assert_eq!(res.status_code(), 400, "non-preset window rejected");
         assert_eq!(
             res.json::<serde_json::Value>()["errors"]["fields"]["window"],
             "invalid"
         );
         let res = series(&server, &env.alice, org, "", "esp-001", "24h").await;
-        assert_eq!(res.status_code(), 400, "métrique vide rejetée");
+        assert_eq!(res.status_code(), 400, "empty metric rejected");
 
-        // Paramètre manquant → 400 (désérialisation Query).
+        // Missing parameter → 400 (Query deserialisation).
         let res = server
             .get("/api/v1/telemetry/series?metric=soil_moisture")
             .add_header("Authorization", bearer(&env.alice))
@@ -151,7 +151,7 @@ async fn telemetry_degrade_et_validation_sans_o2() {
             .await;
         assert_eq!(res.status_code(), 400);
 
-        // Sans X-Org-Id → 400 (extracteur OrgContext).
+        // Without X-Org-Id → 400 (OrgContext extractor).
         let res = server
             .get("/api/v1/telemetry/catalog")
             .add_header("Authorization", bearer(&env.alice))
@@ -161,19 +161,19 @@ async fn telemetry_degrade_et_validation_sans_o2() {
     .await;
 }
 
-/// `POST /api/v1/telemetry/series/query` (D31, studio SCADA) — sans O2
-/// configuré : les items valides sont **dégradés au niveau item**
-/// (`available: false`), une spec invalide est isolée (jamais de 400
-/// globale), l'ordre de la réponse suit l'ordre des specs, et le cap de
-/// specs est une vraie 400 (erreur d'appel, pas une donnée manquante).
+/// `POST /api/v1/telemetry/series/query` (D31, SCADA studio) — without O2
+/// configured: valid items are **degraded at the item level**
+/// (`available: false`), an invalid spec is isolated (never a global
+/// 400), the response order follows the spec order, and the spec cap
+/// is a real 400 (call error, not missing data).
 #[tokio::test]
 #[serial]
 async fn series_batch_degrade_par_item_sans_o2() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Batch mixte : 2 specs valides + 1 invalide (device hostile +
-        // fenêtre inconnue).
+        // Mixed batch: 2 valid specs + 1 invalid (hostile device +
+        // unknown window).
         let res = server
             .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
@@ -192,18 +192,18 @@ async fn series_batch_degrade_par_item_sans_o2() {
                 ]
             }))
             .await;
-        assert_eq!(res.status_code(), 200, "jamais de 400 sur spec invalide");
+        assert_eq!(res.status_code(), 200, "never a 400 on an invalid spec");
         let body: serde_json::Value = res.json();
         let results = body["results"].as_array().expect("results");
-        assert_eq!(results.len(), 5, "un item par spec, même ordre");
+        assert_eq!(results.len(), 5, "one item per spec, same order");
         assert_eq!(results[0]["available"], false);
         assert_eq!(results[0]["metric"], "soil_moisture");
-        assert_eq!(results[1]["available"], false, "spec hostile isolée");
+        assert_eq!(results[1]["available"], false, "hostile spec isolated");
         assert_eq!(results[2]["available"], false);
         assert_eq!(results[3]["metric"], "media_capture_up");
         assert_eq!(results[4]["available"], false, "hostile label isolated");
 
-        // Sans specs : batch vide mais 200 (dashboard sans source).
+        // Without specs: empty batch but 200 (dashboard without a source).
         let res = server
             .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")
@@ -215,8 +215,8 @@ async fn series_batch_degrade_par_item_sans_o2() {
         let body: serde_json::Value = res.json();
         assert_eq!(body["results"].as_array().unwrap().len(), 0);
 
-        // Cap anti-abus : au-delà de 24 specs → 400 (forme d'appel
-        // invalide, distincte d'une donnée dégradée).
+        // Anti-abuse cap: beyond 24 specs → 400 (invalid call
+        // shape, distinct from degraded data).
         let mut specs = Vec::new();
         for i in 0..25 {
             specs.push(serde_json::json!({
@@ -230,12 +230,12 @@ async fn series_batch_degrade_par_item_sans_o2() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({ "specs": specs }))
             .await;
-        assert_eq!(res.status_code(), 400, "cap specs dépassé → 400");
+        assert_eq!(res.status_code(), 400, "spec cap exceeded → 400");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "telemetry-batch-too-large");
         assert_eq!(body["errors"]["args"]["max"], "24");
 
-        // X-Org-Id reste requis sur le batch (comme le reste du domaine).
+        // X-Org-Id stays required on the batch (like the rest of the domain).
         let res = server
             .post("/api/v1/telemetry/series/query")
             .add_header("Content-Type", "application/json")

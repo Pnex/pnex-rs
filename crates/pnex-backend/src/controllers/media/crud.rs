@@ -217,7 +217,7 @@ pub(super) async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Hydratation en vrac (pas de N+1) : toutes les versions de la page.
+    // Bulk hydration (no N+1): all the versions of the page.
     let ids: Vec<Uuid> = page_rows.iter().map(|a| a.id).collect();
     let mut by_asset: std::collections::HashMap<Uuid, Vec<media_versions::Model>> =
         std::collections::HashMap::new();
@@ -231,7 +231,7 @@ pub(super) async fn list(
             by_asset.entry(v.asset_id).or_default().push(v);
         }
     }
-    // D42 : labels de la page en 1 requête (pas de N+1).
+    // D42: labels of the page in 1 query (no N+1).
     let label_map = crate::services::resources::labels::labels_for_many(
         &ctx.db,
         org.org.id,
@@ -391,8 +391,8 @@ pub(super) async fn delete(
     };
     let versions = versions_of(&ctx.db, asset.id).await?;
     let keys: Vec<String> = versions.iter().map(|v| v.storage_key.clone()).collect();
-    // D42 : purge **symétrique** de la couche d'organisation (labels,
-    // containment, arêtes des deux bouts) avant le delete.
+    // D42: **symmetric** purge of the organization layer (labels,
+    // containment, edges at both ends) before the delete.
     crate::services::resources::purge_for(
         &ctx.db,
         org.org.id,

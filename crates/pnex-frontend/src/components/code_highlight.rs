@@ -1,8 +1,8 @@
-//! Coloration syntaxique minimaliste (zéro dep) pour l'éditeur de code des
-//! fonctions : tokenizer main-roulé JS/Starlark + éditeur « overlay » — un
-//! `<pre>` coloré sous un textarea au texte transparent (astuce classique),
-//! scroll synchronisé par transform. Texte rendu en nœuds texte (jamais
-//! `dangerously_set_inner_html` — le code est du contenu utilisateur).
+//! Minimalist syntax highlighting (zero dep) for the functions code
+//! editor: hand-rolled JS/Starlark tokenizer + "overlay" editor — a
+//! coloured `<pre>` under a textarea with transparent text (classic trick),
+//! scroll synced by transform. Text rendered as text nodes (never
+//! `dangerously_set_inner_html` — the code is user content).
 
 use crate::components::code_editing::{self, CodeLang};
 use dioxus::prelude::*;
@@ -14,10 +14,10 @@ pub type AreaHandle = web_sys::HtmlTextAreaElement;
 #[cfg(not(target_arch = "wasm32"))]
 pub type AreaHandle = ();
 
-/// Classe de token — littéral chaîne `&'static str` (classe tailwind).
+/// Token class — `&'static str` string literal (tailwind class).
 pub type TokClass = &'static str;
 
-/// Token coloré (texte + classe tailwind ; classe vide = texte par défaut).
+/// Coloured token (text + tailwind class; empty class = default text).
 #[derive(Clone)]
 pub struct Tok {
     pub class: TokClass,
@@ -115,10 +115,10 @@ fn literals(lang: CodeLang) -> &'static [&'static str] {
     }
 }
 
-/// Préfixe de commentaire canonique du langage (JS : `//` seulement — `#` est
-/// une erreur de syntaxe ; Starlark : `#` seulement — `//` est une division
-/// entière). Le parseur de directives pnex-core tolère les deux, la
-/// coloration suit la règle du langage.
+/// Canonical comment prefix of the language (JS: `//` only — `#` is
+/// a syntax error; Starlark: `#` only — `//` is integer
+/// division). The pnex-core directive parser tolerates both, the
+/// highlighting follows the language rule.
 fn comment_prefix(lang: CodeLang) -> &'static str {
     match lang {
         CodeLang::Js | CodeLang::Cpp => "//",
@@ -126,7 +126,7 @@ fn comment_prefix(lang: CodeLang) -> &'static str {
     }
 }
 
-/// Tokenise le code entier (par ligne, retours ligne en tokens bruts).
+/// Tokenises the whole code (per line, newlines as raw tokens).
 pub fn highlight(code: &str, lang: impl Into<CodeLang>) -> Vec<Tok> {
     let lang = lang.into();
     let mut out: Vec<Tok> = Vec::new();
@@ -150,9 +150,9 @@ fn is_ident(c: char) -> bool {
     c == '_' || c.is_ascii_alphanumeric()
 }
 
-/// Tokenise une ligne : chaînes, nombres, identifiants (keyword / littéral /
-/// appel de fonction), commentaires (directives `@input`/`@output`
-/// sub-colorées). Pragmatique : guillemets non fermés = fin de ligne.
+/// Tokenises a line: strings, numbers, identifiers (keyword / literal /
+/// function call), comments (`@input`/`@output` directives
+/// sub-coloured). Pragmatic: unclosed quotes = end of line.
 fn highlight_line(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
     // C++ preprocessor line: `#directive` highlighted, `<header>` as a
     // string, the rest tokenized normally.
@@ -203,12 +203,12 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
     let mut i = 0usize;
     while i < bytes.len() {
         let c = bytes[i] as char;
-        // Commentaire : du préfixe au bout de la ligne.
+        // Comment: from the prefix to the end of the line.
         if line[i..].starts_with(comment) {
             emit_comment(&line[i..], comment, out);
             return;
         }
-        // Chaîne (' ou ").
+        // String (' or ").
         if c == '"' || c == '\'' {
             let quote = c;
             let start = i;
@@ -225,7 +225,7 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
             });
             continue;
         }
-        // Nombre (décimal simple : chiffres, point, exposant).
+        // Number (simple decimal: digits, dot, exponent).
         if c.is_ascii_digit() {
             let start = i;
             while i < bytes.len()
@@ -253,14 +253,14 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
             });
             continue;
         }
-        // Identifiant / mot-clé / littéral / appel.
+        // Identifier / keyword / literal / call.
         if is_ident_start(c) {
             let start = i;
             while i < bytes.len() && is_ident(bytes[i] as char) {
                 i += 1;
             }
             let word = &line[start..i];
-            // Appel de fonction : ident suivi (après espaces) de `(`.
+            // Function call: ident followed (after spaces) by `(`.
             let call = line[i..].trim_start().starts_with('(');
             let class = if kws.contains(&word) {
                 "text-purple-600 font-semibold"
@@ -277,7 +277,7 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
             });
             continue;
         }
-        // Tout le reste : caractère par caractère (ponctuation, espaces).
+        // Everything else: character by character (punctuation, spaces).
         let start = i;
         while i < bytes.len() {
             let b = bytes[i] as char;
@@ -298,8 +298,8 @@ fn highlight_code(line: &str, lang: CodeLang, out: &mut Vec<Tok>) {
     }
 }
 
-/// Commentaire : préfixe gris, directive `@input`/`@output` mise en valeur,
-/// nom d'entrée/sortie en vert, reste gris.
+/// Comment: grey prefix, `@input`/`@output` directive highlighted,
+/// input/output name in green, rest grey.
 fn emit_comment(text: &str, prefix: &str, out: &mut Vec<Tok>) {
     let body = text.strip_prefix(prefix).unwrap_or(text);
     out.push(Tok {
@@ -315,7 +315,7 @@ fn emit_comment(text: &str, prefix: &str, out: &mut Vec<Tok>) {
         });
         return;
     }
-    // Espaces avant la directive.
+    // Spaces before the directive.
     let lead = body.len() - trimmed.len();
     if lead > 0 {
         out.push(Tok {
@@ -340,9 +340,9 @@ fn emit_comment(text: &str, prefix: &str, out: &mut Vec<Tok>) {
             text: rest[..lead2].to_string(),
         });
     }
-    // Nom puis reste **avec l'espace séparateur conservé** (le découpage
-    // splitn avale le séparateur — le roundtrip texte doit rester exact,
-    // sinon l'overlay se désaligne : « temperaturenumber »).
+    // Name then rest **with the separating space kept** (the splitn
+    // split swallows the separator — the text roundtrip must stay exact,
+    // otherwise the overlay drifts: "temperaturenumber").
     let split_at = rest_trim
         .find(char::is_whitespace)
         .unwrap_or(rest_trim.len());
@@ -408,10 +408,10 @@ fn push_plain(out: &mut Vec<Tok>, text: &str) {
     }
 }
 
-// ─────────────────────────── Composant éditeur ───────────────────────────
+// ─────────────────────────── Editor component ───────────────────────────
 
-/// Rend un token : classe vide = nœud texte brut (moins de nœuds DOM),
-/// sinon `<span>` coloré.
+/// Renders a token: empty class = raw text node (fewer DOM nodes),
+/// else a coloured `<span>`.
 fn tok_text(tok: Tok) -> Element {
     if tok.class.is_empty() {
         rsx! {
@@ -711,8 +711,8 @@ mod tests {
 
     #[test]
     fn roundtrip_directives_espace_conserve() {
-        // Régression (capture utilisateur) : le découpage nom/type avalait
-        // l'espace → « temperaturenumber » et désalignement de l'overlay.
+        // Regression (user screenshot): the name/type split swallowed
+        // the space → "temperaturenumber" and overlay misalignment.
         let star = "# @input temperature number \"Température mesurée (°C)\"\n# @input threshold number=20 \"Seuil d'alerte\"\n# @output heating number \"1 si chauffage\"\n";
         assert_eq!(text_of(&highlight(star, FunctionLanguage::Starlark)), star);
         let js = "// @input temperature number \"T\"\n// @output heating number\nfunction handle(inputs, msg) { return 0; }\n";
@@ -721,16 +721,16 @@ mod tests {
 
     #[test]
     fn prefixe_commentaire_par_langage() {
-        // En Starlark, `//` n'est PAS un commentaire (division entière) :
-        // la ligne reste tokenisée comme code, pas avalée en commentaire.
+        // In Starlark, `//` is NOT a comment (integer division):
+        // the line stays tokenised as code, not swallowed as a comment.
         let toks = highlight("x = a // b\n", FunctionLanguage::Starlark);
         let joined = toks.iter().map(|t| t.text.as_str()).collect::<String>();
         assert_eq!(joined, "x = a // b\n");
         assert!(
             toks.iter().all(|t| t.class != "text-gray-500"),
-            "aucun token commentaire attendu"
+            "no comment token expected"
         );
-        // En JS, `//` avale la fin de ligne en commentaire.
+        // In JS, `//` swallows the end of line as a comment.
         let toks = highlight("let x = 1 // init\n", FunctionLanguage::Js);
         assert!(toks.iter().any(|t| t.class == "text-gray-500"));
     }
@@ -821,16 +821,16 @@ mod tests {
     }
 }
 
-// ─────────────────────── Éditeur fonction v2 ───────────────────────
+// ─────────────────────── Function editor v2 ───────────────────────
 
-/// Éditeur de code fonction avancé : gouttière de numéros, marques de
-/// diagnostic par ligne (fond + numéro coloré), indentation auto
-/// (Tab/Shift+Tab/Enter via `code_editing`), insertion à la demande
-/// (snippets, quick-fix). Même technique overlay que `CodeEditor` (pre
-/// coloré sous textarea transparent, métriques identiques) — la stack code
-/// est décalée à droite de la gouttière, les deux couches bougeant
-/// identiquement. Limite documentée : soft-wrap (lignes plus larges que
-/// l'éditeur) décale la gouttière — toléré pour les fonctions.
+/// Advanced function code editor: line-number gutter, per-line
+/// diagnostic marks (background + coloured number), auto indentation
+/// (Tab/Shift+Tab/Enter via `code_editing`), on-demand insertion
+/// (snippets, quick-fix). Same overlay technique as `CodeEditor` (coloured
+/// pre under a transparent textarea, identical metrics) — the code stack
+/// is shifted right of the gutter, both layers moving
+/// identically. Documented limit: soft-wrap (lines wider than
+/// the editor) shifts the gutter — tolerated for functions.
 #[component]
 pub fn FunctionCodeEditor(
     value: String,

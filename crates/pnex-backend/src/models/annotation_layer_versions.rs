@@ -3,8 +3,8 @@ use sea_orm::entity::prelude::*;
 
 pub type AnnotationLayerVersions = Entity;
 
-// Versions append-only : jamais mises à jour (l'historique est immuable,
-// école tour_versions).
+// Append-only versions: never updated (history is immutable,
+// tour_versions pattern).
 #[async_trait::async_trait]
 impl ActiveModelBehavior for ActiveModel {}
 

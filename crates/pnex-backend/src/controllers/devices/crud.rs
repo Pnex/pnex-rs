@@ -693,8 +693,8 @@ pub(super) async fn delete(
         .exec(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    // D42 : purge symétrique de la couche d'organisation (labels, tree,
-    // edges des deux bouts) — zéro effet sur le firmware ni le contrat.
+    // D42: symmetric purge of the organization layer (labels, tree,
+    // edges at both ends) — no effect on the firmware or the contract.
     crate::services::resources::purge_for(
         &ctx.db,
         org.org.id,
@@ -707,6 +707,6 @@ pub(super) async fn delete(
         .exec(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    tracing::info!(device = %device.device_id, firmware_cleaned = cleaned, "device supprimé");
+    tracing::info!(device = %device.device_id, firmware_cleaned = cleaned, "device deleted");
     Ok(StatusCode::NO_CONTENT.into_response())
 }

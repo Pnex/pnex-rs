@@ -1,14 +1,14 @@
-//! Endpoint interne de livraison websocket — `POST /internal/notify/deliver`.
+//! Internal websocket delivery endpoint — `POST /internal/notify/deliver`.
 //!
-//! Consommateurs : le runtime de flows (nœud `pnex-notify`, canal
-//! `websocket` — le backend ne liant jamais le moteur, le push transite par
-//! HTTP interne, école N6 partiellement tirée) et le bouton Test (loopback,
-//! même chemin d'envoi).
+//! Consumers: the flow runtime (`pnex-notify` node, `websocket`
+//! channel — the backend never linking the engine, the push goes through
+//! internal HTTP, N6 school partially applied) and the Test button (loopback,
+//! same send path).
 //!
-//! Auth : jeton de service dans `x-pnex-internal-token` comparé à
+//! Auth: service token in `x-pnex-internal-token` compared with
 //! `settings.notifications.internal_token` (env `PNEX_NOTIFY_INTERNAL_TOKEN`)
-//! — absent/vide ⇒ 401 systématique (fail-closed, warn au boot). Le token
-//! n'apparaît jamais dans les logs.
+//! — absent/empty ⇒ systematic 401 (fail-closed, warn at boot). The token
+//! never appears in the logs.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -77,12 +77,12 @@ async fn recipient(
 fn unauthorized(ctx: &AppContext, headers: &HeaderMap) -> Option<Response> {
     let settings = NotifySettings::from_config(&ctx.config);
     let Some(expected) = settings.internal_token.as_deref().filter(|t| !t.is_empty()) else {
-        // Fail-closed : pas de token configuré ⇒ aucune livraison externe.
+        // Fail-closed: no configured token ⇒ no external delivery.
         return Some(StatusCode::UNAUTHORIZED.into_response());
     };
-    // Deux vecteurs acceptés : `x-pnex-internal-token` (clients internes) ou
-    // `Authorization: Bearer` (le canal websocket de pnex-notify envoie son
-    // token en Bearer) — même valeur settings attendue ; jamais loggés.
+    // Two accepted vectors: `x-pnex-internal-token` (internal clients) or
+    // `Authorization: Bearer` (pnex-notify's websocket channel sends its
+    // token as Bearer) — same expected settings value; never logged.
     let supplied = headers
         .get(INTERNAL_TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
@@ -188,7 +188,7 @@ async fn deliver(
         .map_err(|_| Error::InternalServerError)?;
     let Some(channel) = channel else {
         tracing::error!(
-            "deliver : canal {} org {} introuvable",
+            "deliver: channel {} org {} not found",
             body.channel_id,
             body.org_id
         );

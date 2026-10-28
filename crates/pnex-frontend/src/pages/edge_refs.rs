@@ -1,12 +1,12 @@
-//! Page `/edges/refs` — référentiels Edge : identifiants WiFi
-//! (`wifi_credentials`) et serveurs PNeX (`pnex_hosts`), les entrées
-//! consommées par le wizard device et la file de build firmware.
+//! `/edges/refs` page — Edge registries: WiFi credentials
+//! (`wifi_credentials`) and PNeX servers (`pnex_hosts`), the entries
+//! consumed by the device wizard and the firmware build queue.
 //!
-//! École `pages/notifications.rs` : onglets pill (WiFi / serveurs) au-dessus
-//! du socle CRUD (ListLayout + DataTable + ConfirmDialog). Création = upsert
-//! POST (clé (org, ssid) / (org, host)) ; édition = PUT in-place (id
-//! conservé, renommage possible, 409 si la clé visée existe ailleurs).
-//! Droits owner/admin comme partout (le serveur force, l'UI masque).
+//! `pages/notifications.rs` school: pill tabs (WiFi / servers) above the
+//! CRUD base (ListLayout + DataTable + ConfirmDialog). Creation = upsert
+//! POST (key (org, ssid) / (org, host)); editing = in-place PUT (id
+//! kept, rename possible, 409 if the targeted key exists elsewhere).
+//! Owner/admin rights as everywhere (the server enforces, the UI hides).
 
 use crate::components::secret_field::{can_manage_secrets, SecretDraft, SecretField};
 use dioxus::prelude::*;
@@ -41,15 +41,15 @@ fn host_display(host: &str) -> String {
 pub fn EdgeRefs() -> Element {
     let mut reload = use_signal(|| 0u32);
     let mut tab = use_signal(|| Tab::Wifi);
-    // Formulaires : None = fermé, Some(None) = création, Some(Some(row)) =
-    // édition (upsert POST sur la même clé).
+    // Forms: None = closed, Some(None) = creation, Some(Some(row)) =
+    // editing (upsert POST on the same key).
     let mut edit_wifi = use_signal(|| None::<Option<WifiCredential>>);
     let mut edit_host = use_signal(|| None::<Option<PnexHost>>);
     let mut delete_target = use_signal(|| None::<(&'static str, i64, String)>);
 
     let can_write = crate::state::access::can("edge:write");
 
-    // Valeurs des signaux-modals lues AVANT le rsx (pas de `let` dans rsx).
+    // Modal-signal values read BEFORE the rsx (no `let` in rsx).
     let wifi_modal = edit_wifi.read().clone();
     let host_modal = edit_host.read().clone();
     let delete_modal = delete_target.read().clone();
@@ -100,7 +100,7 @@ pub fn EdgeRefs() -> Element {
             },
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: can_write && !(tab() == Tab::Hosts && hosts_locked),
-            // Le libellé « ajouter » suit l'onglet actif (WiFi vs serveurs).
+            // The "add" label follows the active tab (WiFi vs servers).
             add_label: Some(
                 if tab() == Tab::Wifi {
                     t!("edgerefs-new-wifi").to_string()
@@ -200,7 +200,7 @@ pub fn EdgeRefs() -> Element {
     }
 }
 
-/// Résultats typés pour les props de tabs (alias lisibles).
+/// Typed results for the tab props (readable aliases).
 type WifiListResult = Result<Vec<WifiCredential>, crate::api::error::ApiError>;
 type HostListResult = Result<Vec<PnexHost>, crate::api::error::ApiError>;
 
@@ -211,7 +211,7 @@ fn WifiTab(
     mut edit_wifi: Signal<Option<Option<WifiCredential>>>,
     mut delete_target: Signal<Option<(&'static str, i64, String)>>,
 ) -> Element {
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     let page = use_signal(|| 0i64);
     let (list_state, is_empty, count, rows) = match &*wifis.value().read() {
         None => (None, false, 0, Vec::new()),
@@ -242,8 +242,8 @@ fn WifiTab(
         Column::new(
             t!("common-actions").to_string(),
             move |wifi: &WifiCredential| {
-                // Cloné avant les closures onclick (référence &T ne sort pas
-                // du corps de cellule).
+                // Cloned before the onclick closures (a &T reference does not
+                // leave the cell body).
                 let wifi_edit = wifi.clone();
                 let id_delete = wifi.id;
                 let name_delete = wifi.ssid.clone();
@@ -290,7 +290,7 @@ fn HostsTab(
     mut edit_host: Signal<Option<Option<PnexHost>>>,
     mut delete_target: Signal<Option<(&'static str, i64, String)>>,
 ) -> Element {
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     let page = use_signal(|| 0i64);
     let (list_state, is_empty, count, rows) = match &*hosts.value().read() {
         None => (None, false, 0, Vec::new()),
@@ -351,9 +351,9 @@ fn HostsTab(
     }
 }
 
-/// Formulaire WiFi (création/édition) — upsert POST, clé = SSID : le champ
-/// passe en lecture seule en édition (changer la clé créerait une autre
-/// entrée en laissant l'ancienne).
+/// WiFi form (creation/editing) — upsert POST, key = SSID: the field
+/// becomes read-only when editing (changing the key would create another
+/// entry, leaving the old one).
 #[component]
 fn WifiForm(
     existing: Option<WifiCredential>,
@@ -389,8 +389,8 @@ fn WifiForm(
                 ssid: ssid_value,
                 password: password_input,
             };
-            // Édition = PUT in-place (id conservé, renommage possible,
-            // 409 si le ssid visé existe ailleurs) ; création = upsert POST.
+            // Editing = in-place PUT (id kept, rename possible,
+            // 409 if the targeted ssid exists elsewhere); creation = upsert POST.
             let outcome = match edit_id {
                 Some(id) => api::wifi::update(id, input).await,
                 None => api::wifi::create(input).await,
@@ -462,7 +462,7 @@ fn WifiForm(
     }
 }
 
-/// Formulaire serveur PNeX (création/édition) — upsert POST, clé = host.
+/// PNeX server form (creation/editing) — upsert POST, key = host.
 #[component]
 fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callback<()>) -> Element {
     let is_edit = existing.is_some();
@@ -488,8 +488,8 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
         busy.set(true);
         spawn(async move {
             let input = pnex_core::PnexHostInput { host: host_value };
-            // Édition = PUT in-place (id conservé, renommage possible, 409
-            // si l'hôte visé existe ailleurs) ; création = upsert POST.
+            // Editing = in-place PUT (id kept, rename possible, 409
+            // if the targeted host exists elsewhere); creation = upsert POST.
             let outcome = match edit_id {
                 Some(id) => api::hosts::update(id, input).await,
                 None => api::hosts::create(input).await,
@@ -528,8 +528,8 @@ fn HostForm(existing: Option<PnexHost>, on_close: Callback<()>, on_saved: Callba
                         }
                     }
                 }
-                // Détection LAN côté serveur : préremplit l'hôte (la
-                // sauvegarde reste un clic « Save » plus bas).
+                // Server-side LAN detection: prefills the host (saving
+                // stays a "Save" click further down).
                 crate::components::lan_detect::LanDetect { on_pick: move |picked| host.set(picked) }
                 div { class: crate::components::modal::MODAL_FOOTER,
                     button {

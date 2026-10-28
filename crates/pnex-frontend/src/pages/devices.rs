@@ -1,11 +1,11 @@
-//! Gestion des appareils — portée du `Devices.tsx` React sur l'API Phase 4 :
-//! liste filtrable (type, statut, device_id), enregistrement via l'assistant
-//! modal (`components/device_wizard.rs` : build auto suivi en modale, snippet
-//! Python pour les customs), détail (token de provisioning, métadonnées
-//! JSON), suppression. Le scoping org vient du client (`X-Org-Id`), l'écriture
-//! est réservée owner/admin (le serveur force, l'UI masque).
+//! Device management — port of the React `Devices.tsx` onto the Phase 4 API:
+//! filterable list (type, status, device_id), registration through the modal
+//! wizard (`components/device_wizard.rs`: auto build tracked in a modal, Python
+//! snippet for customs), detail (provisioning token, JSON
+//! metadata), deletion. Org scoping comes from the client (`X-Org-Id`), writing
+//! is reserved to owner/admin (the server enforces, the UI hides).
 //!
-//! Le détail est piloté par un signal local `selected` + `key` (cf. orgs.rs).
+//! The detail is driven by a local `selected` + `key` signal (see orgs.rs).
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -35,9 +35,9 @@ use crate::state::devices::OPEN_DEVICE;
 use crate::state::{org, toasts};
 use crate::util::{save_blob, sleep};
 
-/// Cible du modal de déploiement OTA — tout ce que le modal doit afficher
-/// et décider : version cible vs courante, fraîcheur du build vis-à-vis
-/// des sources embarquées, raccourci rebuild.
+/// Target of the OTA deployment modal — everything the modal must show
+/// and decide: target vs current version, freshness of the build relative
+/// to the embedded sources, rebuild shortcut.
 #[derive(Clone, PartialEq)]
 struct OtaTarget {
     device_pk: i64,
@@ -45,13 +45,13 @@ struct OtaTarget {
     /// Newest deployable build: (version, build date when known) — None =
     /// no deployable build.
     latest_build: Option<(String, Option<String>)>,
-    /// Version courante annoncée par le device (None = jamais annoncé).
+    /// Current version announced by the device (None = never announced).
     device_version: Option<String>,
-    /// Le build compile une arborescence firmware antérieure au serveur
-    /// courant (sources_stale) → avertissement + raccourci rebuild.
+    /// The build compiles a firmware tree older than the current
+    /// server (sources_stale) → warning + rebuild shortcut.
     stale: bool,
     can_rebuild: bool,
-    /// Modèle du device (raccourci rebuild — types custom exclus, O3).
+    /// Device model (rebuild shortcut — custom types excluded, O3).
     model: String,
 }
 
@@ -81,17 +81,17 @@ pub fn Devices() -> Element {
     let search = use_signal(String::new);
     // D42: effective label filter ("name" or "name:value").
     let filter_label = use_signal(String::new);
-    // Page courante (0-based) — remise à 0 à chaque changement de filtre.
+    // Current page (0-based) — reset to 0 on every filter change.
     let mut page = use_signal(|| 0i64);
-    // Assistant d'enregistrement (mont/démont = état propre à chaque ouverture).
+    // Registration wizard (mount/unmount = clean state on each opening).
     let mut wizard_open = use_signal(|| false);
-    // Cible du modal de recompilation (device_id, modèle).
+    // Target of the rebuild modal (device_id, model).
     let mut rebuild_target = use_signal(|| None::<(i64, String, String)>);
-    // Cible du modal de flash navigateur (device_id).
+    // Target of the browser flash modal (device_id).
     let mut flash_target = use_signal(|| None::<(i64, String, bool)>);
-    // Cible du modal de déploiement OTA (struct OtaTarget — infra).
+    // Target of the OTA deployment modal (OtaTarget struct — infra).
     let mut ota_target = use_signal(|| None::<OtaTarget>);
-    // Polling : un seul minuteur à la fois, relancé tant qu'un build vole.
+    // Polling: a single timer at a time, restarted while a build is in flight.
     let mut polling = use_signal(|| false);
     // Row selection (device pk as string) + open bulk modal (true = build,
     // false = OTA).
@@ -145,12 +145,12 @@ pub fn Devices() -> Element {
         }
     });
 
-    // Capacités pour le filtre (le wizard charge son propre catalogue).
+    // Capabilities for the filter (the wizard loads its own catalogue).
     let capabilities = use_resource(|| async move { api::devices::capabilities().await });
 
-    // Polling ~5 s tant qu'un build d'un device de la page est queued/running
-    // (colonne Firmware — le WS de notification reste différé) — ou qu'un
-    // déploiement OTA est actif sur un device de la page.
+    // ~5 s polling while a build of a device on the page is queued/running
+    // (Firmware column — the notification WS stays deferred) — or while an
+    // OTA deployment is active on a device on the page.
     if let Some(Ok(paged)) = &*list.read() {
         let in_flight = paged.results.iter().any(|device| {
             device.ota.is_some()
@@ -179,7 +179,7 @@ pub fn Devices() -> Element {
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD foundation doctrine).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(paged)) => (
@@ -191,9 +191,9 @@ pub fn Devices() -> Element {
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
-    // Colonnes de la table — les closures d'action capturent les signaux
-    // (Copy) de la page ; les helpers de ligne (badges, téléchargement,
-    // flash) reprennent le rendu exact de l'ancienne device_row.
+    // Table columns — the action closures capture the page's (Copy)
+    // signals; the row helpers (badges, download,
+    // flash) reproduce the exact rendering of the old device_row.
     let columns = vec![
         Column::new(t!("devices-col-id").to_string(), move |device: &Device| {
             let labels = row_labels.get(&device.id.to_string()).cloned().unwrap_or_default();
@@ -247,7 +247,7 @@ pub fn Devices() -> Element {
                         span { class: "font-mono text-xs text-gray-500", "pnex-agent {version}" }
                     };
                 }
-                // Badge + date du dernier build, téléchargement si succès.
+                // Badge + date of the last build, download if successful.
                 let firmware = device.latest_build.as_ref().map(|build| {
                     let (class, label) = phase_badge(Some(build.build_phase.as_str()));
                     (class, label, date_label(&build.updated_at), build.build_phase == pnex_core::BuildPhase::Succeeded)
@@ -264,10 +264,10 @@ pub fn Devices() -> Element {
                 let flash_pk = device.id;
                 let flash_generic = device.predefined_device_name == "generic_esp8266";
                 let flash_id = device.device_id.clone();
-                // OTA: le bouton s'affiche dès que le device a attesté la cap
-                // `ota` et qu'aucun déploiement n'est actif — même SANS build
-                // réussi (le modal gère l'état « aucun firmware » : deploy
-                // grisé + raccourci rebuild).
+                // OTA: the button shows as soon as the device has attested the
+                // `ota` cap and no deployment is active — even WITHOUT a successful
+                // build (the modal handles the "no firmware" state: deploy
+                // greyed + rebuild shortcut).
                 // Version status: running (announce) vs newest deployable.
                 let status_badge = fw_status(device).map(fw_status_badge);
                 let deployable = device
@@ -322,7 +322,7 @@ pub fn Devices() -> Element {
                                 {label.clone()}
                             }
                         }
-                        // Déploiement OTA actif → progression live.
+                        // Active OTA deployment → live progress.
                         if let Some(st) = &ota_state {
                             span {
                                 class: "text-xs font-medium text-indigo-600",
@@ -346,9 +346,9 @@ pub fn Devices() -> Element {
                                     icons::Download { class: "h-3.5 w-3.5 inline mr-0.5" }
                                     {t!("builds-download")}
                                 }
-                                // Flash navigateur (Web Serial — Chromium
-                                // uniquement, le modal affiche l'avertissement
-                                // sinon).
+                                // Browser flash (Web Serial — Chromium
+                                // only, the modal shows the warning
+                                // otherwise).
                                 // Hidden on Android: no flashing path there.
                                 if flash::offered() {
                                     button {
@@ -368,9 +368,9 @@ pub fn Devices() -> Element {
                             button {
                                 class: "w-fit px-2 py-0.5 text-xs text-violet-600 hover:text-violet-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
                                 r#type: "button",
-                                // Device hors ligne → deploy grisé (le
-                                // serveur mettrait en queue, mais on veut
-                                // le geste explicite).
+                                // Device offline → deploy greyed (the
+                                // server would queue it, but we want
+                                // the explicit gesture).
                                 disabled: !ota_connected,
                                 title: if ota_connected {
                                     t!("devices-ota-title")
@@ -398,9 +398,9 @@ pub fn Devices() -> Element {
         ).secondary(),
         Column::new(t!("common-actions").to_string(), move |device: &Device| {
             let pk = device.id;
-            // O3 : jamais de build proposé pour les types custom (le back
-            // échoue de toute façon — le workspace firmware ne les
-            // contient pas).
+            // O3: never offer a build for custom types (the back end
+            // fails anyway — the firmware workspace does not
+            // contain them).
             let can_rebuild = can_write && !device.allow_dynamic_measurements;
             let rebuild_pk = device.id;
             let rebuild_id = device.device_id.clone();
@@ -459,8 +459,8 @@ pub fn Devices() -> Element {
             subtitle: Some(t!("devices-subtitle").to_string()),
             // Refresh is a list action: not shown on a device detail.
             on_refresh: if selected().is_none() { Some(Callback::new(move |_| reload.with_mut(|r| *r += 1))) } else { None },
-            // Détail device ouvert → pas de « + Register » (on n'enregistre
-            // pas un device depuis la fiche d'un autre).
+            // Device detail open → no "+ Register" (we do not register
+            // a device from another one's page).
             can_write,
             add_label: if selected().is_none() { Some(t!("devices-register").to_string()) } else { None },
             on_add: move |_| wizard_open.set(true),
@@ -475,7 +475,7 @@ pub fn Devices() -> Element {
                     on_changed: move |_| reload.with_mut(|r| *r += 1),
                 }
             } else {
-                // Filtres (type, statut, capacité, recherche, refresh).
+                // Filters (type, status, capability, search, refresh).
                 FilterBar {
                     select {
                         aria_label: t!("devices-col-type"),
@@ -617,8 +617,8 @@ pub fn Devices() -> Element {
                     ListPager { count, page }
                 }
 
-                // Assistant d'enregistrement (monté à la demande :
-                // l'état interne se réinitialise à chaque ouverture).
+                // Registration wizard (mounted on demand:
+                // the internal state resets on each opening).
                 if wizard_open() {
                     crate::components::device_wizard::DeviceWizard {
                         on_close: move |_| wizard_open.set(false),
@@ -637,7 +637,7 @@ pub fn Devices() -> Element {
                     }
                 }
 
-                // Recompilation d'un device de la liste.
+                // Rebuild of a device from the list.
                 if let Some((rebuild_pk, rebuild_id, rebuild_model)) = rebuild_target() {
                     RebuildModal {
                         key: "{rebuild_id}",
@@ -652,9 +652,9 @@ pub fn Devices() -> Element {
                     }
                 }
 
-                // Flash navigateur d'un device de la liste (Web Serial,
-                // Chromium — l'état interne se réinitialise à chaque
-                // ouverture).
+                // Browser flash of a device from the list (Web Serial,
+                // Chromium — the internal state resets on each
+                // opening).
                 if let Some((flash_pk, flash_id, _)) = flash_target() {
                     FlashModal {
                         key: "{flash_id}",
@@ -663,14 +663,14 @@ pub fn Devices() -> Element {
                     }
                 }
 
-                // Déploiement OTA d'un device de la liste.
+                // OTA deployment of a device from the list.
                 if let Some(t) = ota_target() {
                     OtaModal {
                         key: "{t.device_id}",
                         target: t,
                         on_close: move |_| ota_target.set(None),
-                        // Raccourci rebuild : ferme le modal OTA et
-                        // ouvre le RebuildModal sur le même device.
+                        // Rebuild shortcut: closes the OTA modal and
+                        // opens the RebuildModal on the same device.
                         on_rebuild: move |_| {
                             if let Some(t) = ota_target() {
                                 ota_target.set(None);
@@ -689,16 +689,16 @@ pub fn Devices() -> Element {
     }
 }
 
-/// Modal de recompilation : la connectivité vient des référentiels Edge
-/// (wifi_credentials / pnex_hosts) via les mêmes pickers que le wizard —
-/// plus de ressaisie des secrets à chaque build, l'entrée est résolue au
-/// submit vers le payload `CreateBuild` (contrat inchangé).
+/// Rebuild modal: connectivity comes from the Edge references
+/// (wifi_credentials / pnex_hosts) through the same pickers as the wizard —
+/// no more re-entering secrets on each build, the entry is resolved on
+/// submit into the `CreateBuild` payload (contract unchanged).
 ///
-/// Écran de debug : le choix (aucun / OLED / TFT) se fait ICI, au moment
-/// du flash — câblage fixé par la board (légende affichée), appliqué au
-/// device (`PUT /peripherals`) juste avant le build si le choix change.
-/// L'écran sert au debug de mise en service ; le retirer plus tard
-/// (conso / switch alim) = re-passer par « Aucun écran » ici.
+/// Debug screen: the choice (none / OLED / TFT) is made HERE, at
+/// flash time — wiring fixed by the board (legend shown), applied to the
+/// device (`PUT /peripherals`) right before the build if the choice changes.
+/// The screen is for commissioning debug; removing it later
+/// (power draw / power switch) = going through "No screen" here again.
 #[component]
 fn RebuildModal(
     device_pk: i64,
@@ -707,18 +707,18 @@ fn RebuildModal(
     on_close: Callback<()>,
     on_launched: Callback<()>,
 ) -> Element {
-    // Entrées référentiel — mêmes pickers que le wizard device (présélection
-    // de la 1re entrée, ajout inline, suppression).
+    // Reference entries — same pickers as the device wizard (preselection
+    // of the 1st entry, inline add, delete).
     let wifi_sel = use_signal(|| None::<pnex_core::WifiCredential>);
     let host_sel = use_signal(|| None::<pnex_core::PnexHost>);
     let mut launching = use_signal(|| false);
 
-    // État écran du device (pinout = lecture DB, marche hors ligne) :
-    // `screen_pick` outer None = pas encore touché → état courant repris.
+    // Device screen state (pinout = DB read, works offline):
+    // `screen_pick` outer None = not touched yet → current state kept.
     let pinout_res = use_resource(move || async move { api::pins::pinout(device_pk).await });
     let mut screen_pick = use_signal(|| None::<Option<String>>);
 
-    // Données board du device pour le picker + la légende de câblage.
+    // Device board data for the picker + the wiring legend.
     let board = pinout_res
         .value()
         .read()
@@ -739,12 +739,12 @@ fn RebuildModal(
             .is_some_and(|a| !a.is_empty())
     });
 
-    // Captures par valeur pour la closure 'static du spawn (les props
-    // restent utilisées par le rendu).
+    // By-value captures for the 'static spawn closure (the props
+    // are still used by the rendering).
     let submit_device = device_id.clone();
     let submit = move |_| {
-        // Résolution référentiel avant le spawn — entrée manquante = garde
-        // (théorique : les pickers présélectionnent).
+        // Reference resolution before the spawn — missing entry = guard
+        // (theoretical: the pickers preselect).
         let Some(creds) = wifi_sel() else {
             toasts::error("devices-rebuild-incomplete");
             return;
@@ -761,8 +761,8 @@ fn RebuildModal(
             pnex_host: srv.host,
         };
         spawn(async move {
-            // 1. Écran — appliqué AVANT le build si le choix a changé (les
-            // pins/réserves + le define en dépendent). Échec = pas de build.
+            // 1. Screen — applied BEFORE the build if the choice changed (the
+            // pins/reservations + the define depend on it). Failure = no build.
             if let Some(b) = pinout_res
                 .value()
                 .read()
@@ -795,8 +795,8 @@ fn RebuildModal(
         });
     };
 
-    // Options du picker, actives selon le choix courant du modal (outer
-    // None = état courant du device repris tel quel).
+    // Picker options, active according to the modal's current choice (outer
+    // None = current device state kept as is).
     let mut options = board
         .as_ref()
         .map(board_pinout::screen_options)
@@ -818,8 +818,8 @@ fn RebuildModal(
                     " · "
                     {model.clone()}
                 }
-                // Mêmes pickers que le wizard — leur racine porte
-                // `sm:col-span-2`, inoffensif hors grille.
+                // Same pickers as the wizard — their root carries
+                // `sm:col-span-2`, harmless outside a grid.
                 WifiCredentialPicker { selected: wifi_sel }
                 PnexHostPicker { selected: host_sel }
                 if has_screens {
@@ -1032,11 +1032,11 @@ fn BulkModal(
         }
     }
 }
-/// Confirmation de déploiement OTA — montre CE qui va être déployé (build
-/// cible + date de compilation) et SUR QUOI (version annoncée du device),
-/// gère l'état « aucun firmware » (deploy grisé + raccourci rebuild) et
-/// l'avertissement de fraîcheur (`stale` : le serveur courant embarque des
-/// sources firmware différentes de celles du build).
+/// OTA deployment confirmation — shows WHAT is going to be deployed (target
+/// build + compile date) and ONTO WHAT (version announced by the device),
+/// handles the "no firmware" state (deploy greyed + rebuild shortcut) and
+/// the freshness warning (`stale`: the current server embeds firmware
+/// sources different from those of the build).
 #[component]
 fn OtaModal(
     target: OtaTarget,
@@ -1058,8 +1058,8 @@ fn OtaModal(
     let show_rebuild = target.can_rebuild && (!has_build || target.stale);
 
     rsx! {
-        // Modal sans backdrop (doctrine EditorShell : pas de backdrop plein
-        // écran sous les popovers/modales simples).
+        // Modal without backdrop (EditorShell doctrine: no full-screen backdrop
+        // under simple popovers/modals).
         div { class: "fixed inset-0 z-50 flex items-center justify-center pointer-events-none",
             div {
                 class: "pointer-events-auto bg-white rounded-xl shadow-xl border border-gray-200 p-6 w-[26rem]",
@@ -1306,7 +1306,7 @@ enum BulkOutcome {
     Failed(crate::api::error::ApiError),
 }
 
-/// Badge de type — classes littérales complètes (scan Tailwind).
+/// Type badge — full literal classes (Tailwind scan).
 fn type_badge(device_type: &str) -> (&'static str, String) {
     let label = match device_type {
         "sensor" => t!("devices-type-sensor"),
@@ -1343,8 +1343,8 @@ fn ota_state_label(st: &pnex_core::OtaAssignmentState) -> String {
     }
 }
 
-/// Libellé « vu à HH:MM:SS » (heure locale) sous le badge de statut —
-/// le bail de vie Phase 5 rend cette information vivante.
+/// "seen at HH:MM:SS" label (local time) under the status badge —
+/// the Phase 5 liveness lease keeps this information live.
 fn last_seen_label(last_seen: &Option<String>) -> Element {
     let label = match last_seen
         .as_deref()
@@ -1393,7 +1393,7 @@ fn DeviceDetail(
             // Edge agent (D95): no firmware, pins or provisioning secrets —
             // credentials only travel through the enrollment code.
             let is_agent = device.predefined_device_name == pnex_core::EDGE_AGENT_PREDEF;
-            // Dernier build (colonne Firmware en détail).
+            // Last build (Firmware column in the detail).
             let firmware_badge = device.latest_build.as_ref().map(|build| {
                 let (class, label) = phase_badge(Some(build.build_phase.as_str()));
                 (class, label, date_label(&build.updated_at))
@@ -1409,8 +1409,8 @@ fn DeviceDetail(
                     // Header card — identity, statuses, delete.
                     div { class: "bg-white rounded-lg border border-line",
                         div { class: "flex flex-wrap items-center gap-3 p-5",
-                            // Convention retour des éditeurs (functions.rs) :
-                            // bouton carré ArrowLeft + titre à côté.
+                            // Editors' back convention (functions.rs):
+                            // square ArrowLeft button + title next to it.
                             button {
                                 class: "rounded-lg border border-gray-300 p-2.5 text-gray-600 hover:bg-gray-50 transition-colors",
                                 title: t!("devices-back"),
@@ -1543,11 +1543,11 @@ fn DeviceDetail(
                                 match api::devices::delete(device_pk).await {
                                     Ok(()) => {
                                         toasts::success("toast-saved");
-                                        // Navigation + refresh APRÈS la requête :
-                                        // spawn est lié au scope du composant — un
-                                        // on_back synchrone démonterait DeviceDetail
-                                        // et annulerait la tâche (requête avortée,
-                                        // ni toast ni suppression).
+                                        // Navigation + refresh AFTER the request:
+                                        // spawn is tied to the component scope — a
+                                        // synchronous on_back would unmount DeviceDetail
+                                        // and cancel the task (request aborted,
+                                        // neither toast nor deletion).
                                         on_back.call(());
                                         on_changed.call(());
                                     }
@@ -1658,9 +1658,9 @@ fn copy_to_clipboard(value: &str) {
     let _ = dioxus::document::eval(&js);
 }
 
-/// Boîte noire des devices prédéfinis : les outputs qu'ils
-/// génèrent, rien de configurable — simple et déterministe (décision
-/// utilisateur 2026-09-20).
+/// Black box of predefined devices: the outputs they
+/// generate, nothing configurable — simple and deterministic (user
+/// decision 2026-09-20).
 fn black_box_outputs(device: &pnex_core::Device) -> Element {
     if device.capabilities.is_empty() {
         return rsx! {};

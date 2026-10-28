@@ -1,6 +1,6 @@
-//! Acceptance nœud `pnex-http-fetch` (C1a) : `inject → pnex-http-fetch →
-//! debug` contre un mini-serveur HTTP canned (zéro dep, TcpListener std).
-//! GET JSON parsé, POST avec corps enregistré côté serveur, 404 passthrough.
+//! `pnex-http-fetch` node acceptance (C1a): `inject → pnex-http-fetch →
+//! debug` against a canned mini HTTP server (zero dep, std TcpListener).
+//! Parsed JSON GET, POST with body recorded server-side, 404 passthrough.
 
 mod common;
 
@@ -8,7 +8,7 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Une requête reçue par le serveur canned (pour assertions).
+/// A request received by the canned server (for assertions).
 #[derive(Debug, Clone)]
 struct RecordedRequest {
     method: String,
@@ -18,8 +18,8 @@ struct RecordedRequest {
     body: String,
 }
 
-/// Mini serveur HTTP canned : parse request line + Content-Length, répond
-/// selon `responder`, enregistre chaque requête. Aucune dep.
+/// Canned mini HTTP server: parses request line + Content-Length, answers
+/// according to `responder`, records each request. No dep.
 fn start_canned_server(
     responder: impl Fn(&RecordedRequest) -> (u16, &'static str, String) + Send + Sync + 'static,
 ) -> (String, Arc<Mutex<Vec<RecordedRequest>>>) {
@@ -36,7 +36,7 @@ fn start_canned_server(
             std::thread::spawn(move || {
                 let mut buf = [0u8; 8192];
                 let mut raw = Vec::new();
-                // En-têtes jusqu'à \r\n\r\n.
+                // Headers up to \r\n\r\n.
                 while let Ok(n) = stream.read(&mut buf) {
                     if n == 0 {
                         break;
@@ -68,7 +68,7 @@ fn start_canned_server(
                                 .parse::<usize>()
                                 .ok()
                         });
-                // Corps restant selon Content-Length.
+                // Remaining body according to Content-Length.
                 let mut body = raw[header_end..].to_vec();
                 while let Some(target) = content_length {
                     if body.len() >= target {
@@ -105,7 +105,7 @@ fn start_canned_server(
     (addr, requests)
 }
 
-/// flows JSON projeté (miroir de `to_red_flows_json`) : inject →
+/// Projected JSON flows (mirror of `to_red_flows_json`): inject →
 /// pnex-http-fetch → debug.
 fn http_fetch_flows(
     url: &str,
@@ -145,7 +145,7 @@ fn http_fetch_flows(
     .to_string()
 }
 
-/// Attend l'événement `started` du runtime.
+/// Waits for the runtime's `started` event.
 fn wait_started(rt: &common::RuntimeProc) {
     rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
@@ -153,7 +153,7 @@ fn wait_started(rt: &common::RuntimeProc) {
     );
 }
 
-/// Attend l'événement debug contenant `needle`, rend son champ msg.
+/// Waits for the debug event containing `needle`, returns its msg field.
 fn wait_debug(rt: &common::RuntimeProc, needle: &str) -> String {
     let line = rt.wait_for(
         |v| {
@@ -212,8 +212,8 @@ fn http_fetch_post_envoie_le_corps_et_enregistre() {
     assert!(msg.contains("ok-post"), "{msg}");
 
     let recs = requests.lock().expect("lock");
-    assert!(!recs.is_empty(), "aucune requête enregistrée");
-    let last = recs.last().expect("non vide");
+    assert!(!recs.is_empty(), "no request recorded");
+    let last = recs.last().expect("non-empty");
     assert_eq!(last.method, "POST");
     assert_eq!(last.path, "/ingest");
     assert_eq!(last.body, r#"{"cible":"x"}"#);
@@ -238,7 +238,7 @@ fn http_fetch_404_passthrough_expose_status_code() {
     .unwrap();
     let rt = common::RuntimeProc::spawn(&flows, &home);
     wait_started(&rt);
-    // complete "true" = message entier → statusCode + http_error présents.
+    // complete "true" = whole message → statusCode + http_error present.
     let line = rt.wait_for(
         |v| {
             v.get("event").and_then(|e| e.as_str()) == Some("debug")

@@ -57,7 +57,7 @@ pub(super) struct ListQuery {
     pub(super) search: Option<String>,
 }
 
-/// `GET /api/v1/notify/channels` — canaux de l'org (secrets masqués).
+/// `GET /api/v1/notify/channels` — the org's channels (secrets masked).
 #[utoipa::path(
     get,
     path = "/api/v1/notify/channels",
@@ -202,8 +202,8 @@ pub(super) fn validate_channel_input(
     None
 }
 
-/// Vérifie l'unicité (org, name) — **409** (divergence documentée en tête
-/// de fichier : clé naturelle, l'UI propose « renommer »).
+/// Checks (org, name) uniqueness — **409** (divergence documented at the top
+/// of the file: natural key, the UI offers "rename").
 async fn ensure_name_free(db: &DatabaseConnection, org_id: i64, name: &str) -> Result<()> {
     let clash = NotifyChannels::find()
         .filter(notify_channels::Column::OrgId.eq(org_id))
@@ -231,7 +231,7 @@ pub(super) struct ChannelInput {
     config: serde_json::Value,
 }
 
-/// `POST /api/v1/notify/channels` — création (secrets write-only).
+/// `POST /api/v1/notify/channels` — creation (write-only secrets).
 #[utoipa::path(
     post,
     path = "/api/v1/notify/channels",
@@ -324,8 +324,8 @@ pub(super) async fn create_channel(
         .into_response())
 }
 
-/// `PUT /api/v1/notify/channels/{id}` — renommage/toggle/config ; les
-/// secrets absents ou `null` sont conservés (merge registre, D54).
+/// `PUT /api/v1/notify/channels/{id}` — rename/toggle/config; absent
+/// or `null` secrets are kept (registry merge, D54).
 /// Secret fields are vault references once stored (lot S4).
 #[utoipa::path(
     put,
@@ -363,8 +363,8 @@ pub(super) async fn update_channel(
         ));
     }
     let name = params.name.trim().to_string();
-    // Merge des secrets seulement si le kind est stable (sinon remplacement
-    // complet : rien à « garder » d'un ancien kind).
+    // Merge the secrets only if the kind is stable (otherwise full
+    // replacement: nothing to "keep" from an old kind).
     let merged = if params.kind == m.kind {
         pnex_notify::merge_config(&m.kind, &m.config, &params.config)
     } else {

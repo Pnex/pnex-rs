@@ -1,12 +1,12 @@
 //
-// Implémentation PneX — port du main générique (generic_esp8266/
-// generic_esp32c3) en lib PIO. Les commentaires « leçon / constat » sont
-// conservés tels quels (historique des pièges, à ne pas réapprendre).
+// PneX implementation — port of the generic main (generic_esp8266/
+// generic_esp32c3) as a PIO lib. The "lesson / observation" comments are
+// kept as is (history of pitfalls, not to be relearned).
 //
-// Les différences SoC sont absorbées ICI (dernier endroit où elles
-// existent) : header WiFi, RNG matériel, watchdog utilisateur (ESP8266
-// only), canal ADC (A0 vs GPIO). Les mains des presets n'ont plus AUCUNE
-// divergence protocolaire — un seul code path, un seul comportement.
+// SoC differences are absorbed HERE (the last place where they
+// exist): WiFi header, hardware RNG, user watchdog (ESP8266
+// only), ADC channel (A0 vs GPIO). The preset mains no longer have ANY
+// protocol divergence — a single code path, a single behaviour.
 //
 
 #include "Pnex.h"
@@ -69,25 +69,25 @@ static void publish_pins_to_status(const std::vector<PnexPin>& pins) {
     pnex_status::set_pins(snapshot, n);
 }
 
-// ───────────────── Instance unique + trampolines transport ─────────────────
+// ───────────────── Single instance + transport trampolines ─────────────────
 
 static PnexDevice* s_pnex = nullptr;
 
 void pnex_on_ws_opened() {
-    Serial.println("[WS] ouvert");
+    Serial.println("[WS] open");
 }
 
 void pnex_on_ws_closed() {
-    Serial.println("[WS] fermé — sorties en safe-state");
+    Serial.println("[WS] closed — outputs to safe-state");
     if (s_pnex) {
         s_pnex->forceAllOff();
     }
 }
 
 void pnex_on_ws_message(const String& plain) {
-    pnex_status::bump_rx();  // trafic RX réel (les PONG sont filtrés en amont)
+    pnex_status::bump_rx();  // real RX traffic (PONGs are filtered upstream)
     if (plain.length() == 0) {
-        Serial.println("[WS] frame illisible (clé ?)");
+        Serial.println("[WS] unreadable frame (key?)");
         return;
     }
     if (s_pnex) {
@@ -95,10 +95,10 @@ void pnex_on_ws_message(const String& plain) {
     }
 }
 
-// ── Écran : tick pendant les attentes bloquantes du main ──
-// pnex.cpp est l'orchestrateur qui connaît les deux bouts ; le transport
-// reçoit un pointeur nu, l'écran lit pnex_status — aucun des deux ne
-// connaît l'autre.
+// ── Screen: tick during the main's blocking waits ──
+// pnex.cpp is the orchestrator that knows both ends; the transport
+// gets a bare pointer, the screen reads pnex_status — neither of them
+// knows the other.
 
 // ESP32: the loop task is not watched by default, so a blocked loop kept a
 // board silent for 1 h 34 after a server upgrade (O71). A loop stuck this
@@ -140,8 +140,8 @@ static void screen_wait_tick() {
     loop_wdt_feed();  // long waits (WiFi join, OTA download) tick here
 }
 
-// delay par tranches qui garde l'écran vivant (backoff de reconnexion) —
-// durée totale identique, wdtFeed 8266 conservé.
+// delay in slices that keeps the screen alive (reconnect backoff) —
+// same total duration, 8266 wdtFeed kept.
 static void delay_with_screen(unsigned long ms) {
     while (ms > 0) {
         const unsigned long slice = ms > 50 ? 50 : ms;
@@ -153,8 +153,8 @@ static void delay_with_screen(unsigned long ms) {
 }
 
 #if PNEX_HAS_SCREEN
-// RSSI → 4 barres (seuils classiques) — lu au slot du timer PING, jamais
-// ailleurs : le poll RSSI n'a aucun intérêt en build sans écran.
+// RSSI → 4 bars (classic thresholds) — read at the PING timer slot, never
+// elsewhere: polling RSSI is pointless in a build without a screen.
 static uint8_t rssi_level(int rssi) {
     if (rssi >= -60) return 4;
     if (rssi >= -67) return 3;
@@ -163,14 +163,14 @@ static uint8_t rssi_level(int rssi) {
 }
 #endif
 
-// ───────────────────────── État session ─────────────────────────
+// ───────────────────────── Session state ─────────────────────────
 
 static unsigned long last_ping_ms = 0;
 static uint32_t reconnect_delay_ms = 1000;
 
-// F2 (D46) : identité de boot + numéro d'ordre des reports — clé de dédup
-// `(boot_id, seq)` côté serveur quand le buffering existera (F3).
-static char boot_id[9];      // 8 hex + zero de fin, tire du RNG materiel au setup
+// F2 (D46): boot identity + report sequence number — dedup key
+// `(boot_id, seq)` on the server side once buffering exists (F3).
+static char boot_id[9];      // 8 hex + trailing zero, drawn from the hardware RNG at setup
 static uint32_t report_seq = 0;
 
 const unsigned long PING_INTERVAL_MS = 5000;
@@ -179,7 +179,7 @@ const unsigned long PING_INTERVAL_MS = 5000;
 
 bool PnexDevice::declare(PnexPin p) {
     if (pins_.size() >= PNEX_MAX_PINS) {
-        Serial.println("[PINS] PNEX_MAX_PINS atteint — pin ignoré");
+        Serial.println("[PINS] PNEX_MAX_PINS reached — pin ignored");
         return false;
     }
     if (p.label.isEmpty()) {
@@ -188,7 +188,7 @@ bool PnexDevice::declare(PnexPin p) {
     p.declared = true;
     declared_.push_back(p);
     pins_.push_back(p);
-    apply_pin(pins_.back());  // effet local immédiat, serveur ou pas
+    apply_pin(pins_.back());  // immediate local effect, server or not
     Serial.printf("[PINS] %s=GPIO%u mode=%d pullup=%d safe=%s\n",
                   p.label.c_str(), p.gpio, p.mode, p.pullup,
                   p.safe_high ? "high" : "low");
@@ -225,7 +225,7 @@ bool PnexDevice::addPwmOutput(uint8_t gpio, const char* label, bool safe_high) {
 bool PnexDevice::addAnalogInput(uint8_t gpio, const char* label) {
     PnexPin p{};
 #if defined(ESP8266)
-    (void)gpio;  // l'ESP8266 n'a que l'ADC unique A0
+    (void)gpio;  // the ESP8266 only has the single ADC A0
     p.gpio = 17;
 #else
     p.gpio = gpio;
@@ -386,8 +386,8 @@ void PnexDevice::begin() {
     Serial.begin(115200);
     delay(500);
 
-    // Écran de debug local (no-op sans driver compilé) — timeline WiFi
-    // clignotante + barre dès la première frame, avant le blocage WiFi.
+    // Local debug screen (no-op without a compiled driver) — blinking WiFi
+    // timeline + bar from the first frame, before the WiFi block.
     pnex_screen::begin();
     pnex_status::set_step(pnex_status::Step::Wifi);
     pnex_screen::tick();
@@ -398,22 +398,22 @@ void PnexDevice::begin() {
 #else
     snprintf(boot_id, sizeof(boot_id), "%08x", (unsigned)esp_random());
 #endif
-    // Config compilée décodée + clé ChaCha + URL + callbacks par la couche
-    // transport (ex pnex-transport) — le wording du log d'erreur de clé est
-    // conservé (il divergeait déjà entre firmwares).
+    // Compiled config decoded + ChaCha key + URL + callbacks by the transport
+    // layer (ex pnex-transport) — the wording of the key error log is
+    // kept (it already diverged between firmwares).
     PnexTransportInit ti;
     ti.ws_path = "/ws/device";
     ti.pong_timeout_ms = 15000;  // silence > 15 s → close (§3/§8)
     ti.reply_ws_ping = true;     // GotPing → client.ping()
     ti.on_connected = pnex_on_ws_opened;
     ti.on_message = pnex_on_ws_message;
-    ti.on_pong = nullptr;  // compteur PONG interne à la lib
+    ti.on_pong = nullptr;  // PONG counter internal to the lib
     ti.on_closed = pnex_on_ws_closed;
     pnex_transport_setup(ti);
     if (!pnex_crypto_ready()) {
         Serial.println("[CRYPTO] ENCRYPTION_KEY invalid — the device will not connect");
     }
-    Serial.printf("[pnex] config ok : device_id=%s host=%s\n",
+    Serial.printf("[pnex] config ok: device_id=%s host=%s\n",
                   pnex_device_id(), pnex_host());
     pnex_screen::set_device_id(pnex_device_id());
 
@@ -424,8 +424,8 @@ void PnexDevice::begin() {
     loop_wdt_begin();
 #endif
 
-    // L'attente bloquante tick l'écran (blink WiFi) via le callback nu du
-    // transport — pas de dépendance transport→écran.
+    // The blocking wait ticks the screen (WiFi blink) through the transport's
+    // bare callback — no transport→screen dependency.
     const bool wifi_ok = pnex_wifi_connect(40, &screen_wait_tick);
 #if PNEX_HAS_SCREEN
     pnex_status::set_wifi(wifi_ok, wifi_ok ? rssi_level(WiFi.RSSI()) : 0);
@@ -433,11 +433,11 @@ void PnexDevice::begin() {
 
     Serial.printf("[WS] %s\n", pnex_conn_string());
     pnex_status::set_step(pnex_status::Step::Link);
-    // Announce AUSSI au premier connect : il ne partait que sur le chemin
-    // « reconnexion » de loop() — une connexion propre au boot restait
-    // muette pour toujours (pas de ProvisionAck, session fantôme — constat
-    // e2e 2026-09-14, invisible ce matin car le device tournait en boucles
-    // de reconnexion).
+    // Announce ALSO on the first connect: it only left on the
+    // "reconnect" path of loop() — a clean connection at boot stayed
+    // silent forever (no ProvisionAck, ghost session — observed
+    // e2e 2026-09-14, invisible this morning because the device was running reconnect
+    // loops).
     if (pnex_ws_connect()) {
         pnex_status::set_link(true);
         sendAnnounce();
@@ -479,20 +479,20 @@ void PnexDevice::loop() {
         pnex_status::set_link(false);
         pnex_screen::tick();
         forceAllOff();
-        Serial.printf("[WS] reconnect dans %lu ms\n", (unsigned long)reconnect_delay_ms);
-        // Backoff inchangé, mais l'écran reste vivant pendant l'attente.
+        Serial.printf("[WS] reconnect in %lu ms\n", (unsigned long)reconnect_delay_ms);
+        // Backoff unchanged, but the screen stays alive during the wait.
         delay_with_screen(reconnect_delay_ms);
         reconnect_delay_ms = reconnect_delay_ms < 60000 ? reconnect_delay_ms * 2 : 60000;
 #if defined(ESP8266)
         ESP.wdtFeed();
 #endif
         if (pnex_ws_connect()) {
-            Serial.println("[WS] connecté");
-            reconnect_delay_ms = 1000;  // succès : retour au backoff minimal
+            Serial.println("[WS] connected");
+            reconnect_delay_ms = 1000;  // success: back to the minimal backoff
             pnex_status::set_link(true);
             sendAnnounce();
         } else {
-            Serial.println("[WS] échec de connexion");
+            Serial.println("[WS] connection failed");
         }
         return;
     }
@@ -504,27 +504,27 @@ void PnexDevice::loop() {
         return;
     }
 #endif
-    // PONG timeout → la lib a fermé la connexion : pas de lecture ce tour,
-    // safe-states au prochain tour (branche !available ci-dessus).
+    // PONG timeout → the lib closed the connection: no read this round,
+    // safe-states on the next round (!available branch above).
     if (!pnex_ws_available()) {
         return;
     }
 
     unsigned long now = millis();
 
-    // PING 5 s ; silence > 15 s → safe-state puis reconnect (§3/§8 — le
-    // timeout est dans pnex_ws_poll).
+    // PING 5 s; silence > 15 s → safe-state then reconnect (§3/§8 — the
+    // timeout is in pnex_ws_poll).
     if (now - last_ping_ms >= PING_INTERVAL_MS) {
         pnex_ws_send_ping();
         last_ping_ms = now;
 #if PNEX_HAS_SCREEN
-        // Barres Wi-Fi au slot du timer PING — poll RSSI borné, inutile
-        // sans écran.
+        // Wi-Fi bars at the PING timer slot — bounded RSSI poll, useless
+        // without a screen.
         pnex_status::set_wifi(true, rssi_level(WiFi.RSSI()));
 #endif
     }
 
-    // Lectures cadencées des pins input souscrites → StateReport.
+    // Timed reads of the subscribed input pins → StateReport.
     for (auto& p : pins_) {
         if (p.interval_ms == 0) {
             continue;
@@ -535,20 +535,20 @@ void PnexDevice::loop() {
         }
     }
 
-    // Écran : lit l'état publié (pnex_status), ne redessine que ce qui
-    // change (no-op sans écran compilé) — la boucle WS reste réactive.
+    // Screen: reads the published state (pnex_status), only redraws what
+    // changes (no-op without a compiled screen) — the WS loop stays responsive.
     pnex_screen::tick();
 
     delay(5);
 }
 
-// ───────────────────────── Envois ─────────────────────────
+// ───────────────────────── Sends ─────────────────────────
 
 void PnexDevice::sendJson(const JsonDocument& doc) {
     char buf[384];
     size_t n = serializeJson(doc, buf, sizeof(buf));
     if (n >= sizeof(buf)) {
-        Serial.println("[PROTO] message trop long — ignoré");
+        Serial.println("[PROTO] message too long — ignored");
         return;
     }
     pnex_ws_send(buf);
@@ -560,8 +560,8 @@ void PnexDevice::sendAnnounce() {
     doc["chip"] = PNEX_CHIP;
     doc["board"] = PNEX_BOARD_NAME;
     doc["fw"] = PNEX_FW_VERSION;
-    // Manifeste de capacités (D47) — attestation : ce que CE firmware sait
-    // faire ; l'overlay board décide toujours de la carte de pins (Tier 1).
+    // Capability manifest (D47) — attestation: what THIS firmware can
+    // do; the board overlay still decides the pin map (Tier 1).
     JsonArray caps = doc["caps"].to<JsonArray>();
     JsonObject cap = caps.add<JsonObject>();
     cap["id"] = "digital_state";
@@ -573,7 +573,7 @@ void PnexDevice::sendAnnounce() {
     cap["id"] = "relay_cmd";
     cap["family"] = "actuator";
 #if PNEX_SCREEN_SSD1306 == 1 || PNEX_SCREEN_ST7735 == 1
-    // (les gates valent 0 si absentes — pas d'écran compilé → pas de cap)
+    // (gates are 0 when absent — no compiled screen → no cap)
     cap = caps.add<JsonObject>();
     cap["id"] = "screen";
     cap["family"] = "display";
@@ -607,9 +607,9 @@ void PnexDevice::sendAnnounce() {
     }
 
     // Pins declared by the sketch travel in `pins` — the server validates
-    // them (chip-caps) then persists them. Forme fil =
-    // PinDecl (proto.rs) : pullup/safe_state absents = défauts (false/low),
-    // comme skip_serializing_if côté serde.
+    // them (chip-caps) then persists them. Wire form =
+    // PinDecl (proto.rs): absent pullup/safe_state = defaults (false/low),
+    // like skip_serializing_if on the serde side.
     if (!declared_.empty()) {
         JsonArray apins = doc["pins"].to<JsonArray>();
         for (const auto& p : declared_) {
@@ -644,7 +644,7 @@ void PnexDevice::sendAnnounce() {
     static char ann_buf[3584];
     size_t n = serializeJson(doc, ann_buf, sizeof(ann_buf));
     if (n >= sizeof(ann_buf)) {
-        Serial.println("[PROTO] announce trop long — ignoré");
+        Serial.println("[PROTO] announce too long — ignored");
         return;
     }
     pnex_ws_send(ann_buf);
@@ -652,10 +652,10 @@ void PnexDevice::sendAnnounce() {
 
 void PnexDevice::sendAck(const char* cmd_id, bool ok, const char* err) {
     if (!ok) {
-        // Refus : log systématique — une commande perdue/invalide doit se
-        // voir sur le moniteur (retour utilisateur « aucune trace des
-        // writes », leçon 2026-09-03).
-        Serial.printf("[CMD] refus (cmd %s) : %s\n", cmd_id, err ? err : "?");
+        // Refusal: always logged — a lost/invalid command must show
+        // on the monitor (user feedback "no trace of the
+        // writes", lesson 2026-09-03).
+        Serial.printf("[CMD] refused (cmd %s): %s\n", cmd_id, err ? err : "?");
     }
     JsonDocument doc;
     doc["t"] = "ack";
@@ -680,22 +680,22 @@ void PnexDevice::sendStateReport(const PnexPin& p) {
         doc["value"] = value == 1;
     }
     Serial.printf("[IO] GPIO%u mode=%s value=%d\n", p.gpio, pnex_io_mode_name(p.mode), value);
-    // F2 (D46) : horloge device — clé de dédup/reconstruction côté serveur.
+    // F2 (D46): device clock — dedup/reconstruction key on the server side.
     doc["uptime_ms"] = (uint32_t)millis();
     doc["boot_id"] = boot_id;
     doc["seq"] = ++report_seq;
     sendJson(doc);
 }
 
-// ─────────────────────── Messages serveur ───────────────────────
+// ─────────────────────── Server messages ───────────────────────
 
-// Le « PONG » texte est intercepté en amont par le transport (bookkeeping
-// du silence serveur) — il n'atteint pas le dispatch proto.
+// The text "PONG" is intercepted upstream by the transport (bookkeeping
+// of server silence) — it does not reach the proto dispatch.
 
 void PnexDevice::handleServerMessage(const String& plain) {
     JsonDocument doc;
     if (deserializeJson(doc, plain) != DeserializationError::Ok) {
-        Serial.println("[PROTO] message serveur illisible");
+        Serial.println("[PROTO] unreadable server message");
         return;
     }
     const char* type = doc["t"] | "";
@@ -714,11 +714,11 @@ void PnexDevice::handleServerMessage(const String& plain) {
     } else if (strcmp(type, "command") == 0) {
         handleCommand(doc);
     } else if (strcmp(type, "reject") == 0) {
-        Serial.printf("[PROTO] rejet serveur : %s\n", doc["reason"] | "?");
+        Serial.printf("[PROTO] server rejection: %s\n", doc["reason"] | "?");
     } else if (msg_hook_ != nullptr && msg_hook_(doc)) {
         // Consumed by a module hook (it answers its own Ack).
     } else {
-        Serial.printf("[PROTO] message inconnu : %s\n", type);
+        Serial.printf("[PROTO] unknown message: %s\n", type);
     }
 }
 
@@ -778,7 +778,7 @@ void PnexDevice::handleOtaAvailable(JsonDocument& doc) {
         const unsigned long own = strtoul(PNEX_FW_VERSION, nullptr, 10);
         const unsigned long target = strtoul(version, nullptr, 10);
         if (target > 0 && own > 0 && target < own) {
-            Serial.printf("[OTA] refus downgrade %s → %s\n", PNEX_FW_VERSION, version);
+            Serial.printf("[OTA] downgrade refused %s → %s\n", PNEX_FW_VERSION, version);
             sendAck(cmd_id, false, "downgrade refused");
             return;
         }
@@ -789,7 +789,7 @@ void PnexDevice::handleOtaAvailable(JsonDocument& doc) {
         return;
     }
 
-    Serial.printf("[OTA] version %s disponible — démarrage\n", version);
+    Serial.printf("[OTA] version %s available — starting\n", version);
     // Ack BEFORE the long download (and before closing the WS on 8266).
     sendAck(cmd_id, true, nullptr);
 
@@ -830,8 +830,8 @@ bool PnexDevice::runPendingOta() {
 #endif  // PNEX_OTA_ENABLE
 
 void PnexDevice::applyProvisionAck(JsonDocument& doc) {
-    // Enregistré côté serveur : l'écran tient la timeline pleine ~1 s puis
-    // bascule sur MAIN (hold géré côté écran, au tick).
+    // Registered on the server side: the screen holds the full timeline ~1 s then
+    // switches to MAIN (hold managed on the screen side, at tick).
     pnex_status::set_step(pnex_status::Step::Registered);
     // Free the PWM channels of the previous table (a re-provision would
     // otherwise leak them on pins that leave it).
@@ -840,7 +840,7 @@ void PnexDevice::applyProvisionAck(JsonDocument& doc) {
             pnex_io_release(old.gpio);
         }
     }
-    pins_.clear();  // ordre conservé du main historique (reset AVANT tout)
+    pins_.clear();  // order kept from the historical main (reset BEFORE anything)
     JsonArrayConst caps = doc["caps"];
     for (JsonObjectConst cap : caps) {
         if (pins_.size() >= PNEX_MAX_PINS) {
@@ -855,11 +855,11 @@ void PnexDevice::applyProvisionAck(JsonDocument& doc) {
         } else if (strcmp(mode, "pwm_out") == 0) {
             p.mode = PNEX_PWM_OUT;
         } else if (strcmp(mode, "adc_in") == 0 || strcmp(mode, "analog_in") == 0) {
-            // adc_in = sérialisation serde du variant `AdcIn` du proto (le
-            // fil n'a JAMAIS porté « analog_in » — convention base only) ;
-            // tolérance conservée. Sans lui, A0 tombait en digital_in et un
-            // subscribe remontait du digitalRead(17) au lieu d'analogRead
-            // (leçon 2026-09-03).
+            // adc_in = serde serialisation of the proto's `AdcIn` variant (the
+            // wire NEVER carried "analog_in" — base-only convention);
+            // tolerance kept. Without it, A0 fell into digital_in and a
+            // subscribe reported digitalRead(17) instead of analogRead
+            // (lesson 2026-09-03).
             p.mode = PNEX_ADC_IN;
         }
         p.pullup = cap["opts"]["pullup"] | false;
@@ -873,16 +873,16 @@ void PnexDevice::applyProvisionAck(JsonDocument& doc) {
     publish_pins_to_status(pins_);
 }
 
-// Les SetMode/Write/Subscribe ont été validés par caps::validate côté
-// serveur AVANT push (brick0.md §8) — le device fait confiance, mais reste
-// tolérant aux fautes (Ack err si pin inconnu).
+// SetMode/Write/Subscribe were validated by caps::validate on the
+// server side BEFORE push (brick0.md §8) — the device trusts, but stays
+// fault-tolerant (Ack err if unknown pin).
 
 void PnexDevice::handleSetMode(JsonDocument& doc) {
     const char* cmd_id = doc["cmd_id"] | "";
     uint8_t gpio = doc["gpio"] | 255;
     PnexPin* p = pin_by_gpio(gpio);
     if (!p) {
-        sendAck(cmd_id, false, "pin inconnu");
+        sendAck(cmd_id, false, "unknown pin");
         return;
     }
     const char* mode = doc["mode"] | "digital_in";
@@ -918,11 +918,11 @@ void PnexDevice::handleWrite(JsonDocument& doc) {
     uint8_t gpio = doc["gpio"] | 255;
     PnexPin* p = pin_by_gpio(gpio);
     if (!p) {
-        sendAck(cmd_id, false, "pin inconnu");
+        sendAck(cmd_id, false, "unknown pin");
         return;
     }
-    // digital_out : booléen 0/1 ; pwm_out : duty % 0..=100 (mise à
-    // l'échelle 8-bit locale — abstraction matérielle côté serveur).
+    // digital_out: boolean 0/1; pwm_out: duty % 0..=100 (local 8-bit
+    // scaling — hardware abstraction on the server side).
     JsonVariant v = doc["value"];
     if (p->mode == PNEX_PWM_OUT) {
         pnex_io_write_pwm(*p, v.as<int>());
@@ -939,10 +939,10 @@ void PnexDevice::handleWrite(JsonDocument& doc) {
                           readback);
         }
     } else {
-        sendAck(cmd_id, false, "pin pas en sortie (digital_out/pwm_out)");
+        sendAck(cmd_id, false, "pin not an output (digital_out/pwm_out)");
         return;
     }
-    // Confirmation immédiate : la boucle UI (polling /pins) voit l'état.
+    // Immediate confirmation: the UI loop (polling /pins) sees the state.
     sendStateReport(*p);
     publish_pins_to_status(pins_);
     sendAck(cmd_id, true, nullptr);
@@ -953,7 +953,7 @@ void PnexDevice::handleSubscribe(JsonDocument& doc) {
     uint8_t gpio = doc["gpio"] | 255;
     PnexPin* p = pin_by_gpio(gpio);
     if (!p) {
-        sendAck(cmd_id, false, "pin inconnu");
+        sendAck(cmd_id, false, "unknown pin");
         return;
     }
     p->interval_ms = doc["interval_ms"] | 0;
@@ -979,7 +979,7 @@ bool PnexDevice::apply_pin(PnexPin& p) {
     return pnex_io_apply(p);
 }
 
-/// Toutes les sorties vers leur safe-state — appelé sur CHAQUE perte
+/// All outputs to their safe-state — called on EVERY loss
 /// (close, PONG timeout, WiFi down) : brick0.md §8.
 void PnexDevice::forceAllOff() {
     for (auto& p : pins_) {

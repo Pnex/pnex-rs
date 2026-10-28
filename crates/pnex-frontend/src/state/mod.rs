@@ -1,4 +1,4 @@
-//! État global de l'app (signals Dioxus) : session, org courante.
+//! Global app state (Dioxus signals): session, current org.
 
 /// Rights of the user in the current org (iam.md §9).
 pub mod access;
@@ -14,7 +14,7 @@ pub mod session;
 pub mod theme;
 pub mod toasts;
 pub mod tours;
-/// Préférences UI (rail de la sidebar) — préférences d'affichage globales.
+/// UI preferences (sidebar rail) — global display preferences.
 pub mod ui;
 /// Vision model names cache (flow canvas subtitles).
 pub mod vision;

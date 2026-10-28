@@ -1,7 +1,7 @@
-//! Inspecteur d'item d'annotation (D59) — type de cible (le `kind` suit),
-//! device via `ResourcePicker` onglet Device, gpio pour une cible pin,
-//! texte pour une note, label, couleur, suppression.
-//! École closures dioxus : un clone local nommé par closure.
+//! Annotation item inspector (D59) — target type (the `kind` follows),
+//! device via the `ResourcePicker` Device tab, gpio for a pin target,
+//! text for a note, label, colour, deletion.
+//! Dioxus closures style: one local clone named per closure.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -19,7 +19,7 @@ use crate::components::annotation_editor::surface_targets::{
 use crate::components::resource_picker::{PickerTab, ResourcePick, ResourcePicker};
 use crate::components::ui::FIELD_LABEL;
 
-/// Cible par défaut d'un nouveau type (le slug/gpio utiles sont reportés).
+/// Default target of a new type (the useful slug/gpio are carried over).
 fn target_for_kind(new_kind: &str, current: &AnnotationTarget) -> AnnotationTarget {
     let slug = current_slug(current);
     let gpio = match current {
@@ -78,7 +78,7 @@ fn kind_of(target: &AnnotationTarget) -> &'static str {
     crate::components::annotation_editor::state::target_kind(target)
 }
 
-/// Panneau d'inspection de l'item sélectionné (rien rendu si aucun).
+/// Inspection panel of the selected item (nothing rendered if none).
 #[component]
 pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
     let item_id = cx.selected.cloned();
@@ -116,8 +116,8 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
         _ => String::new(),
     };
 
-    // Un clone nommé par closure (école closures dioxus : deux closures
-    // `move` ne peuvent pas partager le même String).
+    // One clone named per closure (dioxus closures style: two `move`
+    // closures cannot share the same String).
     let kind_target = item.target.clone();
     let id_del = item.id.clone();
     let id_kind = item.id.clone();
@@ -256,7 +256,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     },
                 }
             }
-            // Couleur
+            // Colour
             div { class: "flex items-center gap-3",
                 label {
                     r#for: "inspector-field-2",
@@ -283,7 +283,7 @@ pub fn AnnotationInspector(cx: AnnotationEditorCx, can_write: bool) -> Element {
                     {t!("annot-inspector-color-reset")}
                 }
             }
-            // Position (lecture — ajustée au clic/drag pano)
+            // Position (read-only — adjusted by pano click/drag)
             div { class: "text-xs text-gray-500 font-mono", "{pos}" }
         }
         // Picker device (modal)

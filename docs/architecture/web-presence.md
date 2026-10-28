@@ -13,11 +13,11 @@
 
 - **Aucune source ouverte ne donne le site** d'un organisme (open data FC
   XML et CSV, catalogue CPF, liste DGEFP : vérifié par la session pair).
-  Les données en ont pourtant une trace : `contact_conformite_email`,
-  `charge_reseau_email` (pack `quali_watch`) portent souvent le domaine de
+  Les données en ont pourtant une trace : `compliance_contact_email`,
+  `network_manager_email` (pack `quali_watch`) portent souvent le domaine de
   l'organisme.
-- **Le type et le lien existent déjà** : `site_web` (`domaine` unique,
-  `url_racine`, état de collecte) et `a_pour_site` (organisation → site)
+- **Le type et le lien existent déjà** : `website` (`domain` unique,
+  `root_url`, état de collecte) et `has_website` (organisation → site)
   dans `quali_watch.yaml`. Les reprendre dans un pack générique ne déplace
   aucune donnée : `packs.rs` `hands_over` transfère la propriété d'un type
   quand l'ancien propriétaire se met à dépendre du nouveau.
@@ -26,7 +26,7 @@
   la version déployée, acteur `flow:<id>@<v>`, journal O2, budget de
   600 écritures/min. Deux manques pour ce besoin : un lien fermé n'empêche
   pas d'en rouvrir un (le rejet ne tient pas) ; la fermeture n'écrit pas
-  d'attributs (impossible de poser `statut: rejete` en fermant).
+  d'attributs (impossible de poser `status: rejected` en fermant).
 - **Fournisseurs** : LLM, géo et navigateurs sont **par org** (D119 : la
   plateforme ne fournit pas de LLM). Modèle le plus propre : `geo_providers`
   (`kind`, défaut par capacité, `base_url` contrôlée par `egress`, secret
@@ -126,32 +126,32 @@ Deux options sur la config existante, pas de nouveau nœud :
 - en fermeture (`close: true`), les `attributes` du message sont fusionnés
   avant la fermeture, dans la même transaction.
 
-`object_upsert` reste tel quel (créer le `site_web` par `domaine`).
+`object_upsert` reste tel quel (créer le `website` par `domain`).
 
-### D363 — Pack générique `presence_web`
+### D363 — Pack générique `web_presence`
 
-Pack de référence `presence_web` (requiert `entreprises`), que
-`quali_watch` et `prospection_b2b` requièrent. Il **reprend** `site_web` et
-`a_pour_site` de `quali_watch` (même clé, même sens, transfert par
+Pack de référence `web_presence` (requiert `companies`), que
+`quali_watch` et `prospecting_b2b` requièrent. Il **reprend** `website` et
+`has_website` de `quali_watch` (même clé, même sens, transfert par
 `hands_over`, aucune donnée déplacée) ; on ne crée pas de `site_de` :
 l'inverse s'affiche déjà « est le site de ».
 
-Attributs ajoutés sur `a_pour_site` :
+Attributs ajoutés sur `has_website` :
 
 | Clé | Type | Rôle |
 |---|---|---|
-| `statut` | enum `propose`, `confirme`, `rejete` (indexé) | seul `confirme` part au crawl |
+| `status` | enum `proposed`, `confirmed`, `rejected` (indexé) | seul `confirmed` part au crawl |
 | `score` | nombre 0–100 | |
-| `preuve_siren`, `preuve_nda`, `preuve_adresse` | bool | ce que la visite a trouvé |
-| `avis_llm` | texte ≤ 2 000 | justification du modèle, si appelé |
-| `requete`, `rang`, `fournisseur` | texte, nombre, texte | provenance du candidat |
-| `source` | enum `email`, `recherche`, `manuel` | |
-| `valide_par` | texte | **Q-W3** |
+| `siren_proof`, `nda_proof`, `address_proof` | bool | ce que la visite a trouvé |
+| `llm_opinion` | texte ≤ 2 000 | justification du modèle, si appelé |
+| `requete`, `rank`, `provider` | texte, nombre, texte | provenance du candidat |
+| `source` | enum `email`, `search`, `manual` | |
+| `validated_by` | texte | **Q-W3** |
 
-Un candidat rejeté = lien fermé avec `statut: rejete` (D362) ; l'historique
-O2 garde qui a fait quoi. `site_web.domaine` est la clé ; `etat_collecte`
-reste. La page « Sites web » et `web:site:<hôte>` : un `site_web` confirmé
-devient une cible de crawl D307 (`web:site:<domaine>`), sans nouveau
+Un candidat rejeté = lien fermé avec `status: rejected` (D362) ; l'historique
+O2 garde qui a fait quoi. `website.domain` est la clé ; `crawl_state`
+reste. La page « Sites web » et `web:site:<hôte>` : un `website` confirmé
+devient une cible de crawl D307 (`web:site:<domain>`), sans nouveau
 registre.
 
 ### D364 — Visite ponctuelle d'un candidat (amende D254 et D307)
@@ -162,7 +162,7 @@ du candidat : l'URL donnée, `robots.txt`, la page de mentions légales
 (premier lien interne dont le texte ou le chemin correspond à une liste
 fermée : « mentions légales », « legal », « CGV », « qui sommes-nous »).
 Robots respecté, client identifié (`PNEX-Crawler`), plancher de 2 s par
-hôte, egress gardé. Le crawl D307 ne démarre qu'après `statut: confirme`.
+hôte, egress gardé. Le crawl D307 ne démarre qu'après `status: confirmed`.
 
 Nœud **`web_visit`** : entrée `msg.payload.url` ; sortie `final_url`,
 `status`, `title`, `text` (accueil et mentions, ≤ 50 000 caractères
@@ -173,18 +173,18 @@ plateforme ; sans navigateur joignable, pas de capture.
 
 ### D365 — Flow d'identification livré par le pack
 
-`ontology_query` (organisations sans `a_pour_site` confirmé, par lots) →
+`ontology_query` (organisations sans `has_website` confirmé, par lots) →
 candidats sans recherche d'abord (domaine des emails de l'org hors
 webmails, liste fermée) → `web_search` (raison sociale + ville) →
 `web_visit` sur les 3 premiers domaines non rejetés → score déterministe
 (fonction Starlark du pack : SIREN/SIRET ou NDA dans les mentions, code
 postal et voie comparés aux établissements SIRENE) → si score moyen,
 `llm_*` sur texte et capture (`Msg::UserImage`) → `object_upsert`
-(`site_web`) + `link_upsert` (`a_pour_site`, `skip_closed`).
+(`website`) + `link_upsert` (`has_website`, `skip_closed`).
 
-Seuils (réglage du pack) : ≥ 80 proposition acceptée aussitôt par la règle de l'org (D377, `presence_web` 1.5.0), 40–79 `propose`
+Seuils (réglage du pack) : ≥ 80 proposition acceptée aussitôt par la règle de l'org (D377, `web_presence` 1.5.0), 40–79 `propose`
 (validation humaine), < 40 rien écrit. La capture de la visite est
-conservée comme asset média de l'org rattaché au `site_web` (Q-W4) : la
+conservée comme asset média de l'org rattaché au `website` (Q-W4) : la
 page de validation l'affiche, la vision et le lab la reliront plus tard
 sans copie (quota de stockage de l'org). Le flow est livré non déployé :
 c'est l'humain qui le déploie (D144).
@@ -193,7 +193,7 @@ c'est l'humain qui le déploie (D144).
 
 Page **« Sites à valider »** (Q-W3) : organisme, candidat, capture,
 preuves trouvées, score, boutons Confirmer et Rejeter ; liste des liens
-`a_pour_site` ouverts au `statut: propose`. `valide_par` = nom affiché de
+`has_website` ouverts au `status: proposed`. `validated_by` = nom affiché de
 l'utilisateur (pas d'identifiant, R4). Le geste écrit par le service partagé
 (`links::update` puis `close` pour un rejet), acteur = l'utilisateur ;
 permission `ontology:write`.
@@ -230,7 +230,7 @@ permission `ontology:write`.
 |---|---|---|---|
 | **W0** | D359 retrait du nœud `ingest` | L1+ déployé, FC passé sur l'org 4 | M (beaucoup de fichiers, peu de logique) |
 | **W1** | D360–D361 fournisseurs + nœud `web_search`, page de réglage | — | M |
-| **W2** | D362–D363 options de `link_upsert`, pack `presence_web`, montée de `quali_watch` | — | S |
+| **W2** | D362–D363 options de `link_upsert`, pack `web_presence`, montée de `quali_watch` | — | S |
 | **W3** | D364 nœud `web_visit` (texte, puis capture) | — | M |
 | **W4** | D365–D366 flow du pack, fonction de score, surface de validation | W1–W3 | M |
 
@@ -259,7 +259,7 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   suppression du flow reste possible.
 - **Remplacement** : les cinq imports France Compétences de `quali_watch`
   1.5.0 portent leurs `steps:` et une récurrence quotidienne.
-  - Le filtre des certificateurs lit le nouveau réglage `certificateurs`
+  - Le filtre des certificateurs lit le nouveau réglage `certifiers`
     (`rows_filter.setting`, `network-check.md` D425). Vide = tous les
     certificateurs.
   - Les autres imports filtrent sur les certifications de l'org
@@ -303,10 +303,10 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   son dernier lien fermé, jamais rouvert) ; `close` fusionne d'abord les
   attributs du message (motif, qui a décidé). Les deux écritures se font
   l'une après l'autre, pas dans une seule transaction (chacune journalise ;
-  le message suivant ferme si la seconde a échoué). Pack **`presence_web`**
-  1.0.0 (`requires: [entreprises]`) : `site_web`, `a_pour_site` et ses
-  attributs D363 (statut coloré D339), `organization.site_recherche_le` ;
-  `quali_watch` 1.3.0 et `prospection_b2b` en dépendent. **La passation
+  le message suivant ferme si la seconde a échoué). Pack **`web_presence`**
+  1.0.0 (`requires: [companies]`) : `website`, `has_website` et ses
+  attributs D363 (statut coloré D339), `organization.website_searched_on` ;
+  `quali_watch` 1.3.0 et `prospecting_b2b` en dépendent. **La passation
   couvre maintenant les types d'objets** (`types::set_pack`), en plus des
   propriétés et des types de liens. Test :
   `presence_web_takes_websites_over` (org en `quali_watch` 1.2.0 → 1.3.0).
@@ -325,22 +325,22 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
   comme un parcours (`guard_page`), image JPEG gardée comme asset média
   `photo` de l'org (`metadata.source = web_visit`), id rendu dans
   `screenshot_asset_id`. Pas de navigateur ou échec : visite sans capture.
-  `presence_web` 1.3.0 l'active et écrit l'id dans `site_web.capture`.
+  `web_presence` 1.3.0 l'active et écrit l'id dans `website.capture`.
 - **W4** : opérateur de filtre `missing` (propriété absente) pour
   `ontology_query`.
   - Flow « Web presence · find websites » livré en brouillon. Chaque nuit,
     il prend au plus 50 organisations jamais traitées.
-    `pw_preparer` produit trois sorties : la requête, le marquage
-    `site_recherche_le`, et un candidat tiré du domaine e-mail (hors
-    webmails). Viennent ensuite `web_search` (3 résultats), `pw_resultats`
+    `pw_prepare` produit trois sorties : la requête, le marquage
+    `website_searched_on`, et un candidat tiré du domaine e-mail (hors
+    webmails). Viennent ensuite `web_search` (3 résultats), `pw_results`
     (un message par résultat), `web_visit` et `pw_score`. Le score est
     déterministe : SIREN 60, NDA 30, domaine de ses e-mails 30, nom 10.
     À partir de 80 le site est accepté par la règle (D377), de 40 à 79 `propose`, en
-    dessous rien n'est écrit. Enfin `object_upsert` crée le `site_web`
-    par `domaine` et `link_upsert` pose `a_pour_site` avec `skip_closed`.
-  - **Avis du modèle (`presence_web` 1.2.0)** : un score moyen est
+    dessous rien n'est écrit. Enfin `object_upsert` crée le `website`
+    par `domain` et `link_upsert` pose `has_website` avec `skip_closed`.
+  - **Avis du modèle (`web_presence` 1.2.0)** : un score moyen est
     proposé tout de suite, puis `llm_text` (LLM de l'org, réponse
-    OUI / NON / PEUT-ETRE + une phrase) et `pw_avis` reproposent les mêmes
+    OUI / NON / PEUT-ETRE + une phrase) et `pw_opinion` reproposent les mêmes
     valeurs avec l'avis en `evidence` : la proposition ouverte prend l'avis
     et la confiance (+10 sur OUI, 79 au plus ; −20 sur NON). Sans
     fournisseur d'IA, la proposition reste sans avis. Le texte du site est
@@ -349,9 +349,9 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
     la proposition. Le modèle ne lit que le texte, pas la capture.
   - Section **« Sites à valider »** en tête de la page Sites web, appuyée
     sur `GET /api/v1/web-presence/candidates` (lecture `ontology:read`,
-    exposé au MCP) et `POST …/{id}/decision` (`confirme` | `rejete`,
+    exposé au MCP) et `POST …/{id}/decision` (`confirmed` | `rejected`,
     `ontology:write`, exclu du MCP sous « sign-off »).
-  - `valide_par` = nom affiché, « — » à défaut, jamais l'e-mail. Le
+  - `validated_by` = nom affiché, « — » à défaut, jamais l'e-mail. Le
     domaine candidat est affiché en texte, jamais en lien cliquable.
   - Tests : Starlark (`pack_rules.rs`, 2 tests) et
     `presence_web_takes_websites_over` (liste, lecteur 403, rejet
@@ -360,8 +360,8 @@ W1, W2 et W3 sont indépendants ; W0 attend le déploiement.
 Limites connues :
 - `link_upsert` sur un lien **ouvert** met ses attributs à jour : un site
   déjà confirmé retrouvé par le flow (organisation remise à zéro à la
-  main) repasserait en `propose`.
-- Seul `confirme` doit partir au parcours D307 : le filtre côté parcours
+  main) repasserait en `proposed`.
+- Seul `confirmed` doit partir au parcours D307 : le filtre côté parcours
   n'est pas codé (les sites déclarés sans statut restent parcourus).
 
 ## 6. Questions
@@ -372,12 +372,12 @@ Tranchées par Shan le 2026-10-22 :
   (D119).
 - **Q-W2** — Premiers fournisseurs : **Serper et SearXNG** pour tester ;
   architecture ouverte à d'autres `kind`.
-- **Q-W3** — Validation : **page « Sites à valider »**, `valide_par` = nom
+- **Q-W3** — Validation : **page « Sites à valider »**, `validated_by` = nom
   affiché.
-- **Q-W4** — Capture : **asset média de l'org**, rattaché au `site_web`.
+- **Q-W4** — Capture : **asset média de l'org**, rattaché au `website`.
 
 **2026-10-22 — bascule vers les propositions (proposals.md D375–D376)** :
-l'attribut `a_pour_site.statut` et la section « Sites à valider » sont
+l'attribut `has_website.status` et la section « Sites à valider » sont
 retirés. Un site moyen (40–79) est une proposition sur la page « À
 valider » ; le refus garde son motif et n'est jamais reproposé.
-`presence_web` passe en 1.1.0.
+`web_presence` passe en 1.1.0.

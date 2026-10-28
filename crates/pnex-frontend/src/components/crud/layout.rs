@@ -1,21 +1,21 @@
-//! Layout canonique des pages « liste d'une ressource » — la coquille du
-//! motif CRUD : header (titre, sous-titre, bouton retour, action « ajouter »
-//! gated `can_write`), slot filtres, corps. Aucune décision visuelle ici :
-//! les classes sont les littéraux historiques des pages (devices/flows),
-//! repris à l'identique — y compris pour les const de boutons partagées
-//! avec `form.rs`.
+//! Canonical layout of "list of a resource" pages — the shell of the
+//! CRUD pattern: header (title, subtitle, back button, "add" action
+//! gated by `can_write`), filters slot, body. No visual decision here:
+//! the classes are the historical literals of the pages (devices/flows),
+//! kept identical — including for the button consts shared
+//! with `form.rs`.
 //!
-//! Ce qui reste délibérément **à la page** : la garde org
-//! (`org::current().is_none()` → message « orgs-empty »), le calcul
-//! `can_write` (helper privé par page — convention projet) et l'i18n
-//! (`t!` côté appelant, le socle ne connaît que des `String`).
+//! What deliberately stays **in the page**: the org guard
+//! (`org::current().is_none()` → "orgs-empty" message), the `can_write`
+//! computation (private helper per page — project convention) and i18n
+//! (`t!` on the caller side, the base only knows `String`s).
 
 use dioxus::prelude::*;
 
 use crate::components::icons;
 use crate::components::ui::BTN_SECONDARY;
 
-/// Bouton primaire — action « ajouter » du header, submit des formulaires.
+/// Primary button — header "add" action, form submits.
 pub const PRIMARY_BTN: &str = crate::components::ui::BTN_PRIMARY;
 
 /// Cancel in form footers: the secondary button of the design system.
@@ -28,26 +28,26 @@ pub const DANGER_BTN: &str = crate::components::ui::BTN_DANGER;
 
 #[component]
 pub fn ListLayout(
-    /// Titre de la page (i18n résolu par l'appelant).
+    /// Page title (i18n resolved by the caller).
     title: String,
-    /// Sous-titre optionnel (i18n résolu par l'appelant).
+    /// Optional subtitle (i18n resolved by the caller).
     #[props(default)]
     subtitle: Option<String>,
-    /// Retour vers la liste parente — bouton borduré à l'icône agrandie
-    /// (`h-5 w-5`, lisible face au titre `text-3xl` ; le `h-4 w-4`
-    /// historique était trop discret).
+    /// Back to the parent list — bordered button with an enlarged icon
+    /// (`h-5 w-5`, readable next to the `text-3xl` title; the historical
+    /// `h-4 w-4` was too discreet).
     #[props(default)]
     on_back: Option<Callback<()>>,
-    /// Libellé du bouton d'ajout (i18n résolu par l'appelant).
+    /// Label of the add button (i18n resolved by the caller).
     #[props(default)]
     add_label: Option<String>,
-    /// Clic « ajouter » — bouton primaire rendu ssi `can_write` et
-    /// `on_add` + `add_label` fournis.
+    /// "Add" click — primary button rendered iff `can_write` and
+    /// `on_add` + `add_label` are provided.
     #[props(default)]
     on_add: Option<Callback<()>>,
-    /// Slot d'actions supplémentaires de l'en-tête (pages multi-boutons :
-    /// media = capture caméra + take360 avant l'upload). Rendu à droite,
-    /// avant le bouton « ajouter ».
+    /// Slot for extra header actions (multi-button pages:
+    /// media = camera capture + take360 before upload). Rendered on the
+    /// right, before the "add" button.
     #[props(default)]
     actions: Option<Element>,
     /// Manual refresh — THE single place of the refresh button on every
@@ -60,8 +60,8 @@ pub fn ListLayout(
     /// title / add-button row entirely.
     #[props(default = true)]
     header: bool,
-    /// Droit d'écriture owner/admin — calculé par la page (le serveur
-    /// force, l'UI masque).
+    /// Owner/admin write right — computed by the page (the server
+    /// enforces, the UI hides).
     can_write: bool,
     /// Filters slot under the header: pass a `FilterBar` (same rendering
     /// as a `FilterBar` placed in the page body).
@@ -104,9 +104,9 @@ pub fn ListLayout(
                             {actions}
                         }
                         if can_write {
-                            // Contrat documenté : bouton « ajouter » rendu ssi
-                            // `on_add` ET `add_label` sont fournis (add_label None =
-                            // page en mode détail, pas de création ici).
+                            // Documented contract: "add" button rendered iff
+                            // `on_add` AND `add_label` are provided (add_label None =
+                            // page in detail mode, no creation here).
                             if let (Some(add), Some(label)) = (on_add, add_label) {
                                 button {
                                     class: PRIMARY_BTN,
@@ -137,7 +137,7 @@ pub fn ListLayout(
     }
 }
 
-/// Bloc titre + sous-titre du header.
+/// Header title + subtitle block.
 #[component]
 fn TitleBlock(title: String, subtitle: Option<String>) -> Element {
     rsx! {

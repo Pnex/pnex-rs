@@ -1,9 +1,9 @@
-//! Pipeline de fin de session Take 360 — decode → stitch → upload.
+//! Take 360 end-of-session pipeline — decode → stitch → upload.
 //!
-//! Tourne en `spawn_forever` (école `capture.rs::spawn_watcher`) : le
-//! sous-arbre de l'overlay peut être démonté pendant le traitement, un
-//! `spawn` normal serait annulé. Communication par atomics uniquement
-//! (PHASE/PROGRESS/RESULT), libellés `t!` résolus côté page.
+//! Runs in `spawn_forever` (`capture.rs::spawn_watcher` approach): the
+//! overlay subtree may be unmounted during processing, a normal
+//! `spawn` would be cancelled. Communication through atomics only
+//! (PHASE/PROGRESS/RESULT), `t!` labels resolved on the page side.
 
 use super::guidance::Pose;
 use super::state::{self, Phase};
@@ -14,28 +14,28 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Timeout de décodage d'une frame — le décodeur `image`/zune-jpeg peut
-/// partir en boucle infinie sur certains JPEG caméra (constat device
-/// 2026-09-09 : stitch figé à 15 %, état 2 = décode). Timeout → frame
-/// lâchée, le stitching continue avec les autres.
+/// Decode timeout of one frame — the `image`/zune-jpeg decoder can
+/// loop forever on some camera JPEGs (observed on device
+/// 2026-09-09: stitch frozen at 15 %, state 2 = decode). Timeout → frame
+/// dropped, stitching goes on with the others.
 const DECODE_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Une frame capturée : JPEG + pose au déclenchement.
+/// A captured frame: JPEG + pose at trigger time.
 #[derive(Debug, Clone)]
 pub struct CapturedFrame {
     pub jpeg: Vec<u8>,
     pub pose: Pose,
 }
 
-/// Lance le pipeline détaché : decode 16 JPEG → stitch (out 2048, GPano
-/// inclus) → upload `kind=panorama`.
+/// Starts the detached pipeline: decode 16 JPEGs → stitch (out 2048, GPano
+/// included) → `kind=panorama` upload.
 ///
-/// `hfov_deg` : HFOV Camera2 (repli 65°) captée à l'ouverture de session.
-/// Le résultat est publié via `RESULT_SEQ`/`RESULT_CODE` (1 = OK, 2 =
-/// stitch KO, 3 = upload KO) + PHASE Done/Error — la page media sonde ces
-/// atomics à 500 ms pour le toast et le reload.
+/// `hfov_deg`: Camera2 HFOV (fallback 65°) read when the session opened.
+/// The result is published through `RESULT_SEQ`/`RESULT_CODE` (1 = OK, 2 =
+/// stitch KO, 3 = upload KO) + PHASE Done/Error — the media page polls these
+/// atomics every 500 ms for the toast and the reload.
 pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
-    // Un seul finish par session (constat device : 3 threads stitch).
+    // A single finish per session (observed on device: 3 stitch threads).
     if state::FINISH_STARTED
         .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
         .is_err()
@@ -45,13 +45,13 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
     state::PHASE.store(Phase::Stitching as u8, Ordering::Relaxed);
     state::STITCH_STATE.store(1, Ordering::Relaxed);
     super::filelog::log("finish: start");
-    // Le stitching (CPU, secondes) tourne dans un thread OS dédié ; le
-    // résultat traverse un canal mpsc, sondé par la tâche async (école
-    // capture.rs : polling 200 ms — pas d'executor bloqué).
-    // Les frames sont prises UNE seule fois ici : copie profonde pour le
-    // thread de stitch (~3 Mo de JPEG), l'original part au job serveur
-    // (Take 360 V2). Un `mem::take` partagé par mutex ferait la course —
-    // constat 2026-09-10 : frames_total=0 envoyé au serveur.
+    // Stitching (CPU, seconds) runs in a dedicated OS thread; the
+    // result goes through an mpsc channel, polled by the async task (capture.rs
+    // approach: 200 ms polling — no blocked executor).
+    // The frames are taken ONLY once here: deep copy for the
+    // stitch thread (~3 MB of JPEG), the original goes to the server job
+    // (Take 360 V2). A `mem::take` shared through a mutex would race —
+    // observed 2026-09-10: frames_total=0 sent to the server.
     let taken: Vec<CapturedFrame> = {
         let mut guard = match frames.lock() {
             Ok(g) => g,
@@ -88,12 +88,12 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
         });
     super::filelog::log(&format!(
         "stitch thread spawn: {}",
-        if spawned.is_ok() { "ok" } else { "ÉCHEC" }
+        if spawned.is_ok() { "ok" } else { "FAILED" }
     ));
 
     dioxus::dioxus_core::spawn_forever(async move {
-        // Attente non bloquante du résultat de stitch (avec le hfov ajusté
-        // à l'orientation réelle des frames — cf. stitch_frames).
+        // Non-blocking wait for the stitch result (with the hfov adjusted
+        // to the real orientation of the frames — see stitch_frames).
         let (stitched, s_hfov) = loop {
             match rx.try_recv() {
                 Ok((result, hfov_frame)) => break (result, hfov_frame),
@@ -121,7 +121,7 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
             }
         };
 
-        // Upload (kind=panorama forcé — le sniff GPano classerait pareil).
+        // Upload (kind=panorama forced — the GPano sniff would classify the same).
         state::PHASE.store(Phase::Uploading as u8, Ordering::Relaxed);
         state::PROGRESS.store(90, Ordering::Relaxed);
         let name = format!(
@@ -144,17 +144,17 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
                 state::PHASE.store(Phase::Done as u8, Ordering::Relaxed);
                 state::PROGRESS.store(100, Ordering::Relaxed);
 
-                // Take 360 V2 : les frames+poses repartent au serveur pour
-                // l'assemblage HD (pipeline Quality, 4096) en nouvelle
-                // version de l'asset. Non bloquant : l'aperçu 1024 est déjà
-                // en place, un échec de job est journalisé seulement.
+                // Take 360 V2: the frames+poses go back to the server for
+                // HD assembly (Quality pipeline, 4096) as a new
+                // version of the asset. Non-blocking: the 1024 preview is already
+                // in place, a job failure is only logged.
                 match submit_server_job(&asset, taken, hfov_frame).await {
                     Ok(job_id) => {
                         super::filelog::log(&format!("job serveur HD : {job_id}"));
                         spawn_job_poller(asset.id.clone(), job_id.clone());
                     }
                     Err(e) => {
-                        super::filelog::log(&format!("job serveur HD : ÉCHEC création {e}"));
+                        super::filelog::log(&format!("HD server job: creation FAILED {e}"));
                     }
                 }
                 1
@@ -171,8 +171,8 @@ pub fn start_finish_job(frames: Arc<Mutex<Vec<CapturedFrame>>>, hfov_deg: f32) {
     });
 }
 
-/// Soumet le job d'assemblage serveur : création (poses+hfov) puis
-/// téléversement séquentiel des frames (octet-stream, retry 401 intégré).
+/// Submits the server assembly job: creation (poses+hfov) then
+/// sequential upload of the frames (octet-stream, built-in 401 retry).
 async fn submit_server_job(
     asset: &crate::api::media::MediaAsset,
     frames: Vec<CapturedFrame>,
@@ -202,9 +202,9 @@ async fn submit_server_job(
     Ok(job.id)
 }
 
-/// Sonde l'état du job serveur (2 s, borné à 15 min) pour la filelog —
-/// l'asset média se recharge dans l'UI médias (nouvelle version servie par
-/// le backend à l'occasion d'un pull de la page).
+/// Polls the server job state (2 s, bounded to 15 min) for the filelog —
+/// the media asset reloads in the media UI (new version served by
+/// the backend on a page pull).
 fn spawn_job_poller(asset_id: String, job_id: String) {
     dioxus::dioxus_core::spawn_forever(async move {
         for _ in 0..450 {
@@ -232,16 +232,16 @@ fn spawn_job_poller(asset_id: String, job_id: String) {
     });
 }
 
-/// Décodage avec timeout : le décodeur tourne dans un thread jetable, le
-/// canal impose la borne temporelle. `None` = échec ou blocage.
+/// Decode with timeout: the decoder runs in a throwaway thread, the
+/// channel enforces the time bound. `None` = failure or hang.
 fn decode_with_timeout(jpeg: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     let (tx, rx) = std::sync::mpsc::channel();
     let jpeg = jpeg.to_vec();
     std::thread::Builder::new()
         .name("pnex-decode".into())
         .spawn(move || {
-            // Plafond 540 : l'aperçu 1024 n'a besoin que de ~14 px/°, et 45
-            // frames pleine résolution satureraient la RAM du téléphone.
+            // Cap 540: the 1024 preview only needs ~14 px/°, and 45
+            // full-resolution frames would saturate the phone's RAM.
             let (rgb, w, h) = decode_jpeg_rgb_capped(&jpeg, 540);
             let _ = tx.send(if rgb.is_empty() {
                 None
@@ -256,15 +256,15 @@ fn decode_with_timeout(jpeg: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
     }
 }
 
-/// Decode + stitch (thread bloquant) → code d'erreur via Result.
-/// Ajuste la HFOV (mesurée sur le grand côté capteur, paysage) à
-/// l'orientation réelle des frames : une image portrait (720×1280, la
-/// vidéo getUserMedia pivotée) montre le PETIT côté capteur sur son axe
-/// large → même focale, tan(fov/2) proportionnel au côté. Sans cela le
-/// f_px est faux de ~35 % (71° appliqué au lieu de ~52°) et le placement
-/// des frames part en biais (constat 2026-09-10, filelog : 720×1280).
-/// Publié : l'overlay l'utilise aussi pour poser le plan d'anneau (hfov
-/// portrait du track caméra → `guidance::ring_plan`).
+/// Decode + stitch (blocking thread) → error code via Result.
+/// Adjusts the HFOV (measured on the long sensor side, landscape) to
+/// the real orientation of the frames: a portrait image (720×1280, the
+/// rotated getUserMedia video) shows the SHORT sensor side on its wide
+/// axis → same focal length, tan(fov/2) proportional to the side. Without it
+/// f_px is off by ~35 % (71° applied instead of ~52°) and frame
+/// placement drifts (observed 2026-09-10, filelog: 720×1280).
+/// Public: the overlay also uses it to set the ring plan (portrait hfov
+/// of the camera track → `guidance::ring_plan`).
 pub fn hfov_for_orientation(hfov_landscape_deg: f32, w: u32, h: u32) -> f32 {
     if w < h {
         2.0 * ((hfov_landscape_deg.to_radians() / 2.0).tan() * (w as f32 / h as f32))
@@ -284,15 +284,15 @@ fn stitch_frames(
 ) {
     state::STITCH_STATE.store(2, Ordering::Relaxed);
     state::PROGRESS.store(15, Ordering::Relaxed);
-    super::filelog::log(&format!("decode: {} frames à décoder", taken.len()));
+    super::filelog::log(&format!("decode: {} frames to decode", taken.len()));
     let mut decoded: Vec<Frame> = Vec::with_capacity(taken.len());
     let total = taken.len().max(1);
     for (k, captured) in taken.iter().enumerate() {
         // Decoding dominates on device (seconds for 48 frames): advance the
         // bar 15 → 30 % frame by frame instead of sitting on 15 %.
         state::PROGRESS.store((15 + k * 15 / total) as u8, Ordering::Relaxed);
-        // Index de la frame en décodage — visible dans la ligne debug :
-        // un stitch figé montre exactement quelle frame pend.
+        // Index of the frame being decoded — visible in the debug line:
+        // a frozen stitch shows exactly which frame hangs.
         state::STITCH_IDX.store(k as u8, Ordering::Relaxed);
         let t0 = std::time::Instant::now();
         match decode_with_timeout(&captured.jpeg) {
@@ -321,19 +321,19 @@ fn stitch_frames(
     }
     if decoded.is_empty() {
         state::STITCH_STATE.store(5, Ordering::Relaxed);
-        super::filelog::log("decode: 0 frame décodable → NoFrames");
+        super::filelog::log("decode: 0 decodable frame → NoFrames");
         return (Err(pnex_stitcher::StitchError::NoFrames), hfov_deg);
     }
-    // HFOV ajustée à l'orientation de la 1re frame décodée (toutes
-    // identiques — même canvas).
+    // HFOV adjusted to the orientation of the 1st decoded frame (all
+    // identical — same canvas).
     let (f0w, f0h) = (decoded[0].width, decoded[0].height);
     let hfov_frame = hfov_for_orientation(hfov_deg, f0w, f0h);
     super::filelog::log(&format!(
         "hfov: capteur {hfov_deg:.1}° → frame {f0w}x{f0h} = {hfov_frame:.1}°",
     ));
 
-    // Toutes les frames ont le même (w, h) — le stitcher les recalcule
-    // individuellement, rien à faire ici.
+    // All frames have the same (w, h) — the stitcher recomputes them
+    // individually, nothing to do here.
     state::STITCH_STATE.store(3, Ordering::Relaxed);
     state::PROGRESS.store(30, Ordering::Relaxed);
     super::filelog::log(&format!(
@@ -344,14 +344,14 @@ fn stitch_frames(
     let params = Params {
         hfov_deg: hfov_frame,
         out_width: pnex_stitcher::DEVICE_OUT_WIDTH,
-        // Seuil device 0,75 : les bords de bande (rangées hautes près du
-        // pôle) sont partiellement couverts par nature — la métrique chute
-        // avec l'anneau incliné (79 % constaté) sans trou réel ; un trou
-        // azimuthal (frame manquante) coûte plusieurs % et reste détecté.
+        // Device threshold 0.75: band edges (top rows near the
+        // pole) are partially covered by nature — the metric drops
+        // with the tilted ring (79 % observed) without a real hole; an
+        // azimuthal hole (missing frame) costs several % and is still detected.
         min_band_coverage: 0.75,
-        // Aperçu device : pipeline V1 inchangé (sélection + pôles habillés).
-        // Le pipeline Quality (alignement, coutures DP, multi-bandes) tourne
-        // côté serveur, cf. worker StitchPanoramaWorker.
+        // Device preview: V1 pipeline unchanged (selection + dressed poles).
+        // The Quality pipeline (alignment, DP seams, multi-band) runs
+        // server side, see worker StitchPanoramaWorker.
         ..Params::default()
     };
     let out = stitch(&decoded, &params);

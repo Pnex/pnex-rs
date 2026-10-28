@@ -1,7 +1,7 @@
-//! Tests du domaine média (D21) : cycle upload/versioning/purge, isolation
-//! org, rôles, pagination — scoping D2, envelope D14, purge storage vérifiée.
+//! Media domain tests (D21): upload/versioning/purge cycle, org isolation,
+//! roles, pagination — D2 scoping, D14 envelope, storage purge checked.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -52,7 +52,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// The user's personal org (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -63,7 +63,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// JPEG minimal avec segment APP1 XMP (même encodage que le sniff GPano).
+/// Minimal JPEG with an APP1 XMP segment (same encoding as the GPano sniff).
 fn gpano_jpeg() -> Vec<u8> {
     let prefix = b"http://ns.adobe.com/xap/1.0/\x00";
     let xmp = r#"<rdf:Description GPano:ProjectionType="equirectangular"/>"#;
@@ -77,7 +77,7 @@ fn gpano_jpeg() -> Vec<u8> {
     out
 }
 
-/// JPEG minimal sans GPano (photo simple).
+/// Minimal JPEG without GPano (plain photo).
 fn plain_jpeg() -> Vec<u8> {
     vec![0xFF, 0xD8, 0xFF, 0xD9]
 }
@@ -124,7 +124,7 @@ async fn cycle_upload_list_detail_versions() {
         assert_eq!(created["current_version_number"], 1);
         assert_eq!(created["versions_count"], 1);
 
-        // Liste + filtres kind/search + envelope D14.
+        // List + kind/search filters + D14 envelope.
         let listed: serde_json::Value = server
             .get("/api/v1/media?kind=panorama")
             .add_header("Authorization", bearer(&env.alice))
@@ -134,8 +134,8 @@ async fn cycle_upload_list_detail_versions() {
         assert_eq!(listed["count"], 1);
         assert_eq!(listed["results"][0]["id"], asset_id);
 
-        // Liste multi-kinds (picker plan du studio : floorplan + photo) —
-        // une valeur absente de la liste ne casse pas le filtre.
+        // Multi-kind list (studio plan picker: floorplan + photo) —
+        // a value missing from the list doesn't break the filter.
         let res = upload(
             &server,
             &env.alice,
@@ -151,7 +151,7 @@ async fn cycle_upload_list_detail_versions() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 2, "kind=a,b → les deux kinds : {}", listed);
+        assert_eq!(listed["count"], 2, "kind=a,b → both kinds: {}", listed);
         let listed: serde_json::Value = server
             .get("/api/v1/media?kind=panorama,splat")
             .add_header("Authorization", bearer(&env.alice))
@@ -160,7 +160,7 @@ async fn cycle_upload_list_detail_versions() {
             .json();
         assert_eq!(
             listed["count"], 1,
-            "kind absent de la liste → exclu : {}",
+            "kind absent from the list → excluded: {}",
             listed
         );
 
@@ -170,8 +170,8 @@ async fn cycle_upload_list_detail_versions() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(listed["count"], 0, "search sans match → count 0");
-        // Détail + versions.
+        assert_eq!(listed["count"], 0, "search without a match → count 0");
+        // Detail + versions.
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/media/{asset_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -180,7 +180,7 @@ async fn cycle_upload_list_detail_versions() {
             .json();
         assert_eq!(detail["current_version_number"], 1);
 
-        // Version 2 = photo simple, devient courante.
+        // Version 2 = plain photo, becomes current.
         let res = server
             .post(&format!(
                 "/api/v1/media/{asset_id}/versions?filename=fix.jpg&content_type=image%2Fjpeg"
@@ -254,7 +254,7 @@ async fn cycle_upload_list_detail_versions() {
         let restored: serde_json::Value = res.json();
         assert_eq!(restored["current_version_number"], 1);
 
-        // GET content (version courante) = octets exacts + content-type.
+        // GET content (current version) = exact bytes + content-type.
         let res = server
             .get(&format!("/api/v1/media/{asset_id}/content"))
             .add_header("Authorization", bearer(&env.alice))
@@ -264,7 +264,7 @@ async fn cycle_upload_list_detail_versions() {
         assert_eq!(
             res.header("content-type").to_str().unwrap(),
             "image/jpeg",
-            "content-type réel de la version"
+            "actual content-type of the version"
         );
         assert_eq!(res.into_bytes(), gpano_jpeg(), "octets exacts de v1");
 
@@ -317,7 +317,7 @@ async fn isolation_org_et_derniere_version() {
             .unwrap()
             .to_string();
 
-        // Cross-org : GET/DELETE/restore → 404 masqué.
+        // Cross-org: GET/DELETE/restore → masked 404.
         for (method, path) in [
             ("GET", format!("/api/v1/media/{asset_id}")),
             ("DELETE", format!("/api/v1/media/{asset_id}")),
@@ -335,10 +335,10 @@ async fn isolation_org_et_derniere_version() {
                 .add_header("Authorization", bearer(&env.bob))
                 .add_header("X-Org-Id", org2.to_string())
                 .await;
-            assert_eq!(res.status_code(), 404, "{method} cross-org masqué");
+            assert_eq!(res.status_code(), 404, "{method} cross-org masked");
         }
 
-        // Dernière version : 409 last_version.
+        // Last version: 409 last_version.
         let res = server
             .delete(&format!("/api/v1/media/{asset_id}/versions/1"))
             .add_header("Authorization", bearer(&env.alice))
@@ -348,7 +348,7 @@ async fn isolation_org_et_derniere_version() {
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "media-last-version");
 
-        // Sans X-Org-Id → 400.
+        // Without X-Org-Id → 400.
         let res = server
             .get("/api/v1/media")
             .add_header("Authorization", bearer(&env.alice))
@@ -445,8 +445,8 @@ async fn content_etag_revalidation() {
 #[serial]
 async fn roles_et_pagination() {
     with_app(|server, env| async move {
-        // Provisionnement JIT des deux users (école tenant_isolation :
-        // un user doit exister avant l'ajout comme member).
+        // JIT provisioning of both users (as in tenant_isolation:
+        // a user must exist before being added as a member).
         for token in [&env.alice, &env.bob] {
             server
                 .get("/api/v1/user-info")
@@ -454,7 +454,7 @@ async fn roles_et_pagination() {
                 .await;
         }
 
-        // Org partagée : alice owner, bob viewer (école tenant_isolation).
+        // Shared org: alice owner, bob viewer (as in tenant_isolation).
         let created: serde_json::Value = server
             .post("/api/v1/orgs")
             .add_header("Content-Type", "application/json")
@@ -493,7 +493,7 @@ async fn roles_et_pagination() {
             .await;
         assert_eq!(res.status_code(), 200);
 
-        // Viewer : écriture interdite (upload + delete).
+        // Viewer: writes forbidden (upload + delete).
         let res = upload(
             &server,
             &env.bob,
@@ -510,7 +510,7 @@ async fn roles_et_pagination() {
             .await;
         assert_eq!(res.status_code(), 403, "viewer delete → 403 avant 404");
 
-        // Pagination limit=2 → count 3, next présent.
+        // Pagination limit=2 → count 3, next present.
         let page: serde_json::Value = server
             .get("/api/v1/media?limit=2")
             .add_header("Authorization", bearer(&env.alice))
@@ -519,7 +519,7 @@ async fn roles_et_pagination() {
             .json();
         assert_eq!(page["count"], 3);
         assert_eq!(page["results"].as_array().unwrap().len(), 2);
-        assert!(page["next"].is_string(), "lien next présent");
+        assert!(page["next"].is_string(), "next link present");
     })
     .await;
 }

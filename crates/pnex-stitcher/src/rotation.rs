@@ -1,23 +1,23 @@
-//! Outils de rotation SO(3) — pure Rust, sans dépendance.
+//! SO(3) rotation tools — pure Rust, no dependency.
 //!
-//! Sert au raffinement de pose **par les images** : à partir de
-//! correspondances de points (a dans la caméra A, b dans la caméra B), on
-//! estime la rotation relative `b ≈ R·a` (modèle « pure rotation » — le
-//! stitch 360 est une rotation autour du point nodal par hypothèse), et le
-//! solve global aligne les poses euler (yaw/pitch/roll) sur ces mesures.
+//! Used for **image-based** pose refinement: from point
+//! correspondences (a in camera A, b in camera B), we
+//! estimate the relative rotation `b ≈ R·a` ("pure rotation" model — the
+//! 360 stitch is a rotation around the nodal point by assumption), and the
+//! global solve aligns the euler poses (yaw/pitch/roll) on these measurements.
 //!
-//! Choix : méthode **quaternion de Horn** résolue par itération de
-//! puissance sur la matrice 4×4 symétrique (pas de SVD, pas de dépendance
-//! d'algèbre — nalgebra a été écartée pour garder la crate sans dep d'algèbre
-//! ; l'itération de puissance converge en <20 pas sur des correspondances
-//! réelles et la qualité est identique à la SVD pour des rotations ≤ 40°).
+//! Choice: **Horn quaternion** method solved by power
+//! iteration on the symmetric 4×4 matrix (no SVD, no algebra
+//! dependency — nalgebra was ruled out to keep the crate free of an algebra dep
+//! ; power iteration converges in <20 steps on real
+//! correspondences and quality is identical to SVD for rotations ≤ 40°).
 //!
-//! Repère : cf. [`crate::geom`] — caméra = M·monde, rangées (droite, bas,
-//! avant) ; pixel (u,v) → rayon caméra ((u−cx)/f, (v−cy)/f, 1).
+//! Frame: see [`crate::geom`] — camera = M·world, rows (right, down,
+//! forward); pixel (u,v) → camera ray ((u−cx)/f, (v−cy)/f, 1).
 
 use crate::geom::Mat3;
 
-/// Exponentielle SO(3) : axe-angle (rad) → matrice de rotation.
+/// SO(3) exponential: axis-angle (rad) → rotation matrix.
 #[must_use]
 pub fn exp_so3(w: [f32; 3]) -> Mat3 {
     let theta = crate::geom::norm(w);
@@ -28,7 +28,7 @@ pub fn exp_so3(w: [f32; 3]) -> Mat3 {
     let (s, c) = theta.sin_cos();
     let (x, y, z) = (k[0], k[1], k[2]);
     let c1 = 1.0 - c;
-    // Formule de Rodrigues.
+    // Rodrigues formula.
     Mat3([
         c + x * x * c1,
         x * y * c1 - z * s,
@@ -42,17 +42,17 @@ pub fn exp_so3(w: [f32; 3]) -> Mat3 {
     ])
 }
 
-/// Logarithme SO(3) : matrice de rotation → axe-angle (rad). Formules
-/// quaternion (angle depuis la trace, axe depuis la partie vectorielle) —
-/// exact pour θ < 180°, Continue (pas de branch cut) pour les petites
-/// corrections que le solve manipule (< 10°).
+/// SO(3) logarithm: rotation matrix → axis-angle (rad). Quaternion
+/// formulas (angle from the trace, axis from the vector part) —
+/// exact for θ < 180°, continuous (no branch cut) for the small
+/// corrections the solve handles (< 10°).
 #[must_use]
 pub fn log_so3(m: Mat3) -> [f32; 3] {
     let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = m.0;
     let cos_t = ((m00 + m11 + m22 - 1.0) * 0.5).clamp(-1.0, 1.0);
     let theta = cos_t.acos();
     if theta < 1e-6 {
-        // θ ≈ 0 : parties antisymétriques = w (au 1er ordre).
+        // θ ≈ 0: antisymmetric parts = w (to 1st order).
         [0.5 * (m21 - m12), 0.5 * (m02 - m20), 0.5 * (m10 - m01)]
     } else {
         let s = theta.sin();
@@ -61,28 +61,28 @@ pub fn log_so3(m: Mat3) -> [f32; 3] {
     }
 }
 
-/// Rotation relative estimée d'une paire : `b ≈ R·a` (repères caméra), avec
-/// ses inliers et l'erreur angulaire médiane (rad).
+/// Estimated relative rotation of a pair: `b ≈ R·a` (camera frames), with
+/// its inliers and the median angular error (rad).
 #[derive(Debug, Clone)]
 pub struct RotationEstimate {
-    /// Rotation caméra A → caméra B.
+    /// Rotation camera A → camera B.
     pub rel: Mat3,
-    /// Indices des correspondances inliers.
+    /// Indices of the inlier correspondences.
     pub inliers: Vec<usize>,
-    /// Erreur angulaire médiane des inliers (rad).
+    /// Median angular error of the inliers (rad).
     pub median_err: f32,
 }
 
-/// Méthode quaternion de Horn : minimise Σ‖bᵢ − R·aᵢ‖² (poids `w`), fermé
-/// pour rotation pure. Itération de puissance sur la matrice 4×4 symétrique
-/// — le vecteur propre dominant est le quaternion optimal.
+/// Horn quaternion method: minimises Σ‖bᵢ − R·aᵢ‖² (weights `w`), closed
+/// form for pure rotation. Power iteration on the symmetric 4×4 matrix
+/// — the dominant eigenvector is the optimal quaternion.
 #[must_use]
 pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
     let n = a.len();
     if n < 2 || b.len() != n || w.len() != n {
         return None;
     }
-    // Matrice de covariance croisée M = Σ w·b aᵀ (b = R·a).
+    // Cross-covariance matrix M = Σ w·b aᵀ (b = R·a).
     let mut m = [0.0f64; 9];
     for i in 0..n {
         let (wi, ai, bi) = (w[i] as f64, a[i], b[i]);
@@ -92,9 +92,9 @@ pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
             }
         }
     }
-    // Matrice 4×4 symétrique de Horn — ordre quaternion (w, x, y, z),
-    // M = Σ b aᵀ (vérifié à la main sur une rotation z de 30° : le vecteur
-    // propre dominant est bien (cos θ/2, 0, 0, sin θ/2)).
+    // Horn's symmetric 4×4 matrix — quaternion order (w, x, y, z),
+    // M = Σ b aᵀ (checked by hand on a 30° z rotation: the dominant
+    // eigenvector is indeed (cos θ/2, 0, 0, sin θ/2)).
     let [m00, m01, m02, m10, m11, m12, m20, m21, m22] = m;
     let tr = m00 + m11 + m22;
     let (zx, zy, zz) = (m21 - m12, m02 - m20, m10 - m01);
@@ -106,10 +106,10 @@ pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
         zy, sxy, syy, syz, //
         zz, sxz, syz, szz,
     ];
-    // Itération de puissance : vecteur propre dominant (le quaternion
-    // optimal). Départ (1,0,0,0) : converge en < 40 pas pour nos rotations
-    // < 40° ; les angles proches de 180° (hors périmètre) pourraient osciller
-    // — le RANSAC en amont garantit des rotations relatives petites.
+    // Power iteration: dominant eigenvector (the optimal
+    // quaternion). Start (1,0,0,0): converges in < 40 steps for our rotations
+    // < 40°; angles close to 180° (out of scope) could oscillate
+    // — the upstream RANSAC guarantees small relative rotations.
     let mut q = [1.0f64, 0.0, 0.0, 0.0];
     for _ in 0..500 {
         let mut next = [0.0f64; 4];
@@ -128,7 +128,7 @@ pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
         for v in next.iter_mut() {
             *v /= nrm;
         }
-        // Convergence : produit scalaire ~1 avec l'itéré précédent.
+        // Convergence: dot product ~1 with the previous iterate.
         let d = q[0] * next[0] + q[1] * next[1] + q[2] * next[2] + q[3] * next[3];
         q = next;
         if d > 1.0 - 1e-14 {
@@ -136,8 +136,8 @@ pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
         }
     }
     let [wq, x, y, z] = q;
-    // Quaternion (w,x,y,z) → matrice (unitaire par construction), f32 en
-    // sortie (précision largement suffisante : corrections ≤ 25°).
+    // Quaternion (w,x,y,z) → matrix (unit by construction), f32
+    // output (precision more than enough: corrections ≤ 25°).
     let (xx, yy, zz) = (x * x, y * y, z * z);
     let (xy, xz, yz) = (x * y, x * z, y * z);
     let (wx, wy, wz) = (wq * x, wq * y, wq * z);
@@ -155,11 +155,11 @@ pub fn horn(a: &[[f32; 3]], b: &[[f32; 3]], w: &[f32]) -> Option<Mat3> {
     ]))
 }
 
-/// RANSAC rotation pure : échantillonne des paires minimales (2
-/// correspondances non colinéaires), score par comptage d'inliers (erreur
-/// angulaire < `tol_rad`), raffine Horn sur les inliers. Les rotations
-/// relatives attendues sont < 40° (frames voisines) — bassin garanti par
-/// les poses capteur.
+/// Pure-rotation RANSAC: samples minimal pairs (2
+/// non-collinear correspondences), scores by inlier count (angular
+/// error < `tol_rad`), refines Horn on the inliers. The expected relative
+/// rotations are < 40° (neighbouring frames) — basin guaranteed by
+/// the sensor poses.
 #[must_use]
 pub fn horn_ransac(
     a: &[[f32; 3]],
@@ -175,17 +175,17 @@ pub fn horn_ransac(
     let mut rng = Rng(seed | 1);
     let mut best: Option<(usize, Mat3, Vec<usize>)> = None;
     for _ in 0..max_iters {
-        // 2 correspondances distinctes au hasard.
+        // 2 distinct random correspondences.
         let i = (rng.next_u64() as usize) % n;
         let mut j = (rng.next_u64() as usize) % n;
         while j == i {
             j = (rng.next_u64() as usize) % n;
         }
-        // Horn minimal sur 2 points (4 contraintes pour 3 DOF).
+        // Minimal Horn on 2 points (4 constraints for 3 DOF).
         let Some(rel) = horn(&[a[i], a[j]], &[b[i], b[j]], &[1.0, 1.0]) else {
             continue;
         };
-        // Comptage d'inliers par erreur angulaire.
+        // Inlier count by angular error.
         let mut inliers = Vec::new();
         for k in 0..n {
             let err = angle_err(rel, a[k], b[k]);
@@ -203,8 +203,8 @@ pub fn horn_ransac(
     if count < 3 {
         return None;
     }
-    // Raffinement Horn sur les inliers du meilleur modèle (2 passes de
-    // re-gating : affine l'erreur à ~0,1 px et purge les inliers limites).
+    // Horn refinement on the best model's inliers (2 re-gating
+    // passes: refines the error to ~0.1 px and purges borderline inliers).
     let (_, mut rel, mut inliers) = best?;
     for _ in 0..2 {
         let ones = vec![1.0f32; inliers.len()];
@@ -222,7 +222,7 @@ pub fn horn_ransac(
         rel = refined;
         inliers = new_inliers;
     }
-    // Erreur angulaire médiane des inliers (diagnostic / poids de paire).
+    // Median angular error of the inliers (diagnostic / pair weight).
     let mut errs: Vec<f32> = inliers
         .iter()
         .map(|&k| angle_err(rel, a[k], b[k]))
@@ -240,18 +240,18 @@ pub fn horn_ransac(
     })
 }
 
-/// Erreur angulaire (rad) d'une correspondance sous la rotation `r` :
-/// angle entre `b` et `r·a`.
+/// Angular error (rad) of a correspondence under rotation `r`:
+/// angle between `b` and `r·a`.
 fn angle_err(r: Mat3, a: [f32; 3], b: [f32; 3]) -> f32 {
     let ra = r.mul_vec(a);
-    // atan2(|a×b|, a·b) : exact aux petits angles (acos y perd toute
-    // précision en f32 — 1−cos(0,3°) ≈ 1,4e-5, sous l'epsilon du dot).
+    // atan2(|a×b|, a·b): exact at small angles (acos loses all
+    // precision there in f32 — 1−cos(0.3°) ≈ 1.4e-5, below the dot's epsilon).
     let s = crate::geom::norm(crate::geom::cross(ra, b));
     let c = crate::geom::dot(ra, b);
     s.atan2(c)
 }
 
-/// PRNG xorshift64* — reproductible, aucune dep.
+/// xorshift64* PRNG — reproducible, no dep.
 struct Rng(u64);
 impl Rng {
     fn next_u64(&mut self) -> u64 {
@@ -269,14 +269,14 @@ mod tests {
     use super::*;
     use crate::geom::euler_to_mat;
 
-    /// Petit bruit gaussien reproductible (Box-Muller).
+    /// Small reproducible Gaussian noise (Box-Muller).
     fn noise(rng: &mut Rng, sigma: f32) -> f32 {
         let u1 = ((rng.next_u64() >> 11) as f32 / (1u64 << 53) as f32).max(1e-9);
         let u2 = (rng.next_u64() >> 11) as f32 / (1u64 << 53) as f32;
         (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos() * sigma
     }
 
-    /// exp/log SO(3) round-trip sur un balayage d'axes et d'angles.
+    /// SO(3) exp/log round-trip over a sweep of axes and angles.
     #[test]
     fn exp_log_round_trip() {
         for axis in [
@@ -296,8 +296,8 @@ mod tests {
         }
     }
 
-    /// Horn récupère une rotation connue à partir de correspondances
-    /// propres (b = R·a) — err < 0,01°.
+    /// Horn recovers a known rotation from clean
+    /// correspondences (b = R·a) — err < 0.01°.
     #[test]
     fn horn_exact() {
         let r = euler_to_mat(23.0, -11.0, 7.0);
@@ -315,11 +315,11 @@ mod tests {
         let est = horn(&a, &b, &vec![1.0; a.len()]).expect("horn");
         let err = log_so3(est.transpose().mul_mat(&r));
         let deg = crate::geom::to_deg(crate::geom::norm(err));
-        assert!(deg < 0.01, "erreur Horn = {deg:.4}°");
+        assert!(deg < 0.01, "Horn error = {deg:.4}°");
     }
 
-    /// RANSAC sur 40 correspondances dont 30 % d'aberrantes (10° aléatoires)
-    /// : récupère la rotation à < 0,1° et isole les inliers.
+    /// RANSAC on 40 correspondences of which 30 % are outliers (random 10°)
+    /// : recovers the rotation to < 0.1° and isolates the inliers.
     #[test]
     fn ransac_robuste() {
         let mut rng = Rng(42);
@@ -332,7 +332,7 @@ mod tests {
             let n = crate::geom::norm(p);
             let p = p.map(|c| c / n);
             if k % 3 == 0 {
-                // Outlier : rotation parasite de ~10°.
+                // Outlier: spurious rotation of ~10°.
                 let rot = exp_so3([0.1, -0.12, 0.08].map(|c| c * std::f32::consts::PI / 18.0));
                 a.push(p);
                 b.push(rot.mul_vec(r.mul_vec(p)));
@@ -341,7 +341,7 @@ mod tests {
                 b.push(r.mul_vec(p));
             }
         }
-        // Bruit de capteur ±0,06° sur les inliers (répétabilité SuperPoint).
+        // Sensor noise ±0.06° on the inliers (SuperPoint repeatability).
         for (k, bk) in b.iter_mut().enumerate() {
             if k % 3 != 0 {
                 for c in 0..3 {
@@ -354,13 +354,13 @@ mod tests {
         let est = horn_ransac(&a, &b, 0.005, 400, 7).expect("ransac");
         let err = log_so3(est.rel.transpose().mul_mat(&r));
         let deg = crate::geom::to_deg(crate::geom::norm(err));
-        assert!(deg < 0.15, "erreur RANSAC = {deg:.3}°");
+        assert!(deg < 0.15, "RANSAC error = {deg:.3}°");
         assert!(est.inliers.len() >= 26, "inliers = {}", est.inliers.len());
-        assert!(est.median_err < 0.005, "err médiane = {}", est.median_err);
+        assert!(est.median_err < 0.005, "median err = {}", est.median_err);
     }
 
-    /// RANSAC : les inliers propres passent le gate, les aberrants (1,75°)
-    /// sont exclus — verrouille tolérance et comptage sur données bruitées.
+    /// RANSAC: clean inliers pass the gate, outliers (1.75°)
+    /// are excluded — locks tolerance and counting on noisy data.
     #[test]
     fn ransac_inliers_propres() {
         let mut rng = Rng(42);
@@ -407,7 +407,7 @@ mod tests {
         assert!(deg < 0.05 && est.inliers.len() >= 26);
     }
 
-    /// mul_mat : vérification basique.
+    /// mul_mat: basic check.
     #[test]
     fn mul_mat() {
         let a = euler_to_mat(10.0, 20.0, 30.0);

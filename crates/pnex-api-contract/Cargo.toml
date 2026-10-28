@@ -3,7 +3,7 @@ name = "pnex-api-contract"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Contrat d'interopérabilité app ↔ serveur PNEX — version de contrat + DTO ServerInfo (serde seul, wasm-safe)"
+description = "PNEX app ↔ server interoperability contract — contract version + ServerInfo DTO (serde only, wasm-safe)"
 
 [features]
 # OpenAPI schemas of the DTOs — backend only, never the wasm frontend.

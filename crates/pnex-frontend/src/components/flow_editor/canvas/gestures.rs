@@ -1,7 +1,7 @@
 use super::*;
 
-/// Ancre de départ du câble temporaire (0,0 si la source a disparu — cas
-/// défensif, le hit-test exclut déjà la source).
+/// Start anchor of the temporary wire (0,0 if the source is gone —
+/// defensive case, the hit-test already excludes the source).
 pub(super) fn temp_origin(graph: &pnex_core::FlowGraph, id: &str, port: usize) -> (f64, f64) {
     graph
         .nodes
@@ -19,9 +19,9 @@ pub(super) fn temp_origin(graph: &pnex_core::FlowGraph, id: &str, port: usize) -
         .unwrap_or((0.0, 0.0))
 }
 
-/// Ancre de départ du câble temporaire en câblage **inverse** : l'ancre
-/// d'entrée du nœud — rangée visée (device-write / fonction) ou milieu du
-/// bord gauche (0,0 si la source a disparu — cas défensif).
+/// Start anchor of the temporary wire in **reverse** wiring: the node's
+/// input anchor — targeted row (device-write / function) or middle of the
+/// left edge (0,0 if the source is gone — defensive case).
 pub(super) fn temp_input_origin(
     graph: &pnex_core::FlowGraph,
     id: &str,
@@ -49,8 +49,8 @@ pub(super) fn temp_input_origin(
         .unwrap_or((0.0, 0.0))
 }
 
-/// pointerdown sur une ancre d'entrée : sélectionne le nœud et amorce le
-/// câblage **inverse** (la cible survolée au relâcher devient la source).
+/// pointerdown on an input anchor: selects the node and starts
+/// **reverse** wiring (the target hovered on release becomes the source).
 pub(super) fn start_reverse_wiring(
     mut cx: EditorCx,
     node_id: String,
@@ -75,13 +75,13 @@ pub(super) fn start_reverse_wiring(
 
 // ─────────────────────────────── Gestes ───────────────────────────────
 
-/// Client (px écran) → tuple.
+/// Client (screen px) → tuple.
 pub(super) fn client_of(event: &PointerEvent) -> (f64, f64) {
     let point = event.client_coordinates();
     (point.x, point.y)
 }
 
-/// pointerdown fond : désélection + début du pan.
+/// Background pointerdown: deselect + start of the pan.
 pub(super) fn canvas_pointer_down(event: PointerEvent, mut cx: EditorCx) {
     cx.selected_node.set(None);
     cx.interaction.set(Interaction::Panning {
@@ -90,8 +90,8 @@ pub(super) fn canvas_pointer_down(event: PointerEvent, mut cx: EditorCx) {
     });
 }
 
-/// pointermove : agit selon le geste en cours (le handler vit sur le root —
-/// le pointeur peut sortir du nœud sans casser le drag).
+/// pointermove: acts according to the current gesture (the handler lives on
+/// the root — the pointer can leave the node without breaking the drag).
 pub(super) fn canvas_pointer_move(event: PointerEvent, mut cx: EditorCx) {
     let client = client_of(&event);
     match cx.interaction.cloned() {
@@ -141,7 +141,7 @@ pub(super) fn canvas_pointer_move(event: PointerEvent, mut cx: EditorCx) {
     }
 }
 
-/// pointerup : finalise le câblage éventuel, sinon retour à l'idle.
+/// pointerup: finalises any wiring, otherwise back to idle.
 pub(super) fn canvas_pointer_up(mut cx: EditorCx) {
     match cx.interaction.cloned() {
         Interaction::Wiring {
@@ -154,20 +154,20 @@ pub(super) fn canvas_pointer_up(mut cx: EditorCx) {
         } => {
             cx.update_graph(move |graph| {
                 state::add_target(graph, &from_id, port, &target);
-                // Ligne visée au drop : la plus proche **libre** (ou déjà à
-                // cette source) — deux sources posées l'une après l'autre
-                // atterrissent sur deux lignes différentes ; reprendre une
-                // ligne prise n'arrive qu'à board pleine (reprise explicite).
+                // Row targeted on drop: the nearest **free** one (or already
+                // on this source) — two sources dropped one after the other
+                // land on two different rows; taking over a used
+                // row only happens on a full board (explicit takeover).
                 if let Some(label) = state::claim_input_row(graph, &target, &from_id, cursor.1) {
                     state::set_input_target(graph, &from_id, port, &target, label);
                 }
             });
             cx.interaction.set(Interaction::Idle);
         }
-        // Câblage inverse : le geste est né sur une ancre d'entrée, la cible
-        // survolée devient la **source**. Port de sortie visé = rangée la
-        // plus proche du curseur (device-read multi-ports), 0 en mono-port ;
-        // la rangée d'entrée visée reste `pin` (device-write uniquement).
+        // Reverse wiring: the gesture was born on an input anchor, the hovered
+        // target becomes the **source**. Targeted output port = row
+        // nearest to the cursor (multi-port device-read), 0 for single-port;
+        // the targeted input row stays `pin` (device-write only).
         Interaction::Wiring {
             from_id,
             cursor,
@@ -229,7 +229,7 @@ pub(super) fn end_gesture(mut cx: EditorCx) {
     cx.interaction.set(Interaction::Idle);
 }
 
-/// Molette : zoom vers le curseur, borné (`ZOOM_MIN/MAX`).
+/// Wheel: zoom towards the cursor, bounded (`ZOOM_MIN/MAX`).
 pub(super) fn canvas_wheel(event: WheelEvent, mut cx: EditorCx) {
     event.prevent_default();
     let delta_y = match event.delta() {
@@ -243,7 +243,7 @@ pub(super) fn canvas_wheel(event: WheelEvent, mut cx: EditorCx) {
     let point = event.client_coordinates();
     let client = (point.x, point.y);
     let old = cx.zoom.cloned();
-    // Un cran ≈ 10 % — multiplicatif pour une sensation constante.
+    // One notch ≈ 10 % — multiplicative for a constant feel.
     let factor = if delta_y < 0.0 { 1.1 } else { 1.0 / 1.1 };
     let new = (old * factor).clamp(geometry::ZOOM_MIN, geometry::ZOOM_MAX);
     if (new - old).abs() < f64::EPSILON {

@@ -1,8 +1,8 @@
-//! Inspecteur de configuration du nœud sélectionné — un composant par kind.
+//! Configuration inspector of the selected node — one component per kind.
 //!
-//! Remonté par `key` à chaque changement de sélection : les champs repartent
-//! de la config du nœud, état local propre (pattern `MetadataEditor` des
-//! devices : texte local + drapeau d'invalidité pour les JSON).
+//! Remounted by `key` on every selection change: the fields start again
+//! from the node config, clean local state (devices' `MetadataEditor`
+//! pattern: local text + invalid flag for JSON).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -89,7 +89,7 @@ pub(crate) fn InspectorBody(mut cx: EditorCx, can_write: bool, flow_id: i64) -> 
     }
 }
 
-/// Formulaire propre au kind — un composant par variante (hooks isolés).
+/// Kind-specific form — one component per variant (isolated hooks).
 fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> Element {
     match &node.kind {
         FlowNodeKind::Inject { config } => rsx! {
@@ -129,8 +129,8 @@ fn kind_form(node: &FlowNode, cx: EditorCx, can_write: bool, flow_id: i64) -> El
         FlowNodeKind::HttpFetch { config } => rsx! {
             HttpFetchForm { cx, initial: config.clone(), can_write }
         },
-        // Remonté par `key` à chaque changement de fonction/version épinglée :
-        // le formulaire repart de la config (école MetadataEditor).
+        // Remounted by `key` on every change of function/pinned version:
+        // the form starts again from the config (MetadataEditor pattern).
         FlowNodeKind::PnexFunction { config } => rsx! {
             FunctionForm {
                 key: "{config.function_id}-{config.version_number}",

@@ -12,8 +12,8 @@ pub(super) struct PoiPayload {
     pub(super) metadata: Option<serde_json::Value>,
 }
 
-/// Idiome `Option<Option<T>>` : absent → `None`, `null` → `Some(None)`,
-/// valeur → `Some(Some(v))` (serde pur confond null et absent).
+/// `Option<Option<T>>` idiom: absent → `None`, `null` → `Some(None)`,
+/// value → `Some(Some(v))` (plain serde confuses null and absent).
 fn deserialize_some<'de, T, D>(d: D) -> Result<Option<T>, D::Error>
 where
     T: Deserialize<'de>,
@@ -104,7 +104,7 @@ pub(super) struct ClusterQuery {
     pub(super) has_position: Option<String>,
 }
 
-/// Filtres communs liste/cluster depuis les query params.
+/// Common list/cluster filters from the query params.
 pub(super) fn pin_filters<'a>(
     search: &'a Option<String>,
     emoji: &'a Option<String>,

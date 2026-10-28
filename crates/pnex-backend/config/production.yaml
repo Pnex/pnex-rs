@@ -23,8 +23,8 @@ server:
       fallback: "../pnex-frontend/dist/index.html"
 
 workers:
-  # Phase 6 : queue PostgreSQL. SaaS : deux déploiements du MÊME binaire —
-  # API (slim, `loco start`) et worker (fat, toolchain pio, `loco start
+  # Phase 6: PostgreSQL queue. SaaS: two deployments of the SAME binary —
+  # API (slim, `loco start`) and worker (fat, pio toolchain, `loco start
   # --worker-only`).
   mode: BackgroundQueue
 
@@ -81,26 +81,26 @@ settings:
   # the pnex-device-read flow node, cross-pod buses. Empty = boot failure.
   valkey:
     url: <%= get_env(name="VALKEY_URL", default="") %>
-  # Notifications (D49–D54) — jeton de service backend ↔ runtime. À poser
-  # impérativement en prod (secret d'instance) ; vide ⇒ canal websocket
-  # fail-closed (401 sur /internal/notify/deliver).
+  # Notifications (D49–D54) — backend ↔ runtime service token. Must
+  # be set in prod (instance secret); empty ⇒ websocket channel
+  # fail-closed (401 on /internal/notify/deliver).
   notifications:
     internal_token: <%= get_env(name="PNEX_NOTIFY_INTERNAL_TOKEN", default="") %>
     deliver_url: <%= get_env(name="PNEX_NOTIFY_DELIVER_URL", default="http://127.0.0.1:5150/internal/notify/deliver") %>
-  # Stitching serveur (Take 360 V2) — assemblage HD des prises 360° dans le
-  # worker `stitch_panorama`. Les frames transitent par le MediaStore
-  # (settings.media, aucune config de stockage propre). enabled=false :
-  # POST /stitch-jobs répond 503 (kill-switch).
+  # Server-side stitching (Take 360 V2) — HD assembly of 360° takes in the
+  # `stitch_panorama` worker. Frames go through the MediaStore
+  # (settings.media, no storage config of its own). enabled=false:
+  # POST /stitch-jobs answers 503 (kill-switch).
   stitch:
     enabled: <%= get_env(name="PNEX_STITCH_ENABLED", default="true") %>
-    # Largeur du panorama HD (hauteur = /2) — CPU-bound minutes à 4096.
+    # HD panorama width (height = /2) — CPU-bound, minutes at 4096.
     out_width: <%= get_env(name="PNEX_STITCH_OUT_WIDTH", default="4096") %>
-    # Modèles ONNX de pose (SuperPoint + LightGlue) — absents → repli NCC.
+    # ONNX pose models (SuperPoint + LightGlue) — absent → NCC fallback.
     models_dir: <%= get_env(name="PNEX_STITCH_MODELS_DIR", default="deploy/models") %>
-    # Nombre de stitches simultanés (knob fixe, décision 2026-09-10) :
-    # RPi 8 Go → 2 (l'env surcharge ; les builds firmware partagent la queue).
+    # Number of concurrent stitches (fixed knob, decision 2026-09-10):
+    # RPi 8 GB → 2 (env overrides; firmware builds share the queue).
     max_concurrent: <%= get_env(name="PNEX_STITCH_MAX_CONCURRENT", default="2") %>
-  # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
+  # Phase 5 ingestion (default values when absent — see services/settings.rs)
   ingestion:
     silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
     reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>

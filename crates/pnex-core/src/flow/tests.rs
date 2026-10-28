@@ -80,7 +80,7 @@ fn graph_serde_roundtrip() {
 
 #[test]
 fn graph_minimal_form_deserialise() {
-    // Forme minimale (champs optionnels absents) acceptée.
+    // Minimal form (optional fields absent) accepted.
     let g: FlowGraph =
         serde_json::from_str(r#"{"nodes":[{"id":"n1","kind":"debug","config":{}}]}"#).unwrap();
     assert_eq!(g.nodes.len(), 1);
@@ -228,7 +228,7 @@ fn validate_http_fetch_codes_par_violation() {
 
 #[test]
 fn value_node_validation_et_projection() {
-    // Static sans valeur : violation guidée (école device/calc/metric).
+    // Static without a value: guided violation (device/calc/metric school).
     let node = |value: serde_json::Value| FlowNode {
         id: "v1".into(),
         name: None,
@@ -260,11 +260,11 @@ fn value_node_validation_et_projection() {
     assert!(codes_of(&n).is_empty(), "{:?}", codes_of(&n));
 
     // Serde roundtrip.
-    let raw = serde_json::to_string(&n).expect("sérialisable");
+    let raw = serde_json::to_string(&n).expect("serializable");
     let back: FlowNode = serde_json::from_str(&raw).expect("roundtrip");
     assert_eq!(back, n);
 
-    // Projection : entrée pnex-value estampillée (flow/version).
+    // Projection: pnex-value entry stamped (flow/version).
     let meta = FlowArtifactMeta {
         flow_id: 3,
         version_number: 7,
@@ -295,7 +295,7 @@ fn validate_json_merge_cle_defaut_requise() {
             },
         },
     };
-    // Clé vide : violation guidée (école value_static_missing).
+    // Empty key: guided violation (value_static_missing school).
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node("  ")],
     })
@@ -306,12 +306,12 @@ fn validate_json_merge_cle_defaut_requise() {
         codes.contains(&"merge_default_key_missing".to_string()),
         "{codes:?}"
     );
-    // Clé renseignée : aucune violation.
+    // Key filled in: no violation.
     assert!(validate_graph(&FlowGraph {
         nodes: vec![node("valeur")]
     })
     .is_empty());
-    // Le split n'a rien à valider : toujours propre.
+    // The split has nothing to validate: always clean.
     let split = FlowNode {
         id: "s1".into(),
         name: None,
@@ -327,20 +327,20 @@ fn validate_json_merge_cle_defaut_requise() {
 
 #[test]
 fn json_split_merge_serde_defaults() {
-    // Graphs sauvegardés avant l'ajout des champs : `{}` et
-    // `{"default_key":…}` désérialisent toujours (serde default) —
-    // sinon tout l'artefact devenait `graph_unreadable` au deploy.
+    // Graphs saved before the fields were added: `{}` and
+    // `{"default_key":…}` still deserialize (serde default) —
+    // otherwise the whole artifact became `graph_unreadable` at deploy.
     let split: JsonSplitConfig = serde_json::from_str("{}").expect("split legacy");
     assert!(split.keys.is_empty());
     let merge: JsonMergeConfig =
         serde_json::from_str(r#"{"default_key":"value"}"#).expect("merge legacy");
     assert!(merge.inputs.is_empty());
-    // Round-trip complet avec champs peuplés (skip si vide).
+    // Full round-trip with populated fields (skip if empty).
     let split = JsonSplitConfig {
         keys: vec!["a".into(), "b".into()],
         auto: true,
     };
-    let raw = serde_json::to_string(&split).expect("sérialisation");
+    let raw = serde_json::to_string(&split).expect("serialization");
     assert_eq!(
         serde_json::from_str::<JsonSplitConfig>(&raw).expect("roundtrip"),
         split
@@ -349,7 +349,7 @@ fn json_split_merge_serde_defaults() {
         default_key: "value".into(),
         inputs: vec!["temp".into(), "hum".into()],
     };
-    let raw = serde_json::to_string(&merge).expect("sérialisation");
+    let raw = serde_json::to_string(&merge).expect("serialization");
     assert_eq!(
         serde_json::from_str::<JsonMergeConfig>(&raw).expect("roundtrip"),
         merge
@@ -358,8 +358,8 @@ fn json_split_merge_serde_defaults() {
 
 #[test]
 fn validate_json_split_port_hors_plage() {
-    // Deux clés déclarées = ports 0-1 ; les cibles doivent exister
-    // (sinon dangling_target parasite le comptage des violations).
+    // Two declared keys = ports 0-1; the targets must exist
+    // (otherwise dangling_target pollutes the violation count).
     let node = |outputs: Vec<FlowWiring>| FlowNode {
         id: "s1".into(),
         name: None,
@@ -374,7 +374,7 @@ fn validate_json_split_port_hors_plage() {
         },
     };
     let sink = node_display("x", &[]);
-    // Ports 0 et 1 câblés : propre.
+    // Ports 0 and 1 wired: clean.
     let clean = node(vec![
         FlowWiring {
             port: 0,
@@ -389,7 +389,7 @@ fn validate_json_split_port_hors_plage() {
         nodes: vec![clean, sink.clone()],
     })
     .is_empty());
-    // Port 2 câblé : hors plage (câble mort au runtime).
+    // Port 2 wired: out of range (dead wire at runtime).
     let over = node(vec![FlowWiring {
         port: 2,
         targets: vec!["x".into()],
@@ -421,7 +421,7 @@ fn validate_json_merge_entrees_nommees() {
             },
         },
     };
-    // Nom vide : violation dédiée.
+    // Empty name: dedicated violation.
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node(vec!["temp".into(), "  ".into()], vec![])],
     })
@@ -432,7 +432,7 @@ fn validate_json_merge_entrees_nommees() {
         codes.contains(&"merge_input_name_missing".to_string()),
         "{codes:?}"
     );
-    // Doublon : violation dédiée.
+    // Duplicate: dedicated violation.
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node(vec!["temp".into(), "temp".into()], vec![])],
     })
@@ -443,7 +443,7 @@ fn validate_json_merge_entrees_nommees() {
         codes.contains(&"merge_input_duplicate".to_string()),
         "{codes:?}"
     );
-    // Annotation orpheline (ligne supprimée) : violation dédiée.
+    // Orphan annotation (row deleted): dedicated violation.
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![node(
             vec!["temp".into()],
@@ -461,7 +461,7 @@ fn validate_json_merge_entrees_nommees() {
         codes.contains(&"merge_input_annotation_unknown".to_string()),
         "{codes:?}"
     );
-    // Cas propre : annotations alignées sur les déclarations.
+    // Clean case: annotations aligned with the declarations.
     assert!(validate_graph(&FlowGraph {
         nodes: vec![node(
             vec!["temp".into(), "hum".into()],
@@ -484,9 +484,9 @@ fn validate_json_merge_entrees_nommees() {
 
 #[test]
 fn validate_json_merge_cable_nu_rejete() {
-    // Un fil nu (source câblée sans annotation) sur un merge avec
-    // entrées nommées : violation — sinon le rendu « choisirait » une
-    // rangée à la place du câblage réel (fil qui saute de port).
+    // A bare wire (wired source without annotation) on a merge with
+    // named inputs: violation — otherwise the render would "pick" a
+    // row instead of the real wiring (wire jumping ports).
     let merge = |annotations: Vec<FlowInputWiring>| FlowNode {
         id: "m1".into(),
         name: None,
@@ -505,7 +505,7 @@ fn validate_json_merge_cable_nu_rejete() {
         n.outputs = vec![FlowWiring { port: 0, targets }];
         n
     };
-    // Fil nu (i1 câblé, aucune annotation) : violation dédiée.
+    // Bare wire (i1 wired, no annotation): dedicated violation.
     let codes: Vec<String> = validate_graph(&FlowGraph {
         nodes: vec![wired(vec!["m1".into()]), merge(vec![])],
     })
@@ -516,7 +516,7 @@ fn validate_json_merge_cable_nu_rejete() {
         codes.contains(&"merge_wire_unbound".to_string()),
         "{codes:?}"
     );
-    // Même fil annoté sur « temp » : propre.
+    // Same wire annotated on "temp": clean.
     assert!(validate_graph(&FlowGraph {
         nodes: vec![
             wired(vec!["m1".into()]),
@@ -528,8 +528,8 @@ fn validate_json_merge_cable_nu_rejete() {
         ],
     })
     .is_empty());
-    // Merge sans lignes déclarées : le fil nu est le contrat legacy
-    // (clé par défaut) — pas de violation.
+    // Merge without declared rows: the bare wire is the legacy contract
+    // (default key) — no violation.
     let legacy = FlowNode {
         id: "m2".into(),
         name: None,
@@ -567,7 +567,7 @@ fn http_fetch_serde_roundtrip_modes_taggues() {
     }"#;
     let n: FlowNode = serde_json::from_str(raw).unwrap();
     let FlowNodeKind::HttpFetch { config } = &n.kind else {
-        panic!("variante attendue");
+        panic!("expected variant");
     };
     assert_eq!(config.method, HttpFetchMethod::Post);
     assert_eq!(config.auth, HttpFetchAuth::Bearer { token: "t".into() });
@@ -613,7 +613,7 @@ fn projection_http_fetch_champs_aplatis() {
         .unwrap()
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("pnex-http-fetch"))
-        .expect("entrée pnex-http-fetch absente de la projection");
+        .expect("pnex-http-fetch entry missing from the projection");
     assert_eq!(
         node.get("url").and_then(|v| v.as_str()),
         Some("https://api.exemple.dev/data")
@@ -642,11 +642,11 @@ fn projection_http_fetch_champs_aplatis() {
 #[test]
 fn validate_rejects_structure_errors() {
     let mut g = simple_graph();
-    g.nodes.push(node_inject("n1")); // dupliqué
+    g.nodes.push(node_inject("n1")); // duplicate
     g.nodes[1].outputs.push(FlowWiring {
         port: 1,
         targets: vec!["ghost".into()],
-    }); // cible inconnue
+    }); // unknown target
     let v = validate_graph(&g);
     let codes: Vec<&str> = v.iter().map(|x| x.code.as_str()).collect();
     assert!(codes.contains(&"duplicate_node_id"), "{v:?}");
@@ -733,8 +733,8 @@ fn validate_notify_rejete_config_incomplete() {
 
 #[test]
 fn notify_serde_roundtrip_minimal() {
-    // Forme minimale (tous champs par défaut absents) acceptée —
-    // make_node de l'éditeur émet exactement cette config.
+    // Minimal form (all default fields absent) accepted —
+    // the editor's make_node emits exactly this config.
     let n: FlowNode =
         serde_json::from_str(r#"{"id":"n1","kind":"pnex_notify","config":{"template_id":null}}"#)
             .unwrap();
@@ -773,8 +773,8 @@ fn projection_notify_refs_sans_snapshot() {
     assert_eq!(out[1]["strict"], true);
     assert_eq!(out[1]["vars"]["seuil"], "{{ msg.value }}");
     assert_eq!(out[1]["wires"], json!([["pnexflow12_n3"]]));
-    // Pas de snapshot dans la projection : il est estampé au deploy par
-    // le backend (reproject_candidate).
+    // No snapshot in the projection: it is stamped at deploy by
+    // the backend (reproject_candidate).
     assert!(out[1].get("pnex_notify_channels").is_none());
 }
 
@@ -807,9 +807,9 @@ fn projection_notify_stample_vars_et_anti_spam() {
         notify["anti_spam"],
         json!({"max_msgs": 3, "window_secs": 600})
     );
-    // Nœud sans stamp ni règle (vieux graphes) : clés projetées vides —
-    // json! ne skip pas, mais `[`]/`null` sont équivalents à l'absence
-    // pour le runtime (serde default).
+    // Node without stamp or rule (old graphs): projected keys empty —
+    // json! does not skip, but `[`]/`null` are equivalent to absence
+    // for the runtime (serde default).
     let bare = to_red_flows_json(
         &FlowGraph {
             nodes: vec![node_notify("n1", &[], NotifyNodeConfig::default())],
@@ -823,9 +823,9 @@ fn projection_notify_stample_vars_et_anti_spam() {
 
 #[test]
 fn projection_notify_tagger_sur_var_template() {
-    // inject i1 → notify n1, fil annoté sur la var stampée « seuil » :
-    // la projection doit insérer un tagger (topic = « seuil ») entre les
-    // deux, même sémantique que les ancres d'entrée fonction.
+    // inject i1 → notify n1, wire annotated on the stamped var "seuil":
+    // the projection must insert a tagger (topic = "seuil") between the
+    // two, same semantics as the function input anchors.
     let meta = FlowArtifactMeta {
         flow_id: 34,
         version_number: 2,
@@ -881,7 +881,7 @@ fn projection_notify_tagger_sur_var_template() {
         .expect("tagger absent");
     assert_eq!(tagger["wires"][0][0], format!("{tab}_n1"));
     assert_eq!(tagger["pnex_node_id"], "n1");
-    // Le nœud notify est bien projeté (pas de snapshot, école D50).
+    // The notify node is projected (no snapshot, D50 school).
     let notify = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("pnex-notify"))
@@ -1041,8 +1041,8 @@ fn validate_notify_anti_spam_rejete_zero() {
         bad.iter().any(|c| c.code == "notify_anti_spam_window"),
         "{bad:?}"
     );
-    // Règle valide : aucune violation anti-spam (les violations
-    // notify_* restantes visent d'autres nœuds absents ici).
+    // Valid rule: no anti-spam violation (the remaining notify_*
+    // violations target other nodes absent here).
     let ok = codes_of(crate::AntiSpamConfig {
         max_msgs: 3,
         window_secs: 60,
@@ -1070,7 +1070,7 @@ fn projection_flows_json_snapshot() {
             "pnex_o2_org": "o2_7",
         })
     );
-    // inject : intervalle projeté, payload JSON encodé en chaîne.
+    // inject: projected interval, JSON payload encoded as a string.
     assert_eq!(out[1]["type"], "inject");
     assert_eq!(out[1]["repeat"], 1.0);
     assert_eq!(out[1]["payloadType"], "date");
@@ -1080,25 +1080,25 @@ fn projection_flows_json_snapshot() {
     assert_eq!(out[2]["pnex_flow_id"], 12);
     assert_eq!(out[2]["pnex_version"], 3);
     assert_eq!(out[2]["z"], "pnexflow12");
-    // debug : câblage vide, capture payload par défaut.
+    // debug: empty wiring, captures payload by default.
     assert_eq!(out[3]["type"], "debug");
     assert_eq!(out[3]["complete"], "payload");
-    // wires : n2 (port 0) → n3 ; n3 sans port de sortie → tableau vide
-    // (les ids cibles sont préfixés par tab — uniques dans l'artefact).
+    // wires: n2 (port 0) → n3; n3 without output port → empty array
+    // (target ids are prefixed by tab — unique within the artifact).
     assert_eq!(out[2]["wires"], json!([["pnexflow12_n3"]]));
     assert_eq!(out[3]["wires"], json!([]));
-    // position reportée.
+    // position carried over.
     assert_eq!(out[2]["x"], 200.0);
     assert_eq!(out[2]["name"], "query");
 }
 
 #[test]
 fn projection_rende_les_ids_uniques_entre_flows() {
-    // Non-régression : l'éditeur génère des ids courts par flow ("n1"…),
-    // deux flows déployés peuvent donc porter les mêmes. Avant préfixage,
-    // l'artefact concaténé contenait des ids en collision et le runtime
-    // refusait TOUT l'artefact (« Referenced node not found ») — un flow
-    // pouvait tuer tous les autres.
+    // Non-regression: the editor generates short ids per flow ("n1"…),
+    // so two deployed flows can carry the same ones. Before prefixing,
+    // the concatenated artifact contained colliding ids and the runtime
+    // rejected the WHOLE artifact ("Referenced node not found") — one flow
+    // could kill all the others.
     let meta = |flow_id| FlowArtifactMeta {
         flow_id,
         version_number: 1,
@@ -1115,9 +1115,13 @@ fn projection_rende_les_ids_uniques_entre_flows() {
     ids.sort();
     let total = ids.len();
     ids.dedup();
-    assert_eq!(ids.len(), total, "ids dupliqués dans l'artefact concaténé");
+    assert_eq!(
+        ids.len(),
+        total,
+        "duplicate ids in the concatenated artifact"
+    );
 
-    // Les cibles de wires suivent le même préfixe.
+    // Wire targets follow the same prefix.
     let b = to_red_flows_json(&simple_graph(), &meta(13));
     assert_eq!(b[2]["wires"], json!([["pnexflow13_n3"]]));
 }
@@ -1292,10 +1296,10 @@ fn projection_device_write_commands_are_routed_anchors() {
 
 #[test]
 fn validate_calc_casse_des_variables_device() {
-    // Non-régression : une variable calc qui ne diffère d'une clé device
-    // du graphe que par la casse est signalée (`proud_puffin_a0` vs
-    // `proud_puffin_A0`) — l'erreur ne devait sinon apparaître qu'au
-    // runtime (calc rejeté → display/metric en aval muets).
+    // Non-regression: a calc variable that differs from a device key
+    // of the graph only by case is flagged (`proud_puffin_a0` vs
+    // `proud_puffin_A0`) — otherwise the error only showed up at
+    // runtime (calc rejected → downstream display/metric silent).
     let g = FlowGraph {
         nodes: vec![
             node_inject("n1"),
@@ -1320,7 +1324,7 @@ fn validate_calc_casse_des_variables_device() {
         "{violations:?}"
     );
 
-    // Bonne casse (constantes et autres identifiants non concernés) : vert.
+    // Correct case (constants and other identifiers unaffected): green.
     let g = FlowGraph {
         nodes: vec![
             node_inject("n1"),
@@ -1344,7 +1348,7 @@ fn validate_calc_casse_des_variables_device() {
 
 #[test]
 fn validate_coolprop_node() {
-    // Config vide → les codes attendus.
+    // Empty config → the expected codes.
     let mut g = FlowGraph {
         nodes: vec![FlowNode {
             id: "cp1".into(),
@@ -1366,7 +1370,7 @@ fn validate_coolprop_node() {
         assert!(codes.contains(&expected.to_string()), "{codes:?}");
     }
 
-    // Config complète + déclencheur → vert.
+    // Full config + trigger → green.
     g.nodes = vec![
         node_inject("n1"),
         FlowNode {
@@ -1536,7 +1540,7 @@ fn validate_device_read_write() {
     let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
     assert!(codes.contains(&"device_no_pins".to_string()), "{codes:?}");
 
-    // Read : complet + déclencheur → vert.
+    // Read: complete + trigger → green.
     let g = FlowGraph {
         nodes: vec![
             node_inject("n1"),
@@ -1545,7 +1549,7 @@ fn validate_device_read_write() {
     };
     assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
 
-    // Read : slug invalide + pin vide + pin dupliquée + fenêtre hors bornes.
+    // Read: invalid slug + empty pin + duplicate pin + window out of bounds.
     let g = FlowGraph {
         nodes: vec![FlowNode {
             id: "d1".into(),
@@ -1572,7 +1576,7 @@ fn validate_device_read_write() {
         assert!(codes.contains(&code.to_string()), "{codes:?}");
     }
 
-    // Write : pins vides → device_no_pins ; complet → vert.
+    // Write: empty pins → device_no_pins; complete → green.
     let g = FlowGraph {
         nodes: vec![node_device_write("w1", "fuzzy-zebra", &[])],
     };
@@ -1587,8 +1591,8 @@ fn validate_device_read_write() {
 
 #[test]
 fn write_pin_en_conflit_avec_carte_regulation() {
-    // Un device-write et une carte régulation sur la même (device, pin)
-    // se battraient pour la sortie — même unicité qu'entre cartes.
+    // A device-write and a control card on the same (device, pin)
+    // would fight over the output — same uniqueness as between cards.
     let g = FlowGraph {
         nodes: vec![
             node_device_write("w1", "fuzzy-zebra", &["relais_1"]),
@@ -1711,7 +1715,7 @@ fn device_write_pin_refs_of_collects_write_sources() {
 
 #[test]
 fn calc_et_metric_valides() {
-    // Calc : expression invalide rejetée, variables tolérées.
+    // Calc: invalid expression rejected, variables tolerated.
     let g = FlowGraph {
         nodes: vec![FlowNode {
             id: "c1".into(),
@@ -1748,7 +1752,7 @@ fn calc_et_metric_valides() {
     };
     assert!(validate_graph(&g).is_empty());
 
-    // Metric : nom requis.
+    // Metric: name required.
     let g = FlowGraph {
         nodes: vec![FlowNode {
             id: "m1".into(),
@@ -1820,7 +1824,7 @@ fn projection_noeuds_phase6_estampilles() {
     assert_eq!(out[1]["window_secs"], 60.0);
     assert_eq!(out[1]["device_id"], "fuzzy-zebra");
     assert_eq!(out[1]["pins"], json!(["D1"]));
-    // Un port par pin + le port « tout » : wires paddés à n+1.
+    // One port per pin + the "all" port: wires padded to n+1.
     assert_eq!(out[1]["wires"].as_array().unwrap().len(), 2);
     assert_eq!(out[2]["type"], "pnex-calc");
     assert_eq!(out[2]["expression"], "a * 2");
@@ -1831,12 +1835,12 @@ fn projection_noeuds_phase6_estampilles() {
 
 #[test]
 fn display_sans_config_est_valide() {
-    // La sonde n'a aucune config saisie : défaut → graphe vert.
+    // The probe has no user config: default → green graph.
     let g = FlowGraph {
         nodes: vec![node_inject("n1"), node_display("n2", &[])],
     };
     assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
-    // Forme minimale (config absente) acceptée par le désérialiseur.
+    // Minimal form (config absent) accepted by the deserializer.
     let g: FlowGraph = serde_json::from_str(r#"{"nodes":[{"id":"n1","kind":"display"}]}"#).unwrap();
     assert!(matches!(g.nodes[0].kind, FlowNodeKind::Display { .. }));
 }
@@ -1870,21 +1874,21 @@ fn projection_noeud_display_estampille() {
     );
     assert_eq!(out[0]["id"], "pnexflow12");
     assert_eq!(out[2]["type"], "pnex-display");
-    // L'id canvas brut est la clé de rattachement panneau/badge.
+    // The raw canvas id is the panel/badge attachment key.
     assert_eq!(out[2]["pnex_node_id"], "n3");
     assert_eq!(out[2]["pnex_flow_id"], 12);
     assert_eq!(out[2]["pnex_version"], 3);
     assert_eq!(out[2]["pnex_org_id"], 7);
     assert_eq!(out[2]["z"], "pnexflow12");
     assert_eq!(out[2]["wires"], json!([["pnexflow12_n4"]]));
-    // Le debug builtin reste un nœud builtin (pas de stamp custom requis).
+    // The builtin debug stays a builtin node (no custom stamp required).
     assert_eq!(out[3]["type"], "debug");
 }
 
 #[test]
 fn projection_debug_tosidebar_toujours_vrai() {
-    // Garde-fou panneau : sans `tosidebar`, le nœud debug builtin ne
-    // publie jamais sur le canal — l'éditeur en dépend.
+    // Panel safeguard: without `tosidebar`, the builtin debug node never
+    // publishes on the channel — the editor depends on it.
     let g = FlowGraph {
         nodes: vec![FlowNode {
             id: "n2".into(),
@@ -1912,12 +1916,12 @@ fn projection_debug_tosidebar_toujours_vrai() {
 
 #[test]
 fn contrats_payload_phase6() {
-    // Sortie device / entrée calc : objet numérique, bool → 1/0.
+    // Device output / calc input: numeric object, bool → 1/0.
     let payload = json!({"cap_1_D1": 21.5, "cap_2_D0": true});
     let map = numeric_map_from_payload(Some(&payload), "calc").unwrap();
     assert_eq!(map["cap_1_D1"], 21.5);
     assert_eq!(map["cap_2_D0"], 1.0);
-    // Non-objet → rejet typé.
+    // Non-object → typed rejection.
     assert_eq!(
         numeric_map_from_payload(Some(&json!(42)), "calc")
             .unwrap_err()
@@ -1933,7 +1937,7 @@ fn contrats_payload_phase6() {
     let map = numeric_map_from_payload(Some(&rich), "calc").unwrap();
     assert_eq!(map.len(), 1);
     assert_eq!(map["count"], 2.0);
-    // Entrée metric : nombre, bool, sinon rejet.
+    // Metric input: number, bool, otherwise rejection.
     assert_eq!(metric_value_from_payload(Some(&json!(21.5))).unwrap(), 21.5);
     assert_eq!(metric_value_from_payload(Some(&json!(true))).unwrap(), 1.0);
     assert_eq!(
@@ -1967,7 +1971,7 @@ fn dto_create_flow_deserialise() {
     assert_eq!(c.device_id, Some(3));
     assert_eq!(validate_graph(&c.graph).len(), 0);
 
-    // Concurrence optimiste : UpdateFlow porte la version attendue.
+    // Optimistic concurrency: UpdateFlow carries the expected version.
     let u: UpdateFlow =
         serde_json::from_str(r#"{"expected_version_number": 2, "graph": {"nodes": []}}"#).unwrap();
     assert_eq!(u.expected_version_number, 2);
@@ -2021,7 +2025,7 @@ fn node_reg_pid(id: &str, patch: impl FnOnce(&mut RegPidConfig)) -> FlowNode {
 
 #[test]
 fn reg_configs_serde_roundtrip_et_defauts() {
-    // Forme minimale : les champs secondaires portent leurs défauts.
+    // Minimal form: secondary fields carry their defaults.
     let g: FlowGraph = serde_json::from_str(
         r#"{"nodes":[{"id":"r1","kind":"reg_tt_heat","config":{"device_id":"d1","sensor_pin":"A0","actuator_pin":"D1","setpoint":19.0,"deadband":0.5}}]}"#,
     )
@@ -2036,7 +2040,7 @@ fn reg_configs_serde_roundtrip_et_defauts() {
     let back: FlowGraph = serde_json::from_str(&json).unwrap();
     assert_eq!(back, g);
 
-    // PID + extraction unifiée (les 3 kinds) + kind_str.
+    // PID + unified extraction (the 3 kinds) + kind_str.
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2059,7 +2063,7 @@ fn reg_configs_serde_roundtrip_et_defauts() {
 
 #[test]
 fn validate_reg_rejette_les_configs_invalides() {
-    // Liaison incomplète + pins égaux.
+    // Incomplete binding + equal pins.
     let g = FlowGraph {
         nodes: vec![node_reg_tt("r1", true, |c| {
             c.device_id = "deux mots".into();
@@ -2072,14 +2076,14 @@ fn validate_reg_rejette_les_configs_invalides() {
         assert!(codes.contains(&code.to_string()), "{codes:?}");
     }
 
-    // Pin capteur manquant.
+    // Sensor pin missing.
     let g = FlowGraph {
         nodes: vec![node_reg_tt("r1", false, |c| c.sensor_pin = "  ".into())],
     };
     let codes: Vec<String> = validate_graph(&g).iter().map(|x| x.code.clone()).collect();
     assert!(codes.contains(&"reg_pin_missing".to_string()), "{codes:?}");
 
-    // Deadband nul + sample trop court + timeout incohérent.
+    // Zero deadband + sample too short + inconsistent timeout.
     let g = FlowGraph {
         nodes: vec![node_reg_tt("r1", true, |c| {
             c.deadband = 0.0;
@@ -2096,7 +2100,7 @@ fn validate_reg_rejette_les_configs_invalides() {
         assert!(codes.contains(&code.to_string()), "{codes:?}");
     }
 
-    // PID : gain négatif + NaN + cycle hors bornes.
+    // PID: negative gain + NaN + cycle out of bounds.
     let g = FlowGraph {
         nodes: vec![node_reg_pid("r1", |c| {
             c.kp = -1.0;
@@ -2109,7 +2113,7 @@ fn validate_reg_rejette_les_configs_invalides() {
         assert!(codes.contains(&code.to_string()), "{codes:?}");
     }
 
-    // Configs valides (heat, cool, pid) → vert, sorties distinctes.
+    // Valid configs (heat, cool, pid) → green, distinct outputs.
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2123,8 +2127,8 @@ fn validate_reg_rejette_les_configs_invalides() {
 
 #[test]
 fn validate_reg_unicite_actuateur_graphe_entier() {
-    // Deux cartes sur la même sortie → conflit (même via 2 devices de
-    // labels différents ? non — même device, même pin).
+    // Two cards on the same output → conflict (even via 2 devices with
+    // different labels? no — same device, same pin).
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2137,7 +2141,7 @@ fn validate_reg_unicite_actuateur_graphe_entier() {
         "{codes:?}"
     );
 
-    // Sorties différentes → pas de conflit.
+    // Different outputs → no conflict.
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2146,7 +2150,7 @@ fn validate_reg_unicite_actuateur_graphe_entier() {
     };
     assert!(validate_graph(&g).is_empty(), "{:?}", validate_graph(&g));
 
-    // La casse du label est normalisée pour la détection.
+    // Label case is normalized for detection.
     let g = FlowGraph {
         nodes: vec![
             node_reg_tt("r1", true, |_| {}),
@@ -2178,7 +2182,7 @@ fn projection_reg_estampille() {
             o2_org: String::new(),
         },
     );
-    // TT chauffage : type custom + liaison + paramètres + stamps.
+    // TT heating: custom type + binding + parameters + stamps.
     assert_eq!(out[1]["type"], "pnex-reg-tt-heat");
     assert_eq!(out[1]["device_id"], "serre-1");
     assert_eq!(out[1]["sensor_pin"], "A0");
@@ -2192,7 +2196,7 @@ fn projection_reg_estampille() {
     assert_eq!(out[1]["pnex_version"], 4);
     assert_eq!(out[1]["pnex_org_id"], 7);
     assert_eq!(out[1]["z"], "pnexflow21");
-    // Clim : type distinct, même config.
+    // Cooling: distinct type, same config.
     assert_eq!(out[2]["type"], "pnex-reg-tt-cool");
     assert_eq!(out[2]["actuator_pin"], "D2");
     assert_eq!(out[2]["deadband"], 0.5);
@@ -2205,7 +2209,7 @@ fn projection_reg_estampille() {
     assert_eq!(out[3]["cycle_time_secs"], 10);
 }
 
-// ────────────────── Nœuds fonction (registre « Fonctions ») ──────────────────
+// ────────────────── Function nodes ("Functions" registry) ──────────────────
 
 use crate::functions::{FunctionInput, FunctionOutput, FunctionSnapshot, FunctionType};
 
@@ -2299,21 +2303,21 @@ fn projection_fonction_js_noeud_vendor() {
     let node = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
-        .expect("nœud function vendor absent");
+        .expect("vendor function node missing");
     assert_eq!(node["outputs"], 2);
     let func = node["func"].as_str().expect("func textuel");
     assert!(
         func.contains("function handle(inputs, msg)"),
         "code user inline"
     );
-    assert!(func.contains("__pnex_inputs"), "objet inputs généré");
-    assert!(func.contains("__pnex_get"), "helpers embarqués");
+    assert!(func.contains("__pnex_inputs"), "generated inputs object");
+    assert!(func.contains("__pnex_get"), "embedded helpers");
     assert_eq!(node["pnex_function_id"], 9);
     assert_eq!(node["pnex_function_version"], 2);
     assert_eq!(node["pnex_node_id"], "f1");
-    // Deux ports déclarés, un seul câblé → wires padés à 2.
+    // Two declared ports, only one wired → wires padded to 2.
     let wires = node["wires"].as_array().unwrap();
-    assert_eq!(wires.len(), 2, "wires padées au nb de ports");
+    assert_eq!(wires.len(), 2, "wires padded to the port count");
     assert_eq!(wires[0], serde_json::json!(["pnexflow21_d1"]));
     assert_eq!(wires[1], serde_json::json!([]));
 }
@@ -2333,7 +2337,7 @@ fn projection_fonction_starlark() {
     let node = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("pnex-starlark"))
-        .expect("nœud pnex-starlark absent");
+        .expect("pnex-starlark node missing");
     assert_eq!(node["code"], "def handle(inputs, msg):");
     assert_eq!(node["pnex_function_id"], 9);
     assert_eq!(node["pnex_function_version"], 2);
@@ -2352,13 +2356,13 @@ fn projection_fonction_introuvable_comment_noop() {
     let node = out
         .iter()
         .find(|e| e.get("type") == Some(&serde_json::json!("comment")))
-        .expect("entrée comment absente");
+        .expect("comment entry missing");
     assert!(
         node["name"]
             .as_str()
             .unwrap()
-            .contains("fonction introuvable"),
-        "nom du comment"
+            .contains("function not found"),
+        "comment name"
     );
 }
 
@@ -2370,8 +2374,8 @@ fn projection_fonction_tagger_sur_ancre_entree() {
         org_id: 7,
         o2_org: String::new(),
     };
-    // inject i1 → fonction f1, fil annoté sur l'entrée déclarée « t » :
-    // la projection doit insérer un tagger (topic = « t ») entre les deux.
+    // inject i1 → function f1, wire annotated on the declared input "t":
+    // the projection must insert a tagger (topic = "t") between the two.
     let g = FlowGraph {
         nodes: vec![
             FlowNode {
@@ -2408,7 +2412,7 @@ fn projection_fonction_tagger_sur_ancre_entree() {
     };
     let entries = to_red_flows_json_with(&g, &meta, &FunctionResolver::new());
     let out = entries.as_array().unwrap();
-    // Le fil de l'inject vise le tagger, plus le nœud fonction.
+    // The inject wire targets the tagger, no longer the function node.
     let tagger_id = "pnexflow21_ti1p0_t";
     let inject = out
         .iter()
@@ -2419,7 +2423,7 @@ fn projection_fonction_tagger_sur_ancre_entree() {
         serde_json::json!([tagger_id]),
         "inject → tagger"
     );
-    // Le tagger estampe le topic et redresse vers la fonction.
+    // The tagger stamps the topic and points back to the function.
     let tagger = out
         .iter()
         .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(tagger_id))
@@ -2427,15 +2431,15 @@ fn projection_fonction_tagger_sur_ancre_entree() {
     assert_eq!(tagger["type"], serde_json::json!("function"));
     assert!(
         tagger["func"].as_str().unwrap().contains("topic: \"t\""),
-        "topic estampé avec le nom de l'entrée"
+        "topic stamped with the input name"
     );
     assert_eq!(tagger["wires"][0], serde_json::json!(["pnexflow21_f1"]));
     assert_eq!(tagger["pnex_node_id"], "f1");
-    // Le fil f1 → d1 (sortie, sans annotation) reste direct.
+    // The f1 → d1 wire (output, no annotation) stays direct.
     let fnode = out
         .iter()
         .find(|e| e.get("id").and_then(|v| v.as_str()) == Some("pnexflow21_f1"))
-        .expect("nœud fonction absent");
+        .expect("function node missing");
     assert_eq!(fnode["wires"][0], serde_json::json!(["pnexflow21_d1"]));
 }
 
@@ -2608,12 +2612,12 @@ fn projection_json_split_noeud_function() {
     let node = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
-        .expect("nœud function vendor absent");
+        .expect("vendor function node missing");
     assert_eq!(node["outputs"], 1);
     let func = node["func"].as_str().expect("func textuel");
     assert!(
         func.contains("Object.keys(p).map"),
-        "fan-out par clé (objet)"
+        "fan-out per key (object)"
     );
     assert!(func.contains("Array.isArray(p)"), "branche array");
     assert_eq!(node["pnex_node_id"], "s1");
@@ -2666,15 +2670,15 @@ fn projection_json_split_ports_nommes() {
     let node = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
-        .expect("nœud function vendor absent");
-    assert_eq!(node["outputs"], 2, "un port par clé déclarée");
+        .expect("vendor function node missing");
+    assert_eq!(node["outputs"], 2, "one port per declared key");
     let func = node["func"].as_str().expect("func textuel");
     assert!(
         func.contains(r#"var keys = ["a","b"]"#),
-        "littéral de clés inline : {func}"
+        "inline key literal: {func}"
     );
     let wires = node["wires"].as_array().unwrap();
-    assert_eq!(wires.len(), 2, "wires paddées au nombre de ports");
+    assert_eq!(wires.len(), 2, "wires padded to the port count");
     assert_eq!(wires[0], serde_json::json!(["pnexflow21_x1"]));
     assert_eq!(wires[1], serde_json::json!(["pnexflow21_x2"]));
 }
@@ -2717,7 +2721,7 @@ fn projection_json_merge_entrees_nommees_taggers() {
     };
     let entries = to_red_flows_json_with(&g, &meta, &FunctionResolver::new());
     let out = entries.as_array().unwrap();
-    // Le wire inject → merge passe par le tagger topic « temp ».
+    // The inject → merge wire goes through the "temp" topic tagger.
     let inject_entry = out
         .iter()
         .find(|e| e.get("id").and_then(|i| i.as_str()) == Some("pnexflow21_i1"))
@@ -2725,19 +2729,19 @@ fn projection_json_merge_entrees_nommees_taggers() {
     assert_eq!(
         inject_entry["wires"][0],
         serde_json::json!(["pnexflow21_ti1p0_temp"]),
-        "wire rerouté vers le tagger"
+        "wire rerouted to the tagger"
     );
     let tagger = out
         .iter()
         .find(|e| e.get("id").and_then(|i| i.as_str()) == Some("pnexflow21_ti1p0_temp"))
         .expect("tagger absent");
-    assert_eq!(tagger["pnex_node_id"], "m1", "rattaché au nœud merge");
+    assert_eq!(tagger["pnex_node_id"], "m1", "attached to the merge node");
     assert_eq!(
         tagger["wires"][0],
         serde_json::json!(["pnexflow21_m1"]),
-        "tagger → merge (id préfixé)"
+        "tagger → merge (prefixed id)"
     );
-    // Le merge lui-même reste un function 1 port, wire direct vers d1.
+    // The merge itself stays a 1-port function, direct wire to d1.
     let merge_entry = out
         .iter()
         .find(|e| e.get("id").and_then(|i| i.as_str()) == Some("pnexflow21_m1"))
@@ -2780,21 +2784,18 @@ fn projection_json_merge_noeud_function() {
     let node = out
         .iter()
         .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("function"))
-        .expect("nœud function vendor absent");
+        .expect("vendor function node missing");
     assert_eq!(node["outputs"], 1);
     let func = node["func"].as_str().expect("func textuel");
     assert!(
         func.contains("context.get(\"__pnex_merge\")"),
-        "accumulateur en contexte nœud"
+        "accumulator in node context"
     );
     assert!(
         func.contains("acc[key] = msg.payload"),
-        "une entrée = une variable (plus de shallow-merge objet)"
+        "one input = one variable (no more object shallow-merge)"
     );
-    assert!(
-        func.contains("\"value\""),
-        "clé par défaut inline (échappée)"
-    );
+    assert!(func.contains("\"value\""), "default key inlined (escaped)");
     assert_eq!(node["pnex_node_id"], "m1");
     let wires = node["wires"].as_array().unwrap();
     assert_eq!(wires[0], serde_json::json!(["pnexflow21_d1"]));

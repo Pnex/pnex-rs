@@ -1,18 +1,18 @@
-//! Abstraction fournisseur LLM — un seul format interne normalisé
-//! (`Msg`/`ToolCall`/`ToolSpec`/`AiTurn`) ; chaque fournisseur mappe
-//! depuis/vers son protocole wire. Zéro nouvelle dépendance : reqwest
-//! (rustls + json, déjà dans l'arbre).
+//! LLM provider abstraction — a single normalized internal format
+//! (`Msg`/`ToolCall`/`ToolSpec`/`AiTurn`); each provider maps
+//! from/to its wire protocol. Zero new dependency: reqwest
+//! (rustls + json, already in the tree).
 //!
-//! ## Anthropic natif
-//! `POST {base}/v1/messages`, en-têtes `x-api-key` +
-//! `anthropic-version: 2023-06-01`. Les `tool_result` consécutifs sont
-//! regroupés dans **un** message `role=user` (sinon l'API renvoie 400).
+//! ## Native Anthropic
+//! `POST {base}/v1/messages`, headers `x-api-key` +
+//! `anthropic-version: 2023-06-01`. Consecutive `tool_result`s are
+//! grouped into **one** `role=user` message (otherwise the API returns 400).
 //!
 //! ## OpenAI-compatible (OpenAI, Ollama, vLLM, OpenRouter…)
-//! `POST {base}/chat/completions` où `base_url` pointe la racine de
-//! version (ex. `https://api.openai.com/v1`). `arguments` des tool_calls
-//! est une **chaîne JSON** à parser ; chaque `tool_result` devient un
-//! message `role=tool` (ordre préservé).
+//! `POST {base}/chat/completions` where `base_url` points to the version
+//! root (e.g. `https://api.openai.com/v1`). Tool_call `arguments`
+//! is a **JSON string** to parse; each `tool_result` becomes a
+//! `role=tool` message (order preserved).
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub enum Provider {
 }
 
 impl Provider {
-    /// Parsing tolérant (défaut `anthropic`, valeur DB par défaut).
+    /// Lenient parsing (default `anthropic`, the DB default value).
     pub fn parse(s: &str) -> Self {
         if s.eq_ignore_ascii_case("openai_compat") {
             Provider::OpenAiCompat
@@ -48,7 +48,7 @@ impl Provider {
     }
 }
 
-// ───────────────── Types normalisés (le loop d'agent ne voit que ça) ─────────────────
+// ───────────────── Normalized types (the agent loop only sees these) ─────────────────
 
 /// Message de conversation, format interne neutre.
 #[derive(Clone, Debug)]
@@ -66,7 +66,7 @@ pub enum Msg {
         text: Option<String>,
         tool_calls: Vec<ToolCall>,
     },
-    /// Résultat d'outil — re-représenté par le protocole du fournisseur.
+    /// Tool result — re-represented by the provider's protocol.
     ToolResult {
         id: String,
         name: String,
@@ -75,7 +75,7 @@ pub enum Msg {
     },
 }
 
-/// Appel d'outil demandé par le modèle.
+/// Tool call requested by the model.
 #[derive(Clone, Debug)]
 pub struct ToolCall {
     pub id: String,
@@ -83,7 +83,7 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
-/// Déclaration d'un outil (JSON Schema du corps).
+/// Tool declaration (JSON Schema of the body).
 #[derive(Clone, Debug)]
 pub struct ToolSpec {
     pub name: &'static str,
@@ -91,7 +91,7 @@ pub struct ToolSpec {
     pub input_schema: Value,
 }
 
-/// Requête d'un tour de conversation.
+/// Request of a conversation turn.
 pub struct AiChatRequest<'a> {
     pub system: String,
     pub messages: &'a [Msg],
@@ -99,7 +99,7 @@ pub struct AiChatRequest<'a> {
     pub max_tokens: u32,
 }
 
-/// Raison d'arrêt normalisée.
+/// Normalized stop reason.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StopReason {
     EndTurn,
@@ -108,14 +108,14 @@ pub enum StopReason {
     Other(String),
 }
 
-/// Consommation d'un appel.
+/// Usage of one call.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,
 }
 
-/// Un tour du modèle : texte et/ou appels d'outils.
+/// A model turn: text and/or tool calls.
 #[derive(Clone, Debug, Default)]
 pub struct AiTurn {
     pub text: Option<String>,
@@ -125,7 +125,7 @@ pub struct AiTurn {
 }
 
 impl Provider {
-    /// Un tour de conversation → un bloc assistant (texte et/ou tool_use).
+    /// One conversation turn → one assistant block (text and/or tool_use).
     pub async fn chat(
         &self,
         http: &Client,
@@ -139,9 +139,9 @@ impl Provider {
     }
 }
 
-// ─────────────────────────── Côté Anthropic ───────────────────────────
+// ─────────────────────────── Anthropic side ───────────────────────────
 
-/// Blocs du body de réponse Anthropic (text | tool_use).
+/// Blocks of the Anthropic response body (text | tool_use).
 #[derive(Clone, Debug, Deserialize)]
 struct AnthropicBlock {
     #[serde(rename = "type")]
@@ -196,9 +196,9 @@ struct AnthropicRequest<'a> {
     tools: Vec<AnthropicTool<'a>>,
 }
 
-/// Construit les messages wire Anthropic. Les `ToolResult` consécutifs sont
-/// regroupés dans **un** message `role=user` (contrat de l'API : deux
-/// messages user d'affilée ou un tool_result isolé hors regroupement = 400).
+/// Builds the Anthropic wire messages. Consecutive `ToolResult`s are
+/// grouped into **one** `role=user` message (API contract: two
+/// user messages in a row or an isolated tool_result outside a group = 400).
 fn build_anthropic_messages(msgs: &[Msg]) -> Vec<AnthropicMessage> {
     let mut out: Vec<AnthropicMessage> = Vec::new();
     let mut i = 0;
@@ -269,7 +269,7 @@ fn build_anthropic_messages(msgs: &[Msg]) -> Vec<AnthropicMessage> {
     out
 }
 
-/// Tour Anthropic : requête, appel HTTP, mapping réponse → `AiTurn`.
+/// Anthropic turn: request, HTTP call, response mapping → `AiTurn`.
 async fn anthropic_chat(
     http: &Client,
     cfg: &ResolvedAiConfig,
@@ -349,7 +349,7 @@ async fn anthropic_chat(
     Ok(turn)
 }
 
-/// Erreur au niveau de la requête (réseau/timeout) — avant toute réponse HTTP.
+/// Request-level error (network/timeout) — before any HTTP response.
 /// Anthropic API root: tolerates a base URL pasted with `/v1` or the full
 /// `/v1/messages` endpoint (both would otherwise 404 on `/v1/v1/messages`).
 fn anthropic_base(base_url: &str) -> &str {
@@ -375,7 +375,7 @@ fn egress_check(url: &str) -> Result<(), AiError> {
     }
 }
 
-/// Mapping commun réseau/timeout → `AiError`.
+/// Shared network/timeout mapping → `AiError`.
 fn request_error(e: reqwest::Error) -> AiError {
     if e.is_timeout() {
         AiError::Timeout
@@ -384,7 +384,7 @@ fn request_error(e: reqwest::Error) -> AiError {
     }
 }
 
-/// Mapping commun des réponses HTTP en échec (401/403, 429, autres).
+/// Shared mapping of failed HTTP responses (401/403, 429, others).
 fn map_http_error(status: u16, body: &str, retry_after: Option<u64>) -> AiError {
     let message = extract_error_message(body);
     match status {
@@ -394,13 +394,13 @@ fn map_http_error(status: u16, body: &str, retry_after: Option<u64>) -> AiError 
     }
 }
 
-/// Extrait un message d'erreur lisible d'un body JSON fournisseur —
+/// Extracts a readable error message from a provider JSON body —
 /// Anthropic `{"error":{"message"}}`, OpenAI `{"error":{"message"|"code"}}`,
-/// sinon le corps brut tronqué.
+/// otherwise the truncated raw body.
 fn extract_error_message(body: &str) -> String {
     let trimmed = body.trim();
     if trimmed.is_empty() {
-        return "(corps vide)".into();
+        return "(empty body)".into();
     }
     if let Ok(v) = serde_json::from_str::<Value>(trimmed) {
         if let Some(msg) = v
@@ -417,7 +417,7 @@ fn extract_error_message(body: &str) -> String {
     trimmed.chars().take(300).collect()
 }
 
-// ─────────────────────── Côté OpenAI-compatible ───────────────────────
+// ─────────────────────── OpenAI-compatible side ───────────────────────
 
 #[derive(Serialize)]
 struct OpenAiMessage {
@@ -442,7 +442,7 @@ struct OpenAiToolCallOut {
 #[derive(Serialize)]
 struct OpenAiFunctionOut {
     name: String,
-    /// Chaîne JSON (contrat OpenAI) — sérialisé depuis les arguments Value.
+    /// JSON string (OpenAI contract) — serialized from the Value arguments.
     arguments: String,
 }
 
@@ -496,7 +496,7 @@ struct OpenAiToolCallIn {
 struct OpenAiFunctionIn {
     #[serde(default)]
     name: Option<String>,
-    /// Chaîne JSON (contrat OpenAI) — parsée en Value, échec = erreur claire.
+    /// JSON string (OpenAI contract) — parsed into a Value, failure = clear error.
     #[serde(default)]
     arguments: Option<String>,
 }
@@ -518,8 +518,8 @@ struct OpenAiRequest<'a> {
     max_tokens: u32,
 }
 
-/// Construit les messages wire OpenAI : un message `role=tool` par
-/// `ToolResult` (ordre préservé), `arguments` re-sérialisés en chaîne JSON.
+/// Builds the OpenAI wire messages: one `role=tool` message per
+/// `ToolResult` (order preserved), `arguments` re-serialized as a JSON string.
 fn build_openai_messages(msgs: &[Msg]) -> Vec<OpenAiMessage> {
     let mut out: Vec<OpenAiMessage> = Vec::new();
     for msg in msgs {
@@ -568,7 +568,7 @@ fn build_openai_messages(msgs: &[Msg]) -> Vec<OpenAiMessage> {
     out
 }
 
-/// Tour OpenAI-compatible : requête, appel HTTP, mapping réponse → `AiTurn`.
+/// OpenAI-compatible turn: request, HTTP call, response mapping → `AiTurn`.
 async fn openai_chat(
     http: &Client,
     cfg: &ResolvedAiConfig,
@@ -615,7 +615,7 @@ async fn openai_chat(
         .await
         .map_err(|e| AiError::Deserialize(e.to_string()))?;
     let Some(choice) = parsed.choices.into_iter().next() else {
-        return Err(AiError::Deserialize("aucun choix dans la réponse".into()));
+        return Err(AiError::Deserialize("no choice in the response".into()));
     };
     let finish = choice.finish_reason.as_deref().unwrap_or("stop");
     let mut turn = AiTurn {
@@ -646,7 +646,7 @@ async fn openai_chat(
                 continue;
             };
             let arguments: Value = serde_json::from_str(&arguments)
-                .map_err(|e| AiError::Deserialize(format!("arguments d'outil illisibles: {e}")))?;
+                .map_err(|e| AiError::Deserialize(format!("unreadable tool arguments: {e}")))?;
             turn.tool_calls.push(ToolCall {
                 id,
                 name,
@@ -694,8 +694,8 @@ mod tests {
 
     #[test]
     fn anthropic_outil_simple_et_regroupement_tool_result() {
-        // user → assistant(tool_use ×2) → tool_result ×2 : le contrat
-        // Anthropic exige UN message user avec les 2 tool_result.
+        // user → assistant(tool_use ×2) → tool_result ×2: the Anthropic
+        // contract requires ONE user message with the 2 tool_results.
         let msgs = vec![
             user("lis A0"),
             Msg::Assistant {
@@ -719,11 +719,7 @@ mod tests {
             },
         ];
         let wire = build_anthropic_messages(&msgs);
-        assert_eq!(
-            wire.len(),
-            3,
-            "user, assistant, user(tool_results regroupés)"
-        );
+        assert_eq!(wire.len(), 3, "user, assistant, user(grouped tool_results)");
         assert_eq!(wire[0].role, "user");
         assert_eq!(wire[1].role, "assistant");
         assert_eq!(wire[2].role, "user");
@@ -744,14 +740,14 @@ mod tests {
             Msg::ToolResult {
                 id: "t9".into(),
                 name: "query_telemetry".into(),
-                content: "métrique inconnue".into(),
+                content: "unknown metric".into(),
                 is_error: true,
             },
         ];
         let wire = build_anthropic_messages(&msgs);
         assert_eq!(wire.len(), 2);
         let blocks = wire[0].content.as_array().expect("assistant = blocks");
-        assert_eq!(blocks.len(), 1, "pas de bloc text vide");
+        assert_eq!(blocks.len(), 1, "no empty text block");
         assert_eq!(blocks[0]["type"], "tool_use");
         let results = wire[1].content.as_array().expect("tool_results");
         assert_eq!(results[0]["is_error"], true);
@@ -760,7 +756,7 @@ mod tests {
     #[test]
     fn openai_tool_result_un_message_par_outil() {
         let msgs = vec![
-            user("crée le flow"),
+            user("create the flow"),
             Msg::Assistant {
                 text: None,
                 tool_calls: vec![call("c1", "create_flow", json!({"name": "n"}))],
@@ -807,7 +803,7 @@ mod tests {
             "stop_reason": "tool_use",
             "usage": {"input_tokens": 12, "output_tokens": 34}
         }"#;
-        let parsed: AnthropicResponse = serde_json::from_str(raw).expect("désérialisable");
+        let parsed: AnthropicResponse = serde_json::from_str(raw).expect("deserializable");
         assert_eq!(parsed.stop_reason.as_deref(), Some("tool_use"));
         assert_eq!(parsed.content.len(), 2);
         assert_eq!(parsed.usage.unwrap().input_tokens, 12);
@@ -829,7 +825,7 @@ mod tests {
             }],
             "usage": {"prompt_tokens": 5, "completion_tokens": 6}
         }"#;
-        let parsed: OpenAiResponse = serde_json::from_str(raw).expect("désérialisable");
+        let parsed: OpenAiResponse = serde_json::from_str(raw).expect("deserializable");
         let choice = &parsed.choices[0];
         assert_eq!(choice.finish_reason.as_deref(), Some("tool_calls"));
         let f = choice
@@ -891,7 +887,7 @@ mod tests {
             "boom"
         );
         assert_eq!(extract_error_message(r#"{"message":"plat"}"#), "plat");
-        assert_eq!(extract_error_message("  "), "(corps vide)");
+        assert_eq!(extract_error_message("  "), "(empty body)");
         let brut = extract_error_message("not json");
         assert!(brut.contains("not json"));
     }
@@ -904,7 +900,7 @@ mod tests {
         assert_eq!(
             Provider::parse("inconnu"),
             Provider::Anthropic,
-            "défaut = anthropic (valeur DB par défaut)"
+            "default = anthropic (the DB default value)"
         );
         assert_eq!(Provider::Anthropic.as_str(), "anthropic");
         assert_eq!(Provider::OpenAiCompat.as_str(), "openai_compat");

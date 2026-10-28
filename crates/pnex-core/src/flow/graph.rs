@@ -8,99 +8,99 @@ use super::*;
 use crate::functions::FunctionNodeConfig;
 use serde::{Deserialize, Serialize};
 
-/// Id du « tab » Node-RED projeté — unique par flow : le runtime EdgeLinkd
-/// exécute un seul `flows.json` multi-tabs, la projection concatène donc
-/// tous les flows déployés de l'instance.
+/// Id of the projected Node-RED "tab" — unique per flow: the EdgeLinkd runtime
+/// runs a single multi-tab `flows.json`, so the projection concatenates
+/// all the deployed flows of the instance.
 pub fn flow_tab_id(flow_id: i64) -> String {
     format!("pnexflow{flow_id}")
 }
 
-/// Statuts possibles d'un flow (`flows.status` — VARCHAR(32) applicatif,
-/// pas un enum PG : `draft` jamais déployé · `deployed` en exécution ·
-/// `stopped` arrêté volontairement, version déployée conservée pour la
-/// reprise · `error` réservé).
+/// Possible statuses of a flow (`flows.status` — application VARCHAR(32),
+/// not a PG enum: `draft` never deployed · `deployed` running ·
+/// `stopped` deliberately stopped, deployed version kept for
+/// resuming · `error` reserved).
 pub const FLOW_STATUS_DRAFT: &str = "draft";
 pub const FLOW_STATUS_DEPLOYED: &str = "deployed";
 pub const FLOW_STATUS_STOPPED: &str = "stopped";
 
-/// Types de nœuds modélisés côté PNEX. Le tag serde est `"kind"` et la config
-/// de chaque variante est portée par un champ `config` (pas de `flatten`
-/// d'enum taggé, non supporté par serde) : `{"id": "n1", "kind": "inject",
+/// Node types modeled on the PNEX side. The serde tag is `"kind"` and the config
+/// of each variant is carried by a `config` field (no `flatten`
+/// of a tagged enum, unsupported by serde): `{"id": "n1", "kind": "inject",
 /// "config": {"repeat_secs": 5.0}}`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FlowNodeKind {
-    /// Déclencheur intervalle/cron (nœud builtin `inject`).
+    /// Interval/cron trigger (builtin `inject` node).
     Inject {
         #[serde(default)]
         config: InjectConfig,
     },
-    /// Nœud custom PNEX : lecture des dernières valeurs des pins d'un seul
-    /// device via OpenObserve (même série que l'ingestion) — un port de
-    /// sortie par pin + un port « nom du device » (payload = slug).
+    /// PNEX custom node: reads the latest values of the pins of a single
+    /// device via OpenObserve (same series as ingestion) — one output port
+    /// per pin + a "device name" port (payload = slug).
     DeviceRead { config: DeviceReadConfig },
-    /// Nœud custom PNEX : écriture des pins output d'un seul device
-    /// (digital 1/0, pwm duty 0..=100) — payload map `{pin: valeur}`.
+    /// PNEX custom node: writes the output pins of a single device
+    /// (digital 1/0, pwm duty 0..=100) — payload map `{pin: value}`.
     DeviceWrite { config: DeviceWriteConfig },
-    /// Nœud custom PNEX : calcul sur les clés du payload device.
+    /// PNEX custom node: computation over the device payload keys.
     Calc { config: CalcConfig },
-    /// Nœud custom PNEX : payload fixe ou aléatoire (bornes min/max).
+    /// PNEX custom node: fixed or random payload (min/max bounds).
     Value { config: ValueConfig },
-    /// Nœud custom PNEX : écriture d'une métrique OpenObserve
-    /// (remote-write, préfixe `etl_`, device virtuel `flow_{id}`).
+    /// PNEX custom node: writes an OpenObserve metric
+    /// (remote-write, `etl_` prefix, virtual device `flow_{id}`).
     Metric { config: MetricConfig },
-    /// Nœud custom PNEX : propriétés thermophysiques in-process
-    /// (`pnex-coolprop`) — spec fluide/mélange + 2 entrées + sorties.
+    /// PNEX custom node: in-process thermophysical properties
+    /// (`pnex-coolprop`) — fluid/mixture spec + 2 inputs + outputs.
     CoolProp { config: CoolPropConfig },
-    /// Nœud custom PNEX : notification multi-canaux (`websocket`/`webhook`
-    /// v1) rendue depuis un template minijinja de l'org (D49–D54).
+    /// PNEX custom node: multi-channel notification (`websocket`/`webhook`
+    /// v1) rendered from an org minijinja template (D49–D54).
     PnexNotify { config: NotifyNodeConfig },
-    /// Nœud custom PNEX : requête HTTP client configurable (C1a, amendement
-    /// edge-model 2026-09-15) — la réponse remplace le payload, proxy
-    /// configurable (direct ou provider de scraping).
+    /// PNEX custom node: configurable HTTP client request (C1a, edge-model
+    /// amendment 2026-09-15) — the response replaces the payload, configurable
+    /// proxy (direct or scraping provider).
     HttpFetch { config: HttpFetchNodeConfig },
-    /// Capture de sortie (nœud builtin `debug`).
+    /// Output capture (builtin `debug` node).
     Debug {
         #[serde(default)]
         config: DebugConfig,
     },
-    /// Nœud custom PNEX : sonde passthrough — publie la valeur au panneau de
-    /// debug et l'affiche en badge live sous le nœud (éditeur).
+    /// PNEX custom node: passthrough probe — publishes the value to the debug
+    /// panel and shows it as a live badge under the node (editor).
     Display {
         #[serde(default)]
         config: DisplayConfig,
     },
-    /// Carte de régulation mixte tout-ou-rien **chauffage** : le device cible
-    /// lit son propre capteur et pilote sa propre sortie, régulation
-    /// embarquée (D13/D17) — le serveur caste la config, il ne régule pas.
+    /// Mixed on/off **heating** control card: the target device
+    /// reads its own sensor and drives its own output, embedded
+    /// control (D13/D17) — the server casts the config, it does not regulate.
     RegTtHeat {
         #[serde(default)]
         config: RegTtConfig,
     },
-    /// Carte de régulation mixte tout-ou-rien **clim** (sens inversé).
+    /// Mixed on/off **cooling** control card (inverted direction).
     RegTtCool {
         #[serde(default)]
         config: RegTtConfig,
     },
-    /// Carte de régulation mixte **PID**, sortie relais time-proportional.
+    /// Mixed **PID** control card, time-proportional relay output.
     RegPid {
         #[serde(default)]
         config: RegPidConfig,
     },
-    /// Nœud custom PNEX : fonction utilisateur versionnée du registre
-    /// « Fonctions » (js | starlark). Le nœud ne porte que des **références**
-    /// + le snapshot d'interface (inputs/outputs déclarés) — le CODE n'est
-    ///   jamais dans le graphe : la projection l'inline au deploy depuis la
-    ///   version épinglée (artefact self-contained ; éditer une fonction
-    ///   n'affecte pas les flows déployés tant qu'ils ne sont pas re-déployés).
+    /// PNEX custom node: versioned user function from the "Functions"
+    /// registry (js | starlark). The node only carries **references**
+    /// + the interface snapshot (declared inputs/outputs) — the CODE is
+    ///   never in the graph: the projection inlines it at deploy from the
+    ///   pinned version (self-contained artifact; editing a function
+    ///   does not affect deployed flows until they are redeployed).
     PnexFunction { config: FunctionNodeConfig },
-    /// Nœud PNEX : découpe du payload JSON — objet → un msg par clé
-    /// (`payload` = valeur, `topic` = clé), array → un msg par élément
-    /// (`topic` = index) ; autre payload → pass-through.
+    /// PNEX node: JSON payload split — object → one msg per key
+    /// (`payload` = value, `topic` = key), array → one msg per element
+    /// (`topic` = index); other payload → pass-through.
     JsonSplit { config: JsonSplitConfig },
-    /// Nœud PNEX : compaction — objet fusionné par clés (shallow), scalaire
-    /// rangé sous `msg.topic` sinon sous la clé par défaut ; l'objet accumulé
-    /// est émis à chaque msg (état = contexte du nœud, reset au redeploy).
+    /// PNEX node: compaction — object merged by keys (shallow), scalar
+    /// stored under `msg.topic`, otherwise under the default key; the accumulated object
+    /// is emitted on every msg (state = node context, reset on redeploy).
     JsonMerge { config: JsonMergeConfig },
     /// Event-driven source: one message per camera frame (Valkey frame bus,
     /// camera-video.md D78) — payload = frame reference, never the bytes.
@@ -536,7 +536,7 @@ where
     }
 }
 
-/// Câblage d'un port de sortie : `targets` = ids des nœuds destinataires.
+/// Wiring of an output port: `targets` = ids of the destination nodes.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlowWiring {
     pub port: usize,
@@ -563,7 +563,7 @@ pub struct FlowInputWiring {
     pub from_port: usize,
 }
 
-/// Nœud d'un graphe de flow PNEX.
+/// Node of a PNEX flow graph.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlowNode {
     pub id: String,
@@ -571,7 +571,7 @@ pub struct FlowNode {
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
-    /// Sorties : une entrée par port câblé.
+    /// Outputs: one entry per wired port.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<FlowWiring>,
     /// Input-row annotations (device-write pins, function inputs, notify
@@ -639,25 +639,25 @@ pub struct FlowGraph {
     pub nodes: Vec<FlowNode>,
 }
 
-/// Métadonnées embarquées dans l'artefact `flows.json` projeté (traçabilité
-/// de la version réellement en exécution). `org_id` identifie l'org PNEX ;
-/// `o2_org` est l'identifiant **réel** de l'org OpenObserve (généré par le
-/// provisioning, cf. `openobserve_orgs.o2_org`) — les nœuds custom Phase 6
-/// (device/metric) l'utilisent directement, sans schéma de nommage déduit.
+/// Metadata embedded in the projected `flows.json` artifact (traceability
+/// of the version actually running). `org_id` identifies the PNEX org;
+/// `o2_org` is the **real** identifier of the OpenObserve org (generated by
+/// provisioning, see `openobserve_orgs.o2_org`) — the Phase 6 custom nodes
+/// (device/metric) use it directly, without a derived naming scheme.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowArtifactMeta {
     pub flow_id: i64,
     pub version_number: i64,
     pub org_id: i64,
-    /// Vide si l'org n'a pas d'org O2 provisionnée au moment de la
-    /// projection — les nœuds device/metric dégradent alors sans crasher
-    /// (warn + lecture/écriture sautée), et la reprojection qui suit le
-    /// provisioning comble le champ.
+    /// Empty if the org has no O2 org provisioned at
+    /// projection time — the device/metric nodes then degrade without crashing
+    /// (warn + read/write skipped), and the reprojection that follows
+    /// provisioning fills the field.
     pub o2_org: String,
 }
 
 impl FlowArtifactMeta {
-    /// Meta « à vide » (aucun flow déployé) — artefact réduit au silence.
+    /// "Empty" meta (no deployed flow) — artifact silenced.
     pub fn empty() -> Self {
         Self {
             flow_id: 0,

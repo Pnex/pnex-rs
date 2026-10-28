@@ -1,9 +1,9 @@
-//! Endpoints flows ETL (D18) — CRUD versionné + deploy/rollback + runtime.
+//! ETL flow endpoints (D18) — versioned CRUD + deploy/rollback + runtime.
 //!
-//! L'éditeur ne parle **qu'à l'API Loco**, jamais au runtime (garde-fou PRD,
-//! docs/architecture/flow-engine.md). Les types viennent de `pnex-core`
-//! (source de vérité partagée, wasm32) ; `update` porte la concurrence
-//! optimiste (`expected_version_number`, 409 si périmé).
+//! The editor talks **only to the Loco API**, never to the runtime (PRD
+//! safeguard, docs/architecture/flow-engine.md). Types come from `pnex-core`
+//! (shared source of truth, wasm32); `update` carries optimistic
+//! concurrency (`expected_version_number`, 409 if stale).
 
 use pnex_core::{
     CreateFlow, DeployFlow, Flow, FlowDebugFeed, FlowRuntimeStatus, FlowSummary, FlowVersionDetail,
@@ -13,13 +13,13 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/flows` + pagination (D14) — absents = défauts
-/// serveur (limit 10, offset 0).
+/// Filters of `GET /api/v1/flows` + pagination (D14) — absent = server
+/// defaults (limit 10, offset 0).
 #[derive(Default)]
 pub struct FlowFilters {
-    /// Sous-chaîne, insensible à la casse, sur `name`.
+    /// Case-insensitive substring on `name`.
     pub search: Option<String>,
-    /// `draft | deployed | stopped | error` — valeur inconnue ignorée côté serveur.
+    /// `draft | deployed | stopped | error` — unknown value ignored by the server.
     pub status: Option<String>,
     /// D42 effective label filter (`name` or `name:value`).
     pub label: Option<String>,
@@ -53,8 +53,8 @@ impl FlowFilters {
     }
 }
 
-/// Encodage percent minimal (le front n'a pas la crate url) — même code
-/// que `api/devices.rs`.
+/// Minimal percent encoding (the front has no url crate) — same code
+/// as `api/devices.rs`.
 fn urlencode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {
@@ -68,7 +68,7 @@ fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/flows` — flows de l'org courante, enveloppe paginée.
+/// `GET /api/v1/flows` — flows of the current org, paginated envelope.
 pub async fn list(filters: &FlowFilters) -> Result<Paginated<FlowSummary>, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -78,7 +78,7 @@ pub async fn list(filters: &FlowFilters) -> Result<Paginated<FlowSummary>, ApiEr
     .await
 }
 
-/// `POST /api/v1/flows` — création (graphe = version 1).
+/// `POST /api/v1/flows` — creation (graph = version 1).
 pub async fn create(params: CreateFlow) -> Result<Flow, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -88,14 +88,14 @@ pub async fn create(params: CreateFlow) -> Result<Flow, ApiError> {
     .await
 }
 
-/// `GET /api/v1/flows/{id}` — détail (graphe = dernière version).
+/// `GET /api/v1/flows/{id}` — detail (graph = latest version).
 pub async fn detail(id: i64) -> Result<Flow, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/flows/{id}"), None).await
 }
 
-/// `PATCH /api/v1/flows/{id}` — enregistre une **nouvelle version**
-/// (append-only) ; 409 si `expected_version_number` est périmé, 400
-/// `{"violations": […]}` si le graphe est invalide.
+/// `PATCH /api/v1/flows/{id}` — records a **new version**
+/// (append-only); 409 if `expected_version_number` is stale, 400
+/// `{"violations": […]}` if the graph is invalid.
 pub async fn update(id: i64, params: UpdateFlow) -> Result<Flow, ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -116,7 +116,7 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/flows/{id}/versions` — échelle de versions, desc.
+/// `GET /api/v1/flows/{id}/versions` — version ladder, desc.
 pub async fn versions(
     id: i64,
     limit: i64,
@@ -140,11 +140,11 @@ pub async fn version(id: i64, version_number: i64) -> Result<FlowVersionDetail, 
     .await
 }
 
-/// `POST /api/v1/flows/{id}/deploy` — projette **tous** les flows déployés
-/// dans `flows.json` puis rechargement à chaud ; `version_number` absent =
-/// dernière version. 503 `flow-runtime` si le moteur est off/down.
-/// Réponse de deploy : le flow + les références notify périmées détectées
-/// à la projection (champ additif serveur, D50 — toast non bloquant).
+/// `POST /api/v1/flows/{id}/deploy` — projects **all** deployed flows
+/// into `flows.json` then hot reload; absent `version_number` =
+/// latest version. 503 `flow-runtime` if the engine is off/down.
+/// Deploy response: the flow + the stale notify references detected
+/// at projection (additive server field, D50 — non-blocking toast).
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct SkippedTab {
     #[allow(dead_code)]
@@ -167,8 +167,8 @@ pub struct DeployedFlow {
     pub flow: Flow,
     #[serde(default)]
     pub stale_notify_nodes: Vec<pnex_core::StaleNotifyNode>,
-    /// Onglets d'AUTRES flows isolés à la projection (graphe illisible) —
-    /// le deploy de CE flow passe quand même.
+    /// Tabs of OTHER flows isolated at projection (unreadable graph) —
+    /// the deploy of THIS flow still goes through.
     #[serde(default)]
     pub skipped_tabs: Vec<SkippedTab>,
 }
@@ -183,8 +183,8 @@ pub async fn deploy(id: i64, version_number: Option<i64>) -> Result<DeployedFlow
     .await
 }
 
-/// `POST /api/v1/flows/{id}/rollback` — deploy d'une version antérieure
-/// (ne crée pas de version).
+/// `POST /api/v1/flows/{id}/rollback` — deploy of an earlier version
+/// (does not create a version).
 pub async fn rollback(id: i64, version_number: i64) -> Result<Flow, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -199,9 +199,9 @@ pub async fn rollback(id: i64, version_number: i64) -> Result<Flow, ApiError> {
     .await
 }
 
-/// `POST /api/v1/flows/{id}/stop` — retire le tab du flow de l'artefact
-/// (ack `flow_stopped`) puis la DB passe `stopped`, version déployée
-/// conservée. 409 si pas déployé, 503 si le moteur n'acquitte pas.
+/// `POST /api/v1/flows/{id}/stop` — removes the flow's tab from the artifact
+/// (ack `flow_stopped`) then the DB goes `stopped`, deployed version
+/// kept. 409 if not deployed, 503 if the engine does not ack.
 pub async fn stop(id: i64) -> Result<serde_json::Value, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -211,9 +211,9 @@ pub async fn stop(id: i64) -> Result<serde_json::Value, ApiError> {
     .await
 }
 
-/// `POST /api/v1/flows/{id}/start` — reprend un flow `stopped` en
-/// re-déployant **sa version déployée**. 409 si pas arrêté ou jamais
-/// déployé.
+/// `POST /api/v1/flows/{id}/start` — resumes a `stopped` flow by
+/// re-deploying **its deployed version**. 409 if not stopped or never
+/// deployed.
 pub async fn start(id: i64) -> Result<Flow, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -223,8 +223,8 @@ pub async fn start(id: i64) -> Result<Flow, ApiError> {
     .await
 }
 
-/// `POST /api/v1/flows/{id}/restart` — stop puis start chaînés (deux
-/// rechargements ; depuis `stopped` ≡ start).
+/// `POST /api/v1/flows/{id}/restart` — stop then start chained (two
+/// reloads; from `stopped` ≡ start).
 pub async fn restart(id: i64) -> Result<Flow, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -234,7 +234,7 @@ pub async fn restart(id: i64) -> Result<Flow, ApiError> {
     .await
 }
 
-/// `GET /api/v1/flows/{id}/runtime` — état du superviseur vu par le backend.
+/// `GET /api/v1/flows/{id}/runtime` — supervisor state as seen by the backend.
 pub async fn runtime(id: i64) -> Result<FlowRuntimeStatus, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -244,8 +244,8 @@ pub async fn runtime(id: i64) -> Result<FlowRuntimeStatus, ApiError> {
     .await
 }
 
-/// `GET /api/v1/flows/{id}/debug` — feed du panneau de debug (anneau
-/// mémoire du superviseur). 403 hors mode dev/debug.
+/// `GET /api/v1/flows/{id}/debug` — feed of the debug panel (supervisor
+/// memory ring). 403 outside dev/debug mode.
 pub async fn debug(id: i64) -> Result<FlowDebugFeed, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -266,9 +266,9 @@ pub async fn node_status(id: i64) -> Result<FlowDebugFeed, ApiError> {
     .await
 }
 
-/// Échec d'un enregistrement, trié pour l'UI : conflit de concurrence (409,
-/// modal « recharger / écraser »), graphe invalide (400 violations,
-/// surlignage), ou autre (toast verbatim).
+/// Save failure, sorted for the UI: concurrency conflict (409,
+/// "reload / overwrite" modal), invalid graph (400 violations,
+/// highlighting), or other (verbatim toast).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveError {
     Conflict { description: String },
@@ -276,8 +276,8 @@ pub enum SaveError {
     Other(String),
 }
 
-/// Classe une `ApiError` issue de `update()` — uniquement un 409 ou un 400
-/// à champ `violations` a une sémantique exploitable.
+/// Classifies an `ApiError` from `update()` — only a 409 or a 400
+/// with a `violations` field has usable semantics.
 pub fn classify_save_error(err: &ApiError) -> SaveError {
     match err.status {
         Some(409) => SaveError::Conflict {
@@ -341,7 +341,7 @@ mod tests {
                 assert_eq!(violations[0].code, "readonly_sql");
                 assert_eq!(violations[0].node_id.as_deref(), Some("n1"));
             }
-            other => panic!("violations attendues, reçu {other:?}"),
+            other => panic!("expected violations, got {other:?}"),
         }
     }
 
@@ -351,7 +351,7 @@ mod tests {
             classify_save_error(&ApiError::new("réseau : timeout")),
             SaveError::Other("réseau : timeout".into())
         );
-        // 400 sans champ violations (jamais vu côté API, défensif).
+        // 400 without a violations field (never seen from the API, defensive).
         let err = ApiError::http(400, r#"{"detail":"boom"}"#);
         assert_eq!(classify_save_error(&err), SaveError::Other("boom".into()));
     }

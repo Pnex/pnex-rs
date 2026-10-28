@@ -1,26 +1,26 @@
-//! Nœud `pnex-device-read` — lit les **dernières valeurs** des pins d'**un
-//! seul device** dans OpenObserve (`last_over_time` sur la même série que
-//! l'ingestion).
+//! `pnex-device-read` node — reads the **latest values** of the pins of **a
+//! single device** in OpenObserve (`last_over_time` on the same series as
+//! ingestion).
 //!
 //! Read path: when the supervisor injects `VALKEY_URL`, values come from the
 //! live last-value cache (single `MGET`, freshness = exact age of the last
 //! received sample) — the OpenObserve loop below is the fallback when the
 //! cache is disabled or failing.
 //!
-//! Garde-fous (école `pnex-device` historique) :
-//! - config validée **au build** (slug device, pins non vides, fenêtre
-//!   bornée 1..=3600 s, org estampillée) — un graphe invalide est rejeté
-//!   au déploiement ;
-//! - l'org OpenObserve vient de l'artefact (`pnex_o2_org`), les creds de
-//!   l'env du runtime — jamais de secret dans flows.json ;
+//! Safeguards (historical `pnex-device` pattern):
+//! - config validated **at build** (device slug, non-empty pins, window
+//!   bounded 1..=3600 s, org stamped) — an invalid graph is rejected
+//!   at deployment;
+//! - the OpenObserve org comes from the artefact (`pnex_o2_org`), the creds from
+//!   the runtime env — never a secret in flows.json;
 //! - a read with no fresh sample within the window emits **nothing** on
 //!   the pin port (never a `null`, never an invented zero) + warn: an
 //!   offline device must not produce readings downstream (O14).
 //!
-//! Sorties : un port par pin (**valeur brute**, only when fresh — no
-//! message otherwise) + un port final « nom du
-//! device » (payload = slug du device) — nommage explicite du device pour
-//! l'aval (templates, labels), sans convention de payload.
+//! Outputs: one port per pin (**raw value**, only when fresh — no
+//! message otherwise) + a final "device
+//! name" port (payload = device slug) — explicit device naming for
+//! downstream (templates, labels), without a payload convention.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -51,13 +51,13 @@ struct DeviceReadNodeConfig {
     pins: Vec<String>,
     #[serde(default = "default_window_secs")]
     window_secs: f64,
-    /// Estampillé par la projection au deploy (`FlowArtifactMeta.org_id`).
+    /// Stamped by the projection at deploy (`FlowArtifactMeta.org_id`).
     #[serde(default)]
     pnex_org_id: i64,
-    /// Identifiant O2 **réel** (`openobserve_orgs.o2_org`), estampillé par la
-    /// projection. Vide = org pas encore provisionnée — les lectures sont
-    /// sautées (warn, payload vide) sans casser le pipeline ; la reprojection
-    /// qui suit le provisioning comble le champ.
+    /// **Real** O2 identifier (`openobserve_orgs.o2_org`), stamped by the
+    /// projection. Empty = org not provisioned yet — reads are
+    /// skipped (warn, empty payload) without breaking the pipeline; the reprojection
+    /// that follows provisioning fills the field.
     #[serde(default)]
     pnex_o2_org: String,
 }
@@ -80,27 +80,26 @@ impl DeviceReadNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = DeviceReadNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-device-read : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-device-read: invalid config: {e}"))
         })?;
 
-        // Contrat typé au build (miroir validate_graph côté backend/wasm).
+        // Typed contract at build (mirrors validate_graph on the backend/wasm side).
         if !pnex_core::valid_device_label(&cfg.device_id) {
             return Err(EdgelinkError::BadFlowsJson(format!(
-                "pnex-device-read : device « {} » invalide (slug requis)",
+                "pnex-device-read: invalid device \"{}\" (slug required)",
                 cfg.device_id
             ))
             .into());
         }
         if cfg.pins.is_empty() {
-            return Err(EdgelinkError::BadFlowsJson(
-                "pnex-device-read : aucune pin sélectionnée".into(),
-            )
-            .into());
+            return Err(
+                EdgelinkError::BadFlowsJson("pnex-device-read: no pin selected".into()).into(),
+            );
         }
         for pin in &cfg.pins {
             if pin.trim().is_empty() {
                 return Err(EdgelinkError::BadFlowsJson(format!(
-                    "pnex-device-read : pin vide pour « {} »",
+                    "pnex-device-read: empty pin for \"{}\"",
                     cfg.device_id
                 ))
                 .into());
@@ -108,18 +107,19 @@ impl DeviceReadNode {
         }
         if !(cfg.window_secs.is_finite() && (1.0..=3600.0).contains(&cfg.window_secs)) {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-device-read : window_secs hors bornes (1..=3600)".into(),
+                "pnex-device-read: window_secs out of bounds (1..=3600)".into(),
             )
             .into());
         }
         if cfg.pnex_org_id <= 0 {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-device-read : pnex_org_id absent de l'artefact (redéployer le flow)".into(),
+                "pnex-device-read: pnex_org_id missing from the artefact (redeploy the flow)"
+                    .into(),
             )
             .into());
         }
-        // org O2 vide : PAS de fail-loud au build — état transitoire (avant
-        // provisioning), pas une config invalide. Dégradation à l'exécution.
+        // empty O2 org: NO fail-loud at build — transient state (before
+        // provisioning), not an invalid config. Degradation at execution.
 
         let o2 = O2Client::from_env()?;
         let valkey = crate::valkey::ValkeyLastClient::from_env_opt()?;
@@ -131,8 +131,8 @@ impl DeviceReadNode {
         }))
     }
 
-    /// Un message entrant (déclencheur) → lectures O2 séquentielles →
-    /// un message par pin sur son port + le port « tout » combiné.
+    /// One incoming message (trigger) → sequential O2 reads →
+    /// one message per pin on its port + the combined "all" port.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
         let window = Duration::from_secs_f64(self.config.window_secs);
         let deadline = Duration::from_secs_f64(self.config.window_secs + 5.0);
@@ -182,7 +182,7 @@ impl DeviceReadNode {
         }
         if !cache_served && self.config.pnex_o2_org.trim().is_empty() {
             log::warn!(
-                "pnex-device-read [{}] : org O2 non provisionnée — lecture(s) sautée(s)",
+                "pnex-device-read [{}]: O2 org not provisioned — read(s) skipped",
                 self.name()
             );
         } else {
@@ -216,19 +216,19 @@ impl DeviceReadNode {
                         }
                         Ok(Ok(None)) => {
                             log::warn!(
-                                "pnex-device-read [{}] : aucune donnée dans la fenêtre {} s pour {}:{}",
+                                "pnex-device-read [{}]: no data within the {} s window for {}:{}",
                                 self.name(), window.as_secs(), self.config.device_id, pin
                             );
                         }
                         Ok(Err(e)) => {
                             log::warn!(
-                                "pnex-device-read [{}] : lecture {}:{} échouée : {e}",
+                                "pnex-device-read [{}]: read {}:{} failed: {e}",
                                 self.name(), self.config.device_id, pin
                             );
                         }
                         Err(_) => {
                             log::warn!(
-                                "pnex-device-read [{}] : lecture {}:{} interrompue (timeout)",
+                                "pnex-device-read [{}]: read {}:{} interrupted (timeout)",
                                 self.name(), self.config.device_id, pin
                             );
                         }
@@ -238,7 +238,7 @@ impl DeviceReadNode {
             }
         }
         log::debug!(
-            "pnex-device-read [{}] : {} lecture(s) résolue(s)",
+            "pnex-device-read [{}]: {} read(s) resolved",
             self.name(),
             values.len()
         );
@@ -262,8 +262,8 @@ impl DeviceReadNode {
                 .await?;
         }
 
-        // Port final « nom du device » : le slug du device en payload —
-        // nommage explicite (templates, labels), sans convention de payload.
+        // Final "device name" port: the device slug as payload —
+        // explicit naming (templates, labels), without a payload convention.
         {
             let mut m = msg.write().await;
             m.set(
@@ -322,7 +322,7 @@ impl FlowNodeBehavior for DeviceReadNode {
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-device-read [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-device-read [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }

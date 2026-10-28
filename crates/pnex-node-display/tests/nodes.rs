@@ -1,18 +1,18 @@
-//! Tests du nœud `pnex-display` : registre `inventory`, rejet au build sans
-//! `pnex_node_id`, passthrough + publication au canal debug (moteur
-//! in-process — pas de sous-process).
+//! `pnex-display` node tests: `inventory` registry, rejection at build without
+//! `pnex_node_id`, passthrough + publication to the debug channel (in-process
+//! engine — no subprocess).
 
 use edgelink_core::runtime::registry::RegistryBuilder;
 
 #[test]
 fn registre_contient_pnex_display() {
-    // Ancre anti-élagage : sans référence au crate, le linker peut jeter les
-    // soumissions `inventory` (même garde que le binaire runtime).
+    // Anti-pruning anchor: without a reference to the crate, the linker may drop the
+    // `inventory` submissions (same guard as the runtime binary).
     pnex_node_display::registered();
     let reg = RegistryBuilder::default().build().expect("registre");
     let meta = reg
         .get("pnex-display")
-        .unwrap_or_else(|| panic!("nœud pnex-display absent du registre"));
+        .unwrap_or_else(|| panic!("pnex-display node missing from the registry"));
     assert_eq!(meta.type_, "pnex-display");
 }
 
@@ -44,8 +44,8 @@ fn display_flows() -> String {
 
 #[test]
 fn build_refuse_sans_pnex_node_id() {
-    // L'identité est estampillée par la projection : un artefact qui ne la
-    // porte pas est rejeté au déploiement (fail-loud).
+    // The identity is stamped by the projection: an artefact that does not
+    // carry it is rejected at deployment (fail-loud).
     let json = serde_json::json!([
         { "id": "t", "type": "tab", "label": "test" },
         {
@@ -61,8 +61,8 @@ fn build_refuse_sans_pnex_node_id() {
         .unwrap();
     rt.block_on(async move {
         let result = edgelink_core::runtime::engine::Engine::with_json_string(&reg, json, None);
-        let err = result.expect_err("build sans pnex_node_id doit échouer");
-        let _ = err; // BadFlowsJson — le message exact n'est pas contractuel
+        let err = result.expect_err("build without pnex_node_id must fail");
+        let _ = err; // BadFlowsJson — the exact message is not contractual
     });
 }
 
@@ -85,13 +85,13 @@ fn passthrough_et_publication_debug() {
             None,
         )
         .await
-        .expect("moteur");
-        // Subscribe AVANT start : aucune publication ne doit être perdue.
+        .expect("engine");
+        // Subscribe BEFORE start: no publication may be lost.
         let mut rx = engine.debug_channel().subscribe();
 
         engine.start().await.expect("start");
 
-        // (a) La sonde publie : id canvas brut + valeur NON stringifiée.
+        // (a) The probe publishes: raw canvas id + value NOT stringified.
         let mut saw_display = false;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
         while tokio::time::Instant::now() < deadline && !saw_display {
@@ -99,18 +99,18 @@ fn passthrough_et_publication_debug() {
             let Ok(Ok(m)) = recv else { break };
             if m.id == "n2" {
                 assert_eq!(m.format.as_deref(), Some("pnex-display"));
-                assert_eq!(m.msg, serde_json::json!({"k": 1}), "valeur brute attendue");
+                assert_eq!(m.msg, serde_json::json!({"k": 1}), "raw value expected");
                 assert_eq!(m.property.as_deref(), Some("payload"));
                 saw_display = true;
             }
         }
         assert!(
             saw_display,
-            "aucune publication de la sonde sur le canal debug"
+            "no publication from the probe on the debug channel"
         );
 
-        // (b) Le passthrough est intact : le debug builtin en aval reçoit le
-        // payload et publie sa version stringifiée (id = hex moteur).
+        // (b) The passthrough is intact: the builtin debug downstream receives the
+        // payload and publishes its stringified version (id = engine hex).
         let mut saw_downstream = false;
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
         while tokio::time::Instant::now() < deadline && !saw_downstream {
@@ -122,7 +122,7 @@ fn passthrough_et_publication_debug() {
         }
         assert!(
             saw_downstream,
-            "le debug en aval n'a rien reçu (passthrough cassé ?)"
+            "the downstream debug received nothing (passthrough broken?)"
         );
 
         engine.stop().await.expect("stop");

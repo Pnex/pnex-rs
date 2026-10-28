@@ -1,17 +1,17 @@
-//! Notifications (D49–D54) — CRUD org-scoped des canaux et templates,
-//! aperçu de rendu, tests d'envoi et journal des livraisons.
+//! Notifications (D49–D54) — org-scoped CRUD of channels and templates,
+//! render preview, send tests and delivery log.
 //!
-//! École `viz_widgets.rs` : scoping org (404 masqué cross-org), écriture
-//! gated by its IAM permission, 400 field by field. **Divergence assumée** : le
-//! conflit de nom unique répond **409** (`conflict()`, école `flows.rs`)
-//! et non 400-champ — le nom est une clé naturelle et l'UI peut proposer
-//! « renommer » ; cf. tests.
+//! `viz_widgets.rs` school: org scoping (cross-org 404 masked), write
+//! gated by its IAM permission, 400 field by field. **Deliberate divergence**: the
+//! unique name conflict answers **409** (`conflict()`, `flows.rs` school)
+//! and not a field 400 — the name is a natural key and the UI can offer
+//! "rename"; see tests.
 //!
-//! Secrets (D54) : jamais rendus — `mask_config` neutralise les champs
-//! `secret` au GET et `secrets_set` expose leur seule présence ; au PUT,
-//! `merge_config` traite absent/`null` comme « inchangé » (le front envoie
-//! null tant que l'utilisateur n'a pas cliqué « remplacer »). Aucun secret
-//! n'apparaît dans les messages d'erreur ni les logs.
+//! Secrets (D54): never returned — `mask_config` neutralizes the `secret`
+//! fields on GET and `secrets_set` exposes only their presence; on PUT,
+//! `merge_config` treats absent/`null` as "unchanged" (the front sends
+//! null as long as the user has not clicked "replace"). No secret
+//! appears in error messages or logs.
 //!
 //! Vault (secrets.md lot S4): stored `secret` fields are references
 //! `{"secret_id"}` to `org_secrets`; a typed value lands in the channel's
@@ -96,8 +96,8 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/notify")
         .add("/kinds", get(kinds))
-        // Static avant param : axum donne priorité au segment statique
-        // (`test-draft` n'est jamais mangé par `{id}`).
+        // Static before param: axum gives priority to the static segment
+        // (`test-draft` is never swallowed by `{id}`).
         .add("/channels", get(list_channels).post(create_channel))
         .add("/channels/test-draft", post(test_draft))
         .add(

@@ -1,15 +1,15 @@
-//! Carte POI-first (D35–D39) : POI (`map_pins`), clustering backend (D37),
-//! liens typés (D39) et positions GPS devices (D38), scoping org (D2).
-//! Endpoints **additifs** — ne jamais bumper `pnex_api_contract::CONTRACT`.
+//! POI-first map (D35–D39): POI (`map_pins`), backend clustering (D37),
+//! typed links (D39) and device GPS positions (D38), org scoping (D2).
+//! **Additive** endpoints — never bump `pnex_api_contract::CONTRACT`.
 //!
-//! Contrat : `docs/contracts/viz.http` ; PRD : `docs/architecture/viz-bases.md`.
-//! - listes = enveloppe D14 `{count, next, previous, results}` ;
+//! Contract: `docs/contracts/viz.http`; PRD: `docs/architecture/viz-bases.md`.
+//! - lists = D14 envelope `{count, next, previous, results}`;
 //! - errors are `ErrorDetail` (`field-invalid` with machine tokens);
-//! - 404 masqué cross-org (POI/lien introuvable ou d'une autre org) ;
-//! - cluster = items individuels (≤ `CLUSTER_INDIVIDUAL_MAX` points dans la
-//!   bbox) sinon clusters numérotés (centroïde + échantillon) ;
+//! - cross-org 404 hidden (POI/link not found or from another org);
+//! - cluster = individual items (≤ `CLUSTER_INDIVIDUAL_MAX` points in the
+//!   bbox) otherwise numbered clusters (centroid + sample);
 //! - writes need their IAM permission (`pois:write`), logic in
-//!   `services/pois.rs` (point unique, école `services/flow.rs`).
+//!   `services/pois.rs` (single point, `services/flow.rs` pattern).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -51,8 +51,8 @@ use crud::delete;
 // ─────────────────────────── routes ───────────────────────────
 
 pub fn routes() -> Routes {
-    // Les segments statiques (`cluster`, `placements`) sont déclarés avant
-    // le paramétrique `{id}` (matchit : statique prioritaire — école sites).
+    // Static segments (`cluster`, `placements`) are declared before
+    // the parametric `{id}` (matchit: static wins — sites pattern).
     Routes::new()
         .prefix("/api/v1")
         .add("/pois/cluster", get(cluster))

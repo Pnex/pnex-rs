@@ -1,17 +1,17 @@
-//! Couche d'organisation transverse (D42) — vocabulaire partagé
+//! Cross-cutting organization layer (D42) — vocabulary shared
 //! backend ↔ front, serde-only (wasm32-safe).
 //!
-//! Trois mécanismes séparés : **labels** (classification requêtable GIN),
-//! **containment** (arbre, un seul parent), **edges** (liens + placement).
-//! Labels effectifs résolus au read (propres + ancêtres).
+//! Three separate mechanisms: **labels** (GIN-queryable classification),
+//! **containment** (tree, a single parent), **edges** (links + placement).
+//! Effective labels resolved at read (own + ancestors).
 //! Containment and relation validity are declared as data by the types in
 //! [`crate::ontology`]; the engine never matches on kinds.
-//! Découplage device : organiser n'écrit jamais
-//! dans `device_registries` ni le firmware.
+//! Device decoupling: organizing never writes
+//! to `device_registries` nor to the firmware.
 
 // ─────────────────────────── ResourceRef ───────────────────────────
 
-/// Identité polymorphe — (org, kind, id), `id` = PK stringifiée.
+/// Polymorphic identity — (org, kind, id), `id` = stringified PK.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ResourceRef {
     pub org_id: i64,
@@ -47,10 +47,10 @@ pub const KIND_MAP_PIN: &str = "map_pin";
 pub const KIND_FLOW: &str = "flow";
 /// Collaborative page (pages.md #21).
 pub const KIND_DOC: &str = "doc";
-/// Conteneur d'organisation pur (nom + emoji), contient tous les kinds.
+/// Pure organization container (name + emoji), contains all kinds.
 pub const KIND_FOLDER: &str = "folder";
 
-/// Kinds vivants, pour `valid_kind` et l'enumération du registre.
+/// Live kinds, for `valid_kind` and the registry enumeration.
 pub const KINDS: [&str; 8] = [
     KIND_DEVICE,
     KIND_MEDIA_ASSET,
@@ -94,7 +94,7 @@ pub const LABEL_ONLY_KINDS: [&str; 8] = [
 
 // ─────────────────────────── relations ───────────────────────────
 
-/// Pano/média posé sur un POI (absorbe viz_links, D39 → D42).
+/// Pano/media placed on a POI (absorbs viz_links, D39 → D42).
 pub const REL_PLACED_ON: &str = "placed_on";
 
 // ─────────────────────────── labels ───────────────────────────
@@ -102,14 +102,14 @@ pub const REL_PLACED_ON: &str = "placed_on";
 /// `{"site": "serre", "critique": null}` — tag nu = `None`.
 pub type LabelSet = std::collections::BTreeMap<String, Option<String>>;
 
-/// Cap de classification (labels ≠ vrac : le libre reste dans `metadata`).
+/// Classification cap (labels ≠ catch-all: free-form stays in `metadata`).
 pub const LABELS_MAX: usize = 32;
-/// Nom : `[a-z0-9_-]`, 1..=64.
+/// Name: `[a-z0-9_-]`, 1..=64.
 pub const LABEL_NAME_MAX: usize = 64;
-/// Valeur : trimmée non-vide, ≤ 255 chars (ou tag nu = `None`).
+/// Value: trimmed non-empty, ≤ 255 chars (or bare tag = `None`).
 pub const LABEL_VALUE_MAX: usize = 255;
 
-/// Nom de label valide — charset fermé, école `naming.rs`.
+/// Valid label name — closed charset, `naming.rs` school.
 pub fn valid_label_name(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= LABEL_NAME_MAX
@@ -118,7 +118,7 @@ pub fn valid_label_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
 }
 
-/// Valeur de label valide après trim (tag nu autorise `None`).
+/// Valid label value after trim (bare tag allows `None`).
 pub fn valid_label_value(value: &str) -> bool {
     !value.is_empty() && value.chars().count() <= LABEL_VALUE_MAX
 }
@@ -201,7 +201,7 @@ mod tests {
     fn validation_labels() {
         assert!(valid_label_name("site"));
         assert!(valid_label_name("sous-reseau_2"));
-        assert!(!valid_label_name("Site")); // casse interdite (normalisé bas)
+        assert!(!valid_label_name("Site")); // uppercase forbidden (normalized lower)
         assert!(!valid_label_name("avec espace"));
         assert!(!valid_label_name(""));
         assert!(!valid_label_name(&"x".repeat(65)));
@@ -221,6 +221,6 @@ mod tests {
         let (f, err) = parse_label_filter("");
         assert!(f.is_none() && err.is_some());
         let (f, err) = parse_label_filter("Site:Serre");
-        assert!(f.is_none() && err.is_some(), "nom non normalisé rejeté");
+        assert!(f.is_none() && err.is_some(), "non-normalized name rejected");
     }
 }

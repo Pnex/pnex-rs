@@ -1,16 +1,16 @@
-//! Panneau assistant IA — bouton flottant global (toutes pages, mode
-//! authentifié) + drawer de chat. La trace d'outils est repliable ; une
-//! carte « Ouvrir dans l'éditeur » apparaît quand un outil a touché un
-//! flow (deep-link via the `?id=` of `/flows`).
+//! AI assistant panel — global floating button (every page, authenticated
+//! mode) + chat drawer. The tool trace is collapsible; an "Open in the
+//! editor" card appears when a tool touched a flow (deep-link via the
+//! `?id=` of `/flows`).
 //!
 //! Conversations (D145): private to the user within the current org,
 //! stored by the server. The drawer lists them (new, resume, rename,
 //! delete, delete all, export); only the new message is sent, the server
 //! rebuilds the history.
 //!
-//! Monté dans `pages/shell.rs` (branche Authenticated), à côté du
-//! ToastContainer. Invisible tant que le statut n'est pas hydraté ou que
-//! l'assistant est désactivé/non configuré (kill-switch env).
+//! Mounted in `pages/shell.rs` (Authenticated branch), next to the
+//! ToastContainer. Invisible as long as the status is not hydrated or the
+//! assistant is disabled/not configured (env kill-switch).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -61,9 +61,9 @@ pub fn open() {
 
 #[component]
 pub fn AssistantPanel() -> Element {
-    // Hydratation du statut : au montage, puis à CHAQUE changement d'org
-    // (la config IA est par org — un statut périmé masquerait/afficherait
-    // le panneau à tort). L'org est lu dans le scope réactif de l'effet.
+    // Status hydration: on mount, then on EVERY org change (the AI config
+    // is per org — a stale status would wrongly hide/show the panel). The
+    // org is read in the effect's reactive scope.
     let mut hydrated_org = use_signal(|| Option::<i64>::None);
     use_effect(move || {
         let org_id = crate::state::org::current();
@@ -482,7 +482,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
             }
         },
         ChatBubble::Assistant { text, trace } => {
-            // Entries touchant un flow, clonées (closures 'static dans rsx).
+            // Entries touching a flow, cloned ('static closures in rsx).
             let flow_entries: Vec<AiToolTrace> = trace
                 .iter()
                 .filter(|e| e.ok && e.flow_id.is_some())
@@ -544,7 +544,7 @@ fn Bubble(bubble: ChatBubble) -> Element {
                         for (i, entry) in proposals.into_iter().enumerate() {
                             ProposalButton { key: "{i}", entry }
                         }
-                        // Carte flow : l'outil a touché un flow → deep link.
+                        // Flow card: the tool touched a flow → deep link.
                         for entry in flow_entries {
                             button {
                                 key: "{entry.flow_id:?}",

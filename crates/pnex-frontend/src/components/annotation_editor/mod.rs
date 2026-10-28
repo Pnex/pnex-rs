@@ -1,16 +1,16 @@
-//! Édition des annotations sur médias (D59) — sous-composants partagés.
-//! Tranche 3 : la popover live [`popover`] (lecture, viewer + page média) ;
-//! le panneau d'édition complet (inspector, versions) arrive avec
-//! l'intégration studio (tranche 4).
+//! Editing annotations on media (D59) — shared sub-components.
+//! Slice 3: the live popover [`popover`] (read-only, viewer + media page);
+//! the full editing panel (inspector, versions) comes with the
+//! studio integration (slice 4).
 
 /// Inspecteur d'item (cible, label, couleur, suppression).
 pub mod inspector;
-/// Panneau d'édition (couche + items + pose + save + conflit).
+/// Editing panel (layer + items + placement + save + conflict).
 pub mod panel;
 pub mod popover;
-/// État éditeur (AnnotationEditorCx) + réducteurs purs testés.
+/// Editor state (AnnotationEditorCx) + tested pure reducers.
 pub mod state;
 /// Control / reading target editors (D128/D129).
 pub mod surface_targets;
-/// Drawer versions + publication (école tour_editor/versions.rs).
+/// Versions drawer + publishing (tour_editor/versions.rs pattern).
 pub mod versions;

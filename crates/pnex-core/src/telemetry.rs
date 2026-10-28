@@ -1,20 +1,20 @@
-//! DTO de télémétrie (2026-08-19) — page Visualisation : séries
-//! temporelles lues dans OpenObserve (Prometheus) via
-//! `GET /api/v1/telemetry/catalog` et `GET /api/v1/telemetry/series`.
+//! Telemetry DTOs (2026-08-19) — Visualization page: time
+//! series read from OpenObserve (Prometheus) via
+//! `GET /api/v1/telemetry/catalog` and `GET /api/v1/telemetry/series`.
 //!
-//! Même doctrine dégradée que le dashboard : la lecture O2 ne fait jamais
-//! échouer la requête — sans credentials O2, en erreur ou en timeout, le
-//! payload renvoie `available == false` et des listes vides.
+//! Same degraded doctrine as the dashboard: the O2 read never makes
+//! the request fail — without O2 credentials, on error or timeout, the
+//! payload returns `available == false` and empty lists.
 //!
-//! Champs dates : timestamps **epoch secondes** en f64 (forme native
-//! Prometheus, directement exploitable par le chart SVG côté front) ;
-//! `last_seen` du catalogue en RFC 3339 (converti côté backend). Pas de
-//! chrono dans le core (wasm32).
+//! Date fields: timestamps in **epoch seconds** as f64 (native
+//! Prometheus form, directly usable by the front's SVG chart);
+//! catalog `last_seen` in RFC 3339 (converted on the backend). No
+//! chrono in the core (wasm32).
 
 use serde::{Deserialize, Serialize};
 
-/// Réponse du `GET /api/v1/telemetry/catalog` — séries disponibles
-/// (métrique × device) pour alimenter les sélecteurs de la page.
+/// Response of `GET /api/v1/telemetry/catalog` — available series
+/// (metric × device) to feed the page's selectors.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -57,8 +57,8 @@ pub fn series_key(
     key
 }
 
-/// Une série disponible = une métrique sur un device (dernière valeur
-/// sur 24 h — sert aussi à montrer que la donnée est vivante).
+/// An available series = a metric on a device (latest value
+/// over 24 h — also shows that the data is alive).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -79,8 +79,8 @@ pub struct TelemetrySeriesInfo {
     pub last_seen: Option<String>,
 }
 
-/// Réponse du `GET /api/v1/telemetry/series?metric=…&device_id=…&window=…`
-/// — points d'UNE série sur la fenêtre demandée.
+/// Response of `GET /api/v1/telemetry/series?metric=…&device_id=…&window=…`
+/// — points of ONE series over the requested window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -98,8 +98,8 @@ pub struct TelemetrySeriesResponse {
     pub points: Vec<TelemetryPoint>,
 }
 
-/// Un point de la série — epoch secondes (f64, forme Prometheus : le
-/// fractionnaire est possible), valeur numérique déjà re-parsée.
+/// A point of the series — epoch seconds (f64, Prometheus form: the
+/// fractional part is possible), numeric value already re-parsed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -113,9 +113,9 @@ pub struct TelemetryPoint {
 
 // ───────────────────────── Batch (studio SCADA, D31) ─────────────────────────
 
-/// Une référence de série du `POST /api/v1/telemetry/series/query` — la
-/// même triple que les sources de widget (`viz::SourceRef`) : un seul
-/// appel pour tout un dashboard (un timer au lieu de N, D31).
+/// A series reference of `POST /api/v1/telemetry/series/query` — the
+/// same triple as the widget sources (`viz::SourceRef`): a single
+/// call for a whole dashboard (one timer instead of N, D31).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -148,9 +148,9 @@ pub struct SeriesBatchRequest {
     pub specs: Vec<SeriesSpec>,
 }
 
-/// Réponse du batch — un item par spec, **même ordre** ; une spec
-/// invalide ou non servie (budget dépassé) est **dégradée** au niveau
-/// item (`available: false`), jamais une 400 globale.
+/// Batch response — one item per spec, **same order**; an invalid
+/// or unserved spec (budget exceeded) is **degraded** at the item
+/// level (`available: false`), never a global 400.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(series_key("m", "", &labels), "m||a=1,b=2");
     }
 
-    /// Forme complète telle que sérialisée par le backend.
+    /// Full form as serialized by the backend.
     #[test]
     fn telemetry_roundtrip() {
         let json = r#"{
@@ -230,8 +230,8 @@ mod tests {
         );
     }
 
-    /// Org sans O2 / timeout : la page doit pouvoir se dessiner avec
-    /// cette seule forme (encart dégradé).
+    /// Org without O2 / timeout: the page must be able to draw itself with
+    /// this form alone (degraded panel).
     #[test]
     fn telemetry_minimal_degrade() {
         let catalog: TelemetryCatalog =

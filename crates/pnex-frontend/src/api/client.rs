@@ -1,19 +1,19 @@
-//! Client HTTP partagé.
+//! Shared HTTP client.
 //!
-//! - URLs relatives (same-origin, cf. `config::api_base`) ;
-//! - `Authorization: Bearer` + `X-Org-Id` (jamais sur `/oauth2/*` ni
-//!   `/api/v1/public/*`) lus depuis
-//!   le stockage à chaque requête (le stockage est la source de vérité) ;
+//! - relative URLs (same-origin, see `config::api_base`);
+//! - `Authorization: Bearer` + `X-Org-Id` (never on `/oauth2/*` nor
+//!   `/api/v1/public/*`) read from
+//!   storage on every request (storage is the source of truth);
 //! - on 401: **single-flight** token refresh (one refresh request, waiting
 //!   callers share the same future), then **one** retry of the request;
-//! - refresh impossible/échoué → session expirée (purge + signal) ;
+//! - refresh impossible/failed → session expired (purge + signal);
 //! - error messages: server body kept + machine code; local errors carry
 //!   an `err_codes` code + English fallback, i18n-resolved at render time;
-//! - 204 / corps vide → `None`.
+//! - 204 / empty body → `None`.
 //!
-//! Le client vit en `thread_local` : sur wasm le runtime est mono-thread et
-//! les futurs reqwest sont `!Send` ; sur natif l'UI reste sur son thread.
-//! (La future cible desktop devra rendre ces futurs `Send` — noté dans
+//! The client lives in a `thread_local`: on wasm the runtime is single-threaded and
+//! reqwest futures are `!Send`; natively the UI stays on its thread.
+//! (The future desktop target will have to make these futures `Send` — noted in
 //! docs/architecture/features.md.)
 
 use std::cell::RefCell;
@@ -28,11 +28,11 @@ use crate::storage::{self, KeyValueStorage, KEY_ACCESS_TOKEN, KEY_REFRESH_TOKEN}
 use pnex_core::err_codes;
 
 const OAUTH_PREFIX: &str = "/api/v1/oauth2";
-/// Endpoints publics (partage de tour) : **jamais** de Bearer/X-Org-Id —
-/// le token du lien est la seule clé ; et jamais de refresh 401 dessus.
+/// Public endpoints (tour sharing): **never** a Bearer/X-Org-Id —
+/// the link token is the only key; and never a 401 refresh on them.
 const PUBLIC_PREFIX: &str = "/api/v1/public";
 
-/// Chemin exempté d'authentification (oauth2 + public).
+/// Path exempt from authentication (oauth2 + public).
 fn is_auth_exempt(path: &str) -> bool {
     path.starts_with(OAUTH_PREFIX) || path.starts_with(PUBLIC_PREFIX)
 }
@@ -64,7 +64,7 @@ fn http() -> reqwest::Client {
     })
 }
 
-/// Requête JSON authentifiée ; 204/vide autorisé (→ None).
+/// Authenticated JSON request; 204/empty allowed (→ None).
 pub async fn request_opt<T: DeserializeOwned>(
     method: reqwest::Method,
     path: &str,
@@ -93,7 +93,7 @@ pub async fn request_opt<T: DeserializeOwned>(
     }
 }
 
-/// Requête JSON authentifiée attendant un corps.
+/// Authenticated JSON request expecting a body.
 pub async fn request<T: DeserializeOwned>(
     method: reqwest::Method,
     path: &str,
@@ -157,8 +157,8 @@ fn from_empty_body<T: DeserializeOwned>() -> Result<T, ApiError> {
     })
 }
 
-/// Requête authentifiée attendant des **octets** (téléchargement de
-/// firmware) — même mécanique de refresh 401 que `request_opt`.
+/// Authenticated request expecting **bytes** (firmware
+/// download) — same 401 refresh mechanism as `request_opt`.
 pub async fn request_bytes(method: reqwest::Method, path: &str) -> Result<Vec<u8>, ApiError> {
     let mut response = send(method.clone(), path, None).await?;
     if response.status() == reqwest::StatusCode::UNAUTHORIZED && !is_auth_exempt(path) {
@@ -273,8 +273,8 @@ async fn send(
         if let Some(token) = storage::local().get(KEY_ACCESS_TOKEN) {
             req = req.bearer_auth(token);
         }
-        // Le signal ORG est le miroir réactif du tenant courant (écrit par le
-        // sélecteur d'org, persisté par le même chemin).
+        // The ORG signal is the reactive mirror of the current tenant (written by the
+        // org switcher, persisted through the same path).
         if let Some(org) = crate::state::org::current() {
             req = req.header("X-Org-Id", org.to_string());
         }
@@ -286,9 +286,9 @@ async fn send(
     req.send().await.map_err(|err| ApiError::network(&err))
 }
 
-/// Variante de [`send`] avec un corps d'**octets bruts** (octet-stream) —
-/// upload média (D21) ; pas de feature multipart requise (marche identique
-/// wasm + natif).
+/// Variant of [`send`] with a **raw bytes** body (octet-stream) —
+/// media upload (D21); no multipart feature required (works the same on
+/// wasm + native).
 async fn send_bytes(
     method: reqwest::Method,
     path: &str,
@@ -310,9 +310,9 @@ async fn send_bytes(
     req.send().await.map_err(|err| ApiError::network(&err))
 }
 
-/// Requête authentifiée avec un **corps d'octets** (upload média) attendant
-/// une réponse JSON — même mécanique de refresh 401 que `request_opt` ; le
-/// corps est ré-emprunté pour la retry après refresh.
+/// Authenticated request with a **bytes body** (media upload) expecting
+/// a JSON response — same 401 refresh mechanism as `request_opt`; the
+/// body is borrowed again for the retry after refresh.
 pub async fn request_upload<T: DeserializeOwned>(
     method: reqwest::Method,
     path: &str,
@@ -338,11 +338,11 @@ pub async fn request_upload<T: DeserializeOwned>(
     }
 }
 
-/// Refresh single-flight : un seul appel IdP à la fois, partagé entre
-/// tous les appelants 401 concurrents. Échec → session expirée.
+/// Single-flight refresh: a single IdP call at a time, shared between
+/// all concurrent 401 callers. Failure → session expired.
 async fn ensure_refresh() -> Result<(), ApiError> {
-    // Aucun await entre l'emprunt et l'insertion → pas de course (mono-thread
-    // d'événements entre deux awaits).
+    // No await between the borrow and the insertion → no race (single-threaded
+    // event loop between two awaits).
     let running = REFRESH_SLOT.with(|slot| slot.borrow().clone());
     let future = match running {
         Some(running) => running,

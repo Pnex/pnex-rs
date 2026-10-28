@@ -7,10 +7,10 @@ use pnex_core::{BuildRecord, CreateBuild, CreateBuildResponse, Paginated};
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/build-records` + pagination.
+/// Filters of `GET /api/v1/build-records` + pagination.
 #[derive(Default)]
 pub struct BuildFilters {
-    /// Correspondance exacte sur l'identifiant firmware.
+    /// Exact match on the firmware identifier.
     pub device_id: Option<String>,
     /// `queued` | `running` | `succeeded` | `failed`.
     pub build_phase: Option<&'static str>,
@@ -54,7 +54,7 @@ fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/build-records` — records de l'org courante.
+/// `GET /api/v1/build-records` — records of the current org.
 pub async fn list(filters: &BuildFilters) -> Result<Paginated<BuildRecord>, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -64,7 +64,7 @@ pub async fn list(filters: &BuildFilters) -> Result<Paginated<BuildRecord>, ApiE
     .await
 }
 
-/// `POST /api/v1/build-firmware` — enregistre le job de build.
+/// `POST /api/v1/build-firmware` — records the build job.
 pub async fn create(params: CreateBuild) -> Result<CreateBuildResponse, ApiError> {
     client::request(
         reqwest::Method::POST,

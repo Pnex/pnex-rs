@@ -176,7 +176,7 @@ pub fn control_group(c: &UiControl) -> String {
 
 /// Label of a control as shown to the user. A home card role control is
 /// stored as `Room · Card · power` (role key, language neutral); the role
-/// key is shown under its localized name (O30: "Marche / arrêt").
+/// key is shown under its localized name (O30: "Marche / arrêt").  english-guard: allow (French example)
 pub fn control_label(c: &UiControl) -> String {
     let role = c
         .origin

@@ -1,11 +1,11 @@
-//! Rendu du **corps** d'un widget SCADA (jauge, valeur, mini-courbe,
-//! indicateur, texte) — partagé par la vue LIVE de `pages/dashboards.rs`
-//! et l'aperçu de l'éditeur. Le cadre, la sélection et les poignées de
-//! resize sont dessinés par l'appelant, jamais ici : le même composant
-//! sert aux deux modes (D34 : en édition, la dernière valeur est figée —
-//! c'est l'appelant qui cesse de la rafraîchir, le rendu est identique).
+//! Rendering of the **body** of a SCADA widget (gauge, value, mini-curve,
+//! indicator, text) — shared by the LIVE view of `pages/dashboards.rs`
+//! and the editor preview. The frame, the selection and the resize
+//! handles are drawn by the caller, never here: the same component
+//! serves both modes (D34: while editing, the last value is frozen —
+//! it is the caller that stops refreshing it, the rendering is identical).
 //!
-//! Toute la géométrie vit dans `components/charts` (pure, testée).
+//! All the geometry lives in `components/charts` (pure, tested).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -20,7 +20,7 @@ use crate::components::charts::{
     clamp_ratio, format_value, gauge_arc_geometry, gauge_arc_path, gauge_point, threshold_color,
 };
 
-/// Couleur par défaut de l'arc / de la LED (littéral — scanner Tailwind).
+/// Default colour of the arc / LED (literal — Tailwind scanner).
 const ACCENT: &str = "#0d9488";
 const GRAY: &str = "var(--color-gray-300, #d1d5db)";
 const TEXT_MUTED: &str = "var(--color-gray-500, #6b7280)";
@@ -29,15 +29,15 @@ const TEXT_MUTED: &str = "var(--color-gray-500, #6b7280)";
 pub fn WidgetBody(
     widget: Widget,
     points: Option<Vec<TelemetryPoint>>,
-    /// Map live complète `metric|device` — consommée par le widget
-    /// `thermo_chart` (multi-sources) ; `None` ailleurs.
+    /// Full live map `metric|device` — used by the
+    /// `thermo_chart` widget (multi-source); `None` elsewhere.
     values: Option<HashMap<String, Option<Vec<TelemetryPoint>>>>,
 ) -> Element {
     let w = &widget;
     let decimals = w.options.decimals.unwrap_or(1);
     let last = points.as_ref().and_then(|p| p.last().cloned());
-    // Le mini chart `line` ne porte l'unité nulle part ailleurs :
-    // l'en-tête existe dès que le titre OU l'unité est renseigné.
+    // The `line` mini chart carries the unit nowhere else:
+    // the header exists as soon as the title OR the unit is set.
     // Only `line` shows the unit in the header: stat, gauge and indicator
     // already render it next to the value (no duplicate).
     let header_unit = w
@@ -76,7 +76,7 @@ pub fn WidgetBody(
         div {
             class: if stale { "flex h-full w-full flex-col overflow-hidden rounded-lg opacity-50 grayscale" } else { "flex h-full w-full flex-col overflow-hidden rounded-lg" },
             title: if stale { t!("db-stale").to_string() } else { String::new() },
-            // En-tête : titre + unité.
+            // Header: title + unit.
             if !w.title.trim().is_empty() || header_unit.is_some() {
                 div { class: "flex items-baseline justify-between px-3 pt-2",
                     span { class: "truncate text-xs font-medium text-gray-500", "{w.title}" }
@@ -85,7 +85,7 @@ pub fn WidgetBody(
                     }
                 }
             }
-            // Corps par type.
+            // Body per type.
             match w.widget_type.as_str() {
                 "gauge" => rsx! {
                     gauge_body { widget: widget.clone(), last, decimals }
@@ -190,8 +190,8 @@ fn gauge_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Ele
                     style: "font-size: 20px; font-weight: 600",
                     fill: "var(--color-gray-900, #111827)",
                     "{label}"
-                    // Unité portée par la valeur (le corps, pas seulement
-                    // l'en-tête : sans titre, l'en-tête n'existe pas).
+                    // Unit carried by the value (the body, not only
+                    // the header: without a title, the header does not exist).
                     if let Some(unit) = &w.options.unit {
                         tspan {
                             style: "font-size: 11px; font-weight: 400",
@@ -261,8 +261,8 @@ fn stat_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Elem
 #[component]
 fn line_body(widget: Widget, points: Option<Vec<TelemetryPoint>>) -> Element {
     let _ = &widget;
-    // Fenêtre temporelle + amplitude Y bornées au widget (pas d'échelle
-    // globale : un mini-chart vit dans sa boîte).
+    // Time window + Y range bounded to the widget (no global
+    // scale: a mini-chart lives in its box).
     let mut t_min = f64::MAX;
     let mut t_max = f64::MIN;
     let mut v_min = f64::MAX;
@@ -322,8 +322,8 @@ fn line_body(widget: Widget, points: Option<Vec<TelemetryPoint>>) -> Element {
 #[component]
 fn indicator_body(widget: Widget, last: Option<TelemetryPoint>, decimals: u8) -> Element {
     let w = &widget;
-    // LED : verte si la valeur franchit le premier seuil, rouge sinon —
-    // sans seuil ni donnée : grise.
+    // LED: green if the value crosses the first threshold, red otherwise —
+    // with no threshold or data: grey.
     let led = match &last {
         None => GRAY.to_string(),
         Some(p) => {

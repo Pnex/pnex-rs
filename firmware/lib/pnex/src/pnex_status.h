@@ -1,17 +1,17 @@
 //
-// pnex-status — état réseau publié pour l'écran de debug local.
+// pnex-status — network state published for the local debug screen.
 //
-// Découplage strict (contrat écran, pnex_screen.h) : le réseau PUBLIE ici
-// (setters O(1), jamais bloquants, jamais sur le chemin de données) ;
-// pnex_screen CONSOMME au tick. Cette en-tête ne référence aucun driver
-// d'affichage — la logique réseau ne sait rien de l'écran.
+// Strict decoupling (screen contract, pnex_screen.h): the network PUBLISHES here
+// (O(1) setters, never blocking, never on the data path);
+// pnex_screen CONSUMES at tick. This header references no display
+// driver — the network logic knows nothing about the screen.
 //
-// Boucle Arduino single-thread (les callbacks WS sont tirés dans poll() sur
-// le même thread) : statiques simples, pas d'atomique.
+// Single-threaded Arduino loop (WS callbacks fire inside poll() on
+// the same thread): plain statics, no atomics.
 //
-// PNEX_HAS_SCREEN=0 (aucune gate écran compilée) → tous les setters se
-// replient en no-op : zéro mise à jour d'indicateur en build sans écran,
-// chemin de données identique.
+// PNEX_HAS_SCREEN=0 (no screen gate compiled) → every setter falls
+// back to a no-op: zero indicator update in a build without a screen,
+// identical data path.
 //
 
 #ifndef PNEX_STATUS_H
@@ -19,8 +19,8 @@
 
 #include <Arduino.h>
 
-// Gates écran (0 par défaut — mêmes défauts que pnex_screen.cpp, le builder
-// les pousse toujours via ${sysenv.*}).
+// Screen gates (0 by default — same defaults as pnex_screen.cpp, the builder
+// always pushes them through ${sysenv.*}).
 #ifndef PNEX_SCREEN_SSD1306
 #define PNEX_SCREEN_SSD1306 0
 #endif
@@ -32,11 +32,11 @@
 
 namespace pnex_status {
 
-// Étapes de connexion affichées : WiFi → Link (WS) → Registered.
+// Displayed connection steps: WiFi → Link (WS) → Registered.
 enum class Step : uint8_t {
-    Wifi = 0,       // connexion au point d'accès
-    Link = 1,       // WiFi OK, connexion au serveur (WS)
-    Registered = 2, // provision_ack reçu — enregistré côté serveur
+    Wifi = 0,       // connecting to the access point
+    Link = 1,       // WiFi OK, connecting to the server (WS)
+    Registered = 2, // provision_ack received — registered server-side
 };
 
 // Pin modes — mirror of the lib's PnexPinMode enum (Pnex.h). This header
@@ -65,28 +65,28 @@ constexpr size_t PIN_SLOTS = 32;
 struct NetState {
     Step step = Step::Wifi;
     bool wifi_ok = false;
-    uint8_t wifi_level = 0;  // 0-4 barres (RSSI mappé)
-    bool link_ok = false;    // WS ouvert
-    uint32_t tx_count = 0;   // frames data émises (hors PING)
-    uint32_t rx_count = 0;   // frames data reçues (hors PONG)
+    uint8_t wifi_level = 0;  // 0-4 bars (mapped RSSI)
+    bool link_ok = false;    // WS open
+    uint32_t tx_count = 0;   // data frames sent (PING excluded)
+    uint32_t rx_count = 0;   // data frames received (PONG excluded)
     // OTA deployment (a future screen page can render a progress bar).
     char ota_phase[12] = {0};  // "" | "downloading" | "flashing" | "failed"
     uint8_t ota_progress = 0;  // 0..=100
     // Provisioned pin table (ProvisionAck) — the board overlay already
     // excludes screen gpios server-side, so this is exactly the available
-    // pins set ("hors pins écran").
+    // pins set ("screen pins excluded").
     PinEntry pins[PIN_SLOTS];
     uint8_t pin_count = 0;
 };
 
-// Stockage (magic static — init thread-safe, ici mono-thread de toute façon).
+// Storage (magic static — thread-safe init, single-threaded here anyway).
 inline NetState& rw() {
     static NetState s;
     return s;
 }
 
-// Setters — appelés du chemin réseau ; la garde est une constante compilée
-// (repli no-op en build sans écran).
+// Setters — called from the network path; the guard is a compiled constant
+// (no-op fallback in a build without a screen).
 inline void set_step(Step s) {
     if (PNEX_HAS_SCREEN) {
         rw().step = s;
@@ -141,7 +141,7 @@ inline void set_pins(const PinEntry* entries, size_t n) {
     s.pin_count = (uint8_t)n;
 }
 
-// Lecture côté écran (au tick).
+// Screen-side read (at tick).
 inline const NetState& state() {
     return rw();
 }

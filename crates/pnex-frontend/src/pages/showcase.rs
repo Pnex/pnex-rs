@@ -1,9 +1,9 @@
-//! Vitrine du socle CRUD (`/_showcase`) — chaque composant exposé isolément
-//! avec des fixtures locales, **zéro appel réseau**. Page de référence dev
-//! (non référencée dans la nav : accès URL direct) — libellés en dur
-//! assumés ici, hors produit, contrairement à la doctrine i18n des pages.
-//! Sert de banc de cohérence visuelle (et plus tard de tests visuels),
-//! notamment pour le bouton retour agrandi, non exercé par flows.rs.
+//! Showcase of the CRUD base (`/_showcase`) — each component shown in
+//! isolation with local fixtures, **zero network call**. Dev reference page
+//! (not linked in the nav: direct URL access) — hard-coded labels are
+//! accepted here, outside the product, unlike the pages' i18n doctrine.
+//! Serves as a visual consistency bench (and later visual tests),
+//! notably for the enlarged back button, not exercised by flows.rs.
 
 use dioxus::prelude::*;
 use pnex_core::FlowSummary;
@@ -20,7 +20,7 @@ use crate::components::editor_shell::{
     StatusTone,
 };
 
-/// Fixture flow (FlowSummary : tous les champs pub, Clone + PartialEq).
+/// Flow fixture (FlowSummary: all fields pub, Clone + PartialEq).
 fn fixture(id: i64, name: &str, status: &str, deployed: Option<i64>, updated: &str) -> FlowSummary {
     FlowSummary {
         id,
@@ -37,7 +37,7 @@ fn fixture(id: i64, name: &str, status: &str, deployed: Option<i64>, updated: &s
 
 #[component]
 pub fn Showcase() -> Element {
-    // Démos interactives — signaux locaux, aucun appel API.
+    // Interactive demos — local signals, no API call.
     let mut dialog_open = use_signal(|| false);
     let search = use_signal(String::new);
     let page = use_signal(|| 0i64);
@@ -101,7 +101,7 @@ pub fn Showcase() -> Element {
                 p { class: "text-gray-500", "Corps libre (children)." }
             }
 
-            // 2 — ListLayout complet : retour agrandi + sous-titre + action.
+            // 2 — full ListLayout: enlarged back + subtitle + action.
             ListLayout {
                 title: "ListLayout — retour agrandi + sous-titre + action".to_string(),
                 subtitle: Some("Le retour est le nouveau canon (icône h-5 w-5, px-4 py-2.5).".to_string()),
@@ -137,7 +137,7 @@ pub fn Showcase() -> Element {
                 }
             }
 
-            // 4 — ListStates : les 4 zones.
+            // 4 — ListStates: the 4 zones.
             div { class: "space-y-6",
                 h2 { class: "text-lg font-semibold text-gray-900", "ListStates — les 4 états" }
                 div {
@@ -197,8 +197,8 @@ pub fn Showcase() -> Element {
                 p { class: "text-xs text-gray-500 font-mono", "{secret_draft():?}" }
             }
 
-            // 5 — EditorShell : la coquille des trois éditeurs (statique,
-            // pleine hauteur en fin de page).
+            // 5 — EditorShell: the shell of the three editors (static,
+            // full height at the end of the page).
             div {
                 h2 { class: "text-lg font-semibold text-gray-900",
                     "EditorShell — coquille d'éditeur"

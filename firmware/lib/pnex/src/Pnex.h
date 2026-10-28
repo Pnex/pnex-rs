@@ -1,10 +1,10 @@
 //
-// PneX — lib générique des firmwares ESP du projet PNeX (package PIO
-// publiable). Contient la MÉCANIQUE : transport (WiFi + WS + framing
-// ChaCha20, ex pnex-transport), config compilée (pnex_config.h, -D
-// defines b64 — contrat firmware-build.md §2.1) et le profil `pin_slave`
-// (announces/proto : pin map poussée dans le ProvisionAck, RPCs
-// SetMode/Write/Subscribe + Ack, lectures cadencées en StateReport).
+// PneX — generic lib of the PNeX project's ESP firmwares (publishable PIO
+// package). Holds the MECHANICS: transport (WiFi + WS + ChaCha20
+// framing, ex pnex-transport), compiled config (pnex_config.h, -D
+// b64 defines — contract firmware-build.md §2.1) and the `pin_slave` profile
+// (announces/proto: pin map pushed in the ProvisionAck, RPCs
+// SetMode/Write/Subscribe + Ack, timed reads as StateReport).
 //
 // Sketch policy (custom firmware, edge-model.md §2 bis): the sketch owns
 // its pins — the ones declared here (`addInput`/`addOutput`/
@@ -14,9 +14,9 @@
 // server's board overlay is the authority and the pin map arrives in the
 // ProvisionAck.
 //
-// Contrat fil : crates/pnex-core/src/proto.rs (miroir ArduinoJson).
-// Toute perte (close, PONG timeout, WiFi) → sorties en safe-state puis
-// backoff de reconnexion 1 s → 60 s.
+// Wire contract: crates/pnex-core/src/proto.rs (ArduinoJson mirror).
+// Any loss (close, PONG timeout, WiFi) → outputs to safe-state then
+// reconnect backoff 1 s → 60 s.
 //
 #ifndef PNEX_H
 #define PNEX_H
@@ -24,8 +24,8 @@
 #include <Arduino.h>
 #include <vector>
 
-// Signatures privées portant JsonDocument — la lib l'apporte elle-même
-// (dépendance déclarée dans library.json).
+// Private signatures carrying JsonDocument — the lib brings it itself
+// (dependency declared in library.json).
 #include <ArduinoJson.h>
 
 #if defined(ESP8266)
@@ -36,9 +36,9 @@
 
 #include "pnex_transport.h"
 
-// ─────────────────── Identité announce (surchargeables en -D) ───────────────────
+// ─────────────────── Announce identity (overridable with -D) ───────────────────
 
-// Chip annoncé au serveur — pilote la validation chip-caps côté serveur.
+// Chip announced to the server — drives the chip-caps validation server-side.
 #ifndef PNEX_CHIP
 #if defined(ESP8266)
 #define PNEX_CHIP "esp8266"
@@ -63,7 +63,7 @@
 #endif
 #endif
 
-// Version firmware annoncée — à garder en phase avec library.json.
+// Announced firmware version — keep in step with library.json.
 #ifndef PNEX_FW_VERSION
 #define PNEX_FW_VERSION "1.0.0"
 #endif
@@ -76,8 +76,8 @@
 #define PNEX_OTA_ENABLE 0
 #endif
 
-// Garde-fou (PAS une limite fonctionnelle) : au-delà, les add* refusent —
-// protège le buffer announce statique.
+// Safeguard (NOT a functional limit): beyond it, the add* refuse —
+// protects the static announce buffer.
 #ifndef PNEX_MAX_PINS
 #define PNEX_MAX_PINS 32
 #endif
@@ -112,7 +112,7 @@ typedef bool (*PnexCommandHandler)(JsonVariantConst args);
 // the work, run it from loop — same lesson as the deferred OTA).
 typedef bool (*PnexServerMsgHook)(JsonDocument& doc);
 
-// ───────────────────────── Table de pins ─────────────────────────
+// ───────────────────────── Pin table ─────────────────────────
 
 enum PnexPinMode : uint8_t {
     PNEX_DIGITAL_IN = 0,
@@ -130,11 +130,11 @@ struct PnexPin {
     unsigned long last_read_ms = 0;
     bool declared = false;  // declared by the sketch → Announce.pins
     String label;
-    uint8_t duty_pct = 0;  // PWM : dernier duty % écrit (0..=100)
+    uint8_t duty_pct = 0;  // PWM: last written duty % (0..=100)
 };
 
-// Une seule instance PnexDevice par sketch (callbacks transport en
-// pointeurs nus → trampolines statiques vers l'instance courante).
+// A single PnexDevice instance per sketch (transport callbacks as
+// bare pointers → static trampolines to the current instance).
 class PnexDevice {
 public:
     // ── Pin declarations (custom firmware: the sketch owns its pins) ──
@@ -142,19 +142,19 @@ public:
     // the pin stays usable locally (applied at boot).
     bool addInput(uint8_t gpio, const char* label = nullptr, bool pullup = false);
     bool addOutput(uint8_t gpio, const char* label = nullptr, bool safe_high = false);
-    /// PWM output — écritures en duty % (0..=100), fréquence par défaut du
-    /// core Arduino (abstraction : pas de config de fréquence).
+    /// PWM output — writes in duty % (0..=100), default frequency of the
+    /// Arduino core (abstraction: no frequency config).
     bool addPwmOutput(uint8_t gpio, const char* label = nullptr, bool safe_high = false);
-    /// ESP8266 : l'ADC unique (A0) — gpio ignoré. ESP32 : le GPIO ADC1.
+    /// ESP8266: the single ADC (A0) — gpio ignored. ESP32: the ADC1 GPIO.
     bool addAnalogInput(uint8_t gpio, const char* label = nullptr);
 
-    /// Bloquant : WiFi (40 essais) + 1re connexion WS + announce. Une
-    /// connexion propre au boot announce AUSSI (constat e2e 2026-09-14 :
-    /// il ne partait que sur le chemin « reconnexion » — session fantôme).
+    /// Blocking: WiFi (40 attempts) + 1st WS connection + announce. A
+    /// clean connection at boot announces TOO (observed e2e 2026-09-14:
+    /// it only left on the "reconnect" path — ghost session).
     void begin();
 
-    /// À appeler à chaque tour de loop() — poll WS, PING 5 s, lectures
-    /// cadencées des pins souscrites → StateReport.
+    /// Call on every loop() round — WS poll, PING 5 s, timed reads
+    /// of the subscribed pins → StateReport.
     void loop();
 
     // ── Custom metrics and commands (custom firmware, D87/D88) ──
@@ -206,8 +206,8 @@ public:
     void sendOtaState(const char* phase, uint8_t pct, const char* err);
 
 private:
-    std::vector<PnexPin> pins_;      // table active (ProvisionAck ou déclaré)
-    std::vector<PnexPin> declared_;  // déclarations sketch (announce)
+    std::vector<PnexPin> pins_;      // active table (ProvisionAck or declared)
+    std::vector<PnexPin> declared_;  // sketch declarations (announce)
     // Extra caps registered by optional modules (addCap).
     const char* extra_cap_ids_[PNEX_MAX_EXTRA_CAPS] = {};
     const char* extra_cap_families_[PNEX_MAX_EXTRA_CAPS] = {};
@@ -244,7 +244,7 @@ private:
     bool runPendingOta();
 };
 
-// Trampolines transport (pointeurs nus C → instance unique, cf. infra).
+// Transport trampolines (bare C pointers → single instance, see below).
 void pnex_on_ws_closed();
 void pnex_on_ws_message(const String& plain);
 

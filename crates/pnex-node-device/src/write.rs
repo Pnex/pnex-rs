@@ -1,12 +1,12 @@
-//! Nœud `pnex-device-write` — écrit les pins output d'un seul device
-//! (digital 1/0, pwm duty 0..=100). Le runtime n'a jamais d'accès direct au
-//! WS device : le downlink transite par la route interne backend
-//! `/internal/flow/device-write` (école `/internal/notify/deliver`), token
-//! partagé injecté dans l'env du runtime par le superviseur.
+//! `pnex-device-write` node — writes the output pins of a single device
+//! (digital 1/0, pwm duty 0..=100). The runtime never has direct access to the
+//! device WS: the downlink goes through the backend internal route
+//! `/internal/flow/device-write` (`/internal/notify/deliver` pattern), shared
+//! token injected into the runtime env by the supervisor.
 //!
-//! - build fail-loud si les coordonnées d'écriture sont absentes de l'env
-//!   (`PNEX_FLOW_WRITE_URL`/`_TOKEN`) — le préflight `--check` du deploy
-//!   échoue explicitement (école pnex-notify) ;
+//! - fail-loud build if the write coordinates are missing from the env
+//!   (`PNEX_FLOW_WRITE_URL`/`_TOKEN`) — the deploy's `--check` preflight
+//!   fails explicitly (pnex-notify pattern);
 //! - incoming payload = a `{pin: value}` map (batch — only the configured
 //!   pins present in the map are sent), or a **scalar** routed by
 //!   `msg.topic` when the wire was drawn on a pin's input anchor (the deploy
@@ -17,11 +17,11 @@
 //!   same routing as pins (map key, or topic of their input anchor) and are
 //!   sent as `commands: {name: value}`; the backend wraps the value into
 //!   `args = {"value": …}`.
-//! - écriture lenient : un pin en erreur = warn + continue (jamais de
-//!   crash-loop) ; le message passe en sortie (passthrough).
-//! - Sorties : port 0 = message entrant (passthrough), dernier port =
-//!   « nom du device » (payload = slug du device) — nommage explicite du
-//!   device pour l'aval, sans convention de payload.
+//! - lenient write: a pin in error = warn + continue (never a
+//!   crash-loop); the message passes through (passthrough).
+//! - Outputs: port 0 = incoming message (passthrough), last port =
+//!   "device name" (payload = device slug) — explicit naming of the
+//!   device for downstream, without a payload convention.
 
 use std::sync::Arc;
 
@@ -48,8 +48,8 @@ struct DeviceWriteNodeConfig {
     /// Value declared per pin (O70): written whatever the message carries.
     #[serde(default)]
     values: std::collections::BTreeMap<String, serde_json::Value>,
-    /// Estampillé par la projection au deploy (`FlowArtifactMeta.org_id`) —
-    /// passé tel quel à la route interne (elle résout le device dans l'org).
+    /// Stamped by the projection at deploy (`FlowArtifactMeta.org_id`) —
+    /// passed as is to the internal route (it resolves the device within the org).
     #[serde(default)]
     pnex_org_id: i64,
     /// Canvas id, stamped by the projection (status badge matching).
@@ -76,11 +76,11 @@ impl DeviceWriteNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = DeviceWriteNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-device-write : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-device-write: invalid config: {e}"))
         })?;
         if !pnex_core::valid_device_label(&cfg.device_id) {
             return Err(EdgelinkError::BadFlowsJson(format!(
-                "pnex-device-write : device « {} » invalide (slug requis)",
+                "pnex-device-write: invalid device \"{}\" (slug required)",
                 cfg.device_id
             ))
             .into());
@@ -105,7 +105,7 @@ impl DeviceWriteNode {
         for pin in &cfg.pins {
             if pin.trim().is_empty() {
                 return Err(EdgelinkError::BadFlowsJson(format!(
-                    "pnex-device-write : pin vide pour « {} »",
+                    "pnex-device-write: empty pin for \"{}\"",
                     cfg.device_id
                 ))
                 .into());
@@ -113,24 +113,25 @@ impl DeviceWriteNode {
         }
         if cfg.pnex_org_id <= 0 {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-device-write : pnex_org_id absent de l'artefact (redéployer le flow)".into(),
+                "pnex-device-write: pnex_org_id missing from the artefact (redeploy the flow)"
+                    .into(),
             )
             .into());
         }
-        // Coordonnées injectées par le superviseur (FlowSettings.device_write
-        // → apply_runtime_env). Jamais en flows.json — absent ⇒ fail-loud au
-        // build : le préflight du deploy échoue explicitement.
+        // Coordinates injected by the supervisor (FlowSettings.device_write
+        // → apply_runtime_env). Never in flows.json — missing ⇒ fail-loud at
+        // build: the deploy preflight fails explicitly.
         let url = std::env::var("PNEX_FLOW_WRITE_URL").map_err(|_| {
             EdgelinkError::InvalidOperation(
-                "pnex-device-write : PNEX_FLOW_WRITE_URL absente de l'environnement \
-                 du runtime (runtime_token non configuré côté serveur ?)"
+                "pnex-device-write: PNEX_FLOW_WRITE_URL missing from the runtime \
+                 environment (runtime_token not configured on the server?)"
                     .into(),
             )
         })?;
         let token = std::env::var("PNEX_FLOW_WRITE_TOKEN").map_err(|_| {
             EdgelinkError::InvalidOperation(
-                "pnex-device-write : PNEX_FLOW_WRITE_TOKEN absente de l'environnement \
-                 du runtime"
+                "pnex-device-write: PNEX_FLOW_WRITE_TOKEN missing from the runtime \
+                 environment"
                     .into(),
             )
         })?;
@@ -269,14 +270,14 @@ impl DeviceWriteNode {
             });
             return self.fan_out_done(msg, cancel).await;
         }
-        // Map Variant → JSON une seule fois ; le filtrage sur les pins
-        // configurées vit dans `write_values`.
+        // Variant → JSON map once; filtering on the configured pins
+        // lives in `write_values`.
         let obj: serde_json::Map<String, serde_json::Value> =
             match serde_json::to_value(&payload_value) {
                 Ok(v) => v.as_object().cloned().unwrap_or_default(),
                 Err(e) => {
                     return Err(EdgelinkError::InvalidOperation(format!(
-                        "pnex-device-write : payload non sérialisable : {e}"
+                        "pnex-device-write: payload not serializable: {e}"
                     ))
                     .into());
                 }
@@ -284,9 +285,9 @@ impl DeviceWriteNode {
         self.write_values(msg, cancel, obj).await
     }
 
-    /// Un POST batch vers la route interne avec les valeurs filtrées sur les
-    /// pins configurées. Résultat lenient : les pins en erreur sont
-    /// warnées, le message passe (passthrough).
+    /// One batch POST to the internal route with the values filtered on the
+    /// configured pins. Lenient result: pins in error are
+    /// warned, the message passes (passthrough).
     async fn write_values(
         &self,
         msg: MsgHandle,

@@ -1,8 +1,8 @@
-//! API Studio (parcours 3D versionnés) — client du contrôleur
-//! `/api/v1/tours` + endpoint public `/api/v1/public/tours` (contrat
-//! `docs/contracts/tours.http`). Types depuis `pnex-core` (source de vérité
-//! partagée, wasm32) ; `update` porte la concurrence optimiste
-//! (`expected_version_number`, 409 si périmé — école `api/flows.rs`).
+//! Studio API (versioned 3D tours) — client of the `/api/v1/tours`
+//! controller + public endpoint `/api/v1/public/tours` (contract
+//! `docs/contracts/tours.http`). Types from `pnex-core` (shared source of
+//! truth, wasm32); `update` carries optimistic concurrency
+//! (`expected_version_number`, 409 if stale — same approach as `api/flows.rs`).
 
 use pnex_core::{
     CreateTour, Paginated, PublicTour, PublishTour, TourDetail, TourSummary, TourVersionDetail,
@@ -12,7 +12,7 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/tours` + pagination (D14).
+/// Filters of `GET /api/v1/tours` + pagination (D14).
 #[derive(Default)]
 pub struct TourFilters {
     pub search: Option<String>,
@@ -62,7 +62,7 @@ pub(crate) fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/tours` — tours de l'org courante, enveloppe paginée.
+/// `GET /api/v1/tours` — tours of the current org, paginated envelope.
 pub async fn list(filters: &TourFilters) -> Result<Paginated<TourSummary>, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -78,7 +78,7 @@ pub async fn list_all(filters: &TourFilters) -> Result<Vec<TourSummary>, ApiErro
     client::request_all(&format!("/api/v1/tours{}", filters.to_query())).await
 }
 
-/// `POST /api/v1/tours` — création (document minimal = version 1).
+/// `POST /api/v1/tours` — creation (minimal document = version 1).
 pub async fn create(params: CreateTour) -> Result<TourDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -88,7 +88,7 @@ pub async fn create(params: CreateTour) -> Result<TourDetail, ApiError> {
     .await
 }
 
-/// `GET /api/v1/tours/{id}` — détail (doc de la dernière version).
+/// `GET /api/v1/tours/{id}` — detail (doc of the latest version).
 pub async fn detail(id: &str) -> Result<TourDetail, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -98,9 +98,9 @@ pub async fn detail(id: &str) -> Result<TourDetail, ApiError> {
     .await
 }
 
-/// `PATCH /api/v1/tours/{id}` — enregistre une **nouvelle version**
-/// (append-only) ; 409 si `expected_version_number` est périmé, 400
-/// `{"violations": […]}` si le document est invalide.
+/// `PATCH /api/v1/tours/{id}` — saves a **new version**
+/// (append-only); 409 if `expected_version_number` is stale, 400
+/// `{"violations": […]}` if the document is invalid.
 pub async fn update(id: &str, params: UpdateTour) -> Result<TourDetail, ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -110,7 +110,7 @@ pub async fn update(id: &str, params: UpdateTour) -> Result<TourDetail, ApiError
     .await
 }
 
-/// `DELETE /api/v1/tours/{id}` — tour + versions (cascade ; aucun blob).
+/// `DELETE /api/v1/tours/{id}` — tour + versions (cascade; no blob).
 pub async fn delete(id: &str) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -121,7 +121,7 @@ pub async fn delete(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `GET /api/v1/tours/{id}/versions` — historique, desc.
+/// `GET /api/v1/tours/{id}/versions` — history, desc.
 pub async fn versions(
     id: &str,
     limit: i64,
@@ -138,7 +138,7 @@ pub async fn versions(
     .await
 }
 
-/// `GET /api/v1/tours/{id}/versions/{n}` — document historique.
+/// `GET /api/v1/tours/{id}/versions/{n}` — historical document.
 pub async fn version(id: &str, version_number: i64) -> Result<TourVersionDetail, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -148,8 +148,8 @@ pub async fn version(id: &str, version_number: i64) -> Result<TourVersionDetail,
     .await
 }
 
-/// `POST /api/v1/tours/{id}/publish` — publie une version (absente =
-/// dernière). La version publiée sert le viewer in-app et le lien public.
+/// `POST /api/v1/tours/{id}/publish` — publishes a version (absent =
+/// latest). The published version serves the in-app viewer and the public link.
 pub async fn publish(id: &str, version_number: Option<i64>) -> Result<TourDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -159,7 +159,7 @@ pub async fn publish(id: &str, version_number: Option<i64>) -> Result<TourDetail
     .await
 }
 
-/// `POST /api/v1/tours/{id}/unpublish` — dépublie ET révoque le lien public.
+/// `POST /api/v1/tours/{id}/unpublish` — unpublishes AND revokes the public link.
 pub async fn unpublish(id: &str) -> Result<TourDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -169,8 +169,8 @@ pub async fn unpublish(id: &str) -> Result<TourDetail, ApiError> {
     .await
 }
 
-/// Réponse de `POST /share` — le front affiche un toast, les champs ne sont
-/// pas consommés (le token sert via le détail writer).
+/// Response of `POST /share` — the front shows a toast, the fields are not
+/// consumed (the token is served through the writer detail).
 #[derive(Debug, Clone, serde::Deserialize)]
 #[allow(dead_code)]
 pub struct ShareResponse {
@@ -178,8 +178,8 @@ pub struct ShareResponse {
     pub share_enabled: bool,
 }
 
-/// `POST /api/v1/tours/{id}/share` — génère (ou régénère) le token public.
-/// 409 `not_published` si le tour n'a pas de version publiée.
+/// `POST /api/v1/tours/{id}/share` — generates (or regenerates) the public token.
+/// 409 `not_published` if the tour has no published version.
 pub async fn share(id: &str) -> Result<ShareResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -189,8 +189,8 @@ pub async fn share(id: &str) -> Result<ShareResponse, ApiError> {
     .await
 }
 
-/// `DELETE /api/v1/tours/{id}/share` — révoque le lien (publication
-/// conservée).
+/// `DELETE /api/v1/tours/{id}/share` — revokes the link (publication
+/// kept).
 pub async fn revoke_share(id: &str) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -201,11 +201,11 @@ pub async fn revoke_share(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-// ─────────────────────────── Public (sans auth) ───────────────────────────
+// ─────────────────────────── Public (no auth) ───────────────────────────
 
-/// `GET /api/v1/public/tours/{token}` — document publié + carte des assets.
-/// Chemin exempté d'auth côté `client.rs` (`PUBLIC_PREFIX`) — jamais de
-/// Bearer/X-Org-Id attachés.
+/// `GET /api/v1/public/tours/{token}` — published document + asset map.
+/// Path exempted from auth in `client.rs` (`PUBLIC_PREFIX`) — never any
+/// Bearer/X-Org-Id attached.
 pub async fn public_detail(token: &str) -> Result<PublicTour, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -215,8 +215,8 @@ pub async fn public_detail(token: &str) -> Result<PublicTour, ApiError> {
     .await
 }
 
-/// Chemin des octets d'un asset référencé par le tour publié (`?v=n` —
-/// version précise, cacheable ; absent = courante).
+/// Path of the bytes of an asset referenced by the published tour (`?v=n` —
+/// exact version, cacheable; absent = current).
 pub fn public_asset_path(token: &str, asset_id: &str, version: Option<i64>) -> String {
     match version {
         Some(n) => format!(
@@ -232,11 +232,11 @@ pub fn public_asset_path(token: &str, asset_id: &str, version: Option<i64>) -> S
     }
 }
 
-/// URL complète d'un lien de partage (page `/share/:token` de la SPA) :
-/// web = **origine de la page** (l'API peut être ailleurs en dev hot —
-/// `PNEX_API_BASE_URL` — le lien doit viser la SPA, pas l'API) ; natif =
-/// URL serveur (la SPA est servie par le backend en production). Le
-/// routeur dioxus-web est **WebHistory** : chemin réel, PAS de `#`.
+/// Full URL of a share link (the SPA's `/share/:token` page):
+/// web = **page origin** (the API may live elsewhere in hot dev —
+/// `PNEX_API_BASE_URL` — the link must target the SPA, not the API); native =
+/// server URL (the SPA is served by the backend in production). The
+/// dioxus-web router is **WebHistory**: real path, NO `#`.
 pub fn share_url(token: &str) -> String {
     #[cfg(target_arch = "wasm32")]
     let base = web_sys::window()
@@ -247,7 +247,7 @@ pub fn share_url(token: &str) -> String {
     format!("{base}/share/{}", urlencode(token))
 }
 
-// ─────────────────────────── Échecs de save ───────────────────────────
+// ─────────────────────────── Save failures ───────────────────────────
 
 /// Display text of a tour or annotation document violation: `err-<code>`
 /// with the offending id as `$subject` (prefixed when present), else the
@@ -267,9 +267,9 @@ pub fn violation_text(subject: Option<&str>, code: &str, message: &str) -> Strin
     }
 }
 
-/// Échec d'un enregistrement, trié pour l'UI (école `api/flows.rs`) :
-/// conflit de concurrence (409, modal « recharger / écraser »), document
-/// invalide (400 violations, bandeau), ou autre (toast verbatim).
+/// Failure of a save, sorted for the UI (same approach as `api/flows.rs`):
+/// concurrency conflict (409, "reload / overwrite" modal), invalid document
+/// (400 violations, banner), or other (verbatim toast).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveError {
     Conflict { description: String },
@@ -277,8 +277,8 @@ pub enum SaveError {
     Other(String),
 }
 
-/// Classe une `ApiError` issue de `update()` — uniquement un 409 ou un 400
-/// à champ `violations` a une sémantique exploitable.
+/// Classifies an `ApiError` coming from `update()` — only a 409 or a 400
+/// with a `violations` field has usable semantics.
 pub fn classify_save_error(err: &ApiError) -> SaveError {
     if err.status == Some(409) {
         return SaveError::Conflict {
@@ -318,7 +318,7 @@ mod tests {
             SaveError::Invalid(violations) => {
                 assert_eq!(violations[0].code, "unknown_link_target");
             }
-            other => panic!("attendu Invalid, eu {other:?}"),
+            other => panic!("expected Invalid, got {other:?}"),
         }
 
         let other = ApiError::http(403, r#"{"error":"forbidden"}"#);

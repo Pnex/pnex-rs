@@ -1,21 +1,21 @@
-//! Intégration OpenObserve (D1/D2) : stockage télémétrie, 1 org O2 par org
-//! PNEX, credentials d'ingestion provisionnés automatiquement et conservés
-//! en base (`openobserve_orgs`) — le chemin d'ingestion y puise le couple
-//! org/token correlé.
+//! OpenObserve integration (D1/D2): telemetry storage, 1 O2 org per PNEX
+//! org, ingestion credentials provisioned automatically and kept
+//! in the database (`openobserve_orgs`) — the ingestion path draws the
+//! correlated org/token pair from it.
 //!
-//! Contrat API vérifié contre openobserve v0.92.1 (dev compose) :
-//! - `GET /api/organizations` (Basic root) → `data[] {identifier, name}` ;
-//! - `POST /api/organizations {name}` → **ne dédoublonne pas par nom**
-//!   (recréer = 2e org) → toujours chercher par nom avant de créer ;
-//!   nom : alphanumérique + underscore uniquement ;
-//! - `POST /api/{identifier}/users {email,password,role:"admin"}` (seul
-//!   rôle natif hors root) → 400 « User already exists » si présent ;
+//! API contract checked against openobserve v0.92.1 (dev compose):
+//! - `GET /api/organizations` (Basic root) → `data[] {identifier, name}`;
+//! - `POST /api/organizations {name}` → **does not deduplicate by name**
+//!   (re-creating = 2nd org) → always search by name before creating;
+//!   name: alphanumeric + underscore only;
+//! - `POST /api/{identifier}/users {email,password,role:"admin"}` (the only
+//!   native role besides root) → 400 « User already exists » if present;
 //! - `PUT /api/{identifier}/users/{email} {new_password,change_password}`
-//!   (root) → reprend un user sans son ancien mot de passe ;
-//! - `GET /api/{identifier}/passcode` (Basic email:password du user) →
-//!   `data.passcode` (o2oi_…) — Bearer passcode NON supporté en ingestion ;
+//!   (root) → takes a user back without its old password;
+//! - `GET /api/{identifier}/passcode` (Basic email:password of the user) →
+//!   `data.passcode` (o2oi_…) — Bearer passcode NOT supported for ingestion;
 //! - ingestion `POST /api/{identifier}/{stream}/_json` (Basic
-//!   email:password **ou** email:passcode, corps = tableau JSON).
+//!   email:password **or** email:passcode, body = JSON array).
 
 pub mod client;
 pub mod promwrite;
@@ -32,15 +32,15 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 pub struct OpenobserveSettings {
     pub base_url: String,
-    /// Compte service admin (provisioning des orgs/users — jamais utilisé
-    /// pour ingérer).
+    /// Admin service account (org/user provisioning — never used
+    /// to ingest).
     pub root_email: String,
     pub root_password: String,
 }
 
 impl OpenobserveSettings {
-    /// `settings.openobserve` optionnelle — absente = fonctionnalité
-    /// désactivée (sink noop, health « not-configured » ; cas des tests).
+    /// Optional `settings.openobserve` — absent = feature
+    /// disabled (noop sink, health « not-configured »; the test case).
     pub fn from_config(config: &Config) -> Option<Self> {
         config
             .settings
@@ -50,6 +50,6 @@ impl OpenobserveSettings {
     }
 }
 
-/// Nom de métrique Prometheus valide (charset officiel) — la fonction vit
-/// dans pnex-core (`naming`) : source unique avec le runtime de flows.
+/// Valid Prometheus metric name (official charset) — the function lives
+/// in pnex-core (`naming`): single source with the flow runtime.
 pub(crate) use pnex_core::valid_metric_name;

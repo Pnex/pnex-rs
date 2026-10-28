@@ -1,5 +1,5 @@
-//! Drawer d'historique des versions — liste paginée, chargement dans
-//! l'éditeur, deploy d'une version antérieure (= rollback serveur).
+//! Version history drawer — paginated list, loading into
+//! the editor, deploy of an older version (= server rollback).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -10,9 +10,9 @@ use crate::components::confirm::ConfirmDialog;
 use crate::components::gerbe::Gerbe;
 use crate::state::toasts;
 
-/// Drawer latéral d'historique. `on_loaded` transmet la version à charger
-/// dans l'éditeur (le graphe est appliqué par `FlowEditor`) ; `on_deployed`
-/// est appelé après un deploy/rollback réussi.
+/// History side drawer. `on_loaded` passes the version to load
+/// into the editor (the graph is applied by `FlowEditor`); `on_deployed`
+/// is called after a successful deploy/rollback.
 #[component]
 pub(crate) fn VersionsDrawer(
     flow_id: i64,
@@ -34,7 +34,7 @@ pub(crate) fn VersionsDrawer(
 
     rsx! {
         div { class: "fixed inset-0 z-40",
-            // Clic hors drawer → fermeture.
+            // Click outside the drawer → close.
             div { class: "absolute inset-0", onclick: close }
             aside { class: "pnex-drawer-in-right absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
@@ -115,7 +115,7 @@ pub(crate) fn VersionsDrawer(
             }
         }
 
-        // Confirmation du deploy d'une version antérieure (= rollback).
+        // Confirmation of deploying an older version (= rollback).
         if let Some(version_number) = deploy_target {
             ConfirmDialog {
                 key: "deploy-{version_number}",

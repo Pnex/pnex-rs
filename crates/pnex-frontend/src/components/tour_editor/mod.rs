@@ -1,8 +1,8 @@
-//! Éditeur de tour (Studio) — plan d'étage + scènes panoramiques + liens,
-//! save versionné école flows. Squelette `flow_editor` : toutes les
-//! mutations passent par les réducteurs purs de `state.rs`, la géométrie
-//! est testée dans `geometry.rs`, le rendu/gestes dans `canvas.rs`, les
-//! formulaires dans `inspector.rs`, l'historique + publication dans
+//! Tour editor (Studio) — floor plan + panoramic scenes + links,
+//! versioned save, flows approach. `flow_editor` skeleton: every
+//! mutation goes through the pure reducers of `state.rs`, the geometry
+//! is tested in `geometry.rs`, rendering/gestures in `canvas.rs`, the
+//! forms in `inspector.rs`, history + publication in
 //! `versions.rs`.
 
 pub(crate) mod canvas;
@@ -36,18 +36,18 @@ use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::session;
 use crate::state::toasts;
 
-/// Geste en cours (machine à états plate — un seul variant actif).
+/// Gesture in progress (flat state machine — a single active variant).
 #[derive(Clone, PartialEq)]
 pub(crate) enum Interaction {
-    /// Aucun geste.
+    /// No gesture.
     Idle,
-    /// Pan du fond : delta client depuis le début du geste.
+    /// Background pan: client delta since the start of the gesture.
     Panning {
         start_client: (f64, f64),
         start_pan: (f64, f64),
     },
-    /// Drag d'une scène : `grab` = décalage curseur↔pin, mesuré au début du
-    /// geste (rect figé — école flow_editor).
+    /// Scene drag: `grab` = cursor↔pin offset, measured at the start of the
+    /// gesture (frozen rect — flow_editor approach).
     Dragging {
         id: String,
         grab: (f64, f64),
@@ -55,7 +55,7 @@ pub(crate) enum Interaction {
     },
 }
 
-/// Élément sélectionné (inspecteur + touche Delete).
+/// Selected element (inspector + Delete key).
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Select {
     Scene(String),
@@ -63,41 +63,41 @@ pub(crate) enum Select {
     Link(String),
 }
 
-/// Paquet de signaux `Copy` partagés entre l'éditeur et ses sous-composants
-/// (école `EditorCx`).
+/// Bundle of `Copy` signals shared between the editor and its subcomponents
+/// (`EditorCx` approach).
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) struct TourEditorCx {
-    /// Document en cours d'édition (ce que le Save enverra).
+    /// Document being edited (what Save will send).
     pub(crate) doc: Signal<TourDoc>,
-    /// Baseline du dirty : document de la dernière version enregistrée.
+    /// Dirty baseline: document of the last saved version.
     pub(crate) saved_doc: Signal<TourDoc>,
-    /// Numéro de la dernière version connue côté serveur.
+    /// Number of the latest version known server side.
     pub(crate) saved_version: Signal<i64>,
-    /// Sélection courante (inspecteur).
+    /// Current selection (inspector).
     pub(crate) selected: Signal<Option<Select>>,
-    /// Geste en cours.
+    /// Gesture in progress.
     pub(crate) interaction: Signal<Interaction>,
     pub(crate) pan: Signal<(f64, f64)>,
     pub(crate) zoom: Signal<f64>,
-    /// Étage affiché dans le canevas.
+    /// Floor shown in the canvas.
     pub(crate) active_floor: Signal<String>,
-    /// Mode « liaison » : cliquer deux scènes crée un hotspot.
+    /// "Link" mode: clicking two scenes creates a hotspot.
     pub(crate) link_mode: Signal<bool>,
-    /// Source du lien en attente (mode lien actif).
+    /// Source of the pending link (link mode active).
     pub(crate) link_from: Signal<Option<String>>,
-    /// Violations courantes (locales ou reçues en 400 du serveur).
+    /// Current violations (local or received as a 400 from the server).
     pub(crate) violations: Signal<Vec<TourViolation>>,
 }
 
 impl TourEditorCx {
-    /// Mutation du document via un réducteur pur de `state.rs`.
+    /// Document mutation through a pure reducer of `state.rs`.
     pub(crate) fn update_doc(mut self, f: impl FnOnce(&mut TourDoc)) {
         self.doc.with_mut(f);
     }
 }
 
-/// Éditeur monté par la page `/studio` — orchestration : chargement, save,
-/// conflit 409, étages, drawer versions, aperçu.
+/// Editor mounted by the `/studio` page — orchestration: loading, save,
+/// 409 conflict, floors, versions drawer, preview.
 #[component]
 pub fn TourEditor(
     tour_id: String,
@@ -106,7 +106,7 @@ pub fn TourEditor(
     on_changed: Callback<()>,
 ) -> Element {
     let mut reload_meta = use_signal(|| 0u32);
-    // Prop String : un clone local nommé par closure (école CanvasNode).
+    // String prop: one named local clone per closure (CanvasNode approach).
     let tour_id_detail = tour_id.clone();
     // D42 labels button target.
     let tour_id_labels = tour_id.clone();
@@ -116,7 +116,7 @@ pub fn TourEditor(
         async move { api::tours::detail(&tour_id).await }
     });
 
-    // --- État éditeur (les signaux vivent dans le paquet `cx`) ---
+    // --- Editor state (the signals live in the `cx` bundle) ---
     let mut doc = use_signal(TourDoc::default);
     let mut saved_doc = use_signal(TourDoc::default);
     let mut saved_version = use_signal(|| 0i64);
@@ -130,7 +130,7 @@ pub fn TourEditor(
     let mut violations = use_signal(Vec::<TourViolation>::new);
     let mut loaded_from = use_signal(|| None::<i64>);
 
-    // Garde du chargement initial (jamais de `.set()` pendant le render).
+    // Initial load guard (never a `.set()` during render).
     let mut loaded = use_signal(|| false);
     use_effect(move || {
         let resource = detail.value();
@@ -142,7 +142,7 @@ pub fn TourEditor(
             return;
         }
         let fresh = tour.doc.clone();
-        // Étage actif : premier étage du doc (le doc minimal en a un).
+        // Active floor: first floor of the doc (the minimal doc has one).
         let floor = fresh
             .floors
             .first()
@@ -169,16 +169,16 @@ pub fn TourEditor(
         violations,
     };
 
-    // Dirty dérivé — jamais de signal dédié à tenir à jour.
+    // Derived dirty — never a dedicated signal to keep up to date.
     let dirty = doc() != saved_doc();
 
     // --- Save (validate → PATCH) ---
     let mut saving = use_signal(|| false);
     let mut conflict = use_signal(|| None::<String>);
     let tour_id_save = tour_id.clone();
-    // Enregistrer (bouton, nom inchangé) et renommer (titre de la coquille)
-    // partagent le même PATCH — le doc voyage avec : renommer vaut
-    // sauvegarde de l'état courant.
+    // Save (button, unchanged name) and rename (shell title)
+    // share the same PATCH — the doc travels along: renaming means
+    // saving the current state.
     let save = Callback::new(move |name: Option<String>| {
         if saving() {
             return;
@@ -224,16 +224,16 @@ pub fn TourEditor(
         });
     });
 
-    // --- Résolution du conflit 409 (école flows : recharger / écraser) ---
-    // Fabrique de handler : le même comportement est posé sur DEUX boutons
-    // (chip « chargé depuis vN » + modale de conflit) — un String capturé
-    // ne peut pas servir deux closures `move` (school : clones nommés).
+    // --- 409 conflict resolution (flows approach: reload / overwrite) ---
+    // Handler factory: the same behaviour is set on TWO buttons
+    // ("loaded from vN" chip + conflict modal) — a captured String
+    // cannot serve two `move` closures (approach: named clones).
     let tour_id_reload = tour_id.clone();
     let make_reload = || {
         let id = tour_id_reload.clone();
-        // Param typé () : le même comportement sert la chip violette
-        // (Callback<()>) et la modale de conflit (qui encapsule pour
-        // MouseData) sans conflit d'inférence.
+        // Param typed (): the same behaviour serves the purple chip
+        // (Callback<()>) and the conflict modal (which wraps for
+        // MouseData) without inference conflicts.
         move |_: ()| {
             conflict.set(None);
             let id = id.clone();
@@ -264,7 +264,7 @@ pub fn TourEditor(
                 return;
             };
             let params = UpdateTour {
-                // Version fraîche du serveur : écrasement assumé.
+                // Fresh server version: overwrite on purpose.
                 expected_version_number: server.latest_version_number,
                 doc: doc.peek().clone(),
                 name: None,
@@ -284,14 +284,14 @@ pub fn TourEditor(
         });
     };
 
-    // --- Modal étage nouveau + picker scène + modal de nom ---
+    // --- New floor modal + scene picker + name modal ---
     let mut add_floor_open = use_signal(|| false);
     let mut add_scene_open = use_signal(|| false);
     let mut versions_open = use_signal(|| false);
     let mut preview_open = use_signal(|| false);
-    // Doc courant pour l'aperçu (figé à l'ouverture).
+    // Current doc for the preview (frozen on opening).
     let mut preview_doc = use_signal(|| None::<TourDoc>);
-    // Métadonnées serveur pour le drawer (share token writers, publié).
+    // Server metadata for the drawer (writers' share token, published).
     let (share_token, published_version, tour_name) = match &*detail.value().read() {
         Some(Ok(tour)) => (
             tour.share_token.clone(),
@@ -304,8 +304,8 @@ pub fn TourEditor(
     let floors: Vec<pnex_core::TourFloor> = doc.read().floors.clone();
     let scene_count = doc.read().scenes.len();
     let banner = violations.cloned();
-    // Boutons d'étage : (étage, actif, nb scènes) — précalculé (pas de `let`
-    // dans le corps rsx).
+    // Floor buttons: (floor, active, scene count) — precomputed (no `let`
+    // in the rsx body).
     let floor_buttons: Vec<(pnex_core::TourFloor, bool, usize)> = floors
         .iter()
         .map(|floor| {
@@ -319,7 +319,7 @@ pub fn TourEditor(
         })
         .collect();
 
-    // ─── Statut unifié (point + libellé) : publié (vert) / brouillon (gris).
+    // ─── Unified status (dot + label): published (green) / draft (grey).
     let detail_loaded = matches!(&*detail.value().read(), Some(Ok(_)));
     let editor_status = match (published_version, detail_loaded) {
         (Some(version), _) => EditorStatus::new(
@@ -330,7 +330,7 @@ pub fn TourEditor(
         (None, false) => EditorStatus::new(StatusTone::Slate, t!("common-loading")),
     };
 
-    // ─── Slot inspecteur : monté seulement sur sélection (principe 4).
+    // ─── Inspector slot: mounted only on selection (principle 4).
     let inspector_slot: Option<Element> = cx.selected.cloned().map(|sel| {
         let (icon, title, subtitle) = match &sel {
             Select::Scene(id) => {
@@ -381,9 +381,9 @@ pub fn TourEditor(
         }
     });
 
-    // Panneau flottant étages/liaison (ex-barre latérale gauche).
+    // Floating floors/link panel (formerly the left sidebar).
     let mut floors_panel_open = use_signal(|| false);
-    // Exclusive with the « + » palette; closes on a click outside.
+    // Exclusive with the "+" palette; closes on a click outside.
     crate::state::ui::use_exclusive_menu(floors_panel_open);
     let floors_title = t!("studio-floors-title");
 
@@ -450,7 +450,7 @@ pub fn TourEditor(
                 }
             },
             banner: rsx! {
-                // ─── Bandeau de violations ───
+                // ─── Violations banner ───
                 if !banner.is_empty() {
                     div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
                         span { class: "font-semibold mr-2", {t!("studio-violations-banner-title")} }
@@ -520,8 +520,8 @@ pub fn TourEditor(
                                             "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent"
                                         },
                                         onclick: move |_| {
-                                            // Sélection + affichage : l'inspecteur
-                                            // édite l'étage (nom/plan/échelle).
+                                            // Selection + display: the inspector
+                                            // edits the floor (name/plan/scale).
                                             selected.set(Some(Select::Floor(floor.id.clone())));
                                             active_floor.set(floor.id.clone());
                                             link_from.set(None);
@@ -580,9 +580,9 @@ pub fn TourEditor(
                 published_version,
                 on_close: move |_| versions_open.set(false),
                 on_loaded: move |version: pnex_core::TourVersionDetail| {
-                    // Chargement d'une version : si c'est la dernière,
-                    // pas de dirty ; sinon save créera v(n+1) avec ce doc
-                    // (restauration par édition, école flows).
+                    // Loading a version: if it is the latest,
+                    // no dirty; otherwise save will create v(n+1) with this doc
+                    // (restore by editing, flows approach).
                     let fresh = version.doc.clone();
                     doc.set(fresh.clone());
                     if version.version_number == saved_version() {
@@ -603,7 +603,7 @@ pub fn TourEditor(
             }
         }
 
-        // ─── Aperçu (viewer in-app) ───
+        // ─── Preview (in-app viewer) ───
         if preview_open() {
             Modal {
                 title: t!("studio-preview-title"),
@@ -620,10 +620,10 @@ pub fn TourEditor(
                                 doc: preview,
                                 assets: Default::default(),
                                 source: crate::components::tour_viewer::ViewerSource::Auth,
-                                // Drag d'une flèche : patcher le doc éditeur (la
-                                // modification survit à la fermeture de la
-                                // preview) ET le doc affiché (les hotspots des
-                                // prochains switches lisent les angles à jour).
+                                // Arrow drag: patch the editor doc (the
+                                // change survives closing the
+                                // preview) AND the displayed doc (the hotspots of
+                                // the next switches read the updated angles).
                                 on_hotspot_move: move |(link_id, yaw, pitch): (String, f64, f64)| {
                                     let id = link_id.clone();
                                     cx.update_doc(move |doc| {
@@ -659,14 +659,14 @@ pub fn TourEditor(
             }
         }
 
-        // ─── Modal nouvel étage ───
+        // ─── New floor modal ───
         if add_floor_open() {
             AddFloorModal {
                 on_close: move |_| add_floor_open.set(false),
                 on_created: move |(name, level)| {
                     add_floor_open.set(false);
-                    // Le réducteur choisit l'id libre ; on affiche et
-                    // sélectionne l'étage créé.
+                    // The reducer picks the free id; we show and
+                    // select the created floor.
                     let mut new_id = String::new();
                     cx.update_doc(|doc| {
                         new_id = state::add_floor(doc, name, level);
@@ -676,7 +676,7 @@ pub fn TourEditor(
             }
         }
 
-        // ─── Modal ajout de scène (picker panorama) ───
+        // ─── Add scene modal (panorama picker) ───
         if add_scene_open() {
             MediaPicker {
                 kind: MediaKind::Panorama,
@@ -714,7 +714,7 @@ pub fn TourEditor(
             }
         }
 
-        // ─── Modale de conflit 409 (école flow_editor) ───
+        // ─── 409 conflict modal (flow_editor approach) ───
         if let Some(description) = conflict() {
             Modal {
                 title: t!("studio-conflict-title"),
@@ -741,7 +741,7 @@ pub fn TourEditor(
     }
 }
 
-/// Modal de création d'étage : nom + niveau.
+/// Floor creation modal: name + level.
 #[component]
 fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) -> Element {
     let mut name = use_signal(String::new);
@@ -783,7 +783,7 @@ fn AddFloorModal(on_close: Callback<()>, on_created: Callback<(String, i32)>) ->
                         class: BTN_PRIMARY,
                         r#type: "button",
                         onclick: move |_| {
-                            // L'id est résolu par le réducteur côté parent.
+                            // The id is resolved by the reducer on the parent side.
                             let level_value = level().parse::<i32>().unwrap_or(0);
                             let name_value = {
                                 let value = name().trim().to_string();

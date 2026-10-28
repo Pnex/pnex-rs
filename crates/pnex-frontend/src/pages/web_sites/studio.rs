@@ -679,7 +679,7 @@ pub fn WebSiteStudio(site: String) -> Element {
     }
 }
 
-/// The rules of the site, as tabs, and « New rule ».
+/// The rules of the site, as tabs, and "New rule".
 #[component]
 fn RuleTabs(
     recipes: Resource<Result<Vec<SiteRecipe>, api::error::ApiError>>,

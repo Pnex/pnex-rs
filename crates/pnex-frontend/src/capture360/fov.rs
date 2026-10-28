@@ -1,18 +1,18 @@
-//! HFOV de la caméra arrière — JNI brut Camera2 (école `capture.rs`).
+//! HFOV of the back camera — raw Camera2 JNI (`capture.rs` pattern).
 //!
-//! `getCameraCharacteristics` ne nécessite PAS d'ouvrir la caméra (simple
-//! lecture de caractéristiques) : aucun conflit sur le flux getUserMedia
-//! détenu par la webview. La caractéristique `get(Key)` exige les objets
-//! Key statiques (`LENS_FACING`, `LENS_INFO_AVAILABLE_FOCAL_LENGTHS`,
-//! `SENSOR_INFO_PHYSICAL_SIZE`) lus via GetStaticObjectField.
+//! `getCameraCharacteristics` does NOT require opening the camera (plain
+//! characteristics read): no conflict with the getUserMedia stream held
+//! by the webview. The `get(Key)` characteristic requires the static Key
+//! objects (`LENS_FACING`, `LENS_INFO_AVAILABLE_FOCAL_LENGTHS`,
+//! `SENSOR_INFO_PHYSICAL_SIZE`) read via GetStaticObjectField.
 //!
-//! Champ physique = long côté du capteur ≈ largeur image en paysage —
-//! approximation v1 : getUserMedia peut recadrer. En cas d'échec, la
-//! crate stitcher fournit le repli 65° (`FALLBACK_HFOV_DEG`).
+//! Physical field = long side of the sensor ≈ image width in landscape —
+//! v1 approximation: getUserMedia may crop. On failure, the stitcher
+//! crate provides the 65° fallback (`FALLBACK_HFOV_DEG`).
 
 use crate::capture::attach_env;
 
-/// HFOV horizontale de la première caméra arrière (degrés), ou `None`.
+/// Horizontal HFOV of the first back camera (degrees), or `None`.
 pub fn back_camera_hfov_deg() -> Option<f32> {
     let env = attach_env()?;
     let ctx = ndk_context::try_android_context()?;
@@ -79,8 +79,8 @@ pub fn back_camera_hfov_deg() -> Option<f32> {
     }
 }
 
-/// Context.getSystemService(String) → Object (service framework, pas de
-/// chargement de classe custom).
+/// Context.getSystemService(String) → Object (framework service, no
+/// custom class loading).
 unsafe fn get_system_service(
     env: *mut jni::sys::JNIEnv,
     ctx_obj: jni::sys::jobject,
@@ -113,7 +113,7 @@ unsafe fn get_system_service(
     Some(obj)
 }
 
-/// Classe CameraManager (FindClass, garde null).
+/// CameraManager class (FindClass, null guard).
 unsafe fn manager_class(env: *mut jni::sys::JNIEnv) -> Option<jni::sys::jclass> {
     let cls = ((**env).v1_1.FindClass)(env, c"android/hardware/camera2/CameraManager".as_ptr());
     if cls.is_null() {
@@ -122,14 +122,14 @@ unsafe fn manager_class(env: *mut jni::sys::JNIEnv) -> Option<jni::sys::jclass> 
     Some(cls)
 }
 
-/// HFOV d'une caractéristique : LENS_FACING = BACK (1) requis, puis
-/// `2·atan(long côté capteur / (2·focale))`.
+/// HFOV of a characteristic: LENS_FACING = BACK (1) required, then
+/// `2·atan(sensor long side / (2·focal))`.
 unsafe fn characteristics_hfov(
     env: *mut jni::sys::JNIEnv,
     cc_class: jni::sys::jclass,
     cc: jni::sys::jobject,
 ) -> Option<f32> {
-    // Récupère l'objet Key statique de CameraCharacteristics.
+    // Fetches the static Key object of CameraCharacteristics.
     let get_key =
         |env: *mut jni::sys::JNIEnv, name: &std::ffi::CStr| -> Option<jni::sys::jobject> {
             let fid = ((**env).v1_1.GetStaticFieldID)(
@@ -235,7 +235,7 @@ unsafe fn characteristics_hfov(
     if w <= 0.0 || h <= 0.0 {
         return None;
     }
-    // Champ = long côté (capteur paysage) — 2·atan(w/2f) = hfov.
+    // Field = long side (landscape sensor) — 2·atan(w/2f) = hfov.
     let long = w.max(h);
     Some((2.0 * (long / (2.0 * f)).atan()).to_degrees())
 }

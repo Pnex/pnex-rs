@@ -136,7 +136,7 @@ bool pnex_ota_run(const char* url_path,
         return false;
     }
     const int total = http.getSize();  // -1 when chunked
-    Serial.printf("[OTA] %d octets annoncés\n", total);
+    Serial.printf("[OTA] %d bytes announced\n", total);
 
     if (!Update.begin(total > 0 ? total : 0)) {
         ota_error_msg(err, errsz, "begin");

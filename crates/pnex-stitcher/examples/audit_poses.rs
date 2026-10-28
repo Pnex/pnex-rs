@@ -1,15 +1,15 @@
-//! Audit de cohérence pose ↔ contenu des frames d'un job réel.
+//! Pose ↔ frame content consistency audit of a real job.
 //!
-//! Pour chaque paire candidate (même pré-filtre géométrique que
-//! `build_pairs`), match SuperPoint+LightGlue + rotation Horn/RANSAC, puis
-//! compare l'angle de la rotation relative mesurée à l'angle de la rotation
-//! relative capteur. Une frame dont les paires contredisent massivement la
-//! pose enregistrée = pose aberrante : l'aligneur ne peut ni la raccorder
-//! ni la détecter, et elle pollue le rendu à sa pose fausse.
+//! For each candidate pair (same geometric pre-filter as
+//! `build_pairs`), SuperPoint+LightGlue match + Horn/RANSAC rotation, then
+//! compares the angle of the measured relative rotation with the angle of the
+//! sensor relative rotation. A frame whose pairs massively contradict the
+//! recorded pose = aberrant pose: the aligner can neither stitch it
+//! nor detect it, and it pollutes the render at its wrong pose.
 //!
-//! Usage : cargo run --release -p pnex-stitcher --features pose-model \
+//! Usage: cargo run --release -p pnex-stitcher --features pose-model \
 //!   --example audit_poses -- <dir>
-//! Env : MODEL=<dir modèles> (défaut deploy/models)
+//! Env: MODEL=<models dir> (default deploy/models)
 
 use pnex_stitcher::geom::{euler_to_mat, norm, to_deg};
 use pnex_stitcher::pose_model::PoseModel;
@@ -35,19 +35,19 @@ fn main() {
             .unwrap_or_else(|_| "deploy/models".into())
             .as_str(),
     )
-    .expect("modèle");
+    .expect("model");
 
     let poses: Vec<Pose> =
         serde_json::from_slice(&std::fs::read(format!("{dir}/poses.json")).expect("poses.json"))
             .expect("poses.json invalide");
     let n = poses.len();
 
-    // Chargement + préparation (même logique que le stitcher, gains 1.0).
+    // Loading + preparation (same logic as the stitcher, gains 1.0).
     let frames: Vec<PreparedFrame> = (0..n)
         .map(|k| {
             let path = format!("{dir}/frame_{k:03}.jpg");
             let jpeg = std::fs::read(&path).unwrap_or_else(|e| panic!("{path} : {e}"));
-            let (rgb, w, h) = pnex_stitcher::decode_jpeg_rgb(&jpeg).expect("décode");
+            let (rgb, w, h) = pnex_stitcher::decode_jpeg_rgb(&jpeg).expect("decode");
             let p = &poses[k];
             let f_px = f_px_from_hfov(hfov, w);
             let (lat_min, lat_max) = lat_band(h, f_px, p.pitch_deg);
@@ -70,8 +70,8 @@ fn main() {
         })
         .collect();
 
-    // Paires candidates : même pré-filtre que build_pairs (recouvrement lat
-    // ≥ 5°, |Δlon| ≤ hfov approx, wrap géré).
+    // Candidate pairs: same pre-filter as build_pairs (lat overlap
+    // ≥ 5°, |Δlon| ≤ approx hfov, wrap handled).
     let mut pairs = Vec::new();
     for a in 0..n {
         for b in (a + 1)..n {
@@ -89,7 +89,7 @@ fn main() {
     }
     println!("{n} frames, {} paires candidates", pairs.len());
 
-    // Match d'une paire : extraction + match + Horn/RANSAC → (inliers, angle°).
+    // Match of one pair: extraction + match + Horn/RANSAC → (inliers, angle°).
     let match_pair = |a: usize, b: usize| -> Option<(usize, f32)> {
         let (fa, fb) = (&frames[a], &frames[b]);
         let fa_t = model.extract(&fa.rgb, fa.width, fa.height, 896).ok()?;
@@ -131,7 +131,7 @@ fn main() {
         Some((est.inliers.len(), angle))
     };
 
-    // Match de chaque paire candidate, synthèse par frame.
+    // Match every candidate pair, per-frame summary.
     let mut results: Vec<(usize, usize, usize, f32, f32)> = Vec::new();
     for &(a, b) in &pairs {
         let sensor_rel = frames[b].inv.mul_mat(&frames[a].inv.transpose());
@@ -147,12 +147,12 @@ fn main() {
         per_frame[b].push((a, inl, meas, sens));
     }
 
-    println!("\n=== Par frame : paires validées, Δangle max (mesuré vs capteur), contradictions (> 5°) ===");
+    println!("\n=== Per frame: validated pairs, max Δangle (measured vs sensor), contradictions (> 5°) ===");
     for k in 0..n {
         let cand = per_frame[k].len();
         let (yaw, pitch) = (poses[k].yaw_deg, poses[k].pitch_deg);
         if cand == 0 {
-            println!("frame {k:02} (yaw {yaw:7.2} pitch {pitch:6.2}) : 0 paire validée");
+            println!("frame {k:02} (yaw {yaw:7.2} pitch {pitch:6.2}): 0 validated pairs");
             continue;
         }
         let mut dmax = 0.0f32;
@@ -164,16 +164,16 @@ fn main() {
             .filter(|&&(_, _, m, s)| (m - s).abs() > 5.0)
             .count();
         println!(
-            "frame {k:02} (yaw {yaw:7.2} pitch {pitch:6.2}) : {}/{} paires, Δangle max {dmax:5.2}°, contradictions {n_contra}",
+            "frame {k:02} (yaw {yaw:7.2} pitch {pitch:6.2}): {}/{} pairs, max Δangle {dmax:5.2}°, contradictions {n_contra}",
             per_frame[k].len(),
             cand
         );
     }
 
-    println!("\n=== Paires contradictoires (Δangle > 5°) ===");
+    println!("\n=== Contradictory pairs (Δangle > 5°) ===");
     for &(a, b, inl, meas, sens) in &results {
         if (meas - sens).abs() > 5.0 {
-            println!("({a:02},{b:02}) inliers {inl:3}  mesuré {meas:6.2}° vs capteur {sens:6.2}°");
+            println!("({a:02},{b:02}) inliers {inl:3}  measured {meas:6.2}° vs sensor {sens:6.2}°");
         }
     }
 }

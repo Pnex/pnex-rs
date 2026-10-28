@@ -1,13 +1,13 @@
-//! Client API thermo — miroir des DTOs de `pnex_coolprop::plot`
-//! (pnex-core devant rester wasm-safe, les formes JSON sont dupliquées ici ;
-//! les tests de round-trip des deux côtés gardent la parité).
+//! Thermo API client — mirror of the `pnex_coolprop::plot` DTOs
+//! (pnex-core must stay wasm-safe, so the JSON shapes are duplicated here;
+//! the round-trip tests on both sides keep them in parity).
 
 use serde::Deserialize;
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Méta d'un axe (miroir `pnex_coolprop::AxisMeta`).
+/// Axis metadata (mirror of `pnex_coolprop::AxisMeta`).
 #[derive(Clone, Debug, Deserialize)]
 pub struct AxisMeta {
     #[allow(dead_code)]
@@ -18,14 +18,14 @@ pub struct AxisMeta {
     pub log: bool,
 }
 
-/// Courbe nommée (miroir `pnex_coolprop::DiagramCurve`).
+/// Named curve (mirror of `pnex_coolprop::DiagramCurve`).
 #[derive(Clone, Debug, Deserialize)]
 pub struct DiagramCurve {
     pub id: String,
     pub points: Vec<[f64; 2]>,
 }
 
-/// Résultat d'un diagramme (miroir `pnex_coolprop::DiagramResult`).
+/// Diagram result (mirror of `pnex_coolprop::DiagramResult`).
 #[derive(Clone, Debug, Deserialize)]
 pub struct DiagramResult {
     pub polylines: Vec<DiagramCurve>,
@@ -33,7 +33,7 @@ pub struct DiagramResult {
     pub y: AxisMeta,
 }
 
-/// Listes du picker fluide — mélanges nommés de l'org + fluides CoolProp.
+/// Fluid picker lists — the org's named mixtures + CoolProp fluids.
 #[derive(Clone, Default, Debug, Deserialize)]
 pub struct FluidsResult {
     pub mixtures: Vec<String>,
@@ -43,8 +43,8 @@ pub struct FluidsResult {
     pub mixture_specs: std::collections::BTreeMap<String, String>,
 }
 
-/// `GET /api/v1/thermo/fluids` — picker fluide/mélange (plus de saisie
-/// libre : l'utilisateur ne devine pas les noms).
+/// `GET /api/v1/thermo/fluids` — fluid/mixture picker (no more free
+/// input: users do not guess the names).
 pub async fn fluids() -> Result<FluidsResult, ApiError> {
     client::request(reqwest::Method::GET, "/api/v1/thermo/fluids", None).await
 }
@@ -95,7 +95,7 @@ pub async fn cycle_points(
     Ok(answer.points)
 }
 
-/// Point de cycle résolu (miroir `pnex_coolprop::CyclePointOutput`).
+/// Resolved cycle point (mirror of `pnex_coolprop::CyclePointOutput`).
 #[derive(Clone, Debug, Deserialize)]
 pub struct CyclePoint {
     pub label: String,

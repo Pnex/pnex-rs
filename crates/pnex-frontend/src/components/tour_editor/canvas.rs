@@ -1,7 +1,7 @@
-//! Canevas de l'éditeur de tour : plan d'étage (`<image>` blob), pins de
-//! scènes, liens, gestes (pan / drag / sélection / mode lien). SVG **sans**
-//! `view_box` (1 unité = 1 px CSS, école `flow_editor/canvas.rs`) ; l'unité
-//! du document est le px natif du plan.
+//! Tour editor canvas: floor plan (blob `<image>`), scene pins,
+//! links, gestures (pan / drag / selection / link mode). SVG **without**
+//! `view_box` (1 unit = 1 CSS px, `flow_editor/canvas.rs` approach); the
+//! document unit is the plan's native px.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -9,7 +9,7 @@ use dioxus_i18n::t;
 use super::{geometry, state, Interaction, Select, TourEditorCx};
 use crate::api;
 
-/// Palette de rendu (attributs SVG bruts — parité flow_editor).
+/// Rendering palette (raw SVG attributes — parity with flow_editor).
 const SCENE_FILL: &str = "var(--color-signal-50, #eff6ff)";
 const SCENE_STROKE: &str = "var(--color-signal-500, #3b82f6)";
 const SCENE_START_FILL: &str = "var(--color-emerald-50, #ecfdf5)";
@@ -19,7 +19,7 @@ const LINK_STROKE: &str = "var(--color-slate-400, #94a3b8)";
 const LINK_PENDING_STROKE: &str = "#f59e0b";
 const STAIR_STROKE: &str = "#8b5cf6";
 
-/// Lien dessinable : (id, source, cible, stair ?).
+/// Drawable link: (id, source, target, stair?).
 type DrawLink = (String, (f64, f64), (f64, f64), bool);
 
 /// Render size of a floor plan: declared dimensions, else the size measured
@@ -40,7 +40,7 @@ fn plan_dims(
     )
 }
 
-/// Canevas : fond + plan de l'étage actif + scènes + liens intra-étage.
+/// Canvas: background + plan of the active floor + scenes + intra-floor links.
 #[component]
 pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
     // Native size measured from the loaded plan image `(asset, (w, h))`:
@@ -55,7 +55,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
     let link_mode = cx.link_mode.cloned();
     let link_from = cx.link_from.cloned();
 
-    // Plan de l'étage actif (ou aucun).
+    // Plan of the active floor (or none).
     let active_floor = doc.floors.iter().find(|f| f.id == floor_id).cloned();
     let plan_asset = active_floor
         .as_ref()
@@ -66,10 +66,10 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         measured.read().as_ref(),
     );
 
-    // Blob URL authentifié du plan — la resource relit un **Memo** (asset du
-    // plan de l'étage actif) : une capture en valeur ne redémarre jamais la
-    // resource (piège dioxus #2784, cf. app.rs) — le plan posé après le
-    // premier rendu ne s'affichait jamais.
+    // Authenticated blob URL of the plan — the resource reads a **Memo** (plan
+    // asset of the active floor): a by-value capture never restarts the
+    // resource (dioxus pitfall #2784, see app.rs) — a plan set after the
+    // first render was never shown.
     let plan_asset_memo = use_memo(move || {
         let doc = cx.doc.cloned();
         let floor_id = cx.active_floor.cloned();
@@ -87,8 +87,8 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         }
     });
 
-    // Fit initial quand le plan apparaît (web uniquement — canvas_rect est
-    // gated wasm32 ; en natif les défauts de pan/zoom restent).
+    // Initial fit when the plan appears (web only — canvas_rect is
+    // gated wasm32; natively the pan/zoom defaults stay).
     let mut fitted = use_signal(|| false);
     use_effect(move || {
         if fitted() || plan_url.value().read().is_none() {
@@ -115,10 +115,10 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         cx.zoom.set(zoom_value);
         fitted.set(true);
     });
-    // Refit à chaque changement d'asset du plan : l'ajustement initial a été
-    // calculé sur les dimensions par défaut (plan absent) — l'inspector
-    // permet ensuite de déclarer d'autres dims, et l'arrivée d'une image
-    // après coup doit recadrer (sinon le plan reste hors-champ).
+    // Refit on every change of the plan asset: the initial fit was
+    // computed on the default dimensions (no plan) — the inspector
+    // then allows declaring other dims, and an image arriving
+    // afterwards must reframe (otherwise the plan stays out of view).
     use_effect(move || {
         plan_asset_memo.read();
         fitted.set(false);
@@ -170,7 +170,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         });
     });
 
-    // Liens dont les deux extrémités sont sur l'étage actif (rendu + hit).
+    // Links whose two ends are on the active floor (render + hit).
     let visible_links: Vec<DrawLink> = doc
         .links
         .iter()
@@ -197,8 +197,8 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
         .collect();
     let start_scene = doc.start_scene.clone();
 
-    // Pins précalculés (les `let` ne se déclarent pas dans le corps rsx) :
-    // (scène, surlignée, départ, fill, stroke effectif).
+    // Precomputed pins (`let`s cannot be declared in the rsx body):
+    // (scene, highlighted, start, fill, effective stroke).
     let scene_pins: Vec<(pnex_core::TourScene, bool, bool, &'static str, &'static str)> = scenes
         .iter()
         .map(|scene| {
@@ -230,7 +230,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                 tabindex: "0",
                 onpointerdown: move |event| {
                     event.stop_propagation();
-                    // Fond : désélection + pan (jamais en mode lien).
+                    // Background: deselect + pan (never in link mode).
                     cx.selected.set(None);
                     let point = event.client_coordinates();
                     cx.interaction
@@ -244,14 +244,14 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                 onpointerleave: move |_| canvas_pointer_up(cx),
                 onwheel: move |event| canvas_wheel(event, cx),
                 onkeydown: move |event| {
-                    // Échap : désélection (l'inspecteur se replie avec).
+                    // Escape: deselect (the inspector folds with it).
                     if event.key() == Key::Escape {
                         cx.selected.set(None);
                     }
                 },
                 g { transform: "translate({pan.0} {pan.1}) scale({zoom})",
-                    // Plan (image étirée aux dimensions déclarées — repli
-                    // 2000×1000 si inconnues ; doc studio.md « reste ouvert »).
+                    // Plan (image stretched to the declared dimensions — fallback
+                    // 2000×1000 if unknown; studio.md doc "still open").
                     if let Some(Some(Some(url))) = plan_url.value().read().as_ref().map(Some) {
                         image {
                             key: "plan-{plan_asset:?}",
@@ -264,7 +264,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                             "pointer-events": "none",
                         }
                     }
-                    // Liens (ligne + pastille cible ; stair = trait mixte).
+                    // Links (line + target dot; stair = dash-dot line).
                     for (link_id, a, b, is_stair) in visible_links.clone() {
                         line {
                             key: "link-{link_id}",
@@ -284,7 +284,7 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                             fill: if is_stair { STAIR_STROKE } else { LINK_STROKE },
                             "pointer-events": "none",
                         }
-                        // Hit transparent plus large pour la sélection du lien.
+                        // Wider transparent hit area for link selection.
                         line {
                             x1: "{a.0}",
                             y1: "{a.1}",
@@ -299,8 +299,8 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                             },
                         }
                     }
-                    // Lien en attente (mode lien, source posée) vers le centre
-                    // du plan — purement indicatif.
+                    // Pending link (link mode, source set) towards the centre
+                    // of the plan — purely indicative.
                     if let Some(from_id) = link_from {
                         if let Some(from) = scenes.iter().find(|s| s.id == from_id) {
                             line {
@@ -315,8 +315,8 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                             }
                         }
                     }
-                    // Scènes : pin cliquable + étiquette (composant dédié —
-                    // école CanvasNode : les gestes vivent dans le composant).
+                    // Scenes: clickable pin + label (dedicated component —
+                    // CanvasNode approach: gestures live in the component).
                     for (scene, highlighted, is_start, fill, stroke) in scene_pins {
                         ScenePin {
                             key: "scene-{scene.id}",
@@ -331,8 +331,8 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
                     }
                 }
             }
-            // Étage sans plan : bandeau d'invite (scènes posables après
-            // import — l'éditeur exige un plan pour positionner).
+            // Floor without a plan: prompt banner (scenes can be placed after
+            // import — the editor needs a plan to position them).
             if active_floor.as_ref().and_then(|f| f.plan.as_ref()).is_none() {
                 // Top of the canvas: the centre belongs to the shell's empty hint.
                 div { class: "absolute inset-x-0 top-20 flex justify-center pointer-events-none",
@@ -345,9 +345,9 @@ pub(crate) fn Canvas(cx: TourEditorCx, can_write: bool) -> Element {
     }
 }
 
-/// Pin d'une scène : cercle cliquable + étiquette + tag « départ ».
-/// Composant dédié (école `CanvasNode`) : les props sont possédés, les
-/// gestes capturent la scène par valeur sans conflit de borrow.
+/// Pin of a scene: clickable circle + label + "start" tag.
+/// Dedicated component (`CanvasNode` approach): props are owned, the
+/// gestures capture the scene by value without borrow conflicts.
 #[component]
 fn ScenePin(
     mut cx: TourEditorCx,
@@ -358,8 +358,8 @@ fn ScenePin(
     stroke: &'static str,
     link_mode: bool,
 ) -> Element {
-    // Capturé par la closure de geste (le composant capture `scene` une
-    // seule fois — école CanvasNode : un clone local nommé par closure).
+    // Captured by the gesture closure (the component captures `scene`
+    // once — CanvasNode approach: one named local clone per closure).
     let scene_for_down = scene.clone();
     rsx! {
         g {
@@ -405,15 +405,15 @@ fn ScenePin(
     }
 }
 
-/// pointerdown sur une scène : mode lien → pose la source/crée le lien ;
-/// sinon début du drag (grab = décalage curseur↔pin, mesuré ici).
+/// pointerdown on a scene: link mode → sets the source/creates the link;
+/// otherwise drag start (grab = cursor↔pin offset, measured here).
 fn scene_pointer_down(scene: &pnex_core::TourScene, mut cx: TourEditorCx, client: (f64, f64)) {
     if cx.link_mode.cloned() {
         let target = scene.id.clone();
         if let Some(from) = cx.link_from.cloned() {
             if from != target {
-                // Paire aller-retour + angles auto (yaw = direction plan,
-                // pitch = ±30° si étages différents) — cf. state::connect_scenes.
+                // Round-trip pair + auto angles (yaw = plan direction,
+                // pitch = ±30° if different floors) — see state::connect_scenes.
                 cx.update_doc(move |doc| {
                     state::connect_scenes(doc, &from, &target);
                 });
@@ -426,7 +426,7 @@ fn scene_pointer_down(scene: &pnex_core::TourScene, mut cx: TourEditorCx, client
     }
     cx.selected.set(Some(Select::Scene(scene.id.clone())));
     let Some(rect) = geometry::canvas_rect() else {
-        return; // natif : sélection sans drag
+        return; // native: selection without drag
     };
     let point = geometry::to_plan(client, rect, cx.pan.cloned(), cx.zoom.cloned());
     cx.interaction.set(Interaction::Dragging {
@@ -452,7 +452,7 @@ fn canvas_pointer_move(event: PointerEvent, mut cx: TourEditorCx) {
         }
         Interaction::Dragging { id, grab, rect } => {
             let point = geometry::to_plan(client, rect, cx.pan.cloned(), cx.zoom.cloned());
-            // Pas de snap grille : l'unité est le px natif du plan (libre).
+            // No grid snap: the unit is the plan's native px (free).
             let pos = (point.0 - grab.0, point.1 - grab.1);
             cx.update_doc(move |doc| state::move_scene(doc, &id, pos));
         }
@@ -463,7 +463,7 @@ fn canvas_pointer_up(mut cx: TourEditorCx) {
     cx.interaction.set(Interaction::Idle);
 }
 
-/// Molette : zoom vers le curseur, borné (école flow_editor).
+/// Wheel: zoom towards the cursor, bounded (flow_editor approach).
 fn canvas_wheel(event: WheelEvent, mut cx: TourEditorCx) {
     event.prevent_default();
     let delta_y = match event.delta() {

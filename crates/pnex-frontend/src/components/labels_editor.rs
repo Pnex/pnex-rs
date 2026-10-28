@@ -1,7 +1,7 @@
-//! Éditeur de labels D42 (chips + input, validation charset serveur
-//! re-vérifiée client) — générique sur (kind, id) : réutilisable tel quel
-//! pour devices, dashboards, tours, POI, flows. École MetadataEditor
-//! (pages/devices.rs) : état local, écriture explicite, jamais de panic.
+//! D42 labels editor (chips + input, server charset validation re-checked
+//! client-side) — generic over (kind, id): reusable as is for devices,
+//! dashboards, tours, POI, flows. MetadataEditor school
+//! (pages/devices.rs): local state, explicit write, never a panic.
 
 use dioxus::prelude::*;
 use std::collections::{BTreeMap, HashMap};
@@ -16,21 +16,21 @@ use crate::components::ui::{LabelTag, INPUT};
 use crate::state::toasts;
 use dioxus_i18n::t;
 
-/// Éditeur de labels transverse (D42) — chips nom[/valeur] + saisie.
+/// Cross-cutting labels editor (D42) — name[/value] chips + input.
 #[component]
 pub fn LabelsEditor(
-    /// Kind de la ressource ("media_asset", "device", …).
+    /// Kind of the resource ("media_asset", "device", …).
     kind: String,
-    /// PK stringifiée.
+    /// Stringified PK.
     id: String,
     can_write: bool,
-    /// Prévenir le parent après écriture (refresh liste).
+    /// Notify the parent after a write (list refresh).
     on_changed: Option<Callback<()>>,
 ) -> Element {
     let mut labels: Signal<BTreeMap<String, Option<String>>> = use_signal(BTreeMap::new);
     let mut error = use_signal(String::new);
 
-    // Charge les labels à l'ouverture (et quand (kind, id) change).
+    // Loads the labels on open (and when (kind, id) changes).
     let kind_for_load = kind.clone();
     let id_for_load = id.clone();
     use_resource(move || {
@@ -193,7 +193,7 @@ pub fn use_row_labels(
     snapshot
 }
 
-/// Normalise `name:valeur` ou `name` (tag nu) — charset serveur re-vérifié.
+/// Normalises `name:value` or `name` (bare tag) — server charset re-checked.
 fn parse_entry(raw: &str) -> Result<(String, Option<String>), String> {
     let raw = raw.trim();
     let (name, value) = match raw.split_once(':') {

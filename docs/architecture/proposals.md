@@ -16,7 +16,7 @@ Quatre mécanismes disent aujourd'hui « une machine pense que… » :
 | Dossiers | table `case_proposals` (détecteurs, empreinte, retenue / rejetée) | propre au dossier, ne crée que des événements |
 | Voix | attributions `origin = voice`, `status = proposed` | propre aux médias |
 | Labo vision | suggestions dans les images d'un projet | propre au labo |
-| Packs | état dans un champ : `filiale_de.etat = a_valider`, `a_pour_site.statut = propose`, `signal_commercial.etat`, constats `quali_watch` | la proposition est déjà une donnée vivante ; chaque requête doit filtrer ; pas de boîte commune ; pas de journal des décisions |
+| Packs | état dans un champ : `subsidiary_of.state = to_validate`, `has_website.status = proposed`, `sales_signal.state`, constats `quali_watch` | la proposition est déjà une donnée vivante ; chaque requête doit filtrer ; pas de boîte commune ; pas de journal des décisions |
 
 ## 2. Ce qui est une proposition, ce qui ne l'est pas
 
@@ -61,12 +61,12 @@ Accepter applique la différence par les mêmes services que l'UI (objets, liens
 
 - **Import** : une entrée d'objet ou de lien d'un mapping peut porter `propose: true`. Le diff produit alors des propositions au lieu d'écritures. Exemple : les liens Wikidata.
 - **Nœuds `object_upsert` et `link_upsert`** : option `propose` avec `confidence`. Exemples : le flow de présence web pour les scores moyens, les extractions par LLM.
-- Le pack ne déclare plus d'état `a_valider` ; il déclare **qui propose**.
+- Le pack ne déclare plus d'état `to_validate` ; il déclare **qui propose**.
 
 ### D376 — Migration des packs existants
 
-- Les liens `filiale_de` de nature `wikidata` encore `a_valider` deviennent des propositions `link_create`, et le lien vivant est fermé. Les liens `a_pour_site` au statut `propose` suivent le même chemin.
-- Les attributs `etat` de `filiale_de` et `statut = propose` d'`a_pour_site` disparaissent des packs, avec une nouvelle version des packs ; `statut` ne garde que `confirme` / `rejete`, ou disparaît (voir Q-P1).
+- Les liens `subsidiary_of` de nature `wikidata` encore `to_validate` deviennent des propositions `link_create`, et le lien vivant est fermé. Les liens `has_website` au statut `proposed` suivent le même chemin.
+- Les attributs `state` de `subsidiary_of` et `status = proposed` d'`has_website` disparaissent des packs, avec une nouvelle version des packs ; `status` ne garde que `confirmed` / `rejected`, ou disparaît (voir Q-P1).
 - La section « Sites à valider » devient un filtre de la boîte.
 
 ### D377 — Acceptation automatique : une règle d'org, tracée
@@ -75,7 +75,7 @@ Au-dessus d'un seuil déclaré par le pack et surchargeable par l'org (D368), un
 
 Elle reste écrite comme proposition, `accepted` par `system` avec la règle citée : le journal des décisions est complet. Une source déclarée fiable (registre officiel) n'est jamais proposée : elle écrit directement, comme aujourd'hui.
 
-**Livré (P4)** : un nœud `link_upsert` `propose: true` reçoit `msg.payload.accept`, le texte de la règle (exemple : `presence_web.seuil_confirme >= 80 (score 92)`). Le service propose puis accepte aussitôt : `decided_by` vide, motif = la règle ; l'UI affiche « Automatique : <règle> ». La même valeur encore ouverte est acceptée ; une valeur déjà rejetée le reste (D372) ; une écriture refusée (cardinalité, validation) laisse la proposition ouverte pour un humain. Le seuil vit dans la fonction du pack, qui le lit par `pack_setting` (D368) : c'est elle qui pose `accept`. Le message vient du code du flow, qui pourrait aussi bien écrire sans proposer : `accept` n'ouvre aucun droit nouveau. Pas fait : `object_upsert` et les imports n'ont pas encore d'acceptation automatique.
+**Livré (P4)** : un nœud `link_upsert` `propose: true` reçoit `msg.payload.accept`, le texte de la règle (exemple : `web_presence.confirm_threshold >= 80 (score 92)`). Le service propose puis accepte aussitôt : `decided_by` vide, motif = la règle ; l'UI affiche « Automatique : <règle> ». La même valeur encore ouverte est acceptée ; une valeur déjà rejetée le reste (D372) ; une écriture refusée (cardinalité, validation) laisse la proposition ouverte pour un humain. Le seuil vit dans la fonction du pack, qui le lit par `pack_setting` (D368) : c'est elle qui pose `accept`. Le message vient du code du flow, qui pourrait aussi bien écrire sans proposer : `accept` n'ouvre aucun droit nouveau. Pas fait : `object_upsert` et les imports n'ont pas encore d'acceptation automatique.
 
 ## 4. Lots
 
@@ -129,9 +129,9 @@ Elle reste écrite comme proposition, `accepted` par `system` avec la règle cit
     l'indique, l'écriture crée la proposition dans la même transaction) ;
   - option `propose` du nœud `link_upsert` (`msg.payload.confidence`
     gardé ; réponse `{proposed, proposal_id}`) ;
-  - packs : `entreprises` 1.2.0 (sans `filiale_de.etat`),
-    `entreprises_fr` 2.2.0 (Wikidata propose ses liens) et
-    `presence_web` 1.1.0 (sans `a_pour_site.statut` ; le flow écrit à
+  - packs : `companies` 1.2.0 (sans `subsidiary_of.state`),
+    `companies_fr` 2.2.0 (Wikidata propose ses liens) et
+    `web_presence` 1.1.0 (sans `has_website.status` ; le flow écrit à
     partir de 80 et propose de 40 à 79) ;
   - la section « Sites à valider » et ses deux routes
     `/web-presence/candidates` sont retirées : la boîte commune les

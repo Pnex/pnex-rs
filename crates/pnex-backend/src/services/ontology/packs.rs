@@ -33,12 +33,12 @@ const SHIPPED: &[&str] = &[
     include_str!("../../../packs/maintenance.yaml"),
     include_str!("../../../packs/investigation.yaml"),
     include_str!("../../../packs/media_coverage.yaml"),
-    include_str!("../../../packs/entreprises.yaml"),
-    include_str!("../../../packs/entreprises_fr.yaml"),
-    include_str!("../../../packs/presence_web.yaml"),
+    include_str!("../../../packs/companies.yaml"),
+    include_str!("../../../packs/companies_fr.yaml"),
+    include_str!("../../../packs/web_presence.yaml"),
     include_str!("../../../packs/quali_watch.yaml"),
-    include_str!("../../../packs/prospection_b2b.yaml"),
-    include_str!("../../../packs/prospection_fr.yaml"),
+    include_str!("../../../packs/prospecting_b2b.yaml"),
+    include_str!("../../../packs/prospecting_b2b_fr.yaml"),
     include_str!("../../../packs/crm.yaml"),
 ];
 
@@ -835,7 +835,7 @@ pub fn requires_closure(pack: &Pack) -> Vec<String> {
 
 /// Whether `owner` gives a key up to `taker` on upgrade: the shipped
 /// `owner` now builds on `taker`, which took the key over (account-mapping.md
-/// D343: `entreprises_fr` handing its shared fields to `entreprises`).
+/// D343: `companies_fr` handing its shared fields to `companies`).
 fn hands_over(owner: &str, taker: &str) -> bool {
     shipped()
         .iter()
@@ -1376,15 +1376,15 @@ mod tests {
     #[test]
     fn only_the_packs_own_note_counts_as_unedited() {
         assert!(super::pack_wrote(
-            Some("pack presence_web 1.2.0"),
-            "presence_web"
+            Some("pack web_presence 1.2.0"),
+            "web_presence"
         ));
         assert!(!super::pack_wrote(
-            Some("pack presence_webx 1.0.0"),
-            "presence_web"
+            Some("pack web_presencex 1.0.0"),
+            "web_presence"
         ));
-        assert!(!super::pack_wrote(Some("my fix"), "presence_web"));
-        assert!(!super::pack_wrote(None, "presence_web"));
+        assert!(!super::pack_wrote(Some("my fix"), "web_presence"));
+        assert!(!super::pack_wrote(None, "web_presence"));
     }
 
     #[test]

@@ -14,8 +14,10 @@ const ENGINE_WORDS: &[(&str, &str)] = &[
     ("controls", "surfaces controls (D123)"),
     ("about", "about: URLs in the browser guard"),
     ("before", "the journal's before/after documents"),
-    ("porte", "door words of the dashboard device heuristics"),
-    ("programme", "default output field of a site recipe"),
+    (
+        "meeting",
+        "mail category of a calendar invitation (mail/invitations.rs)",
+    ),
 ];
 
 /// Existing couplings to a shipped pack, frozen: each is debt to move to
@@ -95,7 +97,7 @@ const COUPLED: &[(&str, &[&str], &str)] = &[
     ),
     (
         "pnex-core/src/ontology/api.rs",
-        &["knows", "recommande", "employs", "dirige", "member_of"],
+        &["knows", "recommended", "employs", "manages", "member_of"],
         "introduction paths of account mapping (D329) name pack links",
     ),
     (

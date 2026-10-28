@@ -1,4 +1,4 @@
-//! GET /api/v1/meta/version — public (aucun header) + forme du corps.
+//! GET /api/v1/meta/version — public (no header) + body shape.
 //!
 //! App ↔ server compatibility and the LAN scan rely on this endpoint before
 //! any session.
@@ -9,8 +9,8 @@ use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_api_contract::ServerInfo;
 use serial_test::serial;
 
-/// Route publique (sans `Authorization`) et corps conforme au contrat :
-/// identité de service, version semver courante, contrat embarqué.
+/// Public route (no `Authorization`) and a body matching the contract:
+/// service identity, current semver version, embedded contract.
 #[tokio::test]
 #[serial]
 async fn meta_version_est_public_et_conforme() {

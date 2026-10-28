@@ -1,25 +1,25 @@
-//! Pipeline de build : extraction de la source embarquée → `pio run` →
+//! Build pipeline: extraction of the embedded source → `pio run` →
 //! merge-bin → ArtifactStore.
 //!
-//! La source du firmware est **l'arborescence embarquée dans le binaire**
-//! ([`crate::embedded`] — convergence monorepo) : une version du serveur
-//! compile exactement la version du firmware qui l'accompagne, sans
-//! sélecteur, clone git ni chemin local.
+//! The firmware source is **the tree embedded in the binary**
+//! ([`crate::embedded`] — monorepo convergence): a server version
+//! compiles exactly the firmware version that ships with it, with no
+//! selector, git clone or local path.
 //!
-//! 1. workspace tmp par job ([`tempfile::TempDir`]) — le drop efface tout,
-//!    même en erreur (les secrets sont compilés dans les artefacts
-//!    intermédiaires) ;
-//! 2. extraction de l'arborescence embarquée (layout complet du workspace
-//!    PlatformIO — `lib_extra_dirs = ../common_libs` impose le frère
-//!    `common_libs/`) ;
-//! 3. `pio run` dans `{workspace}/{project}` — projet = nom du predefined
-//!    device, qui doit contenir `platformio.ini` ;
-//! 4. découverte `.pio/build/{env}/*.bin` puis `esptool merge-bin`
-//!    (esp8266 : image unique @0x0, pas de merge) ;
-//! 5. dépôt sous la clé D6 `org_{id}/firmware/{device_id}-firmware.bin`.
+//! 1. tmp workspace per job ([`tempfile::TempDir`]) — the drop wipes everything,
+//!    even on error (secrets are compiled into the intermediate
+//!    artifacts);
+//! 2. extraction of the embedded tree (full layout of the PlatformIO
+//!    workspace — `lib_extra_dirs = ../common_libs` requires the sibling
+//!    `common_libs/`);
+//! 3. `pio run` in `{workspace}/{project}` — project = name of the predefined
+//!    device, which must contain `platformio.ini`;
+//! 4. discovery of `.pio/build/{env}/*.bin` then `esptool merge-bin`
+//!    (esp8266: single image @0x0, no merge);
+//! 5. stored under the D6 key `org_{id}/firmware/{device_id}-firmware.bin`.
 //!
-//! Timeout dur : une **deadline globale** couvre tous les sous-process ; à
-//! l'expiration les enfants sont tués (`kill_on_drop`) et le build échoue.
+//! Hard timeout: a **global deadline** covers all subprocesses; on
+//! expiry the children are killed (`kill_on_drop`) and the build fails.
 
 use std::path::{Path, PathBuf};
 use std::process::Output;
@@ -36,34 +36,34 @@ use crate::{
     BuildStep,
 };
 
-/// Réglages d'exécution d'un build.
+/// Execution settings of a build.
 #[derive(Clone)]
 pub struct BuildConfig {
-    /// Commande PlatformIO (`pio` ou `uv run pio` — split sur les espaces,
-    /// pas de guillemets : passer par un script wrapper sinon).
+    /// PlatformIO command (`pio` or `uv run pio` — split on spaces,
+    /// no quotes: go through a wrapper script otherwise).
     pub pio_cmd: String,
-    /// Commande esptool (`esptool` ou `python -m esptool`).
+    /// esptool command (`esptool` or `python -m esptool`).
     pub esptool_cmd: String,
-    /// Budget global du build en secondes (défaut conseillé : 900).
+    /// Global build budget in seconds (recommended default: 900).
     pub timeout_secs: u64,
     pub store: Arc<dyn ArtifactStore>,
 }
 
-/// Device pour lequel on compile.
+/// Device being compiled for.
 #[derive(Debug, Clone)]
 pub struct DeviceSpec {
     pub org_id: i64,
     pub device_id: String,
-    /// Sous-répertoire du workspace firmware (= predefined_device_name).
+    /// Subdirectory of the firmware workspace (= predefined_device_name).
     pub project: String,
-    /// SoC du board (`mcu_boards.soc`) — pilote les offsets merge-bin.
+    /// Board SoC (`mcu_boards.soc`) — drives the merge-bin offsets.
     pub soc: String,
-    /// PlatformIO board id de la variante (board figée du device) — injecté
-    /// via `PNEX_PIO_BOARD` (les ini génériques font
+    /// PlatformIO board id of the variant (the device's frozen board) — injected
+    /// via `PNEX_PIO_BOARD` (the generic inis do
     /// `board = ${sysenv.PNEX_PIO_BOARD}`). `None` = the ini keeps its own
     /// value (custom firmware).
     pub pio_board: Option<String>,
-    /// Id fil de la board (`PNEX_BOARD_NAME`, annoncé par the firmware).
+    /// Wire id of the board (`PNEX_BOARD_NAME`, announced by the firmware).
     pub board_name: Option<String>,
     /// Screen compiled into the firmware (device choice, resolved server
     /// side) — gate `PNEX_SCREEN_{KIND}=1` + role pins `PNEX_SCREEN_{ROLE}`.
@@ -79,14 +79,14 @@ pub struct DeviceSpec {
 /// by the backend through `BoardDetails::resolved_screen`).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ScreenSpec {
-    /// Driver gate — « ssd1306 », « st7735 » (define `PNEX_SCREEN_{KIND}`).
+    /// Driver gate — "ssd1306", "st7735" (define `PNEX_SCREEN_{KIND}`).
     pub kind: String,
     /// Role→gpio wiring (i2c `sda`/`scl`, spi `sck`/`mosi`/`cs`/`dc`/`rst`).
     #[serde(default)]
     pub pins: Vec<(String, u16)>,
 }
 
-// ─────────────────── Sous-process avec deadline ───────────────────
+// ─────────────────── Subprocess with deadline ───────────────────
 
 /// The 9 screen env vars, ALWAYS set: kind gates 0/1 + role pins as decimal
 /// gpio or `-1` when the role is not declared (PIO `${sysenv.*}` fails on a
@@ -113,9 +113,9 @@ pub fn screen_env(screen: Option<&ScreenSpec>) -> Vec<(String, String)> {
     vars
 }
 
-/// Env minimale des sous-process : on n'hérite JAMAIS de tout l'env du
-/// serveur (fuite de secrets process vers les builds) — `PATH`/`HOME`
-/// suffisent à pio/git, plus le cache PlatformIO s'il est redirigé.
+/// Minimal env for subprocesses: NEVER inherit the whole server env
+/// (process secrets leaking into builds) — `PATH`/`HOME`
+/// are enough for pio/git, plus the PlatformIO cache if redirected.
 fn base_env(extra: &[(&str, &str)]) -> Vec<(String, String)> {
     let mut vars = Vec::new();
     for name in ["PATH", "HOME", "PLATFORMIO_CORE_DIR"] {
@@ -138,9 +138,9 @@ fn apply_env(cmd: &mut Command, vars: &[(String, String)]) {
     }
 }
 
-/// Lance un sous-process, le tue à la deadline (kill_on_drop : le `select!`
-/// abandonne le child → kill), et refuse les sorties non nulles avec la
-/// queue des dernières lignes en message.
+/// Spawns a subprocess, kills it at the deadline (kill_on_drop: the `select!`
+/// drops the child → kill), and refuses non-zero exits with the
+/// tail of the last lines as message.
 async fn run_step(
     deadline: tokio::time::Instant,
     mut cmd: Command,
@@ -148,8 +148,8 @@ async fn run_step(
     label: &str,
 ) -> Result<Output, BuildError> {
     cmd.kill_on_drop(true);
-    // Capture nécessaire pour les logs (wait_with_output ne lit que les
-    // canaux piped — défaut : hérités).
+    // Capture needed for the logs (wait_with_output only reads the
+    // piped channels — default: inherited).
     cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -166,17 +166,17 @@ async fn run_step(
                     tail(&out, 10)
                 )));
             }
-            tracing::info!(?step, "étape ok");
+            tracing::info!(?step, "step ok");
             Ok(out)
         }
         _ = tokio::time::sleep_until(deadline) => {
-            tracing::warn!(?step, "deadline atteinte, sous-process tué");
+            tracing::warn!(?step, "deadline reached, subprocess killed");
             Err(BuildError::Timeout)
         }
     }
 }
 
-/// Queue des `n` dernières lignes (stdout ‖ stderr) d'une sortie enfant.
+/// Tail of the last `n` lines (stdout ‖ stderr) of a child output.
 fn tail(out: &Output, n: usize) -> String {
     let text =
         String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
@@ -188,9 +188,9 @@ fn tail(out: &Output, n: usize) -> String {
 // ─────────────────── Source ───────────────────
 
 fn stage_source(workspace: &Path) -> Result<(), BuildError> {
-    // Extraction de l'arborescence embarquée (bloquante, ~430 Ko) : le
-    // layout complet — projet ET frères (`common_libs/`) — préserve le
-    // `lib_extra_dirs` relatif de chaque platformio.ini.
+    // Extraction of the embedded tree (blocking, ~430 KB): the
+    // full layout — project AND siblings (`common_libs/`) — preserves the
+    // relative `lib_extra_dirs` of each platformio.ini.
     crate::embedded::extract(workspace)
 }
 
@@ -200,7 +200,7 @@ fn stage_source(workspace: &Path) -> Result<(), BuildError> {
 fn find_artifact(project: &Path, name: &str) -> Result<PathBuf, BuildError> {
     let build = project.join(".pio").join("build");
     let entries = std::fs::read_dir(&build)
-        .map_err(|_| BuildError::NotFound(format!(".pio/build dans {}", project.display())))?;
+        .map_err(|_| BuildError::NotFound(format!(".pio/build in {}", project.display())))?;
     for entry in entries.flatten() {
         let candidate = entry.path().join(name);
         if candidate.is_file() {
@@ -208,22 +208,22 @@ fn find_artifact(project: &Path, name: &str) -> Result<PathBuf, BuildError> {
         }
     }
     Err(BuildError::NotFound(format!(
-        "{name} dans .pio/build ({})",
+        "{name} in .pio/build ({})",
         project.display()
     )))
 }
 
-/// Ancre secondaire de résolution : la racine du monorepo, figée à la
-/// compilation (`CARGO_MANIFEST_DIR` du builder = `crates/pnex-firmware-builder`).
-/// Le worker tourne avec cwd = `crates/pnex-backend` : un chemin d'outil
-/// relatif configuré depuis la racine (Taskfile) doit rester résolvable —
-/// sinon tous les builds firmware échouent au spawn (leçon 2026-09-02).
+/// Secondary resolution anchor: the monorepo root, frozen at
+/// compile time (the builder's `CARGO_MANIFEST_DIR` = `crates/pnex-firmware-builder`).
+/// The worker runs with cwd = `crates/pnex-backend`: a relative tool
+/// path configured from the root (Taskfile) must stay resolvable —
+/// otherwise every firmware build fails at spawn (lesson 2026-09-02).
 const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
 
-/// Un token-programme qui contient un `/` est un chemin (pas une recherche
-/// PATH) : résolu en absolu contre le cwd du process, puis — sinon — contre
-/// la racine du monorepo [`REPO_ROOT`]. Le sous-process tourne ensuite dans
-/// le workspace tmp, où un chemin relatif ne pointerait plus rien.
+/// A program token containing a `/` is a path (not a PATH
+/// lookup): resolved to absolute against the process cwd, then — otherwise — against
+/// the monorepo root [`REPO_ROOT`]. The subprocess then runs in
+/// the tmp workspace, where a relative path would no longer point anywhere.
 fn resolve_program(token: &str) -> String {
     if !token.contains('/') {
         return token.to_string();
@@ -235,26 +235,26 @@ fn resolve_program(token: &str) -> String {
             .ok()
             .map(|p| p.display().to_string())
     };
-    // 1) cwd du process (résolution historique — fixtures des tests, wrappers).
+    // 1) process cwd (historical resolution — test fixtures, wrappers).
     if let Ok(cwd) = std::env::current_dir() {
         if let Some(abs) = try_anchor(&cwd) {
             return abs;
         }
     }
-    // 2) racine du monorepo — les chemins relatifs du Taskfile restent
-    //    résolvables quel que soit le cwd du worker.
+    // 2) monorepo root — the Taskfile's relative paths stay
+    //    resolvable whatever the worker cwd.
     if let Some(abs) = try_anchor(Path::new(REPO_ROOT)) {
         return abs;
     }
-    // Introuvable des deux côtés : on le passe tel quel, l'erreur de
-    // lancement du sous-process sera explicite.
+    // Not found on either side: pass it as is, the subprocess
+    // spawn error will be explicit.
     token.to_string()
 }
 
 // ─────────────────── Pipeline ───────────────────
 
-/// Exécute un build complet. Retourne la clé + la taille de l'artefact
-/// déposé dans le magasin.
+/// Runs a full build. Returns the key + the size of the artifact
+/// stored in the store.
 pub async fn run_build(
     config: &BuildConfig,
     secrets: &BuildSecrets,
@@ -274,7 +274,7 @@ fn stage_project(
     let project = ws.join(&device.project);
     if !project.join("platformio.ini").is_file() {
         return Err(BuildError::Source(format!(
-            "projet {} introuvable (platformio.ini absent)",
+            "project {} not found (platformio.ini missing)",
             device.project
         )));
     }
@@ -354,10 +354,10 @@ fn pio_command(
     device: &DeviceSpec,
     sandbox: Option<&Sandbox>,
 ) -> Result<Command, BuildError> {
-    // Ligne complète : `uv run pio` + "run" → `uv run pio run`.
+    // Full line: `uv run pio` + "run" → `uv run pio run`.
     let mut pio_argv: Vec<String> = pio_cmd.split_whitespace().map(String::from).collect();
     if pio_argv.is_empty() {
-        return Err(BuildError::Tool("pio_cmd vide".into()));
+        return Err(BuildError::Tool("empty pio_cmd".into()));
     }
     pio_argv.push("run".into());
     pio_argv[0] = resolve_program(&pio_argv[0]);
@@ -458,7 +458,7 @@ fn tool_dirs(program: &str) -> Vec<PathBuf> {
     dirs
 }
 
-/// Outcome of a compile-only check (IDE « Verify », D90).
+/// Outcome of a compile-only check (IDE "Verify", D90).
 #[derive(Debug, Clone)]
 pub struct CompileOutcome {
     pub ok: bool,
@@ -510,7 +510,7 @@ pub async fn run_build_with(
     opts: &BuildOptions,
 ) -> Result<crate::BuildArtifact, BuildError> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(config.timeout_secs.max(1));
-    // Le drop du TempDir efface le workspace (secrets) dans tous les chemins.
+    // Dropping the TempDir wipes the workspace (secrets) on every path.
     let workspace = tempfile::tempdir().map_err(|e| BuildError::Source(format!("tmp : {e}")))?;
     let ws = workspace.path();
     let project = stage_project(ws, device, opts)?;
@@ -523,7 +523,7 @@ pub async fn run_build_with(
     )?;
     run_step(deadline, pio, BuildStep::Compile, "pio run").await?;
 
-    // Fusion (ou copie directe pour un SoC à image unique).
+    // Merge (or direct copy for a single-image SoC).
     let firmware = find_artifact(&project, "firmware.bin")?;
     let final_bin = ws.join(format!(
         "{}-firmware.bin",
@@ -557,7 +557,7 @@ pub async fn run_build_with(
         .map_err(|e| BuildError::Tool(format!("lecture artefact : {e}")))?;
     let key = artifact_key(device.org_id, &device.device_id);
     config.store.put(&key, &bytes).await?;
-    tracing::info!(step = ?BuildStep::Upload, key = %key, size = bytes.len(), "artefact déposé");
+    tracing::info!(step = ?BuildStep::Upload, key = %key, size = bytes.len(), "artifact stored");
 
     // OTA payload = the RAW app image (pre-merge — the merged image only
     // serves serial flashing at 0x0; Update.h writes the inactive slot /
@@ -590,8 +590,8 @@ mod tests {
     use super::*;
     use crate::InMemoryStore;
 
-    /// Fabrique une fausse toolchain : `pio` écrit les artefacts (avec les
-    /// env reçues), `esptool` concatène les fichiers passés en offset.
+    /// Builds a fake toolchain: `pio` writes the artifacts (with the
+    /// received env), `esptool` concatenates the files passed by offset.
     fn fake_toolchain(dir: &Path) -> (String, String) {
         let pio = dir.join("fake_pio.sh");
         std::fs::write(
@@ -724,9 +724,9 @@ mod tests {
         assert_eq!(get("PNEX_SCREEN_SCL"), "-1");
     }
 
-    /// Pipeline complet contre la fausse toolchain depuis l'arborescence
-    /// embarquée, SoC esp32 : merge concatène les trois images, artefact
-    /// déposé sous la clé D6, secrets propagés (WiFi clair, host base64).
+    /// Full pipeline against the fake toolchain from the embedded
+    /// tree, esp32 SoC: merge concatenates the three images, artifact
+    /// stored under the D6 key, secrets propagated (plain WiFi, base64 host).
     #[tokio::test]
     async fn pipeline_complet_esp32() {
         let tmp = tempfile::tempdir().expect("tmp");
@@ -774,16 +774,16 @@ mod tests {
             text.contains(&format!("pio ssid={}", STANDARD.encode("coloc"))),
             "{text}"
         );
-        // HOST arrive en base64 au firmware (vérifié par le fake pio).
+        // HOST reaches the firmware in base64 (checked by the fake pio).
         use base64::engine::general_purpose::STANDARD;
         use base64::Engine as _;
         assert!(text.contains(&format!("host={}", STANDARD.encode("dev1.pnex.io"))));
-        // Le merge a bien concaténé bootloader + partitions + firmware.
+        // The merge did concatenate bootloader + partitions + firmware.
         assert!(text.contains("boot") && text.contains("part"));
     }
 
-    /// esp8266 : image unique — esptool n'est jamais appelé (commande
-    /// volontairement cassée).
+    /// esp8266: single image — esptool is never called (command
+    /// deliberately broken).
     #[tokio::test]
     async fn esp8266_sans_merge() {
         let tmp = tempfile::tempdir().expect("tmp");
@@ -797,7 +797,7 @@ mod tests {
         };
         let artifact = run_build(&config, &secrets(), &device("esp8266"))
             .await
-            .expect("build sans merge");
+            .expect("build without merge");
         assert_eq!(artifact.key, "org_7/firmware/capteur-jardin-firmware.bin");
         // 8266: no merge — the raw OTA image IS the merged image.
         assert_eq!(artifact.ota_key, "org_7/ota/capteur-jardin/42.bin");
@@ -807,12 +807,12 @@ mod tests {
         );
     }
 
-    /// Échec de compilation : exit non nul → Tool avec la queue de logs.
+    /// Compile failure: non-zero exit → Tool with the log tail.
     #[tokio::test]
     async fn echec_outil_exit_non_nul() {
         let tmp = tempfile::tempdir().expect("tmp");
         let pio = tmp.path().join("fail_pio.sh");
-        std::fs::write(&pio, "#!/bin/sh\necho erreur de compilation\nexit 1\n").expect("pio");
+        std::fs::write(&pio, "#!/bin/sh\necho compile error\nexit 1\n").expect("pio");
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&pio, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         let store = Arc::new(InMemoryStore::default());
@@ -824,18 +824,18 @@ mod tests {
         };
         let err = run_build(&config, &secrets(), &device("esp8266"))
             .await
-            .expect_err("échec attendue");
+            .expect_err("failure expected");
         assert!(
-            matches!(err, BuildError::Tool(ref m) if m.contains("erreur de compilation")),
+            matches!(err, BuildError::Tool(ref m) if m.contains("compile error")),
             "{err}"
         );
     }
 
-    /// Timeout dur : sous-process endormi tué à la deadline (test borné).
+    /// Hard timeout: sleeping subprocess killed at the deadline (bounded test).
     #[tokio::test]
     async fn timeout_tue_le_sous_process() {
         let tmp = tempfile::tempdir().expect("tmp");
-        // Un script qui ignore ses arguments (pio ajoute « run » en argv).
+        // A script that ignores its arguments (pio appends "run" to argv).
         let sleeper = tmp.path().join("sleeper.sh");
         std::fs::write(&sleeper, "#!/bin/sh\nsleep 30\n").expect("sleeper");
         use std::os::unix::fs::PermissionsExt;
@@ -850,16 +850,16 @@ mod tests {
         let started = std::time::Instant::now();
         let err = run_build(&config, &secrets(), &device("esp8266"))
             .await
-            .expect_err("timeout attendu");
+            .expect_err("timeout expected");
         assert!(matches!(err, BuildError::Timeout), "{err}");
         assert!(started.elapsed() < Duration::from_secs(5));
     }
 
-    /// Un chemin relatif configuré depuis la racine du monorepo se résout
-    /// même quand le cwd est ailleurs (worker : crates/pnex-backend).
+    /// A relative path configured from the monorepo root resolves
+    /// even when the cwd is elsewhere (worker: crates/pnex-backend).
     #[test]
     fn chemin_relatif_resolu_depuis_la_racine_monorepo() {
-        // Existe depuis la racine du monorepo, pas depuis le cwd des tests
+        // Exists from the monorepo root, not from the tests' cwd
         // (crates/pnex-firmware-builder).
         let token = "crates/pnex-firmware-builder/Cargo.toml";
         let resolved = resolve_program(token);
@@ -867,15 +867,15 @@ mod tests {
         assert!(resolved.ends_with("Cargo.toml"), "{resolved}");
     }
 
-    /// Un chemin introuvable (aucune ancre) passe tel quel — l'erreur de
-    /// spawn du sous-process reste le signal.
+    /// A path not found (no anchor) passes as is — the subprocess
+    /// spawn error remains the signal.
     #[test]
     fn chemin_introuvable_passe_telquel() {
         let token = "n importe/quelle chemin";
         assert_eq!(resolve_program(token), token);
     }
 
-    /// Projet absent de la source (predefined name ≠ sous-répertoire).
+    /// Project missing from the source (predefined name ≠ subdirectory).
     #[tokio::test]
     async fn projet_introuvable() {
         let store = Arc::new(InMemoryStore::default());
@@ -889,7 +889,7 @@ mod tests {
         dev.project = "inconnu".into();
         let err = run_build(&config, &secrets(), &dev)
             .await
-            .expect_err("source attendue");
+            .expect_err("source error expected");
         assert!(
             matches!(err, BuildError::Source(ref m) if m.contains("inconnu")),
             "{err}"
@@ -903,9 +903,9 @@ mod real_pio_tests {
     use crate::custom::CustomSource;
     use crate::InMemoryStore;
 
-    /// Repro manuel (Ignored) : pipeline RÉEL avec pio installé sur la
+    /// Manual repro (Ignored): REAL pipeline with pio installed on the
     /// machine (`cargo test -p pnex-firmware-builder manuel_pio -- --ignored`).
-    /// Reproduit exactement le chemin du worker BuildFirmwareWorker.
+    /// Reproduces exactly the BuildFirmwareWorker worker path.
     /// Manual (real pio, registry reachable): custom sketch + a catalog
     /// library compiles; a broken sketch yields diagnostics on main.cpp.
     /// `cargo test -p pnex-firmware-builder -- --ignored manuel_compile_check`
@@ -999,8 +999,8 @@ mod real_pio_tests {
             device_id: "young-walrus".into(),
             project: "generic_esp8266".into(),
             soc: "esp8266".into(),
-            // Preuve de l'interpolation ${sysenv.PNEX_PIO_BOARD} sur la
-            // ligne `board =` : sans la var, pio échoue à la config.
+            // Proof of the ${sysenv.PNEX_PIO_BOARD} interpolation on the
+            // `board =` line: without the var, pio fails at config.
             pio_board: Some("nodemcuv2".into()),
             board_name: Some("nodemcu".into()),
             screen: None,
@@ -1008,13 +1008,13 @@ mod real_pio_tests {
         };
         let artifact = run_build(&config, &secrets, &device)
             .await
-            .expect("build réel doit passer");
+            .expect("real build must pass");
         assert!(artifact.size_bytes > 100_000, "bin trop petit ?");
     }
 
-    /// Miroir esp32-c3 (Seeed XIAO) : platform espressif32 + toolchain riscv
-    /// requis ; le merge esptool --chip esp32c3 produit l'image mergée
-    /// (bootloader+partitions+app) — chemin exact du worker.
+    /// esp32-c3 mirror (Seeed XIAO): platform espressif32 + riscv toolchain
+    /// required; the esptool --chip esp32c3 merge produces the merged image
+    /// (bootloader+partitions+app) — exact worker path.
     #[tokio::test]
     #[ignore]
     async fn manuel_pio_reel_generic_esp32c3() {
@@ -1048,8 +1048,8 @@ mod real_pio_tests {
         };
         let artifact = run_build(&config, &secrets, &device)
             .await
-            .expect("build réel C3 doit passer");
-        // Image mergée C3 = bootloader + partitions + app.
+            .expect("real C3 build must pass");
+        // Merged C3 image = bootloader + partitions + app.
         assert!(artifact.size_bytes > 400_000, "bin trop petit ?");
     }
 }

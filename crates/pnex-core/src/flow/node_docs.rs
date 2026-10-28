@@ -479,7 +479,7 @@ pub const NODE_DOCS: &[NodeDoc] = &[
             ("order_by", "property key to sort on (title by default); descending: bool"),
             ("limit", "1..=500, default 100"),
             ("output", "each (default: one message per object) | array (one message, payload = list)"),
-            ("traverse", "[{link_type, direction: out|in}] up to 4 steps: the rows are the objects reached (certification code in [...] then habilite_pour in = its partners)"),
+            ("traverse", "[{link_type, direction: out|in}] up to 4 steps: the rows are the objects reached (certification code in [...] then accredited_for in = its partners)"),
             ("with_links", "up to 8 link types joined to each row, both directions, open links only (200 per type)"),
         ],
         notes: "Each output message: payload = the object's properties, msg.object = {id, type, title, version}, msg.links = {link_type: [{direction: out|in, attributes, valid_from, other: {id, type, title, properties}}]} for with_links, msg.today (YYYY-MM-DD) and msg.now (RFC 3339) of the run; with output array, payload = [{id, title, version, properties, links}]. Other fields of the incoming message are kept: an array query then an each query joins two sets in a function. Dates compare as text (ISO dates sort right). Feed object_upsert with msg.object_id = msg.object.id to update what was read.",

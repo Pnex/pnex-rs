@@ -1,8 +1,8 @@
-//! Services métier (hors contrôleleurs HTTP) : télémétrie, bail de vie,
-//! OpenObserve, dashboard, réglages firmware, moteur de flow ETL (D18).
+//! Business services (outside HTTP controllers): telemetry, liveness lease,
+//! OpenObserve, dashboard, firmware settings, ETL flow engine (D18).
 
 pub mod ai;
-/// Annotations sur médias (D55–D60) — écriture des couches versionnées.
+/// Media annotations (D55–D60) — writes of the versioned layers.
 pub mod annotation_layer;
 pub mod apps;
 pub mod artifact_store;
@@ -72,7 +72,7 @@ pub mod provisioning;
 /// Cross-pod rate limiting of unauthenticated / sensitive routes.
 pub mod rate_limit;
 pub mod regulator;
-/// Couche d'organisation transverse (D42) : labels / containment / edges.
+/// Cross-cutting organization layer (D42): labels / containment / edges.
 pub mod resources;
 pub mod retention;
 /// Shared Valkey connection for small cross-pod auth/security state.

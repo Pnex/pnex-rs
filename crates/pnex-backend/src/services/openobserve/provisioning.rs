@@ -1,8 +1,8 @@
-//! Provisioning paresseux d'une org OpenObserve par org PNEX (D2) :
-//! org `pnex_org_{id}` + user d'ingestion dédié, passcode conservé en base
-//! (`openobserve_orgs`) pour le chemin d'ingestion. Déclenché à la
-//! première donnée d'une org — jamais au chemin HTTP utilisateur (une
-//! panne O2 n'impacte pas l'API).
+//! Lazy provisioning of one OpenObserve org per PNEX org (D2):
+//! org `pnex_org_{id}` + dedicated ingestion user, passcode kept in the database
+//! (`openobserve_orgs`) for the ingestion path. Triggered on an
+//! org's first data — never on the user HTTP path (an
+//! O2 outage does not affect the API).
 
 use loco_rs::prelude::*;
 use sea_orm::{
@@ -13,7 +13,7 @@ use crate::models::_entities::{openobserve_orgs, sea_orm_active_enums::Openobser
 
 use super::client::Client;
 
-/// Credentials prêts à ingérer : identifier O2 (segment URL) + Basic
+/// Credentials ready to ingest: O2 identifier (URL segment) + Basic
 /// `email:passcode`.
 #[derive(Debug, Clone)]
 pub struct OrgCredentials {
@@ -21,13 +21,13 @@ pub struct OrgCredentials {
     pub email_passcode: String,
 }
 
-/// Identité déterministe du user d'ingestion de l'org.
+/// Deterministic identity of the org's ingestion user.
 fn ingest_email(org_id: i64) -> String {
     format!("pnex-ingest+org{org_id}@pnex.local")
 }
 
-/// Mot de passe fort conforme à la politique O2 (8-128, minuscule,
-/// majuscule, chiffre, spécial).
+/// Strong password matching the O2 policy (8-128, lowercase,
+/// uppercase, digit, special).
 pub fn generate_password() -> String {
     use rand::RngExt;
     const LOWER: &[u8] = b"abcdefghijkmnopqrstuvwxyz";
@@ -49,7 +49,7 @@ pub fn generate_password() -> String {
         let set = ALL[rng.random_range(0..ALL.len())];
         chars.push(pick(&mut rng, set));
     }
-    // Mélange Fisher-Yates (les 4 premiers imposeraient leur position).
+    // Fisher-Yates shuffle (the first 4 would otherwise force their position).
     for i in (1..chars.len()).rev() {
         chars.swap(i, rng.random_range(0..=i));
     }
@@ -64,7 +64,7 @@ async fn row_of(db: &DatabaseConnection, org_id: i64) -> Result<Option<openobser
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Upsert de l'état du provisioning (succès ou échec avec message).
+/// Upsert of the provisioning state (success, or failure with a message).
 async fn record(
     db: &DatabaseConnection,
     org_id: i64,
@@ -100,10 +100,10 @@ async fn record(
     Ok(())
 }
 
-/// Credentials de l'org — depuis la base si déjà provisionnée, sinon
-/// provisioning complet (idempotent, y compris récupération après perte de
-/// la ligne PG : org retrouvée par nom, mot de passe du user réinitialisé
-/// par root, passcode re-lu).
+/// The org's credentials — from the database if already provisioned, otherwise
+/// full provisioning (idempotent, including recovery after losing
+/// the PG row: org found by name, user password reset
+/// by root, passcode re-read).
 pub async fn ensure_org_credentials(
     db: &DatabaseConnection,
     client: &Client,
@@ -150,10 +150,10 @@ pub async fn ensure_org_credentials(
     }
 }
 
-/// Credentials de l'org **en lecture seule** — `None` si l'org n'est pas
-/// encore provisionnée. Doctrine du module : jamais de provisioning sur le
-/// chemin HTTP utilisateur (dashboard) ; une org sans données se voit
-/// simplement `telemetry.available == false`.
+/// The org's credentials **read-only** — `None` if the org is not
+/// provisioned yet. Module doctrine: never provision on the
+/// user HTTP path (dashboard); an org without data simply gets
+/// `telemetry.available == false`.
 pub async fn provisioned_credentials(
     db: &DatabaseConnection,
     org_id: i64,
@@ -175,7 +175,7 @@ async fn provision(
     org_id: i64,
 ) -> Result<OrgCredentials, String> {
     let name = format!("pnex_org_{org_id}");
-    // O2 ne dédoublonne pas les noms : chercher avant de créer.
+    // O2 does not deduplicate names: search before creating.
     let identifier = match client.find_org_by_name(&name).await? {
         Some(existing) => existing,
         None => client.create_org(&name).await?,
@@ -184,7 +184,7 @@ async fn provision(
     let password = generate_password();
     match client.create_user(&identifier, &email, &password).await {
         Ok(true) => {}
-        // User préexistant (ligne PG perdue) : root reprend la main.
+        // Pre-existing user (PG row lost): root takes over.
         Ok(false) => {
             client
                 .reset_user_password(&identifier, &email, &password)
@@ -203,7 +203,7 @@ async fn provision(
 mod tests {
     use super::*;
 
-    /// Politique O2 : 8-128 chars, minuscule + majuscule + chiffre + spécial.
+    /// O2 policy: 8-128 chars, lowercase + uppercase + digit + special.
     #[test]
     fn mots_de_passe_conformes() {
         for _ in 0..50 {
@@ -212,7 +212,7 @@ mod tests {
             assert!(p.chars().any(char::is_lowercase), "minuscule {p}");
             assert!(p.chars().any(char::is_uppercase), "majuscule {p}");
             assert!(p.chars().any(|c| c.is_ascii_digit()), "chiffre {p}");
-            assert!(p.chars().any(|c| "!_-@#%+".contains(c)), "spécial {p}");
+            assert!(p.chars().any(|c| "!_-@#%+".contains(c)), "special {p}");
         }
     }
 }

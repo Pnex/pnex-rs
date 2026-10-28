@@ -2,7 +2,7 @@
 
 /// Lowercases, unifies apostrophes and keeps letters, digits and
 /// in-word apostrophes; everything else separates words. Hyphens split
-/// (« peut-être » → « peut être ») so both spellings score the same.
+/// (« peut-être » → « peut être ») so both spellings score the same.  english-guard: allow (French example)
 pub fn normalize(text: &str) -> Vec<String> {
     let lowered = text
         .to_lowercase()

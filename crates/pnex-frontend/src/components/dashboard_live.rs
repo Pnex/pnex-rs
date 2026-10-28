@@ -1,12 +1,12 @@
-//! Rendu live READ-ONLY d'un dashboard (studio SCADA) — extrait de
-//! `pages/dashboards.rs` pour être réutilisable **hors de la page** : le
-//! panneau d'aperçu POI (/map) embarque un dashboard en inline, sans
-//! navigation ni popup.
+//! READ-ONLY live rendering of a dashboard (SCADA studio) — extracted from
+//! `pages/dashboards.rs` to be reusable **outside the page**: the
+//! POI preview panel (/map) embeds a dashboard inline, without
+//! navigation nor popup.
 //!
-//! Le rendu est pur (positions en % du canvas + SVG viewBox — aucune
-//! mesure DOM, s'adapte à n'importe quelle largeur) et sans état global ;
-//! le fetch/polling est autonome (detail + `series-batch` fenêtre 1h,
-//! un seul timer 15 s — école `LiveSubView`).
+//! The rendering is pure (positions in % of the canvas + SVG viewBox — no
+//! DOM measurement, adapts to any width) and without global state;
+//! fetch/polling is self-contained (detail + `series-batch` 1h window,
+//! a single 15 s timer — `LiveSubView` style).
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -20,12 +20,12 @@ use crate::components::dashboard_widget::WidgetBody;
 use crate::components::gerbe::Gerbe;
 use crate::util::sleep;
 
-/// Cadence de rafraîchissement live (même cadence que la page Dashboards).
+/// Live refresh cadence (same cadence as the Dashboards page).
 const POLL_SECS: u64 = 15;
 
-/// Dashboard live read-only autonome : detail + series-batch + polling
-/// 15 s auto-entretenu + rendu. Les items sans donnée sont grisés avec
-/// tooltip (dégradé = dérivé au rendu, jamais un set de signal).
+/// Self-contained read-only live dashboard: detail + series-batch + self-sustained
+/// 15 s polling + rendering. Items without data are greyed out with a
+/// tooltip (degraded = derived at render, never a signal set).
 #[component]
 pub fn DashboardLive(dashboard_id: String) -> Element {
     let dashboard_id_for_via = dashboard_id.clone();
@@ -56,13 +56,13 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
     });
     let detail_loaded: Option<VizDashboard> = detail.read().as_ref().cloned().flatten();
 
-    // ── Specs du batch — déps trackées lues dans la partie synchrone de
-    // la closure (pattern devices.rs) : reload (cadence 15 s) ET la
-    // resource `detail` elle-même. Au premier rendu le détail est absent
-    // → sources vides ; si seule `reload` est abonnée, le batch ne repart
-    // qu'au premier tick (15 s d'écran vide en vue/plan) — lire `detail`
-    // ici garantit le re-run dès qu'il se résout. Un SEUL timer 15 s
-    // pour tout le dashboard (D31).
+    // ── Batch specs — tracked deps read in the synchronous part of
+    // the closure (devices.rs pattern): reload (15 s cadence) AND the
+    // `detail` resource itself. On first render the detail is missing
+    // → empty sources; if only `reload` is subscribed, the batch only restarts
+    // at the first tick (15 s of empty screen in view/plan) — reading `detail`
+    // here guarantees the re-run as soon as it resolves. A SINGLE 15 s timer
+    // for the whole dashboard (D31).
     // shortcut: no object picker here, so a type dashboard (D187) embedded
     // in a POI preview reads its object sources as no data; add the picker
     // if type dashboards get placed on POIs.
@@ -109,8 +109,8 @@ pub fn DashboardLive(dashboard_id: String) -> Element {
         crate::state::access::can("controls:operate"),
     );
 
-    // Polling auto-entretenu tant que la page est montée (école
-    // visualisation.rs : le spawn se réarme lui-même via le signal).
+    // Self-sustained polling while the page is mounted
+    // (visualisation.rs style: the spawn re-arms itself via the signal).
     if !polling() {
         polling.set(true);
         spawn(async move {
@@ -186,11 +186,11 @@ pub async fn fetch_live_values(
     map
 }
 
-/// Canvas live : le document est mis à l'échelle **en CSS pur** — chaque
-/// widget est positionné en pourcentage du canvas (aucune mesure DOM,
-/// aucun zoom manuel : le synoptique s'adapte à la largeur disponible) ;
-/// les traits vivent dans un SVG en viewBox document (mise à l'échelle
-/// gratuite).
+/// Live canvas: the document is scaled **in pure CSS** — each
+/// widget is positioned as a percentage of the canvas (no DOM measurement,
+/// no manual zoom: the synoptic adapts to the available width);
+/// wires live in an SVG with a document viewBox (free
+/// scaling).
 pub fn live_canvas(
     layout: &DashboardLayout,
     values: &HashMap<String, Option<Vec<TelemetryPoint>>>,

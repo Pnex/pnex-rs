@@ -1,16 +1,16 @@
-//! Mini-client OpenObserve du runtime de flows — les deux seuls appels dont
-//! les nœuds `device`/`metric` ont besoin : une lecture PromQL instantanée
-//! (`last_over_time`) et un remote-write.
+//! OpenObserve mini-client of the flow runtime — the only two calls the
+//! `device`/`metric` nodes need: an instant PromQL read
+//! (`last_over_time`) and a remote-write.
 //!
-//! Pourquoi un mini-client plutôt que le client du backend : `pnex-backend`
-//! porte Loco/SeaORM/settings — une dépendance impossible pour le runtime.
-//! Auth par Basic racine (OPENOBSERVE_URL/ROOT_EMAIL/ROOT_PASSWORD dans la
-//! allowlist env du runtime) : le constat e2e du backend (`client.rs ::
-//! get_with_auth_fallback`) est que le passcode d'org ne couvre pas les
-//! lectures O2 v0.92.1 ; la racine couvre lecture et écriture.
+//! Why a mini-client rather than the backend client: `pnex-backend`
+//! carries Loco/SeaORM/settings — an impossible dependency for the runtime.
+//! Root Basic auth (OPENOBSERVE_URL/ROOT_EMAIL/ROOT_PASSWORD in the
+//! runtime env allowlist): the backend's e2e finding (`client.rs ::
+//! get_with_auth_fallback`) is that the org passcode does not cover
+//! O2 v0.92.1 reads; root covers reads and writes.
 //!
-//! Toute méthode est bornée (timeout) et renvoie `Result<_, String>` —
-//! jamais de panic.
+//! Every method is bounded (timeout) and returns `Result<_, String>` —
+//! never a panic.
 
 use std::time::Duration;
 
@@ -25,12 +25,12 @@ pub struct O2Client {
     http: reqwest::Client,
 }
 
-/// Un échantillon lu : valeur + millisecondes epoch.
+/// One sample read: value + epoch milliseconds.
 pub type LastSample = (f64, i64);
 
 impl O2Client {
-    /// Construit depuis l'env du runtime. Erreur typée si une variable
-    /// manque (nœud rejeté au build → flow non déployé, cause visible).
+    /// Built from the runtime env. Typed error if a variable
+    /// is missing (node rejected at build → flow not deployed, visible cause).
     pub fn from_env() -> Result<Self, EdgelinkError> {
         let missing = [
             "OPENOBSERVE_URL",
@@ -43,8 +43,8 @@ impl O2Client {
         .join(", ");
         if !missing.is_empty() {
             return Err(EdgelinkError::InvalidOperation(format!(
-                "pnex-device/metric : variables d'environnement absentes : {missing} \
-                 (allowlist du superviseur)"
+                "pnex-device/metric : missing environment variables: {missing} \
+                 (supervisor allowlist)"
             )));
         }
         let base = std::env::var("OPENOBSERVE_URL").unwrap_or_default();
@@ -53,14 +53,14 @@ impl O2Client {
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
-            .map_err(|e| EdgelinkError::InvalidOperation(format!("client O2 : {e}")))?;
+            .map_err(|e| EdgelinkError::InvalidOperation(format!("O2 client: {e}")))?;
         let basic = base64::engine::general_purpose::STANDARD.encode(format!("{email}:{password}"));
         Ok(Self { base, basic, http })
     }
 
-    /// Dernière valeur d'une série dans la fenêtre — PromQL instantané
-    /// `last_over_time(<metric>{device_id="…"}[<w>s])`. `None` = aucune
-    /// donnée dans la fenêtre (clé omise du payload, jamais de zéro inventé).
+    /// Last value of a series within the window — instant PromQL
+    /// `last_over_time(<metric>{device_id="…"}[<w>s])`. `None` = no
+    /// data in the window (key omitted from the payload, never an invented zero).
     pub async fn query_last(
         &self,
         org: &str,
@@ -79,19 +79,19 @@ impl O2Client {
             .query(&[("query", promql.as_str())])
             .send()
             .await
-            .map_err(|e| format!("query O2 injoignable : {e}"))?;
+            .map_err(|e| format!("query O2 unreachable: {e}"))?;
         let status = resp.status();
         let body = resp
             .text()
             .await
-            .map_err(|e| format!("query O2 : lecture du corps : {e}"))?;
+            .map_err(|e| format!("query O2: reading the body: {e}"))?;
         if !status.is_success() {
             return Err(format!("query O2 {status} : {body}"));
         }
         parse_instant_response(&body)
     }
 
-    /// Remote-write : encode prompb, compresse snappy, POSTe. `Ok(())` après
+    /// Remote-write: encodes prompb, compresses with snappy, POSTs. `Ok(())` after
     /// 2xx.
     pub async fn write(
         &self,
@@ -113,7 +113,7 @@ impl O2Client {
             .body(compressed)
             .send()
             .await
-            .map_err(|e| format!("write O2 injoignable : {e}"))?;
+            .map_err(|e| format!("write O2 unreachable: {e}"))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -123,8 +123,8 @@ impl O2Client {
     }
 }
 
-/// Construit la série prompb d'un résultat ETL — labels identiques à
-/// l'ingestion capteur (dimension device_id = device virtuel du flow).
+/// Builds the prompb series of an ETL result — labels identical to
+/// sensor ingestion (device_id dimension = the flow's virtual device).
 pub fn etl_series(
     metric: String,
     virtual_device: String,
@@ -180,29 +180,29 @@ pub fn etl_series_labelled(
     series
 }
 
-/// Parse la réponse de l'API query instantanée : les samples vivent sous
+/// Parses the instant query API response: samples live under
 /// `data.result[].value = [ts, "val"]` (resultType vector).
 pub fn parse_instant_response(body: &str) -> Result<Option<LastSample>, String> {
     let v: serde_json::Value =
-        serde_json::from_str(body).map_err(|e| format!("réponse O2 non JSON : {e}"))?;
+        serde_json::from_str(body).map_err(|e| format!("O2 response not JSON: {e}"))?;
     if v["status"] != "success" {
         return Err(format!(
             "query O2 : {}",
-            v["error"].as_str().unwrap_or("erreur inconnue")
+            v["error"].as_str().unwrap_or("unknown error")
         ));
     }
     let samples = v["data"]["result"]
         .as_array()
-        .ok_or("réponse O2 : data.result absent")?;
+        .ok_or("O2 response: data.result missing")?;
     let Some(first) = samples.first() else {
         return Ok(None);
     };
     let raw = first["value"][1]
         .as_str()
-        .ok_or("réponse O2 : sample sans valeur texte")?;
+        .ok_or("O2 response: sample without text value")?;
     let value: f64 = raw
         .parse()
-        .map_err(|_| format!("réponse O2 : valeur non numérique « {raw} »"))?;
+        .map_err(|_| format!("O2 response: non-numeric value \"{raw}\""))?;
     let ts = first["value"][0].as_f64().unwrap_or(0.0);
     Ok(Some((value, (ts * 1000.0) as i64)))
 }

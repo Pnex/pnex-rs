@@ -30,7 +30,7 @@ fn http() -> &'static reqwest::Client {
     static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
     HTTP.get_or_init(|| {
         reqwest::Client::builder()
-            // Rauthy refuse les requêtes sans User-Agent (400).
+            // Rauthy rejects requests without a User-Agent (400).
             .user_agent("pnex-server")
             .timeout(std::time::Duration::from_secs(10))
             .build()
@@ -103,8 +103,8 @@ async fn relay(response: reqwest::Response) -> Result<Response> {
 async fn token(State(ctx): State<AppContext>, Json(params): Json<TokenParams>) -> Result<Response> {
     let settings = RauthySettings::from_config(&ctx.config)?;
 
-    // Scope standard (comme le flow SSO) : garantit l'émission de l'id_token,
-    // requis pour l'end-session (`id_token_hint`).
+    // Standard scope (like the SSO flow): guarantees the id_token is issued,
+    // required for end-session (`id_token_hint`).
     let mut form: Vec<(&str, String)> = vec![
         ("client_id", settings.client_id.clone()),
         ("scope", "openid profile email".into()),
@@ -225,13 +225,13 @@ pub struct LogoutParams {
     pub id_token: Option<String>,
 }
 
-/// `GET /api/v1/oauth2/logout` — sert un formulaire HTML auto-soumis vers
-/// l'end-session Rauthy. Ce POST est une navigation TOP-LEVEL : le 302 final
-/// de Rauthy vers `post_logout_redirect_uri` devient une vraie navigation et
-/// le navigateur atterrit directement sur l'app (boot déconnecté → écran de
-/// login). C'est le seul chemin qui redirige réellement : la page logout SPA
-/// de Rauthy POSTe en `fetch` puis rejoint toujours sa landing hardcodée
-/// `/auth/v1/` — jamais l'app (vérifié dans le source 0.36.2).
+/// `GET /api/v1/oauth2/logout` — serves a self-submitting HTML form to the
+/// Rauthy end-session. This POST is a TOP-LEVEL navigation: Rauthy's final
+/// 302 to `post_logout_redirect_uri` becomes a real navigation and the
+/// browser lands straight on the app (logged-out boot → login screen).
+/// It is the only path that really redirects: Rauthy's SPA logout page
+/// POSTs via `fetch` then always goes to its hardcoded landing
+/// `/auth/v1/` — never the app (checked in the 0.36.2 source).
 #[utoipa::path(
     get,
     path = "/api/v1/oauth2/logout",
@@ -254,8 +254,8 @@ async fn logout(
         .post_logout_redirect_uri
         .unwrap_or_else(|| format!("{}/auth/v1/", settings.base_url));
 
-    // Échappement HTML minimal (l'id_token est base64url + points, l'URI
-    // vient du front — défense en profondeur contre une injection d'attribut).
+    // Minimal HTML escaping (the id_token is base64url + dots, the URI
+    // comes from the front — defense in depth against attribute injection).
     fn esc(s: &str) -> String {
         s.replace('&', "&amp;")
             .replace('<', "&lt;")
@@ -306,7 +306,7 @@ pub struct SsoParams {
     pub prompt: Option<String>,
 }
 
-/// Encode une paire clé/valeur en query string (application/x-www-form-urlencoded).
+/// Encodes a key/value pair as a query string (application/x-www-form-urlencoded).
 fn form_urlencode(pairs: &[(&str, String)]) -> String {
     pairs
         .iter()
@@ -380,8 +380,8 @@ async fn sso(
             .unwrap_or("http");
         format!("{scheme}://{host}/auth/callback")
     });
-    // Bind dev « toutes interfaces » : une redirect_uri en 0.0.0.0/[::] n'est
-    // pas autorisée côté Rauthy — normalisation vers la forme loopback.
+    // Dev bind on "all interfaces": a redirect_uri on 0.0.0.0/[::] is not
+    // allowed by Rauthy — normalized to the loopback form.
     let redirect_uri = redirect_uri
         .replace("0.0.0.0", "localhost")
         .replace("[::]:", "[::1]:");
@@ -400,10 +400,10 @@ async fn sso(
     if params.prompt.as_deref() == Some("login") {
         pairs.push(("prompt", "login".into()));
     }
-    // Pages UI Rauthy (pas des endpoints OIDC) : `action=register` →
-    // formulaire d'inscription (activation par mail), `action=reset` →
-    // page compte où vit le changement de mot de passe. Dans les deux cas,
-    // l'utilisateur revient à l'app pnex et (re)lance le login.
+    // Rauthy UI pages (not OIDC endpoints): `action=register` →
+    // sign-up form (activation by mail), `action=reset` →
+    // account page where the password change lives. In both cases,
+    // the user comes back to the pnex app and (re)starts the login.
     let location = match params.action.as_deref() {
         Some("register") => settings.register_page(),
         Some("reset") => settings.account_page(),
@@ -438,20 +438,20 @@ pub fn routes() -> Routes {
         .add("/native/{state}", get(native_poll))
 }
 
-// ===== Pont de callback natif =====
+// ===== Native callback bridge =====
 //
-// dioxus-desktop ouvre toute navigation http(s) dans le navigateur système
-// (`webbrowser::open` codé en dur dans son wrapper de navigation) : la webview
-// embarquée est impossible sans fork. Le login natif ouvre donc le navigateur
-// sur le flow SSO avec redirect_uri = `/api/v1/oauth2/native` (cette page) ;
-// Rauthy y rapatrie `?code&state`, et l'app — restée en arrière-plan —
-// récupère le code par polling de `/native/{state}`, l'échange contre des
-// tokens (le verifier PKCE ne quitte jamais l'app) et ouvre la session :
-// l'utilisateur retrouve l'app déjà connectée au retour.
+// dioxus-desktop opens every http(s) navigation in the system browser
+// (`webbrowser::open` hardcoded in its navigation wrapper): an embedded
+// webview is impossible without a fork. Native login therefore opens the browser
+// on the SSO flow with redirect_uri = `/api/v1/oauth2/native` (this page);
+// Rauthy brings `?code&state` back there, and the app — left in the background —
+// fetches the code by polling `/native/{state}`, exchanges it for
+// tokens (the PKCE verifier never leaves the app) and opens the session:
+// the user finds the app already logged in on return.
 //
-// Le `state` aléatoire (challenge PKCE, unique par flow) est la seule clé
-// d'accès au code : c'est le secret de capacité du pont — il ne transite que
-// via le navigateur de l'utilisateur.
+// The random `state` (PKCE challenge, unique per flow) is the only access key
+// to the code: it is the bridge's capability secret — it only transits
+// through the user's browser.
 
 //
 // Cross-pod: the callback and the polls may hit different pods, so the
@@ -610,10 +610,10 @@ async fn native_callback(
     Ok(axum::response::Html(native_bridge_page(preferred_language(&headers))).into_response())
 }
 
-/// Langue de la page pont : premier tag supporté (fr, en) dans
-/// Accept-Language — le navigateur du device reflète la langue du téléphone.
-/// Ordre de déclaration pris pour préférence (q-values ignorées : deux
-/// langues supportées, les navigateurs réels trient déjà par préférence).
+/// Language of the bridge page: first supported tag (fr, en) in
+/// Accept-Language — the device browser reflects the phone's language.
+/// Declaration order taken as preference (q-values ignored: two
+/// supported languages, real browsers already sort by preference).
 fn preferred_language(headers: &axum::http::HeaderMap) -> &'static str {
     let Some(raw) = headers
         .get(header::ACCEPT_LANGUAGE)
@@ -638,21 +638,21 @@ fn preferred_language(headers: &axum::http::HeaderMap) -> &'static str {
     "en"
 }
 
-/// Page « retournez dans l'application », unifiée dans UNE langue (le HTML
-/// initial mélangeait fr + en). Retour à l'app (constat 2026-09-09 :
-/// `window.close()` ferme l'onglet mais le navigateur reste au premier plan ;
-/// les URI `intent://…action=MAIN` sont refusées par Chromium — « Élément
-/// introuvable » sous Brave — car une cible sans catégorie BROWSABLE n'est
-/// pas déclenchable depuis le web) :
-/// 1. navigation vers `pnex://return` — schéma deep link déclaré par l'APK
-///    (intent-filter VIEW/BROWSABLE injecté par
-///    `crates/pnex-frontend/patch-android-manifest.py`) : le navigateur
-///    résout le lien, Android met l'app devant ; le code a déjà été passé à
-///    l'app par le polling, la page ne sert plus qu'à ça ;
-/// 2. `window.close()` en best-effort (l'onglet a été ouvert par l'app via
-///    Intent — Chromium autorise sa fermeture) ;
-/// 3. si le navigateur bloque la navigation automatique (elle exige parfois
-///    un geste), le bouton manuel refait les deux avec le geste utilisateur.
+/// "Go back to the app" page, unified in ONE language (the initial HTML
+/// mixed fr + en). Back to the app (finding 2026-09-09:
+/// `window.close()` closes the tab but the browser stays in the foreground;
+/// `intent://…action=MAIN` URIs are rejected by Chromium — "Élément
+/// introuvable" under Brave (quoted UI text, english-guard: allow) — because a target without the BROWSABLE category
+/// cannot be triggered from the web):
+/// 1. navigation to `pnex://return` — deep link scheme declared by the APK
+///    (VIEW/BROWSABLE intent-filter injected by
+///    `crates/pnex-frontend/patch-android-manifest.py`): the browser
+///    resolves the link, Android brings the app to the front; the code was already
+///    handed to the app by polling, the page only serves that purpose;
+/// 2. best-effort `window.close()` (the tab was opened by the app via
+///    Intent — Chromium allows closing it);
+/// 3. if the browser blocks automatic navigation (it sometimes requires
+///    a gesture), the manual button redoes both with the user gesture.
 fn native_bridge_page(lang: &'static str) -> String {
     let (title, subtitle, back) = match lang {
         "fr" => (

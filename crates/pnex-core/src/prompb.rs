@@ -1,21 +1,21 @@
-//! Encodage Prometheus remote-write (WriteRequest protobuf) — messages
-//! prompb partagés backend ↔ runtime de flows (Phase 6 ETL).
+//! Prometheus remote-write encoding (WriteRequest protobuf) — prompb
+//! messages shared backend ↔ flow runtime (Phase 6 ETL).
 //!
-//! Derrière la feature `prompb` (dep `prost` optionnelle) : le front wasm ne
-//! compile jamais ce module (pnex-frontend dépend de pnex-core sans la
-//! feature), le backend et `pnex-node-device` l'activent. L'encodage des
-//! `TelemetryPoint` d'ingestion reste dans le backend (`services/
-//! openobserve/promwrite.rs`) ; le nœud `metric` du runtime construit ses
-//! séries directement sur ces structs partagés.
+//! Behind the `prompb` feature (optional `prost` dep): the wasm front never
+//! compiles this module (pnex-frontend depends on pnex-core without the
+//! feature), the backend and `pnex-node-device` enable it. The encoding of the
+//! ingestion `TelemetryPoint`s stays in the backend (`services/
+//! openobserve/promwrite.rs`); the runtime's `metric` node builds its
+//! series directly on these shared structs.
 //!
-//! L'ingestion télémétrie va dans les **metrics** OpenObserve
-//! (`/prometheus/api/v1/write`) : les points deviennent des séries
+//! Telemetry ingestion goes into the OpenObserve **metrics**
+//! (`/prometheus/api/v1/write`): the points become
 //! `metric_name{device_id, pred_dev, source_type, ts_source}`.
 
 use prost::Message;
 
-// Messages prompb (prometheus/prompb/types.proto) — encodage prost à la
-// main, seuls les champs utilisés sont modélisés.
+// prompb messages (prometheus/prompb/types.proto) — hand-written prost
+// encoding, only the fields in use are modeled.
 #[derive(Clone, PartialEq, Message)]
 pub struct WriteRequest {
     #[prost(message, repeated, tag = "1")]
@@ -51,8 +51,8 @@ pub struct Sample {
 mod tests {
     use super::*;
 
-    /// Roundtrip encode/decode d'une série labellisée (le nœud `metric` du
-    /// runtime écrit exactement cette forme).
+    /// Encode/decode roundtrip of a labeled series (the runtime's `metric`
+    /// node writes exactly this form).
     #[test]
     fn roundtrip_serie_labellisee() {
         let req = WriteRequest {

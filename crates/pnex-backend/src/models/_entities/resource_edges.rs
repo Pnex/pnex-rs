@@ -1,9 +1,9 @@
-//! `SeaORM` Entity — couche d'organisation transverse (D42).
+//! `SeaORM` Entity — cross-cutting organization layer (D42).
 //!
-//! Arêtes many-to-many avec `placement` (opaque pour le moteur, structuré
-//! par relation). Absorbe `viz_links` (D39 → D42). Unicité de paire
-//! `(org, relation, source, target)` en base ; purge symétrique des deux
-//! bouts via `purge_for`.
+//! Many-to-many edges with `placement` (opaque to the engine, structured
+//! per relation). Absorbs `viz_links` (D39 → D42). Pair uniqueness
+//! `(org, relation, source, target)` in the DB; symmetric purge of both
+//! ends via `purge_for`.
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};

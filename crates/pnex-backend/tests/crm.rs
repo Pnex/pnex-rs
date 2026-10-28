@@ -156,7 +156,7 @@ async fn an_opportunity_lives_in_the_account_graph() {
             }
         };
         assert_eq!(
-            count(format!("SELECT count(*)::bigint AS n FROM packs WHERE org_id = {org} AND key IN ('prospection_b2b', 'crm')")).await,
+            count(format!("SELECT count(*)::bigint AS n FROM packs WHERE org_id = {org} AND key IN ('prospecting_b2b', 'crm')")).await,
             2
         );
         assert_eq!(
@@ -164,7 +164,7 @@ async fn an_opportunity_lives_in_the_account_graph() {
             7
         );
 
-        let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"statut_compte": "prospect"})).await;
+        let acme = object(&server, &env.alice, org, "organization", "Acme", json!({"account_status": "prospect"})).await;
         let ann = object(&server, &env.alice, org, "person", "Ann Smith", json!({})).await;
         let budget = object(&server, &env.alice, org, "qualification_criterion", "Budget confirmed", json!({"stage": "qualification", "active": true})).await;
         let deal = object(&server, &env.alice, org, "opportunity", "Acme 2027", json!({

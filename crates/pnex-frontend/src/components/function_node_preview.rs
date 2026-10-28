@@ -1,5 +1,5 @@
-//! Mini rendering of the flow node a function will produce (mockup "Dans un
-//! flow, ce nœud ressemblera à ça"): teal input ports on the left with
+//! Mini rendering of the flow node a function will produce (mockup "In a
+//! flow, this node will look like this"): teal input ports on the left with
 //! name + default labels, the node box in the middle (mono name +
 //! "{lang} v{N}" subtitle), amber output ports on the right. Light theme —
 //! same card styling as the port grids next to it. Derived live from the

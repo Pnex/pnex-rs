@@ -1,6 +1,6 @@
-//! Sonde ONNX : imprime les signatures exactes (noms, dtypes, formes) des
-//! entrées/sorties de superpoint.onnx et du matcher LightGlue — référence
-//! pour `pose_model.rs`. Usage :
+//! ONNX probe: prints the exact signatures (names, dtypes, shapes) of the
+//! inputs/outputs of superpoint.onnx and of the LightGlue matcher — reference
+//! for `pose_model.rs`. Usage:
 //! `cargo run --release -p pnex-stitcher --features pose-model \
 //!  --example probe_model -- deploy/models`
 

@@ -53,7 +53,7 @@ pub struct OntologyQueryConfig {
     #[serde(default)]
     pub output: QueryOutput,
     /// Links followed from the selected objects; the rows are the objects
-    /// reached (a certification's partners: `habilite_pour`, in).
+    /// reached (a certification's partners: `accredited_for`, in).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub traverse: Vec<Hop>,
     /// Link types joined to each row, both directions, open links only
@@ -379,14 +379,14 @@ mod tests {
     fn configs_are_checked() {
         let q: OntologyQueryConfig = serde_json::from_value(json!({
             "object_type": "procedure",
-            "filters": [{"key": "prochaine_echeance", "op": "lte", "value": "$today"},
-                        {"key": "etat", "op": "in", "value": ["ouverte"]}],
+            "filters": [{"key": "next_due", "op": "lte", "value": "$today"},
+                        {"key": "state", "op": "in", "value": ["open"]}],
             "limit": 200
         }))
         .unwrap();
         assert!(q.check_deployable().is_none());
         let bad_in: OntologyQueryConfig = serde_json::from_value(json!({
-            "object_type": "x", "filters": [{"key": "etat", "op": "in", "value": "ouverte"}]
+            "object_type": "x", "filters": [{"key": "state", "op": "in", "value": "open"}]
         }))
         .unwrap();
         assert!(bad_in.check().is_some());
@@ -395,7 +395,7 @@ mod tests {
             "ontology_node_unset"
         );
         let u = ObjectUpsertConfig {
-            object_type: "ecart".into(),
+            object_type: "finding".into(),
             key: "id".into(),
             skip_existing: false,
             propose: false,

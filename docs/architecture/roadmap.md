@@ -1021,7 +1021,7 @@ gestion par la CLI `pnex` et la page Réglages › Accès). Restent I4, I5.
 `pnex-quali-watch`), SaaS pour organismes certificateurs, dont PNEX est le
 moteur sans en être l'interface. Briques génériques : imports déclaratifs
 et synchros planifiées vers l'ontologie (Excel, open data, API), propriété
-unique, extension de type par pack, pack `entreprises_fr` (établissement =
+unique, extension de type par pack, pack `companies_fr` (établissement =
 `map_pin`, dirigeants par lien temporel) et vue Hiérarchie sur liens,
 mission `crawl_site` et registre `site_pages`, preuve horodatée (capture
 pleine page + HTML + chaîne d'empreintes), diff de versions, nœuds de flow
@@ -1029,16 +1029,16 @@ ontologie, e-mail à destinataire dynamique, webhook HMAC, compte de service
 en écriture bornée. Lots PW0 → PW8 ; PW0–PW3 sans attendre l'IAM, PW7
 après les comptes de service (P2.25).
 
-### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1 en cours : pack `prospection_b2b` écrit**
+### P2.27 — Cartographie commerciale des comptes (ajout 2026-10-21) — **CC1 en cours : pack `prospecting_b2b` écrit**
 
 `account-mapping.md`, D329–D342 : un compte vu comme un réseau daté
 (groupe, filiales, établissements, dirigeants, contacts, recommandations)
-sur la carte, dans la hiérarchie et le graphe. Pack `prospection_b2b`
-au-dessus d'`entreprises_fr` ; couverture et espace blanc calculés à la
+sur la carte, dans la hiérarchie et le graphe. Pack `prospecting_b2b`
+au-dessus d'`companies_fr` ; couverture et espace blanc calculés à la
 lecture ; liens de groupe GLEIF et Wikidata ; rapprochement nom → SIREN
 (`org_resolve`) ; capture ponctuelle d'un profil déclenchée par un humain
 (amende D261) ; signaux commerciaux ; score explicable ; coloration par
-valeur de propriété au noyau (D339). Pas de CRM. Socle mondial `entreprises` + un pack par pays, France d'abord (D343, 2026-10-21). Lots CC0 → CC6 ; CC3
+valeur de propriété au noyau (D339). Pas de CRM. Socle mondial `companies` + un pack par pays, France d'abord (D343, 2026-10-21). Lots CC0 → CC6 ; CC3
 (données personnelles) attend D341.
 Suite et état au 2026-10-22 : **P2.28**.
 
@@ -1051,7 +1051,7 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 
 | # | Décision | Priorité |
 |---|---|---|
-| D367 | La proposition devient un objet du noyau (généralise les propositions des dossiers) : une boîte « à valider », un journal des décisions ; les packs cessent de déclarer `etat a_valider` ; migration des 4 packs existants | 1, à coder en premier |
+| D367 | La proposition devient un objet du noyau (généralise les propositions des dossiers) : une boîte « à valider », un journal des décisions ; les packs cessent de déclarer `state to_validate` ; migration des 4 packs existants | 1, à coder en premier |
 | D368 | Contrat pack + couche d'org : réglages déclarés par le pack, surcharge par l'org, fusion pack ⊕ couche ⊕ ajouts | 2 |
 | D369 | `external_ref` de premier rang + événements de changement sortants (D356 généralisé) ; écritures chiffrées dans des tables dédiées en ajout seul, à côté de l'ontologie | principe acté, code au démarrage CRM/ERP |
 | D370 | Clé d'énumération stable, jamais renommée ; libellé séparé | règle immédiate |
@@ -1060,12 +1060,12 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 
 | Bloc | Contenu | État |
 |---|---|---|
-| CC2 | Liens de groupe GLEIF + Wikidata (`filiale_de` passe dans `entreprises`), nœud `org_resolve` | codé, à commiter |
-| D337 / D336 | Liste de ciblage par recherche enregistrée (`prospection_fr`), score de ciblage par critères d'org | codé, à commiter |
+| CC2 | Liens de groupe GLEIF + Wikidata (`subsidiary_of` passe dans `companies`), nœud `org_resolve` | codé, à commiter |
+| D337 / D336 | Liste de ciblage par recherche enregistrée (`prospecting_b2b_fr`), score de ciblage par critères d'org | codé, à commiter |
 | D339 / D330 | Couleurs par valeur (carte, hiérarchie, graphe), couverture et espace blanc | codé, à commiter |
 | D338 | Chemin d'introduction (liens entre personnes) | codé, à commiter |
-| W2–W4 | `link_upsert` `skip_closed`, pack `presence_web`, nœud `web_visit`, flow d'identification, « Sites à valider » | codé, à commiter |
-| CC4 | `signal_commercial`, annonces BODACC des comptes suivis, flow de résumé | codé, à commiter |
+| W2–W4 | `link_upsert` `skip_closed`, pack `web_presence`, nœud `web_visit`, flow d'identification, « Sites à valider » | codé, à commiter |
+| CC4 | `sales_signal`, annonces BODACC des comptes suivis, flow de résumé | codé, à commiter |
 | D340 | Pages remplies depuis un objet : plan de compte, fiche concurrent, préparation de rendez-vous | codé, à commiter |
 | Réunions | `meeting`, `coaching_criterion`, compte rendu, coaching par critère, `focus` du résumé de média | codé, à commiter |
 | Personas | Correspondance des personas d'un client vers la liste du pack | donnée d'org, hors dépôt |
@@ -1081,13 +1081,13 @@ pérennité dans `ontology.md` §11 (D367–D370), validées le 2026-10-22.
 - Listes de salon et d'associations (fichier + `org_resolve`).
 - Fournisseurs par pays (`org_resolve`, registre, annonces ; Royaume-Uni d'abord) + identifiants d'import au coffre (D352).
 - Quotas par org ou par offre + affichage du coût.
-- Libellés d'énumération et i18n des corps de modèles (D370) : libellés fr/en posés sur `crm` (1.2.0) et `prospection_b2b` (1.4.0) le 2026-10-26, et le titre d'une activité de relance reprend le titre de l'étape ; tous les autres packs suivent le même jour (entreprises 1.3.0, investigation 1.12.0, maintenance 1.4.0, media_coverage 1.2.0, presence_web 1.6.0, prospection_fr 1.2.0, quali_watch 1.6.0) ; les corps des modèles de pages suivent le 2026-10-27 (anglais par défaut, `bodies.fr`, mêmes champs gardés par le test des packs ; la page prend la langue de l'interface).
+- Libellés d'énumération et i18n des corps de modèles (D370) : libellés fr/en posés sur `crm` (1.2.0) et `prospecting_b2b` (1.4.0) le 2026-10-26, et le titre d'une activité de relance reprend le titre de l'étape ; tous les autres packs suivent le même jour (entreprises 1.3.0, investigation 1.12.0, maintenance 1.4.0, media_coverage 1.2.0, presence_web 1.6.0, prospection_fr 1.2.0, quali_watch 1.6.0) ; les corps des modèles de pages suivent le 2026-10-27 (anglais par défaut, `bodies.fr`, mêmes champs gardés par le test des packs ; la page prend la langue de l'interface).
 - Pages vivantes.
 - Droits par objet (ACL).
 - Règles côté serveur par ensembles / L2 pour plus de 100 000 objets.
 - Écriture par les flows des types système (`map_pin` → score de site).
 - Clé naturelle composée.
-- Pourcentage de détention sur `filiale_de`.
+- Pourcentage de détention sur `subsidiary_of`.
 - Connecteurs CRM/ERP génériques (après D369).
 - Assistant en direct pendant un rendez-vous (projet séparé).
 - Vision CRM/ERP : interventions terrain, planification des techniciens, mouvements et déploiements d'équipements, réparations et tarifs.
@@ -1511,7 +1511,7 @@ Rien n'y est engagé ; chaque entrée exige une décision explicite (principe
   question ouverte à `iam.md` §14 (compte de service qui écrit). Rien
   d'implémenté.
 - **2026-10-21 (cartographie commerciale)** — Ajout de P2.27
-  (`account-mapping.md`, D329–D342) : pack `prospection_b2b`, couverture
+  (`account-mapping.md`, D329–D342) : pack `prospecting_b2b`, couverture
   et espace blanc, liens de groupe GLEIF/Wikidata, signaux, capture
   ponctuelle de profil. Amende D261 (`extension-collector.md`, mode
   `once`) et avance le mapping BODACC prévu en V2 par D304. Pack écrit

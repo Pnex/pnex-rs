@@ -11,7 +11,7 @@ pub const GPS_ALTITUDE: &str = "gps_altitude_m";
 pub const GPS_SPEED: &str = "gps_speed_mps";
 pub const GPS_HEADING: &str = "gps_heading_deg";
 
-/// `true` si la métrique participe à la position (convention D38).
+/// `true` if the metric takes part in the position (D38 convention).
 pub fn is_gps_metric(name: &str) -> bool {
     matches!(
         name,
@@ -19,8 +19,8 @@ pub fn is_gps_metric(name: &str) -> bool {
     )
 }
 
-/// Moitié de position en attente de sa jumelle (les trames `latitude` et
-/// `longitude` arrivent séparément).
+/// Half position waiting for its twin (the `latitude` and
+/// `longitude` frames arrive separately).
 #[derive(Default, Clone)]
 struct GpsHalf {
     latitude: Option<f64>,
@@ -37,8 +37,8 @@ impl GpsHalf {
     }
 }
 
-/// TTL de la demi-position en attente (trames séparées de quelques ms ;
-/// au-delà, on considère la paire perdue).
+/// TTL of the pending half position (frames a few ms apart;
+/// beyond that, the pair is considered lost).
 const GPS_HALF_TTL: Duration = Duration::from_secs(300);
 
 static GPS_PENDING: LazyLock<Mutex<HashMap<i64, (GpsHalf, Instant)>>> =
@@ -62,9 +62,9 @@ struct PendingPosition {
 
 type PendingWrites = Arc<Mutex<HashMap<i64, PendingPosition>>>;
 
-/// Tap du sink télémétrie : met à jour la **dernière** position du device
-/// (D38) sans jamais bloquer ni faire échouer le flux télémétrie — les
-/// erreurs sont loggées et avalées (école batcher O2 « drop, pas bloquer »).
+/// Telemetry sink tap: updates the device's **latest** position
+/// (D38) without ever blocking or failing the telemetry stream — the
+/// errors are logged and swallowed (O2 batcher « drop, don't block » pattern).
 ///
 /// Writes go through ONE writer task per sink fed by a coalescing map
 /// (latest complete position per device): a GPS burst from a fleet costs at
@@ -194,23 +194,23 @@ async fn write_pending(db: &DatabaseConnection, device_registry_id: i64, p: Pend
     )
     .await
     {
-        tracing::warn!(device = %p.device_id, error = %e, "position GPS non enregistrée");
+        tracing::warn!(device = %p.device_id, error = %e, "GPS position not saved");
     }
 }
 
-/// Valeur télémétrie → f64 (les valeurs sont déjà flottées au bord O2).
+/// Telemetry value → f64 (values are already floats at the O2 edge).
 fn parse_f64(v: &str) -> Option<f64> {
     v.trim().parse::<f64>().ok().filter(|f| f.is_finite())
 }
 
-/// Traite un point GPS : compose la paire lat/lon (cache demi-position) et
-/// upsert `device_positions`. Silencieux sur valeur invalide/hors plage.
+/// Processes a GPS point: assembles the lat/lon pair (half-position cache) and
+/// upserts `device_positions`. Silent on an invalid/out-of-range value.
 pub async fn observe(db: &DatabaseConnection, point: &TelemetryPoint) -> Result<(), DbErr> {
     let Some(value) = parse_f64(&point.value) else {
         return Ok(());
     };
-    // Tout le travail synchrone (garde du cache demi-position) hors await —
-    // le garde `Mutex` std n'est pas Send.
+    // All the synchronous work (half-position cache guard) outside await —
+    // the std `Mutex` guard is not Send.
     let Some(((lat, lon), half)) =
         take_gps_half(point.device_registry_id, &point.metric_name, value)
     else {
@@ -233,9 +233,9 @@ pub async fn observe(db: &DatabaseConnection, point: &TelemetryPoint) -> Result<
     .await
 }
 
-/// Fusionne le point GPS dans la demi-position du device ; quand la paire
-/// lat/lon est complète, la consomme et renvoie la position + les options
-/// accumulées. `None` = valeur invalide / hors plage / paire incomplète.
+/// Merges the GPS point into the device's half position; when the lat/lon
+/// pair is complete, consumes it and returns the position + the accumulated
+/// options. `None` = invalid value / out of range / incomplete pair.
 fn take_gps_half(
     device_registry_id: i64,
     metric: &str,
@@ -250,7 +250,7 @@ fn take_gps_half(
     let entry = pending
         .entry(device_registry_id)
         .or_insert_with(|| (GpsHalf::default(), Instant::now()));
-    // TTL : demi-position trop ancienne → on repart d'une moitié vide.
+    // TTL: half position too old → start again from an empty half.
     if entry.1.elapsed() > GPS_HALF_TTL {
         *entry = (GpsHalf::default(), Instant::now());
     }
@@ -262,17 +262,17 @@ fn take_gps_half(
         GPS_ALTITUDE => half.altitude = Some(value),
         GPS_SPEED => half.speed = Some(value),
         GPS_HEADING => half.heading = Some(value),
-        // Métrique inconnue (impossible — is_gps_metric) ou hors plage WGS84.
+        // Unknown metric (impossible — is_gps_metric) or outside the WGS84 range.
         _ => return None,
     }
     let (lat, lon) = half.complete()?;
-    // Paire complète → on consomme la demi-position.
+    // Complete pair → consume the half position.
     let snapshot = half.clone();
     pending.remove(&device_registry_id);
     Some(((lat, lon), snapshot))
 }
 
-/// Types d'upsert partagés (options GPS).
+/// Shared upsert types (GPS options).
 pub struct GpsOptions {
     pub accuracy: Option<f64>,
     pub altitude: Option<f64>,
@@ -296,7 +296,7 @@ async fn upsert_position(
     positioned_at: DateTimeWithTimeZone,
 ) -> Result<(), DbErr> {
     let dec = |v: f64| Decimal::try_from(v).ok();
-    // La clé métier est device_registry_id (UNIQUE) — pas la PK auto.
+    // The business key is device_registry_id (UNIQUE) — not the auto PK.
     let existing = device_positions::Entity::find()
         .filter(device_positions::Column::DeviceRegistryId.eq(device_registry_id))
         .one(db)
@@ -376,7 +376,7 @@ pub async fn set_manual(
     .map_err(|_| VizWriteError::Db)
 }
 
-/// Dernière position de chaque device de l'org (couche live de la carte).
+/// Latest position of each of the org's devices (live map layer).
 pub async fn list_positions(
     db: &DatabaseConnection,
     org_id: i64,

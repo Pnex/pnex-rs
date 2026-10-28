@@ -1,7 +1,7 @@
-//! Tests E2E d'isolation « N Engines, 1 process » : un tab invalide ne fait
-//! échouer que son engine (`flow_error`), les autres continuent ; le reload
-//! d'un tab n'arrête pas les autres ; le last-good continue de tourner quand
-//! un swap échoue. Le harnais spawn le vrai binaire
+//! E2E isolation tests "N Engines, 1 process": an invalid tab only fails
+//! its own engine (`flow_error`), the others keep running; reloading
+//! a tab does not stop the others; the last-good keeps running when
+//! a swap fails. The harness spawns the real binary
 //! (`CARGO_BIN_EXE_pnex-flow-runtime`).
 
 mod common;
@@ -10,10 +10,10 @@ use std::time::Duration;
 
 use common::RuntimeProc;
 
-/// Artefact 2 tabs : flow 1 sain en fond (inject 0.1 s → debug), flow 2
-/// paramétrable (payload variable, ou cassé par une wire vers un nœud
-/// inexistant — fatal au build du tab, cf. vendor flow.rs
-/// « Referenced node not found »).
+/// 2-tab artifact: flow 1 healthy in the background (inject 0.1 s → debug), flow 2
+/// configurable (variable payload, or broken by a wire to a non-existent
+/// node — fatal to the tab's build, see vendor flow.rs
+/// "Referenced node not found").
 fn two_flows(tab2_payload: &str, tab2_broken: bool) -> String {
     let mut v = serde_json::json!([
         { "id": "pnexflow1", "type": "tab", "label": "f1", "pnex_flow_id": 1 },
@@ -44,7 +44,7 @@ fn two_flows(tab2_payload: &str, tab2_broken: bool) -> String {
         }
     ]);
 
-    // Wire fantôme = échec de build du tab (Referenced node not found).
+    // Ghost wire = tab build failure (Referenced node not found).
     if tab2_broken {
         v[4]["wires"] = serde_json::json!([["ghost"]]);
     }
@@ -62,13 +62,13 @@ fn tab_invalide_ne_tue_pas_les_autres_flows() {
     std::fs::write(&flows, two_flows("ok-2", true)).unwrap();
 
     let mut rt = RuntimeProc::spawn(&flows, &home);
-    // Boot : flow 1 démarré, flow 2 en erreur — le process vit. Les events
-    // par flow précèdent `started` (wait_for consomme sans remise).
+    // Boot: flow 1 started, flow 2 in error — the process lives. Per-flow
+    // events precede `started` (wait_for consumes without putting back).
     let started1 = rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("flow_started") && v["flow"] == 1,
         Duration::from_secs(30),
     );
-    assert!(started1["rev"].is_string(), "rev attendu : {started1}");
+    assert!(started1["rev"].is_string(), "rev expected: {started1}");
     let failed2 = rt.wait_for(
         |v| {
             v.get("event").and_then(|e| e.as_str()) == Some("flow_error")
@@ -79,13 +79,13 @@ fn tab_invalide_ne_tue_pas_les_autres_flows() {
         },
         Duration::from_secs(30),
     );
-    println!("flow 2 en erreur : {failed2}");
+    println!("flow 2 in error: {failed2}");
     rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
 
-    // Le flow sain continue d'émettre.
+    // The healthy flow keeps emitting.
     rt.wait_for(
         |v| common::is_debug_with(v, "bg-1"),
         Duration::from_secs(30),
@@ -93,7 +93,7 @@ fn tab_invalide_ne_tue_pas_les_autres_flows() {
     std::thread::sleep(Duration::from_secs(1));
     assert!(
         enfant_vivant(&mut rt),
-        "le runtime doit survivre au tab invalide"
+        "the runtime must survive the invalid tab"
     );
 }
 
@@ -113,7 +113,7 @@ fn reload_d_un_seul_tab_epargne_l_autre() {
         Duration::from_secs(30),
     );
 
-    // Fix du tab 2 seul (payload nouveau) — le tab 1 est inchangé.
+    // Fix of tab 2 only (new payload) — tab 1 is unchanged.
     let tmp = home.join("flows.json.tmp");
     std::fs::write(&tmp, two_flows("fixed-2", false)).unwrap();
     std::fs::rename(&tmp, &flows).unwrap();
@@ -121,8 +121,8 @@ fn reload_d_un_seul_tab_epargne_l_autre() {
         libc::kill(rt.child.id() as libc::pid_t, libc::SIGUSR1);
     }
 
-    // Confirmations idempotentes : les DEUX flows émettent flow_started
-    // (le 2 après swap réussi, le 1 inchangé — acquittement idempotent).
+    // Idempotent confirmations: BOTH flows emit flow_started
+    // (2 after a successful swap, 1 unchanged — idempotent acknowledgement).
     rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("flow_started") && v["flow"] == 2,
         Duration::from_secs(30),
@@ -134,12 +134,12 @@ fn reload_d_un_seul_tab_epargne_l_autre() {
         },
         Duration::from_secs(30),
     );
-    // Le graphe réparé s'exécute...
+    // The repaired graph runs...
     rt.wait_for(
         |v| common::is_debug_with(v, "fixed-2"),
         Duration::from_secs(30),
     );
-    // ...et le flow inchangé aussi (jamais interrompu).
+    // ...and so does the unchanged flow (never interrupted).
     rt.wait_for(
         |v| common::is_debug_with(v, "bg-1"),
         Duration::from_secs(30),
@@ -164,9 +164,9 @@ fn echec_de_swap_preserve_le_last_good() {
         Duration::from_secs(30),
     );
 
-    // Le tab 1 devient invalide (wire fantôme) — tab 2 inchangé.
+    // Tab 1 becomes invalid (ghost wire) — tab 2 unchanged.
     let mut artifact = two_flows("ok-2", false);
-    // Remplace la wires du n1 (index 1) par une référence fantôme.
+    // Replaces n1's wires (index 1) with a ghost reference.
     let mut value: serde_json::Value = serde_json::from_str(&artifact).unwrap();
     value[1]["wires"] = serde_json::json!([["ghost"]]);
     artifact = value.to_string();
@@ -183,8 +183,8 @@ fn echec_de_swap_preserve_le_last_good() {
         Duration::from_secs(30),
     );
 
-    // Le last-good du flow 1 continue d'émettre (ingestion préservée) —
-    // son engine n'a pas été remplacé.
+    // Flow 1's last-good keeps emitting (ingestion preserved) —
+    // its engine was not replaced.
     rt.wait_for(
         |v| common::is_debug_with(v, "bg-1"),
         Duration::from_secs(30),
@@ -196,6 +196,6 @@ fn echec_de_swap_preserve_le_last_good() {
     );
     assert!(
         enfant_vivant(&mut rt),
-        "le runtime doit survivre à l'échec de swap"
+        "the runtime must survive the swap failure"
     );
 }

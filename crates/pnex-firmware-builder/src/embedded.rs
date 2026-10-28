@@ -1,13 +1,13 @@
-//! Source firmware embarquée dans le binaire (convergence monorepo).
+//! Firmware source embedded in the binary (monorepo convergence).
 //!
-//! `build.rs` recopie l'arborescence `firmware/` du monorepo (filtrée :
-//! jamais `.git`/`.pio`/`.venv`/`build.sh`) dans `OUT_DIR`, et
-//! `include_dir!` l'embarque ici — ~430 Ko (le watch `rerun-if-changed`
-//! porte sur la racine `firmware/`, donc les projets nouveaux sont
-//! ré-embarqués). Le
-//! binaire serveur est auto-porteur : sur un Raspi/self-hosted, il build
-//! *sa* version du firmware sans clone git ni chemin local. Seule la
-//! toolchain (`pio`) reste externe.
+//! `build.rs` copies the monorepo `firmware/` tree (filtered:
+//! never `.git`/`.pio`/`.venv`/`build.sh`) into `OUT_DIR`, and
+//! `include_dir!` embeds it here — ~430 KB (the `rerun-if-changed` watch
+//! covers the `firmware/` root, so new projects are
+//! re-embedded). The
+//! server binary is self-contained: on a Raspi/self-hosted, it builds
+//! *its* firmware version with no git clone or local path. Only the
+//! toolchain (`pio`) stays external.
 
 use std::fs;
 use std::path::Path;
@@ -16,12 +16,12 @@ use include_dir::{include_dir, Dir, DirEntry};
 
 static FIRMWARE: Dir<'_> = include_dir!("$OUT_DIR/firmware-embed");
 
-/// Extrait l'arborescence embarquée vers `dst` (workspace tmp du build).
+/// Extracts the embedded tree to `dst` (tmp workspace of the build).
 pub fn extract(dst: &Path) -> Result<(), crate::BuildError> {
     if FIRMWARE.entries().is_empty() {
         return Err(crate::BuildError::Source(
-            "arborescence embarquée vide — crate compilée sans firmware/ \
-             (build.rs du monorepo requis)"
+            "embedded tree empty — crate compiled without firmware/ \
+             (monorepo build.rs required)"
                 .into(),
         ));
     }
@@ -29,19 +29,19 @@ pub fn extract(dst: &Path) -> Result<(), crate::BuildError> {
 }
 
 fn extract_dir(dir: &Dir<'_>, dst: &Path) -> Result<(), crate::BuildError> {
-    let io = |e: std::io::Error| crate::BuildError::Source(format!("extraction embarquée : {e}"));
+    let io = |e: std::io::Error| crate::BuildError::Source(format!("embedded extraction: {e}"));
     fs::create_dir_all(dst).map_err(io)?;
     for entry in dir.entries() {
         match entry {
             DirEntry::Dir(sub) => {
-                // `file_name` plutôt que `path()` : les chemins include_dir
-                // sont relatifs à la racine embarquée, couvre les nouveaux
-                // projets, exclut caches/toolchain (cf. build.rs).
-                let name = sub.path().file_name().expect("nom de dossier");
+                // `file_name` rather than `path()`: include_dir paths
+                // are relative to the embedded root, covers new
+                // projects, excludes caches/toolchain (see build.rs).
+                let name = sub.path().file_name().expect("folder name");
                 extract_dir(sub, &dst.join(name))?;
             }
             DirEntry::File(file) => {
-                let name = file.path().file_name().expect("nom de fichier");
+                let name = file.path().file_name().expect("file name");
                 fs::write(dst.join(name), file.contents()).map_err(io)?;
             }
         }
@@ -81,10 +81,10 @@ pub fn source_fingerprint() -> &'static str {
 mod tests {
     use super::*;
 
-    /// L'arborescence embarquée est celle du monorepo : les projets
-    /// predefined devices y sont (avec la lib PneX, consommée via
-    /// `lib_extra_dirs = ../lib` — son chemin relatif doit résoudre dans
-    /// le workspace extrait), les caches/toolchain non.
+    /// The embedded tree is the monorepo's: the predefined devices
+    /// projects are in it (with the PneX lib, consumed via
+    /// `lib_extra_dirs = ../lib` — its relative path must resolve in
+    /// the extracted workspace), the caches/toolchain are not.
     #[test]
     fn extraction_preserve_le_layout() {
         let tmp = tempfile::tempdir().expect("tmp");

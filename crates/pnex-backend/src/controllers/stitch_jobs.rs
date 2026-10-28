@@ -1,21 +1,21 @@
-//! Take 360 V2 — jobs de stitch serveur (plan cheerful-booping-teacup B2) :
-//! l'app upload un anneau de frames + poses, le serveur assemble le
-//! panorama HD (worker `stitch_panorama`) et le publie comme version n+1 de
-//! l'asset média. Le device garde son aperçu 1024 immédiat (v1) ; la
-//! progression du job (`frames_received/frames_total` puis `state`) est
-//! pollée par le front — modèle « build_phase ».
+//! Take 360 V2 — server stitch jobs (plan cheerful-booping-teacup B2):
+//! the app uploads a ring of frames + poses, the server assembles the
+//! HD panorama (worker `stitch_panorama`) and publishes it as version n+1 of
+//! the media asset. The device keeps its immediate 1024 preview (v1); the
+//! job progress (`frames_received/frames_total` then `state`) is
+//! polled by the front — "build_phase" model.
 //!
-//! Upload des frames : **raw bytes octet-stream** (jamais de multipart —
-//! école media.rs), une requête par frame, `DefaultBodyLimit` dédié par
-//! route. Les octets vivent dans le MediaStore (mêmes réglages que les
-//! médias — `settings.media`), jamais en base.
+//! Frame upload: **raw octet-stream bytes** (never multipart —
+//! media.rs pattern), one request per frame, dedicated `DefaultBodyLimit` per
+//! route. The bytes live in the MediaStore (same settings as
+//! media — `settings.media`), never in the DB.
 //!
-//! Dédoublonnage des frames volontairement ABSENT : chaque POST incrémente
-//! `frames_received` (même frame renvoyée → comptage faux). Contrat client :
-//! l'app n'uploade jamais deux fois la même frame (retry = nouvelle frame k
-//! écrasée dans le store, compteur à majorer côté client). Écart assumé au
-//! bitmask « propre » : la colonne de dédoublonnage ne valait pas la
-//! complexité pour un client qui contrôle son flux (plan B2).
+//! Frame deduplication deliberately ABSENT: each POST increments
+//! `frames_received` (same frame resent → wrong count). Client contract:
+//! the app never uploads the same frame twice (retry = new frame k
+//! overwritten in the store, counter to bump client-side). Accepted deviation
+//! from the "clean" bitmask: the dedup column was not worth the
+//! complexity for a client that controls its stream (plan B2).
 //!
 //! Errors (D239, all `ErrorDetail`): 400 `field-invalid` with machine
 //! tokens, 403 `access-denied`, 404 masking other orgs, 409 on a wrong
@@ -42,13 +42,13 @@ use crate::services::stitch::{
 
 use crate::workers::stitch_panorama::{PoseDeg, StitchPanoramaArgs, StitchPanoramaWorker};
 
-/// Plafond d'une frame uploadée — 8 Mo (frame 1080×1920 JPEG q85 ≈ 400-700
-/// Ko : large marge). La limite axum, posée à max+1 Mo sur la route, reste
-/// le filet (école media.rs::routes).
+/// Cap of an uploaded frame — 8 MB (1080×1920 JPEG q85 frame ≈ 400-700
+/// KB: wide margin). The axum limit, set to max+1 MB on the route, stays
+/// the safety net (media.rs::routes pattern).
 pub const FRAME_MAX_BYTES: usize = 8 * 1024 * 1024;
 
-/// Bornes du job : un anneau 360° = jusqu'à 64 frames (plan C1 : 28 en
-/// usage réel), pas de pose unique (le stitcher a besoin de recouvrement).
+/// Job bounds: a 360° ring = up to 64 frames (plan C1: 28 in
+/// real use), no single pose (the stitcher needs overlap).
 const MAX_FRAMES: u32 = 64;
 
 // ─────────────────────────── Aides ───────────────────────────
@@ -58,7 +58,7 @@ fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
 
-/// 409 — POST frame sur un job terminal (succeeded/failed). Carries the
+/// 409 — POST frame on a terminal job (succeeded/failed). Carries the
 /// machine code + canonical English description (frontend resolves
 /// `err-<code>`, verbatim fallback otherwise).
 fn conflict(code: &str, msg: &str) -> Error {
@@ -79,8 +79,8 @@ fn disabled() -> Response {
     .into_response()
 }
 
-/// Job de l'org courante, sinon None (→ 404 masquant le cross-org, école
-/// `device_of_org` / media.rs::find_asset).
+/// Job of the current org, otherwise None (→ 404 masking cross-org,
+/// `device_of_org` / media.rs::find_asset pattern).
 async fn find_job(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -93,8 +93,8 @@ async fn find_job(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Asset de l'org courante (vérification avant création du job — le job
-/// référence un asset existant, jamais créé à la volée).
+/// Asset of the current org (checked before job creation — the job
+/// references an existing asset, never created on the fly).
 async fn find_asset(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -172,8 +172,8 @@ struct CreateJob {
     poses: Vec<PoseDeg>,
 }
 
-/// `POST /api/v1/stitch-jobs` — crée le job `queued` (poses + hfov, ~2 Ko).
-/// Les frames partent ensuite une par une ; la dernière déclenche le worker.
+/// `POST /api/v1/stitch-jobs` — creates the `queued` job (poses + hfov, ~2 KB).
+/// The frames then go one by one; the last one triggers the worker.
 #[utoipa::path(
     post,
     path = "/api/v1/stitch-jobs",
@@ -199,8 +199,8 @@ async fn create(
     if !stitch_settings.enabled {
         return Ok(disabled());
     }
-    // Validation (plan B2) : 2 ≤ poses == frames_total ≤ 64, hfov plausible
-    // (bornes du stitcher : 1..=179°).
+    // Validation (plan B2): 2 ≤ poses == frames_total ≤ 64, plausible hfov
+    // (stitcher bounds: 1..=179°).
     if body.frames_total < 2 || body.frames_total > MAX_FRAMES {
         return Ok(field_status(
             "frames_total",
@@ -243,10 +243,10 @@ struct FramePath {
     k: u32,
 }
 
-/// `POST /api/v1/stitch-jobs/{id}/frames/{k}` — octet-stream JPEG d'une
-/// frame. Incrémente `frames_received` (sans dédoublonner, cf. doc de
-/// module) ; la dernière frame reçue enchaîne le worker **dans la requête**
-/// (ForegroundBlocking en test, queue PG en dev/prod).
+/// `POST /api/v1/stitch-jobs/{id}/frames/{k}` — JPEG octet-stream of a
+/// frame. Increments `frames_received` (without deduplicating, see module
+/// doc); the last received frame chains the worker **within the request**
+/// (ForegroundBlocking in test, PG queue in dev/prod).
 #[utoipa::path(
     post,
     path = "/api/v1/stitch-jobs/{id}/frames/{k}",
@@ -274,9 +274,9 @@ async fn upload_frame(
     let Some(job) = find_job(&ctx.db, &org, path.id).await? else {
         return Err(Error::NotFound);
     };
-    // Machine à états : un job terminal (succeeded/failed) n'accepte plus
-    // rien (409) — pas de mutation silencieuse d'un résultat déjà publié.
-    // Tout autre état inconnu est rejeté pareil (défense en profondeur).
+    // State machine: a terminal job (succeeded/failed) accepts nothing
+    // anymore (409) — no silent mutation of an already published result.
+    // Any other unknown state is rejected the same way (defense in depth).
     match job.state.as_str() {
         STATE_QUEUED | STATE_RUNNING => {}
         STATE_SUCCEEDED | STATE_FAILED => {
@@ -303,8 +303,8 @@ async fn upload_frame(
         .into_response());
     }
 
-    // Octets → MediaStore (d'abord, la DB ensuite — école write_version :
-    // un blob orphelin est purgeable, une ligne qui ment ne l'est pas).
+    // Bytes → MediaStore (first, the DB afterwards — write_version pattern:
+    // an orphan blob can be purged, a lying row cannot).
     let media = MediaSettings::from_config(&ctx.config);
     let store = media.store().map_err(|_| Error::InternalServerError)?;
     let key = MediaSettings::stitch_key(job.id, path.k);
@@ -313,9 +313,9 @@ async fn upload_frame(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Dernière frame → enqueue du worker (ForegroundBlocking en test :
-    // exécution inline, le job est déjà terminal quand cette requête
-    // répond).
+    // Last frame → worker enqueue (ForegroundBlocking in test:
+    // inline execution, the job is already terminal when this request
+    // responds).
     let frames_received = job.frames_received + 1;
     let enqueue = frames_received == job.frames_total;
     let mut job: stitch_jobs::ActiveModel = job.into();
@@ -335,9 +335,9 @@ async fn upload_frame(
         )
         .await
         .map_err(|_| Error::InternalServerError)?;
-        // Relecture : en ForegroundBlocking (tests, mono-worker saturé), le
-        // worker a déjà tourné — la réponse porte l'état terminal, pas un
-        // état périmé.
+        // Re-read: in ForegroundBlocking (tests, saturated single worker), the
+        // worker already ran — the response carries the terminal state, not a
+        // stale state.
         let job = stitch_jobs::Entity::find_by_id(job.id)
             .one(&ctx.db)
             .await
@@ -350,8 +350,8 @@ async fn upload_frame(
 
 // ─────────────────────── GET /stitch-jobs/{id} ───────────────────────
 
-/// `GET /api/v1/stitch-jobs/{id}` — état du job (poll UI : progression
-/// d'upload puis assemblage).
+/// `GET /api/v1/stitch-jobs/{id}` — job state (UI poll: upload progress
+/// then assembly).
 #[utoipa::path(
     get,
     path = "/api/v1/stitch-jobs/{id}",
@@ -429,13 +429,13 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/stitch-jobs")
         .add("", post(create))
-        // 2 segments après le préfixe : sans ambiguïté avec GET /{id} (1).
+        // 2 segments after the prefix: unambiguous with GET /{id} (1).
         .add("/by-asset/{asset_id}", get(latest_for_asset))
         .add("/{id}", get(detail))
         .add(
             "/{id}/frames/{k}",
-            // Limite dédiée à CETTE route (frame ~1 Mo, plafond 8 Mo + 1 Mo
-            // de marge pour le 413 JSON propre du handler).
+            // Limit dedicated to THIS route (frame ~1 MB, 8 MB cap + 1 MB
+            // margin for the handler's clean JSON 413).
             post(upload_frame)
                 .layer(DefaultBodyLimit::max(FRAME_MAX_BYTES + 1024 * 1024))
                 .layer(axum::middleware::from_fn(

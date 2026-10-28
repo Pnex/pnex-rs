@@ -1,10 +1,10 @@
-//! Pickers du référentiel Edge pour le wizard device : credentials WiFi et
-//! hosts serveur PNeX, alimentés par `api::wifi` / `api::hosts` (fin de la
-//! ressaisie à chaque device). Mini-formulaire d'ajout inline (ouvert par
-//! défaut si le référentiel est vide — cas post-migration) + suppression.
+//! Edge registry pickers for the device wizard: WiFi credentials and
+//! PNeX server hosts, fed by `api::wifi` / `api::hosts` (no more
+//! re-typing for every device). Inline add mini-form (open by default
+//! when the registry is empty — post-migration case) + deletion.
 //!
-//! `selected` est un signal du parent (wizard) : le picker ne fait que le
-//! tenir à jour ; the submit sends the entry id in `CreateBuild` (the
+//! `selected` is a signal of the parent (wizard): the picker only keeps
+//! it up to date; the submit sends the entry id in `CreateBuild` (the
 //! password stays in the vault, secrets.md S6).
 
 use dioxus::prelude::*;
@@ -27,8 +27,8 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
     let mut generation = use_signal(|| 0u32);
     let mut new_ssid = use_signal(String::new);
     let mut new_password = use_signal(String::new);
-    // None = pas encore chargé ; le mini-form s'ouvre tout seul si le
-    // référentiel est vide (cas post-migration).
+    // None = not loaded yet; the mini-form opens on its own if the
+    // registry is empty (post-migration case).
     let mut show_add = use_signal(|| None::<bool>);
 
     let rows = use_resource(move || {
@@ -53,13 +53,13 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
         }
     });
 
-    // Labels i18n résolus hors rsx + id courant du select.
+    // i18n labels resolved outside rsx + current id of the select.
     let ssid_placeholder = t!("builds-field-ssid");
     let password_placeholder = t!("builds-field-wifi-password");
     let delete_title = t!("wizard-ref-delete");
     let selected_id = selected().map(|c| c.id.to_string()).unwrap_or_default();
 
-    // Sauvegarde inline (upsert) puis sélection de l'entrée créée/mise à jour.
+    // Inline save (upsert) then selection of the created/updated entry.
     let save_wifi = move |_| {
         let ssid = new_ssid().trim().to_string();
         let password = new_password();
@@ -139,9 +139,9 @@ pub fn WifiCredentialPicker(mut selected: Signal<Option<pnex_core::WifiCredentia
                                     class: "{INPUT} flex-1",
                                     value: "{selected_id}",
                                     onchange: {
-                                        // Clone possédé par la closure (le
-                                        // scrutateur du match ne vit pas dans
-                                        // les captures du rsx).
+                                        // Clone owned by the closure (the
+                                        // match scrutinee does not live in
+                                        // the rsx captures).
                                         let rows = rows.clone();
                                         move |e| {
                                             let id: i64 = e.value().parse().unwrap_or(0);
@@ -257,7 +257,7 @@ fn LockedHostView(host: String, mut selected: Signal<Option<pnex_core::PnexHost>
 fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element {
     let mut generation = use_signal(|| 0u32);
     let mut new_host = use_signal(crate::util::default_device_host);
-    // None = pas encore chargé ; le mini-form s'ouvre tout seul si vide.
+    // None = not loaded yet; the mini-form opens on its own if empty.
     let mut show_add = use_signal(|| None::<bool>);
 
     let rows = use_resource(move || {
@@ -279,13 +279,13 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
         }
     });
 
-    // Labels i18n résolus hors rsx + id courant du select.
+    // i18n labels resolved outside rsx + current id of the select.
     let host_placeholder = t!("builds-field-server");
     let delete_title = t!("wizard-ref-delete");
     let selected_id = selected().map(|h| h.id.to_string()).unwrap_or_default();
 
-    // Sauvegarde inline (upsert sur (org, host)) puis sélection — partagé
-    // entre le bouton « Ajouter » du mini-form et le pick du scan LAN.
+    // Inline save (upsert on (org, host)) then selection — shared
+    // between the mini-form's "Add" button and the LAN scan pick.
     let register_host = move |host: String| {
         spawn(async move {
             // Always wss (D70) — the server enforces it anyway.
@@ -352,8 +352,8 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                         {t!("wizard-ref-cancel")}
                                     }
                                 }
-                                // Détection LAN côté serveur : un hit
-                                // s'enregistre direct dans le référentiel.
+                                // Server-side LAN detection: a hit
+                                // is saved straight into the registry.
                                 div { class: "sm:col-span-2",
                                     LanDetect {
                                         on_pick: move |host| {
@@ -371,9 +371,9 @@ fn FreeHostPicker(mut selected: Signal<Option<pnex_core::PnexHost>>) -> Element 
                                     class: "{INPUT} flex-1",
                                     value: "{selected_id}",
                                     onchange: {
-                                        // Clone possédé par la closure (le
-                                        // scrutateur du match ne vit pas dans
-                                        // les captures du rsx).
+                                        // Clone owned by the closure (the
+                                        // match scrutinee does not live in
+                                        // the rsx captures).
                                         let rows = rows.clone();
                                         move |e| {
                                             let id: i64 = e.value().parse().unwrap_or(0);

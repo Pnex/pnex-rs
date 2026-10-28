@@ -1,39 +1,39 @@
-//! Géométrie du stitcher — repère unique, algébriquement verrouillé.
+//! Stitcher geometry — single frame of reference, algebraically locked.
 //!
-//! ## Repère
+//! ## Frame of reference
 //!
-//! Monde : orthonormé direct, Z vertical vers le haut. Un rayon de la sphère
-//! depuis `(lon, lat)` en degrés :
+//! World: right-handed orthonormal, Z vertical upwards. A sphere ray
+//! from `(lon, lat)` in degrees:
 //!
 //! ```text
 //! ray = (cos lat·cos lon, cos lat·sin lon, sin lat)
 //! ```
 //!
-//! Caméra : `v_cam = M · v_world`, `M` row-major de rangées
-//! *(droite, bas, avant)* — l'axe optique est la 3ᵉ rangée, un point visé a
-//! `c = F·v > 0`, un pixel s'écrit `u = cx + f·a/c` (droite positive), `v =
-//! cy + f·b/c` (bas positif).
+//! Camera: `v_cam = M · v_world`, `M` row-major with rows
+//! *(right, down, forward)* — the optical axis is the 3rd row, a targeted point has
+//! `c = F·v > 0`, a pixel is `u = cx + f·a/c` (right positive), `v =
+//! cy + f·b/c` (down positive).
 //!
-//! Depuis `(yaw, pitch, roll)` :
-//! - `F = (cp·cy, cp·sy, sp)` (azimuth = yaw, élévation = pitch)
-//! - `R = (sy, −cy, 0)` (droite horizontale = F×Z)
-//! - `D = F×R = (sp·cy, sp·sy, −cp)` (composante Z négative ⇒ « bas »)
-//! - roll ρ autour de F : `R' = R·cosρ + D·sinρ`, `D' = D·cosρ − R·sinρ`
+//! From `(yaw, pitch, roll)`:
+//! - `F = (cp·cy, cp·sy, sp)` (azimuth = yaw, elevation = pitch)
+//! - `R = (sy, −cy, 0)` (horizontal right = F×Z)
+//! - `D = F×R = (sp·cy, sp·sy, −cp)` (negative Z component ⇒ "down")
+//! - roll ρ around F: `R' = R·cosρ + D·sinρ`, `D' = D·cosρ − R·sinρ`
 //!
-//! `euler_to_mat` et [`quat_to_euler`] s'inversent exactement : `quat_to_euler`
-//! construit la matrice device→monde du rotation vector Android
-//! (équivalent `getRotationMatrixFromVector`), la transpose, puis extrait
-//! (yaw, pitch, roll) par les mêmes rangées. Les signes référentiel Android
-//! (yaw croissant à gauche ou à droite, pitch device vs pitch monde…) ne
-//! vivent PAS ici — conversion côté front (`capture360::sensors`), derrière
-//! des constantes isolées calibrées au smoke test device.
+//! `euler_to_mat` and [`quat_to_euler`] invert each other exactly: `quat_to_euler`
+//! builds the device→world matrix of the Android rotation vector
+//! (equivalent of `getRotationMatrixFromVector`), transposes it, then extracts
+//! (yaw, pitch, roll) from the same rows. The Android frame signs
+//! (yaw increasing to the left or right, device pitch vs world pitch…) do
+//! NOT live here — conversion on the front side (`capture360::sensors`), behind
+//! isolated constants calibrated at the device smoke test.
 
-/// Matrice 3×3 row-major.
+/// Row-major 3×3 matrix.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mat3(pub [f32; 9]);
 
 impl Mat3 {
-    /// Matrice identité.
+    /// Identity matrix.
     pub const IDENTITY: Mat3 = Mat3([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
 
     /// Produit matrice-vecteur.
@@ -46,13 +46,13 @@ impl Mat3 {
         ]
     }
 
-    /// Transposée — colonnes ⇄ rangées.
+    /// Transpose — columns ⇄ rows.
     pub fn transpose(&self) -> Mat3 {
         let [a, b, c, d, e, f, g, h, i] = self.0;
         Mat3([a, d, g, b, e, h, c, f, i])
     }
 
-    /// Produit matrice × matrice.
+    /// Matrix × matrix product.
     #[must_use]
     pub fn mul_mat(&self, rhs: &Mat3) -> Mat3 {
         let a = &self.0;
@@ -87,8 +87,8 @@ pub fn norm(v: [f32; 3]) -> f32 {
     dot(v, v).sqrt()
 }
 
-/// (yaw, pitch, roll) en degrés → matrice monde→caméra `M` (rangées
-/// *droite, bas, avant*), cf. docs du module.
+/// (yaw, pitch, roll) in degrees → world→camera matrix `M` (rows
+/// *right, down, forward*), see module docs.
 #[must_use]
 pub fn euler_to_mat(yaw: f32, pitch: f32, roll: f32) -> Mat3 {
     let (p, y, r) = (to_rad(pitch), to_rad(yaw), to_rad(roll));
@@ -100,7 +100,7 @@ pub fn euler_to_mat(yaw: f32, pitch: f32, roll: f32) -> Mat3 {
     let r_base = [sy, -cy, 0.0];
     let d_base = cross(forward, r_base);
 
-    // Roll ρ autour de l'axe optique : R' = R·cosρ + D·sinρ, D' = F×R'.
+    // Roll ρ around the optical axis: R' = R·cosρ + D·sinρ, D' = F×R'.
     let right = [
         r_base[0] * cr + d_base[0] * sr,
         r_base[1] * cr + d_base[1] * sr,
@@ -119,10 +119,10 @@ pub fn euler_to_mat(yaw: f32, pitch: f32, roll: f32) -> Mat3 {
     ])
 }
 
-/// Quaternion (x, y, z, w) → matrice de rotation R (device→monde,
-/// row-major — convention rotation vector Android,
-/// `getRotationMatrixFromVector`). Normalise le quaternion (les capteurs
-/// livrent parfois une norme ≠ 1).
+/// Quaternion (x, y, z, w) → rotation matrix R (device→world,
+/// row-major — Android rotation vector convention,
+/// `getRotationMatrixFromVector`). Normalises the quaternion (sensors
+/// sometimes deliver a norm ≠ 1).
 #[must_use]
 pub fn quat_to_mat(q: [f32; 4]) -> Mat3 {
     let n = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
@@ -144,10 +144,10 @@ pub fn quat_to_mat(q: [f32; 4]) -> Mat3 {
     ])
 }
 
-/// (yaw, pitch, roll) en degrés extraits d'une matrice monde→caméra `M`
-/// (rangées *droite, bas, avant*) — exactement l'inverse de
-/// [`euler_to_mat`] : yaw = atan2(F_y, F_x), pitch = asin(F_z), roll via
-/// la base sans roll reconstruite depuis (yaw, pitch).
+/// (yaw, pitch, roll) in degrees extracted from a world→camera matrix `M`
+/// (rows *right, down, forward*) — exactly the inverse of
+/// [`euler_to_mat`]: yaw = atan2(F_y, F_x), pitch = asin(F_z), roll via
+/// the roll-free basis rebuilt from (yaw, pitch).
 #[must_use]
 pub fn euler_from_mat(m: Mat3) -> (f32, f32, f32) {
     let right = [m.0[0], m.0[1], m.0[2]];
@@ -165,23 +165,23 @@ pub fn euler_from_mat(m: Mat3) -> (f32, f32, f32) {
     (to_deg(yaw), to_deg(pitch), to_deg(roll))
 }
 
-/// Quaternion (x, y, z, w) → (yaw, pitch, roll) en degrés — pour un
-/// rotation vector Android interprété SANS retournement de caméra
-/// (hypothèse : axe +Z device = axe optique). Pour la caméra ARRIÈRE
-/// (axe optique = −Z device), passer par [`quat_to_mat`] + le
-/// retournement documenté dans `capture360/sensors.rs`.
+/// Quaternion (x, y, z, w) → (yaw, pitch, roll) in degrees — for an
+/// Android rotation vector interpreted WITHOUT camera flip
+/// (assumption: device +Z axis = optical axis). For the REAR camera
+/// (optical axis = device −Z), go through [`quat_to_mat`] + the
+/// flip documented in `capture360/sensors.rs`.
 #[must_use]
 pub fn quat_to_euler(q: [f32; 4]) -> (f32, f32, f32) {
     euler_from_mat(quat_to_mat(q).transpose())
 }
 
-/// Radians → degrés.
+/// Radians → degrees.
 #[must_use]
 pub fn to_deg(rad: f32) -> f32 {
     rad * (180.0 / std::f32::consts::PI)
 }
 
-/// Degrés → radians.
+/// Degrees → radians.
 #[must_use]
 pub fn to_rad(deg: f32) -> f32 {
     deg * (std::f32::consts::PI / 180.0)
@@ -191,7 +191,7 @@ pub fn to_rad(deg: f32) -> f32 {
 mod tests {
     use super::*;
 
-    /// Pose identité : regard +X, droite = −Y, bas = −Z (cf. docs module).
+    /// Identity pose: looking +X, right = −Y, down = −Z (see module docs).
     #[test]
     fn pose_identite() {
         let m = euler_to_mat(0.0, 0.0, 0.0);
@@ -205,22 +205,22 @@ mod tests {
         );
     }
 
-    /// Cohérence euler ⇄ quaternion : `euler_to_mat(quat_to_euler(q))` doit
-    /// reconstruire la matrice monde→caméra associée au quaternion, et le
-    /// quaternion identité correspond à la caméra regardant +Z (pitch 90°).
+    /// Euler ⇄ quaternion consistency: `euler_to_mat(quat_to_euler(q))` must
+    /// rebuild the world→camera matrix associated with the quaternion, and the
+    /// identity quaternion matches the camera looking +Z (pitch 90°).
     #[test]
     fn coherence_euler_quaternion() {
-        // Quaternion identité : R = I ⇒ M = Rᵀ = I ⇒ caméra alignée sur le
-        // monde : regard +Z, droite +X, bas +Y.
+        // Identity quaternion: R = I ⇒ M = Rᵀ = I ⇒ camera aligned with the
+        // world: looking +Z, right +X, down +Y.
         let (y, p, r) = quat_to_euler([0.0, 0.0, 0.0, 1.0]);
         let reconstruite = euler_to_mat(y, p, r);
         for (a, b) in reconstruite.0.iter().zip(Mat3::IDENTITY.0.iter()) {
             assert!((a - b).abs() < 1e-5, "{a} vs {b}");
         }
-        assert!((p - 90.0).abs() < 1e-4, "pitch = {p}, attendu 90");
+        assert!((p - 90.0).abs() < 1e-4, "pitch = {p}, expected 90");
     }
 
-    /// Round-trip euler → quaternion → euler sur une grille de poses.
+    /// Euler → quaternion → euler round-trip over a grid of poses.
     #[test]
     fn aller_retour_euler() {
         for yaw in [-170.0_f32, -45.0, 0.0, 30.0, 120.0, 179.0] {
@@ -234,8 +234,8 @@ mod tests {
                             && (roll - r2).abs() < 1e-3,
                         "round-trip {yaw}/{pitch}/{roll} → {y2}/{p2}/{r2}"
                     );
-                    // Et la matrice reconstruite colle (dérive f32 du
-                    // passage par le quaternion tolérée).
+                    // And the rebuilt matrix matches (f32 drift from
+                    // going through the quaternion tolerated).
                     let reconstruite = euler_to_mat(y2, p2, r2);
                     for (a, b) in reconstruite.0.iter().zip(attendu.0.iter()) {
                         assert!((a - b).abs() < 1e-4, "{a} vs {b}");
@@ -245,8 +245,8 @@ mod tests {
         }
     }
 
-    /// Quaternion unitaire d'une matrice de rotation R (device→monde) —
-    /// outillage du round-trip : M = Rᵀ ⇒ on passe R = Mᵀ.
+    /// Unit quaternion of a rotation matrix R (device→world) —
+    /// round-trip tooling: M = Rᵀ ⇒ we pass R = Mᵀ.
     fn mat_vers_quat(m: Mat3) -> [f32; 4] {
         let [a, b, c, d, e, f, g, h, i] = m.0;
         let tr = a + e + i;
@@ -279,8 +279,8 @@ mod tests {
         [x, y, z, w]
     }
 
-    /// Valeur connue : la caméra à yaw 90° voit le rayon lon 90° au centre
-    /// de son capteur.
+    /// Known value: the camera at yaw 90° sees the lon 90° ray at the centre
+    /// of its sensor.
     #[test]
     fn valeur_connue_yaw_90() {
         let m = euler_to_mat(90.0, 0.0, 0.0);

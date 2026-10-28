@@ -2,7 +2,7 @@ use super::*;
 
 // ─────────────────────────── POI ───────────────────────────
 
-/// `GET /api/v1/pois` — liste globale org, D14.
+/// `GET /api/v1/pois` — org-wide list, D14.
 #[utoipa::path(
     get,
     path = "/api/v1/pois",
@@ -46,9 +46,9 @@ pub(super) async fn list(
     .await
     .map_err(|_| Error::InternalServerError)?;
 
-    // Liens de la page en UNE requête (pas de N+1), noms de cibles en un
-    // lot par kind (échec d'hydratation = lignes grises, jamais 500).
-    // Placements devices (D43) batchés pareillement pour la page.
+    // Page links in ONE query (no N+1), target names in one
+    // batch per kind (hydration failure = grey rows, never 500).
+    // Device placements (D43) batched the same way for the page.
     let pin_ids: Vec<Uuid> = page_pins.iter().map(|p| p.id).collect();
     let links = svc::links_for_pins(&ctx.db, org.org.id, &pin_ids)
         .await
@@ -72,7 +72,7 @@ pub(super) async fn list(
     ))
 }
 
-/// `POST /api/v1/pois` — création (géo uniquement en V1).
+/// `POST /api/v1/pois` — creation (geo only in V1).
 #[utoipa::path(
     post,
     path = "/api/v1/pois",
@@ -113,8 +113,8 @@ pub(super) async fn create(
     .await
     {
         Ok(pin) => {
-            // Un POI tout neuf n'a pas de device (D43 : l'attache se fait
-            // ensuite, délibérément, via POST /pois/{id}/devices).
+            // A brand-new POI has no device (D43: attaching happens
+            // afterwards, deliberately, via POST /pois/{id}/devices).
             let dto = poi_dto(&pin, &[], &[], None);
             Ok((StatusCode::CREATED, format::json(dto)).into_response())
         }
@@ -122,7 +122,7 @@ pub(super) async fn create(
     }
 }
 
-/// `GET /api/v1/pois/cluster` — items pour le viewport (D37).
+/// `GET /api/v1/pois/cluster` — items for the viewport (D37).
 #[utoipa::path(
     get,
     path = "/api/v1/pois/cluster",
@@ -223,7 +223,7 @@ pub(super) async fn detail(
     format::json(poi_dto(&pin, &placements, &links, labels.as_ref()))
 }
 
-/// `PATCH /api/v1/pois/{id}` — déplacement/édition (1 PATCH par pointer-up).
+/// `PATCH /api/v1/pois/{id}` — move/edit (1 PATCH per pointer-up).
 #[utoipa::path(
     patch,
     path = "/api/v1/pois/{id}",

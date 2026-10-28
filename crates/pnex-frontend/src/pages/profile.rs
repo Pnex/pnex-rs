@@ -1,7 +1,7 @@
-//! Profil — porté du `Profile.tsx` React : identité (gérée par l'IdP Rauthy,
-//! lecture seule côté app), préférences (`PATCH /api/v1/profile` : langue,
-//! timezone, format de date, thème), changement de mot de passe (redirect
-//! vers la page compte Rauthy `/auth/v1/account`), déconnexion.
+//! Profile — ported from the React `Profile.tsx`: identity (managed by the
+//! Rauthy IdP, read-only in the app), preferences (`PATCH /api/v1/profile`:
+//! language, timezone, date format, theme), password change (redirect to
+//! the Rauthy account page `/auth/v1/account`), logout.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -21,15 +21,15 @@ pub fn Profile() -> Element {
     };
     let profile = user.profile.clone().unwrap_or_default();
 
-    // Serveur courant (version + contrat) — endpoint meta public, même appel
-    // que la porte de compatibilité du boot.
+    // Current server (version + contract) — public meta endpoint, same call
+    // as the boot compatibility gate.
     let server = use_resource(|| async move {
         crate::api::meta::server_info(std::time::Duration::from_secs(4))
             .await
             .ok()
     });
-    // t!() hors du rsx : la valeur est calculée avant le rendu (le
-    // dictionnaire i18n vit dans le scope du composant).
+    // t!() outside the rsx: the value is computed before rendering (the
+    // i18n dictionary lives in the component's scope).
     let server_value = match server.cloned() {
         Some(Some(info)) => t!(
             "about-server-value",
@@ -40,7 +40,7 @@ pub fn Profile() -> Element {
         None => t!("about-server-loading"),
     };
 
-    // Valeurs initiales du formulaire = profil courant (init une seule fois).
+    // Initial form values = current profile (init only once).
     let mut language = use_signal(|| profile.language.clone());
     let mut timezone = use_signal(|| profile.timezone.clone());
     let mut date_format = use_signal(|| profile.date_format.clone().unwrap_or_default());
@@ -54,7 +54,7 @@ pub fn Profile() -> Element {
 
             div { class: "grid grid-cols-1 lg:grid-cols-3 gap-8",
                 div { class: "lg:col-span-2 space-y-6",
-                    // Identité — gérée par l'IdP Rauthy, lecture seule.
+                    // Identity — managed by the Rauthy IdP, read-only.
                     div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
                             h2 { class: "text-lg font-semibold text-gray-900",
@@ -101,7 +101,7 @@ pub fn Profile() -> Element {
                         }
                     }
 
-                    // Préférences — PATCH /api/v1/profile.
+                    // Preferences — PATCH /api/v1/profile.
                     form {
                         class: "bg-white rounded-lg border border-line",
                         onsubmit: move |event| {
@@ -120,7 +120,7 @@ pub fn Profile() -> Element {
                                 match api::user::patch_profile(&patch).await {
                                     Ok(_) => {
                                         toasts::success("toast-saved");
-                                        // resynchronise la session (profil à jour)
+                                        // resyncs the session (up-to-date profile)
                                         if let Ok(fresh) = api::user::get_user_info().await {
                                             session::login(fresh);
                                         }
@@ -142,8 +142,8 @@ pub fn Profile() -> Element {
                                     onchange: move |event| {
                                         let tag = event.value();
                                         language.set(tag.clone());
-                                        // Applique immédiatement (persisté localement ;
-                                        // le PATCH enregistre côté serveur).
+                                        // Applies immediately (persisted locally;
+                                        // the PATCH saves on the server side).
                                         i18n::set_locale(&tag);
                                     },
                                     option {
@@ -210,7 +210,7 @@ pub fn Profile() -> Element {
                     }
                 }
 
-                // Actions de compte.
+                // Account actions.
                 div { class: "space-y-6",
                     div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
@@ -233,9 +233,9 @@ pub fn Profile() -> Element {
                             }
                         }
                     }
-                    // À propos — versions app + serveur et contrat d'API :
-                    // identification claire des deux côtés (refus propre de
-                    // la porte de compatibilité, support).
+                    // About — app + server versions and API contract:
+                    // clear identification of both sides (clean refusal by
+                    // the compatibility gate, support).
                     div { class: "bg-white rounded-lg border border-line",
                         div { class: "p-6 border-b border-gray-200",
                             h3 { class: "text-lg font-semibold text-gray-900", {t!("about-title")} }
@@ -267,8 +267,8 @@ pub fn Profile() -> Element {
     }
 }
 
-/// Le backend sérialise l'enum en Capitalized (« Light ») — le formulaire
-/// travaille en minuscules.
+/// The backend serializes the enum Capitalized ("Light") — the form
+/// works in lowercase.
 fn normalize_theme(theme: &str) -> String {
     match theme.to_ascii_lowercase().as_str() {
         "light" | "dark" => theme.to_ascii_lowercase(),

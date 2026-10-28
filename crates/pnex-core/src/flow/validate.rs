@@ -9,8 +9,8 @@ use crate::naming::{device_payload_key, valid_device_label};
 
 // ─────────────────────────────── Validation ───────────────────────────────
 
-/// Valide la structure du graphe + les contrats par nœud. Retourne **toutes**
-/// les violations (l'API les renvoie en 400, champ `violations`).
+/// Validates the graph structure + the per-node contracts. Returns **all**
+/// violations (the API returns them as 400, `violations` field).
 pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
     let mut v = Vec::new();
     if g.nodes.is_empty() {
@@ -211,10 +211,10 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
             }
             FlowNodeKind::CoolProp { config } => validate_coolprop(&n.id, config, &mut v),
             FlowNodeKind::PnexNotify { config } => {
-                // Structurel uniquement : l'existence/état des canaux et du
-                // template est vérifiée au deploy (snapshot + stale refs,
-                // toast non bloquant — jamais une violation de save pour un
-                // objet de l'org supprimé après coup).
+                // Structural only: the existence/state of the channels and of the
+                // template is checked at deploy (snapshot + stale refs,
+                // non-blocking toast — never a save violation for an
+                // org object deleted afterwards).
                 if config.channel_ids.is_empty() {
                     v.push(FlowViolation::new(
                         Some(&n.id),
@@ -284,9 +284,9 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                 if let Some((code, message)) = config.check() {
                     v.push(FlowViolation::new(Some(&n.id), code, message));
                 }
-                // Entrées nommées : un nom non vide et unique ; toute
-                // annotation de câblage doit viser une entrée déclarée
-                // (rattrape les orphelines après suppression de ligne).
+                // Named inputs: a non-empty, unique name; every
+                // wiring annotation must target a declared input
+                // (catches orphans after a row is deleted).
                 let mut declared: std::collections::BTreeSet<&str> =
                     std::collections::BTreeSet::new();
                 for name in &config.inputs {
@@ -317,10 +317,10 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                         ));
                     }
                 }
-                // Câblage nu (sans ligne) alors que des entrées nommées sont
-                // déclarées : le payload partirait sous la clé par défaut au
-                // runtime, pas sous une entrée — re-câblage imposé plutôt
-                // qu'un fil qui « choisit » sa rangée au rendu.
+                // Bare wiring (no row) while named inputs are
+                // declared: the payload would go under the default key at
+                // runtime, not under an input — rewiring enforced rather
+                // than a wire that "picks" its row at render.
                 if !config.inputs.is_empty() {
                     let unbound = g.nodes.iter().any(|s| {
                         s.outputs.iter().any(|w| {
@@ -341,8 +341,8 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
                 }
             }
             FlowNodeKind::JsonSplit { config } => {
-                // Ports câblés hors des clés déclarées : câble mort au
-                // runtime (port muet) — école device_read_port_out_of_range.
+                // Ports wired outside the declared keys: dead wire at
+                // runtime (silent port) — device_read_port_out_of_range school.
                 let limit = config.keys.len().max(1);
                 for w in &n.outputs {
                     if w.port >= limit {
@@ -366,7 +366,7 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
         }
     }
 
-    // Câblage : chaque cible doit exister.
+    // Wiring: every target must exist.
     for n in &g.nodes {
         for w in &n.outputs {
             for t in &w.targets {
@@ -386,10 +386,10 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
         }
     }
 
-    // Device-read : les ports câblés existent — un port par pin + le port
-    // « nom du device ». Hors bornes = câble mort au runtime (fan_out hors
-    // plage) et nœud tronqué à l'affichage : rejeté au save plutôt qu'en
-    // silence.
+    // Device-read: the wired ports exist — one port per pin + the
+    // "device name" port. Out of bounds = dead wire at runtime (fan_out out of
+    // range) and node truncated on display: rejected on save rather than
+    // silently.
     for n in &g.nodes {
         if let FlowNodeKind::DeviceRead { config } = &n.kind {
             let limit = config.pins.len() + 1;
@@ -410,13 +410,13 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
         }
     }
 
-    // Cartes de régulation : **une seule régulation par sortie** — deux
-    // cartes sur le même (device, pin actionneur) se battraient pour le
-    // relais. Passes graphe-entier (l'unicité cross-flows reste garantie au
-    // sync backend, « plus petit flow_id gagne »).
+    // Control cards: **a single control per output** — two
+    // cards on the same (device, actuator pin) would fight over the
+    // relay. Whole-graph passes (cross-flow uniqueness stays guaranteed at
+    // the backend sync, "smallest flow_id wins").
     let mut actuators: std::collections::HashMap<String, &str> = std::collections::HashMap::new();
-    // Un nœud `device-write` et une carte régulation sur la même sortie se
-    // battraient pour la pin — même unicité qu'entre cartes.
+    // A `device-write` node and a control card on the same output would
+    // fight over the pin — same uniqueness as between cards.
     for n in &g.nodes {
         if let FlowNodeKind::DeviceWrite { config } = &n.kind {
             for pin in &config.pins {
@@ -460,13 +460,13 @@ pub fn validate_graph(g: &FlowGraph) -> Vec<FlowViolation> {
         }
     }
 
-    // Casse des variables calc : une clé device (`device_payload_key`) garde
-    // la casse du pin (« proud_puffin_A0 ») et le calc est sensible à la
-    // casse — une variable qui ne diffère d'une clé device du graphe que par
-    // la casse est une erreur quasi certaine (`proud_puffin_a0`), qui ne
-    // mourait sinon qu'en silence au runtime (calc rejeté → display/metric
-    // en aval ne reçoivent plus rien). Les autres variables (colonnes SQL,
-    // constantes) restent hors de portée : seul le near-match est signalé.
+    // Case of calc variables: a device key (`device_payload_key`) keeps
+    // the pin's case ("proud_puffin_A0") and calc is case-sensitive
+    // — a variable that differs from a graph device key only by
+    // case is almost certainly an error (`proud_puffin_a0`), which otherwise
+    // only died silently at runtime (calc rejected → downstream display/metric
+    // no longer receive anything). The other variables (SQL columns,
+    // constants) stay out of scope: only the near-match is flagged.
     let device_keys: Vec<String> = g
         .nodes
         .iter()
@@ -538,8 +538,8 @@ fn validate_inject(id: &str, c: &InjectConfig, v: &mut Vec<FlowViolation>) {
     }
 }
 
-/// Scheme http(s) uniquement (rejette `file://` et assimilés) — check
-/// manuel, pnex-core n'a pas de dep URL (wasm-safe, zéro dep).
+/// http(s) scheme only (rejects `file://` and the like) — manual
+/// check, pnex-core has no URL dep (wasm-safe, zero dep).
 fn valid_http_scheme(url: &str) -> bool {
     match url.split_once("://") {
         Some((scheme, rest)) => {
@@ -550,10 +550,10 @@ fn valid_http_scheme(url: &str) -> bool {
     }
 }
 
-/// Validation structurelle d'un nœud fonction (registre « Fonctions ») :
-/// références posées. L'existence réelle de la fonction/version est vérifiée
-/// au deploy (`function_unresolved`) — jamais une violation de save pour un
-/// objet de l'org supprimé après coup (école notify).
+/// Structural validation of a function node ("Functions" registry):
+/// references set. The actual existence of the function/version is checked
+/// at deploy (`function_unresolved`) — never a save violation for an
+/// org object deleted afterwards (notify school).
 fn validate_function_node(id: &str, c: &FunctionNodeConfig, v: &mut Vec<FlowViolation>) {
     if c.function_id == 0 || c.function_name.trim().is_empty() {
         v.push(FlowViolation::new(
@@ -572,9 +572,9 @@ fn validate_function_node(id: &str, c: &FunctionNodeConfig, v: &mut Vec<FlowViol
     }
 }
 
-/// Règles du nœud `pnex-http-fetch` : URL http(s) requise, headers nommés,
-/// sous-champs d'auth complets selon le mode, proxy url requis si activé,
-/// timeout borné 1..=300 s.
+/// Rules of the `pnex-http-fetch` node: http(s) URL required, named headers,
+/// auth sub-fields complete for the mode, proxy url required if enabled,
+/// timeout bounded 1..=300 s.
 fn validate_http_fetch(id: &str, c: &HttpFetchNodeConfig, v: &mut Vec<FlowViolation>) {
     if c.url.trim().is_empty() {
         v.push(FlowViolation::new(
@@ -646,14 +646,14 @@ fn validate_http_fetch(id: &str, c: &HttpFetchNodeConfig, v: &mut Vec<FlowViolat
     }
 }
 
-/// Règles du nœud `device` : au moins une lecture, device_id en slug
-/// (`valid_device_label` — interpolé dans un sélecteur PromQL), pin non
-/// vide, clés de payload uniques, fenêtre bornée 1..=3600 s.
-/// Validation structurelle du nœud `pnex-coolprop` (pnex-core, sans
-/// CoolProp) : champs requis présents. La validité CoolProp proprement
-/// dite (paires/paramètres connus) est vérifiée au build du nœud côté
-/// runtime — fail-fast au pré-flight `--check` — et à la sauvegarde des
-/// mélanges côté backend.
+/// Rules of the `device` node: at least one read, device_id as a slug
+/// (`valid_device_label` — interpolated in a PromQL selector), non-empty pin,
+/// unique payload keys, window bounded 1..=3600 s.
+/// Structural validation of the `pnex-coolprop` node (pnex-core, without
+/// CoolProp): required fields present. CoolProp validity proper
+/// (known pairs/parameters) is checked when the node is built on the
+/// runtime side — fail-fast at the `--check` pre-flight — and when
+/// mixtures are saved on the backend side.
 fn validate_coolprop(id: &str, c: &CoolPropConfig, v: &mut Vec<FlowViolation>) {
     if c.fluid_spec.trim().is_empty() {
         v.push(FlowViolation::new(
@@ -721,9 +721,9 @@ fn validate_coolprop(id: &str, c: &CoolPropConfig, v: &mut Vec<FlowViolation>) {
     }
 }
 
-/// Validation commune read/write : slug device requis, pins non vides et
-/// uniques (normalisation trim + casse ASCII — le payload est sensible à la
-/// casse mais « D1 » vs « d1 » est une quasi-certitude d'erreur).
+/// Common read/write validation: device slug required, non-empty and
+/// unique pins (trim + ASCII case normalization — the payload is case-sensitive
+/// but "D1" vs "d1" is almost certainly an error).
 fn validate_device_common(
     id: &str,
     device_id: &str,
@@ -836,16 +836,16 @@ pub fn valid_command_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
-/// Égalité de labels de pins, normalisée (trim + casse ASCII ignorée) —
-/// wasm-safe (pas de `normalize_measurement_name`, feature `naming` absente
-/// du front).
+/// Pin label equality, normalized (trim + ASCII case ignored) —
+/// wasm-safe (no `normalize_measurement_name`, `naming` feature absent
+/// from the front).
 pub(super) fn pin_key(label: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(label.trim().to_ascii_lowercase())
 }
 
-/// Règles communes aux cartes de régulation (liaison device + pins + temps).
-/// `sensor_mode_hint` ne sert qu'au message ; le mode réel est déduit du pin
-/// résolu côté backend (`caps::validate`, point unique — jamais de mode saisi).
+/// Rules common to control cards (device binding + pins + timing).
+/// `sensor_mode_hint` only serves the message; the real mode is derived from the
+/// resolved pin on the backend side (`caps::validate`, single point — never an entered mode).
 fn validate_reg_common(
     id: &str,
     device_id: &str,
@@ -905,7 +905,7 @@ fn validate_reg_common(
     }
 }
 
-/// Règles d'une carte tout-ou-rien (`reg_tt_heat` / `reg_tt_cool`).
+/// Rules of an on/off card (`reg_tt_heat` / `reg_tt_cool`).
 fn validate_reg_tt(id: &str, c: &RegTtConfig, v: &mut Vec<FlowViolation>) {
     validate_reg_common(
         id,
@@ -932,7 +932,7 @@ fn validate_reg_tt(id: &str, c: &RegTtConfig, v: &mut Vec<FlowViolation>) {
     }
 }
 
-/// Règles d'une carte PID (`reg_pid`) — sortie relais time-proportional.
+/// Rules of a PID card (`reg_pid`) — time-proportional relay output.
 fn validate_reg_pid(id: &str, c: &RegPidConfig, v: &mut Vec<FlowViolation>) {
     validate_reg_common(
         id,

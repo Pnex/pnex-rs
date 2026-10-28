@@ -1,6 +1,6 @@
-//! Exécuteur Starlark sandboxé — **lib partagée** par le nœud `pnex-starlark`
-//! et par le CLI `pnex-flow-runtime --test-function` (parité test ≡ runtime
-//! garantie par construction).
+//! Sandboxed Starlark executor — **shared lib** used by the `pnex-starlark` node
+//! and by the `pnex-flow-runtime --test-function` CLI (test ≡ runtime parity
+//! guaranteed by construction).
 
 use std::time::{Duration, Instant};
 
@@ -8,24 +8,24 @@ use starlark::environment::{Globals, LibraryExtension, Module};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
 
-/// Résultat d'une exécution de fonction Starlark.
+/// Result of a Starlark function execution.
 #[derive(Debug)]
 pub struct ExecOutcome {
-    /// Valeur de retour brute de `handle` (JSON) — `None` = `handle` a
-    /// retourné `None` (message jeté, aucun port).
+    /// Raw return value of `handle` (JSON) — `None` = `handle`
+    /// returned `None` (message dropped, no port).
     pub return_json: Option<serde_json::Value>,
-    /// Sorties déclarées (`@output`) — pilotent le routage clé→port du
-    /// retour objet (même contrat que le wrapper JS).
+    /// Declared outputs (`@output`) — drive the key→port routing of the
+    /// object return (same contract as the JS wrapper).
     pub outputs: Vec<pnex_core::FunctionOutput>,
     pub logs: Vec<String>,
     pub duration_ms: u64,
 }
 
-/// Validation compile-only structurée (barre d'erreurs de l'éditeur) :
-/// directives → syntaxe (position extraite du Display `fichier:line:col`)
-/// → `compile_check` (handle manquant / erreur d'évaluation du module).
-/// Aucune exécution du code utilisateur au-delà de l'évaluation du module
-/// defs-only (déjà le contrat de `compile_check`).
+/// Structured compile-only validation (editor error bar):
+/// directives → syntax (position extracted from the Display `file:line:col`)
+/// → `compile_check` (missing handle / module evaluation error).
+/// No execution of user code beyond the evaluation of the
+/// defs-only module (already the contract of `compile_check`).
 pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
     use pnex_core::FunctionDiagnostic;
     let mut diagnostics = Vec::new();
@@ -33,13 +33,13 @@ pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
         diagnostics.push(FunctionDiagnostic {
             line: Some(e.line),
             col: None,
-            message: format!("directives : {e}"),
+            message: format!("directives: {e}"),
         });
         return diagnostics;
     }
     match AstModule::parse("pnex_function.star", code.to_owned(), &Dialect::Standard) {
         Err(e) => {
-            let text = format!("syntaxe : {e}");
+            let text = format!("syntax: {e}");
             let (line, col) = extract_pos(&text);
             diagnostics.push(FunctionDiagnostic {
                 line,
@@ -65,42 +65,40 @@ pub fn check(code: &str) -> Vec<pnex_core::FunctionDiagnostic> {
 /// Stand-in of the driver's `pack_setting` for the checks.
 const SETTING_STUB: &str = "def pack_setting(key, default = None):\n    return default\n";
 
-/// Évalue le module (defs uniquement — Starlark sans I/O) et exige `handle`.
-/// Appelé au **build du nœud** : une erreur ici = rejet du tab au pré-flight
-/// `--check` du deploy (400 `engine_load`).
+/// Evaluates the module (defs only — Starlark without I/O) and requires `handle`.
+/// Called at **node build**: an error here = tab rejected at the deploy's
+/// `--check` pre-flight (400 `engine_load`).
 pub fn compile_check(code: &str) -> Result<(), String> {
-    let sig = pnex_core::parse_directives(code).map_err(|e| format!("directives : {e}"))?;
+    let sig = pnex_core::parse_directives(code).map_err(|e| format!("directives: {e}"))?;
     let _ = sig;
     // `pack_setting` exists at run time (driver): declared here too, after the
     // code so positions are unchanged.
     let script = format!("{}\n{SETTING_STUB}", code.trim_end());
     let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
-        .map_err(|e| format!("syntaxe : {e}"))?;
+        .map_err(|e| format!("syntax: {e}"))?;
     let globals = Globals::extended_by(&[LibraryExtension::Json]);
     Module::with_temp_heap(|module| {
         let mut eval = Evaluator::new(&module);
         apply_limits(&mut eval, Duration::from_millis(200));
         if let Err(e) = eval.eval_module(ast, &globals) {
-            return Err(format!("évaluation du module : {e}"));
+            return Err(format!("module evaluation: {e}"));
         }
         match module.get("handle") {
             Some(v) if v.get_type() == "function" => Ok(()),
             Some(other) => Err(format!(
-                "`handle` doit être une fonction, trouvé « {} »",
+                "`handle` must be a function, found \"{}\"",
                 other.get_type()
             )),
-            None => {
-                Err("le code doit définir `def handle(inputs, msg):` — introuvable".to_string())
-            }
+            None => Err("the code must define `def handle(inputs, msg):` — not found".to_string()),
         }
     })
 }
 
-/// Exécute `handle(inputs, msg)` sandboxé : parse des directives, objet
-/// `inputs` construit depuis les entrées déclarées (chacune lit
-/// `payload.<nom>`), driver Starlark qui JSON-encode le retour (pont par
-/// texte — pas de conversion Valeur ↔ JSON en Rust), limits Evaluator avec
-/// deadline wall-time.
+/// Runs `handle(inputs, msg)` sandboxed: directive parsing, `inputs`
+/// object built from the declared inputs (each reads
+/// `payload.<name>`), Starlark driver that JSON-encodes the return (text
+/// bridge — no Value ↔ JSON conversion in Rust), Evaluator limits with a
+/// wall-time deadline.
 pub fn execute(
     code: &str,
     msg: &serde_json::Value,
@@ -124,7 +122,7 @@ pub fn execute_with(
 
     let timeout = Duration::from_millis(timeout_ms);
     let ast = AstModule::parse("pnex_function.star", script, &Dialect::Standard)
-        .map_err(|e| anyhow::anyhow!("syntaxe : {e}"))?;
+        .map_err(|e| anyhow::anyhow!("syntax: {e}"))?;
     let globals = Globals::extended_by(&[LibraryExtension::Json]);
     Module::with_temp_heap(|module| {
         let mut eval = Evaluator::new(&module);
@@ -139,7 +137,7 @@ pub fn execute_with(
             Some(v) => {
                 let text = v
                     .unpack_str()
-                    .ok_or_else(|| anyhow::anyhow!("pnex_out : chaîne JSON attendue"))?;
+                    .ok_or_else(|| anyhow::anyhow!("pnex_out: JSON string expected"))?;
                 Some(serde_json::from_str(text)?)
             }
         };
@@ -152,8 +150,8 @@ pub fn execute_with(
     })
 }
 
-/// Construit le script complet : code utilisateur (définissant `handle`) +
-/// driver généré (json.decode des arguments, appel, json.encode du retour).
+/// Builds the full script: user code (defining `handle`) +
+/// generated driver (json.decode of the arguments, call, json.encode of the return).
 fn build_script(
     code: &str,
     inputs_obj: &serde_json::Map<String, serde_json::Value>,
@@ -168,7 +166,7 @@ fn build_script(
     // After the user code so its line numbers stay those of the editor:
     // `pack_setting` is called from inside functions, resolved at call time.
     format!(
-        "{}\n# ── PNEX driver (généré) ──\n\
+        "{}\n# ── PNEX driver (generated) ──\n\
          pnex_settings = json.decode({settings_lit})\n\
          def pack_setting(key, default = None):\n    return pnex_settings.get(key, default)\n\
          pnex_inputs = json.decode({inputs_lit})\n\
@@ -179,8 +177,8 @@ fn build_script(
     )
 }
 
-/// Littéral chaîne Starlark en apostrophes — backslashes et apostrophes
-/// échappés (le JSON de serde n'a pas de retour ligne brut, déjà \\n).
+/// Single-quoted Starlark string literal — backslashes and quotes
+/// escaped (serde's JSON has no raw newline, already \\n).
 fn starlark_str_lit(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('\'');
@@ -195,8 +193,8 @@ fn starlark_str_lit(text: &str) -> String {
     out
 }
 
-/// Limits Evaluator : ticks (appels + back-edges de boucle), heap, callstack
-/// et deadline wall-time via `check_cancelled`.
+/// Evaluator limits: ticks (calls + loop back-edges), heap, callstack
+/// and wall-time deadline via `check_cancelled`.
 fn apply_limits(eval: &mut Evaluator, timeout: Duration) {
     let _ = eval.set_max_tick_count(10_000_000);
     let _ = eval.set_max_heap_size(64 * 1024 * 1024);
@@ -205,11 +203,11 @@ fn apply_limits(eval: &mut Evaluator, timeout: Duration) {
     eval.set_check_cancelled(Box::new(move || Instant::now() >= deadline));
 }
 
-/// Mappe le retour brut de `handle` en msgs sortants par port — le même
-/// contrat que le wrapper JS : null → aucun msg ; **objet + sorties
-/// déclarées → routage clé→port** (clé absente/null = port muet) ; objet
-/// sans sorties déclarées → payload remplacé (fusionné si l'objet porte
-/// `payload`) ; tableau → un élément par port ; valeur nue → port 0.
+/// Maps the raw return of `handle` to outgoing msgs per port — the same
+/// contract as the JS wrapper: null → no msg; **object + declared
+/// outputs → key→port routing** (missing/null key = silent port); object
+/// without declared outputs → payload replaced (merged if the object carries
+/// `payload`); array → one element per port; bare value → port 0.
 pub fn map_return(
     return_json: &Option<serde_json::Value>,
     outputs: &[pnex_core::FunctionOutput],
@@ -235,16 +233,16 @@ pub fn map_return(
     }
 }
 
-/// Msg sortant = msg entrant avec `payload` posé tel quel (routage
-/// clé→port : la valeur est le payload, sans fusion spéciale).
+/// Outgoing msg = incoming msg with `payload` set as is (key→port
+/// routing: the value is the payload, no special merge).
 fn set_payload(incoming: &serde_json::Value, v: &serde_json::Value) -> serde_json::Value {
     let mut obj = incoming.as_object().cloned().unwrap_or_default();
     obj.insert("payload".to_string(), v.clone());
     serde_json::Value::Object(obj)
 }
 
-/// Msg sortant = msg entrant avec `payload` remplacé ; si la valeur est un
-/// objet portant `payload`, elle est fusionnée au msg (contrôle complet).
+/// Outgoing msg = incoming msg with `payload` replaced; if the value is an
+/// object carrying `payload`, it is merged into the msg (full control).
 fn with_payload(incoming: &serde_json::Value, r: &serde_json::Value) -> serde_json::Value {
     let mut obj = incoming.as_object().cloned().unwrap_or_default();
     match r {
@@ -260,9 +258,9 @@ fn with_payload(incoming: &serde_json::Value, r: &serde_json::Value) -> serde_js
     serde_json::Value::Object(obj)
 }
 
-/// Extraction best-effort de la première position `fichier:line` ou
-/// `fichier:line:col` d'un Display d'erreur starlark, sans dépendance
-/// regex. Ligne/colonne 1-based ; (None, None) si absent.
+/// Best-effort extraction of the first `file:line` or
+/// `file:line:col` position from a starlark error Display, without a
+/// regex dependency. 1-based line/column; (None, None) if absent.
 fn extract_pos(text: &str) -> (Option<u32>, Option<u32>) {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -316,7 +314,7 @@ mod tests {
     #[test]
     fn compile_check_handle_absent() {
         let e = compile_check("x = 1\n").unwrap_err();
-        assert!(e.contains("introuvable"), "{e}");
+        assert!(e.contains("not found"), "{e}");
     }
 
     #[test]
@@ -341,7 +339,7 @@ mod tests {
         let diags = check("def handle(:\n    pass");
         assert_eq!(diags.len(), 1);
         assert!(
-            diags[0].message.starts_with("syntaxe : "),
+            diags[0].message.starts_with("syntax: "),
             "{}",
             diags[0].message
         );
@@ -353,7 +351,7 @@ mod tests {
         let diags = check("# @input a float\ndef handle(inputs, msg):\n    return 0\n");
         assert_eq!(diags.len(), 1);
         assert!(
-            diags[0].message.starts_with("directives : "),
+            diags[0].message.starts_with("directives: "),
             "{}",
             diags[0].message
         );
@@ -365,7 +363,7 @@ mod tests {
         let diags = check("x = 1\n");
         assert_eq!(diags.len(), 1);
         assert!(
-            diags[0].message.contains("introuvable"),
+            diags[0].message.contains("not found"),
             "{}",
             diags[0].message
         );
@@ -385,30 +383,30 @@ mod tests {
 
     #[test]
     fn execute_valeurs_et_inputs_binds() {
-        // Chaque entrée déclarée lit implicitement payload.<nom> ; absent →
-        // défaut déclaré (0) ; sinon null.
+        // Each declared input implicitly reads payload.<name>; missing →
+        // declared default (0); otherwise null.
         let out = execute(
             "# @input t number=0\ndef handle(inputs, msg):\n    return {\"sum\": inputs[\"t\"] + 1, \"topic\": msg[\"topic\"]}",
             &serde_json::json!({"payload": {"t": 41}, "topic": "s1"}),
             1000,
         )
         .unwrap();
-        let ret = out.return_json.expect("retour attendu");
+        let ret = out.return_json.expect("return expected");
         assert_eq!(ret["sum"], 42);
         assert_eq!(ret["topic"], "s1");
     }
 
     #[test]
     fn execute_topic_route_le_payload_vers_l_entree() {
-        // msg.topic nommant l'entrée déclarée → payload entrant routé
-        // (parité avec le wrapper JS — tagger inséré par la projection).
+        // msg.topic naming the declared input → routed incoming payload
+        // (parity with the JS wrapper — tagger inserted by the projection).
         let out = execute(
             "# @input t number=0\ndef handle(inputs, msg):\n    return {\"v\": inputs[\"t\"]}",
             &serde_json::json!({"topic": "t", "payload": 41}),
             1000,
         )
         .unwrap();
-        let ret = out.return_json.expect("retour attendu");
+        let ret = out.return_json.expect("return expected");
         assert_eq!(ret["v"], 41);
     }
 
@@ -426,7 +424,7 @@ mod tests {
 
     #[test]
     fn execute_null_et_erreur_runtime() {
-        // None → message jeté.
+        // None → message dropped.
         let out = exec(
             "def handle(inputs, msg):\n    return None",
             serde_json::json!({}),
@@ -434,7 +432,7 @@ mod tests {
         )
         .unwrap();
         assert!(out.return_json.is_none());
-        // Variable inexistante → erreur propre, jamais de panic.
+        // Nonexistent variable → clean error, never a panic.
         let err = exec(
             "def handle(inputs, msg):\n    return variable_inexistante",
             serde_json::json!({}),
@@ -452,21 +450,21 @@ mod tests {
             100,
         )
         .unwrap_err();
-        assert!(!err.to_string().is_empty(), "deadline déclenchée");
+        assert!(!err.to_string().is_empty(), "deadline triggered");
     }
 
     #[test]
     fn map_return_contrat_complet() {
         let incoming = serde_json::json!({"payload": 1, "topic": "t"});
-        // null → aucun msg.
+        // null → no msg.
         assert!(map_return(&None, &[], &incoming).is_empty());
         assert!(map_return(&Some(serde_json::Value::Null), &[], &incoming).is_empty());
-        // objet sans sorties déclarées → payload remplacé, topic conservé.
+        // object without declared outputs → payload replaced, topic kept.
         let outs = map_return(&Some(serde_json::json!({"v": 2})), &[], &incoming);
         assert_eq!(outs.len(), 1);
         assert_eq!(outs[0].as_ref().unwrap()["topic"], "t");
         assert_eq!(outs[0].as_ref().unwrap()["payload"]["v"], 2);
-        // tableau → un élément par port, null = port muet.
+        // array → one element per port, null = silent port.
         let outs = map_return(
             &Some(serde_json::json!([{"v": 1}, null, "x"])),
             &[],
@@ -486,8 +484,8 @@ mod tests {
         };
         let outputs = vec![out("out_bool"), out("out_temp")];
         let incoming = serde_json::json!({"payload": 1, "topic": "t"});
-        // Objet + sorties déclarées : chaque clé alimente son port
-        // (payload = la valeur), port muet si clé absente/null.
+        // Object + declared outputs: each key feeds its port
+        // (payload = the value), silent port if the key is missing/null.
         let outs = map_return(
             &Some(serde_json::json!({"out_bool": true, "out_temp": 21.5})),
             &outputs,
@@ -496,15 +494,15 @@ mod tests {
         assert_eq!(outs.len(), 2);
         assert_eq!(outs[0].as_ref().unwrap()["payload"], true);
         assert_eq!(outs[1].as_ref().unwrap()["payload"], 21.5);
-        // Clé absente → port muet ; clé null → port muet ; clé inconnue
-        // ignorée ; valeur nue (hors objet) → port 0.
+        // Missing key → silent port; null key → silent port; unknown key
+        // ignored; bare value (outside an object) → port 0.
         let outs = map_return(
             &Some(serde_json::json!({"out_temp": 3, "inconnu": 9})),
             &outputs,
             &incoming,
         );
         assert_eq!(outs.len(), 2);
-        assert!(outs[0].is_none(), "out_bool absente → muet");
+        assert!(outs[0].is_none(), "out_bool missing → silent");
         assert_eq!(outs[1].as_ref().unwrap()["payload"], 3);
         let outs = map_return(&Some(serde_json::json!(true)), &outputs, &incoming);
         assert_eq!(outs.len(), 1);

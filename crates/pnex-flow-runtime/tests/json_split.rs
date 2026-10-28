@@ -49,14 +49,14 @@ fn json_split_emet_un_msg_par_cle() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
-    // Split OK = debug voit 25 ET 30 (un msg par clé, payload = valeur).
+    // Split OK = debug sees 25 AND 30 (one msg per key, payload = value).
     rt.wait_for(|v| common::is_debug_with(v, "25"), Duration::from_secs(30));
     rt.wait_for(|v| common::is_debug_with(v, "30"), Duration::from_secs(30));
 }
 
 fn named_split_flows() -> String {
-    // Clés déclarées ["test","test2"] = 2 ports nommés ; « extra » n'a pas
-    // de port → ignoré. Le payload route par port, pas par fan-out.
+    // Declared keys ["test","test2"] = 2 named ports; "extra" has no
+    // port → ignored. The payload routes per port, not by fan-out.
     let func =
         pnex_core::functions::build_json_split_func(&["test".to_string(), "test2".to_string()]);
     serde_json::json!([
@@ -106,14 +106,14 @@ fn json_split_ports_nommes_routent_par_port() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
-    // Port « test » → 25, port « test2 » → 30 ; « extra » est ignoré.
+    // Port "test" → 25, port "test2" → 30; "extra" is ignored.
     rt.wait_for(|v| common::is_debug_with(v, "25"), Duration::from_secs(30));
     rt.wait_for(|v| common::is_debug_with(v, "30"), Duration::from_secs(30));
 }
 
 fn array_split_flows() -> String {
-    // Payload array : tous les éléments sortent sur le port 0 (topic =
-    // index), même avec 2 ports déclarés.
+    // Array payload: all elements go out on port 0 (topic =
+    // index), even with 2 declared ports.
     let func =
         pnex_core::functions::build_json_split_func(&["test".to_string(), "test2".to_string()]);
     serde_json::json!([
@@ -157,7 +157,7 @@ fn json_split_array_passe_sur_port_zero() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
-    // 7 ET 8 sortent sur le port 0 (debug a4), topic = index.
+    // 7 AND 8 go out on port 0 (debug a4), topic = index.
     rt.wait_for(|v| common::is_debug_with(v, "7"), Duration::from_secs(30));
     rt.wait_for(|v| common::is_debug_with(v, "8"), Duration::from_secs(30));
 }

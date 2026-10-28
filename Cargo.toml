@@ -15,17 +15,17 @@ members = [
     # Org controls written from the surfaces (D127): control-source.
     "crates/pnex-node-ui-control",
     "crates/pnex-node-weather",
-    # Propriétés thermophysiques in-process (CoolProp vendored) — cf.
-    # crates/pnex-coolprop[-sys] et vendor/README.md.
+    # In-process thermophysical properties (vendored CoolProp) — see
+    # crates/pnex-coolprop[-sys] and vendor/README.md.
     "crates/pnex-node-coolprop",
     "crates/pnex-flow-runtime",
     "crates/pnex-stitcher",
-    # Notifications (D49–D54) — abstraction multi-canaux partagée backend /
-    # runtime de flows, zéro dep loco.
+    # Notifications (D49–D54) — multi-channel abstraction shared by backend /
+    # flow runtime, zero loco dep.
     "crates/pnex-notify",
     "crates/pnex-node-notify",
-    # Requête HTTP client configurable (C1a) — la collecte web courante est
-    # un simple bloc de flow (amendement edge-model 2026-09-15).
+    # Configurable HTTP client request (C1a) — everyday web collection is
+    # a plain flow block (edge-model amendment 2026-09-15).
     "crates/pnex-node-http-fetch",
     # Camera frame source + MJPEG-AVI recorder (camera-video.md D78).
     "crates/pnex-node-camera",
@@ -44,8 +44,8 @@ members = [
     "crates/pnex-node-memory",
     # Predictive telemetry (augurs): anomaly + forecast flow nodes.
     "crates/pnex-node-predict",
-    # CoolProp in-process (propriétés thermophysiques) — C++ vendored dans
-    # vendor/CoolProp, patch exception-guards appliqué au build.
+    # CoolProp in-process (thermophysical properties) — C++ vendored in
+    # vendor/CoolProp, exception-guards patch applied at build time.
     "crates/pnex-coolprop-sys",
     "crates/pnex-coolprop",
     # Edge agent (D95): local ingestion API + disk queue + /ws/device uplink.
@@ -55,29 +55,29 @@ members = [
     "crates/pnex-extension",
     "crates/pnex-mirror",
 ]
-# EdgeLinkd vendored (submodule) reste un workspace séparé — sans exclude,
-# Cargo rattacherait ses crates au workspace PNEX et l'héritage
-# `workspace.dependencies` échouerait.
+# Vendored EdgeLinkd (submodule) stays a separate workspace — without exclude,
+# Cargo would attach its crates to the PNEX workspace and the
+# `workspace.dependencies` inheritance would fail.
 exclude = ["vendor/edgelinkd"]
 
 [workspace.package]
 version = "0.2.0"
 edition = "2021"
 license = "MIT"
-# 1.88 : edgelink-core (vendored, edition 2024) utilise les let-chains
+# 1.88: edgelink-core (vendored, edition 2024) uses let-chains
 rust-version = "1.88"
 
-# Patches locaux — crashs SIGABRT Android (login SSO natif, constat
-# 2026-09-08) : ndk-context ré-initialisé au 2e onCreate (assert
-# previous.is_none() → abort) et webbrowser::open (appelé en dur par
-# dioxus-desktop pour toute navigation http de sa webview) qui passe par les
-# macros du crate jni assertant sur les exceptions Java. Détails et
-# contraintes de mise à jour : vendor/patches/README.md
+# Local patches — Android SIGABRT crashes (native SSO login, observed
+# 2026-09-08): ndk-context re-initialised on the 2nd onCreate (assert
+# previous.is_none() → abort) and webbrowser::open (hard-called by
+# dioxus-desktop for every http navigation of its webview) which goes through
+# the jni crate macros asserting on Java exceptions. Details and
+# update constraints: vendor/patches/README.md
 [patch.crates-io]
 ndk-context = { path = "vendor/patches/ndk-context" }
 webbrowser = { path = "vendor/patches/webbrowser" }
-# Fix #1551 porté sur 0.53.5 : pas de panic sur timeout du protocole custom
-# Android (retour caméra) — cf. vendor/patches/README.md
+# Fix #1551 ported to 0.53.5: no panic on custom protocol timeout
+# Android (camera return) — see vendor/patches/README.md
 wry = { path = "vendor/patches/wry" }
 
 [workspace.dependencies]

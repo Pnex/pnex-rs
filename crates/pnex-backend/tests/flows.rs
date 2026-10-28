@@ -1,12 +1,12 @@
-//! Tests du domaine flows ETL (D18) : CRUD versionné append-only,
-//! concurrence optimiste 409, cycle deploy/rollback via superviseur (faux
-//! runtime — fixture `tests/fixtures/flow/fake_runtime.sh`), validation de
-//! graphe, isolation org. Cf. `docs/contracts/flows.http`.
+//! ETL flows domain tests (D18): append-only versioned CRUD,
+//! 409 optimistic concurrency, deploy/rollback cycle via the supervisor
+//! (fake runtime — fixture `tests/fixtures/flow/fake_runtime.sh`), graph
+//! validation, org isolation. Cf. `docs/contracts/flows.http`.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Le superviseur est un static par process : un SEUL test active
-//! `PNEX_FLOW_ENABLED` (cycle deploy complet) — les autres tournent moteur
-//! coupé (le deploy y répond 503, ce qui est aussi testé).
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! The supervisor is a per-process static: a SINGLE test enables
+//! `PNEX_FLOW_ENABLED` (full deploy cycle) — the others run with the engine
+//! off (deploy answers 503 there, which is tested too).
 
 mod common;
 
@@ -14,9 +14,9 @@ use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
-/// Réglages env du moteur, posés AVANT le boot (config Tera lue au boot).
-/// Un seul répertoire d'état par process : le superviseur vit sur tout le
-/// process de test, tous les tests actifs partagent le même contrat.
+/// Engine env settings, set BEFORE boot (Tera config read at boot).
+/// A single state directory per process: the supervisor lives for the whole
+/// test process, all active tests share the same contract.
 fn flow_state_dir() -> String {
     format!("/tmp/pnex-flow-tests-{}", std::process::id())
 }
@@ -38,8 +38,8 @@ where
     };
     unsafe { std::env::set_var("PNEX_FLOW_STATE_DIR", flow_state_dir()) };
     unsafe { std::env::set_var("PNEX_FLOW_RELOAD_ACK_SECS", "5") };
-    // Outils de debug : ON quand le moteur tourne (tests du feed debug),
-    // sinon OFF pour vérifier la garde 403 « mode run ».
+    // Debug tools: ON when the engine runs (debug feed tests),
+    // otherwise OFF to check the 403 "run mode" guard.
     unsafe {
         std::env::set_var(
             "PNEX_FLOW_DEBUG_TOOLS",
@@ -90,7 +90,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// Graphe inject → debug paramétrable (l'intervalle matérialise la version).
+/// Configurable inject → debug graph (the interval materialises the version).
 fn graph_inject_debug(repeat: f64) -> serde_json::Value {
     serde_json::json!({
         "nodes": [
@@ -135,11 +135,11 @@ async fn create_flow(
 
 async fn read_state_flows_json() -> serde_json::Value {
     let raw = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir()))
-        .expect("flows.json projeté");
+        .expect("flows.json projected");
     serde_json::from_str(&raw).expect("flows.json valide")
 }
 
-// ─────────────────────────── CRUD versionné ───────────────────────────
+// ─────────────────────────── versioned CRUD ───────────────────────────
 
 #[tokio::test]
 #[serial]
@@ -147,7 +147,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Création : 201, version 1, statut draft.
+        // Creation: 201, version 1, draft status.
         let created = create_flow(&server, &env.alice, org, "pipeline température", 1.0).await;
         assert_eq!(created["status"], "draft", "{created}");
         assert_eq!(created["latest_version_number"], 1);
@@ -155,7 +155,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
         assert_eq!(created["graph"]["nodes"][0]["kind"], "inject");
         let flow_id = created["id"].as_i64().unwrap();
 
-        // Édition v2 : sans moteur, sans reload (aucun artifact écrit).
+        // Edit v2: no engine, no reload (no artifact written).
         let updated = server
             .patch(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -173,7 +173,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
         assert_eq!(v2["latest_version_number"], 2);
         assert_eq!(v2["graph"]["nodes"][0]["config"]["repeat_secs"], 2.0);
 
-        // Historique : 2 versions, ordre descendant, v2 déployée=false.
+        // History: 2 versions, descending order, v2 deployed=false.
         let versions = server
             .get(&format!("/api/v1/flows/{flow_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -185,7 +185,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
         assert_eq!(versions["results"][0]["note"], "double la fréquence");
         assert_eq!(versions["results"][1]["version_number"], 1);
 
-        // Détail d'une version précise (graphe historisé).
+        // Detail of a specific version (historised graph).
         let v1 = server
             .get(&format!("/api/v1/flows/{flow_id}/versions/1"))
             .add_header("Authorization", bearer(&env.alice))
@@ -194,7 +194,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
             .json::<serde_json::Value>();
         assert_eq!(v1["graph"]["nodes"][0]["config"]["repeat_secs"], 1.0);
 
-        // Isolation org : bob ne voit pas le flow d'alice (404, pas 403).
+        // Org isolation: bob does not see alice's flow (404, not 403).
         let org_bob = personal_org(&server, &env.bob).await;
         let foreign = server
             .get(&format!("/api/v1/flows/{flow_id}"))
@@ -203,7 +203,7 @@ async fn cycle_creation_versioning_et_isolation_org() {
             .await;
         assert_eq!(foreign.status_code(), 404, "{}", foreign.text());
 
-        // Liste paginée D14 : le flow d'alice n'apparaît pas côté bob.
+        // D14 paginated list: alice's flow does not show up for bob.
         let list_bob = server
             .get("/api/v1/flows")
             .add_header("Authorization", bearer(&env.bob))
@@ -239,7 +239,7 @@ async fn save_perime_rejete_409_et_aucune_v3() {
         let created = create_flow(&server, &env.alice, org, "concurrent", 1.0).await;
         let flow_id = created["id"].as_i64().unwrap();
 
-        // Deux clients éditent depuis la v1.
+        // Two clients edit from v1.
         let payload_v2 = serde_json::json!({
             "expected_version_number": 1,
             "graph": graph_inject_debug(2.0),
@@ -253,7 +253,7 @@ async fn save_perime_rejete_409_et_aucune_v3() {
             .await;
         assert_eq!(first.status_code(), 200, "{}", first.text());
 
-        // Le second save (toujours basé v1) est rejeté 409.
+        // The second save (still based on v1) is rejected 409.
         let second = server
             .patch(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -263,7 +263,7 @@ async fn save_perime_rejete_409_et_aucune_v3() {
             .await;
         assert_eq!(second.status_code(), 409, "{}", second.text());
 
-        // Aucune v3 écrite.
+        // No v3 written.
         let versions = server
             .get(&format!("/api/v1/flows/{flow_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -275,7 +275,7 @@ async fn save_perime_rejete_409_et_aucune_v3() {
     .await;
 }
 
-// ─────────────────────────── Validation du graphe (f) ───────────────────────────
+// ─────────────────────────── Graph validation (f) ───────────────────────────
 
 #[tokio::test]
 #[serial]
@@ -306,7 +306,7 @@ async fn validation_rejette_graphe_invalide() {
             removed_kind.text()
         );
 
-        // Graphe incohérent : id dupliqué + câblage vers un nœud inconnu.
+        // Inconsistent graph: duplicate id + wiring to an unknown node.
         let bad_graph = server
             .post("/api/v1/flows")
             .add_header("Authorization", bearer(&env.alice))
@@ -333,7 +333,7 @@ async fn validation_rejette_graphe_invalide() {
         assert!(codes.contains(&"duplicate_node_id"), "{body}");
         assert!(codes.contains(&"dangling_target"), "{body}");
 
-        // inject sans déclencheur : rejeté.
+        // inject without a trigger: rejected.
         let no_trigger = server
             .post("/api/v1/flows")
             .add_header("Authorization", bearer(&env.alice))
@@ -374,7 +374,7 @@ async fn validation_rejette_graphe_invalide() {
     .await;
 }
 
-// ─────────────────────────── Moteur coupé : 503 ───────────────────────────
+// ─────────────────────────── Engine off: 503 ───────────────────────────
 
 #[tokio::test]
 #[serial]
@@ -384,9 +384,9 @@ async fn deploy_sans_moteur_repond_503() {
         let created = create_flow(&server, &env.alice, org, "jamais déployé", 1.0).await;
         let flow_id = created["id"].as_i64().unwrap();
 
-        // Garde « mode run » : les outils de debug sont désactivés (env
-        // PNEX_FLOW_DEBUG_TOOLS=false de ce process) — 403 AVANT toute
-        // considération de moteur.
+        // "Run mode" guard: the debug tools are disabled (env
+        // PNEX_FLOW_DEBUG_TOOLS=false for this process) — 403 BEFORE any
+        // engine consideration.
         let dbg = server
             .get(&format!("/api/v1/flows/{flow_id}/debug"))
             .add_header("Authorization", bearer(&env.alice))
@@ -412,8 +412,8 @@ async fn deploy_sans_moteur_repond_503() {
 
 // ─────────────────────────── Cycle deploy (a)(c)(d) ───────────────────────────
 
-/// Le cycle complet deploy/édition/recharge/rollback avec le faux runtime.
-/// Un seul test active le superviseur (static par process — cf. module doc).
+/// The full deploy/edit/reload/rollback cycle with the fake runtime.
+/// A single test enables the supervisor (per-process static — see module doc).
 #[tokio::test]
 #[serial]
 async fn cycle_deploy_edit_rollback_avec_runtime() {
@@ -422,8 +422,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         let created = create_flow(&server, &env.alice, org, "pipeline complet", 1.0).await;
         let flow_id = created["id"].as_i64().unwrap();
 
-        // (c) Édition v2 : AUCUN rechargement — l'artefact au disque (s'il
-        // existe déjà : répertoire d'état partagé entre tests) reste identique.
+        // (c) Edit v2: NO reload — the artifact on disk (if it already
+        // exists: state directory shared between tests) stays identical.
         let before_save = std::fs::read_to_string(format!("{}/flows.json", flow_state_dir())).ok();
         let updated = server
             .patch(&format!("/api/v1/flows/{flow_id}"))
@@ -439,10 +439,10 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(
             std::fs::read_to_string(format!("{}/flows.json", flow_state_dir())).ok(),
             before_save,
-            "un save ne doit pas écrire l'artefact"
+            "a save must not write the artifact"
         );
 
-        // (a) Deploy v1 : artefact projeté + runtime enfant vivant.
+        // (a) Deploy v1: projected artifact + live child runtime.
         let deployed = server
             .post(&format!("/api/v1/flows/{flow_id}/deploy"))
             .add_header("Authorization", bearer(&env.alice))
@@ -460,7 +460,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(tab["type"], "tab");
         assert_eq!(tab["pnex_flow_id"], flow_id);
         assert_eq!(tab["pnex_version"], 1);
-        // inject v1 : l'intervalle projeté matérialise la version déployée.
+        // inject v1: the projected interval materialises the deployed version.
         let inject = artifact
             .as_array()
             .unwrap()
@@ -469,9 +469,9 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .unwrap();
         assert_eq!(inject["repeat"], 1.0, "{inject}");
 
-        // Runtime enfant vivant et rapporté par l'API — santé **par flow** :
-        // l'engine de CE flow est `running` (événement flow_started de la
-        // fixture), la version vient de la DB.
+        // Child runtime alive and reported by the API — health **per flow**:
+        // the engine of THIS flow is `running` (flow_started event from the
+        // fixture), the version comes from the DB.
         let runtime = server
             .get(&format!("/api/v1/flows/{flow_id}/runtime"))
             .add_header("Authorization", bearer(&env.alice))
@@ -482,7 +482,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(runtime["engine_status"], "running", "{runtime}");
         assert_eq!(runtime["last_error"], serde_json::Value::Null, "{runtime}");
 
-        // (c) Deploy v2 : rechargement, l'artefact porte la version 2.
+        // (c) Deploy v2: reload, the artifact carries version 2.
         let deployed_v2 = server
             .post(&format!("/api/v1/flows/{flow_id}/deploy"))
             .add_header("Authorization", bearer(&env.alice))
@@ -501,7 +501,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .unwrap();
         assert_eq!(inject["repeat"], 2.0, "{inject}");
 
-        // (d) Rollback v1 : l'ancien graphe revient en exécution.
+        // (d) Rollback v1: the old graph runs again.
         let rolled = server
             .post(&format!("/api/v1/flows/{flow_id}/rollback"))
             .add_header("Authorization", bearer(&env.alice))
@@ -520,7 +520,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .unwrap();
         assert_eq!(inject["repeat"], 1.0, "{inject}");
 
-        // Version inconnue : 404.
+        // Unknown version: 404.
         let missing = server
             .post(&format!("/api/v1/flows/{flow_id}/deploy"))
             .add_header("Authorization", bearer(&env.alice))
@@ -530,8 +530,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .await;
         assert_eq!(missing.status_code(), 404);
 
-        // Deploy sans body → dernière version (2... rollback a remis 1 en
-        // déployée, la dernière VERSION reste la 2).
+        // Deploy without body → latest version (2... rollback set 1 back as
+        // deployed, the latest VERSION is still 2).
         let latest = server
             .post(&format!("/api/v1/flows/{flow_id}/deploy"))
             .add_header("Authorization", bearer(&env.alice))
@@ -545,9 +545,9 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             2
         );
 
-        // ── Panneau debug (mode dev/debug actif : PNEX_FLOW_DEBUG_TOOLS=true)
-        // runtime porte l'activation — c'est ce que lit l'éditeur pour
-        // afficher/masquer les boutons.
+        // ── Debug panel (dev/debug mode on: PNEX_FLOW_DEBUG_TOOLS=true)
+        // runtime carries the activation — that is what the editor reads to
+        // show/hide the buttons.
         let runtime = server
             .get(&format!("/api/v1/flows/{flow_id}/runtime"))
             .add_header("Authorization", bearer(&env.alice))
@@ -559,8 +559,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(runtime["latest_version_number"], 2, "{runtime}");
         assert_eq!(runtime["flow_status"], "deployed", "{runtime}");
 
-        // Fixture émettant des lignes debug attribuées (flow dérivé de
-        // l'artefact) : le feed ne doit pas être vide et rester scoped.
+        // Fixture emitting attributed debug lines (flow derived from the
+        // artifact): the feed must not be empty and must stay scoped.
         std::thread::sleep(std::time::Duration::from_millis(300));
         let feed = server
             .get(&format!("/api/v1/flows/{flow_id}/debug"))
@@ -570,12 +570,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(feed.status_code(), 200, "{}", feed.text());
         let feed = feed.json::<serde_json::Value>();
         let entries = feed["entries"].as_array().expect("entries");
-        assert!(!entries.is_empty(), "feed vide : {feed}");
+        assert!(!entries.is_empty(), "empty feed: {feed}");
         assert_eq!(entries[0]["flow_id"], flow_id);
         assert_eq!(entries[0]["node_id"], "n2");
         assert_eq!(entries[0]["source"], "debug");
 
-        // Hors-org : 404 (le feed d'Alice n'est pas lisible par Bob).
+        // Out of org: 404 (Alice's feed is not readable by Bob).
         let bob_org = personal_org(&server, &env.bob).await;
         let cross = server
             .get(&format!("/api/v1/flows/{flow_id}/runtime"))
@@ -584,12 +584,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .await;
         assert_eq!(cross.status_code(), 404, "{}", cross.text());
 
-        // (f) Pré-flight au deploy : un flow dont le tab est rejeté par le
+        // (f) Pre-flight at deploy: a flow whose tab is rejected by the
         // runtime (debug node named with the fixture's `pnex-check-fail`
-        // marker) répond **400** avec la violation `engine_load` (erreur
-        // moteur réelle), sans marquer la DB (reste draft) ni toucher
-        // l'artefact en exécution — le flow sain continue de tourner.
-        // NB : la création passe (pas de type-check global, garde-fou PRD).
+        // marker) answers **400** with the `engine_load` violation (real
+        // engine error), without marking the DB (stays draft) nor touching
+        // the running artifact — the healthy flow keeps running.
+        // NB: creation passes (no global type-check, PRD safeguard).
         let invalid = server
             .post("/api/v1/flows")
             .add_header("Authorization", bearer(&env.alice))
@@ -624,12 +624,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             violations[0]["message"]
                 .as_str()
                 .is_some_and(|m| m.contains("Flow #")),
-            "message moteur réel attendu : {body}"
+            "real engine message expected: {body}"
         );
 
-        // DB intacte : le flow invalide reste draft (aucune version déployée
-        // — le prisme `deployed_flow_id` reflète l'id demandé, jamais une
-        // version déployée).
+        // DB intact: the invalid flow stays draft (no deployed version
+        // — the `deployed_flow_id` prism reflects the requested id, never a
+        // deployed version).
         let detail = server
             .get(&format!("/api/v1/flows/{invalid_id}/runtime"))
             .add_header("Authorization", bearer(&env.alice))
@@ -642,8 +642,8 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             "{detail}"
         );
 
-        // L'artefact en exécution est intact (tab du flow invalide jamais
-        // écrit) et le flow sain tourne toujours.
+        // The running artifact is intact (tab of the invalid flow never
+        // written) and the healthy flow still runs.
         let artifact = read_state_flows_json().await;
         assert!(
             artifact
@@ -651,7 +651,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
                 .unwrap()
                 .iter()
                 .all(|e| e["id"] != format!("pnexflow{invalid_id}")),
-            "le tab invalide ne doit pas être projeté : {artifact}"
+            "the invalid tab must not be projected: {artifact}"
         );
         let runtime = server
             .get(&format!("/api/v1/flows/{flow_id}/runtime"))
@@ -662,9 +662,9 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(runtime["running"], true, "{runtime}");
         assert_eq!(runtime["engine_status"], "running", "{runtime}");
 
-        // ─── Stop / Start / Restart (ferme : le tab quitte et revient) ───
-        // Stop acquitté par `flow_stopped` du faux runtime : DB `stopped`
-        // (version déployée conservée) et tab absent de l'artefact.
+        // ─── Stop / Start / Restart (ferme: the tab leaves and comes back) ───
+        // Stop acknowledged by the fake runtime's `flow_stopped`: DB `stopped`
+        // (deployed version kept) and tab absent from the artifact.
         let stop = server
             .post(&format!("/api/v1/flows/{flow_id}/stop"))
             .add_header("Authorization", bearer(&env.alice))
@@ -680,7 +680,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(detail["status"], "stopped", "{detail}");
         assert!(
             detail["deployed_version_number"].is_i64(),
-            "la version déployée doit être conservée au stop : {detail}"
+            "the deployed version must be kept on stop: {detail}"
         );
         let runtime = server
             .get(&format!("/api/v1/flows/{flow_id}/runtime"))
@@ -698,10 +698,10 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
                 .unwrap()
                 .iter()
                 .all(|e| e["id"] != format!("pnexflow{flow_id}")),
-            "le tab stoppé doit sortir de l'artefact : {artifact}"
+            "the stopped tab must leave the artifact: {artifact}"
         );
 
-        // Re-stop : 409 (seul un flow déployé peut être arrêté).
+        // Re-stop: 409 (only a deployed flow can be stopped).
         let restop = server
             .post(&format!("/api/v1/flows/{flow_id}/stop"))
             .add_header("Authorization", bearer(&env.alice))
@@ -709,7 +709,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .await;
         assert_eq!(restop.status_code(), 409, "{}", restop.text());
 
-        // Start : reprise sur la version déployée (tab de retour, engine
+        // Start: resumes on the deployed version (tab back, engine
         // running, DB `deployed`).
         let start = server
             .post(&format!("/api/v1/flows/{flow_id}/start"))
@@ -731,11 +731,11 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
                 .unwrap()
                 .iter()
                 .any(|e| e["id"] == format!("pnexflow{flow_id}")),
-            "le tab démaré doit être de retour dans l'artefact : {artifact}"
+            "the started tab must be back in the artifact: {artifact}"
         );
 
-        // Restart : stop+start chaînés — l'engine finit running à la même
-        // version déployée.
+        // Restart: chained stop+start — the engine ends up running at the
+        // same deployed version.
         let restart = server
             .post(&format!("/api/v1/flows/{flow_id}/restart"))
             .add_header("Authorization", bearer(&env.alice))
@@ -757,12 +757,12 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
             .json::<serde_json::Value>();
         assert_eq!(runtime["engine_status"], "running", "{runtime}");
 
-        // ─── Delete d'un flow **déployé** (le dernier de l'instance) ───
-        // 204 rapide : l'ack du retrait est keyé sur le flow supprimé (le
-        // faux runtime émet `flow_stopped` pour le tab disparu). Régression :
-        // méta « à vide » (flow_id 0) = ack jamais résolu → 503 « acquitte-
-        // ment de rechargement absent » après une suppression pourtant déjà
-        // appliquée en base, et liste UI figée jusqu'au refresh manuel.
+        // ─── Delete of a **deployed** flow (the last one of the instance) ───
+        // Quick 204: the removal ack is keyed on the deleted flow (the
+        // fake runtime emits `flow_stopped` for the vanished tab). Regression:
+        // "empty" meta (flow_id 0) = ack never resolved → 503 "reload
+        // acknowledgement missing" after a deletion already applied in the
+        // database, and UI list frozen until a manual refresh.
         let deleted = server
             .delete(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -779,7 +779,7 @@ async fn cycle_deploy_edit_rollback_avec_runtime() {
         assert_eq!(
             artifact,
             serde_json::json!([]),
-            "artefact vidé par le delete : {artifact}"
+            "artifact emptied by the delete: {artifact}"
         );
     })
     .await;
@@ -828,7 +828,7 @@ async fn delete_stopped_flow_does_not_wait_for_runtime_ack() {
     .await;
 }
 
-// ─────────────────────────── Stop/Start : gardes sans moteur ───────────────────────────
+// ─────────────────────────── Stop/Start: guards without an engine ───────────────────────────
 
 #[tokio::test]
 #[serial]
@@ -838,8 +838,8 @@ async fn stop_start_gardes_sans_moteur() {
         let created = create_flow(&server, &env.alice, org, "jamais déployé", 1.0).await;
         let flow_id = created["id"].as_i64().unwrap();
 
-        // Stop sur draft : 409 (seul un flow déployé peut être arrêté) —
-        // refus AVANT toute interaction moteur.
+        // Stop on a draft: 409 (only a deployed flow can be stopped) —
+        // refused BEFORE any engine interaction.
         let stop = server
             .post(&format!("/api/v1/flows/{flow_id}/stop"))
             .add_header("Authorization", bearer(&env.alice))
@@ -847,7 +847,7 @@ async fn stop_start_gardes_sans_moteur() {
             .await;
         assert_eq!(stop.status_code(), 409, "{}", stop.text());
 
-        // Start sur un flow jamais déployé : 409.
+        // Start on a never-deployed flow: 409.
         let start = server
             .post(&format!("/api/v1/flows/{flow_id}/start"))
             .add_header("Authorization", bearer(&env.alice))
@@ -855,7 +855,7 @@ async fn stop_start_gardes_sans_moteur() {
             .await;
         assert_eq!(start.status_code(), 409, "{}", start.text());
 
-        // Restart sur un flow jamais déployé : 409.
+        // Restart on a never-deployed flow: 409.
         let restart = server
             .post(&format!("/api/v1/flows/{flow_id}/restart"))
             .add_header("Authorization", bearer(&env.alice))

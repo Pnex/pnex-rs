@@ -1,8 +1,8 @@
-//! PKCE RFC 7636 — verifier/challenge S256 et encodage d'URL.
+//! PKCE RFC 7636 — S256 verifier/challenge and URL encoding.
 //!
-//! Le challenge S256 est exigé par le proxy SSO backend (le S256 est aussi
-//! forcé par le client OIDC). Le verifier fait 43 caractères (32 octets
-//! d'entropie en base64url sans padding).
+//! The S256 challenge is required by the backend SSO proxy (S256 is also
+//! forced by the OIDC client). The verifier is 43 characters (32 bytes of
+//! entropy in base64url without padding).
 
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -13,7 +13,7 @@ pub struct Pkce {
     pub challenge: String,
 }
 
-/// Génère une paire verifier/challenge (méthode S256).
+/// Generates a verifier/challenge pair (S256 method).
 pub fn generate() -> Pkce {
     let mut bytes = [0u8; 32];
     getrandom::getrandom(&mut bytes).expect("entropie PKCE indisponible");
@@ -25,7 +25,7 @@ pub fn generate() -> Pkce {
     }
 }
 
-/// Encodage pour cent form-urlencoded (caractères non réservés conservés).
+/// Form-urlencoded percent-encoding (unreserved characters kept).
 pub fn urlencode(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     for byte in input.bytes() {
@@ -43,7 +43,7 @@ pub fn urlencode(input: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Vecteur de l'annexe B de la RFC 7636.
+    /// Vector from appendix B of RFC 7636.
     #[test]
     fn challenge_vecteur_rfc7636() {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";

@@ -1,6 +1,6 @@
-//! Labels de la couche d'organisation (D42) — classification petit et
-//! requêtable. 1 doc JSONB par ressource (`resource_labels`, unique), GIN
-//! `jsonb_path_ops` sur PG pour le filtrage `@>`.
+//! Labels of the organisation layer (D42) — small, queryable
+//! classification. 1 JSONB doc per resource (`resource_labels`, unique), GIN
+//! `jsonb_path_ops` on PG for `@>` filtering.
 //!
 //! Labels are a plain search aid (D218): an object carries its own labels,
 //! nothing is inherited through folders or links. Filtering is one `@>` /
@@ -43,8 +43,8 @@ fn set_to_doc(labels: &LabelSet) -> Value {
     Value::Object(map)
 }
 
-/// Validation complète d'un doc de labels (nom normalisé, valeurs bornées,
-/// cap [`LABELS_MAX`]) — l'écriture est tout-ou-rien.
+/// Full validation of a labels doc (normalized name, bounded values,
+/// [`LABELS_MAX`] cap) — the write is all-or-nothing.
 pub fn validate_set(labels: &LabelSet) -> Result<(), ResourceError> {
     if labels.len() > LABELS_MAX {
         return Err(ResourceError::LabelInvalid);
@@ -64,7 +64,7 @@ pub fn validate_set(labels: &LabelSet) -> Result<(), ResourceError> {
 
 // ─────────────────────────── CRUD ───────────────────────────
 
-/// Doc de labels d'une ressource, `None` = jamais étiquetée (pas de ligne).
+/// Labels doc of a resource, `None` = never labelled (no row).
 pub async fn get_labels(
     db: &DatabaseConnection,
     org_id: i64,
@@ -80,7 +80,7 @@ pub async fn get_labels(
     Ok(row.and_then(|r| r.labels).map(|v| doc_to_set(&v)))
 }
 
-/// Remplace **tout** le doc (PUT) — upsert atomique, tout-ou-rien.
+/// Replaces the **whole** doc (PUT) — atomic upsert, all-or-nothing.
 pub async fn put_labels(
     db: &DatabaseConnection,
     org_id: i64,
@@ -286,8 +286,8 @@ pub async fn ids_with_label(
     Ok(out)
 }
 
-/// Catalogue pour l'autocomplétion front : `{name → {values, count}}`,
-/// tous kinds confondus, org-scopé.
+/// Catalog for front-end autocompletion: `{name → {values, count}}`,
+/// all kinds combined, org-scoped.
 pub async fn catalog(
     db: &DatabaseConnection,
     org_id: i64,
@@ -318,7 +318,7 @@ pub async fn catalog(
 
 // ─────────────────────────── hydratation batch ───────────────────────────
 
-/// Labels d'un lot de ressources (1 requête, pas de N+1 — école media list).
+/// Labels of a batch of resources (1 query, no N+1 — media list pattern).
 pub async fn labels_for_many(
     db: &DatabaseConnection,
     org_id: i64,

@@ -1,9 +1,9 @@
-//! Palette à la demande (principe 3) — un bouton `+` flottant ouvrant un
-//! popover avec recherche. Remplace les panneaux permanents de gauche des
-//! trois éditeurs. **Sans backdrop** : le drag d'un modèle du pied de
-//! popover vers le canvas (dashboard, D41) doit voir ses `pointermove/up`
-//! atteindre le canvas — la fermeture passe par un pick, la croix, Échap
-//! dans la recherche ou un re-clic sur `+`.
+//! On-demand palette (principle 3) — a floating `+` button opening a
+//! popover with search. Replaces the permanent left panels of the three
+//! editors. **No backdrop**: dragging a model from the popover footer to
+//! the canvas (dashboard, D41) must let its `pointermove/up` reach the
+//! canvas — closing goes through a pick, the cross, Escape in the search
+//! or a re-click on `+`.
 //! One menu at a time and click-outside close: `state::ui::use_exclusive_menu`
 //! + the dismiss listener of `EditorShell` (menu slots carry `data-floating`).
 
@@ -13,9 +13,9 @@ use dioxus_i18n::t;
 use crate::components::icons;
 use crate::components::ui::INPUT;
 
-/// Icônes de la palette — énum plate (data), rendue par `IconView` via le
-/// jeu `icons.rs`. Évite tout `Element`/closure dans les items (props
-/// `PartialEq` triviales) tout en donnant aux types un repère visuel.
+/// Palette icons — flat enum (data), rendered by `IconView` via the
+/// `icons.rs` set. Avoids any `Element`/closure in the items (trivial
+/// `PartialEq` props) while giving the types a visual cue.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PaletteIcon {
     Calculator,
@@ -49,7 +49,7 @@ pub enum PaletteIcon {
     Home(&'static str),
 }
 
-/// Rendu d'une `PaletteIcon` (match explicite — jamais d'icône construite).
+/// Rendering of a `PaletteIcon` (explicit match — never a constructed icon).
 #[component]
 pub fn IconView(icon: PaletteIcon, class: Option<String>) -> Element {
     let class = class.unwrap_or_else(|| "h-4 w-4".to_string());
@@ -145,17 +145,17 @@ pub fn IconView(icon: PaletteIcon, class: Option<String>) -> Element {
     }
 }
 
-/// Entrée de palette — data plate : clé de pick, libellés i18n résolus par
-/// l'appelant, icône + classes de tuile (littéraux complets, cf. scan
-/// Tailwind).
+/// Palette entry — flat data: pick key, i18n labels resolved by the
+/// caller, icon + tile classes (full literals, see the Tailwind
+/// scan).
 #[derive(Clone, PartialEq, Debug)]
 pub struct PaletteItem {
     pub key: String,
     pub label: String,
     pub description: Option<String>,
     pub icon: Option<PaletteIcon>,
-    /// Classes Tailwind de la tuile d'icône (fond/texte de tonalité du type,
-    /// ex. « bg-emerald-50 text-emerald-600 ») — littéral complet.
+    /// Tailwind classes of the icon tile (background/text of the type's tone,
+    /// e.g. "bg-emerald-50 text-emerald-600") — full literal.
     pub tile_class: Option<String>,
     /// Section header (already translated). Items sharing a group must be
     /// contiguous: the popover starts a new section whenever it changes.
@@ -211,22 +211,22 @@ fn with_headers(items: &[PaletteItem]) -> Vec<(Option<String>, PaletteItem)> {
         .collect()
 }
 
-/// Bouton `+` flottant + popover (recherche + liste + pied optionnel).
-/// Positionné par le slot parent (`absolute left-4 top-4` dans le corps de
-/// `EditorShell`) — la carte s'ancre sur ce wrapper.
+/// Floating `+` button + popover (search + list + optional footer).
+/// Positioned by the parent slot (`absolute left-4 top-4` in the body of
+/// `EditorShell`) — the card anchors on this wrapper.
 #[component]
 pub fn PalettePopover(
-    /// Infobulle/aria du bouton « + » (« Ajouter un nœud »…).
+    /// Tooltip/aria of the "+" button ("Add a node"…).
     add_title: String,
-    /// En-tête du popover (« Nœuds », « Bibliothèque »…).
+    /// Popover header ("Nodes", "Library"…).
     title: String,
-    /// Placeholder de la recherche.
+    /// Search placeholder.
     search_placeholder: String,
-    /// Types proposés.
+    /// Offered types.
     items: Vec<PaletteItem>,
-    /// Pick d'un item (clé) — le popover se ferme.
+    /// Pick of an item (key) — the popover closes.
     on_pick: Callback<String>,
-    /// Pied du popover (dashboard : modèles serveur draggables).
+    /// Popover footer (dashboard: draggable server models).
     #[props(default)]
     footer: Option<Element>,
 ) -> Element {
@@ -236,8 +236,8 @@ pub fn PalettePopover(
     let mut search = use_signal(String::new);
     let close_label = t!("eshell-close");
 
-    // Filtre mémoire : label ou description contient la requête (insensible
-    // à la casse). Calculé au rendu — le composant se re-render sur `search`.
+    // In-memory filter: label or description contains the query
+    // (case-insensitive). Computed at render — the component re-renders on `search`.
     let query = search().to_lowercase();
     let filtered: Vec<PaletteItem> = items
         .iter()
@@ -255,7 +255,7 @@ pub fn PalettePopover(
     let rows = with_headers(&filtered);
 
     rsx! {
-        div { // wrapper ancré par le slot parent
+        div { // wrapper anchored by the parent slot
 
 
             button {

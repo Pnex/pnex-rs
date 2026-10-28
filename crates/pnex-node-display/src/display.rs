@@ -1,12 +1,12 @@
-//! Nœud `pnex-display` (sonde) — passthrough + publication au canal debug du
-//! moteur avec l'id canvas brut. Le backend collecte ces événements (stdout
-//! du runtime → anneau mémoire) pour le panneau de debug et le badge live
-//! sous le nœud dans l'éditeur.
+//! `pnex-display` node (probe) — passthrough + publication to the engine's debug
+//! channel with the raw canvas id. The backend collects these events (runtime
+//! stdout → in-memory ring) for the debug panel and the live badge
+//! under the node in the editor.
 //!
-//! Garde-fous :
-//! - `pnex_node_id` **requis** au build (estampillé par la projection) — un
-//!   artefact qui ne le porte pas est rejeté au déploiement (fail-loud) ;
-//! - passthrough intact : le message poursuit sa route inchangé.
+//! Safeguards:
+//! - `pnex_node_id` **required** at build (stamped by the projection) — an
+//!   artefact that does not carry it is rejected at deployment (fail-loud);
+//! - passthrough intact: the message continues on its way unchanged.
 
 use std::sync::Arc;
 
@@ -24,10 +24,10 @@ use edgelink_macro::*;
 
 #[derive(Debug, Deserialize)]
 struct DisplayNodeConfig {
-    /// Estampillé par la projection = id canvas du nœud (`"n3"`) — la clé de
-    /// rattachement du panneau et du badge. Jamais saisi par l'utilisateur.
-    /// (Les autres stamps de traçabilité — pnex_flow_id/version/org_id — sont
-    /// présents dans l'artefact mais ignorés ici : le nœud n'en a pas besoin.)
+    /// Stamped by the projection = the node's canvas id (`"n3"`) — the
+    /// attachment key of the panel and badge. Never entered by the user.
+    /// (The other traceability stamps — pnex_flow_id/version/org_id — are
+    /// present in the artefact but ignored here: the node does not need them.)
     pnex_node_id: String,
 }
 
@@ -45,11 +45,11 @@ impl PnexDisplayNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = DisplayNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-display : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-display: invalid config: {e}"))
         })?;
         if cfg.pnex_node_id.trim().is_empty() {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-display : pnex_node_id absent de l'artefact (redéployer le flow)".into(),
+                "pnex-display: pnex_node_id missing from the artefact (redeploy the flow)".into(),
             )
             .into());
         }
@@ -59,9 +59,9 @@ impl PnexDisplayNode {
         }))
     }
 
-    /// Passthrough + publication : la valeur (payload si présent, sinon le
-    /// message entier) part sur le canal debug avec l'id canvas brut, puis
-    /// le message original poursuit sa route inchangé.
+    /// Passthrough + publication: the value (payload if present, otherwise the
+    /// whole message) goes on the debug channel with the raw canvas id, then
+    /// the original message continues on its way unchanged.
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
         let (captured, topic, msgid) = {
             let m = msg.read().await;
@@ -83,8 +83,8 @@ impl PnexDisplayNode {
             engine
                 .debug_channel()
                 .send(edgelink_core::runtime::debug_channel::DebugMessage {
-                    // Id canvas BRUT (pas le hash moteur) : matching direct avec
-                    // le nœud de l'éditeur pour le badge live.
+                    // RAW canvas id (not the engine hash): direct match with
+                    // the editor node for the live badge.
                     id: self.config.pnex_node_id.clone(),
                     name: if name.is_empty() {
                         None
@@ -106,7 +106,7 @@ impl PnexDisplayNode {
                 });
         } else {
             log::warn!(
-                "pnex-display [{}] : moteur inaccessible, pas de publication",
+                "pnex-display [{}]: engine unreachable, no publication",
                 self.name()
             );
         }
@@ -132,7 +132,7 @@ impl FlowNodeBehavior for PnexDisplayNode {
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-display [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-display [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }

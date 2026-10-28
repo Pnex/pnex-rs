@@ -1,26 +1,26 @@
-//! Overlay plein écran de capture guidée (module cfg Android).
+//! Full-screen guided capture overlay (Android cfg module).
 //!
-//! PAS-À-PAS STRICT (V3, 2026-09-10) — le déclenchement continu (V1) a
-//! vécu : il tirait en marche arrière (le |Δyaw| comptait le retour
-//! utilisateur — « photo déjà prise » pendant une correction) et
-//! sous-capture l'anneau (trou azimutal ~33° sur la 1re HD). Nouveau
-//! modèle, celui des apps 360 du commerce :
+//! STRICT STEP-BY-STEP (V3, 2026-09-10) — continuous triggering (V1) is
+//! gone: it fired when moving backwards (|Δyaw| counted the user's
+//! return — "photo already taken" during a correction) and
+//! under-captured the ring (~33° azimuth hole on the 1st HD). New
+//! model, the one of commercial 360 apps:
 //!
-//! 1. l'utilisateur vise son point de départ et appuie « Ancrer ici » ;
-//! 2. chaque anneau a N cibles fixes (yaw = k·pas, pitch = consigne) — N
-//!    et le pas viennent de `guidance::ring_plan(hfov portrait réel)` :
-//!    recouvrement ≥ 20° et fermeture d'anneau par construction ;
-//! 3. une frame ne part QUE sur la cible courante, quand alignement
-//!    (yaw/pitch/roll) + stabilité (vitesse angulaire) + dwell 700 ms
-//!    sont tenus EN CONTINU — tourner en arrière ne déclenche RIEN ;
-//! 4. capture → cible suivante ; « Reprendre » retire la dernière frame
-//!    et recule la cible (piloté par `UNDO_REQUEST`, single-writer).
+//! 1. the user aims at their starting point and presses "Anchor here";
+//! 2. each ring has N fixed targets (yaw = k·step, pitch = setpoint) — N
+//!    and the step come from `guidance::ring_plan(real portrait hfov)`:
+//!    overlap ≥ 20° and ring closure by construction;
+//! 3. a frame fires ONLY on the current target, when alignment
+//!    (yaw/pitch/roll) + stability (angular speed) + 700 ms dwell
+//!    are held CONTINUOUSLY — turning backwards triggers NOTHING;
+//! 4. capture → next target; "Retake" removes the last frame
+//!    and steps the target back (driven by `UNDO_REQUEST`, single-writer).
 //!
-//! Rendu : preview + SVG guidage. Re-render dioxus UNIQUEMENT sur
-//! changement discret (bannières, compteur) — les éléments continus (point
-//! guideur, arc de dwell, flèche, degrés, stabilité, flash) sont pilotés
-//! en DOM direct à 15 Hz (école `push_debug_dom` : le re-render 30 Hz
-//! sature le GPU webview, MALI BAD ALLOC — constat device 2026-09-09).
+//! Rendering: preview + guidance SVG. Dioxus re-render ONLY on a
+//! discrete change (banners, counter) — the continuous elements (guide
+//! dot, dwell arc, arrow, degrees, stability, flash) are driven
+//! through direct DOM at 15 Hz (`push_debug_dom` approach: the 30 Hz re-render
+//! saturates the webview GPU, MALI BAD ALLOC — observed on device 2026-09-09).
 
 use super::pipeline::CapturedFrame;
 use super::state::{self, Phase};
@@ -33,16 +33,16 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Id DOM du `<video>` (aussi utilisé par `frames.rs`).
+/// DOM id of the `<video>` (also used by `frames.rs`).
 const VIDEO_ID: &str = "p360-video";
 
-/// Rayon du réticule (unités viewBox 400×400).
+/// Reticle radius (viewBox 400×400 units).
 const RETICLE_R: f32 = 38.0;
-/// Distance max du point guideur du centre (unités viewBox).
+/// Max distance of the guide dot from the centre (viewBox units).
 const DOT_MAX_PX: f32 = 110.0;
-/// Fenêtre de mesure de stabilité (ms) — vitesse angulaire max dedans.
+/// Stability measurement window (ms) — max angular speed within it.
 const STABLE_WINDOW_MS: u64 = 450;
-/// Ids DOM des éléments continus (SVG/HTML) pilotés en eval 15 Hz.
+/// DOM ids of the continuous elements (SVG/HTML) driven by eval at 15 Hz.
 const ID_DOT: &str = "p360-dot";
 const ID_ARROW: &str = "p360-arrow";
 const ID_ARC: &str = "p360-arc";
@@ -53,42 +53,42 @@ const VIDEO_POSTER: &str =
 const ID_PITCH: &str = "p360-pitch";
 const ID_FLASH: &str = "p360-flash";
 
-/// Snapshot de rendu copié depuis les atomics à chaque tick — DISCRET
-/// uniquement (les valeurs qui bougent à 30 Hz passent par la couche DOM
-/// éval, cf. docs module).
+/// Render snapshot copied from the atomics on each tick — DISCRETE
+/// only (values moving at 30 Hz go through the eval DOM layer,
+/// see module docs).
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct UiState {
-    /// Ancre posée ? (sinon : pastille « visez + Ancrer »).
+    /// Anchor set? (otherwise: "aim + Anchor" pill).
     anchored: bool,
     phase: Phase,
-    /// Anneau courant et pas courant (frames capturées dans l'anneau).
+    /// Current ring and current step (frames captured in the ring).
     ring: usize,
     step: usize,
-    /// Plan courant (cibles par anneau) — cf. `guidance::ring_plan`.
+    /// Current plan (targets per ring) — see `guidance::ring_plan`.
     n_steps: usize,
-    /// Consigne yaw discrète : −1 gauche, 0 aucune, +1 droite (affichée
-    /// seulement si la bande de pitch est tenue et |erreur| > tolérance).
+    /// Discrete yaw hint: −1 left, 0 none, +1 right (shown
+    /// only if the pitch band is held and |error| > tolerance).
     turn_dir: i8,
-    /// Bande de pitch de l'anneau incliné tenue (rings 1/2 ; vrai sinon).
+    /// Pitch band of the tilted ring held (rings 1/2; true otherwise).
     band_ok: bool,
-    /// Afficher « Tenez la position » (dwell en cours ou instable).
+    /// Show "Hold the position" (dwell in progress or unstable).
     hold: bool,
     error_code: u8,
     progress: u8,
     sensor_ok: bool,
 }
 
-/// Composant plein écran. `on_uploaded` : callback après upload réussi ou
-/// échec définitif — la page y recharge la liste.
+/// Full-screen component. `on_uploaded`: callback after a successful upload or
+/// a final failure — the page reloads the list there.
 #[component]
 pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Element {
-    // Mémoire des frames — use_hook OBLIGATOIRE : un Arc::new « nu » est
-    // recréé à CHAQUE render → n Arcs immortels dans les boucles driver →
-    // fuite mémoire + N finish jobs (swap-thrash, stitch bloqué à 15 %,
-    // constat device 2026-09-09).
+    // Frame memory — use_hook MANDATORY: a "bare" Arc::new is
+    // recreated on EVERY render → n immortal Arcs in the driver loops →
+    // memory leak + N finish jobs (swap-thrash, stitch stuck at 15 %,
+    // observed on device 2026-09-09).
     let frames_mem: Arc<Mutex<Vec<CapturedFrame>>> = use_hook(|| Arc::new(Mutex::new(Vec::new())));
-    // Snapshot de rendu — mis à jour par la boucle tick, jamais depuis un
-    // thread détaché.
+    // Render snapshot — updated by the tick loop, never from a
+    // detached thread.
     let mut ui = use_signal(|| UiState {
         anchored: false,
         phase: Phase::Idle,
@@ -103,7 +103,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         sensor_ok: true,
     });
 
-    // Ouverture de session : permission, capteur, caméra, plan d'anneau.
+    // Session opening: permission, sensor, camera, ring plan.
     use_future(move || async move {
         super::filelog::log("overlay: montage, reset session");
         state::reset_session();
@@ -121,14 +121,14 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
             state::PHASE.store(Phase::Error as u8, Ordering::Relaxed);
             return;
         }
-        // Le <video> est monté au premier rendu — retry court. À
-        // l'ouverture, on pose le PLAN D'ANNEAU : hfov capteur (paysage) ×
-        // w/h du track = hfov portrait réel → `guidance::ring_plan` (fermeture
-        // d'anneau garantie — cf. guidance.rs).
+        // The <video> is mounted on the first render — short retry. On
+        // opening, we set the RING PLAN: sensor hfov (landscape) ×
+        // track w/h = real portrait hfov → `guidance::ring_plan` (ring
+        // closure guaranteed — see guidance.rs).
         for _ in 0..20 {
             match frames::open_camera(VIDEO_ID).await {
                 Ok((w, h)) => {
-                    super::filelog::log("overlay: caméra ouverte");
+                    super::filelog::log("overlay: camera opened");
                     let hfov_land =
                         fov::back_camera_hfov_deg().unwrap_or(pnex_stitcher::FALLBACK_HFOV_DEG);
                     let hfov_portrait = if w > 0 && h > 0 {
@@ -169,12 +169,12 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         state::PHASE.store(Phase::Error as u8, Ordering::Relaxed);
     });
 
-    // Boucle pilote : tick 33 ms — pas-à-pas strict + snapshots UI + couche
-    // DOM continue (15 Hz).
+    // Driver loop: 33 ms tick — strict step-by-step + UI snapshots + continuous
+    // DOM layer (15 Hz).
     let mut last_result_seq = use_signal(|| 0u64);
     use_effect(move || {
-        // Une seule boucle driver par process (use_effect ré-exécuté →
-        // 3 finish déclenchés — constat device 2026-09-09).
+        // A single driver loop per process (use_effect re-run →
+        // 3 finishes triggered — observed on device 2026-09-09).
         if state::DRIVER_RUNNING.swap(true, Ordering::Relaxed) {
             return;
         }
@@ -182,9 +182,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         spawn(async move {
             let mut last_rendered: Option<UiState> = None;
             let mut last_debug_push: u64 = 0;
-            // Dwell courant (instant de démarrage) — None = pas de dwell.
+            // Current dwell (start instant) — None = no dwell.
             let mut dwell_start: Option<u64> = None;
-            // Fenêtre de poses pour la vitesse angulaire (~[STABLE_WINDOW_MS]).
+            // Pose window for the angular speed (~[STABLE_WINDOW_MS]).
             let mut samples: Vec<(u64, guidance::Pose)> = Vec::with_capacity(16);
             let mut last_dom_push: u64 = 0;
             loop {
@@ -193,7 +193,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 let now = state::now_ms();
                 let phase = state::phase();
 
-                // Session terminée : préviens la page et stoppe la boucle.
+                // Session over: notify the page and stop the loop.
                 let seq = state::RESULT_SEQ.load(Ordering::Relaxed);
                 if seq != last_result_seq() {
                     last_result_seq.set(seq);
@@ -204,9 +204,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     continue;
                 }
 
-                // ── « Reprendre » : pop de la dernière frame + recul cible.
-                // La boucle driver est single-writer de frames_mem (avec le
-                // finish) — le bouton UI ne fait que poser la demande.
+                // ── "Retake": pop the last frame + step the target back.
+                // The driver loop is the single writer of frames_mem (with
+                // finish) — the UI button only posts the request.
                 if state::UNDO_REQUEST.swap(false, Ordering::Relaxed) {
                     let step = state::STEP.load(Ordering::Relaxed) as usize;
                     if step > 0 && matches!(phase, Phase::Searching) {
@@ -222,20 +222,20 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         state::LAST_FRAME_YAW.store(last_yaw, Ordering::Relaxed);
                         dwell_start = None;
                         super::filelog::log(&format!(
-                            "undo : retour à la cible {}/{}",
+                            "undo: back to target {}/{}",
                             step - 1,
                             state::N_STEPS.load(Ordering::Relaxed)
                         ));
                     }
                 }
 
-                // ── Pas-à-pas : cible courante → aligné+stable+dwell → fire.
+                // ── Step-by-step: current target → aligned+stable+dwell → fire.
                 let pose = state::pose(now);
                 if let Some(p) = pose {
                     samples.push((now, p));
                 }
-                // Prune des échantillons hors fenêtre (capteur 30 Hz, poll
-                // 33 ms : ~14 échantillons dans la fenêtre).
+                // Prune samples outside the window (30 Hz sensor, 33 ms
+                // poll: ~14 samples in the window).
                 samples.retain(|(t, _)| now.saturating_sub(*t) <= STABLE_WINDOW_MS);
                 let stable = guidance::max_rate_deg_s(&samples) <= guidance::MAX_RATE_DEG_S;
 
@@ -244,9 +244,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 let n_steps = state::N_STEPS.load(Ordering::Relaxed) as usize;
                 let step_deg = state::STEP_DEG_MD.load(Ordering::Relaxed) as f32 / 1000.0;
                 let (target_yaw, target_pitch) = guidance::target_for(ring, step, step_deg);
-                // SANS ancre, RIEN ne se déclenche (la pose est déjà
-                // relative au zéro de session, mais le point de départ
-                // doit être POSÉ par l'utilisateur — « Ancrer ici »).
+                // WITHOUT an anchor, NOTHING fires (the pose is already
+                // relative to the session zero, but the starting point
+                // must be SET by the user — "Anchor here").
                 let decision = if state::anchored() {
                     guidance::decide(target_yaw, target_pitch, pose, stable, dwell_start, now)
                 } else {
@@ -283,7 +283,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                                 state::LAST_FRAME_YAW
                                     .store((p.yaw * 1000.0) as i32, Ordering::Relaxed);
                                 state::LAST_CAPTURE_MS.store(now, Ordering::Relaxed);
-                                // Avance : pas suivant, anneau suivant ou fin.
+                                // Advance: next step, next ring or end.
                                 match guidance::advance(ring, step, n_steps) {
                                     guidance::Advance::NextStep => {
                                         state::STEP.store(step as u8 + 1, Ordering::Relaxed);
@@ -297,9 +297,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                                         ));
                                     }
                                     guidance::Advance::Finish => {
-                                        // Dernier anneau complet : stop des
-                                        // ressources puis pipeline détaché
-                                        // (l'overlay reste monté).
+                                        // Last ring complete: stop the
+                                        // resources then detached pipeline
+                                        // (the overlay stays mounted).
                                         sensors::stop();
                                         wakelock::keep_screen_on(false);
                                         frames::close_camera();
@@ -350,8 +350,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     progress: state::PROGRESS.load(Ordering::Relaxed),
                     sensor_ok: state::ERROR_CODE.load(Ordering::Relaxed) != 3,
                 };
-                // PREMIER tour : toujours setter (sans ça, ui reste Idle →
-                // <video> jamais monté — constat device 2026-09-09).
+                // FIRST round: always set (without it, ui stays Idle →
+                // <video> never mounted — observed on device 2026-09-09).
                 let changed = match last_rendered {
                     None => true,
                     Some(prev) => prev != snapshot,
@@ -367,8 +367,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     push_overlay_dom(pose, target_yaw, target_pitch, dwell_start, now);
                 }
 
-                // Progression de stitch animée (le rendu ne reporte pas de
-                // % fin — on fait avancer lentement 30→80 pour montrer la vie).
+                // Animated stitch progress (rendering does not report a fine
+                // % — we slowly advance 30→80 to show it is alive).
                 if matches!(phase, Phase::Stitching) {
                     let p = state::PROGRESS.load(Ordering::Relaxed);
                     if (30..80).contains(&p) {
@@ -376,7 +376,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     }
                 }
 
-                // Debug en DOM à 10 Hz (temporaire — smoke test).
+                // Debug in the DOM at 10 Hz (temporary — smoke test).
                 // Diagnostics builds only (feature `diag`).
                 if cfg!(feature = "diag") && now.saturating_sub(last_debug_push) >= 100 {
                     last_debug_push = now;
@@ -398,7 +398,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         });
     });
 
-    // Nettoyage au démontage (annulation, capteur, wakelock, caméra).
+    // Cleanup on unmount (cancellation, sensor, wakelock, camera).
     use_drop(move || {
         state::CANCEL.store(true, Ordering::Relaxed);
         sensors::stop();
@@ -406,24 +406,24 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
         frames::close_camera();
     });
 
-    // Annulation : stoppe tout et referme.
+    // Cancel: stop everything and close.
     let cancel = move |_| {
         state::CANCEL.store(true, Ordering::Relaxed);
         on_close.call(());
     };
 
-    // Bouton « Reprendre » : demande de retrait de la dernière frame —
-    // la boucle driver l'exécute (single-writer de frames_mem).
+    // "Retake" button: request to remove the last frame —
+    // the driver loop executes it (single writer of frames_mem).
     let undo = move |_| {
         state::UNDO_REQUEST.store(true, Ordering::Relaxed);
     };
 
-    // ───────────────────────── rendu ─────────────────────────
+    // ───────────────────────── render ─────────────────────────
     let in_guidance = matches!(ui().phase, Phase::Searching | Phase::Capturing);
     let in_processing = matches!(ui().phase, Phase::Stitching | Phase::Uploading);
     let n_steps = ui().n_steps;
-    // Avancement : pas de l'anneau courant + total session (discret — les
-    // deux barres ne bougent qu'aux captures).
+    // Progress: step of the current ring + session total (discrete — the
+    // two bars only move on captures).
     let ring_pct = (ui().step * 100).checked_div(n_steps).unwrap_or(0);
     let overall_done = ui().ring * n_steps + ui().step;
     let overall_total = guidance::N_RINGS * n_steps;
@@ -438,7 +438,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
 
     rsx! {
         div { class: "fixed inset-0 z-[100] bg-black select-none",
-            // Preview caméra + SVG guidage (masqués dès le stitching).
+            // Camera preview + guidance SVG (hidden once stitching starts).
             if in_guidance {
                 video {
                     key: "{VIDEO_ID}",
@@ -450,9 +450,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                     poster: VIDEO_POSTER,
                     class: "absolute inset-0 h-full w-full object-cover",
                 }
-                // SVG guidage : arc de dwell (remplissage DOM), réticule,
-                // point guideur, flèche, pastille stabilité — positions
-                // pilotées en DOM direct (push_overlay_dom, 15 Hz).
+                // Guidance SVG: dwell arc (DOM fill), reticle,
+                // guide dot, arrow, stability pill — positions
+                // driven through direct DOM (push_overlay_dom, 15 Hz).
                 svg {
                     class: "absolute inset-0 h-full w-full pointer-events-none",
                     view_box: "0 0 400 400",
@@ -477,9 +477,9 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         stroke: "white",
                         "stroke-width": "2",
                     }
-                    // Point guideur : PRÉCÈDE — l'utilisateur va vers lui.
-                    // (Signe vertical : SVG y descend, pitch monte → cy =
-                    // 200 − dy, cf. push_overlay_dom.)
+                    // Guide dot: LEADS — the user moves towards it.
+                    // (Vertical sign: SVG y goes down, pitch goes up → cy =
+                    // 200 − dy, see push_overlay_dom.)
                     circle {
                         id: ID_DOT,
                         cx: "200",
@@ -490,8 +490,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         stroke: "white",
                         "stroke-width": "1.5",
                     }
-                    // Chevron directionnel (points DOM) — visible hors
-                    // alignement yaw.
+                    // Directional chevron (DOM points) — visible when out of
+                    // yaw alignment.
                     polygon {
                         id: ID_ARROW,
                         points: "",
@@ -500,8 +500,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                         style: "display:none",
                     }
                 }
-                // Flash blanc de capture — opacité pilotée DOM (pas de
-                // re-render dioxus).
+                // White capture flash — opacity driven through the DOM (no
+                // dioxus re-render).
                 div {
                     id: ID_FLASH,
                     class: "absolute inset-0 bg-white pointer-events-none",
@@ -509,7 +509,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Pastille de consigne — t! à littéral, le match choisit.
+            // Hint pill — t! with a literal, the match picks.
             if in_guidance && ui().anchored {
                 div { class: "absolute top-20 inset-x-0 flex flex-col items-center gap-2 px-6",
                     div { class: "px-4 py-2 rounded-full bg-black/60 text-white text-base font-medium text-center",
@@ -553,8 +553,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Compteur de pas + progression (discret) + lectures continues
-            // (degrés/pitch) en spans DOM.
+            // Step counter + progress (discrete) + continuous readings
+            // (degrees/pitch) in DOM spans.
             if in_guidance && ui().anchored {
                 div { class: "absolute bottom-24 inset-x-0 text-center text-white",
                     if ui().ring >= 1 && !ui().band_ok {
@@ -569,7 +569,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                             width: "{ring_pct}%",
                         }
                     }
-                    // Lecture continue : distance yaw + stabilité.
+                    // Continuous reading: yaw distance + stability.
                     div { class: "mt-1.5 text-sm font-medium",
                         span { id: ID_DEG, "" }
                     }
@@ -577,7 +577,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Phases de traitement.
+            // Processing phases.
             if in_processing {
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white",
                     Gerbe { size: 44 }
@@ -592,7 +592,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Terminé.
+            // Done.
             if ui().phase == Phase::Done {
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white",
                     div { class: "text-4xl", "✓" }
@@ -601,7 +601,7 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Erreurs : permission, caméra, capteur, stitch/upload.
+            // Errors: permission, camera, sensor, stitch/upload.
             if ui().phase == Phase::Error {
                 div { class: "absolute inset-0 flex flex-col items-center justify-center gap-4 text-white px-8 text-center",
                     div { class: "text-lg",
@@ -629,8 +629,8 @@ pub fn Take360Overlay(on_close: Callback<()>, on_uploaded: Callback<()>) -> Elem
                 }
             }
 
-            // Boutons : « Reprendre » (retrait dernière frame), ancre
-            // (origine/recalage), annuler.
+            // Buttons: "Retake" (remove last frame), anchor
+            // (origin/re-zero), cancel.
             if in_guidance {
                 if ui().anchored && ui().step > 0 {
                     button {
@@ -681,12 +681,12 @@ async fn wait_camera_permission() -> bool {
     false
 }
 
-/// Longueur de l'arc de dwell (circonférence du réticule).
+/// Length of the dwell arc (reticle circumference).
 const ARC_LEN: f32 = 2.0 * std::f32::consts::PI * RETICLE_R;
 
-/// Couche DOM continue (15 Hz) : positions/couleurs des éléments de
-/// guidage sans re-render dioxus. École `push_debug_dom` — le re-render
-/// 30 Hz sature le GPU webview (MALI BAD ALLOC, constat device).
+/// Continuous DOM layer (15 Hz): positions/colours of the guidance
+/// elements without a dioxus re-render. `push_debug_dom` approach — the 30 Hz
+/// re-render saturates the webview GPU (MALI BAD ALLOC, observed on device).
 fn push_overlay_dom(
     pose: Option<guidance::Pose>,
     target_yaw: f32,
@@ -694,12 +694,12 @@ fn push_overlay_dom(
     dwell_start: Option<u64>,
     now: u64,
 ) {
-    // Pré-ancre : la cible serait relative au zéro de session (souvent
-    // capturé EN MOUVEMENT — cf. state.rs) → point guideur au CENTRE et
-    // pas de guidage de rotation : l'instruction est « visez votre point
-    // de départ puis Ancrer ici », pas de chasse à une cible arbitraire.
+    // Pre-anchor: the target would be relative to the session zero (often
+    // captured WHILE MOVING — see state.rs) → guide dot in the CENTRE and
+    // no rotation guidance: the instruction is "aim at your starting point
+    // then Anchor here", no chasing an arbitrary target.
     let anchored = state::anchored();
-    // Valeurs par défaut : tout caché/neutre si pose absente.
+    // Defaults: everything hidden/neutral if there is no pose.
     let (dx, dy) = pose
         .filter(|_| anchored)
         .map(|p| {
@@ -717,8 +717,8 @@ fn push_overlay_dom(
     let band_ok = pose
         .map(|p| (target_pitch - p.pitch).abs() <= guidance::RING_PITCH_TOL_DEG)
         .unwrap_or(false);
-    // Chevron : pointe à distance d (proportionnelle à l'erreur, bornée),
-    // dans le sens de la correction — masqué pré-ancre (cf. dot).
+    // Chevron: points at distance d (proportional to the error, bounded),
+    // in the direction of the correction — hidden pre-anchor (see dot).
     let (arrow_pts, arrow_show) = if anchored && !in_tol && band_ok {
         let dir = err_yaw.signum() * guidance::ROTATION_DIR;
         let d = (err_yaw.abs() * 1.6).clamp(52.0, 150.0);
@@ -747,8 +747,8 @@ fn push_overlay_dom(
         .map(|p| format!("{:+.0}°", p.pitch))
         .unwrap_or_default();
 
-    // Flash : la JS garde sa propre séquence — un delta déclenche
-    // l'animation (opacity 0.7 → fade 250 ms).
+    // Flash: the JS keeps its own sequence — a delta triggers
+    // the animation (opacity 0.7 → 250 ms fade).
     let capture_seq = state::CAPTURE_SEQ.load(Ordering::Relaxed);
     let _ = dioxus::document::eval(&format!(
         "(() => {{ \
@@ -794,7 +794,7 @@ fn push_overlay_dom(
     ));
 }
 
-/// État brut dans le DOM à 10 Hz (debug temporaire — smoke test device).
+/// Raw state in the DOM at 10 Hz (temporary debug — device smoke test).
 fn push_debug_dom(
     beat: u32,
     phase: u8,

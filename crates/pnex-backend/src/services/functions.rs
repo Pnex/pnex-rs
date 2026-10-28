@@ -1,7 +1,7 @@
-//! Service « Fonctions » — CRUD + versioning append-only + résolution pour
-//! la projection deploy + spawn du test en live. Le backend ne lie jamais
-//! edgelink : il génère le texte (pnex-core) et spawn le binaire runtime.
-//! École services/flow.rs.
+//! "Functions" service — CRUD + append-only versioning + resolution for
+//! the deploy projection + live test spawn. The backend never links
+//! edgelink: it generates the text (pnex-core) and spawns the runtime binary.
+//! Modelled on services/flow.rs.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -18,15 +18,15 @@ use pnex_core::{
     FunctionValidateRequest, FunctionValidateResponse, SaveFunctionVersion,
 };
 
-/// Erreurs du service : 400 champ-par-champ (école edge_refs/notify) ou
-/// panne DB (500 au contrôleur).
+/// Service errors: 400 field by field (edge_refs/notify pattern) or
+/// DB outage (500 in the controller).
 #[derive(Debug)]
 pub enum FunctionWriteError {
     /// (field, machine token: `required`, `max_length:200`).
     Field(String, String),
-    /// Directive `@input`/`@output` malformée.
+    /// Malformed `@input`/`@output` directive.
     Directive(pnex_core::DirectiveError),
-    /// Panne DB (mise en 500 par le contrôleur).
+    /// DB outage (turned into 500 by the controller).
     Db(String),
     /// Optimistic concurrency lost: `expected_version_number` is no longer
     /// the latest version (checked inside the save transaction).
@@ -55,7 +55,7 @@ impl From<pnex_core::DirectiveError> for FunctionWriteError {
     }
 }
 
-/// `"js" | "starlark"` → enum (VARCHAR applicatif, école flows.status).
+/// `"js" | "starlark"` → enum (application VARCHAR, flows.status pattern).
 pub(crate) fn parse_language(s: &str) -> Option<FunctionLanguage> {
     match s {
         "js" => Some(FunctionLanguage::Js),
@@ -64,7 +64,7 @@ pub(crate) fn parse_language(s: &str) -> Option<FunctionLanguage> {
     }
 }
 
-/// Nom : trim non vide, ≤ 200 (limite DB `StringLen(200)`).
+/// Name: non-empty after trim, ≤ 200 (DB limit `StringLen(200)`).
 fn validate_name(name: Option<&str>) -> Result<String, FunctionWriteError> {
     let name = name.unwrap_or_default().trim();
     if name.is_empty() {
@@ -82,7 +82,7 @@ fn validate_name(name: Option<&str>) -> Result<String, FunctionWriteError> {
     Ok(name.to_string())
 }
 
-/// Description : trim, vide → None.
+/// Description: trim, empty → None.
 fn clean_optional(value: &Option<String>) -> Option<String> {
     value
         .as_deref()
@@ -91,19 +91,19 @@ fn clean_optional(value: &Option<String>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Interface déclarée sérialisée pour les colonnes JSON `inputs`/`outputs`.
+/// Declared interface serialized for the `inputs`/`outputs` JSON columns.
 fn signature_json(
     code: &str,
 ) -> Result<(serde_json::Value, serde_json::Value), FunctionWriteError> {
     let sig = pnex_core::parse_directives(code)?;
     let inputs = serde_json::to_value(&sig.inputs)
-        .map_err(|e| FunctionWriteError::Db(format!("sérialisation inputs : {e}")))?;
+        .map_err(|e| FunctionWriteError::Db(format!("inputs serialization: {e}")))?;
     let outputs = serde_json::to_value(&sig.outputs)
-        .map_err(|e| FunctionWriteError::Db(format!("sérialisation outputs : {e}")))?;
+        .map_err(|e| FunctionWriteError::Db(format!("outputs serialization: {e}")))?;
     Ok((inputs, outputs))
 }
 
-/// Création : fonction + version 1 en une transaction (école CreateFlow).
+/// Creation: function + version 1 in one transaction (CreateFlow pattern).
 pub async fn create_function(
     db: &DatabaseConnection,
     org_id: i64,
@@ -155,8 +155,8 @@ pub async fn create_function(
     Ok((created, version))
 }
 
-/// Version courante = plus grande `version_number` (append-only). Une ligne
-/// par fonction du lot, une requête par appel.
+/// Current version = highest `version_number` (append-only). One row
+/// per function of the batch, one query per call.
 pub(crate) async fn latest_version<C: sea_orm::ConnectionTrait>(
     db: &C,
     function_id: i64,
@@ -168,8 +168,8 @@ pub(crate) async fn latest_version<C: sea_orm::ConnectionTrait>(
         .await
 }
 
-/// Enregistrement : nouvelle version append-only (code fourni) et/ou mise à
-/// jour de métadonnées. Retourne (fonction à jour, nouvelle version si code).
+/// Save: new append-only version (code provided) and/or metadata
+/// update. Returns (updated function, new version if code).
 pub async fn save_new_version(
     db: &DatabaseConnection,
     function_row: functions::Model,
@@ -219,7 +219,7 @@ pub async fn save_new_version(
 
     let mut new_version = None;
     if let Some(code) = &input.code {
-        let (inputs, outputs) = sig.expect("signature calculée plus haut");
+        let (inputs, outputs) = sig.expect("signature computed above");
         let previous = latest_version(&txn, function_row.id)
             .await
             .map_err(|e| FunctionWriteError::Db(format!("lecture version max : {e}")))?
@@ -251,9 +251,9 @@ pub async fn save_new_version(
     Ok((updated, new_version))
 }
 
-/// Flows **déployés** référençant la fonction (toutes orgs — le garde de
-/// suppression est inter-org par sécurité). Retourne (flow, version
-/// déployée) pour le 409 `function_in_use`.
+/// **Deployed** flows referencing the function (all orgs — the deletion
+/// guard is cross-org for safety). Returns (flow, deployed
+/// version) for the 409 `function_in_use`.
 pub async fn referencing_deployed_flows(
     db: &DatabaseConnection,
     function_id: i64,
@@ -289,18 +289,18 @@ pub async fn referencing_deployed_flows(
     Ok(out)
 }
 
-/// Résolution batch des fonctions référencées par les nœuds `PnexFunction`
-/// du lot (flows déployés + candidat) : alimente `to_red_flows_json_with`.
-/// Une ref manquante (fonction/version supprimée, org croisée) = violation
-/// `function_unresolved` localisée au nœud — le deploy répond 400, les
-/// chemins de retrait/self-healing warn et poursuivent (artefact avec
-/// entrées `comment` no-op).
+/// Batch resolution of the functions referenced by the `PnexFunction` nodes
+/// of the batch (deployed flows + candidate): feeds `to_red_flows_json_with`.
+/// A missing ref (deleted function/version, cross org) = a
+/// `function_unresolved` violation located on the node — deploy answers 400, the
+/// removal/self-healing paths warn and carry on (artifact with
+/// no-op `comment` entries).
 pub async fn resolve_for_projection(
     db: &DatabaseConnection,
     pairs: &[(flows::Model, flow_versions::Model)],
 ) -> Result<(FunctionResolver, Vec<FlowViolation>), sea_orm::DbErr> {
     let mut violations = Vec::new();
-    // Références (function_id, version_number) distinctes.
+    // Distinct (function_id, version_number) references.
     let mut refs: BTreeSet<(i64, i64)> = BTreeSet::new();
     for (_, version) in pairs {
         let Ok(graph) = serde_json::from_value::<FlowGraph>(version.graph.clone()) else {
@@ -349,8 +349,8 @@ pub async fn resolve_for_projection(
         snapshots.insert((v.function_id, v.version_number), (f.org_id, snapshot));
     }
 
-    // Nœud par nœud : ref résoluble dans la même org → snapshot ; sinon
-    // violation localisée (l'id du nœud guide l'éditeur).
+    // Node by node: ref resolvable in the same org → snapshot; otherwise
+    // a located violation (the node id guides the editor).
     let mut resolver = FunctionResolver::new();
     for (flow, version) in pairs {
         let Ok(graph) = serde_json::from_value::<FlowGraph>(version.graph.clone()) else {
@@ -371,7 +371,7 @@ pub async fn resolve_for_projection(
                     Some(&node.id),
                     "function_unresolved",
                     format!(
-                        "fonction « {} » v{} introuvable",
+                        "function \"{}\" v{} not found",
                         config.function_name, config.version_number
                     ),
                 )),
@@ -381,11 +381,11 @@ pub async fn resolve_for_projection(
     Ok((resolver, violations))
 }
 
-/// Test en live : résout (langage, code, interface) puis spawn le binaire
-/// `pnex-flow-runtime --test-function <req.json>` — miroir du harnais du
-/// superviseur (`run_preflight`) : `resolve_program` + `env_clear()` +
-/// `apply_runtime_env`, stdout pipé, deadline avec kill. Err = panne
-/// d'infra (503 au contrôleur) ; le résultat script voyage dans la
+/// Live test: resolves (language, code, interface) then spawns the binary
+/// `pnex-flow-runtime --test-function <req.json>` — mirror of the
+/// supervisor's harness (`run_preflight`): `resolve_program` + `env_clear()` +
+/// `apply_runtime_env`, stdout piped, deadline with kill. Err = infra
+/// outage (503 in the controller); the script result travels in the
 /// `FunctionTestResponse` (ok:false + error).
 pub async fn spawn_function_test(
     settings: &FlowSettings,
@@ -394,21 +394,21 @@ pub async fn spawn_function_test(
     function_id: i64,
     req: &FunctionTestRequest,
 ) -> Result<FunctionTestResponse, String> {
-    // Cadre org : la fonction doit appartenir à l'org de l'appelant.
+    // Org frame: the function must belong to the caller's org.
     let function_row = functions::Entity::find_by_id(function_id)
         .one(db)
         .await
         .map_err(|e| format!("lecture fonction : {e}"))?
-        .ok_or_else(|| "fonction introuvable".to_string())?;
+        .ok_or_else(|| "function not found".to_string())?;
     if function_row.org_id != org_id {
-        return Err("fonction introuvable".to_string());
+        return Err("function not found".to_string());
     }
 
-    // Résolution du code : ad-hoc (test avant save) ou version épinglée
-    // (défaut = version courante).
+    // Code resolution: ad-hoc (test before save) or pinned version
+    // (default = current version).
     let (language, code, inputs_decl, outputs_decl) = if let Some(adhoc) = &req.ad_hoc {
         let sig = pnex_core::parse_directives(&adhoc.code)
-            .map_err(|e| format!("directives : ligne {} : {}", e.line, e.message))?;
+            .map_err(|e| format!("directives: line {}: {}", e.line, e.message))?;
         (adhoc.language, adhoc.code.clone(), sig.inputs, sig.outputs)
     } else {
         let version_number = match req.version_number {
@@ -416,12 +416,12 @@ pub async fn spawn_function_test(
             None => {
                 let current = function_row
                     .current_version_id
-                    .ok_or_else(|| "aucune version : la fonction est vide".to_string())?;
+                    .ok_or_else(|| "no version: the function is empty".to_string())?;
                 function_versions::Entity::find_by_id(current)
                     .one(db)
                     .await
                     .map_err(|e| format!("lecture version courante : {e}"))?
-                    .ok_or_else(|| "version courante introuvable".to_string())?
+                    .ok_or_else(|| "current version not found".to_string())?
                     .version_number
             }
         };
@@ -431,7 +431,7 @@ pub async fn spawn_function_test(
             .one(db)
             .await
             .map_err(|e| format!("lecture version : {e}"))?
-            .ok_or_else(|| format!("version v{version_number} introuvable"))?;
+            .ok_or_else(|| format!("version v{version_number} not found"))?;
         let language =
             parse_language(&function_row.language).ok_or_else(|| "langage inconnu".to_string())?;
         (
@@ -442,10 +442,10 @@ pub async fn spawn_function_test(
         )
     };
 
-    // Msg effectif : msg utilisateur + **valeurs du formulaire typé**
-    // injectées aux chemins implicites `payload.<name>` — sans ça, les
-    // valeurs saisies dans le panneau de test n'atteignent jamais
-    // `inputs[...]` (constaté en E2E : comparaison NoneType vs float).
+    // Effective msg: user msg + **typed form values**
+    // injected at the implicit `payload.<name>` paths — without this, the
+    // values typed in the test panel never reach
+    // `inputs[...]` (seen in E2E: NoneType vs float comparison).
     let mut msg = req.msg.clone().unwrap_or(serde_json::json!({}));
     for (name, value) in &req.inputs {
         let path = pnex_core::default_binding(name);
@@ -453,8 +453,8 @@ pub async fn spawn_function_test(
     }
     let exec = FunctionExecRequest {
         language,
-        // JS : le wrapper (helpers + code + tail) est généré ici — le CLI
-        // n'évalue que du texte déjà préparé.
+        // JS: the wrapper (helpers + code + tail) is generated here — the CLI
+        // only evaluates already-prepared text.
         js_wrapper: match language {
             FunctionLanguage::Js => Some(pnex_core::build_js_wrapper(
                 &code,
@@ -472,22 +472,22 @@ pub async fn spawn_function_test(
         timeout_ms: 5000,
     };
 
-    // Fichier temp + spawn one-shot (scaffolding partagé avec le check
-    // compile-only, école du harnais du superviseur).
+    // Temp file + one-shot spawn (scaffolding shared with the compile-only
+    // check, modelled on the supervisor's harness).
     let (status, line) = run_runtime_with_request(
         settings,
         "--test-function",
-        &serde_json::to_value(&exec).map_err(|e| format!("sérialisation requête : {e}"))?,
+        &serde_json::to_value(&exec).map_err(|e| format!("request serialization: {e}"))?,
     )
     .await?;
 
-    // Une ligne JSON attendue (le CLI imprime FunctionTestResponse en exit 0
-    // même si ok:false) ; une sortie illisible = panne d'infra.
+    // One JSON line expected (the CLI prints FunctionTestResponse with exit 0
+    // even if ok:false); unreadable output = infra outage.
     match serde_json::from_str::<FunctionTestResponse>(&line) {
         Ok(resp) => Ok(resp),
         Err(_) => {
             let detail = if status.success() {
-                "sortie illisible".to_string()
+                "unreadable output".to_string()
             } else {
                 format!("exit {status}")
             };
@@ -496,17 +496,17 @@ pub async fn spawn_function_test(
     }
 }
 
-/// Spawn one-shot du binaire runtime en mode function (`--test-function` /
-/// `--check-function`) : requête sérialisée dans un fichier temp (école
-/// flows.json.candidate : le contrat passe par un fichier, pas par stdin),
-/// `resolve_program` + `env_clear()` + `apply_runtime_env`, stdout pipé,
-/// deadline 10 s avec kill. Retour = (exit status, première ligne stdout).
+/// One-shot spawn of the runtime binary in function mode (`--test-function` /
+/// `--check-function`): request serialized into a temp file (modelled on
+/// flows.json.candidate: the contract goes through a file, not stdin),
+/// `resolve_program` + `env_clear()` + `apply_runtime_env`, stdout piped,
+/// 10 s deadline with kill. Returns (exit status, first stdout line).
 async fn run_runtime_with_request(
     settings: &FlowSettings,
     cli_arg: &str,
     request: &serde_json::Value,
 ) -> Result<(std::process::ExitStatus, String), String> {
-    // Suffixe unique : pid + nanos (même école que le temp du superviseur).
+    // Unique suffix: pid + nanos (same pattern as the supervisor's temp).
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.subsec_nanos())
@@ -526,14 +526,12 @@ async fn run_runtime_with_request(
 
     std::fs::write(
         &request_path,
-        serde_json::to_string(request).map_err(|e| format!("sérialisation requête : {e}"))?,
+        serde_json::to_string(request).map_err(|e| format!("request serialization: {e}"))?,
     )
-    .map_err(|e| format!("écriture requête : {e}"))?;
+    .map_err(|e| format!("request write: {e}"))?;
 
     let wait = async {
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("lancement du runtime : {e}"))?;
+        let mut child = cmd.spawn().map_err(|e| format!("runtime launch: {e}"))?;
         let mut stdout = String::new();
         if let Some(pipe) = child.stdout.take() {
             use tokio::io::AsyncReadExt;
@@ -550,7 +548,7 @@ async fn run_runtime_with_request(
             Ok(result) => result?,
             Err(_) => {
                 let _ = std::fs::remove_file(&request_path);
-                return Err(format!("délai du runtime dépassé (10 s) : {cli_arg}"));
+                return Err(format!("runtime timed out (10 s): {cli_arg}"));
             }
         };
     let _ = std::fs::remove_file(&request_path);
@@ -560,9 +558,9 @@ async fn run_runtime_with_request(
     ))
 }
 
-/// Validation compile-only (barre d'erreurs de l'éditeur) : retransmet la
-/// requête au CLI `pnex-flow-runtime --check-function`. Aucun accès DB —
-/// le corps porte déjà langage et code ad-hoc.
+/// Compile-only validation (editor error bar): forwards the
+/// request to the `pnex-flow-runtime --check-function` CLI. No DB access —
+/// the body already carries the language and ad-hoc code.
 pub async fn spawn_function_check(
     settings: &FlowSettings,
     req: &FunctionValidateRequest,
@@ -570,14 +568,14 @@ pub async fn spawn_function_check(
     let (status, line) = run_runtime_with_request(
         settings,
         "--check-function",
-        &serde_json::to_value(req).map_err(|e| format!("sérialisation requête : {e}"))?,
+        &serde_json::to_value(req).map_err(|e| format!("request serialization: {e}"))?,
     )
     .await?;
     match serde_json::from_str::<FunctionValidateResponse>(&line) {
         Ok(resp) => Ok(resp),
         Err(_) => {
             let detail = if status.success() {
-                "sortie illisible".to_string()
+                "unreadable output".to_string()
             } else {
                 format!("exit {status}")
             };

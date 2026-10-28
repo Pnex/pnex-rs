@@ -1,5 +1,5 @@
-# pnex-server — configuration développement
-# (scaffold Loco v1, adapté : front Dioxus servi en statique depuis ../pnex-frontend/dist)
+# pnex-server — development configuration
+# (Loco v1 scaffold, adapted: Dioxus front served as static files from ../pnex-frontend/dist)
 
 logger:
   enable: true
@@ -9,8 +9,8 @@ logger:
 
 server:
   port: 5250
-  # 0.0.0.0 : exposition LAN pour tests e2e (device/ESP → ws://192.168.1.44:5150).
-  # Revenir à `localhost` hors tests device.
+  # 0.0.0.0: LAN exposure for e2e tests (device/ESP → ws://192.168.1.44:5150).
+  # Go back to `localhost` outside device tests.
   binding: 0.0.0.0
   host: http://localhost
   middlewares:
@@ -24,9 +24,9 @@ server:
         uri: "/"
         path: "../pnex-frontend/dist"
       fallback: "../pnex-frontend/dist/index.html"
-    # CORS DEV UNIQUEMENT : `task dev:hot` sert le front via dx sur :5151
-    # (origine différente du backend :5150). En prod le front est servi par
-    # le backend (same-origin) — jamais de CORS hors développement.
+    # CORS DEV ONLY: `task dev:hot` serves the front via dx on :5151
+    # (different origin from the backend :5150). In prod the front is served by
+    # the backend (same-origin) — never CORS outside development.
     cors:
       enable: true
       allow_origins:
@@ -47,10 +47,10 @@ server:
         - "OPTIONS"
 
 workers:
-  # Phase 6 : queue PostgreSQL — les jobs sont persistés dans pg_loco_queue
-  # et consommés par le process qui drive la queue (`loco start
-  # --server-and-worker`). En ServerOnly simple, l'API peut encore y
-  # déposer des jobs.
+  # Phase 6: PostgreSQL queue — jobs are persisted in pg_loco_queue
+  # and consumed by the process that drives the queue (`loco start
+  # --server-and-worker`). In plain ServerOnly, the API can still
+  # enqueue jobs.
   mode: BackgroundQueue
 
 # Worker job queue (Phase 6): pg_loco_queue table created by loco, on the
@@ -59,7 +59,7 @@ workers:
 queue:
   kind: Postgres
   uri: <%= db_url %>
-  # 1 : contention du cache ~/.platformio ; scaling horizontal par réplicas
+  # 1: ~/.platformio cache contention; horizontal scaling through replicas
   # (PG).
   num_workers: <%= get_env(name="PNEX_QUEUE_NUM_WORKERS", default="1") %>
   poll_interval_sec: 1
@@ -68,14 +68,14 @@ queue:
   min_connections: 1
   connect_timeout: <%= get_env(name="DB_CONNECT_TIMEOUT", default="5000") %>
   idle_timeout: <%= get_env(name="DB_IDLE_TIMEOUT", default="300000") %>
-  # Reprise des jobs orphelins (crash worker en cours de build) — âge >
-  # timeout de build (15 min).
+  # Recovery of orphan jobs (worker crash mid-build) — age >
+  # build timeout (15 min).
   reaper:
     age_minutes: 30
     interval_seconds: 120
 
 database:
-  # Migre au boot (dev/test) — en prod les migrations restent explicites.
+  # Migrate at boot (dev/test) — in prod migrations stay explicit.
   auto_migrate: true
   uri: <%= get_env(name="DATABASE_URL", default="postgres://pnex:pnex@localhost:5432/pnex_studio") %>
   enable_logging: false
@@ -90,8 +90,8 @@ database:
   min_connections: <%= get_env(name="DB_MIN_CONNECTIONS", default="1") %>
   max_connections: <%= get_env(name="DB_MAX_CONNECTIONS", default="10") %>
 
-# Auth Rauthy (Phase 3/D19) : validation JWKS locale + JIT provisioning.
-# Le front étant servi par le backend (same-origin), pas de CORS nécessaire.
+# Rauthy auth (Phase 3/D19): local JWKS validation + JIT provisioning.
+# The front being served by the backend (same-origin), no CORS needed.
 settings:
   # Outbound requests to user-chosen hosts (R8, security.md SEC-W3):
   # lan = loopback, link-local and metadata refused, LAN reachable;
@@ -101,12 +101,12 @@ settings:
   # write key first. Fixed DEV key — never reuse it in production.
   secrets:
     keys: "<%= get_env(name="PNEX_SECRETS_KEYS", default="dev:rJlgG51k+ePf2XrLPnEAXacoz7wUPHiYSxkGT2upQPQ=") %>"
-  # OpenObserve (D1/D2) — absent = télémétrie désactivée (sink noop)
+  # OpenObserve (D1/D2) — absent = telemetry disabled (noop sink)
   openobserve:
     base_url: <%= get_env(name="OPENOBSERVE_URL", default="http://localhost:5080") %>
     root_email: <%= get_env(name="OPENOBSERVE_ROOT_EMAIL", default="root@pnex.local") %>
     root_password: <%= get_env(name="OPENOBSERVE_ROOT_PASSWORD", default="Pnex-dev-2026!") %>
-  # Ingestion Phase 5 (valeurs par défaut si absent — cf. services/settings.rs)
+  # Phase 5 ingestion (default values when absent — see services/settings.rs)
   ingestion:
     silence_ttl_secs: <%= get_env(name="PNEX_SILENCE_TTL_SECS", default="10") %>
     reaper_interval_secs: <%= get_env(name="PNEX_REAPER_INTERVAL_SECS", default="5") %>
@@ -122,12 +122,12 @@ settings:
   ai:
     enabled: <%= get_env(name="PNEX_AI_ENABLED", default="true") %>
   rauthy:
-    # Appels serveur-à-serveur (token, JWKS) — HTTP local, jamais impacté
-    # par le certificat auto-signé de Rauthy.
+    # Server-to-server calls (token, JWKS) — local HTTP, never affected
+    # by Rauthy's self-signed certificate.
     base_url: <%= get_env(name="RAUTHY_URL", default="http://localhost:8080") %>
-    # Issuer vu par les navigateurs/devices — HTTPS auto-signé de Rauthy
-    # (contexte sécurisé : `crypto.subtle` requis par la page login Rauthy
-    # sur une IP LAN). Doit rester aligné avec PUB_URL du compose.yaml.
+    # Issuer seen by browsers/devices — Rauthy's self-signed HTTPS
+    # (secure context: `crypto.subtle` required by the Rauthy login page
+    # on a LAN IP). Must stay aligned with PUB_URL in compose.yaml.
     issuer_url: <%= get_env(name="RAUTHY_ISSUER_URL", default="https://192.168.1.44:8443") %>
     client_id: <%= get_env(name="RAUTHY_CLIENT_ID", default="pnex") %>
   # Object storage (S3-compatible: RustFS, AWS, Scaleway…) of every stored
@@ -144,7 +144,7 @@ settings:
   # Firmware Phase 6: source embedded in the binary (no source config),
   # artifacts in the object storage above.
   firmware:
-    # Machine de dev : `uv run pio` dans le dépôt firmware (sinon `pio`).
+    # Dev machine: `uv run pio` in the firmware repo (otherwise `pio`).
     pio_cmd: <%= get_env(name="PNEX_PIO_CMD", default="pio") %>
     esptool_cmd: <%= get_env(name="PNEX_ESPTOOL_CMD", default="esptool") %>
     timeout_secs: <%= get_env(name="PNEX_BUILD_TIMEOUT_SECS", default="900") %>
@@ -153,30 +153,30 @@ settings:
     # Upload cap: clean 413 JSON beyond; the axum limit (max+1 MB, see
     # routes()) stays the safety net.
     max_bytes: <%= get_env(name="PNEX_MEDIA_MAX_BYTES", default="268435456") %>
-  # Stitching serveur (Take 360 V2) — assemblage HD des prises 360° dans le
-  # worker `stitch_panorama`. Les frames transitent par le MediaStore
-  # (settings.media, aucune config de stockage propre). enabled=false :
-  # POST /stitch-jobs répond 503 (kill-switch).
+  # Server-side stitching (Take 360 V2) — HD assembly of 360° takes in the
+  # `stitch_panorama` worker. Frames go through the MediaStore
+  # (settings.media, no storage config of its own). enabled=false:
+  # POST /stitch-jobs answers 503 (kill-switch).
   stitch:
     enabled: <%= get_env(name="PNEX_STITCH_ENABLED", default="true") %>
-    # Largeur du panorama HD (hauteur = /2). 4096 = la « spec » ; le stitch
-    # est CPU-bound (minutes) — dimensionner la queue en conséquence.
+    # HD panorama width (height = /2). 4096 = the "spec"; the stitch
+    # is CPU-bound (minutes) — size the queue accordingly.
     out_width: <%= get_env(name="PNEX_STITCH_OUT_WIDTH", default="4096") %>
-    # Modèles ONNX de pose (SuperPoint + LightGlue) — absents → repli NCC.
+    # ONNX pose models (SuperPoint + LightGlue) — absent → NCC fallback.
     models_dir: <%= get_env(name="PNEX_STITCH_MODELS_DIR", default="deploy/models") %>
-    # Nombre de stitches simultanés (knob fixe, décision 2026-09-10) :
-    # RPi 8 Go → 2 (l'env surcharge ; les builds firmware partagent la queue).
+    # Number of concurrent stitches (fixed knob, decision 2026-09-10):
+    # RPi 8 GB → 2 (env overrides; firmware builds share the queue).
     max_concurrent: <%= get_env(name="PNEX_STITCH_MAX_CONCURRENT", default="2") %>
-  # Moteur de flow ETL (D18) — superviseur du runtime headless
-  # `pnex-flow-runtime` (process enfant, mode B ; cf. services/flow_supervisor.rs).
-  # enabled=false : flows éditables en base mais jamais exécutés (défaut) —
-  # `task dev` force PNEX_FLOW_ENABLED=true pour partir avec le moteur.
-  # env_allowlist : seules ces variables franchissent la frontière process —
-  # aucun secret dans flows.json (PRD §8).
+  # ETL flow engine (D18) — supervisor of the headless runtime
+  # `pnex-flow-runtime` (child process, mode B; see services/flow_supervisor.rs).
+  # enabled=false: flows editable in the database but never executed (default) —
+  # `task dev` forces PNEX_FLOW_ENABLED=true to start with the engine.
+  # env_allowlist: only these variables cross the process boundary —
+  # no secret in flows.json (PRD §8).
   flow:
     enabled: <%= get_env(name="PNEX_FLOW_ENABLED", default="false") %>
-    # Défaut dev : binaire du workspace (résolu contre la racine monorepo,
-    # quel que soit le cwd) — faire `cargo build -p pnex-flow-runtime` avant.
+    # Dev default: workspace binary (resolved against the monorepo root,
+    # whatever the cwd) — run `cargo build -p pnex-flow-runtime` first.
     runtime_cmd: <%= get_env(name="PNEX_FLOW_RUNTIME_CMD", default="./target/debug/pnex-flow-runtime") %>
     state_dir: <%= get_env(name="PNEX_FLOW_STATE_DIR", default="./flow-state") %>
     restart_backoff_secs: <%= get_env(name="PNEX_FLOW_BACKOFF_SECS", default="5") %>
@@ -184,6 +184,6 @@ settings:
     terminate_secs: <%= get_env(name="PNEX_FLOW_TERMINATE_SECS", default="10") %>
     reload_ack_secs: <%= get_env(name="PNEX_FLOW_RELOAD_ACK_SECS", default="10") %>
     env_allowlist: ["OPENOBSERVE_URL", "OPENOBSERVE_ROOT_EMAIL", "OPENOBSERVE_ROOT_PASSWORD"]
-    # Outils de debug (panneau Debug) — mode dev/debug uniquement : absent de
-    # la config de run → 403 sur /debug, boutons masqués.
+    # Debug tools (Debug panel) — dev/debug mode only: absent from
+    # the run config → 403 on /debug, buttons hidden.
     debug_tools: <%= get_env(name="PNEX_FLOW_DEBUG_TOOLS", default="true") %>

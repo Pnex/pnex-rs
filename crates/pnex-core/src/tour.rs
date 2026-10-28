@@ -1,28 +1,28 @@
-//! Studio — document de parcours de visite 3D (mode panorama V1).
+//! Studio — 3D visit tour document (panorama mode V1).
 //!
-//! Le document (`tour_versions.doc`, JSONB) porte étages, scènes et liens ;
-//! les assets (plans d'étage `floorplan`, panoramas `panorama`) restent des
-//! `media_assets` **référencés par UUID, jamais dupliqués** (D21). École
-//! `flow.rs` : types partagés backend ↔ front, serde-only (wasm32-safe),
-//! validation pure ici — la validation **en base** (existence + kind des
-//! assets dans l'org) vit côté service backend.
+//! The document (`tour_versions.doc`, JSONB) carries floors, scenes and links;
+//! the assets (`floorplan` floor plans, `panorama` panoramas) stay
+//! `media_assets` **referenced by UUID, never duplicated** (D21). `flow.rs`
+//! school: types shared backend ↔ front, serde-only (wasm32-safe),
+//! pure validation here — the **database** validation (existence + kind of the
+//! assets in the org) lives in the backend service.
 //!
-//! Sémantique de versioning (école flows/D18) : append-only, save = nouvelle
-//! version avec concurrence optimiste (`expected_version_number` → 409) ;
-//! la version « courante » est la dernière ; la version publique est pointée
-//! par `tours.published_version_id` (FK circulaire, école
+//! Versioning semantics (flows/D18 school): append-only, save = new
+//! version with optimistic concurrency (`expected_version_number` → 409);
+//! the "current" version is the latest; the public version is pointed to
+//! by `tours.published_version_id` (circular FK, school of
 //! `deployed_version_id`).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Seul mode du document en V1 (la colonne `tours.mode` prépare la tranche
-/// maquette three.js — toute autre valeur est rejetée à la validation).
+/// Only document mode in V1 (the `tours.mode` column prepares the three.js
+/// mockup slice — any other value is rejected at validation).
 pub const TOUR_MODE_PANORAMA: &str = "panorama";
 
-/// Lien intra-étage (dérivé, non éditable).
+/// Intra-floor link (derived, not editable).
 pub const TOUR_LINK_WALK: &str = "walk";
-/// Lien inter-étages (escalier — dérivé, non éditable).
+/// Inter-floor link (staircase — derived, not editable).
 pub const TOUR_LINK_STAIR: &str = "stair";
 
 /// Validation violation of the document (like `FlowViolation`): machine
@@ -152,7 +152,7 @@ impl Default for TourDoc {
 }
 
 impl TourDoc {
-    /// Document minimal d'un tour fraîchement créé (un étage, aucune scène).
+    /// Minimal document of a freshly created tour (one floor, no scene).
     pub fn minimal() -> Self {
         Self {
             floors: vec![TourFloor {
@@ -175,9 +175,9 @@ fn violation(subject: Option<&str>, code: &str, message: String) -> TourViolatio
     }
 }
 
-/// Validation **structurelle** pure du document (école `validate_graph`) —
-/// nulle accès base : l'existence et le kind des assets référencés sont
-/// vérifiés côté service (`validate_doc_assets`).
+/// Pure **structural** validation of the document (`validate_graph` school) —
+/// no database access: the existence and kind of the referenced assets are
+/// checked on the service side (`validate_doc_assets`).
 pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
     let mut v = Vec::new();
     if doc.mode != TOUR_MODE_PANORAMA {
@@ -191,7 +191,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
         ));
     }
 
-    // Ids uniques par collection + non vides.
+    // Unique, non-empty ids per collection.
     let mut floor_ids = std::collections::HashSet::new();
     for f in &doc.floors {
         if f.id.is_empty() {
@@ -257,7 +257,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
         }
     }
 
-    // Scènes : étage connu + champs numériques cohérents.
+    // Scenes: known floor + consistent numeric fields.
     for s in &doc.scenes {
         if !floor_ids.contains(&s.floor_id) {
             v.push(violation(
@@ -296,7 +296,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
         }
     }
 
-    // Plans : dimensions et échelle strictement positives quand présentes.
+    // Plans: strictly positive dimensions and scale when present.
     for f in &doc.floors {
         if let Some(plan) = &f.plan {
             if plan.width.is_some_and(|w| !w.is_finite() || w <= 0.0)
@@ -328,7 +328,7 @@ pub fn validate_tour_doc(doc: &TourDoc) -> Vec<TourViolation> {
         }
     }
 
-    // Scène de départ connue.
+    // Known start scene.
     if let Some(start) = &doc.start_scene {
         if !scene_ids.contains(start) {
             v.push(violation(
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn doc_tolerant_aux_champs_manquants() {
-        // Un doc ancien sans start_scene/links ni options du plan se charge.
+        // An old doc without start_scene/links or plan options loads.
         let doc: TourDoc = serde_json::from_str(
             r#"{"mode":"panorama","floors":[{"id":"f1","name":"RDC","plan":{"media_asset_id":"00000000-0000-0000-0000-000000000001"}}],
                 "scenes":[{"id":"s1","floor_id":"f1","media_asset_id":"00000000-0000-0000-0000-000000000000"}]}"#,
@@ -557,7 +557,7 @@ mod tests {
         .unwrap();
         assert_eq!(doc.start_scene, None);
         assert!(doc.links.is_empty());
-        assert_eq!(doc.scenes[0].initial_fov, 100.0, "défaut fov");
+        assert_eq!(doc.scenes[0].initial_fov, 100.0, "default fov");
     }
 
     #[test]
@@ -571,10 +571,10 @@ mod tests {
         let mut doc = sample_doc();
         assert!(
             validate_tour_doc(&doc).is_empty(),
-            "doc valide sans violation"
+            "valid doc without violation"
         );
 
-        // Lien orphelin + boucle sur soi + doublon.
+        // Orphan link + self loop + duplicate.
         doc.links.push(TourLink {
             id: "l2".into(),
             from: "s1".into(),
@@ -608,7 +608,7 @@ mod tests {
         assert!(codes.contains(&"self_link"));
         assert!(codes.contains(&"duplicate_link"));
 
-        // Scène hors étage + fov hors bornes + départ inconnu.
+        // Scene outside a floor + fov out of bounds + unknown start.
         let mut doc = sample_doc();
         doc.scenes[0].floor_id = "zz".into();
         doc.scenes[0].initial_fov = 200.0;

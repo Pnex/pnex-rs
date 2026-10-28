@@ -1,13 +1,13 @@
-//! Canal `smtp` — e-mail via lettre 0.11 (rustls, jamais openssl).
+//! `smtp` channel — email via lettre 0.11 (rustls, never openssl).
 //!
-//! TLS : `tls` = SMTPS implicite (465), `starttls` = upgrade explicite
-//! (587), `none` = `builder_dangerous` (25) — le champ vide/absent vaut
-//! `starttls` (quirk du Select front qui envoie `""` si jamais touché).
-//! Erreurs lettre : transitoire/timeout → [`NotifyError::Network`]
-//! (retryable), permanent (auth 535, refus de boîte, TLS) →
-//! [`NotifyError::Config`] — un retry ne réparera pas un 5xx permanent.
-//! D54 : `password` est un champ secret write-only. D62 : le sujet du
-//! Message devient l'objet de l'e-mail ; `meta` jamais projeté.
+//! TLS: `tls` = implicit SMTPS (465), `starttls` = explicit upgrade
+//! (587), `none` = `builder_dangerous` (25) — an empty/absent field means
+//! `starttls` (quirk of the front Select that sends `""` if never touched).
+//! lettre errors: transient/timeout → [`NotifyError::Network`]
+//! (retryable), permanent (auth 535, mailbox refusal, TLS) →
+//! [`NotifyError::Config`] — a retry will not fix a permanent 5xx.
+//! D54: `password` is a write-only secret field. D62: the Message
+//! subject becomes the email subject; `meta` never projected.
 
 use async_trait::async_trait;
 use lettre::message::header::ContentType;
@@ -23,11 +23,11 @@ use crate::{Attachment, Channel, Message};
 
 pub struct SmtpChannel;
 
-/// Modes TLS du champ `tls` (select).
+/// TLS modes of the `tls` field (select).
 const TLS_MODES: &[&str] = &["starttls", "tls", "none"];
 
-/// Port par défaut selon le mode TLS — toujours posé explicitement pour
-/// lever l'ambiguïté des ports par défaut lettre.
+/// Default port per TLS mode — always set explicitly to
+/// remove the ambiguity of lettre's default ports.
 fn default_port(tls: &str) -> u16 {
     match tls {
         "tls" => 465,
@@ -36,8 +36,8 @@ fn default_port(tls: &str) -> u16 {
     }
 }
 
-/// Port lu depuis la config — le front Number sérialise un f64 : lire
-/// i64, sinon f64 tronqué.
+/// Port read from the config — the front Number serializes an f64: read
+/// i64, otherwise truncated f64.
 fn port_de(config: &serde_json::Value) -> Option<u16> {
     let v = config.get("port")?;
     let n = v.as_i64().or_else(|| v.as_f64().map(|f| f as i64))?;
@@ -131,7 +131,7 @@ impl Channel for SmtpChannel {
 
     fn validate(&self, config: &serde_json::Value) -> Result<(), String> {
         str_field(config, "host").ok_or_else(|| "the SMTP host is required".to_string())?;
-        // Port : présent et non null ⇒ doit être numérique valide (1–65535).
+        // Port: present and non-null ⇒ must be a valid number (1–65535).
         if let Some(v) = config.get("port") {
             if !v.is_null() {
                 let port = port_de(config)
@@ -145,8 +145,8 @@ impl Channel for SmtpChannel {
                 return Err(format!("invalid TLS mode: {tls} (starttls, tls or none)"));
             }
         }
-        // Credentials en paire (école webhook : un secret sans vecteur
-        // d'usage est une erreur).
+        // Credentials as a pair (webhook pattern: a secret without a usage
+        // vector is an error).
         let username = str_field(config, "username");
         let password = str_field(config, "password");
         if username.is_some() != password.is_some() {
@@ -189,7 +189,7 @@ impl Channel for SmtpChannel {
     ) -> Result<(), NotifyError> {
         let host = str_field(config, "host")
             .ok_or_else(|| NotifyError::Config("missing SMTP host".into()))?;
-        // str_field filtre les vides : "" (quirk select) → défaut starttls.
+        // str_field filters out empties: "" (select quirk) → default starttls.
         let tls = str_field(config, "tls").unwrap_or("starttls");
         let port = port_de(config).unwrap_or_else(|| default_port(tls));
         let builder = match tls {
@@ -210,16 +210,16 @@ impl Channel for SmtpChannel {
             if e.is_transient() || e.is_timeout() {
                 NotifyError::Network(e.to_string())
             } else {
-                // Permanent (auth 535, refus de boîte, TLS) : le retry ne
-                // réparera pas.
+                // Permanent (auth 535, mailbox refusal, TLS): retrying will
+                // not fix it.
                 NotifyError::Config(e.to_string())
             }
         })
     }
 }
 
-/// Construit l'e-mail (from/to/subject/body) — fonction pure, éprouvée en
-/// test (l'URL de production ne se prête pas à un récepteur local).
+/// Builds the email (from/to/subject/body) — pure function, tested in
+/// tests (the production URL does not lend itself to a local receiver).
 fn build_email(
     config: &serde_json::Value,
     msg: &Message,
@@ -288,7 +288,7 @@ mod tests {
         assert!(SmtpChannel
             .validate(&json!({"host": "h", "from": "x@y.z", "to": "a@b.c", "tls": "quic"}))
             .is_err());
-        // Credentials en paire.
+        // Credentials as a pair.
         assert!(SmtpChannel
             .validate(&json!({"host": "h", "from": "x@y.z", "to": "a@b.c", "password": "p"}))
             .is_err());
@@ -334,7 +334,7 @@ mod tests {
         assert!(rendu.contains("b@example.com"), "{rendu}");
         assert!(rendu.contains("Alerte seuil"), "{rendu}");
         assert!(rendu.contains("v=42"), "{rendu}");
-        // Sans sujet : pas d'objet, corps intact.
+        // Without subject: no email subject, body intact.
         let email = build_email(
             &cfg,
             &Message {

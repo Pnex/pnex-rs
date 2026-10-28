@@ -179,7 +179,7 @@ pub async fn junk_folder(s: &mut Session) -> Option<String> {
         .map(|n| n.name().to_string())
 }
 
-/// `INBOX.Spam`, `[Gmail]/Spam`, `Courrier indésirable`…: the last level
+/// `INBOX.Spam`, `[Gmail]/Spam`, `Courrier indésirable`…: the last level  english-guard: allow (French example)
 /// of the name says spam.
 fn is_junk_name(name: &str) -> bool {
     let leaf = name

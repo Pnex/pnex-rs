@@ -1,16 +1,16 @@
-//! Studio SCADA — éditeur **canvas libre** des dashboards (D40/D41,
-//! école `flow_editor` : canvas sans lib, reducers purs, gestes
-//! pointeur). Deux outils : **Sélection** (déplacer/resize/supprimer) et
-//! **Trait** (accroches aux milieux des côtés, liaison purement
-//! visuelle widget→widget qui suit les déplacements).
+//! SCADA Studio — **free canvas** editor of dashboards (D40/D41,
+//! `flow_editor` approach: canvas without a lib, pure reducers, pointer
+//! gestures). Two tools: **Select** (move/resize/delete) and
+//! **Line** (anchors at the middle of the sides, purely visual
+//! widget→widget link that follows moves).
 //!
-//! D34 : en édition le polling est **suspendu** — les valeurs affichées
-//! sont une **photo** prise à l'entrée (badge figé) ; le rendu du corps
-//! de widget est le même qu'en live ([`crate::components::dashboard_widget`]).
+//! D34: while editing, polling is **suspended** — the displayed values
+//! are a **snapshot** taken on entry (frozen badge); the widget body
+//! rendering is the same as live ([`crate::components::dashboard_widget`]).
 //!
-//! Save (D24) : `PATCH` = nouvelle version = live — la validation
-//! `pnex_core::validate_layout` tourne **dans le navigateur** avant
-//! l'appel ; 409 → modale recharger/écraser (école flow editor).
+//! Save (D24): `PATCH` = new version = live — the
+//! `pnex_core::validate_layout` validation runs **in the browser** before
+//! the call; 409 → reload/overwrite modal (flow editor approach).
 
 mod actions;
 mod appearance;
@@ -51,42 +51,42 @@ use library::TemplateList;
 use symbol_panel::SymbolPanel;
 use versions::VersionsDrawer;
 
-/// Outil courant.
+/// Current tool.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Tool {
     Select,
     Wire,
 }
 
-/// Sélection courante : widget ou trait.
+/// Current selection: widget or line.
 #[derive(Clone, PartialEq)]
 pub enum Selection {
     Widget(String),
     Wire(String),
 }
 
-/// Geste en cours (école `Interaction` du flow editor).
+/// Gesture in progress (flow editor `Interaction` approach).
 #[derive(Clone, PartialEq)]
 pub enum Interaction {
     Idle,
-    /// Pan du viewport (fond) — origine client + pan d'origine.
+    /// Viewport pan (background) — client origin + origin pan.
     Panning {
         start: (f64, f64),
         origin: (f64, f64),
     },
-    /// Déplacement de widget — décalage point→position du widget.
+    /// Widget move — offset point→widget position.
     Dragging {
         id: String,
         grab: (f64, f64),
     },
-    /// Resize par la poignée bas-droit.
+    /// Resize through the bottom-right handle.
     Resizing {
         id: String,
     },
 }
 
-/// Bundle de signaux partagés avec les sous-composants (école
-/// `flow_editor::EditorCx`).
+/// Signal bundle shared with the subcomponents (
+/// `flow_editor::EditorCx` approach).
 #[derive(Clone, Copy, PartialEq)]
 pub struct EditorCx {
     pub dashboard_id: Signal<String>,
@@ -94,28 +94,28 @@ pub struct EditorCx {
     pub name: Signal<String>,
     pub layout: Signal<DashboardLayout>,
     pub saved_layout: Signal<DashboardLayout>,
-    /// Version **courante côté serveur** (le pointeur live visé par le
-    /// prochain save).
+    /// **Current server-side** version (the live pointer targeted by the
+    /// next save).
     pub saved_version: Signal<i64>,
     pub selected: Signal<Option<Selection>>,
     pub interaction: Signal<Interaction>,
     pub pan: Signal<(f64, f64)>,
     pub zoom: Signal<f64>,
     pub tool: Signal<Tool>,
-    /// Première accroche armée en outil Trait.
+    /// First anchor armed in the Line tool.
     pub wire_draft: Signal<Option<WireEndpoint>>,
     pub history: Signal<History>,
     pub counter: Signal<u32>,
     pub violations: Signal<Vec<VizViolation>>,
     pub saving: Signal<bool>,
     pub conflict: Signal<bool>,
-    /// Valeurs figées (photo au mount) — clé `metric|device_id`.
+    /// Frozen values (snapshot at mount) — key `metric|device_id`.
     pub live: Signal<HashMap<String, Option<Vec<TelemetryPoint>>>>,
-    /// Modèle en cours de drag depuis la bibliothèque.
+    /// Template being dragged from the library.
     pub drag_template: Signal<Option<pnex_core::VizWidget>>,
-    /// Re-load de la palette (après save-as-template).
+    /// Palette reload (after save-as-template).
     pub palette_reload: Signal<u32>,
-    /// Modale « enregistrer comme modèle » (id du widget source).
+    /// "Save as template" modal (id of the source widget).
     pub save_as: Signal<Option<String>>,
     /// Symbol library panel shown (tools slot).
     pub symbols_open: Signal<bool>,
@@ -137,7 +137,7 @@ pub fn DashboardEditor(
     let dashboard_id = use_signal(move || detail.id.clone());
     let name = use_signal(move || detail.name.clone());
     let initial_layout = detail.layout.clone();
-    // Amorce AVANT que le closure de `layout` ne consomme `initial_layout`.
+    // Seed BEFORE the `layout` closure consumes `initial_layout`.
     let counter_seed = state::seed_counter(&initial_layout);
     let layout = use_signal(move || initial_layout.clone());
     let saved_layout = use_signal(move || detail.layout.clone());
@@ -149,9 +149,9 @@ pub fn DashboardEditor(
     let tool = use_signal(|| Tool::Select);
     let wire_draft: Signal<Option<WireEndpoint>> = use_signal(|| None);
     let history = use_signal(History::default);
-    // Compteur amorcé sur les ids persistés du layout chargé : repartir de
-    // 0 ré-émettrait `w-0001` en collision ⇒ panic « keyed siblings » au
-    // premier ajout de la session.
+    // Counter seeded on the persisted ids of the loaded layout: restarting from
+    // 0 would re-emit `w-0001` in collision ⇒ "keyed siblings" panic on the
+    // first add of the session.
     let counter = use_signal(move || counter_seed);
     let violations: Signal<Vec<VizViolation>> = use_signal(Vec::new);
     let saving = use_signal(|| false);
@@ -215,9 +215,9 @@ pub fn DashboardEditor(
         false,
     );
 
-    // ── Photo des valeurs à l'entrée (D34) : un seul series-batch, pas
-    // de polling en édition. Sources lues **non trackées** : la photo ne
-    // se reprend pas à chaque pixel de drag.
+    // ── Snapshot of the values on entry (D34): a single series-batch, no
+    // polling while editing. Sources read **untracked**: the snapshot is not
+    // retaken on every drag pixel.
     use_effect(move || {
         let sources: Vec<pnex_core::SourceRef> = {
             let l = layout.read_unchecked();
@@ -232,13 +232,13 @@ pub fn DashboardEditor(
         });
     });
 
-    // dirty dérivé au rendu (école flow editor).
+    // dirty derived at render (flow editor approach).
     let dirty = layout() != saved_layout();
     let has_violations = !violations.is_empty();
     let save_disabled = !can_write || cx.saving.cloned() || !dirty;
 
-    // ── Catalogue télémétrie hissé ici (ex-`Inspector`) : le remount de
-    // l'inspecteur par sélection ne doit pas refetch /telemetry/catalog.
+    // ── Telemetry catalogue hoisted here (formerly `Inspector`): remounting
+    // the inspector per selection must not refetch /telemetry/catalog.
     let reload = cx.palette_reload;
     let catalog = use_resource(move || async move {
         let _ = reload();
@@ -275,10 +275,10 @@ pub fn DashboardEditor(
             map
         })
         .unwrap_or_default();
-    // Catalogue **par source** (device ou device virtuel de flow) pour
-    // l'inspecteur : l'appareil se choisit d'abord, la métrique ensuite
-    // (filtrée à la source). `pred_dev="virtual_device"` identifie les
-    // devices virtuels publiés par les flows (`flow_{id}`).
+    // Catalogue **per source** (device or flow virtual device) for
+    // the inspector: the device is picked first, the metric next
+    // (filtered to the source). `pred_dev="virtual_device"` identifies the
+    // virtual devices published by flows (`flow_{id}`).
     let sources_catalog = inspector::SourceCatalog {
         by_source: cat
             .as_ref()
@@ -316,8 +316,8 @@ pub fn DashboardEditor(
 
     let device_metrics = sources_catalog.by_source.clone();
 
-    // ── Slot inspecteur : monté seulement sur sélection (principe 4).
-    // Titre = titre du widget sinon libellé du type ; « Trait » pour un lien.
+    // ── Inspector slot: mounted only on selection (principle 4).
+    // Title = widget title, else the type label; "Line" for a link.
     let inspector_slot: Option<Element> = cx.selected.cloned().map(|sel| match sel {
         Selection::Widget(id) => {
             let w = state::find_widget(&cx.layout.read(), &id);
@@ -489,10 +489,10 @@ pub fn DashboardEditor(
     }
 }
 
-/// Pill d'outils flottante (sélection / trait / undo / redo) — slot
-/// `tools` de la coquille, à côté du bouton « + ». Les libellés deviennent
-/// des infobulles : la pill gagne la place que la barre pleine largeur
-/// occupait.
+/// Floating tools pill (select / line / undo / redo) — the shell's
+/// `tools` slot, next to the "+" button. The labels become
+/// tooltips: the pill wins back the room the full-width bar
+/// used to take.
 #[component]
 fn ToolsPill(mut cx: EditorCx, mobile: bool) -> Element {
     let select_title = t!("db-tool-select");

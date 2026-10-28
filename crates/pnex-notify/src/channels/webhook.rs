@@ -1,9 +1,9 @@
-//! Canal `webhook` — POST JSON générique `{subject, body, meta}` (D51).
-//! Couvre ntfy (POST JSON), Gotify, Telegram Bot API, domotique… sans
-//! dépendance par service : la cible adapte ou le consommateur lit le JSON.
+//! `webhook` channel — generic JSON POST `{subject, body, meta}` (D51).
+//! Covers ntfy (JSON POST), Gotify, Telegram Bot API, home automation… without
+//! a per-service dependency: the target adapts or the consumer reads the JSON.
 //!
-//! D54 : `secret_value` est un champ secret write-only, transmis en header
-//! (`secret_header`), jamais concaténé dans l'URL ni loggé.
+//! D54: `secret_value` is a write-only secret field, sent as a header
+//! (`secret_header`), never concatenated into the URL nor logged.
 //!
 //! D315: with `signing = hmac` the secret is never sent; the body is signed
 //! instead: `x-pnex-timestamp: <unix seconds>` and
@@ -115,7 +115,7 @@ impl Channel for WebhookChannel {
         match (header, value) {
             (Some(_), Some(_)) | (None, None) => Ok(()),
             (None, Some(_)) => Err("secret_header is required to send secret_value".into()),
-            (Some(_), None) => Ok(()), // header posé sans valeur : ignoré au send
+            (Some(_), None) => Ok(()), // header set without value: ignored at send
         }
     }
 
@@ -296,8 +296,8 @@ mod tests {
         assert!(WebhookChannel
             .validate(&json!({"url": "ftp://example.com"}))
             .is_err());
-        // secret_value sans secret_header : refusé (le secret n'a pas de
-        // vecteur de transmission).
+        // secret_value without secret_header: refused (the secret has no
+        // transmission vector).
         assert!(WebhookChannel
             .validate(&json!({"url": "https://e.com", "secret_value": "x"}))
             .is_err());

@@ -1,21 +1,21 @@
-//! Deep-links et mode d'édition des bases viz (D32/D34, école
-//! `state/flows.rs`) : la route `/dashboards` porte des query params
-//! **statiques** (`?id&:mode`) qui hydratent ces signaux au mount — les
-//! props de route ne sont pas des signaux (dioxus #2784).
+//! Deep-links and edit mode of the viz bases (D32/D34, `state/flows.rs`
+//! school): the `/dashboards` route carries **static** query params
+//! (`?id&:mode`) that hydrate these signals on mount — route props
+//! are not signals (dioxus #2784).
 
 use dioxus::prelude::*;
 
-/// Dashboard à ouvrir directement dans la page (éditeur ou live).
+/// Dashboard to open directly in the page (editor or live).
 pub static OPEN_DASHBOARD: GlobalSignal<Option<String>> = GlobalSignal::new(|| None);
 
-/// Mode édition demandé (`?mode=edit`). La page le valide : un viewer
-/// retombe en live (D34), l'API refuserait de toute façon (403).
+/// Requested edit mode (`?mode=edit`). The page validates it: a viewer
+/// falls back to live (D34), the API would refuse anyway (403).
 pub static VIZ_EDIT: GlobalSignal<bool> = GlobalSignal::new(|| false);
 
-/// Pose les deux signaux d'un coup (à l'entrée dans la page).
+/// Sets both signals at once (on entering the page).
 pub fn open_dashboard(id: Option<String>, edit: bool) {
-    // GlobalSignal : pas de `&mut` static — mutation via with_mut
-    // (méthode intrinsèque, mémoire projet).
+    // GlobalSignal: no `&mut` static — mutation via with_mut
+    // (intrinsic method, project memory).
     OPEN_DASHBOARD.with_mut(|v| *v = id);
     VIZ_EDIT.with_mut(|v| *v = edit);
 }

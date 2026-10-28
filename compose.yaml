@@ -1,7 +1,7 @@
-# Infra de développement PNEX — PostgreSQL 18 + Rauthy (IdP OIDC full-Rust)
-# + OpenObserve + RustFS (S3-compatible, tier industriel D5 v2).
-# Usage : docker compose up -d
-# Le backend lit DATABASE_URL (voir .env.example).
+# PNEX development infra — PostgreSQL 18 + Rauthy (full-Rust OIDC IdP)
+# + OpenObserve + RustFS (S3-compatible, industrial tier D5 v2).
+# Usage: docker compose up -d
+# The backend reads DATABASE_URL (see .env.example).
 
 services:
   postgres:
@@ -14,8 +14,8 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      # PG 18+ : monter /var/lib/postgresql (pas .../data) — les données vont
-      # dans un sous-répertoire par version majeure (compat pg_upgrade).
+      # PG 18+: mount /var/lib/postgresql (not .../data) — the data goes
+      # into one subdirectory per major version (pg_upgrade compat).
       - pnex-pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pnex -d pnex"]
@@ -23,45 +23,45 @@ services:
       timeout: 3s
       retries: 10
 
-  # IdP OIDC full-Rust (D10) — DB embarquée hiqlite (volume /app/data),
-  # l'équivalent Rust de Keycloak. Bootstrap au premier démarrage uniquement
-  # (DB vide) : deploy/rauthy/bootstrap/*.json — client public pnex (PKCE
-  # S256) + users de test admin/bob. Admin UI : /auth/v1/admin (admin/admin).
-  # Ports raft/gossip hiqlite (8100/8200) volontairement non publiés.
+  # Full-Rust OIDC IdP (D10) — embedded hiqlite DB (volume /app/data),
+  # the Rust equivalent of Keycloak. Bootstrap on first start only
+  # (empty DB): deploy/rauthy/bootstrap/*.json — public client pnex (PKCE
+  # S256) + test users admin/bob. Admin UI: /auth/v1/admin (admin/admin).
+  # hiqlite raft/gossip ports (8100/8200) deliberately not published.
   rauthy:
     image: ghcr.io/sebadob/rauthy:0.36.2
     container_name: pnex-rauthy
     depends_on:
       - mailcrab
     environment:
-      # Issuer vu par les navigateurs : HTTPS auto-signé sur l'IP LAN —
-      # contexte sécurisé obligatoire (crypto.subtle pour la page login
-      # Rauthy depuis un device physique). Aligné avec issuer_url de
-      # development.yaml. Si l'IP DHCP change, mettre les deux à jour.
+      # Issuer seen by browsers: self-signed HTTPS on the LAN IP —
+      # secure context required (crypto.subtle for the Rauthy login page
+      # from a physical device). Aligned with issuer_url in
+      # development.yaml. If the DHCP IP changes, update both.
       PUB_URL: 192.168.1.185:8443
-      # Certificat auto-signé généré au boot par Rauthy (dev uniquement) —
-      # le navigateur du device traverse l'avertissement de certificat une
-      # fois, le contexte reste « secure » (schéma https).
+      # Self-signed certificate generated at boot by Rauthy (dev only) —
+      # the device browser goes through the certificate warning once,
+      # the context stays "secure" (https scheme).
       TLS_GENERATE_SELF_SIGNED: "true"
       HQL_NODE_ID: 1
       BOOTSTRAP_ADMIN_EMAIL: admin@localhost
       BOOTSTRAP_ADMIN_PASSWORD_PLAIN: admin
-      # Dev local : par défaut Rauthy pose des cookies __Host- avec l'attribut
-      # Secure, que Chrome Android (émulateur) refuse sur http://localhost via
-      # adb reverse → la session d'authorize est perdue à chaque POST →
-      # « Invalid credentials » en boucle (constat 2026-09-08 : cause de la
-      # demi-journée de debug login). COOKIE_MODE=danger-insecure désactive le
-      # prefixe __Host- et Secure — option officielle Rauthy pour du HTTP
-      # non-chiffré (ne JAMAIS activer en prod). DEV_MODE reste actif (DPoP
-      # http), mais n'assouplit PAS les cookies.
+      # Local dev: by default Rauthy sets __Host- cookies with the Secure
+      # attribute, which Chrome Android (emulator) rejects on http://localhost via
+      # adb reverse → the authorize session is lost on every POST →
+      # "Invalid credentials" in a loop (observed 2026-09-08: cause of the
+      # half-day of login debugging). COOKIE_MODE=danger-insecure disables the
+      # __Host- prefix and Secure — official Rauthy option for unencrypted
+      # HTTP (NEVER enable in prod). DEV_MODE stays on (DPoP
+      # http), but does NOT relax the cookies.
       DEV_MODE: "true"
       COOKIE_MODE: "danger-insecure"
-      # NE PAS définir ENC_KEYS/ENC_KEY_ACTIVE ici : Rauthy génère ses clés
-      # de chiffrement au premier boot, les persiste en DB et les recharge
-      # ensuite — toute clé externe est écrasée par celle de la DB au boot
-      # suivant (détail dans deploy/rauthy/config.toml).
-      # Inscription ouverte : l'activation des comptes passe par un mail —
-      # catcher SMTP en dev (UI des mails : http://localhost:1080).
+      # DO NOT set ENC_KEYS/ENC_KEY_ACTIVE here: Rauthy generates its
+      # encryption keys on first boot, persists them in the DB and reloads them
+      # afterwards — any external key is overwritten by the DB one on the next
+      # boot (details in deploy/rauthy/config.toml).
+      # Open sign-up: account activation goes through a mail —
+      # SMTP catcher in dev (mail UI: http://localhost:1080).
       SMTP_URL: mailcrab
       SMTP_PORT: "1025"
       SMTP_DANGER_INSECURE: "true"
@@ -71,21 +71,21 @@ services:
       - pnex-rauthydata:/app/data
     ports:
       - "8080:8080"
-      # HTTPS auto-signé : navigateurs de devices (login SSO Rauthy).
+      # Self-signed HTTPS: device browsers (Rauthy SSO login).
       - "8443:8443"
 
-  # Catcher SMTP dev — Rauthy active les comptes par mail après inscription
-  # ouverte. UI : http://localhost:1080 (image sans shell → pas de healthcheck,
-  # même approche que rustfs).
+  # Dev SMTP catcher — Rauthy activates accounts by mail after open
+  # sign-up. UI: http://localhost:1080 (image without shell → no healthcheck,
+  # same approach as rustfs).
   mailcrab:
     image: marlonb/mailcrab:latest
     container_name: pnex-mailcrab
     ports:
       - "1080:1080"
 
-  # Stockage télémétrie (D1) : ingestion backend → org OpenObserve par org
-  # PNEX (D2) — le provisioning org + token d'ingestion est automatisé
-  # côté backend (services/openobserve).
+  # Telemetry storage (D1): backend ingestion → one OpenObserve org per
+  # PNEX org (D2) — org provisioning + ingestion token is automated
+  # on the backend side (services/openobserve).
   openobserve:
     image: openobserve/openobserve:v1.0.0
     container_name: pnex-openobserve
@@ -116,9 +116,9 @@ services:
     volumes:
       - pnex-rustfsdata:/data
 
-  # One-shot : crée les buckets au premier démarrage (retente tant que
-  # rustfs n'écoute pas — pas de healthcheck sur l'image). AWS CLI plutôt
-  # que mc.
+  # One-shot: creates the buckets on first start (retries while
+  # rustfs is not listening — no healthcheck on the image). AWS CLI rather
+  # than mc.
   rustfs-init:
     image: amazon/aws-cli:2.27.49
     container_name: pnex-rustfs-init
@@ -132,19 +132,19 @@ services:
     entrypoint: >
       sh -c '
       until aws --endpoint-url http://rustfs:9000 s3 ls >/dev/null 2>&1;
-      do echo "rustfs pas prêt, nouvelle tentative…"; sleep 1; done;
+      do echo "rustfs not ready, retrying…"; sleep 1; done;
       aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex 2>/dev/null
-      || echo "pnex : existe déjà";
+      || echo "pnex: already exists";
       aws --endpoint-url http://rustfs:9000 s3api create-bucket --bucket pnex-test 2>/dev/null
-      || echo "pnex-test : existe déjà";
-      echo "buckets pnex + pnex-test prêts"
+      || echo "pnex-test: already exists";
+      echo "buckets pnex + pnex-test ready"
       '
 
-  # Valkey (fork BSD de Redis, Linux Foundation) — cache live dernier-point
-  # pour le nœud flow pnex-device-read : fraîcheur ~ms au lieu de la latence
-  # du batcher d'ingestion OpenObserve. Persistence désactivée : cache pur,
-  # O2 reste le stockage de référence (cache perdu = dégradation en fraîcheur
-  # O2, jamais de perte de donnée) — zéro écriture disque (usure SD sur Pi).
+  # Valkey (BSD fork of Redis, Linux Foundation) — live last-point cache
+  # for the pnex-device-read flow node: ~ms freshness instead of the latency
+  # of the OpenObserve ingestion batcher. Persistence disabled: pure cache,
+  # O2 stays the reference storage (lost cache = degraded to O2
+  # freshness, never data loss) — zero disk writes (SD wear on Pi).
   valkey:
     image: valkey/valkey:9-alpine
     container_name: pnex-valkey

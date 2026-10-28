@@ -1,8 +1,8 @@
-//! État du panneau d'édition d'annotations (D59) — `AnnotationEditorCx`
-//! (paquet de signaux Copy, école `TourEditorCx`) + réducteurs purs testés.
-//! Invariants : `kind` dérivé du type de cible (cohérence kind↔cible
-//! garantie par construction) ; ids `a{n}` auto-incrémentés ; géométrie
-//! equirect uniquement en V1 (les scènes de tour sont des panoramas — D59).
+//! State of the annotation editing panel (D59) — `AnnotationEditorCx`
+//! (bundle of Copy signals, `TourEditorCx` approach) + tested pure reducers.
+//! Invariants: `kind` derived from the target type (kind↔target consistency
+//! guaranteed by construction); auto-incremented `a{n}` ids; equirect
+//! geometry only in V1 (tour scenes are panoramas — D59).
 
 use dioxus::prelude::*;
 use pnex_core::{
@@ -11,7 +11,7 @@ use pnex_core::{
     ANNOTATION_KIND_STATUS,
 };
 
-/// Prochain id d'item libre (a{n} : 1 + max des suffixes numériques du doc).
+/// Next free item id (a{n}: 1 + max of the doc's numeric suffixes).
 pub fn next_item_id(doc: &AnnotationDoc) -> String {
     let mut max = 0u32;
     for it in &doc.items {
@@ -24,7 +24,7 @@ pub fn next_item_id(doc: &AnnotationDoc) -> String {
     format!("a{}", max + 1)
 }
 
-/// Item résumé pour la liste du panneau.
+/// Summary item for the panel list.
 #[derive(Clone)]
 pub struct EditorItemRow {
     pub id: String,
@@ -51,7 +51,7 @@ pub fn item_rows(doc: &AnnotationDoc, media_asset_id: &str) -> Vec<EditorItemRow
         .collect()
 }
 
-/// Rows d'items plats (x/y ∈ [0,1]) — marqueurs de la page annotations.
+/// Flat item rows (x/y ∈ [0,1]) — markers of the annotations page.
 pub fn item_rows_flat(doc: &AnnotationDoc, media_asset_id: &str) -> Vec<EditorItemRowFlat> {
     doc.items
         .iter()
@@ -69,7 +69,7 @@ pub fn item_rows_flat(doc: &AnnotationDoc, media_asset_id: &str) -> Vec<EditorIt
         .collect()
 }
 
-/// Item résumé plat pour la liste du panneau.
+/// Flat summary item for the panel list.
 #[derive(Clone)]
 pub struct EditorItemRowFlat {
     pub id: String,
@@ -79,7 +79,7 @@ pub struct EditorItemRowFlat {
     pub y: f64,
 }
 
-/// Pose un item au clic pano (défaut : note) — retourne le nouvel id.
+/// Places an item on a pano click (default: note) — returns the new id.
 pub fn place_item(doc: &mut AnnotationDoc, media_asset_id: &str, yaw: f64, pitch: f64) -> String {
     let id = next_item_id(doc);
     doc.items.push(AnnotationItem {
@@ -99,8 +99,8 @@ pub fn place_item(doc: &mut AnnotationDoc, media_asset_id: &str, yaw: f64, pitch
     id
 }
 
-/// Pose un item sur une image PLATE (x/y ∈ [0,1] du conteneur) — pivot
-/// UX v3 : la page annotations traite aussi les photos.
+/// Places an item on a FLAT image (x/y ∈ [0,1] of the container) — UX
+/// pivot v3: the annotations page also handles photos.
 pub fn place_item_flat(doc: &mut AnnotationDoc, media_asset_id: &str, x: f64, y: f64) -> String {
     let id = next_item_id(doc);
     doc.items.push(AnnotationItem {
@@ -120,7 +120,7 @@ pub fn place_item_flat(doc: &mut AnnotationDoc, media_asset_id: &str, x: f64, y:
     id
 }
 
-/// Repositionne un item équirect (drag d'ajustement pano).
+/// Repositions an equirect item (pano adjustment drag).
 pub fn move_item(doc: &mut AnnotationDoc, item_id: &str, yaw: f64, pitch: f64) {
     for it in doc.items.iter_mut().filter(|it| it.id == item_id) {
         if let AnnotationGeometry::Equirect { yaw: gy, pitch: gp } = &mut it.geometry {
@@ -130,8 +130,8 @@ pub fn move_item(doc: &mut AnnotationDoc, item_id: &str, yaw: f64, pitch: f64) {
     }
 }
 
-/// Repositionne un item plat (drag sur l'image, x/y ∈ [0,1]) — consommé
-/// par le drag des marqueurs plats (page annotations).
+/// Repositions a flat item (drag on the image, x/y ∈ [0,1]) — used
+/// by the drag of flat markers (annotations page).
 pub fn move_item_flat(doc: &mut AnnotationDoc, item_id: &str, x: f64, y: f64) {
     for it in doc.items.iter_mut().filter(|it| it.id == item_id) {
         if let AnnotationGeometry::Flat { x: gx, y: gy } = &mut it.geometry {
@@ -210,8 +210,8 @@ pub fn move_item_splat(doc: &mut AnnotationDoc, item_id: &str, x: f64, y: f64, z
     }
 }
 
-/// Change la cible d'un item — le `kind` SUIT le type de cible
-/// (cohérence kind↔cible garantie par construction, D57).
+/// Changes the target of an item — the `kind` FOLLOWS the target type
+/// (kind↔target consistency guaranteed by construction, D57).
 pub fn set_item_target(doc: &mut AnnotationDoc, item_id: &str, target: AnnotationTarget) {
     let kind = target_kind(&target);
     for it in doc.items.iter_mut().filter(|it| it.id == item_id) {
@@ -232,7 +232,7 @@ pub fn set_item_color(doc: &mut AnnotationDoc, item_id: &str, color: Option<Stri
     }
 }
 
-/// Type de cible → kind (string applicatif).
+/// Target type → kind (application string).
 pub fn target_kind(target: &AnnotationTarget) -> &'static str {
     match target {
         AnnotationTarget::Device { .. } => ANNOTATION_KIND_DEVICE,
@@ -244,32 +244,32 @@ pub fn target_kind(target: &AnnotationTarget) -> &'static str {
     }
 }
 
-/// `true` si l'item existe.
+/// `true` if the item exists.
 pub fn has_item(doc: &AnnotationDoc, item_id: &str) -> bool {
     doc.items.iter().any(|it| it.id == item_id)
 }
 
-/// Enlève un item par id.
+/// Removes an item by id.
 pub fn remove_item(doc: &mut AnnotationDoc, item_id: &str) {
     doc.items.retain(|it| it.id != item_id)
 }
 
-/// Paquet de signaux du panneau d'édition (école TourEditorCx — tous
-/// Copy, passables aux sous-composants).
+/// Signal bundle of the editing panel (TourEditorCx approach — all
+/// Copy, passable to subcomponents).
 #[derive(Clone, Copy, PartialEq)]
 pub struct AnnotationEditorCx {
-    /// Couche en cours d'édition (None = aucune).
+    /// Layer being edited (None = none).
     pub layer_id: Signal<Option<String>>,
     pub doc: Signal<AnnotationDoc>,
     pub saved_doc: Signal<AnnotationDoc>,
     pub saved_version: Signal<i64>,
-    /// Item sélectionné (id) pour l'inspecteur.
+    /// Selected item (id) for the inspector.
     pub selected: Signal<Option<String>>,
-    /// Mode pose actif (clic pano → place_item).
+    /// Placement mode active (pano click → place_item).
     pub placing: Signal<bool>,
     pub violations: Signal<Vec<AnnotationViolation>>,
     pub saving: Signal<bool>,
-    /// Conflit 409 : description serveur (modal recharger/écraser).
+    /// 409 conflict: server description (reload/overwrite modal).
     pub conflict: Signal<Option<String>>,
 }
 
@@ -288,8 +288,8 @@ impl AnnotationEditorCx {
         }
     }
 
-    /// Mutation du doc + revalidation structurelle immédiate (la méthode
-    /// prend `mut self` : Signal::set exige &mut — école TourEditorCx).
+    /// Doc mutation + immediate structural revalidation (the method
+    /// takes `mut self`: Signal::set requires &mut — TourEditorCx approach).
     pub fn update_doc(mut self, f: impl FnOnce(&mut AnnotationDoc)) {
         let mut doc = self.doc.cloned();
         f(&mut doc);
@@ -368,7 +368,7 @@ mod tests {
         let id2 = place_item(&mut doc, "asset-1", 30.0, 5.0);
         assert_ne!(id1, id2);
         assert_eq!(next_item_id(&doc), format!("a{}", 4));
-        // Un id exotique ne casse pas l'incrément.
+        // An exotic id does not break the increment.
         doc.items[0].id = "zz".into();
         assert_eq!(next_item_id(&doc), "a4");
     }

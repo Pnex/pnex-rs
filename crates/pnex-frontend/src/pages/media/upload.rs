@@ -40,7 +40,11 @@ pub(super) fn UploadModal(on_close: Callback<()>, on_uploaded: Callback<()>) -> 
                                 spawn(async move {
                                     match file.read_bytes().await {
                                         Ok(bytes) => store_file_bytes(bytes.to_vec()),
-                                        Err(err) => toasts::error(format!("lecture du fichier : {err:?}")),
+                                        Err(err) => {
+                                            toasts::error(
+                                                format!("{}: {err:?}", t!("media-file-read-error")),
+                                            )
+                                        }
                                     }
                                 });
                             }

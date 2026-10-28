@@ -1,7 +1,7 @@
-//! Logger minimal du runtime : les logs du moteur (crate `log`) partent en
-//! **JSON-lines sur stderr** — le canal stdout est réservé aux événements
-//! machine (`started`, `debug`, `redeployed`…) consommés par le superviseur
-//! Loco. Pas de log4rs : dépendance inutile pour un daemon headless.
+//! Minimal runtime logger: the engine logs (`log` crate) go out as
+//! **JSON-lines on stderr** — the stdout channel is reserved for the machine
+//! events (`started`, `debug`, `redeployed`…) consumed by the Loco
+//! supervisor. No log4rs: useless dependency for a headless daemon.
 
 use std::io::Write;
 
@@ -10,7 +10,7 @@ pub struct JsonLogger {
 }
 
 impl JsonLogger {
-    /// Niveau depuis `PNEX_FLOW_LOG` (défaut : info).
+    /// Level from `PNEX_FLOW_LOG` (default: info).
     pub fn from_env() -> Self {
         Self {
             level: max_level_from_env(),
@@ -18,7 +18,7 @@ impl JsonLogger {
     }
 }
 
-/// Niveau de log global, partagé entre le logger et `log::set_max_level`.
+/// Global log level, shared between the logger and `log::set_max_level`.
 pub fn max_level_from_env() -> log::LevelFilter {
     std::env::var("PNEX_FLOW_LOG")
         .ok()

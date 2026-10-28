@@ -1,36 +1,36 @@
 /*!
- * Fond animé « gerbe de faisceaux » (style Tron) — page de login PNeX.
+ * Animated "beam sheaf" background (Tron style) — PNeX login page.
  *
- * Script statique SANS dépendance npm : pas de passage par js:build/esbuild
- * (réservé au glue esptool-js), servi tel quel via asset!().
+ * Static script WITHOUT npm dependency: does not go through js:build/esbuild
+ * (reserved for the esptool-js glue), served as is via asset!().
  *
- * Expose deux globales consommées par le pont `src/tron.rs` :
- *   - window.pnexTronGerbe.mount(hostId) → crée le canvas WebGL2 dans le div
- *     hôte, démarre la boucle RAF ; false si WebGL2 indisponible (le dégradé
- *     CSS de secours reste alors visible).
- *   - window.pnexTronGerbe.unmount() → stoppe le RAF, retire le listener de
- *     resize, supprime canvas et contexte GL (appelé au unmount Dioxus).
+ * Exposes two globals consumed by the bridge `src/tron.rs`:
+ *   - window.pnexTronGerbe.mount(hostId) → creates the WebGL2 canvas in the
+ *     host div, starts the RAF loop; false if WebGL2 is unavailable (the
+ *     fallback CSS gradient then stays visible).
+ *   - window.pnexTronGerbe.unmount() → stops the RAF, removes the resize
+ *     listener, deletes canvas and GL context (called on Dioxus unmount).
  */
 (function () {
   'use strict';
 
-  // Paramètres figés (ex-curseurs de la démo) — ajustables ici.
+  // Fixed parameters (former demo sliders) — tunable here.
   var CONFIG = {
-    spread: 1.35,  // écartement en bas
-    topw: 0.05,    // serrage en haut
+    spread: 1.35,  // spread at the bottom
+    topw: 0.05,    // tightness at the top
     curve: 2.25,   // courbure (1 = droit)
-    count: 24,     // nombre de faisceaux
-    lw: 0.16,      // épaisseur
-    top: 0.82,     // hauteur du foyer
+    count: 24,     // number of beams
+    lw: 0.16,      // thickness
+    top: 0.82,     // height of the focus
     len: 1.75,     // longueur
-    speed: 0.15,   // vitesse de défilement des segments (bas → foyer)
+    speed: 0.15,   // scroll speed of the segments (bottom → focus)
     seg: 3.0,      // segments (dash)
     sway: 0.025,   // souffle (sway)
-    glow: 1.1,     // éclat / glow
-    seed: 12.7,    // graine de palette (fixe → branding déterministe)
+    glow: 1.1,     // brightness / glow
+    seed: 12.7,    // palette seed (fixed → deterministic branding)
   };
 
-  var mounted = null; // état courant { canvas, gl, raf, onResize, reduced }
+  var mounted = null; // current state { canvas, gl, raf, onResize, reduced }
 
   function compile(gl, type, src) {
     var s = gl.createShader(type);
@@ -47,8 +47,8 @@
     'in vec2 a_pos;\n' +
     'void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }\n';
 
-  // Fragment shader : gerbe de faisceaux — foyer serré en haut, éventail
-  // large en bas, segments colorés qui coulent le long des faisceaux.
+  // Fragment shader: beam sheaf — tight focus at the top, wide fan at the
+  // bottom, colored segments flowing along the beams.
   var FRAG = '#version 300 es\n' +
     'precision highp float;\n' +
     'out vec4 fragColor;\n' +
@@ -89,16 +89,16 @@
     '  float aspect = u_res.x / u_res.y;\n' +
     '  p.x *= aspect;\n' +
     '\n' +
-    '  // v : profondeur le long de la gerbe, 0 au foyer (haut), 1 en bas.\n' +
+    '  // v: depth along the sheaf, 0 at the focus (top), 1 at the bottom.\n' +
     '  float v    = (u_top - p.y) / u_len;\n' +
     '  float band = step(0.0, v) * step(v, 1.0);\n' +
     '  float vp   = clamp(v, 0.0, 1.0);\n' +
     '\n' +
-    '  // souffle latéral façon saule au vent\n' +
+    '  // sideways sway, like a willow in the wind\n' +
     '  float sway = sin(u_time*0.6 + vp*3.2) * u_sway * vp;\n' +
     '  float x = p.x - sway;\n' +
     '\n' +
-    '  // largeur de la gerbe : serrée au foyer, large en bas\n' +
+    '  // sheaf width: tight at the focus, wide at the bottom\n' +
     '  float width = u_topw + u_spread * pow(vp, u_curve);\n' +
     '\n' +
     '  float N     = u_count;\n' +
@@ -110,13 +110,13 @@
     '  float hw = u_lw;\n' +
     '  float line = smoothstep(hw+aa, hw-aa, abs(local));\n' +
     '\n' +
-    '  // nombre fini de faisceaux + fondu au foyer et au bord bas\n' +
+    '  // finite number of beams + fade at the focus and the bottom edge\n' +
     '  float present = step(abs(lineId), N + 0.5) * band;\n' +
     '  float topFade = smoothstep(0.0, 0.06, v);\n' +
     '  float botFade = smoothstep(1.0, 0.86, v);\n' +
     '  present *= topFade * botFade;\n' +
     '\n' +
-    '  // segments qui coulent le long des faisceaux\n' +
+    '  // segments flowing along the beams\n' +
     '  float scroll  = v*u_seg + u_time*u_speed;\n' +
     '  float segId   = floor(scroll);\n' +
     '  float segF    = fract(scroll);\n' +
@@ -134,7 +134,7 @@
     '  vec3 bg = vec3(0.045, 0.155, 0.185);\n' +
     '  vec3 outCol = bg + col*intensity*u_glow + col*halo*0.22*u_glow;\n' +
     '\n' +
-    '  // double lueur de foyer\n' +
+    '  // double focus glow\n' +
     '  float g1 = smoothstep(0.10, 0.0, length(vec2(p.x-0.05, p.y-u_top)));\n' +
     '  float g2 = smoothstep(0.10, 0.0, length(vec2(p.x+0.05, p.y-u_top)));\n' +
     '  outCol += vec3(0.4, 0.9, 0.95) * (g1+g2) * 0.10;\n' +
@@ -145,9 +145,9 @@
 
   var FRAG_SRC = FRAG + MAIN;
 
-  // Monte l'animation dans le div hôte. Idempotent : un mount sur une gerbe
-  // déjà montée ne fait rien. Renvoie false sans rien casser si WebGL2
-  // manque — le dégradé CSS de secours reste alors visible.
+  // Mounts the animation in the host div. Idempotent: a mount on an already
+  // mounted sheaf does nothing. Returns false without breaking anything if
+  // WebGL2 is missing — the fallback CSS gradient then stays visible.
   function mount(hostId) {
     var host = document.getElementById(hostId);
     if (!host || mounted) return !!mounted;
@@ -161,7 +161,7 @@
 
     var gl = canvas.getContext('webgl2', { antialias: true, premultipliedAlpha: false });
     if (!gl) {
-      console.warn('tron-gerbe: WebGL2 indisponible, fond statique conservé');
+      console.warn('tron-gerbe: WebGL2 unavailable, static background kept');
       canvas.remove();
       return false;
     }
@@ -192,8 +192,8 @@
         U[n] = gl.getUniformLocation(prog, 'u_' + n);
       });
 
-    // Taille = celle du hôte (pas du viewport : la page login peut défiler
-    // sur petit écran), DPR plafonné à 2 comme la démo.
+    // Size = the host's (not the viewport's: the login page may scroll on
+    // a small screen), DPR capped at 2 like the demo.
     function resize() {
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
       var w = Math.floor(host.clientWidth * dpr);
@@ -209,7 +209,7 @@
     var reduced = window.matchMedia &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    // Passe d'uniformes + draw — sans avancer le temps.
+    // Uniforms pass + draw — without advancing time.
     function render() {
       resize();
       gl.uniform2f(U.res, canvas.width, canvas.height);
@@ -238,8 +238,8 @@
       mounted.raf = requestAnimationFrame(frame);
     }
 
-    // Resize : redraw immédiat (obligatoire en reduced motion, sinon la
-    // frame statique ne suit pas la nouvelle taille).
+    // Resize: immediate redraw (mandatory in reduced motion, otherwise the
+    // static frame does not follow the new size).
     function onResize() {
       resize();
       if (mounted && mounted.reduced) render();
@@ -248,7 +248,7 @@
     mounted = { canvas: canvas, gl: gl, raf: null, onResize: onResize, reduced: reduced };
     window.addEventListener('resize', onResize);
     if (reduced) {
-      render(); // une frame statique, pas de boucle RAF
+      render(); // one static frame, no RAF loop
     } else {
       mounted.raf = requestAnimationFrame(frame);
     }

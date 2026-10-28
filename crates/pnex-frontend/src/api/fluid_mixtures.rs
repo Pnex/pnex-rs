@@ -1,6 +1,6 @@
-//! Client API des mélanges de fluides personnalisés — miroir de
-//! `controllers/fluid_mixtures.rs`. Les types viennent de `pnex-core`
-//! (wasm-safe) : `pnex_core::FluidMixture` / `FluidMixtureComposition`.
+//! API client for custom fluid mixtures — mirror of
+//! `controllers/fluid_mixtures.rs`. Types come from `pnex-core`
+//! (wasm-safe): `pnex_core::FluidMixture` / `FluidMixtureComposition`.
 
 use serde::Deserialize;
 
@@ -37,7 +37,7 @@ pub async fn create_fluid_mixture(body: &FluidMixtureInput) -> Result<FluidMixtu
     client::request(reqwest::Method::POST, "/api/v1/fluid-mixtures", Some(value)).await
 }
 
-/// `PUT /api/v1/fluid-mixtures/{id}` — remplacement complet.
+/// `PUT /api/v1/fluid-mixtures/{id}` — full replacement.
 pub async fn update_fluid_mixture(
     id: &str,
     body: &FluidMixtureInput,

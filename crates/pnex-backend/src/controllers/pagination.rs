@@ -220,16 +220,16 @@ mod tests {
 
     #[test]
     fn defaults_et_clamp() {
-        // Défaut piloté par l'env (absente ici) → fallback 10, partout.
+        // Env-driven default (absent here) → fallback 10, everywhere.
         assert_eq!(PageParams::from(None, None).limit, default_limit());
         assert_eq!(default_limit(), DEFAULT_LIMIT_FALLBACK);
-        // limit invalide/négative → défaut ; > 100 → clamp.
+        // invalid/negative limit → default; > 100 → clamp.
         assert_eq!(PageParams::from(Some("0"), None).limit, default_limit());
         assert_eq!(PageParams::from(Some("-3"), None).limit, default_limit());
         assert_eq!(PageParams::from(Some("abc"), None).limit, default_limit());
         assert_eq!(PageParams::from(Some("500"), None).limit, MAX_LIMIT);
         assert_eq!(PageParams::from(Some("2"), None).limit, 2);
-        // offset négatif/invalide → 0.
+        // negative/invalid offset → 0.
         assert_eq!(PageParams::from(None, Some("-5")).offset, 0);
         assert_eq!(PageParams::from(None, Some("zz")).offset, 0);
         assert_eq!(PageParams::from(None, Some("42")).offset, 42);
@@ -239,10 +239,10 @@ mod tests {
     fn recherche_rust_multichamps() {
         let search = Some("RELAY".to_string());
         assert!(rust_search_match(&search, &["relay_1ch", "actuator"]));
-        // Insensible à la casse.
+        // Case-insensitive.
         assert!(rust_search_match(&Some("1ch".into()), &["relay_1ch"]));
         assert!(!rust_search_match(&Some("zzz".into()), &["relay_1ch"]));
-        // Absent/vide → pas de filtre.
+        // Absent/empty → no filter.
         assert!(rust_search_match(&None, &[]));
         assert!(rust_search_match(
             &Some("   ".into()),
@@ -263,21 +263,17 @@ mod tests {
             limit: 20,
             offset: 20,
         };
-        assert_eq!(
-            page.next_offset(40),
-            None,
-            "40 items = dernière page en 2×20"
-        );
+        assert_eq!(page.next_offset(40), None, "40 items = last page in 2×20");
         assert_eq!(page.previous_offset(), Some(0));
 
         let page = PageParams {
             limit: 20,
             offset: 40,
         };
-        assert_eq!(page.next_offset(41), None, "dernière page incomplète");
+        assert_eq!(page.next_offset(41), None, "incomplete last page");
         assert_eq!(page.previous_offset(), Some(20));
 
-        // offset « au milieu du vide » : previous ramène sur une page réelle.
+        // offset "in the middle of nowhere": previous brings back to a real page.
         let page = PageParams {
             limit: 20,
             offset: 55,
@@ -305,12 +301,16 @@ mod tests {
             limit: 20,
             offset: 30,
         };
-        assert_eq!(page.slice(35), (30, 5), "take borné par la fin du Vec");
+        assert_eq!(
+            page.slice(35),
+            (30, 5),
+            "take bounded by the end of the Vec"
+        );
         let page = PageParams {
             limit: 20,
             offset: 50,
         };
-        assert_eq!(page.slice(35), (35, 0), "offset au-delà → vide");
+        assert_eq!(page.slice(35), (35, 0), "offset beyond → empty");
     }
 
     #[test]

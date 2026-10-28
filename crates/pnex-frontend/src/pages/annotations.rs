@@ -1,8 +1,8 @@
-//! Page dédiée « Annotations » (pivot UX §9 v3, 2026-09-16) — une LISTE
-//! classique d'objets « ensembles d'annotations » : chaque entrée porte un
-//! nom global, un média associé (colonne media_asset_id, 000027) et ses
-//! annotations, versionnées et publiables. Ouvrir un média = voir les
-//! ensembles existants (filtre media=) pour réutiliser plutôt que dupliquer.
+//! Dedicated "Annotations" page (UX pivot §9 v3, 2026-09-16) — a classic
+//! LIST of "annotation set" objects: each entry carries a
+//! global name, an associated media (media_asset_id column, 000027) and its
+//! annotations, versioned and publishable. Opening a media = seeing the
+//! existing sets (media= filter) to reuse rather than duplicate.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -40,7 +40,7 @@ enum View {
 pub fn Annotations() -> Element {
     let can_write = crate::state::access::can("annotation-layers:write");
 
-    // ─── Listes de base (médias pour les noms + filtre) ───
+    // ─── Base lists (media for names + filter) ───
     let mut view = use_signal(|| View::List);
 
     // Global search deep link (D69): consume the requested layer id once
@@ -85,7 +85,7 @@ pub fn Annotations() -> Element {
             .await
         }
     });
-    // (nom, kind) par média — le kind choisit le viewer (sphère vs plat).
+    // (name, kind) per media — the kind picks the viewer (sphere vs flat).
     let media_map: std::collections::HashMap<String, (String, String)> = media_res
         .value()
         .read()
@@ -98,7 +98,7 @@ pub fn Annotations() -> Element {
         })
         .unwrap_or_default();
 
-    // Tours de l'org (noms de la liste + picker du modal) — école media_map.
+    // Org tours (list names + modal picker) — media_map style.
     let tours_res = use_resource(move || {
         let _ = sets_reload();
         async move { api::tours::list_all(&api::tours::TourFilters::default()).await }
@@ -158,10 +158,10 @@ pub fn Annotations() -> Element {
             },
         );
 
-    // ─── Précalculs rendu ───
+    // ─── Render precomputations ───
     let search_placeholder = t!("annot-page-search").to_string();
     let host_id = "pnex-annot-page-host".to_string();
-    // Média courant de l'éditeur : fixe pour un ensemble-média (000027).
+    // Current media of the editor: fixed for a media set (000027).
     let mut cur_media: Signal<Option<String>> = use_signal(|| None);
 
     // Tour of the open set (tour-scoped sets, 000028): the editor opens the
@@ -188,8 +188,8 @@ pub fn Annotations() -> Element {
         }
     });
 
-    // À l'ouverture d'un ensemble-média : fixer le média courant (les
-    // ensembles-tour le mettent à jour à chaque navigation de scène).
+    // When opening a media set: set the current media (tour
+    // sets update it at each scene navigation).
     use_effect(move || {
         let _ = sets_reload.cloned();
         if let View::Editor(id) = view.cloned() {
@@ -206,8 +206,8 @@ pub fn Annotations() -> Element {
             }
         }
     });
-    // État éditeur possédé par la PAGE : les marqueurs plats sont rendus
-    // ici (les hotspots pannellum ne portent que l'équirect).
+    // Editor state owned by the PAGE: flat markers are rendered
+    // here (pannellum hotspots only carry the equirect).
     let cx = AnnotationEditorCx::new();
     // Read-only preview of the PUBLISHED annotations (what the map, media
     // page and tours show) — the editor panel is unmounted meanwhile.
@@ -223,9 +223,9 @@ pub fn Annotations() -> Element {
         _ => None,
     };
 
-    // Lecture synchrone de la ressource des ensembles (doctrine socle CRUD)
-    // — la liste historique n'avait AUCUN état (pending/erreur rendaient une
-    // table vide) ; ListStates les introduit.
+    // Synchronous read of the sets resource (CRUD base doctrine)
+    // — the historical list had NO state (pending/error rendered an
+    // empty table); ListStates introduces them.
     let (list_state, is_empty) = match &*sets_res.value().read() {
         None => (None, false),
         Some(Ok(all)) => (Some(Ok(())), all.is_empty()),
@@ -233,9 +233,9 @@ pub fn Annotations() -> Element {
     };
     let sets_count = sets.len() as i64;
 
-    // Colonnes de la table — la ligne entière est cliquable (on_row_click,
-    // extension socle motivée par cette page) ; le bouton delete fait
-    // stop_propagation pour ne pas déclencher l'ouverture.
+    // Table columns — the whole row is clickable (on_row_click,
+    // CRUD base extension motivated by this page); the delete button does
+    // stop_propagation so as not to trigger the opening.
     let columns = vec![
         Column::new(
             t!("annot-page-col-name").to_string(),
@@ -332,7 +332,7 @@ pub fn Annotations() -> Element {
                     can_write,
                     add_label: Some(t!("annot-page-new").to_string()),
                     on_add: move |_| new_open.set(true),
-                    // Filtre : recherche + médias (recherche live, canon socle).
+                    // Filter: search + media (live search, CRUD base canon).
                     FilterBar {
                         SearchInput {
                             placeholder: search_placeholder,
@@ -377,7 +377,7 @@ pub fn Annotations() -> Element {
             },
             View::Editor(_open_id) => rsx! {
                 div { class: "p-6 space-y-3",
-                    // Barre : retour + nom + autres ensembles du même média
+                    // Bar: back + name + other sets of the same media
                     div { class: "flex items-center gap-3 flex-wrap",
                         button {
                             class: BTN_SECONDARY_SM,
@@ -595,7 +595,7 @@ pub fn Annotations() -> Element {
                 }
             },
         }
-        // ─── Modal : nouvel ensemble (nom + média associé) ───
+        // ─── Modal: new set (name + associated media) ───
         if new_open() {
             NewSetModal {
                 key: "new-set-{sets_reload.cloned()}",
@@ -609,7 +609,7 @@ pub fn Annotations() -> Element {
                 on_close: move |_| new_open.set(false),
             }
         }
-        // ─── Confirmation : suppression d'un ensemble ───
+        // ─── Confirmation: deleting a set ───
         if let Some(s) = delete_target.cloned() {
             ConfirmDialog {
                 key: "del-{s.id}",
@@ -646,8 +646,8 @@ fn media_kind_label(kind: &str) -> String {
     .to_string()
 }
 
-/// Modal de création : nom global + média associé (pivot UX — un ensemble
-/// déclare son média dès la création).
+/// Creation modal: global name + associated media (UX pivot — a set
+/// declares its media at creation).
 #[component]
 fn NewSetModal(
     media_map: std::collections::HashMap<String, (String, String)>,
@@ -696,7 +696,7 @@ fn NewSetModal(
             max_width: "max-w-lg".to_string(),
             on_close: move |_| on_close.call(()),
             div { class: "space-y-5",
-                // Nom de l'ensemble
+                // Set name
                 div {
                     label { r#for: "annotations-field-1", class: FIELD_LABEL,
                         {t!("annot-page-col-name")}
@@ -710,7 +710,7 @@ fn NewSetModal(
                     }
                     p { class: "mt-1.5 text-xs text-gray-500", {t!("annot-page-new-name-hint")} }
                 }
-                // Média associé
+                // Associated media
                 div {
                     label { r#for: "annotations-field-2", class: FIELD_LABEL,
                         {t!("annot-page-col-media")}
@@ -794,14 +794,14 @@ fn NewSetModal(
     }
 }
 
-/// Visionneuse PLATE d'un média annoté (photo/floorplan) : `<img>` blob,
-/// marqueurs en % du conteneur (école MediaPreview) et pose au clic
-/// (x/y ∈ [0,1]). Les marqueurs vivent dans le DOM dioxus — les hotspots
-/// pannellum ne portent que la géométrie sphère.
+/// FLAT viewer of an annotated media (photo/floorplan): blob `<img>`,
+/// markers in % of the container (MediaPreview style) and placement on click
+/// (x/y ∈ [0,1]). The markers live in the dioxus DOM — pannellum
+/// hotspots only carry the sphere geometry.
 #[component]
 fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -> Element {
-    // Blob de la version courante (école MediaPreview — le mime n'est pas
-    // requis : l'URL blob web est auto-typée, la data-URI native passe).
+    // Blob of the current version (MediaPreview style — the mime is not
+    // required: the web blob URL is auto-typed, the native data-URI works).
     let mut blob_url = use_signal(|| None::<String>);
     let id_for_blob = media_id.clone();
     use_effect(move || {
@@ -813,10 +813,10 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
         });
     });
 
-    // Rect de l'img pour convertir client px → fraction (mesure post-mount
-    // par polling court — le DOM n'est pas encore mesurable au 1er tick).
-    // Pas de break : le rect reste FRAIS (resize, shift de layout) — pose
-    // au clic et drag de repositionnement toujours exacts.
+    // Rect of the img to convert client px → fraction (post-mount measurement
+    // by short polling — the DOM is not measurable yet at the 1st tick).
+    // No break: the rect stays FRESH (resize, layout shift) — placement
+    // on click and repositioning drag always exact.
     let mut img_rect = use_signal(|| None::<(f64, f64, f64, f64)>);
     let img_id = format!("annot-flat-img-{}", media_id.replace('-', ""));
     let img_id_for_rect = img_id.clone();
@@ -833,15 +833,15 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
         });
     });
 
-    // ─── Drag de repositionnement des marqueurs ───
-    // pointerdown sur le marqueur → suivi move/up/leave au conteneur
-    // (école dashboard_editor : la surface porte les events de suivi).
-    // Seuil 4 px (école viewers.js) : < seuil = simple clic → sélection.
+    // ─── Marker repositioning drag ───
+    // pointerdown on the marker → move/up/leave tracking on the container
+    // (dashboard_editor style: the surface carries the tracking events).
+    // 4 px threshold (viewers.js style): < threshold = simple click → selection.
     let mut drag_item = use_signal(|| None::<String>);
     let mut drag_start = use_signal(|| None::<(f64, f64)>);
     let mut drag_moved = use_signal(|| false);
 
-    // ─── Précalculs ───
+    // ─── Precomputations ───
     let doc_now = cx.doc.cloned();
     let media_for_rows = media_id.clone();
     let markers: Vec<(String, f64, f64, String, String)> =
@@ -859,7 +859,7 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
                     Some(url) => rsx! {
                         div {
                             class: "relative inline-flex",
-                            // ─── Suivi du drag au conteneur ───
+                            // ─── Drag tracking on the container ───
                             onpointermove: move |e: PointerEvent| {
                                 let Some(item) = drag_item.cloned() else {
                                     return;
@@ -890,17 +890,17 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
                                 let item = drag_item.cloned();
                                 drag_item.set(None);
                                 drag_start.set(None);
-                                // Sélection après clic OU fin de drag —
-                                // l'inspecteur s'ouvre dans les deux cas.
+                                // Selection after click OR end of drag —
+                                // the inspector opens in both cases.
                                 if let Some(id) = item {
                                     cx.selected.set(Some(id));
                                 }
                                 drag_moved.set(false);
                             },
                             onpointerleave: move |_| {
-                                // Sortie du conteneur pendant un drag :
-                                // le marqueur reste à sa dernière position
-                                // valide, l'état est réinitialisé.
+                                // Leaving the container during a drag:
+                                // the marker stays at its last valid
+                                // position, the state is reset.
                                 drag_item.set(None);
                                 drag_start.set(None);
                                 drag_moved.set(false);
@@ -937,9 +937,9 @@ fn FlatAnnotViewer(media_id: String, cx: AnnotationEditorCx, set_name: String) -
                                     class: "absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md hover:scale-110 transition-transform touch-none {crate::components::annotation_editor::popover::annot_dot_color(&m_kind)}",
                                     style: "left: calc({m_x} * 100%); top: calc({m_y} * 100%);",
                                     title: "{m_label}",
-                                    // pointerdown ONLY : le suivi (move/up)
-                                    // vit au conteneur — < seuil = clic
-                                    // simple → sélection via onpointerup.
+                                    // pointerdown ONLY: tracking (move/up)
+                                    // lives on the container — < threshold = simple
+                                    // click → selection via onpointerup.
                                     onpointerdown: move |e: PointerEvent| {
                                         e.stop_propagation();
                                         drag_item.set(Some(m_id.clone()));

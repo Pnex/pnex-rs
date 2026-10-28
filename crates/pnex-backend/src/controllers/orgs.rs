@@ -1,16 +1,16 @@
 //! Organizations and their members management (multi-tenant, decision D2).
 //!
-//! Règles d'accès :
-//! - lecture (org, membres) : tout membre ;
-//! - écriture (rename, ajout/modif/retrait de membre) : owner ou admin ;
-//! - suppression d'org, gestion des owners : owner uniquement ;
-//! - il doit toujours rester au moins un owner par org ;
-//! - suppression d'org : owner et dernier membre (les données partent en
-//!   cascade — on force un retrait explicite des autres membres avant).
+//! Access rules:
+//! - read (org, members): any member;
+//! - write (rename, add/change/remove member): owner or admin;
+//! - org deletion, owner management: owner only;
+//! - at least one owner must always remain per org;
+//! - org deletion: owner and last member (the data goes in
+//!   cascade — an explicit removal of the other members is forced first).
 //!
-//! Ajout de membre : par email d'un utilisateur **déjà provisionné** (il doit
-//! s'être connecté au moins une fois). Les invitations par email à un
-//! utilisateur inexistant attendent l'infrastructure SMTP (phase ultérieure).
+//! Adding a member: by email of a user **already provisioned** (they must
+//! have logged in at least once). Email invitations to a non-existent
+//! user wait for the SMTP infrastructure (later phase).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -29,7 +29,7 @@ use crate::models::_entities::{
     users,
 };
 
-/// Membership + org pour (user, org), si l'utilisateur en est membre.
+/// Membership + org for (user, org), if the user is a member.
 async fn membership_of(
     db: &sea_orm::DatabaseConnection,
     user_id: i64,
@@ -45,7 +45,7 @@ async fn membership_of(
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    // find_also_related sur une FK obligatoire : l'org existe toujours.
+    // find_also_related on a mandatory FK: the org always exists.
     Ok(row
         .filter(|(_, org)| org.is_some())
         .map(|(m, org)| (m, org.unwrap())))
@@ -137,9 +137,9 @@ struct ListOrgsQuery {
     offset: Option<String>,
 }
 
-/// Tier d'une nouvelle org — `PNEX_DEFAULT_ORG_TIER` (dev : « Admin » pour
-/// débrider le compte de test), Free sinon ; fallback Free si le tier nommé
-/// n'existe pas (jamais d'org sans tier à cause d'une coquille de config).
+/// Tier of a new org — `PNEX_DEFAULT_ORG_TIER` (dev: "Admin" to
+/// unbridle the test account), Free otherwise; Free fallback if the named tier
+/// does not exist (never an org without a tier because of a config typo).
 pub(crate) async fn default_org_tier<C>(db: &C) -> Option<i64>
 where
     C: sea_orm::ConnectionTrait,
@@ -154,8 +154,8 @@ where
         .map(|t| t.id)
 }
 
-/// `GET /api/v1/orgs` — orgs dont je suis membre (avec rôle et tier),
-/// paginées (D14) + recherche sur le nom.
+/// `GET /api/v1/orgs` — orgs I am a member of (with role and tier),
+/// paginated (D14) + search on the name.
 #[utoipa::path(
     get,
     path = "/api/v1/orgs",
@@ -190,8 +190,8 @@ async fn list(
         .map(|t| (t.id, t.name))
         .collect();
 
-    // L'ensemble (orgs d'un user) est borné par nature : filtre Rust puis
-    // découpage — le count reflète le total filtré.
+    // The set (a user's orgs) is bounded by nature: Rust filter then
+    // slicing — the count reflects the filtered total.
     let orgs: Vec<serde_json::Value> = memberships
         .into_iter()
         .filter_map(|(m, org)| org.map(|o| (m, o)))
@@ -227,7 +227,7 @@ struct CreateOrgParams {
     name: String,
 }
 
-/// `POST /api/v1/orgs` — création, le créateur devient owner (tier Free).
+/// `POST /api/v1/orgs` — creation, the creator becomes owner (Free tier).
 #[utoipa::path(
     post,
     path = "/api/v1/orgs",
@@ -301,7 +301,7 @@ async fn create(
         .into_response())
 }
 
-/// `GET /api/v1/orgs/:id` — détail (membres inclus), membres uniquement.
+/// `GET /api/v1/orgs/:id` — detail (members included), members only.
 #[utoipa::path(
     get,
     path = "/api/v1/orgs/{id}",
@@ -409,7 +409,7 @@ async fn update(
     })
 }
 
-/// `DELETE /api/v1/orgs/:id` — owner et dernier membre uniquement.
+/// `DELETE /api/v1/orgs/:id` — owner and last member only.
 #[utoipa::path(
     delete,
     path = "/api/v1/orgs/{id}",
@@ -542,8 +542,8 @@ struct MembersQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/orgs/:id/members` — membres uniquement, paginés (D14) +
-/// recherche sur email/nom complet.
+/// `GET /api/v1/orgs/:id/members` — members only, paginated (D14) +
+/// search on email/full name.
 #[utoipa::path(
     get,
     path = "/api/v1/orgs/{id}/members",
@@ -609,8 +609,8 @@ fn default_role() -> OrgRole {
     OrgRole::Viewer
 }
 
-/// `POST /api/v1/orgs/:id/members` — ajout d'un utilisateur déjà provisionné
-/// (owner/admin). Promouvoir au rôle owner : owner uniquement.
+/// `POST /api/v1/orgs/:id/members` — adds an already provisioned user
+/// (owner/admin). Promoting to the owner role: owner only.
 #[utoipa::path(
     post,
     path = "/api/v1/orgs/{id}/members",
@@ -710,8 +710,8 @@ struct UpdateMemberParams {
     role: OrgRole,
 }
 
-/// `PATCH /api/v1/orgs/:id/members/:user_id` — changement de rôle.
-/// Toujours au moins un owner en sortie.
+/// `PATCH /api/v1/orgs/:id/members/:user_id` — role change.
+/// Always at least one owner afterwards.
 #[utoipa::path(
     patch,
     path = "/api/v1/orgs/{id}/members/{user_id}",
@@ -757,7 +757,7 @@ async fn update_member(
             "Owner or admin role required to change a member role",
         ));
     }
-    // Modifier un owner (ou promouvoir au rôle owner) : owner uniquement.
+    // Changing an owner (or promoting to the owner role): owner only.
     let touches_owner =
         matches!(target.role, OrgMemberRole::Owner) || matches!(params.role, OrgRole::Owner);
     if touches_owner && !matches!(membership.role, OrgMemberRole::Owner) {
@@ -766,7 +766,7 @@ async fn update_member(
             "Owner role required to modify an owner",
         ));
     }
-    // Garde : au moins un owner reste.
+    // Guard: at least one owner remains.
     if matches!(target.role, OrgMemberRole::Owner) && !matches!(params.role, OrgRole::Owner) {
         let owners = organization_members::Entity::find()
             .filter(
@@ -797,7 +797,7 @@ async fn update_member(
     })
 }
 
-/// `DELETE /api/v1/orgs/:id/members/:user_id` — retrait (ou départ volontaire).
+/// `DELETE /api/v1/orgs/:id/members/:user_id` — removal (or voluntary leave).
 #[utoipa::path(
     delete,
     path = "/api/v1/orgs/{id}/members/{user_id}",
@@ -843,7 +843,7 @@ async fn remove_member(
         ));
     }
     if matches!(target.role, OrgMemberRole::Owner) {
-        // Retirer un owner (même soi-même) : owner uniquement.
+        // Removing an owner (even oneself): owner only.
         if !matches!(membership.role, OrgMemberRole::Owner) {
             return Err(forbidden(
                 "org-owner-remove-forbidden",

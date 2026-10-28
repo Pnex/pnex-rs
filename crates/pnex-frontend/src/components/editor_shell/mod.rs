@@ -1,17 +1,17 @@
-//! Coquille d'éditeur unifiée — le chrome partagé des trois éditeurs
-//! (flows, dashboards, studio) : barre du haut en 3 zones, bandeau,
-//! corps plein écran (canvas + palette flottante + inspecteur divulgatif),
-//! invitation d'état vide. Les éditeurs restent propriétaires de leur état
-//! (`EditorCx` + reducers) et de leur canvas ; ils passent ici des slots
-//! `Element` (même école que `ListLayout` : props « prouvées », i18n du
-//! chrome résolu en interne, le contenu vient de l'appelant).
+//! Unified editor shell — the chrome shared by the three editors
+//! (flows, dashboards, studio): 3-zone top bar, banner,
+//! full-screen body (canvas + floating palette + disclosing inspector),
+//! empty-state invitation. The editors keep owning their state
+//! (`EditorCx` + reducers) and their canvas; they pass `Element` slots
+//! here (same approach as `ListLayout`: "proven" props, chrome i18n
+//! resolved internally, the content comes from the caller).
 //!
-//! Principes (maquette validée 2026-09) :
-//! 1. barre unique — gauche : retour + nom + statut · droite : version + actions ;
-//! 2. statut uniforme — `StatusChip` point + libellé, chip version neutre `v{n}` ;
-//! 3. palette à la demande — bouton `+` flottant → `PalettePopover` ;
-//! 4. inspecteur seulement sur sélection — `InspectorPanel`, absent sinon ;
-//! 5. état vide = invitation — « Cliquez sur + pour commencer ».
+//! Principles (mock-up validated 2026-09):
+//! 1. single bar — left: back + name + status · right: version + actions;
+//! 2. uniform status — `StatusChip` dot + label, neutral version chip `v{n}`;
+//! 3. palette on demand — floating `+` button → `PalettePopover`;
+//! 4. inspector only on selection — `InspectorPanel`, absent otherwise;
+//! 5. empty state = invitation — "Click + to get started".
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -25,8 +25,8 @@ pub mod palette;
 pub use inspector::InspectorPanel;
 pub use palette::{PaletteIcon, PaletteItem, PalettePopover};
 
-/// Tonalité d'une chip — pilule + point, classes littérales complètes
-/// (exigence du scan Tailwind : jamais de classe construite).
+/// Tone of a chip — pill + dot, full literal classes
+/// (Tailwind scan requirement: never a built class).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum StatusTone {
     Green,
@@ -37,7 +37,7 @@ pub enum StatusTone {
 }
 
 impl StatusTone {
-    /// Classes de la pilule (bordure/fond/texte), tonalité par tonalité.
+    /// Pill classes (border/background/text), tone by tone.
     fn pill(self) -> &'static str {
         match self {
             StatusTone::Green => "border-green-200 bg-green-50 text-green-700",
@@ -48,7 +48,7 @@ impl StatusTone {
         }
     }
 
-    /// Classes du point coloré.
+    /// Classes of the coloured dot.
     fn dot(self) -> &'static str {
         match self {
             StatusTone::Green => "bg-green-500",
@@ -60,8 +60,8 @@ impl StatusTone {
     }
 }
 
-/// Statut affiché dans la barre — le même langage pour les trois éditeurs :
-/// un point coloré + un libellé (+ infobulle d'erreur éventuelle).
+/// Status shown in the bar — the same language for the three editors:
+/// a coloured dot + a label (+ optional error tooltip).
 #[derive(Clone, PartialEq, Debug)]
 pub struct EditorStatus {
     pub tone: StatusTone,
@@ -84,7 +84,7 @@ impl EditorStatus {
     }
 }
 
-/// Pilule de statut — point coloré + libellé (principe 2).
+/// Status pill — coloured dot + label (principle 2).
 #[component]
 pub fn StatusChip(status: EditorStatus) -> Element {
     let pill = format!(
@@ -100,8 +100,8 @@ pub fn StatusChip(status: EditorStatus) -> Element {
     }
 }
 
-/// Pilule annexe (modifications non enregistrées, version ancienne chargée…)
-/// — même langage visuel que `StatusChip`, `on_remove` ajoute la croix.
+/// Side pill (unsaved changes, old version loaded…)
+/// — same visual language as `StatusChip`, `on_remove` adds the cross.
 #[component]
 pub fn Chip(
     tone: StatusTone,
@@ -128,59 +128,59 @@ pub fn Chip(
     }
 }
 
-/// La coquille — voir la doc du module pour le contrat.
+/// The shell — see the module docs for the contract.
 #[component]
 pub fn EditorShell(
-    /// Retour vers la liste parente.
+    /// Back to the parent list.
     on_back: Callback<()>,
-    /// Nom de l'élément édité.
+    /// Name of the edited item.
     title: String,
-    /// Référence annexe (« #12 ») — None tant que le détail n'est pas chargé.
+    /// Side reference ("#12") — None until the detail is loaded.
     #[props(default)]
     subtitle: Option<String>,
-    /// Statut courant (point + libellé).
+    /// Current status (dot + label).
     status: EditorStatus,
-    /// Version courante — chip neutre « v{n} » (rendue ici, zéro i18n).
+    /// Current version — neutral "v{n}" chip (rendered here, zero i18n).
     #[props(default)]
     version: Option<i64>,
-    /// Chips annexes (dirty, version ancienne chargée…).
+    /// Side chips (dirty, old version loaded…).
     #[props(default)]
     extra_chips: Option<Element>,
-    /// Zone droite : boutons d'action de l'éditeur (enregistrer, déployer…).
+    /// Right zone: the editor's action buttons (save, deploy…).
     actions: Element,
-    /// Bandeau sous la barre (violations, encart « Déployer ? », read-only).
+    /// Banner under the bar (violations, "Deploy?" notice, read-only).
     #[props(default)]
     banner: Option<Element>,
-    /// Canvas — rendu dans `div.absolute.inset-0` : la racine du composant
-    /// canvas doit se dimensionner sur son parent (`h-full w-full`).
+    /// Canvas — rendered in `div.absolute.inset-0`: the root of the canvas
+    /// component must size itself on its parent (`h-full w-full`).
     canvas: Element,
-    /// Bouton `+` flottant + popover de palette (`PalettePopover`).
+    /// Floating `+` button + palette popover (`PalettePopover`).
     #[props(default)]
     palette: Option<Element>,
-    /// Pill d'outils flottante à côté du `+` (outils de mode, undo/redo…).
+    /// Floating tools pill next to the `+` (mode tools, undo/redo…).
     #[props(default)]
     tools: Option<Element>,
     /// A list column (`MapPanel`) is open at the canvas's left edge: the
     /// `+` and the tools float right of it (desktop; on phones it overlays).
     #[props(default)]
     palette_inset: bool,
-    /// Inspecteur (`InspectorPanel`) — None ⇒ absent de l'écran (principe 4).
+    /// Inspector (`InspectorPanel`) — None ⇒ absent from the screen (principle 4).
     #[props(default)]
     inspector: Option<Element>,
-    /// Invitation d'état vide — Some ⇒ voile centré « Cliquez sur + … ».
+    /// Empty-state invitation — Some ⇒ centred veil "Click + …".
     #[props(default)]
     empty_hint: Option<String>,
-    /// Renommage inline — Some ⇒ le titre devient éditable au clic
-    /// (Entrée / blur valident, Échap annule). Réservé aux utilisateurs
-    /// autorisés (l'éditeur ne le passe que si `can_write`).
+    /// Inline rename — Some ⇒ the title becomes editable on click
+    /// (Enter / blur confirm, Escape cancels). Reserved for authorised
+    /// users (the editor only passes it if `can_write`).
     #[props(default)]
     on_rename: Option<Callback<String>>,
 ) -> Element {
     let mut renaming = use_signal(|| false);
     let mut draft = use_signal(String::new);
     let rename_title = t!("eshell-rename");
-    // Deux closures (`onkeydown`/`onblur`) consomment chacune leur copie
-    // (un String ne peut être déplacé dans deux closures `move`).
+    // Two closures (`onkeydown`/`onblur`) each consume their own copy
+    // (a String cannot be moved into two `move` closures).
     // Hide the mobile app header while this editor is mounted (see
     // `ui::EDITORS_OPEN`); the effect reads no signal, so it runs once.
     use_effect(|| {
@@ -238,7 +238,7 @@ pub fn EditorShell(
         // open (`ui::EDITORS_OPEN`); desktop content column already carries
         // the sidebar offset (lg:pl-64/16).
         div { class: "flex h-[100dvh] flex-col lg:h-screen",
-            // ─── Zone 1/2 : barre du haut (gauche identité · droite version+actions)
+            // ─── Zone 1/2: top bar (left identity · right version+actions)
             // Phone: two rows (identity, then actions right-aligned) instead
             // of one 680 px row scrolled sideways; single 56 px row from sm up.
             div { class: "flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1.5 bg-white border-b border-gray-200 px-3 py-2 sm:h-14 sm:flex-nowrap sm:overflow-x-auto sm:py-0",
@@ -249,8 +249,8 @@ pub fn EditorShell(
                     span { class: "hidden sm:inline", {t!("eshell-back")} }
                 }
                 div { class: "h-5 w-px shrink-0 bg-gray-200" }
-                // Titre : plain quand pas de renommage ; sinon clic → input
-                // inline (Entrée/blur valident, Échap annule, vide ignoré).
+                // Title: plain when there is no rename; otherwise click → inline
+                // input (Enter/blur confirm, Escape cancels, empty ignored).
                 {
                     match on_rename {
                         Some(cb) if renaming() => rsx! {
@@ -306,7 +306,7 @@ pub fn EditorShell(
                     }
                 }
                 StatusChip { status }
-                // Chips annexes (dirty, version ancienne…)
+                // Side chips (dirty, old version…)
                 {extra_chips}
                 div { class: "hidden min-w-4 flex-1 sm:block" }
                 if let Some(v) = version {
@@ -314,16 +314,16 @@ pub fn EditorShell(
                         {format!("v{v}")}
                     }
                 }
-                // Zone 3 : actions de l'éditeur (boutons existants, déplacés).
+                // Zone 3: editor actions (existing buttons, moved).
                 div { class: "flex w-full items-center justify-end gap-2 overflow-x-auto sm:w-auto sm:shrink-0 sm:overflow-visible",
                     {actions}
                 }
             }
-            // ─── Bandeau (violations / read-only / encart déploiement)
+            // ─── Banner (violations / read-only / deploy notice)
             if let Some(b) = banner {
                 div { class: "shrink-0 space-y-2 px-3 pt-2", {b} }
             }
-            // ─── Corps : canvas plein écran + overlays à la demande
+            // ─── Body: full-screen canvas + on-demand overlays
             div { class: "relative min-h-0 flex-1",
                 div { class: "absolute inset-0", {canvas} }
                 if let Some(hint) = empty_hint {

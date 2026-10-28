@@ -112,7 +112,7 @@ pub enum AttributionOrigin {
     Manual,
     /// A consented voice profile matched (D275): always proposed first.
     Voice,
-    /// The transcript names the speaker ("je reçois X").
+    /// The transcript names the speaker ("je reçois X").  english-guard: allow (French example)
     Transcript,
     /// The programme grid announces the guest.
     Grid,

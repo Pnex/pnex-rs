@@ -1,7 +1,7 @@
-/* Hotspots fléchés du viewer de tour — identité PNeX : bleu = liaison
-   même étage (walk), violet = inter-étages (stair), flèche haut/bas
-   selon le sens du déplacement (pitch auto calculé côté Rust). Fusionné
-   dans assets/viewers.css par esbuild (require('./hotspots.css')). */
+/* Arrow hotspots of the tour viewer — PNeX identity: blue = same-floor
+   link (walk), purple = cross-floor (stair), up/down arrow depending on
+   the direction of movement (pitch auto-computed on the Rust side). Merged
+   into assets/viewers.css by esbuild (require('./hotspots.css')). */
 
 .pnex-hotspot {
   width: 36px;
@@ -17,7 +17,7 @@
 }
 
 .pnex-hotspot-walk {
-  /* Chevron bas — convention « avancer » des visites au sol. */
+  /* Down chevron — "move forward" convention of ground tours. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='white' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
@@ -27,20 +27,20 @@
 }
 
 .pnex-hotspot-stair-up {
-  /* Flèche montante. */
+  /* Up arrow. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4l7 8h-4v8h-6v-8H5z' fill='white'/%3E%3C/svg%3E");
 }
 
 .pnex-hotspot-stair-down {
-  /* Flèche descendante. */
+  /* Down arrow. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 20l-7-8h4V4h6v8h7z' fill='white'/%3E%3C/svg%3E");
 }
 
-/* ── Marqueurs d'annotations (D55–D60) ──
-   Classes STRICTEMENT disjointes de .pnex-hotspot : le drag nav résout
-   ses hotspots par miroir index (_pnexHotspotList) — un marqueur annot
-   qui porterait .pnex-hotspot serait capturé et désalignerait la liste.
-   Couleurs par kind, cohérentes avec annot_dot_color côté Rust. */
+/* ── Annotation markers (D55–D60) ──
+   Classes STRICTLY disjoint from .pnex-hotspot: the nav drag resolves
+   its hotspots by index mirror (_pnexHotspotList) — an annot marker
+   carrying .pnex-hotspot would be captured and misalign the list.
+   Colors per kind, consistent with annot_dot_color on the Rust side. */
 
 .pnex-annot {
   width: 18px;

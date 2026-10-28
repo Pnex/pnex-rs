@@ -1,27 +1,27 @@
-//! Documents « dashboard » du studio SCADA — modèle typé du layout stocké
-//! en JSONB (`dashboard_versions.layout`, école `flow.rs` : la même
-//! structure valide côté navigateur avant save et côté serveur en 400).
+//! SCADA studio "dashboard" documents — typed model of the layout stored
+//! as JSONB (`dashboard_versions.layout`, `flow.rs` school: the same
+//! structure validates in the browser before save and on the server as 400).
 //!
-//! Particularités D40/D41 (PRD `docs/architecture/viz-bases.md`) :
-//! - **Canvas libre à main levée** — coordonnées **px absolues** dans un
-//!   canvas dimensionné (pas de grille) ;
-//! - **Traits et accroches** (`Wire`) — liaisons **purement visuelles**
-//!   entre widgets (synoptique de process : flux, boucles PID *affichées*)
-//!   : zéro sémantique d'exécution, les extrémités sont accrochées aux
-//!   milieux des côtés et suivent le widget au déplacement ;
-//! - presets de fenêtre partagés avec la lecture télémétrie (source
-//!   unique : le service `visualization` et le front lisent la même liste,
-//!   école `normalize_measurement_name` — si validation et requête
-//!   divergeaient, le PromQL chercherait une fenêtre rejetée).
+//! D40/D41 specifics (PRD `docs/architecture/viz-bases.md`):
+//! - **Free-hand canvas** — **absolute px** coordinates in a
+//!   sized canvas (no grid);
+//! - **Lines and anchors** (`Wire`) — **purely visual** links
+//!   between widgets (process synoptic: flows, *displayed* PID loops)
+//!   : zero execution semantics, the ends are anchored to the
+//!   middles of the sides and follow the widget when it moves;
+//! - window presets shared with the telemetry read (single
+//!   source: the `visualization` service and the front read the same list,
+//!   `normalize_measurement_name` school — if validation and query
+//!   diverged, the PromQL would look for a rejected window).
 
 use serde::{Deserialize, Serialize};
 
 use crate::naming;
 
-/// Types de widget du kit SCADA V1 — enum **ouverte** : un nouveau type
-/// s'ajoute ici sans migration (la colonne `kind` reste un string).
-/// `thermo_chart` = diagramme thermodynamique (p-h, T-s, psychrométrique)
-/// avec cycle live, données via `WidgetOptions.thermo`.
+/// Widget types of the V1 SCADA kit — **open** enum: a new type
+/// is added here without a migration (the `kind` column stays a string).
+/// `thermo_chart` = thermodynamic diagram (p-h, T-s, psychrometric)
+/// with a live cycle, data via `WidgetOptions.thermo`.
 /// `symbol` = process / flowchart symbol (P&ID library), data via
 /// `WidgetOptions.symbol`, optionally animated by one source.
 pub const VIZ_WIDGET_TYPES: &[&str] = &[
@@ -57,10 +57,10 @@ pub const CONTROL_WIDGET_TYPES: &[&str] = &[
 /// Max number of sections of a mobile dashboard (D124).
 pub const MOBILE_SECTIONS_MAX: usize = 32;
 
-/// Fenêtres proposées par widget (clé → secondes). Source de vérité
-/// partagée front/back — `services/visualization.rs::WINDOWS` s'aligne
-/// dessus. Les fenêtres courtes (5m/15m/30m) servent au « dernier » des
-/// jauges (lookback configurable).
+/// Windows offered per widget (key → seconds). Source of truth
+/// shared front/back — `services/visualization.rs::WINDOWS` aligns
+/// with it. The short windows (5m/15m/30m) serve the gauges' "latest"
+/// (configurable lookback).
 pub const VIZ_WINDOW_PRESETS: &[(&str, i64)] = &[
     ("5m", 300),
     ("15m", 900),
@@ -73,17 +73,17 @@ pub const VIZ_WINDOW_PRESETS: &[(&str, i64)] = &[
     ("30d", 2_592_000),
 ];
 
-/// Clé de preset valide ?
+/// Valid preset key?
 pub fn valid_window(key: &str) -> bool {
     VIZ_WINDOW_PRESETS.iter().any(|(k, _)| *k == key)
 }
 
-/// Bornes du canvas (px) — assez grand pour un synoptique d'atelier,
-/// assez borné pour qu'un layout piégé ne gèle pas le rendu.
+/// Canvas bounds (px) — large enough for a workshop synoptic,
+/// bounded enough that a booby-trapped layout does not freeze the render.
 pub const CANVAS_MIN: i64 = 400;
 pub const CANVAS_MAX: i64 = 8_000;
-/// Taille minimale d'un widget (px) — en dessous, un instrument est
-/// illisible et ses accroches deviennent injoignables.
+/// Minimum widget size (px) — below it, an instrument is
+/// unreadable and its anchors become unreachable.
 pub const WIDGET_MIN: i64 = 40;
 const TITLE_MAX: usize = 200;
 const TEXT_MAX: usize = 1_000;
@@ -760,9 +760,9 @@ pub fn bind_object(layout: &DashboardLayout, bindings: &[SeriesBinding]) -> Dash
 
 // ─────────────────────────────── Validation ───────────────────────────────
 
-/// Règles du widget `thermo_chart` : diagramme connu, fluide requis, au
-/// plus 8 points, chaque point = 2 sources valides **et présentes dans
-/// `widget.source`** (le series-batch agrège `source`, pas `options`).
+/// Rules of the `thermo_chart` widget: known diagram, fluid required, at
+/// most 8 points, each point = 2 valid sources **also present in
+/// `widget.source`** (the series-batch aggregates `source`, not `options`).
 fn validate_thermo(
     widget_id: &str,
     source: &[SourceRef],
@@ -775,7 +775,7 @@ fn validate_thermo(
     let Some(t) = &options.thermo else {
         push(
             "thermo_options_missing",
-            "options thermo requises (diagramme, fluide, points)".into(),
+            "thermo options required (diagram, fluid, points)".into(),
         );
         return v;
     };
@@ -786,16 +786,16 @@ fn validate_thermo(
         );
     }
     if t.fluid.trim().is_empty() {
-        push("thermo_fluid_missing", "le fluide est requis".into());
+        push("thermo_fluid_missing", "the fluid is required".into());
     }
     if t.points.len() > 8 {
-        push("thermo_too_many_points", "au plus 8 points de cycle".into());
+        push("thermo_too_many_points", "at most 8 cycle points".into());
     }
     for (i, p) in t.points.iter().enumerate() {
         if p.label.trim().is_empty() {
             push(
                 "thermo_point_label",
-                format!("point {} : label requis", i + 1),
+                format!("point {}: label required", i + 1),
             );
         }
         for (slot, s) in [("v1", &p.v1), ("v2", &p.v2)] {
@@ -803,7 +803,7 @@ fn validate_thermo(
                 if !m.is_valid() {
                     push(
                         "bad_memory_key",
-                        format!("point {} : invalid memory key \"{}\"", i + 1, m.key),
+                        format!("point {}: invalid memory key \"{}\"", i + 1, m.key),
                     );
                 }
             } else if !naming::valid_metric_name(&s.metric) {
@@ -818,14 +818,14 @@ fn validate_thermo(
                     format!("point {}: invalid device \"{}\"", i + 1, s.device_id),
                 );
             }
-            // La source doit être répliquée dans widget.source (batch).
+            // The source must be replicated in widget.source (batch).
             let key = s.series_key();
             let present = source.iter().any(|src| src.series_key() == key);
             if !present {
                 push(
                     "thermo_source_missing",
                     format!(
-                        "point {} ({slot}) : add the source {key} to the widget sources",
+                        "point {} ({slot}): add the source {key} to the widget sources",
                         i + 1
                     ),
                 );
@@ -835,8 +835,8 @@ fn validate_thermo(
     v
 }
 
-/// Valide la structure du layout. Retourne **toutes** les violations
-/// (l'API les renvoie en 400, le front les affiche avant save).
+/// Validates the layout structure. Returns **all** violations
+/// (the API returns them as 400, the front shows them before save).
 pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
     let mut v = Vec::new();
     // Type dashboard (D187): object sources need the type they read from.
@@ -872,7 +872,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             None,
             "canvas_bounds",
             format!(
-                "canvas {}×{} hors bornes ({CANVAS_MIN}..={CANVAS_MAX} px)",
+                "canvas {}×{} out of bounds ({CANVAS_MIN}..={CANVAS_MAX} px)",
                 l.canvas.width, l.canvas.height
             ),
         ));
@@ -882,7 +882,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             v.push(VizViolation::new(
                 None,
                 "canvas_color",
-                "couleur de fond invalide (attendu #rrggbb)",
+                "invalid background color (expected #rrggbb)",
             ));
         }
     }
@@ -893,7 +893,7 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
             v.push(VizViolation::new(
                 None,
                 "widget_id",
-                "id de widget absent ou trop long",
+                "widget id missing or too long",
             ));
             continue;
         }
@@ -961,14 +961,14 @@ pub fn validate_layout(l: &DashboardLayout) -> Vec<VizViolation> {
         validate_sections(l, &seen, &mut v);
     }
 
-    // Traits : extrémités accrochées à des widgets existants, jamais à
-    // soi-même (un coude sur soi-même n'a pas de sens).
+    // Lines: ends anchored to existing widgets, never to
+    // itself (an elbow onto itself makes no sense).
     for wire in &l.wires {
         if wire.id.trim().is_empty() || wire.id.len() > 128 {
             v.push(VizViolation::new(
                 None,
                 "wire_id",
-                "id de trait absent ou trop long",
+                "wire id missing or too long",
             ));
             continue;
         }
@@ -1092,8 +1092,8 @@ fn validate_sections(
     }
 }
 
-/// Valide type + sources + options d'un widget (réutilisé par la
-/// bibliothèque : `viz_widget_library.config` est la même forme sans
+/// Validates type + sources + options of a widget (reused by the
+/// library: `viz_widget_library.config` is the same shape without
 /// position).
 pub fn validate_widget(
     widget_id: &str,
@@ -1171,16 +1171,13 @@ pub fn validate_widget(
         let set: Vec<SourceRef> = source.iter().filter(|s| !s.is_unset()).cloned().collect();
         check_sources(widget_type, &set, &mut push);
     } else if widget_type == "text" {
-        // Le widget texte n'affiche pas de série.
+        // The text widget does not display a series.
         if !source.is_empty() {
-            push(
-                "text_with_source",
-                "un widget texte ne porte pas de source".into(),
-            );
+            push("text_with_source", "a text widget carries no source".into());
         }
         match &options.text {
             Some(t) if !t.trim().is_empty() && t.len() <= TEXT_MAX => {}
-            _ => push("text_missing", "le texte du widget est requis".into()),
+            _ => push("text_missing", "the widget text is required".into()),
         }
     } else if widget_type == "thermo_chart" {
         extra_violations = validate_thermo(widget_id, source, options);
@@ -1211,7 +1208,7 @@ pub fn validate_widget(
         if widget_type == "symbol" {
             extra_violations = validate_symbol(widget_id, options);
         }
-        // Les instruments lisent au moins une série, rôle primaire en tête.
+        // Instruments read at least one series, primary role first.
         if source.is_empty() {
             push(
                 "source_missing",
@@ -1233,7 +1230,7 @@ pub fn validate_widget(
         if !valid_hex_color(&t.color) {
             push(
                 "bad_threshold_color",
-                "couleur de seuil invalide (#rrggbb)".into(),
+                "invalid threshold color (#rrggbb)".into(),
             );
         }
     }
@@ -1337,10 +1334,10 @@ fn valid_hex_color(s: &str) -> bool {
     bytes.len() == 7 && bytes[0] == b'#' && bytes[1..].iter().all(|b| b.is_ascii_hexdigit())
 }
 
-// ─────────────────────────────── DTOs API ───────────────────────────────
-// École `flow.rs` : les types de requête/réponse vivent dans pnex-core
-// (compilés côté front wasm) — la validation `validate_layout` tourne
-// dans le navigateur avant save ET côté serveur en 400.
+// ─────────────────────────────── API DTOs ───────────────────────────────
+// `flow.rs` school: the request/response types live in pnex-core
+// (compiled on the wasm front side) — the `validate_layout` validation runs
+// in the browser before save AND on the server as 400.
 
 /// Dashboard summary (paginated list).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1443,8 +1440,8 @@ pub struct WidgetTemplate {
 }
 
 impl WidgetTemplate {
-    /// Convertit le template en widget posé (l'éditeur fournit id,
-    /// position et taille par défaut du type).
+    /// Converts the template into a placed widget (the editor provides id,
+    /// position and the type's default size).
     pub fn to_widget(&self, id: String, x: i64, y: i64, w: i64, h: i64) -> Widget {
         Widget {
             id,
@@ -1459,8 +1456,8 @@ impl WidgetTemplate {
         }
     }
 
-    /// Snapshot inverse : enregistre un widget posé comme template
-    /// (position et taille perdues par construction).
+    /// Reverse snapshot: saves a placed widget as a template
+    /// (position and size lost by construction).
     pub fn from_widget(w: &Widget) -> Self {
         Self {
             widget_type: w.widget_type.clone(),
@@ -1662,11 +1659,11 @@ mod tests {
             axis_decimals: None,
             pressure_unit: ThermoPressureUnit::default(),
         });
-        // Sources des points absentes de widget.source → thermo_source_missing.
+        // Point sources missing from widget.source → thermo_source_missing.
         let v = validate_layout(&layout(vec![w.clone()]));
         assert!(v.iter().any(|x| x.code == "thermo_source_missing"), "{v:?}");
 
-        // Sources répliquées dans widget.source → vert (hors autres codes).
+        // Sources replicated in widget.source → green (other codes aside).
         w.source = vec![
             SourceRef {
                 object_property: None,

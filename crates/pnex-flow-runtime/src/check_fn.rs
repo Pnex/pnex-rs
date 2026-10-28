@@ -1,17 +1,17 @@
-//! Validation compile-only des fonctions du registre — sous-commande
+//! Compile-only validation of registry functions — subcommand
 //! `pnex-flow-runtime --check-function <request.json>`.
 //!
-//! Le backend écrit la requête dans un fichier temp, spawn ce binaire et lit
-//! **une ligne JSON** `FunctionValidateResponse` (même contrat qu'une ligne
-//! pour `--test-function`). Aucune exécution du code utilisateur :
-//! - Starlark : `pnex_node_starlark::executor::check` (directives, syntaxe
-//!   avec position, présence de `handle`) ;
-//! - JS : compile le code brut dans une VM fraîche via `new AsyncFunction`
-//!   (mêmes sémantiques que le wrap runtime — sloppy + `await` légal), sans
-//!   l'exécuter. Le constructeur préfixe le corps de ~2 lignes synthétiques :
-//!   une sonde `"\n@"` (erreur forcée à la ligne 2 du texte passé) mesure
-//!   l'offset du moteur à chaque check — auto-calibrant, robuste aux
-//!   versions. Message/stack extraits par `Ctx::catch` en repli Rust.
+//! The backend writes the request into a temp file, spawns this binary and reads
+//! **one JSON line** `FunctionValidateResponse` (same contract as a line
+//! for `--test-function`). No execution of user code:
+//! - Starlark: `pnex_node_starlark::executor::check` (directives, syntax
+//!   with position, presence of `handle`);
+//! - JS: compiles the raw code in a fresh VM via `new AsyncFunction`
+//!   (same semantics as the runtime wrap — sloppy + legal `await`), without
+//!   running it. The constructor prefixes the body with ~2 synthetic lines:
+//!   a `"\n@"` probe (error forced at line 2 of the passed text) measures
+//!   the engine offset on each check — self-calibrating, robust across
+//!   versions. Message/stack extracted by `Ctx::catch` as Rust fallback.
 
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
@@ -20,22 +20,22 @@ use pnex_core::{
     FunctionDiagnostic, FunctionLanguage, FunctionValidateRequest, FunctionValidateResponse,
 };
 
-/// Point d'entrée du mode `--check-function` : lit la requête, compile (sans
-/// exécuter) et imprime **une ligne JSON** `FunctionValidateResponse`. Exit 0
-/// même avec diagnostics (`ok:false` EST le résultat) ; exit 1 requête
-/// illisible.
+/// Entry point of the `--check-function` mode: reads the request, compiles (without
+/// running) and prints **one JSON line** `FunctionValidateResponse`. Exit 0
+/// even with diagnostics (`ok:false` IS the result); exit 1 on unreadable
+/// request.
 pub async fn run(request_path: &str) -> ExitCode {
     let raw = match std::fs::read_to_string(request_path) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("check-function : requête illisible : {e}");
+            eprintln!("check-function: unreadable request: {e}");
             return ExitCode::FAILURE;
         }
     };
     let req: FunctionValidateRequest = match serde_json::from_str(&raw) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("check-function : requête invalide : {e}");
+            eprintln!("check-function: invalid request: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -52,8 +52,8 @@ pub async fn run(request_path: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Validation JS : VM fraîche (mêmes limites que `exec_js`), prologue
-/// `__pnex_check` compilant le code via `new AsyncFunction` sans l'exécuter.
+/// JS validation: fresh VM (same limits as `exec_js`), `__pnex_check`
+/// prologue compiling the code via `new AsyncFunction` without running it.
 async fn check_js(code: &str) -> Vec<FunctionDiagnostic> {
     use rquickjs::{AsyncContext, AsyncRuntime, Function};
 
@@ -138,8 +138,8 @@ async fn check_js(code: &str) -> Vec<FunctionDiagnostic> {
     finalize_js_diag(&json_text)
 }
 
-/// Post-traitement du JSON `__pnex_check` : message verbatim + position
-/// recalée de l'offset moteur mesuré par la sonde (`probe_line`).
+/// Post-processing of the `__pnex_check` JSON: verbatim message + position
+/// shifted by the engine offset measured by the probe (`probe_line`).
 fn finalize_js_diag(json_text: &str) -> Vec<FunctionDiagnostic> {
     let parsed: serde_json::Value = serde_json::from_str(json_text)
         .unwrap_or_else(|_| serde_json::json!({ "message": json_text, "stack": "" }));
@@ -153,9 +153,9 @@ fn finalize_js_diag(json_text: &str) -> Vec<FunctionDiagnostic> {
         .get("probe_line")
         .and_then(|p| p.as_u64())
         .unwrap_or(0) as u32;
-    // Calage : le constructeur reporte la ligne réelle + offset (sonde =
-    // erreur forcée à la ligne 2 → offset = probe_line - 2). Sondé à 0
-    // (extraction ratée) → position conservée telle quelle (best-effort).
+    // Calibration: the constructor reports the real line + offset (probe =
+    // error forced at line 2 → offset = probe_line - 2). Probed at 0
+    // (failed extraction) → position kept as is (best-effort).
     let line = match (line, probe_line) {
         (Some(l), p) if p > 2 => Some(l.saturating_sub(p - 2).max(1)),
         (other, _) => other,
@@ -163,8 +163,8 @@ fn finalize_js_diag(json_text: &str) -> Vec<FunctionDiagnostic> {
     vec![FunctionDiagnostic { line, col, message }]
 }
 
-/// Diagnostic d'infrastructure (VM impossible / deadline) — traité comme une
-/// erreur de script verbatim, ligne inconnue.
+/// Infrastructure diagnostic (VM impossible / deadline) — treated as a
+/// verbatim script error, unknown line.
 fn js_infra_diag(e: impl std::fmt::Display) -> FunctionDiagnostic {
     FunctionDiagnostic {
         line: None,
@@ -173,9 +173,9 @@ fn js_infra_diag(e: impl std::fmt::Display) -> FunctionDiagnostic {
     }
 }
 
-/// Extraction best-effort de la première position `fichier:line` ou
-/// `fichier:line:col` d'une stack QuickJS, sans dépendance regex.
-/// Ligne/colonne 1-based ; (None, None) si absent.
+/// Best-effort extraction of the first `file:line` or
+/// `file:line:col` position of a QuickJS stack, without a regex dependency.
+/// 1-based line/column; (None, None) if absent.
 fn extract_pos(text: &str) -> (Option<u32>, Option<u32>) {
     let bytes = text.as_bytes();
     let mut i = 0;
@@ -240,7 +240,7 @@ mod tests {
     async fn js_syntax_error() {
         let diags = check_js("function handle(inputs, msg) { return { out: ; }").await;
         assert_eq!(diags.len(), 1);
-        assert!(!diags[0].message.is_empty(), "message verbatim attendu");
+        assert!(!diags[0].message.is_empty(), "verbatim message expected");
     }
 
     #[tokio::test]

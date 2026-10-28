@@ -1,4 +1,4 @@
-//! Version append-only d'une fonction — wrapper modèle (école flows.rs).
+//! Append-only version of a function — model wrapper (flows.rs pattern).
 
 pub use super::_entities::function_versions::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;

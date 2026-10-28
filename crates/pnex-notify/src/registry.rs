@@ -1,9 +1,9 @@
-//! Registre des canaux (D51) — source de vérité des kinds : l'API
-//! `GET /api/v1/notify/kinds` et le formulaire dynamique du front en
-//! dérivent (`notify-kinds.v1`, additif-only).
+//! Channel registry (D51) — source of truth for the kinds: the
+//! `GET /api/v1/notify/kinds` API and the front's dynamic form
+//! derive from it (`notify-kinds.v1`, additive-only).
 //!
-//! Héberge aussi les helpers de masquage D54 : les champs `secret` du
-//! `field_spec` sont write-only (GET masqué, PUT null/absent = inchangé).
+//! Also hosts the D54 masking helpers: the `secret` fields of the
+//! `field_spec` are write-only (masked GET, PUT null/absent = unchanged).
 
 use crate::channels::{
     discord::DiscordChannel, ntfy::NtfyChannel, slack::SlackChannel, smtp::SmtpChannel,
@@ -12,8 +12,8 @@ use crate::channels::{
 use crate::Channel;
 use pnex_core::FieldType;
 
-/// Toutes les implémentations de canaux livrées — 1 entrée par kind.
-/// L'ordre = ordre d'affichage du picker front.
+/// All shipped channel implementations — 1 entry per kind.
+/// The order = display order of the front picker.
 pub static CHANNELS: &[&dyn Channel] = &[
     &WebSocketChannel,
     &WebhookChannel,
@@ -24,13 +24,13 @@ pub static CHANNELS: &[&dyn Channel] = &[
     &SmtpChannel,
 ];
 
-/// Résout un kind (`"websocket"`, `"webhook"`, …).
+/// Resolves a kind (`"websocket"`, `"webhook"`, …).
 pub fn channel(kind: &str) -> Option<&'static dyn Channel> {
     CHANNELS.iter().copied().find(|c| c.kind() == kind)
 }
 
-/// Catalogue pour `GET /api/v1/notify/kinds` — `label` est un nom
-/// affichable ; les labels/i18n/icônes affinés restent locaux au front.
+/// Catalogue for `GET /api/v1/notify/kinds` — `label` is a displayable
+/// name; refined labels/i18n/icons stay local to the front.
 pub fn kinds() -> Vec<pnex_core::NotifyKindInfo> {
     CHANNELS
         .iter()
@@ -51,8 +51,8 @@ pub fn kinds() -> Vec<pnex_core::NotifyKindInfo> {
         .collect()
 }
 
-/// Ids des champs `secret` effectivement définis dans `config` — rendu
-/// dans `secrets_set` du DTO (le front affiche « défini » + « remplacer »).
+/// Ids of the `secret` fields actually set in `config` — returned
+/// in the DTO's `secrets_set` (the front shows "set" + "replace").
 pub fn secrets_set(kind: &str, config: &serde_json::Value) -> Vec<String> {
     let Some(ch) = channel(kind) else {
         return vec![];
@@ -69,8 +69,8 @@ pub fn secrets_set(kind: &str, config: &serde_json::Value) -> Vec<String> {
         .collect()
 }
 
-/// Config masquée pour un GET : les champs `secret` deviennent `null` —
-/// jamais rendus en API/UI (D54).
+/// Masked config for a GET: the `secret` fields become `null` —
+/// never returned in API/UI (D54).
 pub fn mask_config(kind: &str, config: &serde_json::Value) -> serde_json::Value {
     let Some(ch) = channel(kind) else {
         return config.clone();
@@ -86,9 +86,9 @@ pub fn mask_config(kind: &str, config: &serde_json::Value) -> serde_json::Value 
     out
 }
 
-/// Merge PUT (D54) : les champs `secret` absents **ou** `null` dans la
-/// requête valent « inchangé » (l'UI n'envoie que « remplacer » explicite).
-/// Les champs non-secrets sont repris tels quels (remplacement complet).
+/// PUT merge (D54): `secret` fields absent **or** `null` in the
+/// request mean "unchanged" (the UI only sends an explicit "replace").
+/// Non-secret fields are taken as is (full replacement).
 pub fn merge_config(
     kind: &str,
     existing: &serde_json::Value,
@@ -135,7 +135,7 @@ mod tests {
                 "websocket"
             ]
         );
-        // websocket : aucun champ (info-block UI) ; webhook : 4 champs ;
+        // websocket: no field (info-block UI); webhook: 4 fields;
         // ntfy : 5 champs ; telegram 2 ; slack 1 ; discord 2 ; smtp 8.
         assert!(channel("websocket").unwrap().field_spec().is_empty());
         assert_eq!(channel("webhook").unwrap().field_spec().len(), 4);
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(secrets_set("webhook", &cfg), ["secret_value"]);
         assert!(secrets_set("webhook", &masked).is_empty());
 
-        // PUT sans le secret : inchangé.
+        // PUT without the secret: unchanged.
         let merged = merge_config(
             "webhook",
             &cfg,
@@ -163,14 +163,14 @@ mod tests {
         );
         assert_eq!(merged["secret_value"], "abc");
         assert_eq!(merged["url"], "https://n.com");
-        // PUT avec null : inchangé aussi (le front envoie null pour « garder »).
+        // PUT with null: unchanged too (the front sends null to "keep").
         let merged2 = merge_config(
             "webhook",
             &cfg,
             &json!({"url": "https://n.com", "secret_header": "x-sig", "secret_value": null}),
         );
         assert_eq!(merged2["secret_value"], "abc");
-        // PUT avec remplacement explicite.
+        // PUT with explicit replacement.
         let merged3 = merge_config(
             "webhook",
             &cfg,
@@ -185,11 +185,11 @@ mod tests {
         assert!(secrets_set("gotify", &json!({})).is_empty());
     }
 
-    /// Garde anti-panic i18n : chaque `label_i18n`/`help_i18n` des
-    /// field_spec doit exister dans les deux locales — `t!` panique sur
-    /// clé absente et le sweep front ne voit que les `t!("littéral")`
-    /// (constat : les 3 clés du field_spec webhook manquaient, ouvrir le
-    /// formulaire webhook cassait l'app).
+    /// i18n anti-panic guard: every `label_i18n`/`help_i18n` of the
+    /// field_spec must exist in both locales — `t!` panics on a
+    /// missing key and the front sweep only sees `t!("literal")`
+    /// (finding: the 3 keys of the webhook field_spec were missing, opening the
+    /// webhook form broke the app).
     #[test]
     fn cles_field_spec_presentes_dans_les_locales() {
         let locales = [

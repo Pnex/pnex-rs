@@ -2,12 +2,12 @@ use super::helpers::*;
 use super::*;
 use crate::components::ui::FIELD_LABEL;
 
-// ─────────────── cartes de régulation mixtes (reg_*) ───────────────
+// ─────────────── mixed control cards (reg_*) ───────────────
 
-/// Formulaire des cartes tout-ou-rien (chauffage `heat=true` / clim
-/// `heat=false`). Liaison **sur un seul device** (carte mixte : le capteur
-/// et la sortie sont sur la même board — la régulation tourne embarquée,
-/// le serveur caste la config, D13/D17).
+/// Form of the on/off cards (heating `heat=true` / cooling
+/// `heat=false`). Binding **on a single device** (mixed card: the sensor
+/// and the output are on the same board — control runs embedded,
+/// the server casts the config, D13/D17).
 #[component]
 pub(super) fn RegTtForm(
     mut cx: EditorCx,
@@ -27,8 +27,8 @@ pub(super) fn RegTtForm(
     let mut pins_cache =
         use_signal(std::collections::HashMap::<i64, Vec<api::pins::PinoutPin>>::new);
     let mut pins_requested = use_signal(std::collections::HashSet::<i64>::new);
-    // Précharge le pinout du device sélectionné (lecture du graphe DANS la
-    // closure — dépendance suivie, pattern DeviceForm).
+    // Preloads the pinout of the selected device (graph read INSIDE the
+    // closure — tracked dependency, DeviceForm pattern).
     use_effect(move || {
         let g = cx.graph.cloned();
         let list = devices.value().read().clone().unwrap_or_default();
@@ -95,7 +95,7 @@ pub(super) fn RegTtForm(
     rsx! {
         div { class: "space-y-3",
             p { class: "text-xs text-gray-500", {t!("flows-reg-help")} }
-            // ── Liaison : un seul device, capteur + actionneur sur la même board.
+            // ── Binding: a single device, sensor + actuator on the same board.
             label { class: "block",
                 span { class: FIELD_LABEL, {t!("flows-reg-device")} }
                 select {
@@ -104,7 +104,7 @@ pub(super) fn RegTtForm(
                     onchange: move |event| {
                         let slug = event.value();
                         device_id.set(slug.clone());
-                        // Nouveau device : pins résolus invalidés.
+                        // New device: resolved pins invalidated.
                         sensor_pin.set(String::new());
                         actuator_pin.set(String::new());
                         patch_selected(
@@ -357,9 +357,9 @@ pub(super) fn RegTtForm(
     }
 }
 
-/// Formulaire de la carte PID — même liaison mixte, gains + cycle relais
-/// time-proportional en plus, deadband/anti court-cycle en moins (le PID
-/// module un duty % sur `cycle_time_secs`).
+/// PID card form — same mixed binding, plus gains + time-proportional relay
+/// cycle, minus deadband/anti short-cycle (the PID
+/// modulates a duty % over `cycle_time_secs`).
 #[component]
 pub(super) fn RegPidForm(
     mut cx: EditorCx,
@@ -719,7 +719,7 @@ pub(super) fn RegPidForm(
     }
 }
 
-/// Config TT d'un nœud (lecture seule, pour l'effet de précharge).
+/// TT config of a node (read-only, for the preload effect).
 fn reg_tt_config_mut_ref(node: &FlowNode) -> Option<&RegTtConfig> {
     match &node.kind {
         FlowNodeKind::RegTtHeat { config } | FlowNodeKind::RegTtCool { config } => Some(config),
@@ -727,7 +727,7 @@ fn reg_tt_config_mut_ref(node: &FlowNode) -> Option<&RegTtConfig> {
     }
 }
 
-/// Config PID d'un nœud (lecture seule, pour l'effet de précharge).
+/// PID config of a node (read-only, for the preload effect).
 fn reg_pid_config_mut_ref(node: &FlowNode) -> Option<&RegPidConfig> {
     match &node.kind {
         FlowNodeKind::RegPid { config } => Some(config),
@@ -735,7 +735,7 @@ fn reg_pid_config_mut_ref(node: &FlowNode) -> Option<&RegPidConfig> {
     }
 }
 
-/// Sélecteur d'état de repos (safe-state) partagé des cartes reg.
+/// Shared rest-state (safe-state) selector of the reg cards.
 #[component]
 fn SafeStateSelect(
     current: SafeState,

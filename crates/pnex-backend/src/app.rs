@@ -17,9 +17,9 @@ use crate::controllers;
 
 pub struct App;
 
-/// Version composée du serveur (semver + sha de build) — source de vérité
-/// unique : le hook `Hooks::app_version` délègue ici et le contrôleur meta
-/// l'expose sur HTTP (`GET /api/v1/meta/version`).
+/// Composite server version (semver + build sha) — single source of
+/// truth: the `Hooks::app_version` hook delegates here and the meta controller
+/// exposes it over HTTP (`GET /api/v1/meta/version`).
 pub fn app_version() -> String {
     format!(
         "{} ({})",
@@ -86,14 +86,14 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::devices::routes())
         .add_route(controllers::devices::catalogue_routes())
         .add_route(controllers::builds::routes())
-        // Référentiels Edge (wizard device : fin de la ressaisie).
+        // Edge references (device wizard: no more re-typing).
         .add_route(controllers::edge_refs::routes())
         // Org secrets vault (D110–D118): CRUD, never a value.
         .add_route(controllers::secrets::routes())
         // Edge agent (D95): keys, enrollment, public enroll + downloads.
         .add_route(controllers::edge_agents::routes())
-        // Registre « Fonctions » (groupe « Automation ») — versionné +
-        // test en live via le binaire runtime.
+        // "Functions" registry ("Automation" group) — versioned +
+        // live test through the runtime binary.
         .add_route(controllers::functions::routes())
         .add_route(controllers::docs::routes())
         .add_route(controllers::doc_comments::routes())
@@ -101,15 +101,15 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::flows::routes())
         .add_route(controllers::media::routes())
         .add_route(controllers::stitch_jobs::routes())
-        // POI-first (D35) : le contrôleur sites est supplanté.
+        // POI-first (D35): the sites controller is superseded.
         .add_route(controllers::pois::routes())
-        // Couche d'organisation transverse (D42) : labels/containment/edges.
+        // Cross-cutting organization layer (D42): labels/containment/edges.
         .add_route(controllers::resources::routes())
-        // Studio SCADA (D40/D41) : dashboards versionnés + bibliothèque.
+        // SCADA Studio (D40/D41): versioned dashboards + library.
         .add_route(controllers::dashboards::routes())
         .add_route(controllers::viz_widgets::routes())
         .add_route(controllers::controls::routes())
-        // Mélanges de fluides personnalisés (CoolProp in-process).
+        // Custom fluid mixtures (in-process CoolProp).
         .add_route(controllers::fluid_mixtures::routes())
         // Diagrammes thermodynamiques (pnex-coolprop in-process).
         .add_route(controllers::thermo::routes())
@@ -123,15 +123,15 @@ pub fn app_routes() -> AppRoutes {
         .add_route(controllers::memory::routes())
         .add_route(controllers::ai::routes())
         .add_route(controllers::geo::routes())
-        // Notifications (D49–D54) : canaux/templates/journal + bus WS +
-        // endpoint interne de livraison (nœud flow / loopback Test).
+        // Notifications (D49–D54): channels/templates/log + WS bus +
+        // internal delivery endpoint (flow node / Test loopback).
         .add_route(controllers::notify::routes())
         .add_route(controllers::ws_notify::routes())
         .add_route(controllers::ws_doc::routes())
         .add_route(controllers::ws_ticket::routes())
         .add_route(controllers::internal_notify::routes())
-        // Écriture device depuis le runtime (nœud pnex-device-write) —
-        // token interne settings.flow.runtime_token.
+        // Device write from the runtime (pnex-device-write node) —
+        // internal token settings.flow.runtime_token.
         .add_route(controllers::internal_flow::routes())
         .add_route(controllers::flow_cluster::routes())
         .add_route(controllers::ws_device::routes())
@@ -191,8 +191,8 @@ impl Hooks for App {
     }
 
     fn app_version() -> String {
-        // Sans préfixe : résout la fonction libre ci-dessus (pas de récursion
-        // — les items du module ne sont pas masqués par les méthodes de trait).
+        // No prefix: resolves the free function above (no recursion
+        // — module items are not shadowed by trait methods).
         app_version()
     }
 
@@ -241,11 +241,11 @@ impl Hooks for App {
         crate::services::secrets::boot_guard(&ctx.config)
             .map_err(|e| loco_rs::Error::string(&e.to_string()))?;
         seed_catalog_at_boot(ctx).await;
-        // Batcher télémétrie → OpenObserve (no-op si non configuré : le sink
-        // noop reste en place — tests, déploiements sans télémétrie).
+        // Telemetry batcher → OpenObserve (no-op if not configured: the noop
+        // sink stays in place — tests, deployments without telemetry).
         crate::services::openobserve::spawn_batcher(ctx).await;
-        // Reaper de liveness : ici et non connect_workers — `loco start`
-        // sans flag est ServerOnly (connect_workers jamais appelé).
+        // Liveness reaper: here and not in connect_workers — `loco start`
+        // without a flag is ServerOnly (connect_workers never called).
         crate::services::device_liveness::spawn_reaper(ctx);
         // Notify delivery journal → O2 (D86): background writer.
         crate::services::notify_journal::spawn_writer(ctx);
@@ -271,7 +271,7 @@ impl Hooks for App {
         crate::services::site_recipes::spawn_pruner(ctx);
         // Captured profile texts past 30 days (D333).
         crate::services::profiles::spawn_pruner(ctx);
-        // Mailboxes relevées every two minutes (mail.md D460).
+        // Mailboxes polled every two minutes (mail.md D460).
         crate::services::mail::poller::spawn(ctx);
         crate::services::media_ingest::health::spawn(ctx);
         // Hourly O2 retention reconcile (D72): new streams get the value.
@@ -334,17 +334,17 @@ impl Hooks for App {
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
-        // Appelé uniquement en mode BackgroundQueue — c'est-à-dire quand le
-        // process drive la queue (`loco start --server-and-worker` ou
-        // `--worker-only`). Le reaper de liveness vit dans after_routes
-        // (doit tourner y compris en ServerOnly).
+        // Called only in BackgroundQueue mode — i.e. when the
+        // process drives the queue (`loco start --server-and-worker` or
+        // `--worker-only`). The liveness reaper lives in after_routes
+        // (must run in ServerOnly too).
         queue
             .register(crate::workers::build_firmware::BuildFirmwareWorker::build(
                 ctx,
             ))
             .await?;
-        // Take 360 V2 : assemblage HD serveur des prises 360° (rare, même
-        // queue que les builds firmware — 1 worker partagé, plan B3).
+        // Take 360 V2: server-side HD assembly of 360° takes (rare, same
+        // queue as firmware builds — 1 shared worker, plan B3).
         queue
             .register(crate::workers::stitch_panorama::StitchPanoramaWorker::build(ctx))
             .await?;
@@ -412,9 +412,9 @@ impl Hooks for App {
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {
-        // Utilisé par les tests (config `dangerously_truncate`) : vide toutes
-        // les tables applicatives (migrations + queue loco exclues), ids
-        // réinitialisés pour des tests déterministes.
+        // Used by the tests (`dangerously_truncate` config): empties all
+        // the application tables (migrations + loco queue excluded), ids
+        // reset for deterministic tests.
         use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
         // Excluded internal tables: migration tracking + loco queue.
         let excluded = ["seaql_migrations", "pg_loco_queue"];

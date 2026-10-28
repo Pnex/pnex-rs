@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Proposition — 2026-10-26**, code en cours (lots DP puis CRM1…CRM3) |
 | Déclencheur | Outillage commercial (P2.28) : après la cartographie et les signaux, le suivi des opportunités, des activités et des relances, sans ressaisie dans un second outil. Avant de vendre : D341 fini |
-| Repose sur | `account-mapping.md` (D329–D343, pack `prospection_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
+| Repose sur | `account-mapping.md` (D329–D343, pack `prospecting_b2b`), `proposals.md` (D367, D371–D377), `ontology.md` (D176–D191, D368 réglages de pack, D370 libellés d'énumération), `iam.md` (D298 classification, D296 portées), `partner-watch.md` (nœuds ontologie D312) |
 | Numérotation | **D442…D452**, lots **DP**, **CRM1…CRM3** |
 | Revient sur | le non-objectif « Pas de CRM » d'`account-mapping.md` §2 (D448) |
 
@@ -29,7 +29,7 @@ Suivre une affaire de la liste cible au contrat dans le même graphe que le comp
 
 `ObjectTypeDef` gagne `title_classification` (même liste, défaut `interne`) : le titre d'une personne est son nom.
 
-Packs livrés classés : `investigation` (personne : alias, rôle, notes, titre ; `employs.position`), `prospection_b2b` (personne : persona), `entreprises` (dirigeant : `dirige` sans attribut personnel ajouté). Une valeur hors liste est refusée à l'installation (`field-invalid`).
+Packs livrés classés : `investigation` (personne : alias, rôle, notes, titre ; `employs.position`), `prospecting_b2b` (personne : persona), `companies` (dirigeant : `manages` sans attribut personnel ajouté). Une valeur hors liste est refusée à l'installation (`field-invalid`).
 
 ### D443 — Masquage par rôle
 
@@ -46,14 +46,14 @@ Un rôle personnalisé sans la permission reçoit les objets **caviardés** : pr
 
 ### D444 — Base légale et durée de rétention : réglages du pack
 
-Deux réglages D368 de `prospection_b2b` :
+Deux réglages D368 de `prospecting_b2b` :
 
-- `base_legale` (texte, défaut `interet_legitime_prospection_b2b`) : affichée sur la fiche d'une personne ;
-- `retention_mois` (nombre, défaut 36, de 6 à 120).
+- `legal_basis` (texte, défaut `interet_legitime_prospection_b2b`) : affichée sur la fiche d'une personne ;
+- `retention_months` (nombre, défaut 36, de 6 à 120).
 
 ### D445 — File de rétention : des propositions d'effacement
 
-Chaque nuit, pour chaque org où `prospection_b2b` est installé : une personne sans modification, sans lien ouvert ou fermé et sans capture depuis `retention_mois` devient une **proposition d'effacement** (nouveau genre `object_erase` de D371) dans la boîte « à valider », avec sa dernière activité en preuve.
+Chaque nuit, pour chaque org où `prospecting_b2b` est installé : une personne sans modification, sans lien ouvert ou fermé et sans capture depuis `retention_months` devient une **proposition d'effacement** (nouveau genre `object_erase` de D371) dans la boîte « à valider », avec sa dernière activité en preuve.
 
 - **Jamais acceptée par une règle d'org** (D377 refusé pour ce genre) : l'effacement est une action humaine.
 - Accepter = effacer (D446). Refuser = garder ; la date du refus compte comme une activité, la personne ne revient pas avant une nouvelle période.
@@ -74,7 +74,7 @@ Le MCP ne l'expose pas (motif destructif).
 
 ### D447 — Opposition consultée partout
 
-- `oppose` pose aussi la propriété `opposition_le` (date, pack `prospection_b2b`) sur la personne : les flows de relance la filtrent.
+- `oppose` pose aussi la propriété `opposed_on` (date, pack `prospecting_b2b`) sur la personne : les flows de relance la filtrent.
 - La liste d'opposition gagne une empreinte **nom + compte** : `title:<nom normalisé>@<id de l'purpose lié>`, posée pour chaque organisation liée à la personne au moment de l'opposition ou de l'effacement.
 - **Le moteur refuse tout nouveau lien** entre un objet dont le titre est `personnelle` et un objet de l'empreinte quand le nom normalisé correspond (`prospection-opposed`, 409) : un rapprochement qui recrée « la même personne chez le même compte » échoue. Dans un import en masse, le lien est laissé de côté et le reste du lot passe (un refus ne fait pas échouer l'import). Générique : aucune clé de type ou de lien n'est nommée.
 - Nom normalisé : minuscules, accents latins repliés (« Élodie » = « elodie » = « ELODIE », `œ` → `oe`, apostrophe typographique), lettres et chiffres seulement, un espace entre les mots.
@@ -84,7 +84,7 @@ Le MCP ne l'expose pas (motif destructif).
 
 ### D448 — Le CRM est un pack
 
-Nouveau pack `crm` (`requires: [prospection_b2b]`). Il revient sur le non-objectif « Pas de CRM » d'`account-mapping.md` §2 en le gardant hors du noyau. Le pipeline reste simple : la valeur est dans le compte vu comme un réseau, les signaux et le rendez-vous.
+Nouveau pack `crm` (`requires: [prospecting_b2b]`). Il revient sur le non-objectif « Pas de CRM » d'`account-mapping.md` §2 en le gardant hors du noyau. Le pipeline reste simple : la valeur est dans le compte vu comme un réseau, les signaux et le rendez-vous.
 
 ### D449 — Opportunité et qualification
 
@@ -100,7 +100,7 @@ Type `opportunity` :
 | `missing_criteria` | texte, écrit par flow |
 | `follow_up_started_on` | date, écrite par flow |
 
-Liens : `opportunity_with` (→ `organization`, un seul ouvert), `involved_in` (`person` → opportunité, attribut `role` = persona), `owned_by` (opportunité → `person` interne), `comes_from` (opportunité → `signal_commercial`, `meeting`), `meeting_for` (`meeting` → opportunité).
+Liens : `opportunity_with` (→ `organization`, un seul ouvert), `involved_in` (`person` → opportunité, attribut `role` = persona), `owned_by` (opportunité → `person` interne), `comes_from` (opportunité → `sales_signal`, `meeting`), `meeting_for` (`meeting` → opportunité).
 
 **Qualification = données de l'org** : type `qualification_criterion` (description, `stage` à partir de laquelle il est exigé, actif). Lien `qualified_on` (opportunité → critère, attributs `status` `unknown`/`partial`/`valid`, `note`). SPICED, MEDDPICC ou la grille maison sont des listes de critères ; le pack n'en livre aucune. Un flow écrit `missing_criteria` : les critères exigés jusqu'à l'étape courante qui ne sont pas `valid`. Rien n'est bloqué : le passage d'étape reste une décision humaine.
 
@@ -155,10 +155,10 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 |---|---|
 | D442 | Classification D298 codée (propriétés, attributs, titre) |
 | D443 | Masquage par rôle : `ontology.personal:read`, `ontology.sensitive:read` |
-| D444 | Base légale et rétention : réglages de `prospection_b2b` |
+| D444 | Base légale et rétention : réglages de `prospecting_b2b` |
 | D445 | File de rétention = propositions `object_erase`, jamais automatiques |
 | D446 | Effacement en coquille, historique relu caviardé |
-| D447 | Opposition au moteur : empreinte nom + compte, `opposition_le` |
+| D447 | Opposition au moteur : empreinte nom + compte, `opposed_on` |
 | D448 | Le CRM est un pack |
 | D449 | Opportunité et qualification par critères de l'org |
 | D450 | Activités, plan de relance, brouillons relus |
@@ -171,12 +171,12 @@ Q-CRM1 et Q-CRM2 : sans avis de Shan (2026-10-26), les défauts prudents tiennen
 
 | Brique | Où | Tests |
 |---|---|---|
-| D442 `classification` + `title_classification` | `pnex-core` `ontology/schema.rs`, `ontology/mod.rs` ; packs `investigation` 1.11.0, `prospection_b2b` 1.3.0 | désérialisation fermée (valeur inconnue refusée) |
+| D442 `classification` + `title_classification` | `pnex-core` `ontology/schema.rs`, `ontology/mod.rs` ; packs `investigation` 1.11.0, `prospecting_b2b` 1.3.0 | désérialisation fermée (valeur inconnue refusée) |
 | D443 masquage | `services/ontology/redact.rs` ; contrôleurs `ontology`, `ontology_feed`, `apps`, `proposals` ; outils de l'assistant ; permissions au registre IAM + `GATES` | unitaires `redact` ; `tests/personal_data.rs` (rôle refusé : titre, propriétés, attributs, requête) |
-| D444 réglages | `prospection_b2b.yaml` `settings` | — |
+| D444 réglages | `prospecting_b2b.yaml` `settings` | — |
 | D445 file de rétention | `services/profiles.rs` `propose_erasures` (boucle horaire du purgeur, singleton) ; genre `object_erase` (`pnex-core` `proposal.rs`, contrainte SQL étendue) ; `erase::decide` | `personal_data.rs` (proposée une fois, acceptée = effacée, refusée = période relancée) ; vérifiée en réel le 2026-10-27 sur la stack Docker (personne vieillie de 40 mois, proposée au démarrage du serveur avec la durée de l'org, acceptée = coquille, même archivée) |
 | D446 effacement | `services/ontology/erase.rs`, `POST /ontology/objects/{id}/erase` (`ontology:delete`, exclu du MCP : destructif) ; colonne `objects.erased_at` (migration 000057) ; historique relu caviardé ; `profiles::before_erase` | `personal_data.rs` (coquille, idempotent, attribut de lien retiré) |
-| D447 opposition au moteur | `services/ontology/opposition.rs` ; contrôle dans `links::create_with` et `create_many_with` (lien laissé de côté) ; `opposition_le` posé par `oppose` | `personal_data.rs` (même nom au même compte refusé, ailleurs accepté) |
+| D447 opposition au moteur | `services/ontology/opposition.rs` ; contrôle dans `links::create_with` et `create_many_with` (lien laissé de côté) ; `opposed_on` posé par `oppose` | `personal_data.rs` (même nom au même compte refusé, ailleurs accepté) |
 | Repli des accents (D447) | `pnex-core` `fold.rs` ; `opposition.rs`, `query.rs`, `controllers/global_search.rs` | unitaires `fold` ; `tests/crm.rs` `names_match_without_accents_or_case` |
 | Jetons `$today±n` (D451) | `pnex-core` `ontology/flow.rs`, doc du nœud `ontology_query` | unitaire `today_offsets_resolve` |
 

@@ -1,7 +1,7 @@
-//! Kind `folder` (D42) — conteneur d'organisation pur (nom + emoji).
-//! L'arbre lui-même vit dans `resource_containment` ; ce module ne gère que
-//! l'entité (CRUD) et son purge hook (le delete d'un folder purge sa trace
-//! d'organisation — le sous-arbre est re-rooté, jamais supprimé).
+//! Kind `folder` (D42) — pure organisation container (name + emoji).
+//! The tree itself lives in `resource_containment`; this module only handles
+//! the entity (CRUD) and its purge hook (deleting a folder purges its
+//! organisation trace — the subtree is re-rooted, never deleted).
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
@@ -11,7 +11,7 @@ use sea_orm::{
 use crate::models::_entities::resource_folders;
 use crate::services::resources::ResourceError;
 
-/// Nom de folder valide (trim, 1..=255 chars).
+/// Valid folder name (trim, 1..=255 chars).
 pub fn validate_name(name: &str) -> Result<String, ResourceError> {
     let name = name.trim();
     if name.is_empty() {
@@ -72,7 +72,7 @@ pub async fn create_folder(
     am.insert(db).await.map_err(|_| ResourceError::Db)
 }
 
-/// PATCH partiel : `Option<Option<T>>` (école pois).
+/// Partial PATCH: `Option<Option<T>>` (pois pattern).
 pub struct FolderPatch<'a> {
     pub name: Option<&'a str>,
     pub emoji: Option<Option<&'a str>>,
@@ -104,7 +104,7 @@ pub async fn update_folder(
     Ok(Some(am.update(db).await.map_err(|_| ResourceError::Db)?))
 }
 
-/// Delete = purge d'organisation (sous-arbre re-rooté) + ligne entité.
+/// Delete = organisation purge (subtree re-rooted) + entity row.
 pub async fn delete_folder(db: &DatabaseConnection, org_id: i64, id: i64) -> Result<bool, DbErr> {
     let Some(row) = find_folder(db, org_id, id).await? else {
         return Ok(false);

@@ -1,7 +1,7 @@
-//! Tests OpenObserve (Phase 5) contre un mock fidèle du comportement réel
-//! constaté sur v0.92.1 : pas de dédoublonnage des noms d'org, rôle admin
-//! seul natif, passcode par user, ingestion `_json` en Basic
-//! email:passcode — cf. services/openobserve/mod.rs.
+//! OpenObserve tests (Phase 5) against a mock faithful to the actual
+//! behaviour seen on v0.92.1: no org name deduplication, admin role only
+//! native, passcode per user, `_json` ingestion with Basic
+//! email:passcode — see services/openobserve/mod.rs.
 
 mod common;
 
@@ -25,19 +25,19 @@ use serial_test::serial;
 
 #[derive(Default)]
 struct MockState {
-    /// (name, identifier) — les doublons de nom créent une 2e entrée,
-    /// comme en vrai.
+    /// (name, identifier) — duplicate names create a 2nd entry,
+    /// as in reality.
     orgs: Vec<(String, String)>,
-    /// (org identifier, email) → password courant.
+    /// (org identifier, email) → current password.
     users: HashMap<(String, String), String>,
-    /// Écriture Prometheus reçue : identifier org, basic "email:passcode",
-    /// métrique, labels, valeur, ts_ms.
+    /// Received Prometheus write: org identifier, basic "email:passcode",
+    /// metric, labels, value, ts_ms.
     #[allow(clippy::type_complexity)]
     ingested: Vec<(String, String, String, Vec<(String, String)>, f64, i64)>,
     org_creates: u32,
     user_creates: u32,
     resets: u32,
-    /// Basics reçus sur la route query Prometheus (ordre des tentatives).
+    /// Basics received on the Prometheus query route (order of attempts).
     query_basics: Vec<String>,
 }
 
@@ -90,7 +90,7 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             .unwrap_or_default();
                         let mut guard = s.lock().unwrap();
                         guard.org_creates += 1;
-                        // Comme en vrai : pas de dédoublonnage par nom.
+                        // As in reality: no deduplication by name.
                         let identifier = format!("mockid{}", guard.org_creates);
                         guard.orgs.push((name.clone(), identifier.clone()));
                         axum::Json(serde_json::json!({
@@ -197,7 +197,7 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                     async move {
                         let basic =
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
-                        // Décode snappy + protobuf comme le vrai O2.
+                        // Decodes snappy + protobuf like the real O2.
                         let raw = snap::raw::Decoder::new()
                             .decompress_vec(&body)
                             .unwrap_or_default();
@@ -248,9 +248,9 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
                         guard.query_basics.push(basic.clone());
-                        // Auth : Basic root UNIQUEMENT — fidèle au vrai O2
-                        // v0.92.1 où le Basic email:passcode est refusé sur
-                        // la query (il ne sert que l'ingestion).
+                        // Auth: root Basic ONLY — faithful to the real O2
+                        // v0.92.1 where the email:passcode Basic is refused on
+                        // the query (it only serves ingestion).
                         let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
                         let root_ok = email == "root@pnex.local" && secret == "whatever";
                         if !root_ok {
@@ -261,10 +261,10 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 })),
                             );
                         }
-                        // Fidèle v0.92.1 : les sélecteurs {__name__=~"..."}
-                        // (regex) renvoient un vector VIDE — seul le nom nu
-                        // (éventuellement wrapped dans last_over_time)
-                        // sélectionne.
+                        // Faithful to v0.92.1: {__name__=~"..."} selectors
+                        // (regex) return an EMPTY vector — only the bare name
+                        // (possibly wrapped in last_over_time)
+                        // selects.
                         let query = params.get("query").map(String::as_str).unwrap_or("");
                         let regex_selector = query.contains("__name__=~");
                         let metric_of_query = if regex_selector {
@@ -281,8 +281,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 })
                                 .map(str::to_string)
                         };
-                        // Dernier échantillon par (métrique, device_id) de
-                        // l'org — forme vector Prometheus exacte.
+                        // Last sample per (metric, device_id) of the
+                        // org — exact Prometheus vector shape.
                         #[allow(clippy::type_complexity)]
                         let mut last: HashMap<
                             (String, String),
@@ -293,7 +293,7 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 continue;
                             }
                             if regex_selector {
-                                continue; // aucun match, fidèle v0.92.1
+                                continue; // no match, faithful to v0.92.1
                             }
                             if metric_of_query.as_ref().is_some_and(|w| w != metric) {
                                 continue;
@@ -353,8 +353,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             basic_of(headers.get("authorization").and_then(|v| v.to_str().ok()));
                         let mut guard = s.lock().unwrap();
                         guard.query_basics.push(basic.clone());
-                        // Auth root uniquement, comme la query instantanée
-                        // (fidèle v0.92.1 : passcode = ingestion seule).
+                        // Root auth only, like the instant query
+                        // (faithful to v0.92.1: passcode = ingestion only).
                         let (email, secret) = basic.split_once(':').unwrap_or(("", ""));
                         if email != "root@pnex.local" || secret != "whatever" {
                             return (
@@ -364,8 +364,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 })),
                             );
                         }
-                        // Formes réelles utilisées par le backend : nom nu
-                        // `soil_moisture` ou égalité
+                        // Real shapes used by the backend: bare name
+                        // `soil_moisture` or equality
                         // `soil_moisture{device_id="fuzzy-zebra"}`.
                         let query = params.get("query").map(String::as_str).unwrap_or("");
                         let (name, device_filter) = match query.split_once('{') {
@@ -386,8 +386,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                             .get("end")
                             .and_then(|v| v.parse().ok())
                             .unwrap_or(f64::MAX);
-                        // Points par (métrique, device) dans la fenêtre —
-                        // forme matrix Prometheus exacte, ts en secondes.
+                        // Points per (metric, device) within the window —
+                        // exact Prometheus matrix shape, ts in seconds.
                         #[allow(clippy::type_complexity)]
                         let mut series: HashMap<
                             (String, String),
@@ -467,8 +467,8 @@ async fn spawn_mock_o2() -> (String, Arc<Mutex<MockState>>) {
                                 })),
                             );
                         }
-                        // Streams metrics distincts de l'org (type=metrics
-                        // comme le client le demande).
+                        // Distinct metrics streams of the org (type=metrics
+                        // as the client requests it).
                         if params.get("type").map(String::as_str) != Some("metrics") {
                             return (
                                 axum::http::StatusCode::BAD_REQUEST,
@@ -612,8 +612,8 @@ fn point(org_id: i64, metric: &str, value: &str) -> TelemetryPoint {
 
 // ───────────────────────── Tests ─────────────────────────
 
-/// Provisioning idempotent : org cherchée par nom avant création, user
-/// créé une fois, credentials servis depuis la base au 2e appel.
+/// Idempotent provisioning: org looked up by name before creation, user
+/// created once, credentials served from the database on the 2nd call.
 #[tokio::test]
 #[serial]
 async fn provisioning_idempotent() {
@@ -633,9 +633,9 @@ async fn provisioning_idempotent() {
             let guard = mock.lock().unwrap();
             assert_eq!(
                 guard.org_creates, 1,
-                "org créée une seule fois (lookup par nom)"
+                "org created only once (lookup by name)"
             );
-            assert_eq!(guard.user_creates, 1, "user créé une seule fois");
+            assert_eq!(guard.user_creates, 1, "user created only once");
             assert_eq!(guard.resets, 0);
         }
         let expected_email = format!("pnex-ingest+org{org}@pnex.local");
@@ -644,7 +644,7 @@ async fn provisioning_idempotent() {
             format!("{}:{}", expected_email, passcode_of(&expected_email))
         );
 
-        // Ligne en base : correlée org ↔ org O2 ↔ token, provisioned.
+        // Database row: correlates org ↔ O2 org ↔ token, provisioned.
         use pnex_backend::models::_entities::{
             openobserve_orgs, sea_orm_active_enums::OpenobserveOrgStatus,
         };
@@ -665,8 +665,8 @@ async fn provisioning_idempotent() {
     .await;
 }
 
-/// Perte de la ligne PG : l'org est retrouvée par nom (pas de 2e org), le
-/// password du user est réinitialisé par root, passcode relu, ligne recréée.
+/// PG row lost: the org is found again by name (no 2nd org), the user's
+/// password is reset by root, passcode re-read, row recreated.
 #[tokio::test]
 #[serial]
 async fn provisioning_recupere_ligne_perdue() {
@@ -677,30 +677,27 @@ async fn provisioning_recupere_ligne_perdue() {
             .await
             .expect("provision");
 
-        // Simule la perte de la ligne (O2 intact).
+        // Simulates the loss of the row (O2 intact).
         sea_orm::ConnectionTrait::execute_unprepared(&ctx.db, "DELETE FROM openobserve_orgs")
             .await
-            .expect("perte ligne");
+            .expect("line lost");
 
         let second = ensure_org_credentials(&ctx.db, &client, org)
             .await
             .expect("re-provision");
-        assert_eq!(first.o2_org, second.o2_org, "même org retrouvée par nom");
+        assert_eq!(first.o2_org, second.o2_org, "same org found again by name");
         assert_eq!(first.email_passcode, second.email_passcode);
 
         let guard = mock.lock().unwrap();
-        assert_eq!(guard.org_creates, 1, "aucune 2e org créée côté O2");
+        assert_eq!(guard.org_creates, 1, "no 2nd org created on the O2 side");
         assert_eq!(guard.user_creates, 1);
-        assert_eq!(
-            guard.resets, 1,
-            "password réinitialisé pour reprendre la main"
-        );
+        assert_eq!(guard.resets, 1, "password reset to regain control");
     })
     .await;
 }
 
-/// Batcher : les points partent groupés par org vers _json avec le Basic
-/// correlé de la base ; les valeurs non numériques sont abandonnées.
+/// Batcher: points leave grouped by org towards _json with the Basic
+/// correlated from the database; non-numeric values are dropped.
 #[tokio::test]
 #[serial]
 async fn batcher_flush_vers_openobserve() {
@@ -724,13 +721,13 @@ async fn batcher_flush_vers_openobserve() {
         tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
 
         let ingested = mock.lock().unwrap().ingested.clone();
-        assert!(!ingested.is_empty(), "au moins un lot flushé");
+        assert!(!ingested.is_empty(), "at least one batch flushed");
         let email = format!("pnex-ingest+org{org}@pnex.local");
         for (o2_org, basic, _metric, _labels, _v, _ts) in &ingested {
             assert_eq!(basic, &format!("{}:{}", email, passcode_of(&email)));
             assert_eq!(o2_org, "mockid1");
         }
-        // Deux samples numériques, le non numérique est abandonné.
+        // Two numeric samples, the non-numeric one is dropped.
         assert_eq!(ingested.len(), 2);
         let (_, _, metric, labels, value, ts_ms) = &ingested[0];
         assert_eq!(metric, "read_temperature");
@@ -744,12 +741,12 @@ async fn batcher_flush_vers_openobserve() {
     telemetry::reset_sink();
 }
 
-/// Query Prometheus sur le vrai O2 v0.92.1 (constaté e2e) : le Basic
-/// email:passcode est REFUSÉ sur la query (il ne sert que l'ingestion) —
-/// le client tente passcode puis bascule en Basic root, qui répond. La
-/// réponse vector est parsée et porte le DERNIER échantillon par série.
-/// Au passage : le sélecteur regex `{__name__=~…}` renvoie VIDE (constat
-/// e2e) — seuls les noms nus sélectionnent.
+/// Prometheus query on the real O2 v0.92.1 (seen e2e): the email:passcode
+/// Basic is REFUSED on the query (it only serves ingestion) — the client
+/// tries passcode then falls back to root Basic, which answers. The
+/// vector response is parsed and carries the LAST sample per series.
+/// Along the way: the regex selector `{__name__=~…}` returns EMPTY (seen
+/// e2e) — only bare names select.
 #[tokio::test]
 async fn prom_query_bascule_root_et_parse() {
     let (base, mock) = spawn_mock_o2().await;
@@ -769,7 +766,7 @@ async fn prom_query_bascule_root_et_parse() {
                 ts_ms,
             ));
         }
-        // Une autre org : ne doit pas fuiter dans la réponse.
+        // Another org: must not leak into the response.
         guard.ingested.push((
             "mockid2".into(),
             String::new(),
@@ -791,14 +788,14 @@ async fn prom_query_bascule_root_et_parse() {
         .expect("query via root");
     assert_eq!(resp.status, "success");
     assert_eq!(resp.data.result_type, "vector");
-    assert_eq!(resp.data.result.len(), 1, "une série pour mockid1");
+    assert_eq!(resp.data.result.len(), 1, "one series for mockid1");
     let sample = &resp.data.result[0];
     assert_eq!(sample.metric["__name__"], "read_temperature");
     assert_eq!(sample.metric["device_id"], "capteur-1");
-    assert_eq!(sample.value.1, "22.5", "dernier échantillon de la série");
+    assert_eq!(sample.value.1, "22.5", "last sample of the series");
     assert_eq!(sample.value.0, 1_755_600_030.0);
 
-    // Constat e2e v0.92.1 : le catch-all regex ne sélectionne RIEN.
+    // Seen e2e on v0.92.1: the catch-all regex selects NOTHING.
     let resp = client
         .prom_query(
             "mockid1",
@@ -806,19 +803,19 @@ async fn prom_query_bascule_root_et_parse() {
             &email_passcode,
         )
         .await
-        .expect("requête acceptée");
-    assert!(resp.data.result.is_empty(), "catch-all vide sur O2 réel");
+        .expect("query accepted");
+    assert!(resp.data.result.is_empty(), "catch-all empty on real O2");
 
-    // Passcode tenté puis refusé, root a répondu (sur chaque appel).
+    // Passcode tried then refused, root answered (on each call).
     let basics = mock.lock().unwrap().query_basics.clone();
-    assert_eq!(basics.len(), 4, "2 appels × (passcode PUIS root)");
+    assert_eq!(basics.len(), 4, "2 calls × (passcode THEN root)");
     assert_eq!(basics[0], email_passcode);
     assert_eq!(basics[1], "root@pnex.local:whatever");
     assert_eq!(basics[3], "root@pnex.local:whatever");
 }
 
-/// Passcode ET root refusés (ex. mot de passe root retourné) → erreur
-/// explicite, pas de panique — le dashboard dégradera en available:false.
+/// Passcode AND root refused (e.g. root password rotated) → explicit
+/// error, no panic — the dashboard will degrade to available:false.
 #[tokio::test]
 async fn prom_query_erreur_si_tout_refuse() {
     let (base, _mock) = spawn_mock_o2().await;
@@ -830,14 +827,14 @@ async fn prom_query_erreur_si_tout_refuse() {
     let err = client
         .prom_query("mockid1", "up", "pnex-ingest+org7@pnex.local:o2oi_x")
         .await
-        .expect_err("les deux auths sont refusées");
-    assert!(err.contains("refusé"), "message : {err}");
+        .expect_err("both auths are refused");
+    assert!(err.contains("refused"), "message: {err}");
 }
 
-/// Query range Prometheus (page Visualisation) : même bascule
-/// passcode→root que la query instantanée, sélecteur égalité
-/// `{device_id="…"}` respecté, points rendus en ordre chronologique
-/// dans la fenêtre [start, end] uniquement.
+/// Prometheus range query (Visualisation page): same passcode→root
+/// fallback as the instant query, equality selector
+/// `{device_id="…"}` honoured, points returned in chronological order
+/// within the [start, end] window only.
 #[tokio::test]
 async fn query_range_bascule_root_et_parse() {
     let (base, mock) = spawn_mock_o2().await;
@@ -847,9 +844,9 @@ async fn query_range_bascule_root_et_parse() {
         guard
             .users
             .insert(("mockid1".into(), email.into()), "pw".into());
-        // Trois points pour fuzzy-zebra (dont un HORS fenêtre) et un
-        // point d'un autre device — seuls les deux premiers doivent
-        // revenir, le filtre device excluant le reste.
+        // Three points for fuzzy-zebra (one OUTSIDE the window) and one
+        // point from another device — only the first two must
+        // come back, the device filter excluding the rest.
         for (value, ts_ms) in [
             (100.0, 1_755_600_000_000i64),
             (99.5, 1_755_600_030_000),
@@ -875,7 +872,7 @@ async fn query_range_bascule_root_et_parse() {
     }
     let client = o2_client(&base);
     let email_passcode = format!("{email}:{}", passcode_of(email));
-    // Fenêtre couvrant les deux premiers points uniquement.
+    // Window covering the first two points only.
     let resp = client
         .prom_query_range(
             "mockid1",
@@ -889,15 +886,15 @@ async fn query_range_bascule_root_et_parse() {
         .expect("query range via root");
     assert_eq!(resp.status, "success");
     assert_eq!(resp.data.result_type, "matrix");
-    assert_eq!(resp.data.result.len(), 1, "une seule série (filtre device)");
+    assert_eq!(resp.data.result.len(), 1, "a single series (device filter)");
     let sample = &resp.data.result[0];
     assert_eq!(sample.metric["__name__"], "soil_moisture");
     assert_eq!(sample.metric["device_id"], "fuzzy-zebra");
-    assert_eq!(sample.values.len(), 2, "point hors fenêtre exclu");
+    assert_eq!(sample.values.len(), 2, "point outside the window excluded");
     assert_eq!(sample.values[0], (1_755_600_000.0, "100".to_string()));
     assert_eq!(sample.values[1], (1_755_600_030.0, "99.5".to_string()));
 
-    // Nom nu SANS sélecteur : les deux devices de la métrique.
+    // Bare name WITHOUT a selector: both devices of the metric.
     let resp = client
         .prom_query_range(
             "mockid1",
@@ -908,20 +905,20 @@ async fn query_range_bascule_root_et_parse() {
             &email_passcode,
         )
         .await
-        .expect("nom nu accepté");
-    assert_eq!(resp.data.result.len(), 2, "une série par device");
+        .expect("bare name accepted");
+    assert_eq!(resp.data.result.len(), 2, "one series per device");
 
-    // Passcode tenté puis refusé, root a répondu (sur chaque appel).
+    // Passcode tried then refused, root answered (on each call).
     let basics = mock.lock().unwrap().query_basics.clone();
-    assert_eq!(basics.len(), 4, "2 appels × (passcode PUIS root)");
+    assert_eq!(basics.len(), 4, "2 calls × (passcode THEN root)");
     assert_eq!(basics[0], email_passcode);
     assert_eq!(basics[1], "root@pnex.local:whatever");
 }
 
-/// Summary dashboard complet : PNEX_O2_URL active la section openobserve
-/// de test.yaml (Tera), l'org provisionnée + mesures dans le mock →
-/// available:true avec les dernières mesures triées et dédoublonnées par
-/// série. Harnais dédié : la variable doit être posée AVANT le boot.
+/// Full dashboard summary: PNEX_O2_URL enables the openobserve section
+/// of test.yaml (Tera), the provisioned org + measurements in the mock →
+/// available:true with the latest measurements sorted and deduplicated per
+/// series. Dedicated harness: the variable must be set BEFORE boot.
 #[tokio::test]
 #[serial]
 async fn dashboard_summary_complet_contre_mock() {
@@ -941,13 +938,13 @@ async fn dashboard_summary_complet_contre_mock() {
         config,
         move |server, ctx| async move {
             common::seed_catalogue(&ctx.db).await;
-            // Le boot a lu la variable — on la retire pour ne pas fuiter
-            // sur les tests suivants du binaire.
+            // Boot has read the variable — remove it so it doesn't leak
+            // into the binary's following tests.
             unsafe { std::env::remove_var("PNEX_O2_URL") };
 
             let org = personal_org(&server, &alice).await;
-            // Provisionne l'org O2 (comme la première donnée le ferait)
-            // puis pousse des mesures côté mock.
+            // Provisions the O2 org (as the first datum would)
+            // then pushes measurements into the mock.
             let client = o2_client(&o2_base);
             let creds = ensure_org_credentials(&ctx.db, &client, org)
                 .await
@@ -979,24 +976,24 @@ async fn dashboard_summary_complet_contre_mock() {
             let body: serde_json::Value = res.json();
             assert_eq!(body["telemetry"]["available"], true);
             let latest = body["telemetry"]["latest"].as_array().unwrap();
-            assert_eq!(latest.len(), 2, "une ligne par (métrique, device)");
-            assert_eq!(latest[0]["metric"], "soil_moisture", "tri ts décroissant");
+            assert_eq!(latest.len(), 2, "one row per (metric, device)");
+            assert_eq!(
+                latest[0]["metric"], "soil_moisture",
+                "sorted by ts descending"
+            );
             assert_eq!(latest[0]["value"], 42.0);
             assert_eq!(latest[0]["device_id"], "esp-001");
             assert!(!latest[0]["timestamp"].as_str().unwrap_or("").is_empty());
-            assert_eq!(
-                latest[1]["value"], 22.0,
-                "dernier échantillon de read_temperature"
-            );
+            assert_eq!(latest[1]["value"], 22.0, "last sample of read_temperature");
 
-            // Auth : passcode refusé puis root a répondu (comportement
-            // réel v0.92.1) — sur le streams ET chaque query par métrique
-            // (2 métriques : read_temperature, soil_moisture).
+            // Auth: passcode refused then root answered (actual
+            // v0.92.1 behaviour) — on streams AND each per-metric query
+            // (2 metrics: read_temperature, soil_moisture).
             let basics = mock.lock().unwrap().query_basics.clone();
             assert_eq!(
                 basics.len(),
                 6,
-                "streams + 2 queries × (passcode PUIS root)"
+                "streams + 2 queries × (passcode THEN root)"
             );
             assert_eq!(basics[0], creds.email_passcode);
             assert_eq!(basics[1], "root@pnex.local:whatever");
@@ -1006,12 +1003,12 @@ async fn dashboard_summary_complet_contre_mock() {
     .await;
 }
 
-/// Endpoints Visualisation complets : PNEX_O2_URL active la section
-/// openobserve de test.yaml, l'org provisionnée + points dans le mock →
-/// catalogue disponible (une série par métrique × device) et série sur
-/// fenêtre avec points ordonnés. Les points utilisent des timestamps
-/// RÉELS (now) : contrairement au mock instantané, query_range filtre
-/// sur [start, end] calculés serveur.
+/// Full Visualisation endpoints: PNEX_O2_URL enables the openobserve
+/// section of test.yaml, the provisioned org + points in the mock →
+/// catalogue available (one series per metric × device) and a windowed
+/// series with ordered points. The points use REAL timestamps
+/// (now): unlike the instant mock, query_range filters
+/// on server-computed [start, end].
 #[tokio::test]
 #[serial]
 async fn visualization_catalog_et_series_contre_mock() {
@@ -1060,7 +1057,7 @@ async fn visualization_catalog_et_series_contre_mock() {
                 }
             }
 
-            // Catalogue : une série par (métrique × device), triée.
+            // Catalogue: one series per (metric × device), sorted.
             let res = server
                 .get("/api/v1/telemetry/catalog")
                 .add_header("Authorization", format!("Bearer {alice}"))
@@ -1071,14 +1068,14 @@ async fn visualization_catalog_et_series_contre_mock() {
             assert_eq!(body["available"], true);
             let series = body["series"].as_array().unwrap();
             assert_eq!(series.len(), 2);
-            assert_eq!(series[0]["metric"], "read_temperature", "tri alphabétique");
+            assert_eq!(series[0]["metric"], "read_temperature", "alphabetical sort");
             assert_eq!(series[0]["device_id"], "esp-001");
             assert_eq!(series[0]["pred_dev"], "temp_sensor");
             assert_eq!(series[0]["last_value"], 21.5);
             assert_eq!(series[1]["metric"], "soil_moisture");
-            assert_eq!(series[1]["last_value"], 99.5, "dernier échantillon");
+            assert_eq!(series[1]["last_value"], 99.5, "last sample");
 
-            // Série : points ordonnés de la fenêtre (1 h couvre now-2 min).
+            // Series: ordered points of the window (1 h covers now-2 min).
             let res = server
                 .get("/api/v1/telemetry/series?metric=soil_moisture&device_id=esp-001&window=1h")
                 .add_header("Authorization", format!("Bearer {alice}"))
@@ -1088,21 +1085,21 @@ async fn visualization_catalog_et_series_contre_mock() {
             let body: serde_json::Value = res.json();
             assert_eq!(body["available"], true);
             let points = body["points"].as_array().unwrap();
-            assert_eq!(points.len(), 2, "les deux points de la série");
+            assert_eq!(points.len(), 2, "both points of the series");
             assert_eq!(points[0]["value"], 100.0, "ordre chronologique");
             assert_eq!(points[1]["value"], 99.5);
             let ts0 = points[0]["ts"].as_f64().unwrap();
             let ts1 = points[1]["ts"].as_f64().unwrap();
             assert!(ts0 < ts1);
-            // Timestamps réels : dans la fenêtre 1 h qui vient de s'ouvrir
-            // (les points datent de now-2 min et now-1 min).
+            // Real timestamps: within the 1 h window that just opened
+            // (the points date from now-2 min and now-1 min).
             let now_secs = now_ms as f64 / 1000.0;
             assert!(
                 ts0 > now_secs - 3600.0 && ts1 <= now_secs,
-                "timestamps dans la fenêtre : {ts0}..{ts1} vs now {now_secs}"
+                "timestamps within the window: {ts0}..{ts1} vs now {now_secs}"
             );
 
-            // Le filtre device exclut les autres devices (fidélité mock).
+            // The device filter excludes the other devices (mock fidelity).
             let res = server
                 .get("/api/v1/telemetry/series?metric=soil_moisture&device_id=autre&window=1h")
                 .add_header("Authorization", format!("Bearer {alice}"))

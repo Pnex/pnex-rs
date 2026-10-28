@@ -1,4 +1,4 @@
-//! Claims IdP attendus dans les access tokens.
+//! IdP claims expected in access tokens.
 //!
 //! JIT provisioning reads
 //! `email`, `given_name`, `family_name`, `preferred_username`. **All identity
@@ -9,7 +9,7 @@
 
 use serde::Deserialize;
 
-/// `aud` peut être une string ou une liste selon l'IdP/client.
+/// `aud` can be a string or a list depending on the IdP/client.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Aud {
@@ -28,10 +28,10 @@ impl Aud {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Claims {
-    /// `sub` de l'IdP (Rauthy : 24 caractères alphanumériques) — clé du JIT
-    /// provisioning (`users.idp_sub`).
+    /// IdP `sub` (Rauthy: 24 alphanumeric characters) — JIT
+    /// provisioning key (`users.idp_sub`).
     pub sub: String,
-    /// Rauthy ne l'émet pas dans l'access token (claim du profil/id_token).
+    /// Rauthy does not emit it in the access token (profile/id_token claim).
     pub preferred_username: Option<String>,
     pub email: Option<String>,
     /// The IdP verified `email` (Rauthy emits it in the access token).
@@ -46,8 +46,8 @@ pub struct Claims {
 }
 
 impl Claims {
-    /// Nom affiché : `given_name family_name`, sinon le username de l'IdP,
-    /// sinon l'email (Rauthy : access tokens lean, souvent email seul).
+    /// Display name: `given_name family_name`, otherwise the IdP username,
+    /// otherwise the email (Rauthy: lean access tokens, often email only).
     pub fn display_name(&self) -> String {
         match (&self.given_name, &self.family_name) {
             (Some(g), Some(f)) => format!("{g} {f}"),

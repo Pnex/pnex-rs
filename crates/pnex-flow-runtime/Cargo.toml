@@ -3,7 +3,7 @@ name = "pnex-flow-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Runtime de flows ETL PNEX — edgelink-core + nœuds PNEX, headless, supervisé par pnex-server (D18)"
+description = "PNEX ETL flow runtime — edgelink-core + PNEX nodes, headless, supervised by pnex-server (D18)"
 
 [[bin]]
 name = "pnex-flow-runtime"
@@ -33,17 +33,17 @@ anyhow = "1"
 rquickjs = { version = "0.11", default-features = false, features = ["futures"] }
 tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "signal", "time", "fs", "sync"] }
 log = "0.4"
-# Hash des tabs (diff de reload) et de l'artefact (flow_rev santé process).
+# Hash of the tabs (reload diff) and of the artifact (flow_rev process health).
 sha2 = "0.10"
 hex = "0.4"
 
-# armv7 : rquickjs-sys ne shippe pas de bindings pré-générés (aarch64 oui) —
-# génération bindgen à la volée (libclang requis sur la machine de build).
+# armv7: rquickjs-sys ships no pre-generated bindings (aarch64 does) —
+# bindgen generation on the fly (libclang required on the build machine).
 [target.'cfg(target_arch = "arm")'.dependencies]
 rquickjs-sys = { version = "0.11", features = ["bindgen"] }
 
 [dev-dependencies]
-# Envoi de SIGUSR1/SIGINT au process enfant dans les tests E2E
+# Sends SIGUSR1/SIGINT to the child process in the E2E tests
 libc = "0.2"
 # Camera E2E: publishes frames on the Valkey frame bus.
 redis = { workspace = true }

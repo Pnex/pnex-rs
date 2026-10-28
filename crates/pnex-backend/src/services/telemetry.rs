@@ -1,26 +1,26 @@
-//! Point de télémétrie + sink remplaçable.
+//! Telemetry point + replaceable sink.
 //!
-//! Le WS d'ingestion pousse ses points dans le sink global sans jamais
-//! bloquer : l'implémentation réelle (batcher OpenObserve, Phase 5) bufferise
-//! et flushe par lots ; les tests injectent un sink enregistreur.
+//! The ingestion WS pushes its points into the global sink without ever
+//! blocking: the real implementation (OpenObserve batcher, Phase 5) buffers
+//! and flushes in batches; tests inject a recording sink.
 //! Points are org-scoped (D2).
 
 use std::sync::{Arc, RwLock};
 
-/// Un point de mesure ingéré (→ stream OpenObserve `sensor_measurements`).
+/// An ingested measurement point (→ OpenObserve stream `sensor_measurements`).
 #[derive(Debug, Clone)]
 pub struct TelemetryPoint {
     pub org_id: i64,
     pub device_registry_id: i64,
-    /// Identifiant déclaré par le firmware (MAC/hostname).
+    /// Identifier declared by the firmware (MAC/hostname).
     pub device_id: String,
-    /// Nom du predefined device (dimension `pred_dev`).
+    /// Name of the predefined device (`pred_dev` dimension).
     pub pred_dev: String,
     pub metric_name: String,
     /// Raw text value — cast to float at the edge (OpenObserve).
     pub value: String,
-    /// Horodatage serveur à la réception (v1 ; D12 : `ts_source` prêt pour
-    /// un timestamp device en protocole v2).
+    /// Server timestamp at reception (v1; D12: `ts_source` ready for a
+    /// device timestamp in protocol v2).
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub ts_source: &'static str,
     pub source_type: &'static str,
@@ -31,12 +31,12 @@ pub struct TelemetryPoint {
     pub record: bool,
 }
 
-/// Réceptacle des points ingérés — ne doit jamais bloquer la boucle WS.
+/// Receiver of ingested points — must never block the WS loop.
 pub trait TelemetrySink: Send + Sync {
     fn send(&self, point: TelemetryPoint);
 }
 
-/// Sink par défaut : abandonne les points (avant branchement OpenObserve).
+/// Default sink: drops the points (before OpenObserve is wired).
 struct NoopSink;
 
 impl TelemetrySink for NoopSink {
@@ -45,7 +45,7 @@ impl TelemetrySink for NoopSink {
 
 static SINK: RwLock<Option<Arc<dyn TelemetrySink>>> = RwLock::new(None);
 
-/// Sink actif (NoopSink tant que non installé).
+/// Active sink (NoopSink until one is installed).
 pub fn sink() -> Arc<dyn TelemetrySink> {
     SINK.read()
         .expect("verrou sink")
@@ -53,12 +53,12 @@ pub fn sink() -> Arc<dyn TelemetrySink> {
         .unwrap_or_else(|| Arc::new(NoopSink))
 }
 
-/// Installe le sink (boot : batcher OpenObserve ; tests : sink enregistreur).
+/// Installs the sink (boot: OpenObserve batcher; tests: recording sink).
 pub fn set_sink(new: Arc<dyn TelemetrySink>) {
     *SINK.write().expect("verrou sink") = Some(new);
 }
 
-/// Retire le sink installé (restaure NoopSink) — hygiène de tests.
+/// Removes the installed sink (restores NoopSink) — test hygiene.
 pub fn reset_sink() {
     *SINK.write().expect("verrou sink") = None;
 }

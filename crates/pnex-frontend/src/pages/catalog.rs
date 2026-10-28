@@ -1,6 +1,6 @@
-//! Catalogue d'appareils — porté du `Catalog.tsx` React, adapté au contrat
-//! paginé Rust (D14) : recherche + filtres type/board **côté serveur**
-//! (`search`, `device_type`, `board`), table paginée (socle CRUD —
+//! Device catalogue — ported from the React `Catalog.tsx`, adapted to the
+//! Rust paginated contract (D14): search + type/board filters **server-side**
+//! (`search`, `device_type`, `board`), paginated table (CRUD base —
 //! `{count, next, previous, results}`). Each row can open the board
 //! pinout preview (`BoardPreviewModal`) when the model's board has a profile.
 
@@ -18,8 +18,8 @@ use crate::components::crud::table::{Column, DataTable, RowKey};
 use crate::components::icons;
 use crate::components::ui::INPUT;
 
-/// Taille de page de la liste (3 colonnes × 4 rangées en desktop, héritée
-/// de la grille de cartes).
+/// List page size (3 columns × 4 rows on desktop, inherited
+/// from the card grid).
 const PAGE_SIZE: i64 = 12;
 
 #[component]
@@ -30,7 +30,7 @@ pub fn Catalog() -> Element {
     let mut filter_board = use_signal(|| "all".to_string());
     let mut page = use_signal(|| 0i64);
 
-    // Page courante de la grille — filtres poussés au serveur.
+    // Current grid page — filters pushed to the server.
     let list = use_resource(move || {
         let filters = api::devices::CatalogFilters {
             search: {
@@ -58,13 +58,13 @@ pub fn Catalog() -> Element {
         }
     });
 
-    // Options des filtres (vocabulaire type + boards distincts) — une seule
-    // requête page max : le catalogue de référence est borné.
+    // Filter options (type vocabulary + distinct boards) — a single
+    // max-page request: the reference catalogue is bounded.
     let options = use_resource(|| async move { api::devices::predefined_devices().await });
     let boards_resource = use_resource(|| async move { api::boards::list(None).await });
     let mut preview_board = use_signal(|| None::<api::boards::Board>);
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(paged)) => (
@@ -161,8 +161,8 @@ pub fn Catalog() -> Element {
             subtitle: Some(t!("catalog-subtitle").to_string()),
             on_refresh: move |_| reload.with_mut(|r| *r += 1),
             can_write: false,
-            // Filtres — la carte blanche historique cède la place à la barre
-            // canonique du socle (uniformité des pages liste).
+            // Filters — the historical white card gives way to the base's
+            // canonical bar (uniform list pages).
             FilterBar {
                 SearchInput {
                     page,

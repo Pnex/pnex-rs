@@ -1,31 +1,31 @@
-//! Fonctions utilisateur versionnées (registre « Fonctions », groupe
-//! « Automation ») — types partagés backend ↔ frontend ↔ runtime (CLI de
-//! test), parseur de directives d'interface et codegen du wrapper JS.
+//! Versioned user functions ("Functions" registry, "Automation"
+//! group) — types shared backend ↔ frontend ↔ runtime (test
+//! CLI), interface directive parser and JS wrapper codegen.
 //!
-//! Contraintes (règles du crate) : pur serde + `serde_json`, aucune
-//! dépendance native — compile natif et `wasm32` (le front appelle
-//! `parse_directives` en wasm pour la preview live de la signature).
+//! Constraints (crate rules): pure serde + `serde_json`, no native
+//! dependency — compiles native and `wasm32` (the front calls
+//! `parse_directives` in wasm for the live signature preview).
 //!
-//! Contrat d'exécution commun JS/Starlark : le code utilisateur définit
+//! Common JS/Starlark execution contract: user code defines
 //! `handle` — JS `function handle(inputs, msg)`, Starlark
-//! `def handle(inputs, msg):` — `inputs` = objet construit depuis les
-//! entrées déclarées (routage par fil : `msg.topic` nommant une entrée →
-//! payload entrant ; sinon lecture implicite `payload.<name>`), `msg` =
-//! message Node-RED entrant. Retour (contrat clé→valeur) :
-//! - `null`/`None` → message jeté (sémantique Node-RED) ;
-//! - **objet + `@output` déclarés → routage clé→port** : chaque clé nommant
-//!   une sortie déclarée émet un msg sur ce port (payload = la valeur) ;
-//!   clé absente ou `null` = port muet ;
-//! - objet sans sorties déclarées → msg sortant = msg entrant avec
-//!   `payload` remplacé (fusionné si l'objet porte `payload`), port 0 ;
-//! - tableau → un élément par port (règle payload-or-msg par élément ;
-//!   élément `null` = port muet) ;
-//! - valeur nue → port 0.
+//! `def handle(inputs, msg):` — `inputs` = object built from the
+//! declared inputs (wire routing: `msg.topic` naming an input →
+//! incoming payload; otherwise implicit read of `payload.<name>`), `msg` =
+//! incoming Node-RED message. Return value (key→value contract):
+//! - `null`/`None` → message dropped (Node-RED semantics);
+//! - **object + declared `@output` → key→port routing**: each key naming
+//!   a declared output emits a msg on that port (payload = the value);
+//!   missing or `null` key = silent port;
+//! - object without declared outputs → outgoing msg = incoming msg with
+//!   `payload` replaced (merged if the object carries `payload`), port 0;
+//! - array → one element per port (payload-or-msg rule per element;
+//!   `null` element = silent port);
+//! - bare value → port 0.
 //!
-//! Décisions (2026-09-15) : JS + Starlark, pas de Python (sandbox) ; JS
-//! réutilise le nœud `function` QuickJS du vendor (wrapper généré), Starlark
-//! = nœud custom `pnex-starlark` ; l'isolation des fonctions « bizarres »
-//! est un sujet d'infra (1 tenant = 1 process), pas in-process.
+//! Decisions (2026-09-15): JS + Starlark, no Python (sandbox); JS
+//! reuses the vendor QuickJS `function` node (generated wrapper), Starlark
+//! = custom `pnex-starlark` node; isolating "weird" functions
+//! is an infra topic (1 tenant = 1 process), not in-process.
 
 use std::collections::BTreeMap;
 
@@ -43,8 +43,8 @@ pub enum FunctionLanguage {
 }
 
 impl FunctionLanguage {
-    /// Nombre de ports de sortie du nœud de flow correspondant : au moins 1
-    /// port (Node-RED : un nœud a toujours ≥ 1 sortie), même sans `@output`.
+    /// Number of output ports of the matching flow node: at least 1
+    /// port (Node-RED: a node always has ≥ 1 output), even without `@output`.
     pub fn output_count(outputs: &[FunctionOutput]) -> usize {
         std::cmp::max(1, outputs.len())
     }
@@ -94,8 +94,8 @@ pub struct FunctionOutput {
     pub desc: Option<String>,
 }
 
-/// Interface déclarée d'une fonction — extraite des directives au save,
-/// stockée structurée sur `function_versions.inputs` / `.outputs`.
+/// Declared interface of a function — extracted from the directives on save,
+/// stored structured in `function_versions.inputs` / `.outputs`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FunctionSignature {
     #[serde(default)]
@@ -120,10 +120,10 @@ impl std::fmt::Display for DirectiveError {
 
 impl std::error::Error for DirectiveError {}
 
-// ───────────────────────── Parseur de directives ─────────────────────────
+// ───────────────────────── Directive parser ─────────────────────────
 
-/// Nom de variable/admettant `[a-z_][a-z0-9_]*` (identifiants valides dans
-/// les deux langages cibles).
+/// Variable name matching `[a-z_][a-z0-9_]*` (valid identifiers in
+/// both target languages).
 fn is_valid_name(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
@@ -147,8 +147,8 @@ fn parse_type(tok: &str, line: u32) -> Result<FunctionType, DirectiveError> {
     }
 }
 
-/// Convertit le texte de défaut selon le type déclaré (pas d'espaces dans
-/// un défaut : une directive = une ligne, champs séparés par des espaces).
+/// Converts the default text according to the declared type (no spaces in
+/// a default: one directive = one line, fields separated by spaces).
 fn parse_default(
     ty: FunctionType,
     text: &str,
@@ -175,7 +175,7 @@ fn parse_default(
     }
 }
 
-/// Retire les guillemets enveloppants d'une description optionnelle.
+/// Strips the enclosing quotes of an optional description.
 fn clean_desc(s: &str) -> Option<String> {
     let s = s.trim();
     if s.is_empty() {
@@ -193,10 +193,10 @@ fn clean_desc(s: &str) -> Option<String> {
     }
 }
 
-/// Extrait la signature déclarée par les directives `@input`/`@output` en
-/// commentaire (`//` ou `#`, tolérant pour les deux langages). Les lignes
-/// qui ne sont pas des directives sont ignorées ; erreurs typées avec la
-/// ligne fautive (400 au save, aperçu au front).
+/// Extracts the signature declared by the `@input`/`@output` directives in
+/// comments (`//` or `#`, tolerant for both languages). Lines
+/// that are not directives are ignored; typed errors with the
+/// offending line (400 on save, preview in the front).
 pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError> {
     let mut sig = FunctionSignature::default();
     let mut seen_inputs: std::collections::BTreeSet<String> = Default::default();
@@ -213,8 +213,8 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
             continue;
         };
         if let Some(rest) = body.strip_prefix("@input") {
-            // Frontière stricte : `@inputs`/`@input_x` ne sont pas des
-            // directives (le mot doit être suivi d'un blanc ou fin de ligne).
+            // Strict boundary: `@inputs`/`@input_x` are not
+            // directives (the word must be followed by whitespace or end of line).
             if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
                 continue;
             }
@@ -293,14 +293,14 @@ pub fn parse_directives(code: &str) -> Result<FunctionSignature, DirectiveError>
                 desc: clean_desc(desc_part),
             });
         }
-        // Tout autre commentaire : ignoré.
+        // Any other comment: ignored.
     }
     Ok(sig)
 }
 
-/// Position d'une directive `@input`/`@output` dans le code (ligne 1-based).
-/// Sert aux grilles de ports éditables : la ligne identifie la directive à
-/// réécrire quand l'utilisateur modifie une cellule.
+/// Position of an `@input`/`@output` directive in the code (1-based line).
+/// Used by the editable port grids: the line identifies the directive to
+/// rewrite when the user edits a cell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirectiveSpan {
     pub is_input: bool,
@@ -308,9 +308,9 @@ pub struct DirectiveSpan {
     pub line: u32,
 }
 
-/// Positions de toutes les directives, tolérant aux erreurs et aux
-/// doublons (contrairement à [`parse_directives`] qui échoue) : l'éditeur
-/// a besoin de localiser les directives même sur un code invalide.
+/// Positions of all directives, tolerant to errors and
+/// duplicates (unlike [`parse_directives`], which fails): the editor
+/// needs to locate the directives even in invalid code.
 pub fn directive_spans(code: &str) -> Vec<DirectiveSpan> {
     let mut spans = Vec::new();
     for (idx, raw) in code.lines().enumerate() {
@@ -324,8 +324,8 @@ pub fn directive_spans(code: &str) -> Vec<DirectiveSpan> {
         };
         for (word, is_input) in [("@input", true), ("@output", false)] {
             if let Some(rest) = body.strip_prefix(word) {
-                // Même frontière stricte que `parse_directives` : le mot
-                // doit être suivi d'un blanc ou d'une fin de ligne.
+                // Same strict boundary as `parse_directives`: the word
+                // must be followed by whitespace or end of line.
                 if !rest.is_empty() && !rest.starts_with(' ') && !rest.starts_with('\t') {
                     continue;
                 }
@@ -345,13 +345,13 @@ pub fn directive_spans(code: &str) -> Vec<DirectiveSpan> {
 
 // ───────────────────────── Bindings & chemins msg ─────────────────────────
 
-/// Binding par défaut d'une entrée : `payload.<name>`.
+/// Default binding of an input: `payload.<name>`.
 pub fn default_binding(input_name: &str) -> String {
     format!("payload.{input_name}")
 }
 
-/// Résout un chemin pointé (`payload.temperature`, segments numériques =
-/// index de tableau) dans un msg JSON. `None` = chemin absent.
+/// Resolves a dotted path (`payload.temperature`, numeric segments =
+/// array index) in a JSON msg. `None` = path missing.
 pub fn resolve_msg_path<'a>(
     msg: &'a serde_json::Value,
     path: &str,
@@ -370,10 +370,10 @@ pub fn resolve_msg_path<'a>(
     Some(cur)
 }
 
-/// Insère une valeur à un chemin pointé du msg (crée les objets
-/// intermédiaires ; écrase une valeur existante). Miroir de
-/// [`resolve_msg_path`] pour le panneau de test : les valeurs du formulaire
-/// typé sont injectées aux chemins de binding avant l'exécution.
+/// Inserts a value at a dotted path of the msg (creates intermediate
+/// objects; overwrites an existing value). Mirror of
+/// [`resolve_msg_path`] for the test panel: the values of the typed
+/// form are injected at the binding paths before execution.
 pub fn insert_msg_path(msg: &mut serde_json::Value, path: &str, value: serde_json::Value) {
     let segments: Vec<&str> = path.split('.').collect();
     if segments.is_empty() {
@@ -386,7 +386,7 @@ pub fn insert_msg_path(msg: &mut serde_json::Value, path: &str, value: serde_jso
                 *cur = serde_json::Value::Object(serde_json::Map::new());
             }
             cur.as_object_mut()
-                .expect("objet assuré")
+                .expect("object ensured")
                 .insert((*seg).to_string(), value);
             return;
         }
@@ -395,17 +395,17 @@ pub fn insert_msg_path(msg: &mut serde_json::Value, path: &str, value: serde_jso
         }
         cur = cur
             .as_object_mut()
-            .expect("objet assuré")
+            .expect("object ensured")
             .entry((*seg).to_string())
             .or_insert(serde_json::Value::Object(serde_json::Map::new()));
     }
 }
 
-/// Construit l'objet `inputs` passé à `handle`. Routage par fil : si
-/// `msg.topic` nomme une entrée déclarée (fil posé sur son ancre — tagger
-/// inséré par la projection, ou sortie JSON Split), l'entrée reçoit le
-/// **payload entrant** ; sinon elle lit implicitement `payload.<nom>` ;
-/// absent → défaut déclaré ; sinon `null` (documenté au cheat-sheet).
+/// Builds the `inputs` object passed to `handle`. Wire routing: if
+/// `msg.topic` names a declared input (wire set on its anchor — tagger
+/// inserted by the projection, or JSON Split output), the input receives the
+/// **incoming payload**; otherwise it implicitly reads `payload.<name>`;
+/// missing → declared default; otherwise `null` (documented in the cheat-sheet).
 pub fn build_inputs(
     inputs: &[FunctionInput],
     msg: &serde_json::Value,
@@ -432,20 +432,20 @@ pub fn build_inputs(
 
 // ───────────────────────── Codegen wrapper JS ─────────────────────────
 
-/// Génère le corps de `async function __el_user_func(msg) { … }` consommé
-/// par le nœud `function` du vendor EdgeLinkd (QuickJS) : helpers embarqués
-/// + code utilisateur (définissant `handle`) + tail qui construit `inputs`
-///   (chaque entrée lit implicitement `payload.<nom>`, défauts déclarés
-///   inclus) et mappe le retour en ports — **objet clé→valeur routé par
-///   `@output` déclaré** (clé absente = port muet) quand des sorties sont
-///   déclarées, contrat historique sinon. Les chaînes sont insérées en
-///   littéraux JS échappés (serde_json).
+/// Generates the body of `async function __el_user_func(msg) { … }` consumed
+/// by the `function` node of the EdgeLinkd vendor (QuickJS): embedded helpers
+/// + user code (defining `handle`) + tail that builds `inputs`
+///   (each input implicitly reads `payload.<name>`, declared defaults
+///   included) and maps the return value to ports — **key→value object routed by
+///   declared `@output`** (missing key = silent port) when outputs are
+///   declared, historical contract otherwise. Strings are inserted as
+///   escaped JS literals (serde_json).
 pub fn build_js_wrapper(
     user_code: &str,
     inputs: &[FunctionInput],
     outputs: &[FunctionOutput],
 ) -> String {
-    const HELPERS: &str = r#"// ── PNEX function wrapper (généré) ──
+    const HELPERS: &str = r#"// ── PNEX function wrapper (generated) ──
 function __pnex_get(msg, path, dflt) {
   let cur = msg;
   for (const seg of String(path).split(".")) {
@@ -465,9 +465,9 @@ function __pnex_port(msg, v) {
 }
 "#;
 
-    // Tail généré selon les sorties déclarées : **objet clé→valeur routé
-    // par port** (clé absente/null = port muet) ; sinon contrat historique
-    // (tableau positionnel, valeur/objet → port 0).
+    // Tail generated from the declared outputs: **key→value object routed
+    // per port** (missing/null key = silent port); otherwise historical contract
+    // (positional array, value/object → port 0).
     let tail = if outputs.is_empty() {
         "const __pnex_r = await Promise.resolve(handle(__pnex_inputs, msg));\n\
          if (__pnex_r === null || __pnex_r === undefined) return null;\n\
@@ -506,7 +506,7 @@ function __pnex_port(msg, v) {
             .as_ref()
             .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "null".into()))
             .unwrap_or_else(|| "undefined".to_string());
-        // Routage par fil : `topic` nommant l'entrée → payload entrant.
+        // Wire routing: `topic` naming the input → incoming payload.
         js.push_str(&format!(
             "  {name_lit}: (typeof msg.topic === \"string\" && msg.topic === {name_lit}) ? (msg.payload === undefined ? null : msg.payload) : __pnex_get(msg, {path_lit}, {dflt_lit}),\n"
         ));
@@ -516,28 +516,28 @@ function __pnex_port(msg, v) {
     js
 }
 
-/// Génère le corps du **tagger** inséré par la projection sur chaque fil
-/// arrivant sur l'ancre d'une entrée déclarée d'une fonction : estampe
-/// `msg.topic` avec le nom de l'entrée — le wrapper JS comme l'exécuteur
-/// Starlark routent alors le payload entrant vers `inputs.<nom>` (voir
-/// `build_inputs` / `build_js_wrapper`). Le texte est le **corps** de
-/// `__el_user_func(msg)` (contrat du nœud vendor `function`) : le `return`
-/// doit être au niveau du corps — un `function handle() {}` défini sans
-/// être appelé ne retourne rien et le message serait jeté.
+/// Generates the body of the **tagger** inserted by the projection on each wire
+/// arriving on the anchor of a declared function input: stamps
+/// `msg.topic` with the input name — both the JS wrapper and the Starlark
+/// executor then route the incoming payload to `inputs.<name>` (see
+/// `build_inputs` / `build_js_wrapper`). The text is the **body** of
+/// `__el_user_func(msg)` (vendor `function` node contract): the `return`
+/// must be at body level — a `function handle() {}` defined without
+/// being called returns nothing and the message would be dropped.
 pub fn build_input_tag_func(pin: &str) -> String {
     let pin_lit = serde_json::to_string(pin).unwrap_or_else(|_| "\"\"".into());
     format!("return Object.assign({{}}, msg, {{ topic: {pin_lit} }});")
 }
 
-// ───────────────── Générateurs JSON Split / JSON Merge ─────────────────
+// ───────────────── JSON Split / JSON Merge generators ─────────────────
 
-/// Génère le corps du nœud vendor `function` pour un nœud `json-split`.
-/// `keys` vide (legacy) : objet → un msg par clé sur l'unique port
-/// (`payload` = valeur, `topic` = clé), array → un msg par élément
-/// (`topic` = index) ; tout autre payload passe inchangé. `keys` non vide :
-/// un port **nommé par clé** — `payload[key]` sort sur son port, clé absente
-/// = port muet (slot `null`, contrat vendor), array → éléments sur le port
-/// 0, autre payload → passthrough port 0 ; clé sans port = ignorée.
+/// Generates the vendor `function` node body for a `json-split` node.
+/// Empty `keys` (legacy): object → one msg per key on the single port
+/// (`payload` = value, `topic` = key), array → one msg per element
+/// (`topic` = index); any other payload passes unchanged. Non-empty `keys`:
+/// one port **named per key** — `payload[key]` goes out on its port, missing key
+/// = silent port (`null` slot, vendor contract), array → elements on port
+/// 0, other payload → passthrough port 0; key without a port = ignored.
 pub fn build_json_split_func(keys: &[String]) -> String {
     if keys.is_empty() {
         return r#"const p = msg.payload;
@@ -579,12 +579,12 @@ return [msg];"#
     )
 }
 
-/// Génère le corps du nœud vendor `function` pour un nœud `json-merge` :
-/// chaque payload est rangé sous `msg.topic` (si non vide) sinon sous
-/// `default_key` dans un accumulateur persistant (contexte du nœud) — une
-/// entrée = une variable ; l'objet accumulé est émis à chaque msg. Style
-/// volontairement `var`/`Object.assign` (pas de spread/arrow) — école du
-/// wrapper de fonction.
+/// Generates the vendor `function` node body for a `json-merge` node:
+/// each payload is stored under `msg.topic` (if non-empty), otherwise under
+/// `default_key` in a persistent accumulator (node context) — one
+/// input = one variable; the accumulated object is emitted on every msg. Deliberately
+/// `var`/`Object.assign` style (no spread/arrow) — same school as the
+/// function wrapper.
 pub fn build_json_merge_func(default_key: &str) -> String {
     let key_lit = serde_json::to_string(default_key).unwrap_or_else(|_| "\"value\"".into());
     format!(
@@ -598,36 +598,36 @@ return [Object.assign({{}}, msg, {{ payload: acc }})];"#
     )
 }
 
-// ───────────────────── Config du nœud de flow + snapshots ─────────────────────
+// ───────────────────── Flow node config + snapshots ─────────────────────
 
-/// Configuration du nœud custom PNEX `PnexFunction` — **références +
-/// snapshot d'interface** uniquement : le CODE n'est jamais dans le graphe,
-/// la projection l'inline au deploy depuis la version épinglée (artefact
-/// self-contained ; éditer une fonction n'affecte pas les flows déployés
-/// tant qu'ils ne sont pas re-déployés).
+/// Configuration of the custom PNEX `PnexFunction` node — **references +
+/// interface snapshot** only: the CODE is never in the graph,
+/// the projection inlines it at deploy from the pinned version (self-contained
+/// artifact; editing a function does not affect deployed flows
+/// until they are redeployed).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FunctionNodeConfig {
-    /// `functions.id` — 0 = non sélectionné (validate_graph : `fn_not_selected`).
+    /// `functions.id` — 0 = not selected (validate_graph: `fn_not_selected`).
     #[serde(default)]
     pub function_id: i64,
-    /// Nom conservé pour l'affichage (le picker le remplit).
+    /// Name kept for display (the picker fills it).
     #[serde(default)]
     pub function_name: String,
-    /// `function_versions.version_number` épinglée — 0 = non posé.
+    /// Pinned `function_versions.version_number` — 0 = not set.
     #[serde(default)]
     pub version_number: i64,
     #[serde(default)]
     pub language: FunctionLanguage,
-    /// Snapshot des entrées/sorties déclarées (directives de la version
-    /// épinglée) — pilote l'inspecteur et le panneau de test.
+    /// Snapshot of the declared inputs/outputs (directives of the pinned
+    /// version) — drives the inspector and the test panel.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<FunctionInput>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub outputs: Vec<FunctionOutput>,
 }
 
-/// Instantané d'une version de fonction résolue au deploy (backend) —
-/// porte le CODE qui sera inline dans l'artefact.
+/// Snapshot of a function version resolved at deploy (backend) —
+/// carries the CODE that will be inlined in the artifact.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionSnapshot {
     pub function_id: i64,
@@ -640,8 +640,8 @@ pub struct FunctionSnapshot {
     pub outputs: Vec<FunctionOutput>,
 }
 
-/// Résolveur passé à la projection : `(function_id, version_number) →
-/// snapshot`. Le backend le construit en batch depuis `function_versions`.
+/// Resolver passed to the projection: `(function_id, version_number) →
+/// snapshot`. The backend builds it in batch from `function_versions`.
 pub type FunctionResolver = BTreeMap<(i64, i64), FunctionSnapshot>;
 
 // ───────────────────────────── API DTOs ─────────────────────────────
@@ -835,7 +835,7 @@ mod tests {
     #[test]
     fn parse_directives_complet() {
         let code = r#"
-// @input temperature number "Température mesurée"
+// @input temperature number "Température mesurée"  english-guard: allow (French example)
 // @input mode string="auto" Mode de marche
 // @input enabled bool=true
 # @output heating number
@@ -859,7 +859,7 @@ function handle(inputs, msg) { return inputs.temperature; }
     #[test]
     fn parse_directives_vide_et_sans_directive() {
         assert!(parse_directives("").unwrap().inputs.is_empty());
-        assert!(parse_directives("// rien ici\nlet x = 1;")
+        assert!(parse_directives("// nothing here\nlet x = 1;")
             .unwrap()
             .outputs
             .is_empty());
@@ -871,13 +871,13 @@ function handle(inputs, msg) { return inputs.temperature; }
         let e = parse_directives("// @input a float").unwrap_err();
         assert_eq!(e.line, 1);
         assert!(e.message.contains("unknown type"), "{}", e.message);
-        // défaut non convertible
+        // non-convertible default
         let e = parse_directives("// @input a number=abc").unwrap_err();
         assert!(e.message.contains("number expected"), "{}", e.message);
-        // dupliquée
+        // duplicated
         let e = parse_directives("// @input a number\n// @input a string").unwrap_err();
         assert!(e.message.contains("duplicate"), "{}", e.message);
-        // nom invalide
+        // invalid name
         let e = parse_directives("# @input 1abc number").unwrap_err();
         assert!(e.message.contains("snake_case"), "{}", e.message);
         // type manquant
@@ -950,14 +950,14 @@ function handle(inputs, msg) { return inputs.temperature; }
         insert_msg_path(&mut msg, "payload.temperature", serde_json::json!(10));
         assert_eq!(msg["payload"]["temperature"], 10);
         assert_eq!(msg["topic"], "a");
-        // Écrase une valeur existante.
+        // Overwrites an existing value.
         insert_msg_path(&mut msg, "payload.temperature", serde_json::json!(20));
         assert_eq!(msg["payload"]["temperature"], 20);
-        // Chemin racine traversant un non-objet : remplacé par un objet.
+        // Root path traversing a non-object: replaced by an object.
         let mut scalar = serde_json::json!(42);
         insert_msg_path(&mut scalar, "payload.x", serde_json::json!(1));
         assert_eq!(scalar["payload"]["x"], 1);
-        // Roundtrip avec resolve_msg_path.
+        // Roundtrip with resolve_msg_path.
         assert_eq!(
             resolve_msg_path(&msg, "payload.temperature"),
             Some(&serde_json::json!(20))
@@ -980,9 +980,9 @@ function handle(inputs, msg) { return inputs.temperature; }
                 desc: None,
             },
         ];
-        // Chaque entrée lit implicitement payload.<nom> : t ← payload.t
-        // (absent → défaut déclaré 0) ; mode ← payload.mode (absent, pas de
-        // défaut → null).
+        // Each input implicitly reads payload.<name>: t ← payload.t
+        // (missing → declared default 0); mode ← payload.mode (missing, no
+        // default → null).
         let inputs_obj = build_inputs(&inputs, &json!({}));
         assert_eq!(inputs_obj.get("t"), Some(&json!(0)));
         assert_eq!(
@@ -1001,14 +1001,14 @@ function handle(inputs, msg) { return inputs.temperature; }
             default: Some(json!(0)),
             desc: None,
         }];
-        // msg.topic nommant l'entrée → payload entrant (routage par fil),
-        // même si payload.<nom> existerait par ailleurs.
+        // msg.topic naming the input → incoming payload (wire routing),
+        // even if payload.<name> exists as well.
         let inputs_obj = build_inputs(&inputs, &json!({"topic": "t", "payload": 42}));
         assert_eq!(inputs_obj.get("t"), Some(&json!(42)));
-        // Topic inconnu → lecture implicite payload.<nom> (fallback).
+        // Unknown topic → implicit read of payload.<name> (fallback).
         let inputs_obj = build_inputs(&inputs, &json!({"topic": "autre", "payload": {"t": 7}}));
         assert_eq!(inputs_obj.get("t"), Some(&json!(7)));
-        // Topic nommant l'entrée mais payload absent → null.
+        // Topic naming the input but payload missing → null.
         let inputs_obj = build_inputs(&inputs, &json!({"topic": "t"}));
         assert_eq!(inputs_obj.get("t"), Some(&json!(serde_json::Value::Null)));
     }
@@ -1016,19 +1016,19 @@ function handle(inputs, msg) { return inputs.temperature; }
     #[test]
     fn build_input_tag_func_estampe_le_topic() {
         let js = build_input_tag_func("in_float");
-        // Corps direct de __el_user_func : le return au niveau du corps
-        // (un function handle défini sans être appelé → message jeté).
+        // Direct body of __el_user_func: the return at body level
+        // (a function handle defined without being called → message dropped).
         assert!(
             js.starts_with("return Object.assign"),
             "corps direct, return top-level"
         );
         assert!(
             js.contains("topic: \"in_float\""),
-            "le tagger estampe topic avec le nom de l'entrée"
+            "the tagger stamps topic with the input name"
         );
         assert!(
             !js.contains("function handle"),
-            "jamais de déclaration handle non appelée"
+            "never an uncalled handle declaration"
         );
     }
 
@@ -1044,18 +1044,12 @@ function handle(inputs, msg) { return inputs.temperature; }
         let js = build_js_wrapper(code, &inputs, &[]);
         assert!(js.contains("__pnex_get"), "helpers absents");
         assert!(js.contains("function handle(inputs, msg)"), "code user");
-        assert!(
-            js.contains("\"payload.t\""),
-            "chemin implicite payload.<nom>"
-        );
-        assert!(js.contains("21.5"), "défaut sérialisé");
+        assert!(js.contains("\"payload.t\""), "implicit payload.<name> path");
+        assert!(js.contains("21.5"), "serialized default");
         assert!(js.contains("__pnex_inputs"), "objet inputs");
-        assert!(
-            js.contains("msg.topic === \"t\""),
-            "branche de routage par topic"
-        );
+        assert!(js.contains("msg.topic === \"t\""), "topic routing branch");
         assert!(js.contains("await Promise.resolve(handle("), "tail");
-        // Échappement : un nom d'entrée contenant une quote ne casse pas le JS.
+        // Escaping: an input name containing a quote does not break the JS.
         let evil = vec![FunctionInput {
             name: "a\"b".into(),
             ty: FunctionType::Number,
@@ -1065,7 +1059,7 @@ function handle(inputs, msg) { return inputs.temperature; }
         let js = build_js_wrapper(code, &evil, &[]);
         assert!(
             js.contains("\"payload.a\\\"b\""),
-            "échappement JSON du chemin"
+            "JSON escaping of the path"
         );
     }
 
@@ -1078,22 +1072,22 @@ function handle(inputs, msg) { return inputs.temperature; }
         };
         let code = "function handle(inputs, msg) { return {out_bool: true}; }";
         let js = build_js_wrapper(code, &[], &[fout("out_bool"), fout("out_temp")]);
-        // Objet clé→valeur routé par port, dans l'ordre des @output.
+        // Key→value object routed per port, in @output order.
         assert!(
             js.contains(
                 "return [__pnex_port(msg, __pnex_r[\"out_bool\"]), __pnex_port(msg, __pnex_r[\"out_temp\"])];"
             ),
-            "routage clé→port généré"
+            "generated key→port routing"
         );
-        // Sans sorties déclarées : contrat historique (port 0).
+        // Without declared outputs: historical contract (port 0).
         let js = build_js_wrapper(code, &[], &[]);
         assert!(
             !js.contains("__pnex_port(msg, __pnex_r["),
-            "pas de routage sans @output"
+            "no routing without @output"
         );
         assert!(
             js.contains("return [__pnex_out(msg, __pnex_r)];"),
-            "retour historique port 0"
+            "historical return port 0"
         );
     }
 
@@ -1102,16 +1096,19 @@ function handle(inputs, msg) { return inputs.temperature; }
         let js = build_json_split_func(&[]);
         assert!(
             js.contains("Array.isArray(p)"),
-            "branche array (fan-out par élément)"
+            "array branch (fan-out per element)"
         );
-        assert!(js.contains("Object.keys(p).map"), "fan-out par clé (objet)");
-        assert!(js.contains("topic: k"), "topic = clé");
+        assert!(
+            js.contains("Object.keys(p).map"),
+            "fan-out per key (object)"
+        );
+        assert!(js.contains("topic: k"), "topic = key");
         assert!(
             js.contains("return [msg]"),
-            "pass-through des payloads ni objet ni array"
+            "pass-through of payloads neither object nor array"
         );
-        // Aucun littéral de clés : contrat legacy 1 port conservé verbatim.
-        assert!(!js.contains("var keys"), "legacy sans clés déclarées");
+        // No key literal: legacy 1-port contract kept verbatim.
+        assert!(!js.contains("var keys"), "legacy without declared keys");
     }
 
     #[test]
@@ -1119,23 +1116,23 @@ function handle(inputs, msg) { return inputs.temperature; }
         let js = build_json_split_func(&["a".to_string(), "b".to_string()]);
         assert!(
             js.contains(r#"var keys = ["a","b"]"#),
-            "littéral de clés inline (serde_json) : {js}"
+            "inline key literal (serde_json): {js}"
         );
         assert!(
             js.contains("hasOwnProperty.call(p, k)"),
-            "slot seulement pour les clés présentes"
+            "slot only for present keys"
         );
         assert!(
             js.contains("ports.push(null)"),
-            "port muet (slot null) pour clé absente"
+            "silent port (null slot) for a missing key"
         );
         assert!(
             js.contains("Array.isArray(p)"),
-            "array → port 0 (tous les éléments)"
+            "array → port 0 (all elements)"
         );
         assert!(
             js.contains("return [msg]"),
-            "passthrough port 0 des autres payloads"
+            "passthrough port 0 of the other payloads"
         );
     }
 
@@ -1148,19 +1145,19 @@ function handle(inputs, msg) { return inputs.temperature; }
         );
         assert!(
             js.contains("context.set(\"__pnex_merge\", acc)"),
-            "écriture accumulateur"
+            "accumulator write"
         );
         assert!(
             js.contains("acc[key] = msg.payload"),
-            "une entrée = une variable (plus de shallow-merge objet)"
+            "one input = one variable (no more object shallow-merge)"
         );
         assert!(
             !js.contains("Object.assign({}, acc, msg.payload)"),
-            "branche shallow-merge objet supprimée"
+            "object shallow-merge branch removed"
         );
         assert!(
             js.contains("\"ma clé\""),
-            "clé par défaut inline échappée (serde_json)"
+            "default key inlined and escaped (serde_json)"
         );
     }
 

@@ -1,6 +1,6 @@
-//! `SeaORM` Entity — version append-only d'une fonction (code + interface
-//! extraite des directives). École `_entities/flow_versions.rs` + org_id
-//! dénormalisé (école media_versions).
+//! `SeaORM` Entity — append-only version of a function (code + interface
+//! extracted from the directives). `_entities/flow_versions.rs` pattern + denormalized
+//! org_id (media_versions pattern).
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -14,16 +14,16 @@ pub struct Model {
     pub id: i64,
     #[sea_orm(unique_key = "uniq_function_versions_function_number")]
     pub function_id: i64,
-    /// Dénormalisé pour le scoping direct (école media_versions).
+    /// Denormalized for direct scoping (media_versions pattern).
     pub org_id: i64,
     #[sea_orm(unique_key = "uniq_function_versions_function_number")]
     pub version_number: i64,
     #[sea_orm(column_type = "Text")]
     pub code: String,
-    /// Interface déclarée (`pnex_core::FunctionInput[]` sérialisée).
+    /// Declared interface (serialized `pnex_core::FunctionInput[]`).
     #[sea_orm(column_type = "JsonBinary")]
     pub inputs: Json,
-    /// Interface déclarée (`pnex_core::FunctionOutput[]` sérialisée).
+    /// Declared interface (serialized `pnex_core::FunctionOutput[]`).
     #[sea_orm(column_type = "JsonBinary")]
     pub outputs: Json,
     #[sea_orm(column_type = "Text", nullable)]

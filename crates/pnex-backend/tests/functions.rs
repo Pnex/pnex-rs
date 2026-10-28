@@ -1,11 +1,11 @@
-//! Tests du registre « Fonctions » — CRUD versionné append-only, isolation
-//! org (404 masqué), viewer lecture-seule, 409 (conflit de version, fonction
-//! référencée par un flow déployé), directives invalides 400, endpoints de
-//! test en live (200 avec la fixture runtime, 503 moteur coupé).
+//! Tests for the "Functions" registry — append-only versioned CRUD, org
+//! isolation (masked 404), read-only viewer, 409 (version conflict, function
+//! referenced by a deployed flow), invalid directives 400, live test
+//! endpoints (200 with the runtime fixture, 503 engine off).
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Le superviseur est un static par process : le test du test-live est le
-//! seul à activer `PNEX_FLOW_ENABLED` (même contrat que tests/flows.rs).
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! The supervisor is a per-process static: the live-test test is the only
+//! one to enable `PNEX_FLOW_ENABLED` (same contract as tests/flows.rs).
 
 mod common;
 
@@ -57,7 +57,7 @@ where
     .await;
 }
 
-/// Réglages env du moteur, posés AVANT le boot (config Tera lue au boot).
+/// Engine env settings, set BEFORE boot (Tera config read at boot).
 fn flow_state_dir() -> String {
     format!("/tmp/pnex-flow-tests-{}", std::process::id())
 }
@@ -164,12 +164,12 @@ async fn del_fn(
         .status_code()
 }
 
-/// Code Starlark minimal avec une directive + sortie.
+/// Minimal Starlark code with one directive + output.
 fn starlark_code() -> String {
     "# @input t number\ndef handle(inputs, msg):\n    return {\"v\": inputs[\"t\"] + 1}".to_string()
 }
 
-/// Graphe flow minimal avec un nœud fonction référençant (fid, v1).
+/// Minimal flow graph with a function node referencing (fid, v1).
 fn function_flow_graph(fid: i64, fn_id: i64) -> serde_json::Value {
     json!({
         "nodes": [{
@@ -195,7 +195,7 @@ async fn cycle_create_save_delete_avec_versions() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Création → 201, détail avec interface extraite des directives.
+        // Creation → 201, detail with the interface extracted from directives.
         let (status, body) = post_fn(
             &server,
             &env.alice,
@@ -214,7 +214,7 @@ async fn cycle_create_save_delete_avec_versions() {
         assert_eq!(body["current_version_number"], 1);
         assert_eq!(body["inputs"][0]["name"], "t");
         assert_eq!(body["inputs"][0]["ty"], "number");
-        let id = body["id"].as_i64().expect("id renvoyé");
+        let id = body["id"].as_i64().expect("id returned");
 
         // Save v2 (nouvelle version append-only).
         let (status, body) = patch_fn(
@@ -248,7 +248,7 @@ async fn cycle_create_save_delete_avec_versions() {
             .collect();
         assert_eq!(numbers, vec![2, 1]);
 
-        // Delete → 204, puis 404.
+        // Delete → 204, then 404.
         assert_eq!(del_fn(&server, &env.alice, org, id).await, 204);
         let (status, _) = post_test(
             &server,
@@ -258,7 +258,7 @@ async fn cycle_create_save_delete_avec_versions() {
             json!({"inputs": {}, "msg": {}}),
         )
         .await;
-        assert_eq!(status, 404, "détail après delete");
+        assert_eq!(status, 404, "detail after delete");
     })
     .await;
 }
@@ -280,7 +280,7 @@ async fn isolation_cross_org_404() {
         .await;
         let id = created["id"].as_i64().unwrap();
 
-        // Bob (autre org) : détail/liste 404 masqué, delete 404.
+        // Bob (other org): detail/list masked 404, delete 404.
         let cross = server
             .get(&format!("/api/v1/functions/{id}"))
             .add_header("Authorization", bearer(&env.bob))
@@ -289,7 +289,7 @@ async fn isolation_cross_org_404() {
         assert_eq!(cross.status_code(), 404);
         assert_eq!(del_fn(&server, &env.bob, org_b, id).await, 404);
 
-        // La liste de bob ne contient pas la fonction d'alice.
+        // Bob's list does not contain alice's function.
         let list = server
             .get("/api/v1/functions")
             .add_header("Authorization", bearer(&env.bob))
@@ -306,8 +306,8 @@ async fn isolation_cross_org_404() {
 async fn viewer_lit_sans_ecrire() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Bob doit s'être « connecté » au moins une fois avant l'invitation
-        // (contrat add-member : user déjà vu par l'IdP).
+        // Bob must have "logged in" at least once before the invitation
+        // (add-member contract: user already seen by the IdP).
         let _bob_org = personal_org(&server, &env.bob).await;
         server
             .post(&format!("/api/v1/orgs/{org}/members"))
@@ -332,7 +332,7 @@ async fn viewer_lit_sans_ecrire() {
             .add_header("X-Org-Id", org.to_string())
             .await;
         assert_eq!(read.status_code(), 200);
-        // …écriture interdite (create/PATCH/DELETE 403)…
+        // …writes forbidden (create/PATCH/DELETE 403)…
         let (status, _) = post_fn(
             &server,
             &env.bob,
@@ -361,7 +361,7 @@ async fn validations_400_et_conflit_409() {
     with_app_flow_engine(false, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Nom vide.
+        // Empty name.
         let (status, body) = post_fn(
             &server,
             &env.alice,
@@ -384,7 +384,7 @@ async fn validations_400_et_conflit_409() {
         assert_eq!(body["error"], "function-directive-invalid", "{body}");
         assert_eq!(body["errors"]["args"]["line"], "1", "{body}");
 
-        // Conflit de version : expected ≠ courant → 409.
+        // Version conflict: expected ≠ current → 409.
         let (_, created) = post_fn(
             &server,
             &env.alice,
@@ -421,8 +421,8 @@ async fn delete_409_si_flow_deployed_reference() {
         .await;
         let fn_id = created["id"].as_i64().unwrap();
 
-        // Flow `deployed` référençant la fonction (insert DB directe — le
-        // garde lit les graphs des versions déployées, toutes orgs).
+        // `deployed` flow referencing the function (direct DB insert — the
+        // guard reads the graphs of deployed versions, all orgs).
         let flow = pnex_backend::models::_entities::flows::ActiveModel {
             org_id: sea_orm::Set(org),
             name: sea_orm::Set("flow ref".into()),
@@ -431,7 +431,7 @@ async fn delete_409_si_flow_deployed_reference() {
         }
         .insert(&ctx.db)
         .await
-        .expect("flow inséré");
+        .expect("flow inserted");
         let version = pnex_backend::models::_entities::flow_versions::ActiveModel {
             flow_id: sea_orm::Set(flow.id),
             version_number: sea_orm::Set(1),
@@ -440,11 +440,11 @@ async fn delete_409_si_flow_deployed_reference() {
         }
         .insert(&ctx.db)
         .await
-        .expect("version insérée");
+        .expect("version inserted");
         use pnex_backend::models::_entities::flows;
         let mut link: flows::ActiveModel = flow.clone().into();
         link.deployed_version_id = sea_orm::Set(Some(version.id));
-        link.update(&ctx.db).await.expect("flow marqué déployé");
+        link.update(&ctx.db).await.expect("flow marked deployed");
 
         // Delete: 409 function-in-use, the referencing flows in `args.flows`.
         let resp = server
@@ -478,7 +478,7 @@ async fn test_live_200_avec_fixture() {
         .await;
         let id = created["id"].as_i64().unwrap();
 
-        // Test live avec la fixture runtime : 200 ok:true, sorties canned.
+        // Live test with the runtime fixture: 200 ok:true, canned outputs.
         let (status, body) = post_test(
             &server,
             &env.alice,
@@ -491,7 +491,7 @@ async fn test_live_200_avec_fixture() {
         assert_eq!(body["ok"], true);
         assert_eq!(body["outputs"][0]["payload"]["echo"], true);
 
-        // Test ad-hoc (code non sauvegardé) : même contrat.
+        // Ad-hoc test (unsaved code): same contract.
         let (status, body) = post_test(
             &server,
             &env.alice,
@@ -523,7 +523,7 @@ async fn test_live_503_moteur_coupe() {
         .await;
         let id = created["id"].as_i64().unwrap();
 
-        // Moteur désactivé (settings.flow.enabled=false) → 503 flow_runtime.
+        // Engine disabled (settings.flow.enabled=false) → 503 flow_runtime.
         let (status, body) = post_test(&server, &env.alice, org, id, json!({"msg": {}})).await;
         assert_eq!(status, 503, "{body}");
         assert_eq!(body["error"], "functions-runtime-disabled");
@@ -537,7 +537,7 @@ async fn validate_200_avec_fixture() {
     with_app_flow_engine(true, |server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Viewer (bob) autorisé : la validation est un outil de lecture.
+        // Viewer (bob) allowed: validation is a read tool.
         // NOTE: bob belongs to his own personal org here — membership scoping
         // is what OrgContext enforces, not the role; owner (alice) is used.
         let (status, body) = post_validate(

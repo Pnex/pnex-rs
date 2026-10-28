@@ -1,11 +1,11 @@
 # Reference pack "Companies" (account-mapping.md D343): what a company is
 # in every country. A legal unit is the `organization` of the investigation
 # pack, extended with fields every register has in some form; an
-# establishment is a `map_pin` tied to its legal unit by `etablissement_de`;
-# officers are `person` or `organization` linked by the temporal `dirige`
+# establishment is a `map_pin` tied to its legal unit by `establishment_of`;
+# officers are `person` or `organization` linked by the temporal `manages`
 # (mandate dates = link validity).
 # Country specifics (register keys, local codes, the register import) live
-# in one pack per country that requires this one (`entreprises_fr` first).
+# in one pack per country that requires this one (`companies_fr` first).
 # A country pack fills the shared fields from its own: the activity code is
 # a NACE Rev.2 class (`62.01`, the European base of national codes) and the
 # headcount a number range, so targeting and scores work across countries.
@@ -17,54 +17,55 @@
 # Hierarchy (partner-watch.md D305): a tree computed on links (several
 # parents allowed), never containment.
 # Since 1.1.0 the group structure lives here (account-mapping.md D331):
-# `filiale_de` carries a control or consolidation relation as open sources
+# `subsidiary_of` carries a control or consolidation relation as open sources
 # give it, without a share (`owns` stays for known holdings). Several
 # targets are allowed on purpose: a direct and an ultimate parent, or two
 # sources that disagree, live side by side with their provenance. Since
 # 1.2.0 a link from a community source is a proposal (proposals.md D375):
 # it enters the graph once a human accepts it.
-key: entreprises
+# Since 2.0.0 every identifier is English (breaking).
+key: companies
 name: Companies
 names: {fr: "Entreprises"}
-version: "1.3.0"
+version: "2.0.0"
 requires: [investigation]
 description: Legal units of any country, their establishments on the map and their officers by mandate; country packs add the local registers.
 descriptions: {fr: "Unités légales de tout pays, leurs établissements sur la carte et leurs dirigeants par mandat ; les packs par pays ajoutent les registres locaux."}
 extends:
   - type: organization
     properties:
-      - { key: pays, name: Country (ISO 3166-1), names: {fr: "Pays (ISO 3166-1)"}, kind: text, max_len: 2, indexed: true }
+      - { key: country, name: Country (ISO 3166-1), names: {fr: "Pays (ISO 3166-1)"}, kind: text, max_len: 2, indexed: true }
       - { key: lei, name: LEI, names: {fr: "LEI"}, kind: text, max_len: 20, unique: true }
-      - { key: code_activite, name: Activity (NACE Rev.2), names: {fr: "Activité (NACE rév. 2)"}, kind: text, max_len: 8, indexed: true }
-      - key: etat_administratif
+      - { key: activity_code, name: Activity (NACE Rev.2), names: {fr: "Activité (NACE rév. 2)"}, kind: text, max_len: 8, indexed: true }
+      - key: administrative_state
         name: Administrative status
         names: {fr: "État administratif"}
         kind: enum
-        values: [actif, cesse]
-        labels: {actif: {fr: "Actif", en: "Active"}, cesse: {fr: "Cessé", en: "Ceased"}}
+        values: [active, ceased]
+        labels: {active: {fr: "Actif", en: "Active"}, ceased: {fr: "Cessé", en: "Ceased"}}
         indexed: true
-      - { key: date_creation, name: Created on, names: {fr: "Créée le"}, kind: date }
-      - { key: date_cessation, name: Ceased on, names: {fr: "Cessée le"}, kind: date }
-      - { key: effectif_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
-      - { key: effectif_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
+      - { key: created_on, name: Created on, names: {fr: "Créée le"}, kind: date }
+      - { key: ceased_on, name: Ceased on, names: {fr: "Cessée le"}, kind: date }
+      - { key: headcount_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
+      - { key: headcount_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
   - type: person
     properties:
-      - { key: identifiant_registre, name: Register key, names: {fr: "Clé au registre"}, kind: text, max_len: 300, unique: true }
+      - { key: registry_id, name: Register key, names: {fr: "Clé au registre"}, kind: text, max_len: 300, unique: true }
   - type: map_pin
     properties:
-      - { key: siege, name: Head office, names: {fr: "Siège"}, kind: bool }
-      - key: etat_administratif
+      - { key: head_office, name: Head office, names: {fr: "Siège"}, kind: bool }
+      - key: administrative_state
         name: Administrative status
         names: {fr: "État administratif"}
         kind: enum
-        values: [actif, ferme]
-        labels: {actif: {fr: "Actif", en: "Active"}, ferme: {fr: "Fermé", en: "Closed"}}
+        values: [active, closed]
+        labels: {active: {fr: "Actif", en: "Active"}, closed: {fr: "Fermé", en: "Closed"}}
         indexed: true
-      - { key: enseigne, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
-      - { key: effectif_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
-      - { key: effectif_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
+      - { key: trade_name, name: Trade name, names: {fr: "Enseigne"}, kind: text, max_len: 255 }
+      - { key: headcount_min, name: Headcount from, names: {fr: "Effectif à partir de"}, kind: number, min: 0 }
+      - { key: headcount_max, name: Headcount up to, names: {fr: "Effectif jusqu'à"}, kind: number, min: 0 }
 link_types:
-  - key: etablissement_de
+  - key: establishment_of
     name: is an establishment of
     names: {fr: "est un établissement de"}
     inverse_name: has as establishment
@@ -72,7 +73,7 @@ link_types:
     from_types: [map_pin]
     to_types: [organization]
     one_target: true
-  - key: dirige
+  - key: manages
     name: directs
     names: {fr: "dirige"}
     inverse_name: is directed by
@@ -84,12 +85,12 @@ link_types:
         name: Role
         names: {fr: "Rôle"}
         kind: enum
-        values: [president, directeur_general, dg_delegue, gerant, administrateur, membre_directoire, autre]
-        labels: {president: {fr: "Président", en: "Chair"}, directeur_general: {fr: "Directeur général", en: "CEO"}, dg_delegue: {fr: "Directeur général délégué", en: "Deputy CEO"}, gerant: {fr: "Gérant", en: "Manager"}, administrateur: {fr: "Administrateur", en: "Board member"}, membre_directoire: {fr: "Membre du directoire", en: "Executive board member"}, autre: {fr: "Autre", en: "Other"}}
-      - { key: qualite, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
+        values: [president, ceo, deputy_ceo, manager, director, board_member, other]
+        labels: {president: {fr: "Président", en: "Chair"}, ceo: {fr: "Directeur général", en: "CEO"}, deputy_ceo: {fr: "Directeur général délégué", en: "Deputy CEO"}, manager: {fr: "Gérant", en: "Manager"}, director: {fr: "Administrateur", en: "Board member"}, board_member: {fr: "Membre du directoire", en: "Executive board member"}, other: {fr: "Autre", en: "Other"}}
+      - { key: capacity, name: Registry title, names: {fr: "Qualité au registre"}, kind: text, max_len: 255 }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
-  - key: filiale_de
+  - key: subsidiary_of
     name: is a subsidiary of
     names: {fr: "est une filiale de"}
     inverse_name: has as subsidiary
@@ -101,15 +102,15 @@ link_types:
         name: Nature
         names: {fr: "Nature"}
         kind: enum
-        values: [consolidation_directe, consolidation_ultime, declaree, wikidata, saisie]
-        labels: {consolidation_directe: {fr: "Consolidation directe", en: "Direct consolidation"}, consolidation_ultime: {fr: "Consolidation ultime", en: "Ultimate consolidation"}, declaree: {fr: "Déclarée", en: "Declared"}, wikidata: {fr: "Wikidata", en: "Wikidata"}, saisie: {fr: "Saisie", en: "Entered"}}
+        values: [direct_consolidation, ultimate_consolidation, declared, wikidata, manual_entry]
+        labels: {direct_consolidation: {fr: "Consolidation directe", en: "Direct consolidation"}, ultimate_consolidation: {fr: "Consolidation ultime", en: "Ultimate consolidation"}, declared: {fr: "Déclarée", en: "Declared"}, wikidata: {fr: "Wikidata", en: "Wikidata"}, manual_entry: {fr: "Saisie", en: "Entered"}}
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
       - { key: retrieved_on, name: Retrieved on, names: {fr: "Consulté le"}, kind: date }
 hierarchies:
-  - key: groupe
+  - key: group
     name: Group
     names: {fr: "Groupe"}
     steps:
       - { link: owns }
-      - { link: etablissement_de, inverse: true }
-      - { link: dirige, inverse: true }
+      - { link: establishment_of, inverse: true }
+      - { link: manages, inverse: true }

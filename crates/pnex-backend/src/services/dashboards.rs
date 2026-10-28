@@ -1,14 +1,14 @@
-//! Service des dashboards (studio SCADA, D24/D40/D41) — point d'écriture
-//! unique des documents versionnés, école `services/flow.rs`.
+//! Dashboards service (SCADA studio, D24/D40/D41) — single write point
+//! for versioned documents, modelled on `services/flow.rs`.
 //!
-//! Cycle de vie **D24** : save = nouvelle version = live — pas de publish
-//! séparé en V1. `current_version_number` (côté parent) pointe la version
-//! rendue en live ; le restore (école media) **re-positionne** ce pointeur
-//! sans créer de version. Les versions sont append-only, jamais purgées.
+//! **D24** lifecycle: save = new version = live — no separate publish
+//! in V1. `current_version_number` (on the parent) points at the version
+//! rendered live; restore (media pattern) **re-points** that pointer
+//! without creating a version. Versions are append-only, never purged.
 //!
-//! Aucun runtime à acquitter ici (contrairement aux flows) : « déployer »
-//! un dashboard = changer la version que les viewers lisent — un simple
-//! swap de pointeur en base.
+//! No runtime to acknowledge here (unlike flows): "deploying" a
+//! dashboard = changing the version viewers read — a simple pointer
+//! swap in the database.
 
 use loco_rs::prelude::*;
 use sea_orm::{
@@ -19,25 +19,25 @@ use sea_orm::{
 use crate::models::_entities::{dashboard_versions, dashboards};
 use pnex_core::{DashboardLayout, VizViolation};
 
-/// Erreurs d'écriture d'un dashboard — le contrôleur les mappe en HTTP
-/// (400 champ/violations, 409 conflit, 500).
+/// Dashboard write errors — the controller maps them to HTTP
+/// (400 field/violations, 409 conflict, 500).
 #[derive(Debug)]
 pub enum DashboardWriteError {
     /// `validate_layout` non satisfait.
     Violations(Vec<VizViolation>),
-    /// Nom vide après trim.
+    /// Name empty after trim.
     NameRequired,
-    /// Nom > 255 caractères (colonne varchar(255)).
+    /// Name > 255 characters (varchar(255) column).
     NameTooLong,
     /// Concurrence optimiste perdue.
     Conflict { expected: i64, current: i64 },
-    /// Version visée par un restore inexistante.
+    /// Version targeted by a restore does not exist.
     VersionUnknown,
-    /// Échec base de données.
+    /// Database failure.
     Db,
 }
 
-/// Validation commune (nom + layout) avant toute écriture.
+/// Shared validation (name + layout) before any write.
 fn validate_dashboard_write(
     name: &str,
     layout: &DashboardLayout,
@@ -135,8 +135,8 @@ async fn bind_surface_controls<C: sea_orm::ConnectionTrait>(
     Ok(bound)
 }
 
-/// Crée un dashboard **et sa version 1** (une transaction). Le layout
-/// peut être absent (canvas par défaut posé par le front au premier
+/// Creates a dashboard **and its version 1** (one transaction). The layout
+/// may be absent (default canvas set by the front on the first
 /// save).
 pub async fn create_dashboard(
     db: &DatabaseConnection,
@@ -182,12 +182,12 @@ pub async fn create_dashboard(
     .await
     .map_err(|_| DashboardWriteError::Db)?;
     txn.commit().await.map_err(|_| DashboardWriteError::Db)?;
-    tracing::info!(dashboard_id = %dashboard.id, org_id, "dashboard créé (v1)");
+    tracing::info!(dashboard_id = %dashboard.id, org_id, "dashboard created (v1)");
     Ok((dashboard, 1))
 }
 
-/// Numéro de la dernière version d'un dashboard (0 si aucune — ne doit
-/// pas arriver : la création pose toujours v1).
+/// Number of a dashboard's latest version (0 if none — must not
+/// happen: creation always sets v1).
 pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
     db: &C,
     dashboard_id: uuid::Uuid,
@@ -204,12 +204,12 @@ pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
         .unwrap_or(0))
 }
 
-/// Enregistre une **nouvelle version** (append-only) avec concurrence
-/// optimiste : `expected_version_number` doit viser la version **courante**
-/// (le pointeur live — un restore le déplace et doit donc créer un
-/// conflit). Le nouveau numéro = **dernier + 1** (l'index unique
-/// `(dashboard_id, version_number)` l'exige) puis le pointeur suit
-/// (**save = live**, D24) : les viewers la lisent au prochain polling.
+/// Saves a **new version** (append-only) with optimistic
+/// concurrency: `expected_version_number` must target the **current**
+/// version (the live pointer — a restore moves it and must therefore
+/// conflict). The new number = **latest + 1** (the unique index
+/// `(dashboard_id, version_number)` requires it) then the pointer follows
+/// (**save = live**, D24): viewers read it on the next poll.
 pub async fn append_version(
     db: &DatabaseConnection,
     dashboard: &dashboards::Model,
@@ -314,14 +314,14 @@ pub async fn append_version(
     tracing::info!(
         dashboard_id = %dashboard.id,
         version = new_version.version_number,
-        "dashboard enregistré (nouvelle version live)"
+        "dashboard saved (new live version)"
     );
     Ok((dashboard, new_version.version_number))
 }
 
-/// Restore (école media) : **re-positionne** `current_version_number`
-/// sur une version existante — n'insère rien. La version visée doit
-/// exister (404 sinon).
+/// Restore (media pattern): **re-points** `current_version_number`
+/// to an existing version — inserts nothing. The targeted version must
+/// exist (404 otherwise).
 pub async fn restore_version(
     db: &DatabaseConnection,
     dashboard: &dashboards::Model,
@@ -346,7 +346,7 @@ pub async fn restore_version(
     tracing::info!(
         dashboard_id = %dashboard.id,
         version = version_number,
-        "dashboard restauré (pointeur re-positionné)"
+        "dashboard restored (pointer re-pointed)"
     );
     Ok(dashboard)
 }

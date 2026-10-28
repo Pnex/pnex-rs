@@ -1,8 +1,8 @@
-//! Endpoint meta public (`/api/v1/meta/version`) — interrogé HORS du client
-//! authentifié partagé (`api::client::send` ajoute Bearer + X-Org-Id et
-//! déclenche le refresh 401 single-flight) : l'appel doit réussir avant toute
-//! session, et le scan LAN émet des requêtes vers des hôtes inconnus — pas de
-//! token vers un inconnu, pas de refresh sur un serveur qui n'est pas le nôtre.
+//! Public meta endpoint (`/api/v1/meta/version`) — queried OUTSIDE the shared
+//! authenticated client (`api::client::send` adds Bearer + X-Org-Id and
+//! triggers the single-flight 401 refresh): the call must succeed before any
+//! session, and the LAN scan sends requests to unknown hosts — no token to a
+//! stranger, no refresh on a server that is not ours.
 
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -10,16 +10,16 @@ use std::time::Duration;
 use futures::future::{select, Either};
 use pnex_api_contract::{ServerInfo, META_VERSION_PATH, SERVICE};
 
-/// Erreurs du endpoint meta — énumérée pour rester traduisible : `t!()` est
-/// appelé dans le rsx, jamais dans le helper async (même école que
-/// `SetupError` de `pages/server_url.rs`).
+/// Meta endpoint errors — an enum so they stay translatable: `t!()` is
+/// called in the rsx, never in the async helper (same approach as
+/// `SetupError` in `pages/server_url.rs`).
 #[derive(Clone, Debug, PartialEq)]
 pub enum MetaError {
-    /// Pas de réponse / statut non-2xx — un backend trop ancien (sans
-    /// `/api/v1/meta/version`) répond 404 et atterrit ici.
+    /// No response / non-2xx status — a backend that is too old (without
+    /// `/api/v1/meta/version`) answers 404 and lands here.
     Unreachable(String),
-    /// Réponse 2xx mais pas un serveur PNEX (JSON inattendu, autre service
-    /// sur :5150).
+    /// 2xx response but not a PNEX server (unexpected JSON, another service
+    /// on :5150).
     NotPnex,
 }
 
@@ -33,15 +33,15 @@ pub fn client() -> reqwest::Client {
     crate::api::tls::client(None)
 }
 
-/// Interroge `{base}{META_VERSION_PATH}` et valide l'identité du service.
-/// `base` est trimée de son slash final (idiome `probe_and_store`) ;
-/// `timeout` borne la sonde.
+/// Queries `{base}{META_VERSION_PATH}` and validates the service identity.
+/// `base` is trimmed of its trailing slash (`probe_and_store` idiom);
+/// `timeout` bounds the probe.
 ///
-/// La borne est une course avec `util::sleep` (futures-timer natif / gloo
-/// wasm) et non le seul `RequestBuilder::timeout` : sur Android natif, ce
-/// dernier ne s'est PAS déclenché face à un port qui droppe les SYN (constat
-/// 2026-09-09 — porte bloquée en « Checking »), tandis que le timer du repo
-/// tourne partout (polling login E2E validé sur device).
+/// The bound is a race with `util::sleep` (native futures-timer / gloo
+/// wasm) and not `RequestBuilder::timeout` alone: on native Android, the
+/// latter did NOT fire against a port that drops SYNs (observed
+/// 2026-09-09 — gate stuck on "Checking"), whereas the repo's timer
+/// runs everywhere (E2E login polling validated on device).
 pub async fn probe(
     client: &reqwest::Client,
     timeout: Duration,
@@ -95,16 +95,16 @@ fn remote_addr(_response: &reqwest::Response) -> Option<SocketAddr> {
     None
 }
 
-/// Serveur courant (base résolue par le seam `api::config`) — consommé par la
-/// porte de compatibilité au boot et par la carte « À propos » du profil.
+/// Current server (base resolved by the `api::config` seam) — used by the
+/// compatibility gate at boot and by the profile's "About" card.
 pub async fn server_info(timeout: Duration) -> Result<ServerInfo, MetaError> {
     probe(&client(), timeout, &crate::api::config::api_base()).await
 }
 
 impl MetaError {
-    /// Détail réseau relayé tel quel (règle du repo : jamais de traduction
-    /// des messages d'erreur) — les timeouts reqwest sont normalisés en
-    /// « timeout » pour rester lisibles dans la porte et le scan.
+    /// Network detail relayed as is (repo rule: error messages are never
+    /// translated) — reqwest timeouts are normalised to "timeout" so they
+    /// stay readable in the gate and the scan.
     fn map_reqwest(err: &reqwest::Error) -> Self {
         if err.is_timeout() {
             Self::Unreachable("timeout".to_string())

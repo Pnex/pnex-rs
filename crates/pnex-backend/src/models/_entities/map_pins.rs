@@ -24,10 +24,10 @@ pub struct Model {
     pub y: Option<Decimal>,
     pub label: String,
     pub emoji: Option<String>,
-    // Localisation libre dans le bâtiment (« Bât. A — Étage 2 — Salle 204 »).
+    // Free-form location within the building ("Bât. A — Étage 2 — Salle 204").
     pub location_detail: Option<String>,
-    // Aperçu épinglé : kind ∈ {media_asset, tour, dashboard} + id
-    // (uuid string) de l'objet attaché montré en priorité à l'ouverture.
+    // Pinned preview: kind ∈ {media_asset, tour, dashboard} + id
+    // (uuid string) of the attached object shown first on opening.
     pub preview_kind: Option<String>,
     pub preview_id: Option<String>,
     #[sea_orm(column_type = "JsonBinary", nullable)]

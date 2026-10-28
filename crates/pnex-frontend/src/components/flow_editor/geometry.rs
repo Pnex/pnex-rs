@@ -1,60 +1,60 @@
-//! Géométrie du canevas de l'éditeur de flows : fonctions **pures** (testées)
-//! et la seule touche DOM, la mesure de l'origine du canevas `canvas_rect`
+//! Geometry of the flow editor canvas: **pure** functions (tested)
+//! and the only DOM touch, measuring the canvas origin `canvas_rect`
 //! (web-sys).
 //!
-//! L'SVG n'a **pas** de `view_box` : sans lui, l'unité utilisateur de l'SVG =
-//! 1 px CSS de l'élément, donc la conversion client→graphe est
-//! `(client − origine − pan) / zoom`. L'origine est mesurée au début de
-//! chaque geste (un reflow par geste, négligeable).
+//! The SVG has **no** `view_box`: without it, the SVG user unit =
+//! 1 CSS px of the element, so the client→graph conversion is
+//! `(client − origin − pan) / zoom`. The origin is measured at the start of
+//! each gesture (one reflow per gesture, negligible).
 
 use dioxus_i18n::t;
 use pnex_core::{FlowGraph, FlowNode, FlowNodeKind, Position};
 
-/// Largeur et hauteur du rendu d'un nœud (px graphe).
+/// Width and height of a rendered node (graph px).
 pub const NODE_W: f64 = 170.0;
-/// Hauteur **minimale** d'un nœud — les nœuds multi-ports grandissent
-/// (voir `node_height`).
+/// **Minimum** height of a node — multi-port nodes grow
+/// (see `node_height`).
 pub const NODE_H: f64 = 48.0;
-/// Pas de la grille et du snap de position.
+/// Grid step and position snap.
 pub const GRID: f64 = 20.0;
-/// Bornes du zoom.
+/// Zoom bounds.
 pub const ZOOM_MIN: f64 = 0.4;
 pub const ZOOM_MAX: f64 = 2.0;
 
-/// Couleurs par kind (attributs SVG bruts — parité `visualisation.rs`).
+/// Colours per kind (raw SVG attributes — parity with `visualisation.rs`).
 pub const INJECT_FILL: &str = "var(--color-emerald-50, #ecfdf5)";
 pub const INJECT_STROKE: &str = "var(--color-emerald-500, #10b981)";
 pub const VALUE_FILL: &str = "var(--color-yellow-50, #fefce8)";
 pub const VALUE_STROKE: &str = "var(--color-yellow-500, #eab308)";
-/// Nœud device (ambre), calc (vert) et metric (rose) — Phase 6.
+/// Device (amber), calc (green) and metric (pink) nodes — Phase 6.
 pub const DEVICE_FILL: &str = "var(--color-amber-50, #fffbeb)";
 pub const DEVICE_STROKE: &str = "var(--color-amber-500, #f59e0b)";
 pub const CALC_FILL: &str = "var(--color-green-50, #f0fdf4)";
 pub const CALC_STROKE: &str = "var(--color-green-500, #22c55e)";
 pub const METRIC_FILL: &str = "var(--color-pink-50, #fdf2f8)";
 pub const METRIC_STROKE: &str = "var(--color-pink-500, #ec4899)";
-// CoolProp : ambre (thermodynamique / chaleur).
+// CoolProp: amber (thermodynamics / heat).
 pub const COOLPROP_FILL: &str = "var(--color-amber-50, #fffbeb)";
 pub const COOLPROP_STROKE: &str = "var(--color-amber-500, #f59e0b)";
-/// Nœud display (cyan) — sonde du panneau de debug.
+/// Display node (cyan) — probe of the debug panel.
 pub const DISPLAY_FILL: &str = "var(--color-cyan-50, #ecfeff)";
 pub const DISPLAY_STROKE: &str = "var(--color-cyan-500, #06b6d4)";
-/// Cartes de régulation mixtes : TT heat/cool (orange chaud/froid) et PID
-/// (indigo) — mêmes familles que device (ambre) mais distinctes au regard.
+/// Mixed control cards: TT heat/cool (warm/cold orange) and PID
+/// (indigo) — same families as device (amber) but visually distinct.
 pub const REG_TT_FILL: &str = "var(--color-orange-50, #fff7ed)";
 pub const REG_TT_STROKE: &str = "var(--color-orange-500, #f97316)";
 pub const REG_PID_FILL: &str = "var(--color-indigo-50, #eef2ff)";
 pub const REG_PID_STROKE: &str = "var(--color-indigo-500, #6366f1)";
 pub const DEBUG_FILL: &str = "var(--color-violet-50, #f5f3ff)";
 pub const DEBUG_STROKE: &str = "var(--color-violet-500, #8b5cf6)";
-/// Nœud notify (violet doux) — bus de notification (D49).
+/// Notify node (soft violet) — notification bus (D49).
 pub const NOTIFY_FILL: &str = "var(--color-purple-50, #faf5ff)";
 pub const NOTIFY_STROKE: &str = "var(--color-purple-500, #a855f7)";
-/// Nœud http-fetch (sky) — collecte web C1a (amendement edge-model
-/// 2026-09-15) ; cyan déjà pris par display.
+/// http-fetch node (sky) — C1a web collection (edge-model amendment
+/// 2026-09-15); cyan already taken by display.
 pub const HTTP_FETCH_FILL: &str = "var(--color-sky-50, #f0f9ff)";
 pub const HTTP_FETCH_STROKE: &str = "var(--color-sky-500, #0ea5e9)";
-/// Nœuds JSON split/merge (cyan/teal) — famille transformation de données.
+/// JSON split/merge nodes (cyan/teal) — data transformation family.
 pub const JSON_SPLIT_FILL: &str = "var(--color-cyan-50, #ecfeff)";
 pub const JSON_SPLIT_STROKE: &str = "var(--color-cyan-600, #0891b2)";
 pub const JSON_MERGE_FILL: &str = "var(--color-teal-50, #f0fdfa)";
@@ -81,18 +81,18 @@ pub const ANOMALY_FILL: &str = "var(--color-red-50, #fef2f2)";
 pub const ANOMALY_STROKE: &str = "var(--color-red-600, #dc2626)";
 pub const FORECAST_FILL: &str = "var(--color-violet-50, #f5f3ff)";
 pub const FORECAST_STROKE: &str = "var(--color-violet-600, #7c3aed)";
-/// Nœud en violation (surlignage d'erreur).
+/// Node in violation (error highlight).
 pub const VIOLATION_STROKE: &str = "var(--color-red-600, #dc2626)";
-/// Nœud sélectionné.
+/// Selected node.
 pub const SELECTED_STROKE: &str = "var(--color-signal-600, #2563eb)";
-/// Arrondit à la grille (positions snapées → rendu stable).
+/// Rounds to the grid (snapped positions → stable rendering).
 pub fn snap(value: f64) -> f64 {
     (value / GRID).round() * GRID
 }
 
-/// Pas vertical minimal entre deux ports d'un même nœud (px graphe) : sous
-/// ce pas les libellés se chevauchent — le nœud grandit plutôt que de
-/// compresser (école Node-RED multi-sorties).
+/// Minimum vertical step between two ports of the same node (graph px): below
+/// this step the labels overlap — the node grows rather than
+/// squeezing (Node-RED multi-output style).
 pub const PORT_PITCH: f64 = 20.0;
 
 /// Port counts of a node: (outputs, decorative input anchors). Device-read:
@@ -142,15 +142,15 @@ pub fn port_counts_of(node: &FlowNode) -> (usize, usize) {
     }
 }
 
-/// Hauteur d'un nœud : grandit avec le nombre de ports (le max des deux
-/// bords commande) pour garder `PORT_PITCH` px entre ports — jamais sous
+/// Height of a node: grows with the number of ports (the max of the two
+/// sides drives) to keep `PORT_PITCH` px between ports — never below
 /// `NODE_H`.
 pub fn node_height(out_ports: usize, in_anchors: usize) -> f64 {
     let n = out_ports.max(in_anchors).max(1);
     (((n + 1) as f64) * PORT_PITCH).max(NODE_H)
 }
 
-/// Hauteur du rendu d'un nœud du graphe.
+/// Rendered height of a graph node.
 pub fn node_height_for(node: &FlowNode) -> f64 {
     let (out, in_anchors) = port_counts_of(node);
     node_height(out, in_anchors)
@@ -365,8 +365,8 @@ pub fn split_output_labels(keys: &[String]) -> Vec<String> {
     keys.to_vec()
 }
 
-/// Ancres de ports : entrée au milieu du bord gauche, sortie au milieu du
-/// bord droit (`h` = hauteur du nœud, voir `node_height_for`).
+/// Port anchors: input at the middle of the left side, output at the middle of the
+/// right side (`h` = node height, see `node_height_for`).
 pub fn port_in(pos: Position, h: f64) -> (f64, f64) {
     (pos.x, pos.y + h / 2.0)
 }
@@ -400,8 +400,8 @@ pub fn plain_wire_landing(pos: Position, node: &FlowNode, h: f64, near_y: f64) -
     }
 }
 
-/// Ancre du port de sortie `port` sur un nœud à `count` ports, hauteur `h`
-/// — répartis verticalement sur le bord droit.
+/// Anchor of output port `port` on a node with `count` ports, height `h`
+/// — spread vertically on the right side.
 pub fn port_out_at(pos: Position, port: usize, count: usize, h: f64) -> (f64, f64) {
     let n = count.max(1);
     (
@@ -410,9 +410,9 @@ pub fn port_out_at(pos: Position, port: usize, count: usize, h: f64) -> (f64, f6
     )
 }
 
-/// Port de **sortie** le plus proche de `y` — miroir de `port_in_near` pour
-/// le câblage inverse : un drop sur le corps d'un nœud multi-ports (device-
-/// read) vise la rangée de port la plus proche du curseur, 0 en mono-port.
+/// **Output** port closest to `y` — mirror of `port_in_near` for
+/// reverse wiring: a drop on the body of a multi-port node (device-
+/// read) targets the port row closest to the cursor, 0 for a single port.
 pub fn port_out_near(pos: Position, count: usize, h: f64, y: f64) -> usize {
     let n = count.max(1);
     (0..n)
@@ -424,8 +424,8 @@ pub fn port_out_near(pos: Position, count: usize, h: f64, y: f64) -> usize {
         .unwrap_or(0)
 }
 
-/// Courbe de Bézier d'un câble (a = ancre sortie source, b = ancre entrée
-/// cible) — poignées horizontales, style Node-RED.
+/// Bézier curve of a wire (a = source output anchor, b = target input
+/// anchor) — horizontal handles, Node-RED style.
 pub fn wire_path(a: (f64, f64), b: (f64, f64)) -> String {
     let dx = ((b.0 - a.0) / 2.0).max(40.0);
     format!(
@@ -441,8 +441,8 @@ pub fn wire_path(a: (f64, f64), b: (f64, f64)) -> String {
     )
 }
 
-/// Nœud sous un point graphe (hit-test bbox, du dernier dessiné vers le
-/// premier — l'ordre du Vec fait l'ordre z).
+/// Node under a graph point (bbox hit-test, from the last drawn to the
+/// first — the Vec order is the z order).
 pub fn node_at(graph: &FlowGraph, p: (f64, f64)) -> Option<&FlowNode> {
     graph.nodes.iter().rev().find(|node| {
         let Some(pos) = node.position else {
@@ -453,8 +453,8 @@ pub fn node_at(graph: &FlowGraph, p: (f64, f64)) -> Option<&FlowNode> {
     })
 }
 
-/// Position de départ en cascade : un pas de grille par nœud déjà présent,
-/// replié modulo 6 — les nouveaux nœuds ne s'empilent jamais exactement.
+/// Cascading start position: one grid step per node already present,
+/// wrapped modulo 6 — new nodes never stack exactly.
 pub fn cascade_origin(graph: &FlowGraph, center: (f64, f64)) -> Position {
     let step = graph.nodes.len() as f64;
     Position {
@@ -531,7 +531,7 @@ pub fn canvas_rect() -> Option<(f64, f64, f64, f64)> {
     crate::components::dom_rect::rect_of("flow-canvas")
 }
 
-/// Convertit une position client (px écran) en position graphe.
+/// Converts a client position (screen px) to a graph position.
 pub fn to_graph(
     client: (f64, f64),
     rect: (f64, f64, f64, f64),
@@ -544,8 +544,8 @@ pub fn to_graph(
     )
 }
 
-/// Nouveau zoom appliqué vers un point fixe de l'écran (le curseur) :
-/// `pan₂ = s − k·(s − pan₁)` avec `k = zoom₂ / zoom₁`.
+/// New zoom applied towards a fixed screen point (the cursor):
+/// `pan₂ = s − k·(s − pan₁)` with `k = zoom₂ / zoom₁`.
 pub fn zoom_pan_towards(
     pan: (f64, f64),
     zoom: f64,
@@ -675,9 +675,9 @@ mod tests {
 
     #[test]
     fn fil_nu_nuit_jamais_une_rangee() {
-        // Un fil nu sur un nœud à lignes nommées atterrit à mi-hauteur :
-        // jamais de « rangée la plus proche » (le fil sautait de port au
-        // moindre déplacement). Point stable, indépendant de near_y.
+        // A bare wire on a node with named rows lands at mid-height:
+        // never "closest row" (the wire jumped ports at the
+        // slightest move). Stable point, independent of near_y.
         let pos = Position { x: 100.0, y: 60.0 };
         let merge = FlowNode {
             id: "mg".into(),
@@ -701,31 +701,31 @@ mod tests {
         assert_eq!(
             plain_wire_landing(pos, &merge, h, 10.0),
             (100.0, 60.0 + h / 2.0),
-            "jamais sur une rangée"
+            "never on a row"
         );
     }
 
     #[test]
     fn ports_multiples_repartis() {
         let pos = Position { x: 100.0, y: 60.0 };
-        // 2 ports : nœud grandi à 60 px (3 × PORT_PITCH), pas de 20 px ;
-        // port 1 = « nom du device » du device-read.
+        // 2 ports: node grown to 60 px (3 × PORT_PITCH), step of 20 px;
+        // port 1 = "device name" of the device-read.
         let h = node_height(2, 0);
         assert_eq!(h, 60.0);
         assert_eq!(port_out_at(pos, 0, 2, h), (270.0, 80.0));
         assert_eq!(port_out_at(pos, 1, 2, h), (270.0, 100.0));
-        // 1 port = comportement mono-port historique.
+        // 1 port = historical single-port behaviour.
         assert_eq!(port_out_at(pos, 0, 1, NODE_H), (270.0, 84.0));
     }
 
     #[test]
     fn hauteur_dynamique_selon_ports() {
-        // Mono-port : hauteur historique.
+        // Single port: historical height.
         assert_eq!(node_height(1, 0), NODE_H);
-        // Grandit d'un pas par port supplémentaire, jamais sous NODE_H.
+        // Grows one step per extra port, never below NODE_H.
         assert_eq!(node_height(2, 0), 60.0);
         assert_eq!(node_height(6, 0), 140.0);
-        // Le bord le plus peuplé commande (ancres device-write).
+        // The most populated side drives (device-write anchors).
         assert_eq!(node_height(1, 5), 120.0);
         assert!(node_height(12, 0) >= 13.0 * PORT_PITCH);
     }
@@ -747,7 +747,7 @@ mod tests {
                 },
             },
         };
-        assert_eq!(port_counts_of(&read), (3, 0)); // 2 pins + « nom du device »
+        assert_eq!(port_counts_of(&read), (3, 0)); // 2 pins + "device name"
         assert_eq!(node_height_for(&read), 80.0);
         let write = FlowNode {
             id: "w".into(),
@@ -762,8 +762,8 @@ mod tests {
                 },
             },
         };
-        // DeviceWrite sans pin : passthrough + port « nom du device » ; le
-        // pas vient des ancres sinon.
+        // DeviceWrite without pin: passthrough + "device name" port; the
+        // step comes from the anchors otherwise.
         assert_eq!(port_counts_of(&write), (2, 0));
         assert_eq!(node_height_for(&write), 60.0);
     }
@@ -963,12 +963,12 @@ mod tests {
 
     #[test]
     fn port_sortie_la_plus_proche() {
-        // device-read 2 ports à (100, 60), h = 60 : ports à y 80 et 100.
+        // device-read 2 ports at (100, 60), h = 60: ports at y 80 and 100.
         let pos = Position { x: 100.0, y: 60.0 };
         let h = node_height(2, 0);
         assert_eq!(port_out_near(pos, 2, h, 82.0), 0);
         assert_eq!(port_out_near(pos, 2, h, 98.0), 1);
-        // Mono-port : toujours 0, quel que soit y.
+        // Single port: always 0, whatever y.
         assert_eq!(port_out_near(pos, 1, NODE_H, 999.0), 0);
     }
 
@@ -993,7 +993,7 @@ mod tests {
             Some("a")
         );
         assert_eq!(node_at(&graph, (400.0, 400.0)), None);
-        // Sans position : jamais atteint.
+        // Without position: never hit.
         graph.nodes.push(FlowNode {
             id: "c".into(),
             name: None,
@@ -1022,7 +1022,7 @@ mod tests {
         let new_zoom = 2.0;
         let screen = (300.0, 250.0);
         let new_pan = zoom_pan_towards(pan, zoom, new_zoom, screen);
-        // Le point écran reste sur le même point graphe.
+        // The screen point stays on the same graph point.
         let before = to_graph(screen, (0.0, 0.0, 0.0, 0.0), pan, zoom);
         let after = to_graph(screen, (0.0, 0.0, 0.0, 0.0), new_pan, new_zoom);
         assert!((before.0 - after.0).abs() < 1e-9);

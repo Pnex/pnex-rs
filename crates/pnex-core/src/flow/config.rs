@@ -10,52 +10,52 @@ use crate::proto::SafeState;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-/// Position 2D d'un nœud sur le canevas de l'éditeur (métadonnée, ignorée du runtime).
+/// 2D position of a node on the editor canvas (metadata, ignored by the runtime).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
 }
 
-/// Configuration du nœud `inject` (déclencheur intervalle/cron EdgeLinkd).
+/// Configuration of the `inject` node (EdgeLinkd interval/cron trigger).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct InjectConfig {
-    /// Intervalle de répétition en secondes (Node-RED `repeat`).
+    /// Repeat interval in seconds (Node-RED `repeat`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_secs: Option<f64>,
-    /// Expression cron (Node-RED `crontab`, 5 ou 6 champs).
+    /// Cron expression (Node-RED `crontab`, 5 or 6 fields).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cron: String,
-    /// Injection unique après délai (Node-RED `once` + `onceDelay`).
+    /// One-shot injection after a delay (Node-RED `once` + `onceDelay`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub once_delay_secs: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topic: Option<String>,
-    /// Payload injecté (valeur JSON quelconque ; `null` = timestamp).
+    /// Injected payload (any JSON value; `null` = timestamp).
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub payload: serde_json::Value,
 }
 
-/// Configuration du nœud custom `pnex-device-read` — lecture des **dernières
-/// valeurs** des pins d'**un seul device** (cohérence physique : 1 nœud =
-/// 1 device). La lecture passe par OpenObserve (PromQL `last_over_time` sur
-/// la même série que l'ingestion) : une seule source de vérité, cohérente
-/// avec le dashboard/Visualisation. Aucune coordonnée d'accès ici — l'org O2
-/// réelle est estampillée dans l'artefact au deploy (`pnex_o2_org`) et les
-/// creds viennent de l'env du runtime. Ports de sortie : un par pin (payload
-/// = valeur brute du pin, `null` si la fenêtre est vide) + un port final
-/// « nom du device » (payload = slug du device).
+/// Configuration of the custom `pnex-device-read` node — reads the **latest
+/// values** of the pins of **a single device** (physical consistency: 1 node =
+/// 1 device). The read goes through OpenObserve (PromQL `last_over_time` on
+/// the same series as ingestion): a single source of truth, consistent
+/// with the dashboard/Visualization. No access coordinates here — the real
+/// O2 org is stamped into the artifact at deploy (`pnex_o2_org`) and the
+/// creds come from the runtime env. Output ports: one per pin (payload
+/// = raw pin value, `null` if the window is empty) + a final
+/// "device name" port (payload = device slug).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DeviceReadConfig {
-    /// Slug du device (dimension `device_id` des séries O2).
+    /// Device slug (`device_id` dimension of the O2 series).
     pub device_id: String,
-    /// Labels des pins lues, dans l'ordre des ports (le port « nom du
-    /// device » est ajouté après le dernier). La série O2 est le nom
-    /// normalisé, calculé par le runtime via `normalize_measurement_name`.
+    /// Labels of the pins read, in port order (the "device
+    /// name" port is added after the last one). The O2 series is the
+    /// normalized name, computed by the runtime via `normalize_measurement_name`.
     #[serde(default)]
     pub pins: Vec<String>,
-    /// Fenêtre de fraîcheur (secondes) : la dernière valeur dans la fenêtre
-    /// est renvoyée, au-delà la clé est omise du payload. 1..=3600.
+    /// Freshness window (seconds): the latest value within the window
+    /// is returned; beyond it the key is omitted from the payload. 1..=3600.
     #[serde(default = "default_window_secs")]
     pub window_secs: f64,
 }
@@ -72,7 +72,7 @@ fn default_window_secs() -> f64 {
 /// never touches the device WS directly.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DeviceWriteConfig {
-    /// Slug du device cible.
+    /// Target device slug.
     pub device_id: String,
     /// Labels of the written pins, in visual-anchor order. Two write paths:
     /// an object payload is the batch path (its keys are matched against
@@ -105,8 +105,8 @@ impl DeviceWriteConfig {
     }
 }
 
-/// Configuration du nœud custom `calc` — expression sur les clés du payload
-/// device (variables identifiants, évaluateur [`crate::calc`]).
+/// Configuration of the custom `calc` node — expression over the device
+/// payload keys (identifier variables, evaluator [`crate::calc`]).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CalcConfig {
     pub expression: String,
@@ -128,31 +128,28 @@ impl ValueConfig {
     /// — `Some((code, message))` = config the runtime would reject. Single
     /// source of truth: what the editor flags is exactly what fails at deploy.
     pub fn check(&self) -> Option<(&'static str, String)> {
-        self.value.is_null().then(|| {
-            (
-                "value_static_missing",
-                "saisissez une valeur (champ vide)".into(),
-            )
-        })
+        self.value
+            .is_null()
+            .then(|| ("value_static_missing", "enter a value (empty field)".into()))
     }
 }
 
-/// Configuration du nœud PNEX `json-split` — découpe structurelle du
-/// payload portée par les clés déclarées :
-/// - `keys` non vide : un port de sortie **nommé par clé** — `payload[key]`
-///   sort sur ce port (`payload` = valeur, `topic` = clé) ; clé absente du
-///   payload = port muet, clé sans port = ignorée ; array → éléments sur le
-///   port 0 (`topic` = index) ; autre payload → passthrough port 0.
-/// - `keys` vide (single-port mode) : un seul port, un msg par clé (`topic` = clé),
-///   array → un msg par élément ; tout autre payload passe inchangé.
+/// Configuration of the PNEX `json-split` node — structural split of the
+/// payload driven by the declared keys:
+/// - non-empty `keys`: one output port **named per key** — `payload[key]`
+///   goes out on that port (`payload` = value, `topic` = key); key missing from the
+///   payload = silent port, key without a port = ignored; array → elements on
+///   port 0 (`topic` = index); other payload → passthrough port 0.
+/// - empty `keys` (single-port mode): a single port, one msg per key (`topic` = key),
+///   array → one msg per element; any other payload passes unchanged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonSplitConfig {
-    /// Clés déclarées = ports de sortie nommés, dans l'ordre déclaré.
+    /// Declared keys = named output ports, in declared order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keys: Vec<String>,
-    /// Suivi automatique de l'amont (Value statique-objet ou Merge) : les
-    /// clés — donc le **nombre de ports** — sont régénérées par l'éditeur à
-    /// chaque édition du graphe. `true` par défaut.
+    /// Automatic upstream tracking (static-object Value or Merge): the
+    /// keys — hence the **number of ports** — are regenerated by the editor on
+    /// every graph edit. `true` by default.
     #[serde(default = "default_split_auto")]
     pub auto: bool,
 }
@@ -170,19 +167,19 @@ fn default_split_auto() -> bool {
     true
 }
 
-/// Configuration du nœud PNEX `json-merge` (canvas : « Merge to JSON ») —
-/// compaction : chaque payload est rangé sous `msg.topic` (si présent et non
-/// vide) sinon sous la clé par défaut ; l'objet accumulé est émis à chaque
-/// msg. Les entrées nommées (`inputs`) sont des lignes du canvas : un fil
-/// qui y arrive est estampé `topic = nom` au deploy (tagger) — une entrée
-/// porte **une variable**. État = contexte du nœud runtime (vit tant que le
-/// flow tourne, reset au redeploy/restart).
+/// Configuration of the PNEX `json-merge` node (canvas: "Merge to JSON") —
+/// compaction: each payload is stored under `msg.topic` (if present and non
+/// empty), otherwise under the default key; the accumulated object is emitted on every
+/// msg. The named inputs (`inputs`) are canvas rows: a wire
+/// arriving there is stamped `topic = name` at deploy (tagger) — an input
+/// carries **one variable**. State = runtime node context (lives as long as the
+/// flow runs, reset on redeploy/restart).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonMergeConfig {
-    /// Clé du payload scalaire sans `msg.topic`.
+    /// Key for a scalar payload without `msg.topic`.
     #[serde(default = "default_merge_key")]
     pub default_key: String,
-    /// Entrées nommées = lignes d'entrée du canvas, dans l'ordre déclaré.
+    /// Named inputs = canvas input rows, in declared order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<String>,
 }
@@ -206,13 +203,13 @@ impl JsonMergeConfig {
     }
 }
 
-/// Configuration du nœud custom `metric` — écriture d'une métrique
-/// OpenObserve (remote-write) : nom auto-préfixé `etl_`, labels
+/// Configuration of the custom `metric` node — writes an OpenObserve
+/// metric (remote-write): name auto-prefixed `etl_`, labels
 /// `device_id="flow_{id}"`, `pred_dev="virtual_device"`, `source_type="etl"`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MetricConfig {
-    /// Nom saisi par l'utilisateur — préfixé `etl_` et sanitisé à l'écriture
-    /// (`etl_metric_name`), prévisualisé à l'identique dans l'éditeur.
+    /// Name entered by the user — prefixed `etl_` and sanitized on write
+    /// (`etl_metric_name`), previewed identically in the editor.
     pub metric_name: String,
     /// Free series labels (D171): label name → source (`msg.topic`,
     /// `msg.payload.<field>` / `payload.<field>` with one or two levels, or
@@ -319,28 +316,28 @@ impl MetricConfig {
     }
 }
 
-/// Configuration du nœud custom `pnex-coolprop` — propriétés
-/// thermophysiques in-process (`pnex-coolprop`, CoolProp v8) : spec
-/// fluide/mélange (syntaxe PropsSI : nom simple, mélange prédéfini ou
-/// inline `Propane[0.5]&Ethane[0.5]`), deux propriétés d'entrée (noms
-/// CoolProp : `T`, `P`, `Hmass`…) lues dans `msg.payload` (objet
-/// `clé → numérique`, sortie des nœuds device/calc), et sorties calculées.
+/// Configuration of the custom `pnex-coolprop` node — in-process
+/// thermophysical properties (`pnex-coolprop`, CoolProp v8): fluid/mixture
+/// spec (PropsSI syntax: plain name, predefined mixture or
+/// inline `Propane[0.5]&Ethane[0.5]`), two input properties (CoolProp
+/// names: `T`, `P`, `Hmass`…) read from `msg.payload` (object
+/// `key → numeric`, output of the device/calc nodes), and computed outputs.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CoolPropConfig {
-    /// Spec fluide/mélange (validate + figée à l'édition — D6).
+    /// Fluid/mixture spec (validated + frozen at edit time — D6).
     pub fluid_spec: String,
-    /// Propriété d'entrée 1 (nom CoolProp, ex. `"T"`).
+    /// Input property 1 (CoolProp name, e.g. `"T"`).
     pub input1: String,
-    /// Propriété d'entrée 2 (nom CoolProp, ex. `"P"`).
+    /// Input property 2 (CoolProp name, e.g. `"P"`).
     pub input2: String,
-    /// Clé de `msg.payload` pour la valeur d'entrée 1 (ex. `"t"`).
+    /// `msg.payload` key for input value 1 (e.g. `"t"`).
     pub v1_key: String,
-    /// Clé de `msg.payload` pour la valeur d'entrée 2 (ex. `"p"`).
+    /// `msg.payload` key for input value 2 (e.g. `"p"`).
     pub v2_key: String,
-    /// Sorties CoolProp (`Dmolar`, `Hmolar`, `Smolar`, `T`…) — au moins une.
+    /// CoolProp outputs (`Dmolar`, `Hmolar`, `Smolar`, `T`…) — at least one.
     #[serde(default)]
     pub outputs: Vec<String>,
-    /// Ajouter `"phase"` (nom textuel PhaseSI) au payload sortant.
+    /// Add `"phase"` (PhaseSI text name) to the outgoing payload.
     #[serde(default)]
     pub include_phase: bool,
     /// Display name of the picked fluid (org mixture name or CoolProp
@@ -371,16 +368,16 @@ impl CoolPropConfig {
     }
 }
 
-/// Configuration du nœud `debug` (capture de la sortie d'un pipeline).
+/// Configuration of the `debug` node (captures a pipeline's output).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DebugConfig {
-    /// Node-RED `active` — capture activée (défaut : oui).
+    /// Node-RED `active` — capture enabled (default: yes).
     #[serde(default = "default_true")]
     pub active: bool,
-    /// Propriété capturée (`"payload"` par défaut, `"true"` = message entier).
+    /// Captured property (`"payload"` by default, `"true"` = whole message).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub complete: Option<String>,
-    /// Recopie également sur la console du runtime.
+    /// Also echoes to the runtime console.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub console: bool,
 }
@@ -399,51 +396,51 @@ fn default_true() -> bool {
     true
 }
 
-/// Configuration du nœud custom `pnex-display` (sonde) — passthrough +
-/// publication au panneau de debug. **Aucun champ saisi** : l'identité
-/// (`pnex_node_id`, flow, version) est estampillée par la projection au
-/// deploy — jamais lue d'une config client (anti-forgery d'attribution).
+/// Configuration of the custom `pnex-display` node (probe) — passthrough +
+/// publication to the debug panel. **No user field**: the identity
+/// (`pnex_node_id`, flow, version) is stamped by the projection at
+/// deploy — never read from a client config (attribution anti-forgery).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct DisplayConfig;
 
-/// Configuration d'une carte de régulation **tout-ou-rien** — partagée par
-/// les kinds `reg_tt_heat` (chauffage) et `reg_tt_cool` (clim, inversé) : le
-/// kind encode le sens de l'action, la config ne le répète pas (faute de
-/// config impossible).
+/// Configuration of an **on/off** control card — shared by
+/// the kinds `reg_tt_heat` (heating) and `reg_tt_cool` (cooling, inverted): the
+/// kind encodes the direction of action, the config does not repeat it (a config
+/// mistake is impossible).
 ///
-/// Carte **mixte** : le capteur et la sortie appartiennent au **même
-/// device** — la régulation tourne embarquée sur l'ESP (D13/D17 : aucune
-/// boucle serveur), le serveur se limite à caster cette config (docs/
-/// architecture/control-cards.md). Les pins sont des **labels** (authoring)
-/// résolus en gpio par le backend au sync (parité `DeviceRead`).
+/// **Mixed** card: the sensor and the output belong to the **same
+/// device** — control runs embedded on the ESP (D13/D17: no
+/// server loop), the server only casts this config (docs/
+/// architecture/control-cards.md). Pins are **labels** (authoring)
+/// resolved to gpio by the backend at sync (parity with `DeviceRead`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegTtConfig {
-    /// Slug du device cible (la carte mixte régulée).
+    /// Target device slug (the controlled mixed card).
     pub device_id: String,
-    /// Label du pin capteur (mode `digital_in`/`adc_in` — déduit du pin
-    /// résolu, jamais saisi).
+    /// Sensor pin label (`digital_in`/`adc_in` mode — derived from the resolved
+    /// pin, never entered).
     pub sensor_pin: String,
-    /// Label du pin actionneur (mode `digital_out`).
+    /// Actuator pin label (`digital_out` mode).
     pub actuator_pin: String,
-    /// Consigne (unité du capteur).
+    /// Setpoint (sensor unit).
     pub setpoint: f64,
-    /// Demi-bande d'hystérésis valeur : ON au franchissement de
-    /// `consigne ∓ deadband`, OFF au retour à la consigne. > 0.
+    /// Value hysteresis half-band: ON when crossing
+    /// `setpoint ∓ deadband`, OFF when back at the setpoint. > 0.
     pub deadband: f64,
-    /// Anti court-cycle : durée minimale ON (hystérésis temporelle).
+    /// Anti short-cycling: minimum ON duration (time hysteresis).
     #[serde(default = "default_reg_min_on_secs")]
     pub min_on_secs: u32,
-    /// Anti court-cycle : durée minimale OFF.
+    /// Anti short-cycling: minimum OFF duration.
     #[serde(default = "default_reg_min_off_secs")]
     pub min_off_secs: u32,
-    /// Période d'échantillonnage du capteur par l'ESP (200..=60_000 ms).
+    /// Sensor sampling period on the ESP (200..=60_000 ms).
     #[serde(default = "default_reg_sample_ms")]
     pub sample_ms: u32,
-    /// Capteur muet/illisible au-delà de cette durée → sortie safe.
+    /// Sensor silent/unreadable beyond this duration → safe output.
     #[serde(default = "default_reg_data_timeout_secs")]
     pub data_timeout_secs: u32,
-    /// État de repos de la sortie quand la régulation est arrêtée
-    /// (dé-déploiement, capteur muet, boot sans config).
+    /// Idle state of the output when control is stopped
+    /// (undeploy, silent sensor, boot without config).
     #[serde(default)]
     pub safe_state: SafeState,
 }
@@ -478,22 +475,22 @@ impl Default for RegTtConfig {
     }
 }
 
-/// Configuration d'une carte de régulation **PID** — sortie relais
-/// time-proportional (le duty % est réparti sur `cycle_time_secs`, contrat
-/// mathématique : `pnex_core::control`). Même modèle mixte que
-/// [`RegTtConfig`] : un seul device, régulation embarquée.
+/// Configuration of a **PID** control card — time-proportional relay
+/// output (the duty % is spread over `cycle_time_secs`, mathematical
+/// contract: `pnex_core::control`). Same mixed model as
+/// [`RegTtConfig`]: a single device, embedded control.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegPidConfig {
     pub device_id: String,
     pub sensor_pin: String,
     pub actuator_pin: String,
-    /// Consigne (unité du capteur).
+    /// Setpoint (sensor unit).
     pub setpoint: f64,
-    /// Gains ≥ 0 finis (l'action dérivée est calculée sur la mesure).
+    /// Finite gains ≥ 0 (the derivative action is computed on the measurement).
     pub kp: f64,
     pub ki: f64,
     pub kd: f64,
-    /// Période du cycle relais time-proportional (1..=60 s).
+    /// Time-proportional relay cycle period (1..=60 s).
     #[serde(default = "default_reg_cycle_time_secs")]
     pub cycle_time_secs: u32,
     #[serde(default = "default_reg_sample_ms")]
@@ -526,8 +523,8 @@ impl Default for RegPidConfig {
     }
 }
 
-/// Carte de régulation extraite d'un graphe — forme unifiée consommée par le
-/// backend (matérialisation `regulator_config` + cast `control_config`).
+/// Control card extracted from a graph — unified form consumed by the
+/// backend (`regulator_config` materialization + `control_config` cast).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RegConfig {
@@ -574,8 +571,8 @@ impl<'de> Deserialize<'de> for RegConfig {
 }
 
 impl RegConfig {
-    /// Discriminant de la carte (`tt_heat` | `tt_cool` | `pid`) — la même
-    /// chaîne que le champ `kind` du `ControlSpec` fil.
+    /// Card discriminant (`tt_heat` | `tt_cool` | `pid`) — the same
+    /// string as the `kind` field of the wire `ControlSpec`.
     pub fn kind_str(&self) -> &'static str {
         match self {
             RegConfig::TtHeat(_) => "tt_heat",
@@ -633,10 +630,10 @@ impl RegConfig {
         }
     }
 
-    /// Clé d'unicité d'une régulation par sortie : (device, pin actionneur),
-    /// labels normalisés (trim + casse ASCII ignorée) — utilisée par
-    /// `validate_graph` (graphe) puis par le sync backend (tous les flows
-    /// déployés).
+    /// Uniqueness key of a control per output: (device, actuator pin),
+    /// normalized labels (trim + ASCII case ignored) — used by
+    /// `validate_graph` (graph) then by the backend sync (all deployed
+    /// flows).
     pub fn actuator_key(&self) -> String {
         format!(
             "{}|{}",
@@ -646,9 +643,9 @@ impl RegConfig {
     }
 }
 
-/// Extrait les cartes de régulation d'un graphe : `(id nœud, config)` dans
-/// l'ordre du graphe. Une seule définition, consommée par le sync backend
-/// (matérialisation + cast) et par les tests.
+/// Extracts the control cards of a graph: `(node id, config)` in
+/// graph order. A single definition, consumed by the backend sync
+/// (materialization + cast) and by the tests.
 pub fn regulator_configs_of(g: &FlowGraph) -> Vec<(String, RegConfig)> {
     g.nodes
         .iter()
@@ -656,7 +653,7 @@ pub fn regulator_configs_of(g: &FlowGraph) -> Vec<(String, RegConfig)> {
         .collect()
 }
 
-/// La carte portée par ce kind, s'il en porte une.
+/// The card carried by this kind, if it carries one.
 pub fn reg_config_of(kind: &FlowNodeKind) -> Option<RegConfig> {
     match kind {
         FlowNodeKind::RegTtHeat { config } => Some(RegConfig::TtHeat(config.clone())),
@@ -666,18 +663,18 @@ pub fn reg_config_of(kind: &FlowNodeKind) -> Option<RegConfig> {
     }
 }
 
-/// Usage d'une pin de device par un nœud de graphe — sert au backend pour
-/// qualifier l'impact d'un changement de config device (garde 409 / stop).
+/// Use of a device pin by a graph node — lets the backend
+/// qualify the impact of a device config change (409 guard / stop).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DevicePinUsage {
-    /// Lecture (nœud `device-read` ou pin capteur d'une carte régulation).
+    /// Read (`device-read` node or sensor pin of a control card).
     Read,
     /// Write (a `device-write` pin, or a regulator card's actuator pin —
     /// both drive the physical output).
     Write,
 }
 
-/// Référence (nœud, pin, usage) d'un device dans un graphe.
+/// Reference (node, pin, usage) of a device in a graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DevicePinRef {
     pub node_id: String,
@@ -815,39 +812,39 @@ pub fn action_refs_of(g: &FlowGraph) -> Vec<(String, String)> {
 /// runtime), never a template var.
 pub const NOTIFY_TRIGGER_PIN: &str = "trigger";
 
-/// Configuration du nœud custom `pnex-notify` — rendu d'un template
-/// minijinja de l'org puis envoi vers un ou plusieurs canaux (D49–D54).
-/// Le nœud ne porte que des **références** : au deploy, le backend résout
-/// et estampe le snapshot (`pnex_notify_channels` / `pnex_notify_template`)
-/// dans l'artefact — éditer un canal/template ne mute pas les flows déjà
-/// déployés (re-déployer pour propager, école « save ≠ déployé »).
+/// Configuration of the custom `pnex-notify` node — renders an org
+/// minijinja template then sends to one or more channels (D49–D54).
+/// The node only carries **references**: at deploy, the backend resolves
+/// and stamps the snapshot (`pnex_notify_channels` / `pnex_notify_template`)
+/// into the artifact — editing a channel/template does not mutate already
+/// deployed flows (redeploy to propagate, "saved ≠ deployed" school).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct NotifyNodeConfig {
-    /// Canaux cibles (`notify_channels.id`) — au moins un (validate_graph).
+    /// Target channels (`notify_channels.id`) — at least one (validate_graph).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub channel_ids: Vec<Uuid>,
-    /// Template de rendu (`notify_templates.id`) — nil = non posé.
-    /// Tolérant au JSON `null`/`""` (l'éditeur émet null pour « non posé »).
+    /// Render template (`notify_templates.id`) — nil = not set.
+    /// Tolerates JSON `null`/`""` (the editor emits null for "not set").
     #[serde(default, deserialize_with = "deserialize_nil_uuid")]
     pub template_id: Uuid,
-    /// `true` : un échec d'envoi tombe le nœud (flow_error isolé, jamais de
-    /// crash-loop) ; défaut lenient : warn + passthrough (D53).
+    /// `true`: a send failure fails the node (isolated flow_error, never a
+    /// crash-loop); lenient default: warn + passthrough (D53).
     #[serde(default)]
     pub strict: bool,
-    /// Overrides du nœud — littéral **ou** expression `{{ msg.x }}`
-    /// pré-rendue contre `{msg, meta}` avant le rendu du template
-    /// (composition 2 niveaux, D52).
+    /// Node overrides — literal **or** `{{ msg.x }}` expression
+    /// pre-rendered against `{msg, meta}` before the template is rendered
+    /// (2-level composition, D52).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub vars: std::collections::BTreeMap<String, String>,
-    /// Noms des vars du template stampés au pick (ordre du template) —
-    /// source des ancres d'entrée nommées canvas et du routage deploy
+    /// Names of the template vars stamped at pick time (template order) —
+    /// source of the named canvas input anchors and of the deploy routing
     /// (tagger `topic = var`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub template_vars: Vec<String>,
-    /// Anti-spam — fenêtre fixe « max N envois par fenêtre de D secondes » :
-    /// le premier envoi ouvre la fenêtre, le surplus est bloqué jusqu'au
-    /// reset (l'envoi est différé, pas perdu — le set rempli reste en attente
-    /// côté runtime). `None` = pas de limite. Le passthrough n'est pas affecté.
+    /// Anti-spam — fixed window "at most N sends per window of D seconds":
+    /// the first send opens the window, the surplus is held until the
+    /// reset (the send is deferred, not lost — the filled set stays pending
+    /// on the runtime side). `None` = no limit. The passthrough is unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub anti_spam: Option<AntiSpamConfig>,
     /// Path, in the render context, of the media id of a PDF to attach
@@ -866,20 +863,20 @@ pub struct NotifyNodeConfig {
     pub cc_field: String,
 }
 
-/// Règle anti-spam d'un nœud notify (compteur × durée, une seule règle
-/// lisible — l'esprit low-code, pas la school Alertmanager).
+/// Anti-spam rule of a notify node (count × duration, a single readable
+/// rule — the low-code spirit, not the Alertmanager school).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct AntiSpamConfig {
-    /// Envois autorisés par fenêtre — ≥ 1 (validate_graph).
+    /// Sends allowed per window — ≥ 1 (validate_graph).
     pub max_msgs: u32,
-    /// Durée de la fenêtre en secondes — ≥ 1 (validate_graph).
+    /// Window duration in seconds — ≥ 1 (validate_graph).
     pub window_secs: u64,
 }
 
-/// Configuration du nœud custom `pnex-http-fetch` (C1a) — requête HTTP
-/// client « type curl » : méthode GET/POST, headers, auth (basic/bearer/
-/// clé dans un header), proxy configurable (direct ou provider de scraping).
-/// La réponse remplace le payload ; le moteur ETL standard prend le relais.
+/// Configuration of the custom `pnex-http-fetch` node (C1a) — "curl-like"
+/// HTTP client request: GET/POST method, headers, auth (basic/bearer/
+/// key in a header), configurable proxy (direct or scraping provider).
+/// The response replaces the payload; the standard ETL engine takes over.
 /// Secret fields (basic/proxy passwords, bearer token, key header value)
 /// are [`crate::SecretSlot`] vault references once saved (secrets.md S5).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -889,8 +886,8 @@ pub struct HttpFetchHeader {
     pub value: String,
 }
 
-/// Méthode HTTP v1 — GET/POST couvrent le cas collecte (API JSON en
-/// lecture, webhook d'ingestion d'un tiers).
+/// HTTP method v1 — GET/POST cover the collection case (JSON API
+/// reads, third-party ingestion webhook).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HttpFetchMethod {
@@ -899,7 +896,7 @@ pub enum HttpFetchMethod {
     Post,
 }
 
-/// Auth de la requête — taggée `mode` (l'éditeur émet `{"mode": "basic", …}`).
+/// Request auth — tagged `mode` (the editor emits `{"mode": "basic", …}`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum HttpFetchAuth {
@@ -914,7 +911,7 @@ pub enum HttpFetchAuth {
         #[serde(default)]
         token: crate::SecretSlot,
     },
-    /// Clé d'API dans un header arbitraire (`X-Api-Key: …`).
+    /// API key in an arbitrary header (`X-Api-Key: …`).
     Header {
         name: String,
         #[serde(default)]
@@ -922,9 +919,9 @@ pub enum HttpFetchAuth {
     },
 }
 
-/// Proxy sortant — `custom` couvre les providers de scraping en mode proxy
-/// (HTTP CONNECT + user/pass) ; l'idiome « clé dans l'URL cible »
-/// (ScraperAPI/ZenRows) n'a pas besoin de proxy du tout.
+/// Outbound proxy — `custom` covers scraping providers in proxy mode
+/// (HTTP CONNECT + user/pass); the "key in the target URL" idiom
+/// (ScraperAPI/ZenRows) needs no proxy at all.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum HttpFetchProxy {
@@ -939,9 +936,9 @@ pub enum HttpFetchProxy {
     },
 }
 
-/// Sémantique d'erreur : `reject` → message rejeté (`flow.handle_error`,
-/// flow_error isolé, le flow survit — école notify strict) ; `passthrough`
-/// → payload null + `http_error` + statusCode, le graphe décide (switch…).
+/// Error semantics: `reject` → message rejected (`flow.handle_error`,
+/// isolated flow_error, the flow survives — notify strict school); `passthrough`
+/// → null payload + `http_error` + statusCode, the graph decides (switch…).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HttpFetchOnError {
@@ -950,28 +947,28 @@ pub enum HttpFetchOnError {
     Passthrough,
 }
 
-/// `Default` **manuel** : aligné sur le défaut serde (`timeout_secs: 30`),
-/// sinon le constructeur Rust produirait 0 (violation parasite côté éditeur).
+/// **Manual** `Default`: aligned with the serde default (`timeout_secs: 30`),
+/// otherwise the Rust constructor would yield 0 (spurious violation in the editor).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HttpFetchNodeConfig {
-    /// URL complète (query inclus) — pas de templating v1 (calcul amont
-    /// par un nœud calc).
+    /// Full URL (query included) — no templating in v1 (compute upstream
+    /// with a calc node).
     #[serde(default)]
     pub url: String,
     #[serde(default)]
     pub method: HttpFetchMethod,
-    /// Headers statiques additionnels.
+    /// Additional static headers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub headers: Vec<HttpFetchHeader>,
     #[serde(default)]
     pub auth: HttpFetchAuth,
     #[serde(default)]
     pub proxy: HttpFetchProxy,
-    /// Timeout total de la requête (s) — borné 1..=300 par validate_graph.
+    /// Total request timeout (s) — bounded 1..=300 by validate_graph.
     #[serde(default = "default_http_timeout_secs")]
     pub timeout_secs: u64,
-    /// Body littéral (POST) — absent ⇒ payload du msg sérialisé JSON
-    /// (+ `content-type: application/json`, surchargeable par header explicite).
+    /// Literal body (POST) — absent ⇒ msg payload serialized as JSON
+    /// (+ `content-type: application/json`, overridable by an explicit header).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body: Option<String>,
     #[serde(default)]
@@ -1039,8 +1036,8 @@ impl Default for HttpFetchNodeConfig {
     }
 }
 
-/// UUID tolérant au JSON `null`/`""` (vaut nil) — l'éditeur front manipule
-/// des chaînes et représente « non posé » par null.
+/// UUID tolerant to JSON `null`/`""` (becomes nil) — the front editor handles
+/// strings and represents "not set" as null.
 fn deserialize_nil_uuid<'de, D>(d: D) -> Result<Uuid, D::Error>
 where
     D: serde::Deserializer<'de>,

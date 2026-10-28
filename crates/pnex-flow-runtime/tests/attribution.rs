@@ -1,6 +1,6 @@
-//! Tests E2E d'attribution du feed debug : chaque engine émet sur son canal
-//! broadcast, la pompe estampille `flow` + id éditeur (`node_red`). Le
-//! harnais spawn le vrai binaire (`CARGO_BIN_EXE_pnex-flow-runtime`).
+//! E2E tests of debug feed attribution: each engine emits on its broadcast
+//! channel, the pump stamps `flow` + editor id (`node_red`). The
+//! harness spawns the real binary (`CARGO_BIN_EXE_pnex-flow-runtime`).
 
 mod common;
 
@@ -8,15 +8,15 @@ use std::time::Duration;
 
 use common::RuntimeProc;
 
-/// Deux tabs auto-déclenchés (inject en repeat) : le debug de chaque tab doit
-/// être attribué à son flow, avec l'id éditeur (attribution hex → RED).
+/// Two self-triggered tabs (repeating inject): each tab's debug must
+/// be attributed to its flow, with the editor id (hex → RED attribution).
 #[test]
 fn attribution_multi_tabs() {
     let home = common::tmp_home("attribution-tabs");
     let flows = home.join("flows.json");
-    // Tab 1 : inject intervalle (0.1 s) → debug — trafic continu attribué
-    // flow=1. Tab 2 : inject intervalle lent (0.5 s) → debug — attribué
-    // flow=2, sans jamais mélanger les deux flux.
+    // Tab 1: interval inject (0.1 s) → debug — continuous traffic attributed
+    // flow=1. Tab 2: slow interval inject (0.5 s) → debug — attributed
+    // flow=2, never mixing the two streams.
     let artifact = serde_json::json!([
         { "id": "pnexflow1", "type": "tab", "label": "f1", "pnex_flow_id": 1 },
         {
@@ -51,8 +51,8 @@ fn attribution_multi_tabs() {
         Duration::from_secs(30),
     );
 
-    // Le debug du tab 1 est attribué flow=1 avec l'id éditeur n2 (sortie
-    // builtin stringifiée — le debug builtin pré-stringifie sa sortie via
+    // Tab 1's debug is attributed flow=1 with editor id n2 (stringified
+    // builtin output — the builtin debug pre-stringifies its output via
     // `format_message_for_display`).
     let dbg1 = rt.wait_for(
         |v| {
@@ -64,11 +64,11 @@ fn attribution_multi_tabs() {
     );
     assert!(
         dbg1["msg"].is_string() && dbg1["msg"].as_str().unwrap().contains("bg"),
-        "payload stringifié attendu : {dbg1}"
+        "stringified payload expected: {dbg1}"
     );
 
-    // Le debug du tab 2 est attribué flow=2 avec l'id éditeur m2 — la
-    // corrélation flow/nœud ne fuit jamais d'un tab vers l'autre.
+    // Tab 2's debug is attributed flow=2 with editor id m2 — the
+    // flow/node correlation never leaks from one tab to the other.
     let dbg2 = rt.wait_for(
         |v| {
             v.get("event").and_then(|e| e.as_str()) == Some("debug")
@@ -80,6 +80,6 @@ fn attribution_multi_tabs() {
     );
     assert!(
         dbg2["msg"].is_string() && dbg2["msg"].as_str().unwrap().contains("\"tab\""),
-        "payload stringifié attendu : {dbg2}"
+        "stringified payload expected: {dbg2}"
     );
 }

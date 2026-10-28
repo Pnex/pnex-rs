@@ -1,12 +1,12 @@
-//! Zones d'état standardisées d'une liste — loading / empty / error, le
-//! match dupliqué verbatim dans chaque page historique. Volontairement
-//! **non générique** : `state` ne porte que le discriminant
-//! (`Option<Result<(), ApiError>>`) — les `children` sont construits par
-//! la page depuis sa lecture synchrone de la ressource, un payload `T`
-//! n'apporterait rien et imposerait `PartialEq` sur chaque type de liste.
+//! Standardised state zones of a list — loading / empty / error, the
+//! match duplicated verbatim in every historical page. Deliberately
+//! **not generic**: `state` only carries the discriminant
+//! (`Option<Result<(), ApiError>>`) — the `children` are built by
+//! the page from its synchronous read of the resource, a `T` payload
+//! would bring nothing and would force `PartialEq` on every list type.
 //!
-//! Réponse de la page (doctrine `use_resource` : lectures dans la partie
-//! **synchrone** du corps de rendu) :
+//! The page's side (`use_resource` doctrine: reads in the
+//! **synchronous** part of the render body):
 //!
 //! ```ignore
 //! let (state, is_empty, count, rows) = match &*list.value().read() {
@@ -24,18 +24,18 @@ use crate::components::gerbe::Gerbe;
 
 #[component]
 pub fn ListStates(
-    /// Discriminant de la ressource — `None` = chargement,
-    /// `Some(Err)` = erreur (message serveur affiché tel quel),
-    /// `Some(Ok)` = données (vide → `empty_message`, sinon `children`).
+    /// Resource discriminant — `None` = loading,
+    /// `Some(Err)` = error (server message shown as is),
+    /// `Some(Ok)` = data (empty → `empty_message`, otherwise `children`).
     state: Option<Result<(), ApiError>>,
-    /// Liste vide (consulté uniquement en `Some(Ok)`).
+    /// Empty list (only read in `Some(Ok)`).
     is_empty: bool,
-    /// Message vide — i18n résolu par l'appelant (clé `*-empty` de la page).
+    /// Empty message — i18n resolved by the caller (the page's `*-empty` key).
     empty_message: String,
-    /// Icône facultative au-dessus du message (cercle gris, idiome catalog).
+    /// Optional icon above the message (grey circle, catalog idiom).
     #[props(default)]
     empty_icon: Option<Element>,
-    /// Détail facultatif sous le message vide (hint du catalogue).
+    /// Optional detail under the empty message (catalogue hint).
     #[props(default)]
     empty_detail: Option<Element>,
     children: Element,

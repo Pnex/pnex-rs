@@ -1,7 +1,7 @@
-//! Formulaire modal standardisé — `Modal` + pied cancel/submit. Les champs
-//! restent dans `children` avec leurs signaux locaux à la page (idiome des
-//! modales de création historiques) ; le pied seul est normalisé, avec les
-//! mêmes classes que les pieds existants (consts partagées avec
+//! Standardised modal form — `Modal` + cancel/submit footer. The fields
+//! stay in `children` with their page-local signals (idiom of the
+//! historical creation modals); only the footer is normalised, with the
+//! same classes as the existing footers (consts shared with
 //! `layout.rs`).
 
 use dioxus::prelude::*;
@@ -12,20 +12,20 @@ use crate::components::modal::Modal;
 
 #[component]
 pub fn FormDialog(
-    /// Titre du modal (i18n résolu par l'appelant).
+    /// Modal title (i18n resolved by the caller).
     title: String,
-    /// Libellé du bouton de soumission (i18n résolu par l'appelant).
+    /// Submit button label (i18n resolved by the caller).
     submit_label: String,
-    /// Fermeture (overlay, croix, bouton annuler).
+    /// Close (overlay, cross, cancel button).
     on_close: Callback<()>,
-    /// Soumission — le handler de la page garde le spawn / toasts /
-    /// fermeture / refetch.
+    /// Submit — the page handler keeps the spawn / toasts /
+    /// closing / refetch.
     on_submit: Callback<()>,
-    /// Opération serveur en cours → submit désactivé.
+    /// Server operation in progress → submit disabled.
     busy: bool,
-    /// Validation préalable → submit désactivé (défaut `true` ; poser
-    /// `false` quand la page affiche son erreur inline **après** clic,
-    /// le bouton ne doit pas être verrouillé avant).
+    /// Prior validation → submit disabled (default `true`; set
+    /// `false` when the page shows its error inline **after** the click,
+    /// the button must not be locked before).
     #[props(default = true)]
     valid: bool,
     #[props(default = "max-w-md".to_string())] max_width: String,

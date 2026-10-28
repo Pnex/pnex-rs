@@ -1,8 +1,8 @@
-//! Tests du CRUD des mélanges de fluides personnalisés : validation
-//! (pnex-core + instanciation CoolProp), conversion massique→molaire
-//! stockée, unicité de nom, isolation org (404 masqué).
+//! Tests for the custom fluid mixtures CRUD: validation
+//! (pnex-core + CoolProp instantiation), stored mass→molar conversion,
+//! name uniqueness, org isolation (masked 404).
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -92,7 +92,7 @@ async fn create_mixture(
         .await
 }
 
-/// Crée puis retourne l'id du mélange (utilisé par detail/update/delete).
+/// Creates the mixture then returns its id (used by detail/update/delete).
 async fn seed_mixture(server: &axum_test::TestServer, token: &str, org: i64, name: &str) -> i64 {
     let resp = create_mixture(server, token, org, name, composition_mole()).await;
     assert_eq!(resp.status_code(), 201, "seed: {}", resp.text());
@@ -101,8 +101,8 @@ async fn seed_mixture(server: &axum_test::TestServer, token: &str, org: i64, nam
         .expect("integer id")
 }
 
-/// CRUD complet + isolation org : create → list → detail → cross-org 404
-/// → update (conversion massique stockée) → delete → 404 après delete.
+/// Full CRUD + org isolation: create → list → detail → cross-org 404
+/// → update (stored mass conversion) → delete → 404 after delete.
 #[tokio::test]
 #[serial]
 async fn crud_et_isolation_org() {
@@ -112,7 +112,7 @@ async fn crud_et_isolation_org() {
 
         let id = seed_mixture(&server, &env.alice, org_a, "Boucle secondaire").await;
 
-        // List : enveloppe paginée, le mélange est présent.
+        // List: paginated envelope, the mixture is present.
         let list = server
             .get("/api/v1/fluid-mixtures")
             .add_header("Authorization", bearer(&env.alice))
@@ -121,10 +121,10 @@ async fn crud_et_isolation_org() {
             .json::<serde_json::Value>();
         assert_eq!(list["count"], 1, "{list}");
         assert_eq!(list["results"][0]["name"], "Boucle secondaire");
-        // La spec CoolProp inline est exposée et correcte.
+        // The inline CoolProp spec is exposed and correct.
         assert_eq!(list["results"][0]["spec"], "Propane[0.5]&Ethane[0.5]");
 
-        // Detail + isolation cross-org (404 masqué, jamais 403).
+        // Detail + cross-org isolation (masked 404, never 403).
         let resp = server
             .get(&format!("/api/v1/fluid-mixtures/{id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -138,8 +138,8 @@ async fn crud_et_isolation_org() {
             .await;
         assert_eq!(resp.status_code(), 404);
 
-        // Update : passage en base massique 50/50 eau/éthanol — la
-        // réponse porte les fractions molaires converties.
+        // Update: switch to a 50/50 water/ethanol mass basis — the
+        // response carries the converted molar fractions.
         let resp = server
             .put(&format!("/api/v1/fluid-mixtures/{id}"))
             .add_header("Content-Type", "application/json")
@@ -167,7 +167,7 @@ async fn crud_et_isolation_org() {
         );
         assert!(comp["molar_mass"].as_f64().is_some());
 
-        // Delete puis 404.
+        // Delete then 404.
         let resp = server
             .delete(&format!("/api/v1/fluid-mixtures/{id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -184,8 +184,8 @@ async fn crud_et_isolation_org() {
     .await;
 }
 
-/// Rejets : somme ≠ 1 (violations pnex-core), fluide inconnu (message
-/// CoolProp), doublon de nom, écriture sans can_write.
+/// Rejections: sum ≠ 1 (pnex-core violations), unknown fluid (CoolProp
+/// message), duplicate name, write without can_write.
 #[tokio::test]
 #[serial]
 async fn rejets_validation_et_unicite() {
@@ -218,7 +218,7 @@ async fn rejets_validation_et_unicite() {
             resp.text()
         );
 
-        // Fluide inconnu → 400 composition avec le message CoolProp.
+        // Unknown fluid → 400 composition with the CoolProp message.
         let resp = create_mixture(
             &server,
             &env.alice,
@@ -241,7 +241,7 @@ async fn rejets_validation_et_unicite() {
             .unwrap_or_default();
         assert!(!detail.is_empty(), "CoolProp detail expected: {body}");
 
-        // Doublon de nom dans la même org → 400 name.
+        // Duplicate name in the same org → 400 name.
         seed_mixture(&server, &env.alice, org_a, "Double").await;
         let resp = create_mixture(&server, &env.alice, org_a, "Double", composition_mole()).await;
         assert_eq!(resp.status_code(), 400, "{}", resp.text());

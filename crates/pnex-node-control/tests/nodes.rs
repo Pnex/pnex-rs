@@ -1,25 +1,25 @@
-//! Tests des cartes de régulation : registre `inventory` (les 3 types) et
-//! rejet fail-loud au build (`BadFlowsJson`) d'une carte invalide — la
-//! dégradation silencieuse en nœud `unknown` du vendor est exactement ce
-//! que ces tests rendent impossible.
+//! Control card tests: `inventory` registry (the 3 types) and
+//! fail-loud rejection at build (`BadFlowsJson`) of an invalid card — the
+//! vendor's silent degradation into an `unknown` node is exactly what
+//! these tests make impossible.
 
 use edgelink_core::runtime::registry::RegistryBuilder;
 
 #[test]
 fn registre_contient_les_trois_cartes() {
-    // Ancre anti-élagage : sans référence au crate, le linker peut jeter les
-    // soumissions `inventory` (même garde que le binaire runtime).
+    // Anti-pruning anchor: without a reference to the crate, the linker may drop the
+    // `inventory` submissions (same guard as the runtime binary).
     pnex_node_control::registered();
     let reg = RegistryBuilder::default().build().expect("registre");
     for type_name in ["pnex-reg-tt-heat", "pnex-reg-tt-cool", "pnex-reg-pid"] {
         let meta = reg
             .get(type_name)
-            .unwrap_or_else(|| panic!("carte {type_name} absente du registre"));
+            .unwrap_or_else(|| panic!("card {type_name} missing from the registry"));
         assert_eq!(meta.type_, type_name);
     }
 }
 
-/// Artefact RAW d'une carte valide (estampilles de la projection présentes).
+/// RAW artefact of a valid card (projection stamps present).
 fn reg_flows(type_name: &str, extra: serde_json::Value) -> String {
     let mut node = serde_json::json!({
         "id": "r1", "type": type_name, "z": "t",
@@ -45,8 +45,8 @@ fn build_flows(json: String) -> edgelink_core::Result<()> {
         .build()
         .unwrap();
     rt.block_on(async move {
-        // Le build complet du moteur garantit le fail-loud : sans le crate
-        // lié, le type tomberait dans le fallback `unknown` (warn seul).
+        // The full engine build guarantees fail-loud: without the crate
+        // linked, the type would fall back to `unknown` (warn only).
         edgelink_core::runtime::engine::Engine::with_json_string(&reg, json, None)?;
         Ok(())
     })
@@ -66,28 +66,28 @@ fn build_accepte_les_cartes_valides() {
         ),
     ] {
         build_flows(reg_flows(type_name, extra))
-            .unwrap_or_else(|e| panic!("{type_name} valide doit builder : {e}"));
+            .unwrap_or_else(|e| panic!("valid {type_name} must build: {e}"));
     }
 }
 
 #[test]
 fn build_refuse_sans_deadband_tt() {
-    // TT sans deadband → violation reg_deadband_range au build.
+    // TT without deadband → reg_deadband_range violation at build.
     let json = reg_flows("pnex-reg-tt-heat", serde_json::json!({}));
-    let err = build_flows(json).expect_err("TT sans deadband doit être rejeté");
+    let err = build_flows(json).expect_err("TT without deadband must be rejected");
     assert!(
         err.to_string().to_lowercase().contains("deadband"),
-        "message attendu deadband, reçu : {err}"
+        "expected deadband message, got: {err}"
     );
 }
 
 #[test]
 fn build_refuse_artefact_perime() {
-    // Sans pnex_flow_id (artefact périmé — cf. mémoire deploy/version) →
-    // rejet fail-loud, pas de no-op silencieux.
+    // Without pnex_flow_id (stale artefact — see deploy/version memory) →
+    // fail-loud rejection, not a silent no-op.
     let json = reg_flows("pnex-reg-tt-heat", serde_json::json!({"pnex_flow_id": 0}));
     assert!(
         build_flows(json).is_err(),
-        "artefact sans stamp doit être rejeté"
+        "artefact without stamp must be rejected"
     );
 }

@@ -1,7 +1,7 @@
 # Due diligence, fusion-acquisition et solvabilité — PRD
 
 > Statut : **proposé** (2026-10-21, versé au dépôt le 2026-10-27) · Décisions **D468–D483** · Lots **DD0–DD7**
-> Dépend de : ontologie 0.2.0 (D176–D191), dossiers (K1–K64), `entreprises_fr` (D304–D306), imports déclaratifs (D301), recherche documentaire P1 (P2.18), orchestrateur d'analyses média (D212–D214), revue « à valider » (D316), propositions (D367, D371–D377).
+> Dépend de : ontologie 0.2.0 (D176–D191), dossiers (K1–K64), `companies_fr` (D304–D306), imports déclaratifs (D301), recherche documentaire P1 (P2.18), orchestrateur d'analyses média (D212–D214), revue « à valider » (D316), propositions (D367, D371–D377).
 > Numérotation : rédigé à l'origine en D329–D344, plage déjà prise par `account-mapping.md` ; renuméroté à l'identique (D329 → D468 … D344 → D483).
 
 ---
@@ -33,9 +33,9 @@ Chaque chiffre affiché doit pouvoir **remonter à sa source** en un clic (D184)
 
 | Brique existante | Où | Réutilisation |
 |---|---|---|
-| Ontologie typée, liens temporels à attributs, `as_of` | `pnex_core::ontology`, D176–D185 | sociétés, contrats, tiers, liens `owns`/`dirige`/`partie_a` bornés dans le temps |
+| Ontologie typée, liens temporels à attributs, `as_of` | `pnex_core::ontology`, D176–D185 | sociétés, contrats, tiers, liens `owns`/`manages`/`partie_a` bornés dans le temps |
 | Packs YAML (`requires`, `extends`, imports, hiérarchies) | `crates/pnex-backend/packs/`, D190, D306 | nouveau pack `finance` (= K60 reporté) + pack `due_diligence` |
-| `organization` + SIREN, établissements, dirigeants, import SIRENE | `packs/entreprises_fr.yaml`, D304–D305 | identité des sociétés du dossier, arbre de groupe |
+| `organization` + SIREN, établissements, dirigeants, import SIRENE | `packs/companies_fr.yaml`, D304–D305 | identité des sociétés du dossier, arbre de groupe |
 | Actionnariat effectif, bénéficiaires > 25 % | `pnex_core::ontology::ownership` (K56) | contrôle et périmètre de consolidation |
 | Vue Argent (Sankey), cycles, « non documenté » | `pnex_core::ontology::money`, `pages/cases/workspace/money.rs` (K57) | rendu des flux agrégés depuis les grands livres |
 | Dossier (`case`), timeline, graphe Sigma, gel + export SHA-256 | K1–K47, K12/K33, GS | le dossier de transaction **est** un `case` |
@@ -153,7 +153,7 @@ Chaque indicateur expose sa formule et les faits utilisés ; un fait manquant do
 - Indicateurs : part des 1/5/10 premiers clients et fournisseurs, dépendance > 20 % signalée.
 
 ### D480 — Social agrégé, jamais nominatif
-Bilan social, BDESE, registres : on ne garde **que des agrégats** (effectif par catégorie, ETP, masse salariale, entrées/sorties, ancienneté et âge par tranches, absentéisme). Les fichiers sources nominatifs restent dans la médiathèque, soumis à la purge K16, et ne créent **aucun objet `person`** pour les salariés. Seuls dirigeants et mandataires sont des personnes (déjà le cas avec `entreprises_fr`).
+Bilan social, BDESE, registres : on ne garde **que des agrégats** (effectif par catégorie, ETP, masse salariale, entrées/sorties, ancienneté et âge par tranches, absentéisme). Les fichiers sources nominatifs restent dans la médiathèque, soumis à la purge K16, et ne créent **aucun objet `person`** pour les salariés. Seuls dirigeants et mandataires sont des personnes (déjà le cas avec `companies_fr`).
 
 ### D481 — Pro forma : somme explicite, éliminations listées
 Vue « entité combinée » sur les sociétés choisies du dossier : somme par concept et par devise, puis **éliminations proposées** à partir des flux intra-dossier (D479) et des participations croisées (K56), chacune visible, justifiée et désactivable. Pas de consolidation normée (IFRS 10 / règlement ANC) en v1 : c'est une simulation, affichée comme telle.
@@ -303,8 +303,8 @@ Consolidation normée, évaluation d'entreprise (DCF, multiples), prévisionnel,
 Le PRD date du 2026-10-21 ; une partie du constat (§2–§3) a bougé depuis. À reprendre avant DD0 :
 
 - **D477 est déjà en grande partie construit** : la proposition est un objet du noyau (`proposals.md`, D367, D371–D377, livré 2026-10-22/23), et `object_upsert` sait proposer au lieu d'écrire (D375). D477 se réduit à brancher `fin_facts.proposed` et les extracteurs sur cette file, sans nouvelle table `proposals`.
-- **BODACC** : un import « Annonces légales (BODACC) » par SIREN existe dans `prospection_fr` (`account-mapping.md` §10, CC4). DD5 le réutilise ou le déplace dans un pack commun plutôt que d'en écrire un second via `ingest`.
-- **Groupe et filiales** : `filiale_de` (GLEIF + Wikidata) est dans le socle `entreprises` (D331, D343) ; `finance` devrait dépendre d'`entreprises`, pas seulement d'`entreprises_fr`.
-- **Lien `concerne`** : la clé est déjà prise par `quali_watch` (une seule cible, départ `ecart`) ; `due_diligence` doit choisir un autre nom (même cas que `signal_sur` en CC4).
+- **BODACC** : un import « Annonces légales (BODACC) » par SIREN existe dans `prospecting_b2b_fr` (`account-mapping.md` §10, CC4). DD5 le réutilise ou le déplace dans un pack commun plutôt que d'en écrire un second via `ingest`.
+- **Groupe et filiales** : `subsidiary_of` (GLEIF + Wikidata) est dans le socle `companies` (D331, D343) ; `finance` devrait dépendre de `companies`, pas seulement d'`companies_fr`.
+- **Lien `concerns`** : la clé est déjà prise par `quali_watch` (une seule cible, départ `finding`) ; `due_diligence` doit choisir un autre nom (même cas que `signal_about` en CC4).
 - **Lexique** : « Signal » est déjà employé (« Signal commercial », CC4) ; `red_flag` demande sa propre ligne au lexique pour ne pas créer deux sens.
 - **Données personnelles** : la classification D298, le masquage par rôle et l'effacement en coquille sont codés (`crm.md` D442–D447) ; D480 s'appuie dessus pour les fichiers sociaux.

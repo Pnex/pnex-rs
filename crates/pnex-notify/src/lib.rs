@@ -1,27 +1,27 @@
-//! PNEX notify — abstraction multi-canaux des notifications (D49–D54,
-//! amendées 2026-09-14).
+//! PNEX notify — multi-channel notification abstraction (D49–D54,
+//! amended 2026-09-14).
 //!
-//! **Un seul chemin d'envoi** : backend (boutons Test, envois directs) et
-//! nœud flow `pnex-notify` (snapshot résolu au deploy) passent tous les
-//! deux par [`channel`] + [`Channel::send`] + [`with_retry`] — pas de code
-//! d'envoi dupliqué.
+//! **A single send path**: the backend (Test buttons, direct sends) and the
+//! `pnex-notify` flow node (snapshot resolved at deploy) both go
+//! through [`channel`] + [`Channel::send`] + [`with_retry`] — no duplicated
+//! send code.
 //!
-//! Zéro dep loco : lié par le backend, par `pnex-node-notify` (runtime
-//! edgelinkd) et testable isolément. Périmètre cible = quelques canaux
-//! éprouvés, pas la couverture Apprise :
+//! Zero loco dep: linked by the backend, by `pnex-node-notify` (edgelinkd
+//! runtime) and testable in isolation. Target scope = a few proven
+//! channels, not Apprise coverage:
 //!
 //! | Kind | Transport | Secrets |
 //! |---|---|---|
-//! | `websocket` | `POST deliver_url` (bus interne `/internal/notify/deliver`) | token injecté par env, jamais en DB ni flows.json |
-//! | `webhook` | `reqwest` POST JSON `{subject, body, meta}` | `secret_value` en header optionnel |
-//! | `ntfy` | `reqwest` publication JSON `{topic, message, title, …}` | token en `Bearer` optionnel |
+//! | `websocket` | `POST deliver_url` (internal bus `/internal/notify/deliver`) | token injected by env, never in DB nor flows.json |
+//! | `webhook` | `reqwest` POST JSON `{subject, body, meta}` | `secret_value` in optional header |
+//! | `ntfy` | `reqwest` JSON publish `{topic, message, title, …}` | token as optional `Bearer` |
 //! | `telegram` | Bot API `sendMessage` (JSON `{chat_id, text}`) | bot_token write-only |
-//! | `slack` | incoming webhook `{"text": …}` | `webhook_url` write-only (porte le token) |
-//! | `discord` | webhook `{"content": …}` | `webhook_url` write-only (porte le token) |
+//! | `slack` | incoming webhook `{"text": …}` | `webhook_url` write-only (carries the token) |
+//! | `discord` | webhook `{"content": …}` | `webhook_url` write-only (carries the token) |
 //! | `smtp` | lettre 0.11 (rustls) | `password` write-only |
 //!
-//! (gotify/… = extensions ~30 l chacune — implémenter
-//! [`Channel`] + une entrée dans [`registry::CHANNELS`].)
+//! (gotify/… = extensions of ~30 lines each — implement
+//! [`Channel`] + an entry in [`registry::CHANNELS`].)
 
 pub mod attachments;
 pub mod channels;
@@ -40,8 +40,8 @@ pub use retry::{with_retry, with_retry_delays};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// Message de notification rendu — le même objet transite vers tous les
-/// canaux ; `meta` porte le contexte de traçabilité (flow, nœud, ts, org).
+/// Rendered notification message — the same object goes to all the
+/// channels; `meta` carries the traceability context (flow, node, ts, org).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub subject: Option<String>,
@@ -50,21 +50,21 @@ pub struct Message {
     pub meta: serde_json::Value,
 }
 
-/// Un canal de notification (destination). Une implémentation par kind —
-/// même économie de points d'extension que le registre des attachments
-/// POI : 1 variante + 1 impl + 1 `field_spec` + 2 clés i18n.
+/// A notification channel (destination). One implementation per kind —
+/// same economy of extension points as the POI attachments
+/// registry: 1 variant + 1 impl + 1 `field_spec` + 2 i18n keys.
 #[async_trait]
 pub trait Channel: Send + Sync {
-    /// Identifiant du kind (`"websocket"`, `"webhook"`) — clé du registre.
+    /// Kind identifier (`"websocket"`, `"webhook"`) — registry key.
     fn kind(&self) -> &'static str;
-    /// Spécification des champs de config — source du formulaire UI
-    /// (contrat `notify-kinds.v1`, additif-only).
+    /// Config field specification — source of the UI form
+    /// (`notify-kinds.v1` contract, additive-only).
     fn field_spec(&self) -> Vec<pnex_core::FieldSpec>;
-    /// Validation de la config à la sauvegarde (message d'erreur
-    /// affichable, jamais de secret cité).
+    /// Config validation at save time (displayable error
+    /// message, never quoting a secret).
     fn validate(&self, config: &serde_json::Value) -> Result<(), String>;
-    /// Envoi d'un message rendu. `config` = config du canal (snapshot au
-    /// deploy pour le nœud flow, config DB pour les envois backend).
+    /// Sends a rendered message. `config` = channel config (snapshot at
+    /// deploy for the flow node, DB config for backend sends).
     async fn send(&self, config: &serde_json::Value, msg: &Message) -> Result<(), NotifyError>;
 
     /// Send with attached files (D209: the PDF of a report). Default: the

@@ -3,7 +3,7 @@
 
 use super::*;
 
-/// Option du picker écran du wizard (précalculée).
+/// Option of the wizard screen picker (precomputed).
 struct WizardScreenOption {
     label: String,
     kind: Option<String>,
@@ -11,9 +11,9 @@ struct WizardScreenOption {
     locked: bool,
 }
 
-/// Choix de l'écran de debug au wizard — visible dès la step variante
-/// (câblage fixé par la board, appliqué au device juste avant le 1er
-/// build). « Aucun » verrouillé si la board porte un écran soudé.
+/// Choice of the debug screen in the wizard — visible from the variant step
+/// (wiring fixed by the board, applied to the device just before the 1st
+/// build). "None" locked if the board carries a soldered screen.
 #[component]
 pub(super) fn ScreenPickBlock(
     board: api::boards::Board,
@@ -54,7 +54,7 @@ pub(super) fn ScreenPickBlock(
             locked: is_builtin,
         });
     }
-    // Câblage du choix effectif (soudé forcé si rien de choisi).
+    // Wiring of the effective choice (soldered forced if nothing chosen).
     let effective_kind: Option<String> = match &pick {
         Some(k) => k.clone(),
         None => screens
@@ -93,8 +93,8 @@ pub(super) fn ScreenPickBlock(
     }
 }
 
-/// Légende de câblage (rôle → label de broche) depuis le Board du
-/// catalogue (le wizard n'a pas le pinout, les labels du profil suffisent).
+/// Wiring legend (role → pin label) from the catalogue Board (the wizard
+/// has no pinout, the profile labels are enough).
 fn board_screen_wiring(
     board: &api::boards::Board,
     kind: Option<&str>,

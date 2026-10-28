@@ -1,16 +1,16 @@
-//! Tests du stitch serveur (Take 360 V2, plan B — worker synchrone en test) :
-//! création de job, upload octet-stream des frames, assemblage Quality et
-//! publication comme version n+1 de l'asset média. Isolation org, rôles,
-//! kill-switch et chemins d'échec couverts.
+//! Server stitch tests (Take 360 V2, plan B — synchronous worker in tests):
+//! job creation, octet-stream upload of the frames, Quality assembly and
+//! publication as version n+1 of the media asset. Org isolation, roles,
+//! kill-switch and failure paths covered.
 //!
-//! Nécessite PostgreSQL (base de test dédiée) — base vidée entre tests.
+//! Requires PostgreSQL (dedicated test database) — database emptied between tests.
 //!
-//! ÉCART AU PLAN : l'énoncé demandait « 2 poses / frames_total=2 → succeeded ».
-//! Deux frames hfov 100 ne couvrent que ~200°/360° → le contrôle de couverture
-//! du stitcher (`min_band_coverage: 0.90`, plan B3) refuse le rendu : le job
-//! serait `failed`, pas `succeeded`. Le test de succès utilise donc un anneau
-//! complet (4 frames à 0/90/180/270°, recouvrement 20°) — le job à 2 frames
-//! sert de test d'échec (couverture insuffisante).
+//! DEVIATION FROM THE PLAN: the spec asked for "2 poses / frames_total=2 → succeeded".
+//! Two hfov 100 frames only cover ~200°/360° → the stitcher's coverage check
+//! (`min_band_coverage: 0.90`, plan B3) refuses the render: the job would be
+//! `failed`, not `succeeded`. The success test therefore uses a full ring
+//! (4 frames at 0/90/180/270°, 20° overlap) — the 2-frame job serves as the
+//! failure test (insufficient coverage).
 
 mod common;
 
@@ -25,8 +25,8 @@ struct Env {
 
 /// Boots the app on the test object store with stitching at 1024 px (env
 /// set BEFORE the boot).
-/// ForegroundBlocking : le worker tourne inline dans la requête du dernier
-/// POST frame.
+/// ForegroundBlocking: the worker runs inline within the request of the last
+/// frame POST.
 async fn with_app<F, Fut>(stitch_enabled: bool, f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
@@ -80,7 +80,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// The user's personal org (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -91,7 +91,7 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
         .expect("org personnelle")
 }
 
-/// JPEG minimal avec segment APP1 XMP (même encodage que le sniff GPano).
+/// Minimal JPEG with an APP1 XMP segment (same encoding as the GPano sniff).
 fn gpano_jpeg() -> Vec<u8> {
     let prefix = b"http://ns.adobe.com/xap/1.0/\x00";
     let xmp = r#"<rdf:Description GPano:ProjectionType="equirectangular"/>"#;
@@ -105,10 +105,10 @@ fn gpano_jpeg() -> Vec<u8> {
     out
 }
 
-/// Frame JPEG 64×48 valable — dégradé texturé (structure régulière, assez
-/// pour l'alignement NCC sans être exigeant à cette résolution de test).
-/// La même image pour toutes les frames : le stitch Quality (gains, coutures,
-/// multiband) est exercé par la géométrie des poses, pas par le contenu.
+/// Valid 64×48 JPEG frame — textured gradient (regular structure, enough
+/// for NCC alignment without being demanding at this test resolution).
+/// The same image for every frame: the Quality stitch (gains, seams,
+/// multiband) is exercised by the pose geometry, not by the content.
 fn frame_jpeg() -> Vec<u8> {
     let (w, h) = (64u32, 48u32);
     let mut rgb = vec![0u8; (w * h * 3) as usize];
@@ -126,7 +126,7 @@ fn frame_jpeg() -> Vec<u8> {
     pnex_stitcher::encode_jpeg(&rgb, w, h, 85).expect("encode jpeg de test")
 }
 
-/// Upload octet-stream d'un média (asset panorama par sniff GPano).
+/// Octet-stream upload of a media (panorama asset via the GPano sniff).
 async fn upload_media(
     server: &axum_test::TestServer,
     token: &str,
@@ -139,11 +139,11 @@ async fn upload_media(
         .add_header("Content-Type", "application/octet-stream")
         .bytes(gpano_jpeg().into())
         .await;
-    assert_eq!(res.status_code(), 201, "upload média : {}", res.text());
+    assert_eq!(res.status_code(), 201, "media upload: {}", res.text());
     res.json::<serde_json::Value>()
 }
 
-/// Crée un job de stitch : poses = une par frame, hfov 100°.
+/// Creates a stitch job: one pose per frame, hfov 100°.
 async fn create_job(
     server: &axum_test::TestServer,
     token: &str,
@@ -164,7 +164,7 @@ async fn create_job(
         .await
 }
 
-/// POST octet-stream d'une frame (k).
+/// Octet-stream POST of a frame (k).
 async fn upload_frame(
     server: &axum_test::TestServer,
     token: &str,
@@ -182,7 +182,7 @@ async fn upload_frame(
         .await
 }
 
-/// Récupère l'état d'un job.
+/// Fetches the state of a job.
 async fn get_job(
     server: &axum_test::TestServer,
     token: &str,
@@ -197,7 +197,7 @@ async fn get_job(
         .json::<serde_json::Value>()
 }
 
-/// Un anneau complet : 4 poses hfov 100 à 0/90/180/270° (recouvrement 20°).
+/// A full ring: 4 hfov 100 poses at 0/90/180/270° (20° overlap).
 fn ring_poses() -> serde_json::Value {
     serde_json::json!([
         {"yaw_deg": 0.0,   "pitch_deg": 0.0, "roll_deg": 0.0},
@@ -209,9 +209,9 @@ fn ring_poses() -> serde_json::Value {
 
 // ─────────────────────────── Tests ───────────────────────────
 
-/// Cycle complet : asset → job 4 frames → succeeded → version 2 attachée à
-/// l'asset (courante, 1024×512, GPano + note serveur), frames conservées
-/// dans le store, immutabilité des frames déjà reçues.
+/// Full cycle: asset → 4-frame job → succeeded → version 2 attached to
+/// the asset (current, 1024×512, GPano + server note), frames kept
+/// in the store, frames already received are immutable.
 #[tokio::test]
 #[serial]
 async fn cycle_job_complet() {
@@ -220,7 +220,7 @@ async fn cycle_job_complet() {
         let asset = upload_media(&server, &env.alice, org).await;
         let asset_id = asset["id"].as_str().unwrap().to_string();
 
-        // Validation : 1 pose (frames_total=1 < 2) et poses vides → 400.
+        // Validation: 1 pose (frames_total=1 < 2) and empty poses → 400.
         for bad in [
             serde_json::json!([{ "yaw_deg": 0.0, "pitch_deg": 0.0, "roll_deg": 0.0 }]),
             serde_json::json!([]),
@@ -237,21 +237,21 @@ async fn cycle_job_complet() {
             assert_eq!(body["errors"]["fields"]["frames_total"], "range:2..64");
         }
 
-        // Asset cross-org : bob, dans SON org, vise l'asset d'alice → 404
-        // masqué (école tests/media.rs::isolation_org_et_derniere_version).
+        // Cross-org asset: bob, in HIS org, targets alice's asset → masked
+        // 404 (as in tests/media.rs::isolation_org_et_derniere_version).
         let org_bob = personal_org(&server, &env.bob).await;
         let res = create_job(&server, &env.bob, org_bob, &asset_id, ring_poses()).await;
-        assert_eq!(res.status_code(), 404, "asset cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org asset masked");
 
         let res = create_job(&server, &env.alice, org, &asset_id, ring_poses()).await;
-        assert_eq!(res.status_code(), 201, "création job : {}", res.text());
+        assert_eq!(res.status_code(), 201, "job creation: {}", res.text());
         let job: serde_json::Value = res.json();
         let job_id = job["id"].as_str().unwrap().to_string();
         assert_eq!(job["state"], "queued");
         assert_eq!(job["frames_total"], 4);
         assert_eq!(job["frames_received"], 0);
 
-        // Frame hors bornes (k = 4) → 400, compteur intact.
+        // Out-of-bounds frame (k = 4) → 400, counter intact.
         let res = upload_frame(&server, &env.alice, org, &job_id, 4, frame_jpeg()).await;
         assert_eq!(res.status_code(), 400, "k >= frames_total → 400");
         assert_eq!(
@@ -263,28 +263,28 @@ async fn cycle_job_complet() {
             0
         );
 
-        // 3 premières frames : compteur qui monte, état toujours queued.
+        // First 3 frames: counter goes up, state still queued.
         for k in 0..3u32 {
             let res = upload_frame(&server, &env.alice, org, &job_id, k, frame_jpeg()).await;
             assert_eq!(res.status_code(), 200, "frame {k} : {}", res.text());
             let body: serde_json::Value = res.json();
             assert_eq!(body["frames_received"], k + 1);
-            assert_eq!(body["state"], "queued", "état inchangé pendant l'upload");
+            assert_eq!(body["state"], "queued", "state unchanged during the upload");
         }
 
-        // Dernière frame : worker inline (ForegroundBlocking) → succeeded.
+        // Last frame: inline worker (ForegroundBlocking) → succeeded.
         let res = upload_frame(&server, &env.alice, org, &job_id, 3, frame_jpeg()).await;
-        assert_eq!(res.status_code(), 200, "dernière frame : {}", res.text());
+        assert_eq!(res.status_code(), 200, "last frame: {}", res.text());
         let body: serde_json::Value = res.json();
         assert_eq!(body["state"], "succeeded", "worker synchrone");
         assert_eq!(body["frames_received"], 4);
         assert_eq!(body["error"], serde_json::Value::Null);
 
-        // Un nouveau POST frame sur le job terminal → 409.
+        // A new POST frame on the terminal job → 409.
         let res = upload_frame(&server, &env.alice, org, &job_id, 0, frame_jpeg()).await;
         assert_eq!(res.status_code(), 409, "job terminal → 409");
 
-        // Asset : 2 versions, la 2e (serveur) courante.
+        // Asset: 2 versions, the 2nd (server) current.
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/media/{asset_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -294,7 +294,7 @@ async fn cycle_job_complet() {
         assert_eq!(detail["current_version_number"], 2, "v2 serveur courante");
         assert_eq!(detail["versions_count"], 2);
 
-        // Version 2 = JPEG 1024×512 avec GPano + note d'assemblage.
+        // Version 2 = 1024×512 JPEG with GPano + assembly note.
         let versions: serde_json::Value = server
             .get(&format!("/api/v1/media/{asset_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
@@ -308,7 +308,7 @@ async fn cycle_job_complet() {
         assert_eq!(v2["note"], "assemblage serveur 1024 (Take 360 V2)");
         assert!(v2["current"].as_bool().unwrap(), "v2 courante");
 
-        // Octets de la v2 : JPEG équirect 1024×512 (hauteur = largeur / 2).
+        // v2 bytes: equirect JPEG 1024×512 (height = width / 2).
         let res = server
             .get(&format!("/api/v1/media/{asset_id}/versions/2/content"))
             .add_header("Authorization", bearer(&env.alice))
@@ -316,32 +316,29 @@ async fn cycle_job_complet() {
             .await;
         assert_eq!(res.status_code(), 200);
         let bytes = res.into_bytes().to_vec();
-        let (_, w, h) = pnex_stitcher::decode_jpeg_rgb(&bytes).expect("v2 décodable");
+        let (_, w, h) = pnex_stitcher::decode_jpeg_rgb(&bytes).expect("v2 decodable");
         assert_eq!(
             (w, h),
             (1024, 512),
-            "dimensions de la spec (PNEX_STITCH_OUT_WIDTH)"
+            "spec dimensions (PNEX_STITCH_OUT_WIDTH)"
         );
-        // GPano toujours présent (le sniff reclasse en panorama tout seul).
+        // GPano still present (the sniff reclassifies as panorama by itself).
         let head = &bytes[..bytes.len().min(128 * 1024)];
-        assert!(head.windows(6).any(|s| s == b"GPano:"), "GPano conservé");
+        assert!(head.windows(6).any(|s| s == b"GPano:"), "GPano kept");
 
-        // Frames conservées dans le store (re-stitch hôte futur — plan B2).
+        // Frames kept in the store (future host re-stitch — plan B2).
         let store = common::media_store();
         for k in 0..4u32 {
             let frame = format!("stitch_jobs/{job_id}/frame_{k:03}.jpg");
-            assert!(
-                store.exists(&frame).await.unwrap(),
-                "frame conservée : {frame}"
-            );
+            assert!(store.exists(&frame).await.unwrap(), "frame kept: {frame}");
         }
     })
     .await;
 }
 
-/// Échec déterministe : 2 frames (~200° de couverture) → le contrôle
-/// `min_band_coverage` refuse → job `failed` + erreur courte, aucune
-/// nouvelle version sur l'asset.
+/// Deterministic failure: 2 frames (~200° of coverage) → the
+/// `min_band_coverage` check refuses → job `failed` + short error, no
+/// new version on the asset.
 #[tokio::test]
 #[serial]
 async fn job_echec_couverture() {
@@ -370,17 +367,14 @@ async fn job_echec_couverture() {
             assert_eq!(res.status_code(), 200, "frame {k} : {}", res.text());
         }
 
-        // Le dernier POST frame a déclenché le worker inline : échec couverture.
+        // The last frame POST triggered the inline worker: coverage failure.
         let after = get_job(&server, &env.alice, org, &job_id).await;
         assert_eq!(after["state"], "failed", "couverture insuffisante → failed");
-        let err = after["error"].as_str().expect("message d'erreur présent");
+        let err = after["error"].as_str().expect("error message present");
         assert!(!err.is_empty());
-        assert!(
-            !err.contains('/'),
-            "pas de chemin disque dans l'erreur : {err}"
-        );
+        assert!(!err.contains('/'), "no disk path in the error: {err}");
 
-        // Aucune version ajoutée : l'asset reste à sa version 1.
+        // No version added: the asset stays at its version 1.
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/media/{asset_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -393,7 +387,7 @@ async fn job_echec_couverture() {
     .await;
 }
 
-/// Isolation org : bob (autre org) ne voit ni le job ni ses frames.
+/// Org isolation: bob (another org) sees neither the job nor its frames.
 #[tokio::test]
 #[serial]
 async fn isolation_org() {
@@ -410,17 +404,17 @@ async fn isolation_org() {
             .unwrap()
             .to_string();
 
-        // GET cross-org → 404 masqué ; POST frame cross-org → 404 aussi.
+        // Cross-org GET → masked 404; cross-org frame POST → 404 too.
         let res = server
             .get(&format!("/api/v1/stitch-jobs/{job_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", org2.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "GET cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org GET masked");
         let res = upload_frame(&server, &env.bob, org2, &job_id, 0, frame_jpeg()).await;
-        assert_eq!(res.status_code(), 404, "POST frame cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org frame POST masked");
 
-        // Sans X-Org-Id → 400 (contexte org requis).
+        // Without X-Org-Id → 400 (org context required).
         let res = server
             .get(&format!("/api/v1/stitch-jobs/{job_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -430,8 +424,8 @@ async fn isolation_org() {
     .await;
 }
 
-/// Kill-switch : PNEX_STITCH_ENABLED=false → POST /stitch-jobs répond 503
-/// (les GET restent servis — un job créé avant peut finir).
+/// Kill-switch: PNEX_STITCH_ENABLED=false → POST /stitch-jobs answers 503
+/// (GETs are still served — a job created earlier can finish).
 #[tokio::test]
 #[serial]
 async fn kill_switch_desactive() {
@@ -441,15 +435,15 @@ async fn kill_switch_desactive() {
         let asset_id = asset["id"].as_str().unwrap().to_string();
 
         let res = create_job(&server, &env.alice, org, &asset_id, ring_poses()).await;
-        assert_eq!(res.status_code(), 503, "stitch désactivé → 503");
+        assert_eq!(res.status_code(), 503, "stitch disabled → 503");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "stitch-disabled");
     })
     .await;
 }
 
-/// `GET /by-asset/{asset_id}` — source de vérité de l'overlay UI : dernier
-/// job d'un asset (état + erreur), 404 si jamais stitché, isolation org.
+/// `GET /by-asset/{asset_id}` — source of truth of the UI overlay: last
+/// job of an asset (state + error), 404 if never stitched, org isolation.
 #[tokio::test]
 #[serial]
 async fn dernier_job_par_asset() {
@@ -458,16 +452,16 @@ async fn dernier_job_par_asset() {
         let asset = upload_media(&server, &env.alice, org).await;
         let asset_id = asset["id"].as_str().unwrap().to_string();
 
-        // Jamais stitché serveur → 404 (l'UI n'affiche pas d'overlay).
+        // Never stitched on the server → 404 (the UI shows no overlay).
         let res = server
             .get(&format!("/api/v1/stitch-jobs/by-asset/{asset_id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "aucun job → 404 : {}", res.text());
+        assert_eq!(res.status_code(), 404, "no job → 404: {}", res.text());
 
-        // Job à 2 frames → failed (couverture) : le dernier job est visible
-        // par asset avec son état terminal et son erreur.
+        // 2-frame job → failed (coverage): the last job is visible
+        // per asset with its terminal state and its error.
         let res = create_job(
             &server,
             &env.alice,
@@ -500,14 +494,14 @@ async fn dernier_job_par_asset() {
         assert_eq!(by_asset["state"], "failed");
         assert!(by_asset["error"].as_str().is_some_and(|e| !e.is_empty()));
 
-        // Isolation org : bob, dans SON org, ne voit pas le job d'alice.
+        // Org isolation: bob, in HIS org, doesn't see alice's job.
         let org_bob = personal_org(&server, &env.bob).await;
         let res = server
             .get(&format!("/api/v1/stitch-jobs/by-asset/{asset_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", org_bob.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org masked");
     })
     .await;
 }

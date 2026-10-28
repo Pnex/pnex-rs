@@ -38,8 +38,8 @@ pub fn Shell() -> Element {
 fn ShellContent() -> Element {
     let mut sidebar_open = use_signal(|| false);
 
-    // Restaure la préférence rail au montage (lecture storage seule —
-    // l'effet s'exécute une fois, aucune valeur réactive lue).
+    // Restores the rail preference on mount (storage read only —
+    // the effect runs once, no reactive value read).
     use_effect(move || {
         ui::restore();
     });
@@ -47,13 +47,13 @@ fn ShellContent() -> Element {
     crate::state::access::use_permissions();
     #[cfg(feature = "e2e")]
     use_e2e_navigation();
-    // Signal global réactif : le contenu et la sidebar se re-render au toggle.
+    // Reactive global signal: content and sidebar re-render on toggle.
     let rail = *ui::RAIL.read();
 
     rsx! {
         div { class: "min-h-screen bg-ground",
-            // Drawer mobile — toujours déplié (w-64), le rail est un concept
-            // desktop uniquement.
+            // Mobile drawer — always expanded (w-64), the rail is a
+            // desktop-only concept.
             if sidebar_open() {
                 div { class: "fixed inset-0 z-50 lg:hidden",
                     div {
@@ -90,8 +90,8 @@ fn ShellContent() -> Element {
                 }
             }
 
-            // Sidebar desktop — dépliée w-64 ou rail d'icônes w-16 (classes
-            // littérales complètes via match, exigence du scan Tailwind).
+            // Desktop sidebar — expanded w-64 or icon rail w-16 (full
+            // literal classes via match, required by the Tailwind scan).
             div { class: if rail { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-16 lg:flex-col lg:bg-rail lg:border-r lg:border-line" } else { "hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col lg:bg-rail lg:border-r lg:border-line" },
                 // Rail toggle next to the logo, away from logout.
                 if rail {
@@ -131,8 +131,8 @@ fn ShellContent() -> Element {
                 // Global search (D69) — right below the logo; rail mode gets
                 // an icon button that re-expands the sidebar.
                 SidebarSearch { rail }
-                // Défilement quand tous les groupes sont dépliés (le menu
-                // dépasse l'écran sur web — constat user 2026-09-18).
+                // Scrolling when every group is expanded (the menu
+                // overflows the screen on web — user report 2026-09-18).
                 div { class: "flex-1 min-h-0 overflow-y-auto sidebar-scroll px-3 py-4",
                     Nav { rail }
                 }
@@ -140,7 +140,7 @@ fn ShellContent() -> Element {
             }
 
             div { class: if rail { "lg:pl-16" } else { "lg:pl-64" },
-                // En-tête mobile
+                // Mobile header
                 // Hidden while a full-screen editor is open: its own bar
                 // has the back button (saves 64 px of canvas on phones).
                 div { class: if *ui::EDITORS_OPEN.read() > 0 { "hidden" } else { "sticky top-0 z-40 lg:hidden" },

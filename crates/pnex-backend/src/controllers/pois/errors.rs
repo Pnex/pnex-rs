@@ -11,7 +11,7 @@ pub(super) fn field_status(field: &str, msg: &str) -> Response {
     crate::controllers::field_error(field, msg)
 }
 
-/// Mapping des erreurs de service → HTTP (formes cohérentes flows/media).
+/// Mapping of service errors → HTTP (shapes consistent with flows/media).
 pub(super) fn write_error_response(e: svc::VizWriteError) -> Response {
     use svc::VizWriteError as E;
     match e {
@@ -61,7 +61,7 @@ pub(super) fn write_error_response(e: svc::VizWriteError) -> Response {
     }
 }
 
-/// Contenu de l'org, sinon 404 (masqué — école device_of_org).
+/// Org content, otherwise 404 (hidden — device_of_org pattern).
 pub(super) fn or_not_found<T>(row: Option<T>) -> Result<T> {
     row.ok_or(Error::NotFound)
 }

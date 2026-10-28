@@ -1,6 +1,6 @@
-//! `PATCH /api/v1/profile` — préférences du profil (langue, timezone, format
-//! de date, thème) : mise à jour reflétée par `GET /user-info`, rejet des
-//! valeurs invalides, refus sans token.
+//! `PATCH /api/v1/profile` — profile preferences (language, timezone, date
+//! format, theme): update reflected by `GET /user-info`, invalid values
+//! rejected, refused without a token.
 
 mod common;
 
@@ -8,7 +8,7 @@ use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use pnex_backend::app::App;
 use serial_test::serial;
 
-/// Boot l'app sur la base de test avec le faux Rauthy, exécute le callback.
+/// Boots the app on the test database with the fake Rauthy, runs the callback.
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, String) -> Fut,
@@ -63,13 +63,13 @@ fn bearer(token: &str) -> String {
 #[serial]
 async fn patch_profil_maj_partielle_puis_user_info_reflete() {
     with_app(|server, token| async move {
-        // JIT provisioning (user + profil par défaut + org personnelle).
+        // JIT provisioning (user + default profile + personal org).
         server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&token))
             .await;
 
-        // Patch partiel : langue + thème. La timezone par défaut (UTC) reste.
+        // Partial patch: language + theme. The default timezone (UTC) stays.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")
@@ -78,11 +78,11 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
             .await;
         assert_eq!(res.status_code(), 200);
         let patched: serde_json::Value = res.json();
-        assert_eq!(patched["language"], "fr", "forme courte normalisée");
+        assert_eq!(patched["language"], "fr", "short form normalised");
         assert_eq!(patched["theme"], "dark");
         assert_eq!(patched["timezone"], "UTC", "champ non fourni intact");
 
-        // GET /user-info reflète la mise à jour.
+        // GET /user-info reflects the update.
         let info: serde_json::Value = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&token))
@@ -91,7 +91,7 @@ async fn patch_profil_maj_partielle_puis_user_info_reflete() {
         assert_eq!(info["profile"]["language"], "fr");
         assert_eq!(info["profile"]["theme"], "dark");
 
-        // Deuxième patch : timezone seule, le reste tient.
+        // Second patch: timezone only, the rest holds.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")
@@ -115,7 +115,7 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             .add_header("Authorization", bearer(&token))
             .await;
 
-        // Langue non supportée.
+        // Unsupported language.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")
@@ -127,7 +127,7 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
         assert_eq!(body["error"], "field-invalid");
         assert_eq!(body["errors"]["fields"]["language"], "invalid");
 
-        // Thème inconnu.
+        // Unknown theme.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")
@@ -140,7 +140,7 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             "invalid"
         );
 
-        // Aucun champ.
+        // No field.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")
@@ -153,7 +153,7 @@ async fn patch_profil_rejette_valeurs_invalides_et_corps_vides() {
             "profile-patch-empty"
         );
 
-        // Sans token.
+        // Without a token.
         let res = server
             .patch("/api/v1/profile")
             .add_header("Content-Type", "application/json")

@@ -1,12 +1,12 @@
-//! Endpoints télémétrie (page Visualisation, 2026-08-19) — catalogue
-//! des séries disponibles et points d'une série sur une fenêtre preset.
+//! Telemetry endpoints (Visualisation page, 2026-08-19) — catalogue
+//! of available series and points of a series over a preset window.
 
 use pnex_core::{TelemetryCatalog, TelemetrySeriesResponse};
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Encodage percent minimal (le front n'a pas la crate url).
+/// Minimal percent-encoding (the front does not have the url crate).
 fn urlencode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {
@@ -39,8 +39,8 @@ fn unavailable(e: &ApiError) -> bool {
     e.code.as_deref() == Some(pnex_core::err_codes::TELEMETRY_UNAVAILABLE)
 }
 
-/// `GET /api/v1/telemetry/series` — points d'UNE série ; `window` ∈
-/// 1h/6h/24h (validated côté serveur, charset fermé anti-injection).
+/// `GET /api/v1/telemetry/series` — points of ONE series; `window` ∈
+/// 1h/6h/24h (validated server-side, closed charset against injection).
 pub async fn series(
     metric: &str,
     device_id: &str,

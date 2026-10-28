@@ -584,7 +584,7 @@ fn forward_field(line: &str) -> Option<(&'static str, String)> {
 
 /// A forwarded date as RFC 3339, or `None`: the block's date is free text
 /// and a date property refuses it (shortcut: localized forms such as
-/// « lun. 26 oct. 2026 à 13:58 » are dropped, the forward's own date
+/// « lun. 26 oct. 2026 à 13:58 » are dropped, the forward's own date  english-guard: allow (French example)
 /// stands; parse them if the original time matters).
 fn forward_date(raw: &str) -> Option<String> {
     let raw = raw.trim();

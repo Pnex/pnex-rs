@@ -14,7 +14,7 @@ const ANIMALS: [&str; 24] = [
     "ermine", "ferret", "gannet", "heron",
 ];
 
-/// Identifiant kebab-case aléatoire (adjectif-animal, ≤ 16 chars).
+/// Random kebab-case identifier (adjective-animal, ≤ 16 chars).
 pub(super) fn random_device_id() -> String {
     let mut bytes = [0u8; 2];
     let _ = getrandom::getrandom(&mut bytes);
@@ -26,7 +26,7 @@ pub(super) fn random_device_id() -> String {
     truncate_chars(&raw, 16)
 }
 
-/// Troncature respectant les frontières UTF-8.
+/// Truncation respecting UTF-8 boundaries.
 fn truncate_chars(input: &str, max: usize) -> String {
     match input.char_indices().nth(max) {
         Some((idx, _)) => input[..idx].to_string(),
@@ -34,7 +34,7 @@ fn truncate_chars(input: &str, max: usize) -> String {
     }
 }
 
-/// Recherche multi-champs du catalogue (insensible à la casse).
+/// Multi-field catalog search (case-insensitive).
 pub(super) fn model_matches(pd: &pnex_core::PredefinedDevice, term: &str) -> bool {
     let haystack = format!(
         "{} {} {} {} {} {}",

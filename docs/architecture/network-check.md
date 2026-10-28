@@ -12,7 +12,7 @@
 ## 1. Constat (dev.pnex.io, org 4, image de 20688563)
 
 - Le réseau du pilote est en base : certification RS0101, certificateur
-  CERTIF EXEMPLE, 22 partenaires reliés par `habilite_pour`. Les
+  CERTIF EXEMPLE, 22 partenaires reliés par `accredited_for`. Les
   données France Compétences sont complètes et leurs récurrences sont posées.
 - L'enrichissement rate sa cible. L'import SIRENE `per_object` a pris
   200 organisations dans l'ordre des SIREN, et aucune n'est du réseau. Il a
@@ -51,7 +51,7 @@ que l'humain déploie (D123, D144).
 Le nœud expose ce que la requête D185 sait déjà faire :
 
 - **`traverse`** : liste de sauts `{link_type, direction}`, 3 au plus.
-  Exemple : `certification` avec `code in [RS0101]`, puis `habilite_pour`
+  Exemple : `certification` avec `code in [RS0101]`, puis `accredited_for`
   entrant, donne les partenaires.
 - **`with_links`** : types de liens joints à chaque ligne, dans les deux
   sens. Chaque ligne porte `links.<type>`, une liste de
@@ -70,13 +70,13 @@ font une jointure simple. Le contexte reste dans `msg`.
 
 `per_object` gagne `linked: [<type de lien>…]` : seuls les objets qui ont un
 lien **ouvert** de l'un de ces types sont interrogés, dans un sens ou dans
-l'autre. Avec `linked: [habilite_pour, porte]`, on couvre les partenaires et
+l'autre. Avec `linked: [accredited_for, holds]`, on couvre les partenaires et
 le certificateur. Rien d'autre ne passe, même si l'org connaît
 200 000 sociétés.
 
 - La règle se combine avec `only`. Le curseur tournant ne change pas.
 - Le pack `quali_watch` livre ses propres imports SIRENE et DGEFP bornés au
-  réseau. L'import générique d'`entreprises_fr` reste tel quel pour les
+  réseau. L'import générique d'`companies_fr` reste tel quel pour les
   autres usages.
 
 ### D404 — DGEFP : NDA et Qualiopi par SIREN
@@ -87,38 +87,38 @@ L'import « DGEFP · organismes de formation » est une source API
 seulement (D403) et chaque semaine.
 
 Il écrit sur `organization` des propriétés qui existent déjà
-(`entreprises_fr`) :
+(`companies_fr`) :
 
 - `nda` ;
 - `qualiopi` (vrai si une catégorie est certifiée) ;
 - `qualiopi_categories` : texte trié, `actions;bilans;vae;apprentissage` ;
-- `qualiopi_maj` : date de la dernière déclaration.
+- `qualiopi_updated` : date de la dernière déclaration.
 
 Un organisme absent de la liste n'est pas modifié : l'import ne conclut rien
-d'une absence. La règle ADM-02 lit la date de passage (`qualiopi_maj`)
+d'une absence. La règle ADM-02 lit la date de passage (`qualiopi_updated`)
 avant de conclure.
 
 ### D405 — Catalogue CPF par certification
 
 Deux imports sont livrés (RS et RNCP), tous deux `per_object` sur
-`certification` et bornés par `only: {property: repertoire, …}`. Ils
+`certification` et bornés par `only: {property: register, …}`. Ils
 appellent `…/moncompteformation_catalogueformation/exports/json?refine=type_referentiel:RS&refine=code_inventaire:{value}`
 (ou `code_rncp` pour le RNCP). L'export rend toutes les lignes sans
 pagination.
 
-- `certification` gagne la propriété `numero` (`0101`). Elle est écrite par
+- `certification` gagne la propriété `number` (`0101`). Elle est écrite par
   les imports France Compétences, car la valeur interrogée doit être un
   identifiant nu.
-- `offre_cpf` est clé par `numero_formation`, à raison d'un objet par
+- `cpf_offer` est clé par `numero_formation`, à raison d'un objet par
   formation et non par session. Ses propriétés sont l'intitulé, le prix
-  moyen, les heures, le SIRET, `a_distance` (sessions à distance > 0) et
-  `vue_le` (`date_extract`).
-- `offre_de` relie l'offre à l'organisation par SIREN. Une organisation
+  moyen, les heures, le SIRET, `remote` (sessions à distance > 0) et
+  `seen_on` (`date_extract`).
+- `offer_of` relie l'offre à l'organisation par SIREN. Une organisation
   inconnue est **créée** (titre `nom_of`) : c'est l'organisme non habilité
   de CPF-01.
-- `porte_sur` relie l'offre à la certification.
+- `offer_for` relie l'offre à la certification.
 - Le mode est `incremental`. Une offre retirée du catalogue reste avec son
-  `vue_le` ancien, et une règle la lit comme « plus vue depuis ».
+  `seen_on` ancien, et une règle la lit comme « plus vue depuis ».
 
 ### D406 — Établissement sans coordonnées : avertissement, puis géocodage
 
@@ -151,7 +151,7 @@ inject (hebdo) → ontology_query (réseau, with_links a_pour_site, habilite_pou
   du pack y met les codes RS/RNCP du partenaire, les intitulés, le nom du
   certificateur et le lexique CPF.
 - **Config du nœud** : `max_pages` (défaut 200), `exclude`, `proofs`
-  (défaut oui) et `record` (le type `page_observee` et ses propriétés, comme
+  (défaut oui) et `record` (le type `observed_page` et ses propriétés, comme
   la mission).
 - **Exécution.** Le serveur tient **une mission `crawl_site` par site**, de
   clé org + origine : il la crée au premier passage, puis met à jour ses
@@ -173,7 +173,7 @@ inject (hebdo) → ontology_query (réseau, with_links a_pour_site, habilite_pou
   littérale ni privée). Le parcours reste borné à son origine (D307), et le
   plancher de 2 s par hôte est compilé.
 
-Un site « confirmé » est un lien `a_pour_site` **ouvert**. Depuis D376, un
+Un site « confirmé » est un lien `has_website` **ouvert**. Depuis D376, un
 candidat moyen est une proposition, pas un lien. La limite connue de
 web-presence §5 (un site non confirmé parcouru) disparaît donc.
 
@@ -198,11 +198,11 @@ règles de site, D325).
   chaîne. Le PRD veut une page vue « comme par un humain » : l'agent reste
   préféré quand il est en ligne.
 
-### D409 — Écarts : déterministe `propose`, textuel ou LLM `a_valider`
+### D409 — Écarts : déterministe `proposed`, textuel ou LLM `to_validate`
 
 - Une règle **déterministe sur des faits de registre** (SIRENE, DGEFP, FC,
-  CPF) écrit l'écart `propose`.
-- Une règle qui lit **le texte d'une page** écrit l'écart `a_valider`, même
+  CPF) écrit l'écart `proposed`.
+- Une règle qui lit **le texte d'une page** écrit l'écart `to_validate`, même
   quand elle est déterministe : une page se lit mal (menu, archive, mention
   négative). Il en va de même pour une règle **LLM**.
 - L'**extrait** est cité mot pour mot. La fonction du pack retrouve la
@@ -230,11 +230,11 @@ règles de site, D325).
 
   `<page>` est l'id de l'objet page, ou son url à défaut. Un partenaire
   sans SIREN donne un segment vide (`WEB-01::RNCP…`) : il se rattache
-  alors par le lien `concerne`.
-- Les **liens** sont `concerne` (organisation), `sur` (certification) et
-  `constate_dans` (page observée ou offre CPF). L'objet `regle` et le lien
-  `selon` attendent les réglages par client (Q-N2). L'écart porte en
-  attendant son code (titre, clé) et `regle_version`.
+  alors par le lien `concerns`.
+- Les **liens** sont `concerns` (organisation), `finding_on` (certification) et
+  `observed_in` (page observée ou offre CPF). L'objet `compliance_rule` et le lien
+  `per` attendent les réglages par client (Q-N2). L'écart porte en
+  attendant son code (titre, clé) et `rule_version`.
 - **Q-P1 maintenu** : un écart n'est pas une proposition (`proposals`).
   C'est un constat daté qui suit son propre cycle (validation, relance,
   clôture), affiché dans l'écran « Écarts à valider » du SaaS.
@@ -245,17 +245,17 @@ Le pack lit deux réglages (D368) :
 
 - `certifications`, les codes contrôlés (vide = toutes celles que porte un
   certificateur de l'org) ;
-- `regles_inactives`, les codes des règles éteintes.
+- `disabled_rules`, les codes des règles éteintes.
 
 | Code | Règle | Constat | Nature | Gravité | Lot |
 |---|---|---|---|---|---|
-| ADM-01 | Partenaire cessé encore habilité | `etat_administratif = cesse` × `habilite_pour` ouvert | registre | critique | **MVP** |
+| ADM-01 | Partenaire cessé encore habilité | `administrative_state = ceased` × `accredited_for` ouvert | registre | critique | **MVP** |
 | ADM-02 | Qualiopi absent ou sans « actions de formation » | DGEFP × habilité | registre | critique | **MVP** |
-| CPF-01 | Offre CPF d'un organisme non habilité | `offre_de` × aucun `habilite_pour` ouvert sur la certification | registre | critique | **MVP** |
-| CPF-02 | Offre CPF hors périmètre (habilité « évaluation » seulement) | `perimetre = evaluation` × offre | registre | majeur | **MVP** |
-| CPF-03 | Offre CPF après la fin d'habilitation | `date_fin` / `etat_fc = inactif` × offre vue après | registre | critique | **MVP** |
-| REG-01 | Habilitation connue hors open data | `habilite_pour.declaree_fc` ≠ vrai | registre | info | **MVP** (sens open data → client : V2, il faut la liste du client) |
-| REG-02 | Habilitation inactive FC mais partenaire actif | `etat_fc = inactif` × (offre CPF ou page pertinente) | registre | critique | **MVP** |
+| CPF-01 | Offre CPF d'un organisme non habilité | `offer_of` × aucun `accredited_for` ouvert sur la certification | registre | critique | **MVP** |
+| CPF-02 | Offre CPF hors périmètre (habilité « évaluation » seulement) | `scope = assessment` × offre | registre | majeur | **MVP** |
+| CPF-03 | Offre CPF après la fin d'habilitation | `ends_on` / `fc_state = inactive` × offre vue après | registre | critique | **MVP** |
+| REG-01 | Habilitation connue hors open data | `accredited_for.declared_fc` ≠ vrai | registre | info | **MVP** (sens open data → client : V2, il faut la liste du client) |
+| REG-02 | Habilitation inactive FC mais partenaire actif | `fc_state = inactive` × (offre CPF ou page pertinente) | registre | critique | **MVP** |
 | COL-01 | Site inaccessible, bloqué, ou sans page pertinente | bilan `site_crawl` | collecte | info | **MVP** |
 | WEB-02 | Code absent (intitulé cité sans le code) ou faux (autre code à côté de l'intitulé) | page | texte | majeur | **MVP** |
 | WEB-08 | Code d'une certification du client cité sans habilitation ouverte et active | page × habilitations | texte | critique | **MVP** |
@@ -265,7 +265,7 @@ Le pack lit deux réglages (D368) :
 | NOM-01 | Nom affiché ≠ raison sociale, sigle, nom commercial ou enseigne | mentions légales (`web_visit`) × SIRENE | texte | mineur | V2 |
 | WEB-05 | Promesse interdite (« gratuit », cadeau contre inscription) | lexique fermé + LLM | texte + LLM | critique | **MVP** (lexique), V2 (LLM) |
 | WEB-06 | Qualiopi affiché pour une catégorie non certifiée | texte « Qualiopi » × mention explicite d'une catégorie (« bilan de compétences », « VAE », « contrat d'apprentissage », « CFA », « alternance » ; « apprentissage » seul ne suffit pas, revue experte 2026-10-27) × DGEFP, extrait cité là où est la mention ; logo : vision | texte, vision | mineur | **MVP** (texte), V2 (vision) |
-| WEB-07 | Modalités ou prérequis contraires à la fiche | page × `prerequis`, jury | LLM | majeur | V2 |
+| WEB-07 | Modalités ou prérequis contraires à la fiche | page × `prerequisites`, jury | LLM | majeur | V2 |
 | LIEU-01 | Lieu de formation annoncé sans établissement déclaré à proximité | page ou offre × établissements (géo) | géo | mineur | V2 (D412) |
 | CPF-04 | Prix ou durée du site ≠ offre CPF | page × offre | texte | mineur | V2 |
 | PROG-01/02/04 | Couverture, heures, modalités du programme | tableau croisé sur programmes déposés | calcul (PROG-02, PROG-04), texte puis LLM optionnel (PROG-01) | majeur | **MVP, lot suivant** (D415–D420) ; collecte du programme sur le site : V2 (D413) |
@@ -289,7 +289,7 @@ celui du **site** (titre, mentions légales lues par `web_visit` D364).
 - NOM-01 (V2) : aucun nom du site ne correspond à l'un des noms du registre.
 - WEB-03 (texte, MVP) : la page cite un code du client sans le nom du
   certificateur (raison sociale ou sigle).
-- Les écarts de nom sont `a_valider` : un nom commercial légitime ne figure
+- Les écarts de nom sont `to_validate` : un nom commercial légitime ne figure
   pas toujours au registre.
 
 ### D412 — Géographie (anticipé)
@@ -301,16 +301,16 @@ est déployé : Photon pour `geocode` et `reverse`, GraphHopper pour `route`.
 2. **Score de site (D365)** : l'adresse des mentions légales est géocodée
    par `geo_geocode` et comparée aux établissements SIRENE. À moins de
    500 m : +30, à la place de la comparaison du code postal en texte. C'est
-   un changement de `pw_score` dans `presence_web` 1.6.0 (V2, après le
+   un changement de `pw_score` dans `web_presence` 1.6.0 (V2, après le
    déploiement de la géo).
 3. **LIEU-01** (V2) : les villes de formation annoncées (page : liste
    fermée « à <Ville> », « en présentiel à » ; offre CPF : département) sont
    géocodées, puis comparées aux établissements du partenaire. Un lieu à plus
-   de 50 km de tout établissement donne un écart `a_valider` (mineur ; une
+   de 50 km de tout établissement donne un écart `to_validate` (mineur ; une
    salle louée est légale). Le routage ne sert pas.
 4. **Carte du réseau** : les établissements sont des `map_pin` (D35). La
-   hiérarchie `reseau` du pack les montre déjà sur la carte (POI-first) ; il
-   reste à ajouter le saut `etablissement_de` à la hiérarchie (MVP, une
+   hiérarchie `network` du pack les montre déjà sur la carte (POI-first) ; il
+   reste à ajouter le saut `establishment_of` à la hiérarchie (MVP, une
    ligne de pack).
 
 ### D413 — Navigation et collecte des programmes (anticipé, V2)
@@ -324,11 +324,11 @@ du programme sur le site du partenaire (QW7). Le studio et le nœud
   le studio, une fois par site, par un humain aidé de l'assistant ;
 - un flow « programmes » livré par le pack : `site_recipe` → `media`
   (extrait texte ou PDF versionné) → `llm_extract` (N3, D328) vers
-  `programme` / `module` / `couvre`, écrit `a_valider`, citation retrouvée
+  `syllabus` / `module` / `covers`, écrit `to_validate`, citation retrouvée
   par le serveur ;
 - les règles PROG-01 (compétence non couverte), PROG-02 (heures sous la
   référence, tolérance du réglage) et PROG-04 (modalités), en Starlark, sur
-  la vue `certification → competence ← couvre ← module → programme` ;
+  la vue `certification → skill ← covers ← module → syllabus` ;
 - l'export Excel au format du client, en V2 avec le SaaS.
 
 Pilote : RS0101 × OF EXEMPLE (`tableau croisé du pilote`). Le
@@ -356,7 +356,7 @@ l'org 4 :
 ### D422 — Les imports du réseau suivent le réglage `certifications`
 
 Constat de la recette R1 (org 4, 2026-10-24) : l'org 4 contient tout l'open
-data France Compétences. `linked: [habilite_pour, porte]` y retient donc des
+data France Compétences. `linked: [accredited_for, holds]` y retient donc des
 dizaines de milliers d'organismes, coupés à 200 par `max_pages`, sans
 garantie que le pilote en fasse partie.
 
@@ -391,7 +391,7 @@ Les trois requêtes du pack 1.5.0 filtrent sur
 
 Constat de la recette R1 : `install_from_pack` sautait un import déjà
 présent. Les imports France Compétences de l'org 4 n'ont donc reçu ni
-`certification.numero` ni le filtre de D422.
+`certification.number` ni le filtre de D422.
 
 Même règle que pour les fonctions et les flows (D368) :
 
@@ -420,14 +420,14 @@ Une fois le flow d'ingestion retiré (W0), le filtre des certificateurs
 (SIRET du client) doit pouvoir être livré dans les `steps:` de l'import
 sans valeur en dur. `rows_filter` gagne `setting: <pack>.<réglage>`, avec
 `op: in`. Les codes du réglage remplacent `values` ; un réglage vide garde
-toutes les lignes. Le pack 1.5.0 ajoute le réglage `certificateurs`.
+toutes les lignes. Le pack 1.5.0 ajoute le réglage `certifiers`.
 
 ## 4. Lots
 
 | Lot | Contenu | Tests |
 |---|---|---|
 | **R1** | D402 `traverse` + `with_links` ; D403 `per_object.linked` ; D406 avertissement | `partner_watch.rs` (réseau, liens joints, enrichissement borné, siège sans coordonnées) |
-| **R2** | Pack `quali_watch` 1.4.0 : `certification.numero`, intitulé 2 000 car. `invalid: skip`, imports SIRENE · réseau, DGEFP, CPF RS / RNCP, alias de nom | import des échantillons réels (DGEFP, CPF RS0101) |
+| **R2** | Pack `quali_watch` 1.4.0 : `certification.number`, intitulé 2 000 car. `invalid: skip`, imports SIRENE · réseau, DGEFP, CPF RS / RNCP, alias de nom | import des échantillons réels (DGEFP, CPF RS0101) |
 | **R3** | D407 nœud `site_crawl` (cœur, runtime, route interne, garde, NodeDoc, palette, ftl, fiche) | `site_crawl.rs` (serveur de test local) |
 | **R4** | D408 preuve serveur par CDP | test sur le navigateur de test (`PNEX_BROWSER_URL`), ignoré sans |
 | **R5** | Règles et flows du pack (D409–D410), fiche `assistant-kb` | `pack_rules.rs` (chaque règle sur un cas positif et un négatif) |
@@ -443,9 +443,9 @@ toutes les lignes. Le pack 1.5.0 ajoute le réglage `certificateurs`.
   cluster (Obscura) ? **Défaut : oui**, comme les règles de site. C'est
   l'opérateur qui l'active (`PNEX_BROWSER_URL`) ; sans lui, la tâche attend
   un agent.
-- **Q-N2 — Règles par client** : réglage du pack `regles_inactives` (codes),
-  ou objets `regle` éditables par le client (gravité, activation, référence
-  légale) ? **Défaut : le réglage** pour le MVP. Les objets `regle` viendront
+- **Q-N2 — Règles par client** : réglage du pack `disabled_rules` (codes),
+  ou objets `compliance_rule` éditables par le client (gravité, activation, référence
+  légale) ? **Défaut : le réglage** pour le MVP. Les objets `compliance_rule` viendront
   avec l'écran Réglages du SaaS.
 - **Q-N3 — Organismes non habilités** (CPF-01) : faut-il créer dans
   l'ontologie du client une organisation pour chaque organisme qui vend sa
@@ -453,8 +453,8 @@ toutes les lignes. Le pack 1.5.0 ajoute le réglage `certificateurs`.
   **Défaut : oui**, sans enrichissement SIRENE (hors réseau, D403). Ils
   restent visibles par leurs écarts.
 - **Q-N4 — Écarts sur texte** : une règle déterministe qui lit une page
-  écrit-elle `a_valider` ? **Défaut : oui** (D409), seules les règles de
-  registre écrivent `propose`.
+  écrit-elle `to_validate` ? **Défaut : oui** (D409), seules les règles de
+  registre écrivent `proposed`.
 - **Q-N5 — Fréquences** : parcours hebdomadaire (PRD Q5 : mensuel suffit-il
   ?) ; règles réseau quotidiennes. **Défaut : hebdomadaire**, dans le cron du
   flow, que le client change.
@@ -493,7 +493,7 @@ toutes les lignes. Le pack 1.5.0 ajoute le réglage `certificateurs`.
 - **R5** : fonctions `qw_regles_reseau`, `qw_contexte`, `qw_cibles`,
   `qw_regles_web`, `qw_ecart`, `qw_liens` ; flows « Quali-Watch · network
   rules » et « Quali-Watch · website check » ; réglages `certifications` et
-  `regles_inactives` ; fiche `assistant-kb/web-sites.md`. Tests :
+  `disabled_rules` ; fiche `assistant-kb/web-sites.md`. Tests :
   `pack_rules` (règles réseau, cibles, règles des pages, écart puis liens).
 
 - **D422–D423** (pack 1.5.0) : imports du réseau et requêtes des flows bornés
@@ -545,14 +545,14 @@ feuille.
 ### D415 — Dépôt d'un programme
 
 Un humain dépose le fichier, PDF texte, DOCX ou texte, dans la médiathèque
-de l'org. Il crée ensuite l'objet `programme` :
+de l'org. Il crée ensuite l'objet `syllabus` :
 
-- `role` vaut `reference` ou `partenaire` ;
-- `programme_pour` le relie à la certification, `programme_de` à
+- `role` vaut `reference` ou `partner` ;
+- `syllabus_for` le relie à la certification, `syllabus_of` à
   l'organisation ;
 - la propriété `source` (nouvelle) porte l'id du média.
 
-Il lance enfin l'action **Analyser** (`programme.analyser`, D183), qui
+Il lance enfin l'action **Analyser** (`syllabus.analyser`, D183), qui
 déclenche le flow livré par le pack. Le format, les heures synchrones et les
 heures de préparation se saisissent sur l'objet quand le document ne les
 donne pas lisiblement. Aucun envoi de fichier par le partenaire au MVP :
@@ -599,39 +599,39 @@ un motif d'une liste fermée :
 
 Pour chaque module, elle relève le rang, le titre, les heures (« (2h) »,
 « 2 heures », « 1h30 »), le contenu et les **codes de compétence cités**
-(« (C3) », « C3. »). Le résultat va en `module` (`module_de` le programme)
+(« (C3) », « C3. »). Le résultat va en `module` (`module_of` le programme)
 par `object_upsert`. Un nouveau dépôt donne une nouvelle `version` du
 programme, et l'ancienne reste.
 
-### D418 — Rattachements `couvre`, du plus sûr au moins sûr
+### D418 — Rattachements `covers`, du plus sûr au moins sûr
 
 1. **Code cité** dans le titre ou le contenu (« (C1) ») :
-   `rapproche_par: code_cite`, `valide: true`. C'est le cas du programme de
+   `matched_by: code_cited`, `valid: true`. C'est le cas du programme de
    référence de l'exemple.
 2. **Intitulé** : les mots du titre du module, normalisés par `fold` et sans
    mots vides, recouvrent au moins 60 % de ceux du libellé de la compétence,
    et le meilleur candidat dépasse le second de 15 points :
-   `rapproche_par: intitule`, `confiance`, **`valide: false`**. Cela couvre
+   `matched_by: official_title`, `confidence`, **`valid: false`**. Cela couvre
    les chapitres de OF EXEMPLE, qui reprennent le libellé sans le code.
 3. **LLM** (optionnel, org avec fournisseur) : sur les modules restés sans
    rattachement, avec la liste des compétences. La réponse est un code et une
    citation, et la citation est retrouvée dans le contenu du module (D316) :
-   `rapproche_par: llm`, `valide: false`.
+   `matched_by: llm`, `valid: false`.
 
-Un rattachement `valide: false` est montré « à valider ». L'action
+Un rattachement `valid: false` est montré « à valider ». L'action
 `valider_rattachement` du pack (ontologie §2) le fixe.
 
 ### D419 — Règles PROG
 
-Elles sont calculées sur la vue certification → compétence ← `couvre` ←
+Elles sont calculées sur la vue certification → compétence ← `covers` ←
 module → programme, par la fonction `qw_regles_prog` :
 
 | Code | Calcul | État de l'écart |
 |---|---|---|
-| PROG-01 | compétence sans aucun module du partenaire qui la couvre | `a_valider`, avec la mention « rapprochement par le texte » quand la couverture des autres compétences vient de l'intitulé |
-| PROG-02 | heures des modules du partenaire sur la compétence < heures de la référence − `tolerance_heures` (réglage du pack, défaut 0, PRD Q9) | `propose` si tous les rattachements de la ligne sont `valide`, sinon `a_valider` |
-| PROG-03 | module du partenaire sans aucune compétence (chapitre hors référentiel) | info, `a_valider` |
-| PROG-04 | format, heures synchrones ou heures de préparation du partenaire ≠ référence | `propose` |
+| PROG-01 | compétence sans aucun module du partenaire qui la couvre | `to_validate`, avec la mention « rapprochement par le texte » quand la couverture des autres compétences vient de l'intitulé |
+| PROG-02 | heures des modules du partenaire sur la compétence < heures de la référence − `tolerance_heures` (réglage du pack, défaut 0, PRD Q9) | `proposed` si tous les rattachements de la ligne sont `valid`, sinon `to_validate` |
+| PROG-03 | module du partenaire sans aucune compétence (chapitre hors référentiel) | info, `to_validate` |
+| PROG-04 | format, heures synchrones ou heures de préparation du partenaire ≠ référence | `proposed` |
 
 Test d'acceptation sur le pilote : retrouver la lecture humaine du PRD §5.7
 sans main humaine, rattachements à valider mis à part :
@@ -663,7 +663,7 @@ l'exemple :
 
 Le flow « Quali-Watch · cross-table » (action Analyser du programme
 partenaire) va du découpage aux rattachements, puis aux règles, aux écarts
-et au classeur. Le classeur est relié au programme (`constate_dans`) et
+et au classeur. Le classeur est relié au programme (`observed_in`) et
 téléchargeable depuis la médiathèque.
 
 ### D421 — Les médias d'une page sont des objets reliés à la page (Shan, 2026-10-24)
@@ -678,11 +678,11 @@ vidéos.
   permis, 20 Mo au plus, plancher de 2 s, robots.txt.
 - Chacun est gardé en média `document` de l'org, une version par SHA-256
   (D311), et relié à la page par le lien `contient` (nouveau, du pack) :
-  `url`, `vu_le`, `premiere_vue`, `sha256`.
+  `url`, `vu_le`, `first_seen`, `sha256`.
 - Un document plus lié par la page voit son lien fermé à la date du
   parcours (historique gardé, comme une page disparue).
 - Le média garde ses propres dates : la version et quand elle a été vue.
-  L'écart qui le cite (`constate_dans` vers `media_asset`, déjà permis) dit
+  L'écart qui le cite (`observed_in` vers `media_asset`, déjà permis) dit
   donc quel fichier et de quand.
 - Le programme d'un partenaire peut être pris parmi ces documents :
   - au MVP, un humain le choisit sur la page observée, « en faire le
@@ -717,7 +717,7 @@ vidéos.
 
 ### Constat (org 4, pack 1.5.0, 2026-10-25)
 
-- Le flow 17 (règles réseau) n'écrit un `ecart` que s'il trouve un
+- Le flow 17 (règles réseau) n'écrit un `finding` que s'il trouve un
   problème. Le passage de 09:30 a donné 0 écart sur 22 partenaires, et rien
   ne le prouve : ni objet, ni journal. Même chose pour les flows 15 (sites)
   et 18 (site web) : on voit ce qu'ils créent, pas quand ils sont passés ni
@@ -728,7 +728,7 @@ vidéos.
   `object_changes`, même si rien ne change. Une propriété « dernier
   contrôle » réécrite à chaque passage ferait donc 22 × 96 versions par jour
   et par flow avec un cron de test au quart d'heure. Elle est écartée, comme
-  une propriété sur le lien `habilite_pour` (même coût, et un organisme
+  une propriété sur le lien `accredited_for` (même coût, et un organisme
   non habilité, CPF-01, n'a pas ce lien).
 
 ### Principe
@@ -807,7 +807,7 @@ pack (D190, D316).
   - attaches `involves` : le sujet en *acteur*, la portée et les écarts en
     *preuve*, les `objects` en *contexte* ;
   - lien `in_case` vers le case (D429).
-- Un changement de version de règle (`regle_version`) change l'empreinte :
+- Un changement de version de règle (`rule_version`) change l'empreinte :
   la montée d'un pack se voit donc dans la chronologie.
 - « Quand OF EXEMPLE a-t-il été contrôlé pour la dernière fois sur RS0101,
   et était-ce OK ? » : `check_states` répond directement (dernier passage,
@@ -839,8 +839,8 @@ version du flow. Seul `check_record` écrit cette origine en V1.
   partenaires suivis, et seulement pour eux.
 - Un case de veille fermé à la main (`status = archived`) n'est jamais
   rouvert : le passage est consigné dans `check_runs`, sans événement.
-- Les écarts revus restent comptés selon leur `etat` : un écart `rejete`
-  ou `clos` sort de l'état global au passage suivant (la fonction du pack
+- Les écarts revus restent comptés selon leur `state` : un écart `rejected`
+  ou `closed` sort de l'état global au passage suivant (la fonction du pack
   envoie `ok` pour sa règle).
 
 ### D430 — Synthèse : les contrôles du case
@@ -868,7 +868,7 @@ version du flow. Seul `check_record` écrit cette origine en V1.
   contrôlé (COL-01, WEB-*), avec le site, les pages et les preuves en
   `objects`. Un site injoignable donne `unknown` (`site-unreachable`), ce
   n'est pas un écart.
-- **Flow 15** (sites) : un `check_record` `presence_web.site` par
+- **Flow 15** (sites) : un `check_record` `web_presence.site` par
   organisation cherchée : `ok` (site confirmé), `unknown` (aucun site,
   proposition en attente). Le score et la preuve sont dans la note.
 - **Imports** (SIRENE, DGEFP, FC partenaires, CPF) : en fin de run, le
@@ -878,7 +878,7 @@ version du flow. Seul `check_record` écrit cette origine en V1.
   propriétés que l'import possède. Un run qui ne change rien pour le
   partenaire ne fait que compter le passage. Aucune écriture pour les
   objets hors veille, donc pas de coût sur un gros import.
-- Pack `quali_watch` 1.6.0 et `presence_web` suivant : nouveaux nœuds dans
+- Pack `quali_watch` 1.6.0 et `web_presence` suivant : nouveaux nœuds dans
   les flows livrés (les flows intacts suivent la montée, D424 ; le flow 18
   de l'org 4, modifié, se reprend depuis le pack).
 
@@ -915,6 +915,6 @@ version du flow. Seul `check_record` écrit cette origine en V1.
   par jour ?
 - **Q-N11 — Imports dans le case** : seulement quand ils changent quelque
   chose pour le partenaire (défaut), ou chaque run ?
-- **Q-N12 — Écarts revus** : un écart `rejete` ou `clos` ne compte plus
-  dans l'état global (défaut) ; un écart `a_valider` compte comme
+- **Q-N12 — Écarts revus** : un écart `rejected` ou `closed` ne compte plus
+  dans l'état global (défaut) ; un écart `to_validate` compte comme
   `finding` (défaut) ou comme `unknown` ?

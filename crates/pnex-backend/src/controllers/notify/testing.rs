@@ -26,10 +26,10 @@ fn test_message(name: &str) -> pnex_notify::Message {
     }
 }
 
-/// Envoi d'un test + journalisation (source `test`) — contourne
-/// volontairement `enabled: false` (c'est son but, D53). Le message est
-/// fourni par l'appelant : built-in (canal) ou template rendu (test d'un
-/// template via un canal).
+/// Sends a test + logs it (source `test`) — deliberately bypasses
+/// `enabled: false` (that is its purpose, D53). The message is
+/// supplied by the caller: built-in (channel) or rendered template (test of a
+/// template through a channel).
 #[allow(clippy::too_many_arguments)] // private test helper, call sites stay explicit
 async fn send_test(
     settings: &NotifySettings,
@@ -43,8 +43,8 @@ async fn send_test(
     let Some(ch) = pnex_notify::channel(kind) else {
         return Ok(field_status("kind", err_codes::FIELD_INVALID));
     };
-    // Canal websocket : coordonnées injectées (loopback interne), jamais
-    // stockées — le test exerce le chemin complet endpoint → broker → WS.
+    // Websocket channel: injected coordinates (internal loopback), never
+    // stored — the test exercises the full endpoint → broker → WS path.
     let effective_config = if kind == "websocket" {
         notify::in_app_runtime_config(settings, org_id, channel_id)
     } else {
@@ -94,10 +94,10 @@ pub(super) struct TestDraftInput {
     channel_id: Option<Uuid>,
 }
 
-/// `POST /api/v1/notify/channels/test-draft` — teste un brouillon de canal
-/// **avant sauvegarde** (pas de ligne DB, journal sur channel_id nil
-/// impossible → journalisation sans FK : on journalise quand même la
-/// tentative avec un channel_id zéro).
+/// `POST /api/v1/notify/channels/test-draft` — tests a channel draft
+/// **before saving** (no DB row, a log entry on a nil channel_id is
+/// impossible → logging without FK: we still log the
+/// attempt with a zero channel_id).
 #[utoipa::path(
     post,
     path = "/api/v1/notify/channels/test-draft",
@@ -158,9 +158,9 @@ pub(super) async fn test_draft(
     if let Some(resp) = validate_channel_input(&params.kind, &name, &plan.sendable) {
         return Ok(resp);
     }
-    // Brouillon sans id : le journal exige un canal existant (FK) — on
-    // considère le test-draft comme hors journal (résultat éphémère au
-    // toast), les canaux persistés ont le leur.
+    // Draft without an id: the log requires an existing channel (FK) — we
+    // treat the test-draft as outside the log (ephemeral result in the
+    // toast), persisted channels have their own.
     let Some(ch) = pnex_notify::channel(&params.kind) else {
         return Ok(field_status("kind", err_codes::FIELD_INVALID));
     };
@@ -185,14 +185,14 @@ pub(super) struct TestChannelBody {
     vars: std::collections::BTreeMap<String, String>,
 }
 
-/// `POST /api/v1/notify/channels/{id}/test` — message built-in sur le canal
-/// persisté (journalisé source `test`), contourne `enabled: false`. Avec un
-/// `template_id` : envoie le template rendu à la place (journal tient le
-/// template_id — le test exerce le rendu ET l'envoi). Le body est lu en
-/// `Bytes` et parsé à la main : `Option<Json<T>>` rejette un body vide dès
-/// qu'un `Content-Type: application/json` est présent (défaut injecté par
-/// les harnais de test), et les headers `Content-Type` dupliqués font
-/// échouer le sniffing du Json extractor.
+/// `POST /api/v1/notify/channels/{id}/test` — built-in message on the persisted
+/// channel (logged with source `test`), bypasses `enabled: false`. With a
+/// `template_id`: sends the rendered template instead (the log holds the
+/// template_id — the test exercises rendering AND sending). The body is read as
+/// `Bytes` and parsed by hand: `Option<Json<T>>` rejects an empty body as soon
+/// as a `Content-Type: application/json` is present (default injected by
+/// test harnesses), and duplicated `Content-Type` headers make
+/// the Json extractor's sniffing fail.
 #[utoipa::path(
     post,
     path = "/api/v1/notify/channels/{id}/test",
@@ -260,10 +260,10 @@ pub(super) async fn test_channel(
     let Some(tpl) = find_template(&ctx.db, &org, template_id).await? else {
         return Err(Error::NotFound);
     };
-    // Même école que le preview : les vars manquantes prennent leur example
-    // déclaré, les overrides fournis gagnent. Un example **vide** n'est pas
-    // injecté : une var déclarée vide masquerait la clé payload de même nom
-    // au niveau racine du rendu (vars > payload dans le contexte).
+    // Same school as the preview: missing vars take their declared example,
+    // provided overrides win. An **empty** example is not
+    // injected: an empty declared var would shadow the payload key of the same name
+    // at the render's root level (vars > payload in the context).
     let mut vars = vars;
     let declared: Vec<TemplateVar> = serde_json::from_value(tpl.vars.clone()).unwrap_or_default();
     for v in declared {

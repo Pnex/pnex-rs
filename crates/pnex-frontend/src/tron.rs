@@ -1,28 +1,28 @@
-//! Pont vers le fond animé « gerbe de faisceaux » de la page de login
-//! (`assets/tron-gerbe.js` — script statique sans dépendance npm, chargé
-//! dans `main.rs`, cf. le pattern flasher.js).
+//! Bridge to the animated "beam sheaf" background of the login page
+//! (`assets/tron-gerbe.js` — static script without npm dependency, loaded
+//! in `main.rs`, see the flasher.js pattern).
 //!
-//! Le module JS expose `window.pnexTronGerbe` :
-//!   - `mount(hostId)` : crée le canvas WebGL2 dans le div hôte et démarre
-//!     la boucle RAF ; false si WebGL2 indisponible (le dégradé CSS de
-//!     secours, posé en style du div hôte, reste alors visible).
-//!   - `unmount()` : stoppe le RAF, retire le listener de resize, supprime
-//!     canvas et contexte GL.
+//! The JS module exposes `window.pnexTronGerbe`:
+//!   - `mount(hostId)`: creates the WebGL2 canvas in the host div and starts
+//!     the RAF loop; false if WebGL2 is unavailable (the fallback CSS
+//!     gradient, set as the host div style, then stays visible).
+//!   - `unmount()`: stops the RAF, removes the resize listener, deletes
+//!     the canvas and GL context.
 //!
-//! Cible non-wasm32 : stubs — le fond n'existe que sur le web (garde
-//! `task check` natif vert, même logique que flash.rs).
+//! Non-wasm32 target: stubs — the background exists only on the web (keeps
+//! native `task check` green, same logic as flash.rs).
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, JsValue};
 
-/// Monte le fond animé dans le div `host_id`. Échecs silencieux (script
-/// absent du build, hôte introuvable, WebGL2 manquant) : le dégradé CSS de
-/// secours reste visible dans tous les cas — jamais de panique UI.
+/// Mounts the animated background in the `host_id` div. Silent failures
+/// (script missing from the build, host not found, missing WebGL2): the
+/// fallback CSS gradient stays visible in every case — never a UI panic.
 ///
-/// CSR : le `<script>` est posé par le même render que la page login — le
-/// premier essai peut donc courir avant l'exécution de tron-gerbe.js
-/// (fenêtre de fetch). On retente 100 ms × 50 (5 s max) ; au-delà, le
-/// dégradé de secours reste affiché.
+/// CSR: the `<script>` is set by the same render as the login page — the
+/// first attempt may therefore run before tron-gerbe.js executes
+/// (fetch window). We retry 100 ms × 50 (5 s max); beyond that, the
+/// fallback gradient stays shown.
 #[cfg(target_arch = "wasm32")]
 pub fn mount(host_id: &str) {
     if try_mount(host_id) {
@@ -39,7 +39,7 @@ pub fn mount(host_id: &str) {
     });
 }
 
-/// Un essai de mount — true si la gerbe tourne (déjà montée ou montée là).
+/// One mount attempt — true if the sheaf runs (already mounted or mounted now).
 #[cfg(target_arch = "wasm32")]
 fn try_mount(host_id: &str) -> bool {
     global_method("pnexTronGerbe", "mount")
@@ -48,7 +48,7 @@ fn try_mount(host_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Démonte le fond (navigation hors login) — no-op si déjà démonté.
+/// Unmounts the background (navigation away from login) — no-op if already unmounted.
 #[cfg(target_arch = "wasm32")]
 pub fn unmount() {
     if let Some(unmount_fn) = global_method("pnexTronGerbe", "unmount") {
@@ -56,7 +56,7 @@ pub fn unmount() {
     }
 }
 
-/// Résout `window.<objet>.<méthode>` (globales posées par tron-gerbe.js).
+/// Resolves `window.<object>.<method>` (globals set by tron-gerbe.js).
 #[cfg(target_arch = "wasm32")]
 fn global_method(object: &str, method: &str) -> Option<js_sys::Function> {
     js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str(object))
@@ -65,15 +65,15 @@ fn global_method(object: &str, method: &str) -> Option<js_sys::Function> {
         .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
 }
 
-/// Cible native (webview desktop/Android) : la webview exécute le même JS
-/// (`tron-gerbe.js` chargé par main.rs) — pont via `document::eval`, même
-/// contract que le web (false si WebGL2 manque → dégradé CSS de secours).
+/// Native target (desktop/Android webview): the webview runs the same JS
+/// (`tron-gerbe.js` loaded by main.rs) — bridge via `document::eval`, same
+/// contract as the web (false if WebGL2 is missing → fallback CSS gradient).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn mount(host_id: &str) {
     let host_id = host_id.to_string();
     dioxus::prelude::spawn(async move {
-        // Même fenêtre de retry que le web : le script peut finir de charger
-        // après le premier essai (100 ms × 50 = 5 s max, échec silencieux).
+        // Same retry window as the web: the script may finish loading
+        // after the first attempt (100 ms × 50 = 5 s max, silent failure).
         for _ in 0..50 {
             let mounted = dioxus::document::eval(&format!(
                 "return window.pnexTronGerbe?.mount('{host_id}') === true"
@@ -90,7 +90,7 @@ pub fn mount(host_id: &str) {
     });
 }
 
-/// Unmount natif — fire-and-forget (aucun état Rust à libérer).
+/// Native unmount — fire-and-forget (no Rust state to free).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn unmount() {
     dioxus::prelude::spawn(async move {

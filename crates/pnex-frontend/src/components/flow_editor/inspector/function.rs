@@ -1,24 +1,24 @@
 use super::device::patch_selected_function_and_rewire;
 use super::*;
 
-/// Formulaire du nœud `PnexFunction` : picker de fonction (remplit le
-/// snapshot : id/nom/version courante/langage/inputs/outputs) et staleness
-/// client-only (« version plus récente disponible ») avec reprise de la
-/// version courante. Les entrées/sorties déclarées sont rendues **sur le
-/// canevas** (ports libellés, un fil par entrée) — plus de bindings : à
-/// l'exécution chaque entrée lit implicitement `payload.<name>`.
+/// Form of the `PnexFunction` node: function picker (fills the snapshot:
+/// id/name/current version/language/inputs/outputs) and client-only
+/// staleness ("newer version available") with adoption of the current
+/// version. Declared inputs/outputs are rendered **on the canvas**
+/// (labelled ports, one wire per input) — no more bindings: at run time
+/// each input implicitly reads `payload.<name>`.
 ///
-/// Remonté par `key` (fonction + version) : le formulaire repart de la
-/// config — même mécanique que les autres formulaires.
+/// Remounted by `key` (function + version): the form restarts from the
+/// config — same mechanism as the other forms.
 #[component]
 pub(super) fn FunctionForm(
     mut cx: EditorCx,
     initial: FunctionNodeConfig,
     can_write: bool,
 ) -> Element {
-    // Détail de la fonction épinglée (fetch unique au montage — le composant
-    // est remonté par key à chaque changement de fonction/version) : nom
-    // affiché + détection de staleness.
+    // Detail of the pinned function (single fetch on mount — the component
+    // is remounted by key on every function/version change): displayed
+    // name + staleness detection.
     let pinned_id = initial.function_id;
     let pinned_version = initial.version_number;
     let detail = use_resource(move || async move {
@@ -30,8 +30,8 @@ pub(super) fn FunctionForm(
     });
     let detail_value = detail.read().clone().flatten();
 
-    // Historique des versions (picker de pin : rollback **et** forward) —
-    // chaque entrée porte le snapshot d'interface de la version.
+    // Version history (pin picker: rollback **and** forward) — each entry
+    // carries the version's interface snapshot.
     let versions = use_resource(move || async move {
         if pinned_id == 0 {
             Vec::new()
@@ -44,9 +44,9 @@ pub(super) fn FunctionForm(
     let versions_value: Vec<pnex_core::FunctionVersionSummary> =
         versions.read().clone().unwrap_or_default();
 
-    // Épinglage d'une version quelconque (reprendre une vieille version qui
-    // fonctionnait, ou avancer) : snapshot d'interface de la version posé,
-    // fils suivent les noms (rewire/prune comme au pick).
+    // Pinning any version (go back to an old version that worked, or move
+    // forward): the version's interface snapshot is set, wires follow the
+    // names (rewire/prune as on pick).
     let mut pin_version = {
         move |summary: pnex_core::FunctionVersionSummary| {
             patch_selected_function_and_rewire(&mut cx, move |node: &mut FlowNode| {
@@ -59,8 +59,8 @@ pub(super) fn FunctionForm(
         }
     };
 
-    // Reprise de la version courante : snapshot re-basé (les fils suivent
-    // les noms des entrées/sorties qui survivent, via
+    // Adopting the current version: rebased snapshot (wires follow the
+    // names of the surviving inputs/outputs, via
     // `patch_selected_function_and_rewire`).
     let rebase = {
         let detail = detail_value.clone();
@@ -129,8 +129,8 @@ pub(super) fn FunctionForm(
                     }
                 }
 
-                // Épingler n'importe quelle version (rollback inclus) —
-                // snapshot d'interface de la version, fils suivent les noms.
+                // Pin any version (rollback included) — the version's
+                // interface snapshot, wires follow the names.
                 if !versions_value.is_empty() {
                     div { class: "space-y-1",
                         span { class: "text-xs font-medium text-gray-500 block",

@@ -1,14 +1,14 @@
-//! Registre « Fonctions » (groupe « Automation ») — fonctions utilisateur
-//! versionnées (js | starlark), test en live. Liste + éditeur en sous-vue
-//! (signal `selected` — pattern `flows.rs`) ; le scoping org vient du client
-//! (`X-Org-Id`), l'écriture est réservée owner/admin (le serveur force,
-//! l'UI masque).
+//! "Functions" registry ("Automation" group) — versioned user functions
+//! (js | starlark), live test. List + editor as sub-view
+//! (signal `selected` — `flows.rs` pattern); org scoping comes from the
+//! client (`X-Org-Id`), writing is reserved to owner/admin (the server
+//! enforces, the UI hides).
 //!
-//! L'aperçu de signature est calculé **dans le navigateur** via
-//! `pnex_core::parse_directives` (pnex-core est wasm32) : la même extraction
-//! que le save serveur, affichée en live (erreurs de directive ligne par
-//! ligne). Le test en live passe par l'API (`POST /{id}/test`, code ad-hoc =
-//! contenu du textarea — testable **avant** save).
+//! The signature preview is computed **in the browser** via
+//! `pnex_core::parse_directives` (pnex-core is wasm32): the same extraction
+//! as the server save, shown live (directive errors line by
+//! line). The live test goes through the API (`POST /{id}/test`, ad-hoc code =
+//! textarea content — testable **before** save).
 
 use std::collections::BTreeMap;
 
@@ -59,12 +59,12 @@ pub fn Functions() -> Element {
     let search = use_signal(String::new);
     // D218: own label filter ("name" or "name:value"), applied server-side.
     let filter_label = use_signal(String::new);
-    // Pagination client-side (la recherche est aussi client-side et l'API
-    // plafonne le référentiel à 200 entrées) — page remise à 0 par le clamp
-    // ci-dessous quand la recherche réduit le résultat.
+    // Client-side pagination (search is client-side too and the API
+    // caps the registry at 200 entries) — page reset to 0 by the clamp
+    // below when the search shrinks the result.
     let mut page = use_signal(|| 0i64);
     let mut create_open = use_signal(|| false);
-    // Cible de suppression (id, nom) — confirmation à la demande.
+    // Deletion target (id, name) — confirmation on demand.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
 
     let can_write = crate::state::access::can("functions:write");
@@ -83,11 +83,11 @@ pub fn Functions() -> Element {
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD) + filtre
-    // client-side résolu hors rsx (pas de `let` ni de `continue` dans le
-    // rsx). Iso : l'état vide porte sur les lignes brutes — une recherche
-    // sans résultat garde la table (en-têtes) rendue. La page est clampée
-    // sur la plage utile (la recherche peut réduire le résultat).
+    // Synchronous read of the resource (CRUD base doctrine) + client-side
+    // filter resolved outside the rsx (no `let` nor `continue` in the
+    // rsx). Iso: the empty state applies to the raw rows — a search
+    // with no result keeps the table (headers) rendered. The page is clamped
+    // to the useful range (the search can shrink the result).
     let (list_state, is_empty, rows, filtered_count) = match &*list.value().read() {
         Some(Ok(all)) => {
             let needle = search().trim().to_lowercase();
@@ -109,8 +109,8 @@ pub fn Functions() -> Element {
         None => (None, false, Vec::new(), 0),
     };
 
-    // Colonnes de la table — les closures d'action capturent les signaux
-    // (Copy) de la page.
+    // Table columns — the action closures capture the page's signals
+    // (Copy).
     let columns = vec![
         Column::new(
             t!("functions-col-name").to_string(),
@@ -151,8 +151,8 @@ pub fn Functions() -> Element {
             t!("common-actions").to_string(),
             move |summary: &FunctionSummary| {
                 let pk = summary.id;
-                // Cloné avant la closure onclick : la référence `summary`
-                // ne sort pas du corps de cellule (E0521).
+                // Cloned before the onclick closure: the `summary` reference
+                // does not leave the cell body (E0521).
                 let name_delete = summary.name.clone();
                 rsx! {
                     div { class: "flex items-center gap-1.5",
@@ -204,17 +204,17 @@ pub fn Functions() -> Element {
                             can_write,
                             on_back: move |_| {
                                 selected.set(None);
-                                // Retour à la liste : refetch — la vérité
-                                // serveur (create, renommage, save faits dans
-                                // l'éditeur) s'affiche sans bouton refresh.
+                                // Back to the list: refetch — the server
+                                // truth (create, rename, save done in the
+                                // editor) shows without a refresh button.
                                 reload.with_mut(|r| *r += 1);
                             },
                         }
                     },
                     None => rsx! {
-                        // Recherche client-side (la liste ramène jusqu'à 200
-                        // entrées — un référentiel de fonctions ne pagine pas) :
-                        // filtrage live à la frappe, le signal suffit.
+                        // Client-side search (the list returns up to 200
+                        // entries — a function registry does not paginate):
+                        // live filtering on typing, the signal is enough.
                         FilterBar {
                             SearchInput {
                                 placeholder: t!("functions-search-placeholder").to_string(),
@@ -243,7 +243,7 @@ pub fn Functions() -> Element {
                             ListPager { count: filtered_count, page }
                         }
 
-                        // Suppression confirmée d'une ligne.
+                        // Confirmed deletion of a row.
                         if let Some((fn_id, fn_name)) = delete_target() {
                             ConfirmDialog {
                                 title: t!("functions-confirm-delete-title"),
@@ -268,7 +268,7 @@ pub fn Functions() -> Element {
                             }
                         }
 
-                        // Modal de création (montée à la demande).
+                        // Creation modal (mounted on demand).
                         if create_open() {
                             CreateFunctionModal {
                                 on_close: move |_| create_open.set(false),
@@ -286,7 +286,7 @@ pub fn Functions() -> Element {
     }
 }
 
-/// Couleur du badge de langage — classes littérales complètes (scan Tailwind).
+/// Language badge colour — full literal classes (Tailwind scan).
 fn language_badge(language: FunctionLanguage) -> &'static str {
     match language {
         FunctionLanguage::Js => "bg-amber-100 text-amber-800",
@@ -301,7 +301,7 @@ fn language_label(language: FunctionLanguage) -> String {
     }
 }
 
-/// Libellé i18n d'un type déclaré (aperçu de signature).
+/// i18n label of a declared type (signature preview).
 fn type_label(ty: FunctionType) -> String {
     match ty {
         FunctionType::Number => t!("functions-type-number").to_string(),

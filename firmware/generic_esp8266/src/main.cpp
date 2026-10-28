@@ -1,16 +1,16 @@
 //
-// Firmware générique ESP8266 (Brick 0) — preset Tier 1, 100 % piloté par
-// le serveur. Toute la mécanique vit dans la lib PneX (firmware/lib/pnex,
-// ex-main générique + ex-pnex-transport) : pin map poussée dans le
-// ProvisionAck (l'overlay board reste l'autorité — ce sketch ne déclare
-// RIEN), commandes SetMode/Write/Subscribe avec Ack, lectures cadencées
-// en StateReport, safe-states sur chaque perte + backoff 1 s → 60 s.
+// Generic ESP8266 firmware (Brick 0) — Tier 1 preset, 100 % driven by
+// the server. All the mechanics live in the PneX lib (firmware/lib/pnex,
+// ex generic main + ex pnex-transport): pin map pushed in the
+// ProvisionAck (the board overlay stays the authority — this sketch declares
+// NOTHING), SetMode/Write/Subscribe commands with Ack, timed reads
+// as StateReport, safe-states on every loss + backoff 1 s → 60 s.
 //
-// Config device : -D defines b64 via ${sysenv.*} (build serveur par
-// device, contrat docs/architecture/firmware-build.md §2.1).
-// PNEX_BOARD_NAME distingue l'announce (« nodemcu »).
+// Device config: -D b64 defines via ${sysenv.*} (server build per
+// device, contract docs/architecture/firmware-build.md §2.1).
+// PNEX_BOARD_NAME distinguishes the announce ("nodemcu").
 //
-// Contrat fil : crates/pnex-core/src/proto.rs ; framing ChaCha20 (D8) ;
+// Wire contract: crates/pnex-core/src/proto.rs; ChaCha20 framing (D8);
 // PING 5 s / PONG 15 s.
 //
 

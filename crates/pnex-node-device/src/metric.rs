@@ -1,16 +1,16 @@
-//! Nœud `pnex-metric` (Phase 6 ETL) — écrit le résultat du pipeline dans
-//! OpenObserve **comme une métrique au même titre que les capteurs** :
-//! remote-write sur la même pipeline d'ingestion, labels identiques
+//! `pnex-metric` node (Phase 6 ETL) — writes the pipeline result into
+//! OpenObserve **as a metric on a par with sensors**:
+//! remote-write on the same ingestion pipeline, identical labels
 //! (`device_id` = device virtuel `flow_{id}`, `pred_dev="virtual_device"`,
-//! `source_type="etl"`), nom auto-préfixé `etl_`. La série apparaît ainsi
-//! d'elle-même dans le catalogue Visualisation (découverte dynamique des
-//! streams metrics).
+//! `source_type="etl"`), name auto-prefixed with `etl_`. The series thus shows up
+//! on its own in the Visualization catalogue (dynamic discovery of
+//! metrics streams).
 //!
-//! Garde-fous : nom requis au build ; `pnex_flow_id`/`pnex_org_id`
-//! estampillés par la projection (traçabilité + org O2) ; creds racine via
-//! l'env du runtime — jamais de secret dans flows.json. Entrée : valeur
-//! numérique (sortie d'un nœud `calc`), bool → 1/0, sinon rejet typé.
-//! Sortie : payload inchangé (le debug peut être branché en aval).
+//! Safeguards: name required at build; `pnex_flow_id`/`pnex_org_id`
+//! stamped by the projection (traceability + O2 org); root creds via
+//! the runtime env — never a secret in flows.json. Input: numeric
+//! value (output of a `calc` node), bool → 1/0, otherwise typed rejection.
+//! Output: payload unchanged (debug can be wired downstream).
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -37,10 +37,10 @@ struct MetricNodeConfig {
     pnex_flow_id: i64,
     #[serde(default)]
     pnex_org_id: i64,
-    /// Identifiant O2 **réel** (openobserve_orgs.o2_org), estampillé par la
-    /// projection. Vide = org non provisionnée au deploy — l'écriture est
-    /// sautée (warn) sans casser le pipeline, et une reprojection (deploy
-    /// suivant ou auto après provisioning) comble le champ.
+    /// **Real** O2 identifier (openobserve_orgs.o2_org), stamped by the
+    /// projection. Empty = org not provisioned at deploy — the write is
+    /// skipped (warn) without breaking the pipeline, and a reprojection (next
+    /// deploy or automatic after provisioning) fills the field.
     #[serde(default)]
     pnex_o2_org: String,
     /// Free labels (D171): label name → source, checked at build.
@@ -97,23 +97,23 @@ impl PnexMetricNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = MetricNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-metric : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-metric: invalid config: {e}"))
         })?;
         if cfg.metric_name.trim().is_empty() {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-metric : le nom de la métrique est requis".into(),
+                "pnex-metric: the metric name is required".into(),
             )
             .into());
         }
         if cfg.pnex_flow_id <= 0 {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-metric : pnex_flow_id absent de l'artefact (redéployer le flow)".into(),
+                "pnex-metric: pnex_flow_id missing from the artefact (redeploy the flow)".into(),
             )
             .into());
         }
         if cfg.pnex_org_id <= 0 {
             return Err(EdgelinkError::BadFlowsJson(
-                "pnex-metric : pnex_org_id absent de l'artefact (redéployer le flow)".into(),
+                "pnex-metric: pnex_org_id missing from the artefact (redeploy the flow)".into(),
             )
             .into());
         }
@@ -125,9 +125,9 @@ impl PnexMetricNode {
         if let Some((_, message)) = check {
             return Err(EdgelinkError::BadFlowsJson(format!("pnex-metric: {message}")).into());
         }
-        // org O2 vide : PAS de fail-loud au build — l'absence d'org O2 est un
-        // état transitoire (provisioning pas encore passé), pas une config
-        // invalide. L'exécution dégrade (écriture sautée, pipeline vivant).
+        // empty O2 org: NO fail-loud at build — a missing O2 org is a
+        // transient state (provisioning not done yet), not an invalid
+        // config. Execution degrades (write skipped, pipeline alive).
         let o2 = O2Client::from_env()?;
         Ok(Box::new(PnexMetricNode {
             base: base_node,
@@ -145,7 +145,7 @@ impl PnexMetricNode {
             let payload_json = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
                     EdgelinkError::InvalidOperation(format!(
-                        "pnex-metric : payload non sérialisable : {e}"
+                        "pnex-metric: payload not serializable: {e}"
                     ))
                 })?),
                 None => None,
@@ -178,9 +178,9 @@ impl PnexMetricNode {
             None => pnex_core::etl_metric_name(&self.config.metric_name),
         };
 
-        // 2) Remote-write borné (timeout 10 s côté client) et annulable.
-        // Org O2 vide (provisioning pas encore passé) : écriture sautée,
-        // pipeline vivant — la reprojection post-provisioning comblera.
+        // 2) Bounded remote-write (10 s client-side timeout), cancellable.
+        // Empty O2 org (provisioning not done yet): write skipped,
+        // pipeline alive — the post-provisioning reprojection will fill it.
         if !self.tuples.admit(&labels, self.name()) {
             self.fan_out_one(Envelope { port: 0, msg }, cancel).await
         } else if self.config.pnex_o2_org.trim().is_empty() {
@@ -210,7 +210,7 @@ impl PnexMetricNode {
                 res = self.o2.write(&org, series) => {
                     if let Err(e) = res {
                         return Err(EdgelinkError::InvalidOperation(format!(
-                            "pnex-metric [{}] : écriture refusée : {e}", self.name()
+                            "pnex-metric [{}]: write refused: {e}", self.name()
                         )).into());
                     }
                 }
@@ -223,7 +223,7 @@ impl PnexMetricNode {
                 values.len()
             );
 
-            // 3) Passthrough : le payload sort inchangé (debug aval possible).
+            // 3) Passthrough: the payload goes out unchanged (downstream debug possible).
             self.fan_out_one(Envelope { port: 0, msg }, cancel).await
         }
     }
@@ -245,7 +245,7 @@ impl FlowNodeBehavior for PnexMetricNode {
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-metric [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-metric [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }

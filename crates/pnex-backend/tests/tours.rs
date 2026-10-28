@@ -1,8 +1,8 @@
-//! Tests du Studio (parcours 3D versionnés) : cycle création/save/409,
-//! versions append-only, publish/share, validation du document (assets +
-//! structure), isolation org, rôles — scoping D2, envelope D14.
+//! Studio tests (versioned 3D tours): creation/save/409 cycle,
+//! append-only versions, publish/share, document validation (assets +
+//! structure), org isolation, roles — D2 scoping, D14 envelope.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -15,7 +15,7 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app (école `tests/media.rs::with_app` : env posées AVANT le boot).
+/// Boots the app (as in `tests/media.rs::with_app`: env set BEFORE the boot).
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
@@ -53,7 +53,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// The user's personal org (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -77,12 +77,12 @@ fn gpano_jpeg() -> Vec<u8> {
     out
 }
 
-/// JPEG minimal sans GPano (plan d'étage / photo simple).
+/// Minimal JPEG without GPano (floor plan / plain photo).
 fn plain_jpeg() -> Vec<u8> {
     vec![0xFF, 0xD8, 0xFF, 0xD9]
 }
 
-/// Upload octet-stream (POST /api/v1/media) — pour les assets des scènes.
+/// Octet-stream upload (POST /api/v1/media) — for the scene assets.
 async fn upload(
     server: &axum_test::TestServer,
     token: &str,
@@ -115,7 +115,7 @@ async fn create_tour(
         .json::<serde_json::Value>()
 }
 
-/// Document minimal : un étage sans plan, aucune scène.
+/// Minimal document: one floor without a plan, no scene.
 fn doc_minimal() -> serde_json::Value {
     serde_json::json!({
         "mode": "panorama",
@@ -128,7 +128,7 @@ fn doc_minimal() -> serde_json::Value {
     })
 }
 
-/// Document avec une scène référençant un asset panorama + un lien.
+/// Document with a scene referencing a panorama asset + a link.
 fn doc_avec_scene(asset_id: &str, link_target: Option<&str>) -> serde_json::Value {
     let mut links = Vec::new();
     if let Some(target) = link_target {
@@ -181,7 +181,7 @@ async fn cycle_creation_save_versions_409() {
         let org = personal_org(&server, &env.alice).await;
         let created = create_tour(&server, &env.alice, org, "Visite atelier").await;
         assert_eq!(created["mode"], "panorama");
-        assert_eq!(created["doc_version_number"], 1, "création → v1");
+        assert_eq!(created["doc_version_number"], 1, "creation → v1");
         assert_eq!(created["latest_version_number"], 1);
         assert_eq!(
             created["doc"]["floors"].as_array().unwrap().len(),
@@ -191,7 +191,7 @@ async fn cycle_creation_save_versions_409() {
         assert!(created["published_version_number"].is_null());
         let tour_id = created["id"].as_str().unwrap().to_string();
 
-        // Liste + search + envelope D14.
+        // List + search + D14 envelope.
         let listed: serde_json::Value = server
             .get("/api/v1/tours?search=atelier")
             .add_header("Authorization", bearer(&env.alice))
@@ -207,7 +207,7 @@ async fn cycle_creation_save_versions_409() {
             .json();
         assert_eq!(listed["count"], 0);
 
-        // Save v2 : renommage d'étage via doc modifié.
+        // Save v2: floor rename via a modified doc.
         let mut doc = doc_minimal();
         doc["floors"][0]["name"] = "Rez-de-chaussée".into();
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc).await;
@@ -216,24 +216,24 @@ async fn cycle_creation_save_versions_409() {
         assert_eq!(saved["doc_version_number"], 2);
         assert_eq!(saved["latest_version_number"], 2);
 
-        // Save périmé (expected 1) → 409, aucune v3 surnuméraire.
+        // Stale save (expected 1) → 409, no extra v3.
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc_minimal()).await;
-        assert_eq!(res.status_code(), 409, "save périmé → 409");
+        assert_eq!(res.status_code(), 409, "stale save → 409");
         let body: serde_json::Value = res.json();
         assert_eq!(body["error"], "tour-version-conflict");
 
-        // Historique : 2 versions, la plus récente d'abord.
+        // History: 2 versions, most recent first.
         let versions: serde_json::Value = server
             .get(&format!("/api/v1/tours/{tour_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(versions["count"], 2, "append-only, pas de v3 surnuméraire");
+        assert_eq!(versions["count"], 2, "append-only, no extra v3");
         assert_eq!(versions["results"][0]["version_number"], 2);
         assert_eq!(versions["results"][0]["author"], "alice");
 
-        // Détail d'une version précise + rechargement ?version=1.
+        // Detail of a specific version + reload ?version=1.
         let v1: serde_json::Value = server
             .get(&format!("/api/v1/tours/{tour_id}/versions/1"))
             .add_header("Authorization", bearer(&env.alice))
@@ -253,7 +253,7 @@ async fn cycle_creation_save_versions_409() {
         assert_eq!(old["doc_version_number"], 1);
         assert_eq!(old["latest_version_number"], 2);
 
-        // Version inconnue → 404.
+        // Unknown version → 404.
         let res = server
             .get(&format!("/api/v1/tours/{tour_id}/versions/9"))
             .add_header("Authorization", bearer(&env.alice))
@@ -261,7 +261,7 @@ async fn cycle_creation_save_versions_409() {
             .await;
         assert_eq!(res.status_code(), 404);
 
-        // Delete → 204 puis 404.
+        // Delete → 204 then 404.
         let res = server
             .delete(&format!("/api/v1/tours/{tour_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -286,7 +286,7 @@ async fn validation_doc_structure_et_assets() {
         let created = create_tour(&server, &env.alice, org, "Validation").await;
         let tour_id = created["id"].as_str().unwrap().to_string();
 
-        // Violation structurelle : lien vers une scène inexistante.
+        // Structural violation: link to a nonexistent scene.
         let res = save_tour(
             &server,
             &env.alice,
@@ -329,7 +329,7 @@ async fn validation_doc_structure_et_assets() {
             "00000000-0000-0000-0000-0000000000bb"
         );
 
-        // Asset panorama réel (upload GPano) → save accepté, v2.
+        // Real panorama asset (GPano upload) → save accepted, v2.
         let res = upload(
             &server,
             &env.alice,
@@ -355,7 +355,7 @@ async fn validation_doc_structure_et_assets() {
         assert_eq!(
             res.status_code(),
             200,
-            "scène panorama valide : {}",
+            "valid panorama scene: {}",
             res.text()
         );
         let saved: serde_json::Value = res.json();
@@ -364,7 +364,7 @@ async fn validation_doc_structure_et_assets() {
             asset_id.as_str()
         );
 
-        // id non-UUID → inconnu (pas de panic).
+        // non-UUID id → unknown (no panic).
         let res = save_tour(
             &server,
             &env.alice,
@@ -387,7 +387,7 @@ async fn publish_share_cycle() {
         let created = create_tour(&server, &env.alice, org, "Publiable").await;
         let tour_id = created["id"].as_str().unwrap().to_string();
 
-        // Share sans publication → 409.
+        // Share without publication → 409.
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Authorization", bearer(&env.alice))
@@ -402,8 +402,8 @@ async fn publish_share_cycle() {
             "Publish a version before creating a public share link"
         );
 
-        // Publish (défaut = latest = v1) — POST avec corps vide json
-        // (Option<Json> : sans Content-Type l'extracteur répondrait 415).
+        // Publish (default = latest = v1) — POST with an empty json body
+        // (Option<Json>: without Content-Type the extractor would answer 415).
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/publish"))
             .add_header("Content-Type", "application/json")
@@ -415,7 +415,7 @@ async fn publish_share_cycle() {
         let published: serde_json::Value = res.json();
         assert_eq!(published["published_version_number"], 1);
 
-        // Share → token 32 hex, peuplé pour un writer.
+        // Share → 32 hex token, populated for a writer.
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Authorization", bearer(&env.alice))
@@ -435,10 +435,10 @@ async fn publish_share_cycle() {
         assert_eq!(
             detail["share_token"],
             token1.as_str(),
-            "token visible du writer"
+            "token visible to the writer"
         );
 
-        // Régénérer → nouveau token (l'ancien meurt).
+        // Regenerate → new token (the old one dies).
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Authorization", bearer(&env.alice))
@@ -447,7 +447,7 @@ async fn publish_share_cycle() {
             .json::<serde_json::Value>();
         assert_ne!(res["share_token"].as_str().unwrap(), token1);
 
-        // Save v2 (non publiée) puis publish explicite de v1.
+        // Save v2 (unpublished) then explicit publish of v1.
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc_minimal()).await;
         assert_eq!(res.status_code(), 200);
         let res = server
@@ -460,21 +460,21 @@ async fn publish_share_cycle() {
         let republished: serde_json::Value = res.json();
         assert_eq!(
             republished["published_version_number"], 1,
-            "publish ciblé v1"
+            "targeted publish v1"
         );
         assert_eq!(republished["latest_version_number"], 2);
 
-        // Version 1 marquée `published` dans l'historique.
+        // Version 1 marked `published` in the history.
         let versions: serde_json::Value = server
             .get(&format!("/api/v1/tours/{tour_id}/versions"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(versions["results"][1]["published"], true, "v1 publiée");
-        assert_eq!(versions["results"][0]["published"], false, "v2 non publiée");
+        assert_eq!(versions["results"][1]["published"], true, "v1 published");
+        assert_eq!(versions["results"][0]["published"], false, "v2 unpublished");
 
-        // Unpublish → publication ET lien révoqués.
+        // Unpublish → publication AND link revoked.
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/unpublish"))
             .add_header("Authorization", bearer(&env.alice))
@@ -484,12 +484,12 @@ async fn publish_share_cycle() {
         let unpublished: serde_json::Value = res.json();
         assert!(unpublished["published_version_number"].is_null());
         assert_eq!(unpublished["share_enabled"], false);
-        assert!(unpublished["share_token"].is_null(), "token révoqué");
+        assert!(unpublished["share_token"].is_null(), "token revoked");
     })
     .await;
 }
 
-/// Document complet : étage avec plan + 2 scènes + lien.
+/// Full document: floor with a plan + 2 scenes + a link.
 fn doc_complet(plan_id: &str, pano_id: &str) -> serde_json::Value {
     serde_json::json!({
         "mode": "panorama",
@@ -523,8 +523,8 @@ async fn kind_floorplan_et_plan_d_etage() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Kind client prioritaire : des octets GPano déclarés floorplan
-        // restent floorplan (le sniff ne reclassifie pas).
+        // Client kind takes priority: GPano bytes declared floorplan
+        // stay floorplan (the sniff doesn't reclassify).
         let res = upload(
             &server,
             &env.alice,
@@ -536,17 +536,17 @@ async fn kind_floorplan_et_plan_d_etage() {
         assert_eq!(
             res.status_code(),
             201,
-            "kind floorplan accepté : {}",
+            "floorplan kind accepted: {}",
             res.text()
         );
         let plan = res.json::<serde_json::Value>();
         assert_eq!(
             plan["kind"], "floorplan",
-            "kind client prioritaire au sniff"
+            "client kind takes precedence over sniffing"
         );
         let plan_id = plan["id"].as_str().unwrap().to_string();
 
-        // Panorama de scène.
+        // Scene panorama.
         let res = upload(
             &server,
             &env.alice,
@@ -563,8 +563,8 @@ async fn kind_floorplan_et_plan_d_etage() {
         let created = create_tour(&server, &env.alice, org, "Avec plan").await;
         let tour_id = created["id"].as_str().unwrap().to_string();
 
-        // Un panorama utilisé comme plan → 400 kind requis (un panorama
-        // reste interdit en plan : seule une image plate convient).
+        // A panorama used as a plan → 400 kind required (a panorama
+        // stays forbidden as a plan: only a flat image fits).
         let doc = doc_complet(&pano_id, &pano_id);
         let res = save_tour(&server, &env.alice, org, &tour_id, 1, doc).await;
         assert_eq!(res.status_code(), 400, "panorama en plan → 400");
@@ -579,8 +579,8 @@ async fn kind_floorplan_et_plan_d_etage() {
             "message kind : {body}"
         );
 
-        // Une photo (sniff photo, kind non forcé) acceptée comme plan —
-        // n'importe quelle image plate s'affiche comme plan d'étage.
+        // A photo (photo sniff, kind not forced) accepted as a plan —
+        // any flat image displays as a floor plan.
         let res = upload(
             &server,
             &env.alice,
@@ -603,8 +603,8 @@ async fn kind_floorplan_et_plan_d_etage() {
             res.text()
         );
 
-        // Document complet et cohérent → 200 (kind floorplan dédié). Le
-        // save photo ci-dessus est passé en v2 : concurrence optimiste avec
+        // Full and consistent document → 200 (dedicated floorplan kind). The
+        // photo save above went to v2: optimistic concurrency with
         // expected=2.
         let doc = doc_complet(&plan_id, &pano_id);
         let res = save_tour(&server, &env.alice, org, &tour_id, 2, doc).await;
@@ -619,7 +619,7 @@ async fn endpoint_public_et_cache() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Assets : plan (floorplan) + panorama de scène. The floor plan is
+        // Assets: plan (floorplan) + scene panorama. The floor plan is
         // declared `text/html` by the client (SEC-5 attack shape).
         let res = upload(
             &server,
@@ -659,11 +659,11 @@ async fn endpoint_public_et_cache() {
         .await;
         assert_eq!(res.status_code(), 200);
 
-        // Token inconnu → 404 uniforme.
+        // Unknown token → uniform 404.
         let res = server
             .get("/api/v1/public/tours/0123456789abcdef0123456789abcdef")
             .await;
-        assert_eq!(res.status_code(), 404, "token inconnu masqué");
+        assert_eq!(res.status_code(), 404, "unknown token masked");
 
         // Share avant publish → 409.
         let res = server
@@ -694,7 +694,7 @@ async fn endpoint_public_et_cache() {
             .json();
         let token = shared["share_token"].as_str().unwrap().to_string();
 
-        // Doc public : sans auth, no-store, doc publié + carte des assets.
+        // Public doc: no auth, no-store, published doc + asset map.
         let res = server.get(&format!("/api/v1/public/tours/{token}")).await;
         assert_eq!(res.status_code(), 200, "public doc : {}", res.text());
         assert!(
@@ -706,7 +706,7 @@ async fn endpoint_public_et_cache() {
         );
         let body: serde_json::Value = res.json();
         assert_eq!(body["name"], "Public");
-        // Publish sans version = latest (v2, le doc complet ayant créé v2).
+        // Publish without a version = latest (v2, the full doc having created v2).
         assert_eq!(body["published_version_number"], 2);
         assert_eq!(body["doc"]["start_scene"], "s1");
         assert_eq!(body["assets"][&pano_id]["version_number"], 1);
@@ -723,7 +723,7 @@ async fn endpoint_public_et_cache() {
             res.header("x-content-type-options").to_str().unwrap(),
             "nosniff"
         );
-        assert_eq!(res.into_bytes(), gpano_jpeg(), "octets exacts du panorama");
+        assert_eq!(res.into_bytes(), gpano_jpeg(), "exact panorama bytes");
 
         // SEC-5: a client-declared HTML type is never served as such on the
         // public (app-origin) route.
@@ -757,7 +757,7 @@ async fn endpoint_public_et_cache() {
             "public, max-age=31536000, immutable"
         );
 
-        // Version inconnue → 404.
+        // Unknown version → 404.
         let res = server
             .get(&format!(
                 "/api/v1/public/tours/{token}/assets/{pano_id}?v=9"
@@ -765,7 +765,7 @@ async fn endpoint_public_et_cache() {
             .await;
         assert_eq!(res.status_code(), 404);
 
-        // Asset NON référencé par le doc publié → 404 (pas de lecture libre).
+        // Asset NOT referenced by the published doc → 404 (no free reading).
         let res = upload(
             &server,
             &env.alice,
@@ -781,10 +781,10 @@ async fn endpoint_public_et_cache() {
         let res = server
             .get(&format!("/api/v1/public/tours/{token}/assets/{outsider}"))
             .await;
-        assert_eq!(res.status_code(), 404, "asset non référencé masqué");
+        assert_eq!(res.status_code(), 404, "unreferenced asset masked");
 
-        // Dépublier → 404 uniforme sur le même token (le token seul ne suffit
-        // plus).
+        // Unpublish → uniform 404 on the same token (the token alone is no
+        // longer enough).
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/unpublish"))
             .add_header("Authorization", bearer(&env.alice))
@@ -792,14 +792,14 @@ async fn endpoint_public_et_cache() {
             .await;
         assert_eq!(res.status_code(), 200);
         let res = server.get(&format!("/api/v1/public/tours/{token}")).await;
-        assert_eq!(res.status_code(), 404, "dépublié : token mort");
+        assert_eq!(res.status_code(), 404, "unpublished: dead token");
         let res = server
             .get(&format!("/api/v1/public/tours/{token}/assets/{pano_id}"))
             .await;
-        assert_eq!(res.status_code(), 404, "octets morts après dépublication");
+        assert_eq!(res.status_code(), 404, "dead bytes after unpublishing");
 
-        // Republish : la publication revient, mais le token tué par
-        // unpublish ne se ressuscite pas (S5 : deux interrupteurs distincts).
+        // Republish: the publication comes back, but the token killed by
+        // unpublish isn't revived (S5: two separate switches).
         let res = server
             .post(&format!("/api/v1/tours/{tour_id}/publish"))
             .add_header("Content-Type", "application/json")
@@ -812,10 +812,10 @@ async fn endpoint_public_et_cache() {
         assert_eq!(
             res.status_code(),
             404,
-            "token tué : republish sans re-share"
+            "token killed: republish without re-share"
         );
 
-        // Nouveau share → nouveau token vivant.
+        // New share → new live token.
         let shared2: serde_json::Value = server
             .post(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Content-Type", "application/json")
@@ -825,11 +825,11 @@ async fn endpoint_public_et_cache() {
             .await
             .json();
         let token2 = shared2["share_token"].as_str().unwrap().to_string();
-        assert_ne!(token2, token, "nouveau token après révocation");
+        assert_ne!(token2, token, "new token after revocation");
         let res = server.get(&format!("/api/v1/public/tours/{token2}")).await;
         assert_eq!(res.status_code(), 200, "nouveau lien vivant");
 
-        // DELETE /share : révoque le lien en gardant la publication.
+        // DELETE /share: revokes the link while keeping the publication.
         let res = server
             .delete(&format!("/api/v1/tours/{tour_id}/share"))
             .add_header("Authorization", bearer(&env.alice))
@@ -837,17 +837,14 @@ async fn endpoint_public_et_cache() {
             .await;
         assert_eq!(res.status_code(), 204);
         let res = server.get(&format!("/api/v1/public/tours/{token2}")).await;
-        assert_eq!(res.status_code(), 404, "lien révoqué");
+        assert_eq!(res.status_code(), 404, "link revoked");
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/tours/{tour_id}"))
             .add_header("Authorization", bearer(&env.alice))
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(
-            detail["published_version_number"], 2,
-            "publication conservée"
-        );
+        assert_eq!(detail["published_version_number"], 2, "publication kept");
         assert_eq!(detail["share_enabled"], false);
     })
     .await;
@@ -862,15 +859,15 @@ async fn isolation_org_et_roles() {
         let created = create_tour(&server, &env.alice, org1, "Privé alice").await;
         let tour_id = created["id"].as_str().unwrap().to_string();
 
-        // Cross-org : GET/PATCH/publish/share → 404 masqué (jamais 403).
+        // Cross-org: GET/PATCH/publish/share → masked 404 (never 403).
         let res = server
             .get(&format!("/api/v1/tours/{tour_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", org2.to_string())
             .await;
-        assert_eq!(res.status_code(), 404, "GET cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org GET masked");
         let res = save_tour(&server, &env.bob, org2, &tour_id, 1, doc_minimal()).await;
-        assert_eq!(res.status_code(), 404, "PATCH cross-org masqué");
+        assert_eq!(res.status_code(), 404, "cross-org PATCH masked");
         for path in [
             format!("/api/v1/tours/{tour_id}/publish"),
             format!("/api/v1/tours/{tour_id}/share"),
@@ -882,17 +879,17 @@ async fn isolation_org_et_roles() {
                 .add_header("X-Org-Id", org2.to_string())
                 .json(&serde_json::json!({}))
                 .await;
-            assert_eq!(res.status_code(), 404, "POST cross-org masqué : {path}");
+            assert_eq!(res.status_code(), 404, "cross-org POST masked: {path}");
         }
 
-        // Sans X-Org-Id → 400.
+        // Without X-Org-Id → 400.
         let res = server
             .get("/api/v1/tours")
             .add_header("Authorization", bearer(&env.alice))
             .await;
         assert_eq!(res.status_code(), 400);
 
-        // Org partagée : alice owner, bob viewer (école tenant_isolation).
+        // Shared org: alice owner, bob viewer (as in tenant_isolation).
         for token in [&env.alice, &env.bob] {
             server
                 .get("/api/v1/user-info")
@@ -927,10 +924,10 @@ async fn isolation_org_et_roles() {
         let body: serde_json::Value = res.json();
         assert!(
             body["share_token"].is_null(),
-            "token jamais exposé à un viewer"
+            "token never exposed to a viewer"
         );
 
-        // …écriture interdite (save/publish/share/delete → 403).
+        // …writes forbidden (save/publish/share/delete → 403).
         let res = save_tour(
             &server,
             &env.bob,
@@ -961,7 +958,7 @@ async fn isolation_org_et_roles() {
             .await;
         assert_eq!(res.status_code(), 403, "viewer delete → 403 avant 404");
 
-        // Tour inconnu → 404 (owner lui-même).
+        // Unknown tour → 404 (the owner themself).
         let res = server
             .get("/api/v1/tours/00000000-0000-0000-0000-0000000000ff")
             .add_header("Authorization", bearer(&env.alice))

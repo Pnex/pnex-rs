@@ -1,12 +1,12 @@
-//! Panneau d'édition d'un ensemble d'annotations (D59 + pivots UX 2026-09-16)
-//! — l'ensemble est imposé par la page dédiée (Data > Annotations) : média
-//! déclaré (000027) ou tour (000028 — le média suit la scène naviguée via
-//! `media_override`). Versionné append-only (save = PATCH, 409 optimiste),
-//! publiable. Items du média courant (liste + inspecteur), mode pose
-//! (clic pano), drag d'ajustement, drawer versions + publication.
-//! L'application des marqueurs (editable) est un effet du PANNEAU — le
-//! TourViewer passe annotations_enabled=false dès que le panneau est
-//! monté (un seul écrivain du host à la fois).
+//! Edit panel of an annotation set (D59 + UX pivots 2026-09-16)
+//! — the set is imposed by the dedicated page (Data > Annotations): declared
+//! media (000027) or tour (000028 — the media follows the navigated scene via
+//! `media_override`). Append-only versioning (save = PATCH, optimistic 409),
+//! publishable. Items of the current media (list + inspector), place mode
+//! (pano click), adjustment drag, versions + publication drawer.
+//! Applying the (editable) markers is an effect of the PANEL — the
+//! TourViewer passes annotations_enabled=false as soon as the panel is
+//! mounted (a single writer of the host at a time).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -27,20 +27,20 @@ use crate::tour_viewer::{AnnotMarkerView, AnnotNs, SplatMarkerView};
 
 #[component]
 pub fn AnnotationLayerPanel(
-    /// Ensemble édité (page dédiée — liste d'objets).
+    /// Edited set (dedicated page — object list).
     layer_id: String,
-    /// Média courant porté par l'appelant : fixe pour un ensemble-média
-    /// (000027), média de la scène naviguée pour un ensemble-tour
-    /// (000028). Le panneau le suit.
+    /// Current media carried by the caller: fixed for a media set
+    /// (000027), media of the navigated scene for a tour set
+    /// (000028). The panel follows it.
     media_override: ReadSignal<Option<String>>,
     host_id: String,
     can_write: bool,
-    /// État éditeur (signaux Copy) — possédé par l'appelant : la page
-    /// rend elle-même les marqueurs PLATS (les hotspots pannellum ne
-    /// portent que l'équirect).
+    /// Editor state (Copy signals) — owned by the caller: the page renders
+    /// the FLAT markers itself (pannellum hotspots only carry the
+    /// equirect).
     cx: AnnotationEditorCx,
-    /// Kind du média annoté : `panorama` (géométrie sphère) sinon plat
-    /// (photo/floorplan — x/y en fraction du conteneur).
+    /// Kind of the annotated media: `panorama` (sphere geometry), otherwise
+    /// flat (photo/floorplan — x/y as a fraction of the container).
     media_kind: String,
 ) -> Element {
     let is_pano = media_kind == "panorama";
@@ -52,19 +52,19 @@ pub fn AnnotationLayerPanel(
         AnnotNs::Tour
     };
     let mut versions_open = use_signal(|| false);
-    // Dernier lot de marqueurs appliqués au host (dé-dup des effects).
+    // Last batch of markers applied to the host (effect dedup).
     let mut applied_markers = use_signal(|| None::<String>);
-    // Ensemble dont le détail est déjà chargé (dé-dup du boot).
+    // Set whose detail is already loaded (boot dedup).
     let mut booted_for = use_signal(|| None::<String>);
-    // Version publiée de l'ensemble (read du détail).
+    // Published version of the set (read from the detail).
     let mut published_version = use_signal(|| None::<i64>);
-    // Média DÉCLARÉ de l'ensemble (000027) — posé au boot ; le média
-    // COURANT est lu à l'usage (media_override, écrase le déclaré).
+    // DECLARED media of the set (000027) — set at boot; the CURRENT media
+    // is read on use (media_override, overrides the declared one).
     let mut declared_media = use_signal(|| None::<String>);
 
-    // ─── Boot : charge le détail de l'ensemble imposé (page dédiée) — le
-    // média annoté initial = son média déclaré (000027), puis SUIT
-    // `media_override` (ensemble-tour 000028 : média de la scène courante).
+    // ─── Boot: loads the detail of the imposed set (dedicated page) — the
+    // initial annotated media = its declared media (000027), then FOLLOWS
+    // `media_override` (tour set 000028: media of the current scene).
     use_effect(move || {
         if booted_for.cloned().as_deref() == Some(layer_id.as_str()) {
             return;
@@ -86,8 +86,8 @@ pub fn AnnotationLayerPanel(
         });
     });
 
-    // Mode pose : piloter la glue JS (retry inclus côté bridge) — pano
-    // uniquement (sur image plate, la page gère le clic elle-même).
+    // Place mode: drive the JS glue (retry included in the bridge) — pano
+    // only (on a flat image, the page handles the click itself).
     let host_place = host_id.clone();
     use_effect(move || {
         let placing = cx.placing.cloned() && (is_pano || is_splat);
@@ -97,7 +97,7 @@ pub fn AnnotationLayerPanel(
         });
     });
 
-    // Poll place/move/click (boucle unique, tâche scopée au panneau).
+    // Poll place/move/click (single loop, task scoped to the panel).
     let mut poll_started = use_signal(|| false);
     let mut place_seq = use_signal(|| 0u64);
     let mut move_seq = use_signal(|| 0u64);
@@ -112,8 +112,8 @@ pub fn AnnotationLayerPanel(
                 crate::util::sleep(std::time::Duration::from_millis(250)).await;
                 if let Some(p) = bridge::take_annot_place(place_seq.cloned()).await {
                     place_seq.set(p.seq);
-                    // Lecture DIRECTE des signaux au moment de l'event
-                    // (le média courant du tour, pas un cache d'effet).
+                    // DIRECT read of the signals at event time
+                    // (the tour's current media, not an effect cache).
                     let asset = media_override
                         .cloned()
                         .or_else(|| declared_media.cloned())
@@ -161,9 +161,9 @@ pub fn AnnotationLayerPanel(
         });
     });
 
-    // Marqueurs : application post-mount au host (editable=true), dé-dup
-    // par json. Retry interne au bridge (viewer pas encore monté au 1er tick).
-    // PANORAMA uniquement — les marqueurs plats sont rendus par la page.
+    // Markers: post-mount application to the host (editable=true), dedup
+    // by json. Retry inside the bridge (viewer not mounted yet at the 1st tick).
+    // PANORAMA only — flat markers are rendered by the page.
     let host_markers = host_id.clone();
     use_effect(move || {
         if !is_pano && !is_splat {
@@ -218,7 +218,7 @@ pub fn AnnotationLayerPanel(
         });
     });
 
-    // ─── Précalculs ───
+    // ─── Precomputations ───
     let asset_now = media_override
         .cloned()
         .or_else(|| declared_media.cloned())
@@ -268,7 +268,7 @@ pub fn AnnotationLayerPanel(
 
     rsx! {
         div { class: "w-96 shrink-0 flex flex-col border-l border-gray-200 bg-white h-full max-h-[70vh]",
-            // ─── En-tête : titre + versions ───
+            // ─── Header: title + versions ───
             div { class: "flex items-center justify-between px-3 py-2 border-b border-gray-200",
                 span { class: "text-sm font-semibold text-gray-900", {t!("annot-panel-title")} }
                 button {
@@ -396,7 +396,7 @@ pub fn AnnotationLayerPanel(
                 }
             }
 
-            // ─── Liste des items du média courant ───
+            // ─── List of the current media's items ───
             div { class: "px-3 py-2 border-b border-gray-200",
                 span { class: "text-xs font-semibold text-gray-500", {t!("annot-items-title")} }
             }
@@ -424,8 +424,8 @@ pub fn AnnotationLayerPanel(
                                         }
                                     }
                                     span { class: "text-xs text-gray-500 ml-auto font-mono",
-                                        // Pano : degrés ; plat : pourcentages
-                                        // (x/y ∈ [0,1] mappés ×100 dans rows_now).
+                                        // Pano: degrees; flat: percentages
+                                        // (x/y ∈ [0,1] mapped ×100 in rows_now).
                                         {
                                             if is_pano {
                                                 format!("{:.0}°/{:.0}°", r.yaw, r.pitch)
@@ -441,7 +441,7 @@ pub fn AnnotationLayerPanel(
                         }
                     }
                 }
-                // Inspecteur (item sélectionné).
+                // Inspector (selected item).
                 if let Some(id) = cx.selected.cloned() {
                     if has_item(&doc_now, &id) {
                         AnnotationInspector { cx, can_write }
@@ -466,8 +466,8 @@ pub fn AnnotationLayerPanel(
                     cx.violations.set(validate_annotation_doc(&cx.doc.cloned()));
                     cx.selected.set(None);
                 },
-                // Publication/dépublication : rafraîchir l'état publié local
-                // via le détail (la liste des couches n'est plus chargée).
+                // Publish/unpublish: refresh the local published state
+                // via the detail (the layer list is no longer loaded).
                 on_changed: move |_| {
                     let id = cx.layer_id.cloned().unwrap_or_default();
                     spawn(async move {
@@ -478,7 +478,7 @@ pub fn AnnotationLayerPanel(
                 },
             }
         }
-        // ─── Modal conflit 409 (recharger / écraser, école tours) ───
+        // ─── 409 conflict modal (reload / overwrite, as in tours) ───
         if conflict_now.is_some() {
             Modal {
                 title: t!("annot-conflict-title"),
@@ -509,7 +509,7 @@ pub fn AnnotationLayerPanel(
                                 cx.conflict.set(None);
                                 let id = cx.layer_id.cloned().unwrap_or_default();
                                 spawn(async move {
-                                    // Écraser : repartir du numéro courant serveur.
+                                    // Overwrite: restart from the server's current number.
                                     if let Ok(d) = api::annotation_layers::detail(&id, None).await {
                                         let expected = d.doc_version_number;
                                         let doc = cx.doc.cloned();

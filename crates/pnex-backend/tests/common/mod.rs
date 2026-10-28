@@ -1,8 +1,8 @@
-//! Outils communs aux tests d'auth : serveur JWKS mock (remplace Rauthy en
-//! CI) et fabrication de tokens signés.
+//! Common helpers for auth tests: mock JWKS server (replaces Rauthy in
+//! CI) and signed token minting.
 //!
-//! La clé `tests/fixtures/jwks_test_key.pem` est une clé RSA de test, sans
-//! aucune valeur hors des tests automatisés.
+//! The key `tests/fixtures/jwks_test_key.pem` is an RSA test key, with no
+//! value outside automated tests.
 
 #![allow(dead_code)]
 
@@ -10,7 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use tokio::net::TcpListener;
 
-/// Modulus (base64url) de la clé de test — extrait du PEM ci-dessous.
+/// Modulus (base64url) of the test key — extracted from the PEM below.
 pub const N_B64URL: &str = "ypJs_Sp48i4rlNHndma8e4lQ6SopZWHk3gwFMWxW4E95sfGRrV7_7j4n7XBEP3OJMIP2tTyGaNTLlCszpK3xjYChwZjTGJ51pNxHuWBrwGyVtdat5ewuWoyBEwF_KAhV7VE2pp7ak3tfpV4oJTo6BZ8nXWGOazV-kZn6YZlpMoe0vlCjMZo3lXJrw3Hk15Mf_BG8pdCT7TtL4-WKFJbCVoyH0xyzenInzeW5a_8qMQ8bRk_9NYCOMk_sWIeXY7-Re-2VGATsdp498cHfdZlmoBDjC42Kn7V4ME9809bnOFR1uNJBgrLDnzmpXgoz0pIU4-VsZsuzTe_4zVTvQaUasw";
 pub const KID: &str = "test-key-1";
 
@@ -26,8 +26,8 @@ pub fn jwks_body() -> serde_json::Value {
     })
 }
 
-/// Serve les JWKS sur un port aléatoire de 127.0.0.1 ; retourne l'URL de base
-/// (`http://127.0.0.1:{port}`) à utiliser comme `RAUTHY_URL`.
+/// Serves the JWKS on a random 127.0.0.1 port; returns the base URL
+/// (`http://127.0.0.1:{port}`) to use as `RAUTHY_URL`.
 pub async fn spawn_mock_rauthy() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
     let addr = listener.local_addr().expect("addr mock");
@@ -43,7 +43,7 @@ pub async fn spawn_mock_rauthy() -> String {
 
 fn encoding_key() -> jsonwebtoken::EncodingKey {
     jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!("../fixtures/jwks_test_key.pem"))
-        .expect("clé PEM de test")
+        .expect("test PEM key")
 }
 
 pub struct TokenSpec {
@@ -99,7 +99,7 @@ pub fn mint_token(spec: &TokenSpec) -> String {
     jsonwebtoken::encode(&header, &claims, &encoding_key()).expect("signature token test")
 }
 
-/// Token valide pour le mock donné + claims utilisateur standard.
+/// Valid token for the given mock + standard user claims.
 pub fn valid_token(base_url: &str, sub: &str, username: &str, email: &str) -> String {
     let (given, family) = match username {
         "alice" => ("Alice", "Martin"),
@@ -111,15 +111,15 @@ pub fn valid_token(base_url: &str, sub: &str, username: &str, email: &str) -> St
         email: email.into(),
         given_name: given.into(),
         family_name: family.into(),
-        // Slash final obligatoire : l'issuer Rauthy est `{base}/auth/v1/`.
+        // Trailing slash mandatory: the Rauthy issuer is `{base}/auth/v1/`.
         issuer: format!("{base_url}/auth/v1/"),
         ..Default::default()
     })
 }
 
-/// Access token Rauthy « lean » (géométrie réelle D19) : SANS
-/// preferred_username/given_name/family_name — ces claims ne vivent que dans
-/// l'id_token. Sert à figer le fallback `username` de user-info.
+/// "Lean" Rauthy access token (real D19 shape): WITHOUT
+/// preferred_username/given_name/family_name — these claims only live in
+/// the id_token. Pins the user-info `username` fallback.
 pub fn lean_token(base_url: &str, sub: &str, email: &str) -> String {
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
     header.kid = Some(KID.into());
@@ -135,8 +135,8 @@ pub fn lean_token(base_url: &str, sub: &str, email: &str) -> String {
     jsonwebtoken::encode(&header, &claims, &encoding_key()).expect("signature token test")
 }
 
-/// Catalogue minimal pour les tests. Tier Free : 3 sensors / 1 actuator /
-/// 0 mixed (les quotas s'y testent vite).
+/// Minimal catalog for tests. Free tier: 3 sensors / 1 actuator /
+/// 0 mixed (quotas are quick to test there).
 pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
     use pnex_backend::models::_entities::{
         device_capabilities, device_types, mcu_boards, predefined_device_capabilities,
@@ -148,7 +148,7 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
         name: Set("Free".into()),
         max_sensor_devices: Set(3),
         max_actuator_devices: Set(1),
-        // Brick 0 : 1 mixed autorisé en Free (device générique).
+        // Brick 0: 1 mixed allowed in Free (generic device).
         max_mixed_devices: Set(1),
         min_build_interval_secs: Set(300),
         data_retention_secs: Set(Some(86_400)),
@@ -216,7 +216,7 @@ pub async fn seed_catalogue(db: &sea_orm::DatabaseConnection) {
         // admission (the sketch owns the pins).
         ("generic_esp32", "mixed", vec![]),
         ("mixed_hub_v1", "mixed", vec!["read_temperature", "relay"]),
-        // Brick 0 : device générique (board esp8266 + overlay).
+        // Brick 0: generic device (esp8266 board + overlay).
         ("generic_esp8266", "mixed", vec![]),
         // Edge agent (D95): no board, no pins.
         ("edge_agent", "agent", vec![]),

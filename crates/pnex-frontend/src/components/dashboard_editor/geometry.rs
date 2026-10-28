@@ -1,17 +1,17 @@
-//! Géométrie pure du canvas SCADA (école `flow_editor/geometry.rs`) —
-//! conversion client→canvas, snap, hit-tests, accroches et coudes des
-//! traits. Tout est testable sans DOM ; la seule branche web est
+//! Pure geometry of the SCADA canvas (`flow_editor/geometry.rs` school) —
+//! client→canvas conversion, snap, hit-tests, anchors and elbows of the
+//! lines. Everything is testable without a DOM; the only web branch is
 //! [`canvas_rect`].
 
 use pnex_core::{DashboardLayout, Widget, WireSide};
 
-/// Grille de snap (px) — plus fine que le flow editor (10 px) : un
-/// synoptique s'aligne visuellement, pas structurellement.
+/// Snap grid (px) — finer than the flow editor (10 px): a synoptic
+/// aligns visually, not structurally.
 pub const GRID: f64 = 10.0;
 pub const ZOOM_MIN: f64 = 0.4;
 pub const ZOOM_MAX: f64 = 2.0;
 
-/// Taille par défaut d'un widget posé (px) par type.
+/// Default size of a placed widget (px) per type.
 pub fn default_size(widget_type: &str) -> (i64, i64) {
     match widget_type {
         "gauge" => (240, 200),
@@ -45,7 +45,7 @@ pub fn home_card_size(card: pnex_core::home::HomeCard) -> (i64, i64) {
     }
 }
 
-/// Point client (px CSS) → coordonnées canvas (px document).
+/// Client point (CSS px) → canvas coordinates (document px).
 pub fn to_canvas(client: (f64, f64), rect: (f64, f64), pan: (f64, f64), zoom: f64) -> (f64, f64) {
     (
         (client.0 - rect.0 - pan.0) / zoom,
@@ -53,12 +53,12 @@ pub fn to_canvas(client: (f64, f64), rect: (f64, f64), pan: (f64, f64), zoom: f6
     )
 }
 
-/// Snap sur la grille.
+/// Snap to the grid.
 pub fn snap(v: f64) -> f64 {
     (v / GRID).round() * GRID
 }
 
-/// Zoom molette vers le curseur (école flow editor).
+/// Wheel zoom toward the cursor (flow editor school).
 pub fn zoom_pan_towards(
     zoom: f64,
     pan: (f64, f64),
@@ -74,13 +74,13 @@ pub fn zoom_pan_towards(
     (new_zoom, new_pan)
 }
 
-/// Distance au handle de resize (coin bas-droit), `None` au-delà.
+/// Distance to the resize handle (bottom-right corner), `None` beyond.
 pub fn resize_handle_at(w: &Widget, p: (f64, f64), tolerance: f64) -> bool {
     let corner = ((w.x + w.w) as f64, (w.y + w.h) as f64);
     (p.0 - corner.0).abs() <= tolerance && (p.1 - corner.1).abs() <= tolerance
 }
 
-/// Point d'accroche d'un trait : **milieu du côté** demandé — pur.
+/// Anchor point of a line: **middle of the requested side** — pure.
 pub fn anchor_point(w: &Widget, side: WireSide) -> (f64, f64) {
     let (x, y, wd, ht) = (w.x as f64, w.y as f64, w.w as f64, w.h as f64);
     match side {
@@ -91,14 +91,14 @@ pub fn anchor_point(w: &Widget, side: WireSide) -> (f64, f64) {
     }
 }
 
-/// Cherche un widget par id (aucun panique sur document incohérent).
+/// Finds a widget by id (no panic on an inconsistent document).
 pub fn widget_of<'a>(layout: &'a DashboardLayout, id: &str) -> Option<&'a Widget> {
     layout.widgets.iter().find(|w| w.id == id)
 }
 
-/// Coude **orthogonal** entre deux accroches (école câbles flow) : on
-/// part perpendiculairement au côté d'origine, on rejoint
-/// perpendiculairement au côté d'arrivée. Pur — rendu en SVG path.
+/// **Orthogonal** elbow between two anchors (flow cables school): leave
+/// perpendicular to the origin side, arrive perpendicular to the
+/// destination side. Pure — rendered as an SVG path.
 pub fn wire_path(
     layout: &DashboardLayout,
     from_id: &str,
@@ -110,7 +110,7 @@ pub fn wire_path(
     let b = widget_of(layout, to_id)?;
     let (ax, ay) = anchor_point(a, from_side);
     let (bx, by) = anchor_point(b, to_side);
-    // 40 % de la distance en segment d'écartement, minimum 14 px.
+    // 40 % of the distance as the offset segment, minimum 14 px.
     let gap = ((bx - ax).abs().max((by - ay).abs()) * 0.4).max(14.0);
     let (a_dx, a_dy) = match from_side {
         WireSide::Top => (0.0, -gap),
@@ -124,7 +124,7 @@ pub fn wire_path(
         WireSide::Left => (-gap, 0.0),
         WireSide::Right => (gap, 0.0),
     };
-    // Milieu des deux segments d'écartement, coude orthogonal au milieu.
+    // Middle of the two offset segments, orthogonal elbow in the middle.
     let m1 = (ax + a_dx, ay + a_dy);
     let m2 = (bx + b_dx, by + b_dy);
     let mid = ((m1.0 + m2.0) / 2.0, (m1.1 + m2.1) / 2.0);
@@ -181,7 +181,7 @@ mod tests {
     fn to_canvas_et_snap() {
         let p = to_canvas((130.0, 250.0), (30.0, 50.0), (0.0, 0.0), 1.0);
         assert_eq!(p, (100.0, 200.0));
-        // zoom 2 : un point client deux fois plus loin sur le canvas.
+        // zoom 2: a client point twice as far on the canvas.
         let p = to_canvas((230.0, 250.0), (30.0, 50.0), (0.0, 0.0), 2.0);
         assert_eq!(p, (100.0, 100.0));
         assert_eq!(snap(103.0), 100.0);
@@ -192,7 +192,7 @@ mod tests {
     fn zoom_toward_cursor_ne_deplace_pas_le_point() {
         let (z, pan) = zoom_pan_towards(1.0, (0.0, 0.0), (200.0, 100.0), 1.25);
         assert!((z - 1.25).abs() < 1e-9);
-        // Le point du document sous le curseur reste sous le curseur.
+        // The document point under the cursor stays under the cursor.
         let before = to_canvas((200.0, 100.0), (0.0, 0.0), (0.0, 0.0), 1.0);
         let after = to_canvas((200.0, 100.0), (0.0, 0.0), pan, z);
         assert!((before.0 - after.0).abs() < 1e-6);

@@ -1,27 +1,27 @@
-//! Configuration Rauthy lue depuis `settings` de la config Loco.
+//! Rauthy configuration read from `settings` of the Loco config.
 
 use loco_rs::config::Config;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct RauthySettings {
-    /// URL de base Rauthy pour les appels serveur-à-serveur (token, JWKS)
-    /// (ex. `http://localhost:8080`, `https://iam.pnex.io`).
+    /// Rauthy base URL for server-to-server calls (token, JWKS)
+    /// (e.g. `http://localhost:8080`, `https://iam.pnex.io`).
     pub base_url: String,
-    /// Issuer OIDC vu par les navigateurs (optionnel, défaut = `base_url`).
+    /// OIDC issuer seen by browsers (optional, default = `base_url`).
     ///
-    /// Différent de `base_url` quand Rauthy publie du HTTPS auto-signé pour
-    /// les devices : la 302 SSO et la validation `iss` doivent pointer vers
-    /// l'URL **https** (contexte sécurisé, `crypto.subtle` requis par la
-    /// page login Rauthy), tandis que token/JWKS restent appelés en HTTP
-    /// local — un certificat auto-signé ferait rejeter la connexion reqwest
-    /// du backend.
+    /// Differs from `base_url` when Rauthy publishes self-signed HTTPS for
+    /// devices: the SSO 302 and the `iss` validation must point to the
+    /// **https** URL (secure context, `crypto.subtle` required by the
+    /// Rauthy login page), while token/JWKS are still called over local
+    /// HTTP — a self-signed certificate would make the backend's reqwest
+    /// connection fail.
     pub issuer_url: Option<String>,
     pub client_id: String,
 }
 
 impl RauthySettings {
-    /// Extrait la section `settings.rauthy` de la config Loco.
+    /// Extracts the `settings.rauthy` section from the Loco config.
     pub fn from_config(config: &Config) -> loco_rs::Result<Self> {
         let value = config
             .settings
@@ -36,18 +36,18 @@ impl RauthySettings {
             .map_err(|err| loco_rs::Error::Message(format!("settings.rauthy invalide : {err}")))
     }
 
-    /// Issuer OIDC Rauthy **vu par les navigateurs** : `{issuer}/auth/v1/` —
-    /// le slash final fait partie de l'issuer émis par Rauthy (claim `iss`) ;
-    /// la validation `jsonwebtoken` est un match exact, l'omettre casserait
-    /// TOUTE validation de token. `issuer_url` (optionnel) prime sur
-    /// `base_url` quand Rauthy publie du HTTPS auto-signé pour les devices.
+    /// Rauthy OIDC issuer **seen by browsers**: `{issuer}/auth/v1/` —
+    /// the trailing slash is part of the issuer emitted by Rauthy (`iss` claim);
+    /// `jsonwebtoken` validation is an exact match, omitting it would break
+    /// ALL token validation. `issuer_url` (optional) takes precedence over
+    /// `base_url` when Rauthy publishes self-signed HTTPS for devices.
     pub fn issuer(&self) -> String {
         let base = self.issuer_url.as_deref().unwrap_or(&self.base_url);
         format!("{}/auth/v1/", base.trim_end_matches('/'))
     }
 
-    /// Issuer « API » pour les appels serveur-à-serveur (token, JWKS) —
-    /// toujours dérivé de `base_url` (HTTP local, pas de cert auto-signé).
+    /// "API" issuer for server-to-server calls (token, JWKS) —
+    /// always derived from `base_url` (local HTTP, no self-signed cert).
     fn api_issuer(&self) -> String {
         format!("{}/auth/v1/", self.base_url.trim_end_matches('/'))
     }
@@ -64,20 +64,20 @@ impl RauthySettings {
         format!("{}oidc/authorize", self.issuer())
     }
 
-    /// Endpoint de déconnexion (RP-initiated logout OIDC) — détruit la session
-    /// SSO navigateur, sinon le login suivant ré-authentifie sans formulaire.
+    /// Logout endpoint (OIDC RP-initiated logout) — destroys the browser SSO
+    /// session, otherwise the next login re-authenticates without a form.
     pub fn end_session_endpoint(&self) -> String {
         format!("{}oidc/logout", self.issuer())
     }
 
-    /// Page UI d'inscription Rauthy (« Register ») — ce n'est pas un endpoint
-    /// OIDC : pas de params OAuth2, l'activation se fait par mail.
+    /// Rauthy sign-up UI page ("Register") — this is not an OIDC
+    /// endpoint: no OAuth2 params, activation happens by mail.
     pub fn register_page(&self) -> String {
         format!("{}/users/register", self.issuer().trim_end_matches('/'))
     }
 
-    /// Page UI compte Rauthy — le changement de mot de passe vit dans l'IdP
-    /// (équivalent du `kc_action=UPDATE_PASSWORD` Keycloak).
+    /// Rauthy account UI page — password change lives in the IdP
+    /// (equivalent of Keycloak's `kc_action=UPDATE_PASSWORD`).
     pub fn account_page(&self) -> String {
         format!("{}/account", self.issuer().trim_end_matches('/'))
     }

@@ -77,8 +77,8 @@ fn json_merge_accumule_par_entree_nommee() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
-    // Les deux variables atterrissent sous leur nom dans l'objet accumulé,
-    // réémis à chaque message (debug = payload stringifié).
+    // Both variables land under their name in the accumulated object,
+    // re-emitted on each message (debug = stringified payload).
     rt.wait_for(
         |v| common::is_debug_with(v, "temp"),
         Duration::from_secs(30),

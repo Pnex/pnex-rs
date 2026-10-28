@@ -4,8 +4,8 @@
 
 namespace pnex_control {
 
-// Clamp explicite : même sémantique que Rust f64::clamp (NaN en entree ->
-// NaN en sortie ; pas d'UB si lo > hi, garanti impossible ici car 100 > 0).
+// Explicit clamp: same semantics as Rust f64::clamp (NaN in ->
+// NaN out; no UB if lo > hi, guaranteed impossible here since 100 > 0).
 static inline double pnex_clamp(double v, double lo, double hi) {
     if (v < lo) {
         return lo;

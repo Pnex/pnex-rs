@@ -1,12 +1,12 @@
-//! i18n du front PNEX — Fluent via `dioxus-i18n`.
+//! PNEX front i18n — Fluent via `dioxus-i18n`.
 //!
-//! Zéro libellé en dur dans les composants : tout passe par `t!("clé")`.
-//! Locales embarquées (`include_str!`, compatibles wasm) : `fr-FR` + `en-US`,
-//! fallback `en-US`. Le choix de la crate est isolé dans CE module — le reste
-//! du code n'utilise que `init`, `t!`, `set_locale` et `current_tag`.
+//! Zero hard-coded label in components: everything goes through `t!("key")`.
+//! Embedded locales (`include_str!`, wasm-compatible): `fr-FR` + `en-US`,
+//! fallback `en-US`. The crate choice is isolated in THIS module — the rest
+//! of the code only uses `init`, `t!`, `set_locale` and `current_tag`.
 //!
-//! Résolution de la langue initiale : préférence stockée (`pnex.locale`,
-//! cf. `storage`) > `profile.language` (après login, cf. session) >
+//! Initial language resolution: stored preference (`pnex.locale`,
+//! see `storage`) > `profile.language` (after login, see session) >
 //! `navigator.language` (web) > `en-US`.
 
 use dioxus_i18n::prelude::*;
@@ -14,8 +14,8 @@ use dioxus_i18n::unic_langid::{langid, LanguageIdentifier};
 
 use crate::storage::KeyValueStorage;
 
-/// Initialise le provider i18n — à appeler une seule fois, à la racine de
-/// l'app (hook).
+/// Initialises the i18n provider — to call only once, at the root of
+/// the app (hook).
 pub fn init() -> I18n {
     use_init_i18n(|| {
         I18nConfig::new(resolve_locale())
@@ -25,16 +25,16 @@ pub fn init() -> I18n {
     })
 }
 
-/// Langue initiale : navigateur (web), sinon en-US.
-/// La préférence locale (`pnex.locale`) et celle du profil sont intégrées par
-/// la session (boot / login) via `set_locale`.
+/// Initial language: browser (web), else en-US.
+/// The local preference (`pnex.locale`) and the profile one are applied by
+/// the session (boot / login) via `set_locale`.
 fn resolve_locale() -> LanguageIdentifier {
     if let Some(tag) = stored_locale() {
         return tag;
     }
     #[cfg(target_arch = "wasm32")]
     {
-        // navigator.language ressemble à "fr", "fr-FR", "en-US"…
+        // navigator.language looks like "fr", "fr-FR", "en-US"…
         if let Some(nav) = web_sys::window().map(|w| w.navigator().language()) {
             if let Some(tag) = nav.as_deref().and_then(locale_from_tag) {
                 return tag;
@@ -122,7 +122,7 @@ fn system_locale_tag() -> Option<String> {
         .find(|value| !value.is_empty() && value != "C" && value != "POSIX")
 }
 
-/// Préférence de langue persistée localement (clé `pnex.locale`).
+/// Language preference persisted locally (key `pnex.locale`).
 fn stored_locale() -> Option<LanguageIdentifier> {
     crate::storage::local()
         .get(crate::storage::KEY_LOCALE)
@@ -130,8 +130,8 @@ fn stored_locale() -> Option<LanguageIdentifier> {
         .and_then(locale_from_tag)
 }
 
-/// Mappe un tag quelconque ("fr", "fr-FR", "en", "en-US"…) sur une locale
-/// supportée ; `None` sinon.
+/// Maps any tag ("fr", "fr-FR", "en", "en-US"…) to a supported
+/// locale; `None` otherwise.
 pub fn locale_from_tag(tag: &str) -> Option<LanguageIdentifier> {
     let lower = tag.to_ascii_lowercase();
     match lower.as_str() {
@@ -141,12 +141,12 @@ pub fn locale_from_tag(tag: &str) -> Option<LanguageIdentifier> {
     }
 }
 
-/// Tag courant ("fr-FR" / "en-US") — pour l'affichage et la persistance.
+/// Current tag ("fr-FR" / "en-US") — for display and persistence.
 pub fn current_tag() -> String {
     i18n().language().to_string()
 }
 
-/// Change la langue courante (no-op si tag inconnu) et persiste le choix.
+/// Changes the current language (no-op if the tag is unknown) and persists the choice.
 pub fn set_locale(tag: &str) {
     let Some(id) = locale_from_tag(tag) else {
         return;
@@ -167,10 +167,10 @@ mod tests {
     use dioxus_i18n::fluent::{FluentArgs, FluentBundle, FluentResource, FluentValue};
     use dioxus_i18n::unic_langid::langid;
 
-    /// `t!` panique sur une clé absente de la langue courante : les deux
-    /// locales doivent définir exactement les mêmes clés.
+    /// `t!` panics on a key missing from the current language: both
+    /// locales must define exactly the same keys.
     fn keys(source: &'static str) -> Vec<String> {
-        let resource = fluent_syntax::parser::parse(source).expect("fichier .ftl valide");
+        let resource = fluent_syntax::parser::parse(source).expect("valid .ftl file");
         resource
             .body
             .iter()
@@ -204,10 +204,7 @@ mod tests {
         let mut fr = keys(include_str!("../locales/fr-FR.ftl"));
         en.sort();
         fr.sort();
-        assert_eq!(
-            en, fr,
-            "fr-FR et en-US doivent définir exactement les mêmes clés"
-        );
+        assert_eq!(en, fr, "fr-FR and en-US must define exactly the same keys");
     }
 
     /// `$variables` used by each message (continuation lines included).
@@ -323,14 +320,14 @@ mod tests {
         }
     }
 
-    /// Aiguille du balayage construite par morceaux : un `t!(` littéral dans
-    /// CE fichier se balaierait lui-même.
+    /// Sweep needle built in pieces: a literal `t!(` in
+    /// THIS file would sweep itself.
     const NEEDLE: &str = concat!("t!", "(");
 
-    /// Neutralise les commentaires (`//` et `/* */`) pour ne pas balayer des
-    /// exemples `t!` cités en commentaire ; les littéraux de chaîne sont
-    /// préservés (échappements gérés). Les commentaires de bloc ne sont pas
-    /// supposés imbriqués ici.
+    /// Neutralises comments (`//` and `/* */`) so as not to sweep
+    /// `t!` examples quoted in comments; string literals are
+    /// preserved (escapes handled). Block comments are not
+    /// assumed to nest here.
     fn strip_comments(src: &str) -> String {
         let b = src.as_bytes();
         let mut out = String::with_capacity(src.len());
@@ -377,16 +374,16 @@ mod tests {
         out
     }
 
-    /// Collecte récursive des clés `t!` **littérales** sous un dossier, après
-    /// retrait des commentaires. Bord de macro vérifié (le caractère précédent
-    /// ne doit pas prolonger un identifiant, sinon `format!(`/`concat!(`
-    /// matcheraient) ; `t!(variable)` (ex. label_i18n du field_spec backend)
-    /// est hors périmètre — non vérifiable statiquement.
+    /// Recursive collection of **literal** `t!` keys under a folder, after
+    /// stripping comments. Macro boundary checked (the previous character
+    /// must not extend an identifier, otherwise `format!(`/`concat!(`
+    /// would match); `t!(variable)` (e.g. label_i18n of the backend field_spec)
+    /// is out of scope — not statically checkable.
     fn collect_t_keys(dir: &Path, out: &mut BTreeSet<String>) {
         let entries =
-            fs::read_dir(dir).unwrap_or_else(|e| panic!("lecture de {} : {e}", dir.display()));
+            fs::read_dir(dir).unwrap_or_else(|e| panic!("reading {}: {e}", dir.display()));
         for entry in entries {
-            let path = entry.expect("entrée src/ lisible").path();
+            let path = entry.expect("readable src/ entry").path();
             if path.is_dir() {
                 collect_t_keys(&path, out);
                 continue;
@@ -394,7 +391,7 @@ mod tests {
             if path.extension().and_then(|e| e.to_str()) != Some("rs") {
                 continue;
             }
-            let source = strip_comments(&fs::read_to_string(&path).expect("source .rs lisible"));
+            let source = strip_comments(&fs::read_to_string(&path).expect("readable .rs source"));
             let bytes = source.as_bytes();
             let mut cursor = 0;
             while let Some(rel) = source[cursor..].find(NEEDLE) {
@@ -407,7 +404,7 @@ mod tests {
                 if !boundary {
                     continue;
                 }
-                // Clé littérale uniquement : `"` en premier token après `t!(`.
+                // Literal key only: `"` as the first token after `t!(`.
                 let Some(rest) = source[cursor..].trim_start().strip_prefix('"') else {
                     continue;
                 };
@@ -430,20 +427,16 @@ mod tests {
         }
     }
 
-    /// Toute clé littérale passée à `t!` doit exister dans les **deux**
-    /// locales : `t!` panique sur une clé absente (crash réel 2026-09-14 —
-    /// `common-create` manquant → panic « App panicked » en cliquant
-    /// « ajouter un canal de notification » sur /notifications).
+    /// Every literal key passed to `t!` must exist in **both**
+    /// locales: `t!` panics on a missing key (real crash 2026-09-14 —
+    /// `common-create` missing → panic "App panicked" when clicking
+    /// "add a notification channel" on /notifications).
     #[test]
     fn cles_litterales_t_presentes_dans_les_locales() {
         let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut used = BTreeSet::new();
         collect_t_keys(&src, &mut used);
-        assert!(
-            used.len() > 100,
-            "balayage stérile : {} clés trouvées",
-            used.len()
-        );
+        assert!(used.len() > 100, "sterile sweep: {} keys found", used.len());
 
         let en = keys(include_str!("../locales/en-US.ftl"));
         let fr = keys(include_str!("../locales/fr-FR.ftl"));
@@ -453,33 +446,32 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "clés manquantes dans les locales (panique au rendu) : {missing:?}"
+            "keys missing from the locales (panic at render): {missing:?}"
         );
     }
 
-    /// Un message Fluent à variable rendu **sans** son argument fait paniquer
-    /// `t!` (FluentErrorsDetected → unwrap_or_else(panic!) dans dioxus-i18n) :
-    /// crash réel 2026-09-06 — `flows-metric-labels-help` (variable `$id`)
-    /// rendu sans `id` à l'ajout d'un nœud Métrique dans l'éditeur de flows.
-    /// Le message du crash doit rester résoluble dans les deux locales avec
-    /// l'argument exact que passe désormais `MetricForm`.
+    /// A Fluent message with a variable rendered **without** its argument makes
+    /// `t!` panic (FluentErrorsDetected → unwrap_or_else(panic!) in dioxus-i18n):
+    /// real crash 2026-09-06 — `flows-metric-labels-help` (variable `$id`)
+    /// rendered without `id` when adding a Metric node in the flow editor.
+    /// The crash message must stay resolvable in both locales with
+    /// the exact argument `MetricForm` now passes.
     #[test]
     fn flows_metric_labels_help_resout_avec_son_argument_id() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
         ] {
-            let resource =
-                FluentResource::try_new(source.to_string()).expect("fichier .ftl valide");
+            let resource = FluentResource::try_new(source.to_string()).expect("valid .ftl file");
             let mut bundle = FluentBundle::new(vec![locale.clone()]);
             bundle
                 .add_resource(resource)
-                .expect("ressource isolée : aucune erreur de chevauchement");
+                .expect("isolated resource: no overlap error");
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-metric-labels-help")
-                .expect("clé définie (cf. test parite_cles_fr_en)");
-            let pattern = message.value().expect("message sans attribut");
+                .expect("key defined (see test parite_cles_fr_en)");
+            let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("id", FluentValue::from(7_i64));
             let mut errors = vec![];
@@ -487,29 +479,28 @@ mod tests {
                 .format_pattern(pattern, Some(&args), &mut errors)
                 .to_string();
             assert!(errors.is_empty(), "{locale} : {errors:?}");
-            assert!(rendered.contains("flow_7"), "{locale} : « {rendered} »");
+            assert!(rendered.contains("flow_7"), "{locale}: \"{rendered}\"");
         }
     }
 
-    /// `flows-deploy-stale-notify { $count }` (toast de deploy D50) doit se
-    /// résoudre avec son argument exact dans les deux locales.
+    /// `flows-deploy-stale-notify { $count }` (D50 deploy toast) must
+    /// resolve with its exact argument in both locales.
     #[test]
     fn flows_deploy_stale_notify_resout_avec_son_argument_count() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
         ] {
-            let resource =
-                FluentResource::try_new(source.to_string()).expect("fichier .ftl valide");
+            let resource = FluentResource::try_new(source.to_string()).expect("valid .ftl file");
             let mut bundle = FluentBundle::new(vec![locale.clone()]);
             bundle
                 .add_resource(resource)
-                .expect("ressource isolée : aucune erreur de chevauchement");
+                .expect("isolated resource: no overlap error");
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-deploy-stale-notify")
-                .expect("clé définie (cf. test parite_cles_fr_en)");
-            let pattern = message.value().expect("message sans attribut");
+                .expect("key defined (see test parite_cles_fr_en)");
+            let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("count", FluentValue::from(2_i64));
             let mut errors = vec![];
@@ -517,14 +508,14 @@ mod tests {
                 .format_pattern(pattern, Some(&args), &mut errors)
                 .to_string();
             assert!(errors.is_empty(), "{locale} : {errors:?}");
-            assert!(rendered.contains('2'), "{locale} : « {rendered} »");
+            assert!(rendered.contains('2'), "{locale}: \"{rendered}\"");
         }
     }
 
     /// The notify-inspector var rows embed literal braces (`{{ msg.x }}`) in
     /// the user-facing syntax hint. Written bare, fluent parses `{{ msg.x }}`
     /// as a message reference (`msg` + attribute `x`) → ResolverError → `t!`
-    /// panics at render (crash réel 2026-09-23 — clicking the var row of a
+    /// panics at render (real crash 2026-09-23 — clicking the var row of a
     /// Notification node). They must use fluent string literals (`{'{{'}`)
     /// and resolve error-free, showing the `{msg.x}`-style syntax.
     #[test]
@@ -533,48 +524,43 @@ mod tests {
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
         ] {
-            let resource =
-                FluentResource::try_new(source.to_string()).expect("fichier .ftl valide");
+            let resource = FluentResource::try_new(source.to_string()).expect("valid .ftl file");
             let mut bundle = FluentBundle::new(vec![locale.clone()]);
             bundle
                 .add_resource(resource)
-                .expect("ressource isolée : aucune erreur de chevauchement");
+                .expect("isolated resource: no overlap error");
             bundle.set_use_isolating(false);
             for key in ["flows-inspector-var-value-placeholder", "flows-notify-vars"] {
-                let message = bundle.get_message(key).expect("clé définie (parité)");
-                let pattern = message.value().expect("message sans attribut");
+                let message = bundle.get_message(key).expect("key defined (parity)");
+                let pattern = message.value().expect("message without attribute");
                 let mut errors = vec![];
                 let rendered = bundle
                     .format_pattern(pattern, None, &mut errors)
                     .to_string();
                 assert!(errors.is_empty(), "{locale} {key} : {errors:?}");
-                assert!(
-                    rendered.contains("msg.x"),
-                    "{locale} {key} : « {rendered} »"
-                );
+                assert!(rendered.contains("msg.x"), "{locale} {key}: \"{rendered}\"");
             }
         }
     }
 
-    /// `flows-notify-antispam-hint { $max } / { $window }` doit se résoudre
-    /// avec ses deux arguments exacts dans les deux locales.
+    /// `flows-notify-antispam-hint { $max } / { $window }` must resolve
+    /// with its two exact arguments in both locales.
     #[test]
     fn flows_notify_antispam_hint_resout_avec_ses_arguments() {
         for (locale, source) in [
             (langid!("en-US"), include_str!("../locales/en-US.ftl")),
             (langid!("fr-FR"), include_str!("../locales/fr-FR.ftl")),
         ] {
-            let resource =
-                FluentResource::try_new(source.to_string()).expect("fichier .ftl valide");
+            let resource = FluentResource::try_new(source.to_string()).expect("valid .ftl file");
             let mut bundle = FluentBundle::new(vec![locale.clone()]);
             bundle
                 .add_resource(resource)
-                .expect("ressource isolée : aucune erreur de chevauchement");
+                .expect("isolated resource: no overlap error");
             bundle.set_use_isolating(false);
             let message = bundle
                 .get_message("flows-notify-antispam-hint")
-                .expect("clé définie (cf. test parite_cles_fr_en)");
-            let pattern = message.value().expect("message sans attribut");
+                .expect("key defined (see test parite_cles_fr_en)");
+            let pattern = message.value().expect("message without attribute");
             let mut args = FluentArgs::new();
             args.set("max", FluentValue::from(3_i64));
             args.set("window", FluentValue::from(10_i64));
@@ -585,7 +571,7 @@ mod tests {
             assert!(errors.is_empty(), "{locale} : {errors:?}");
             assert!(
                 rendered.contains('3') && rendered.contains("10"),
-                "{locale} : « {rendered} »"
+                "{locale}: \"{rendered}\""
             );
         }
     }

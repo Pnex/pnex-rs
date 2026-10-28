@@ -1,7 +1,7 @@
 //
-// Config compilée de la lib PneX — includes par -D defines (contrat
-// docs/architecture/firmware-build.md §2.1) : WIFI_SSID/WIFI_PASSWORD/
-// HOST/TOKEN/DEVICE_ID EN BASE64, ENCRYPTION_KEY b64. Always wss/https
+// Compiled config of the PneX lib — includes through -D defines (contract
+// docs/architecture/firmware-build.md §2.1): WIFI_SSID/WIFI_PASSWORD/
+// HOST/TOKEN/DEVICE_ID IN BASE64, ENCRYPTION_KEY b64. Always wss/https
 // (D154): there is no clear-text build.
 //
 // Private to the lib: pnex_transport.cpp is the only translation unit
@@ -12,9 +12,9 @@
 #ifndef PNEX_CONFIG_H
 #define PNEX_CONFIG_H
 
-// WIFI_SSID/WIFI_PASSWORD sont attendus EN BASE64 (comme HOST/TOKEN/
-// DEVICE_ID) : un SSID contient souvent des espaces/quotes qui casseraient
-// le flag -D de platformio.ini. Le firmware décode au setup().
+// WIFI_SSID/WIFI_PASSWORD are expected IN BASE64 (like HOST/TOKEN/
+// DEVICE_ID): an SSID often contains spaces/quotes that would break
+// the -D flag of platformio.ini. The firmware decodes at setup().
 #ifndef WIFI_SSID
 #define WIFI_SSID "ZGVmYXVsdF9zc2lk"  // base64("default_ssid")
 #endif

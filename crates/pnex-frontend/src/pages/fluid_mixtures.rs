@@ -1,9 +1,9 @@
-//! Mélanges de fluides personnalisés — page CRUD dédiée (D1).
-//! Liste filtrable + formulaire (composants, fractions, base
-//! molaire/massique) ; validation structurelle `pnex-core` avant save,
-//! validation CoolProp côté serveur (400 avec le message).
-//! La page compose le socle CRUD : le formulaire inline historique passe
-//! en FormDialog (uniformité des pages liste).
+//! Custom fluid mixtures — dedicated CRUD page (D1).
+//! Filterable list + form (components, fractions, molar/mass
+//! basis); `pnex-core` structural validation before save,
+//! CoolProp validation on the server (400 with the message).
+//! The page composes the CRUD base: the legacy inline form becomes
+//! a FormDialog (uniform list pages).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -19,7 +19,7 @@ use crate::components::icons;
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use pnex_core::{FluidMixtureComposition, FluidMixtureInput, MixtureBasis, MixtureComponent};
 
-/// Ligne du formulaire : (fluide, fraction en string d'input).
+/// Form row: (fluid, fraction as input string).
 type DraftRow = (String, String);
 
 /// Form/banner error: structured invalid fraction (i18n-resolved at render
@@ -61,20 +61,20 @@ pub fn FluidMixtures() -> Element {
     let mut reload = use_signal(|| 0u32);
     let can_write = crate::state::access::can("fluid-mixtures:write");
     let search = use_signal(String::new);
-    // Formulaire : `None` = fermé ; `Some(id)` = édition, `Some(String::new())`
-    // vs création distingue via `editing_id.is_empty()`.
+    // Form: `None` = closed; `Some(id)` = edit, `Some(String::new())`
+    // vs creation told apart via `editing_id.is_empty()`.
     let mut editing_id = use_signal(|| Option::<String>::None);
     let mut name = use_signal(String::new);
     let mut description = use_signal(String::new);
     let mut basis = use_signal(|| MixtureBasis::Mole);
     let mut rows = use_signal(Vec::<DraftRow>::new);
     let mut error = use_signal(|| Option::<FluidError>::None);
-    // Suppression en deux clics (pas de modal) — signal de la page.
+    // Two-click deletion (no modal) — page signal.
     let mut confirm_delete = use_signal(|| Option::<String>::None);
-    // Pagination client-side (l'API renvoie tout, la recherche est serveur).
+    // Client-side pagination (the API returns everything, search is server-side).
     let page = use_signal(|| 0i64);
 
-    // Liste des mélanges de l'org (une seule requête, reload manuel).
+    // The org's mixtures (a single request, manual reload).
     let list = use_resource(move || {
         let value = search().trim().to_string();
         let search = (!value.is_empty()).then_some(value);
@@ -84,8 +84,8 @@ pub fn FluidMixtures() -> Element {
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD) + pagination
-    // client-side clampée (l'API renvoie tout, la recherche reste serveur).
+    // Synchronous read of the resource (CRUD base doctrine) + clamped
+    // client-side pagination (the API returns everything, search stays server-side).
     let (list_state, is_empty, mixtures, count) = match &*list.value().read() {
         None => (None, false, Vec::new(), 0),
         Some(Ok(all)) => {
@@ -103,8 +103,8 @@ pub fn FluidMixtures() -> Element {
         Some(Err(e)) => (Some(Err(e.clone())), false, Vec::new(), 0),
     };
 
-    // Somme live des fractions (formulaire) + état d'édition, résolus hors
-    // rsx (pas de `let` dans le rsx).
+    // Live sum of the fractions (form) + edit state, resolved outside
+    // rsx (no `let` in the rsx).
     let sum: f64 = rows()
         .iter()
         .filter_map(|(_, f)| f.trim().parse::<f64>().ok())
@@ -118,9 +118,9 @@ pub fn FluidMixtures() -> Element {
     let editing = editing_id().is_some();
     let is_edit = editing_id().as_deref().is_some_and(|id| !id.is_empty());
 
-    // Colonnes de la table — nom (+ spec CoolProp sous le nom), description,
-    // base, composants condensés, masse molaire, actions (modifier /
-    // suppression en deux clics, pas de modal).
+    // Table columns — name (+ CoolProp spec under the name), description,
+    // basis, condensed components, molar mass, actions (edit /
+    // two-click deletion, no modal).
     let columns = vec![
         Column::new(
             t!("mixtures-name").to_string(),
@@ -244,9 +244,9 @@ pub fn FluidMixtures() -> Element {
                 )
             },
             if editing {
-                // Formulaire création/édition — FormDialog du socle (le
-                // pied cancel/save est le pied standard ; la validation
-                // somme=fractions verrouille le submit via `valid`).
+                // Create/edit form — FormDialog of the base (the
+                // cancel/save footer is the standard footer; the
+                // sum=fractions validation locks submit via `valid`).
                 FormDialog {
                     title: if is_edit { t!("mixtures-edit-title").to_string() } else { t!("mixtures-new-title").to_string() },
                     submit_label: t!("mixtures-save").to_string(),
@@ -381,8 +381,8 @@ pub fn FluidMixtures() -> Element {
                     }
                 }
             } else {
-                // Recherche + refresh — le filtrage est live à la frappe
-                // (le signal est lu en partie synchrone de la resource).
+                // Search + refresh — filtering is live while typing
+                // (the signal is read in the resource's synchronous part).
                 FilterBar {
                     SearchInput {
                         placeholder: t!("mixtures-search-placeholder").to_string(),
@@ -418,7 +418,7 @@ pub fn FluidMixtures() -> Element {
     }
 }
 
-/// Réinitialise le formulaire (nouveau mélange).
+/// Resets the form (new mixture).
 #[allow(clippy::too_many_arguments)]
 fn open_form(
     editing_id: &mut Signal<Option<String>>,
@@ -439,7 +439,7 @@ fn open_form(
     error.set(None);
 }
 
-/// Pré-remplit le formulaire depuis un mélange existant (édition).
+/// Pre-fills the form from an existing mixture (edit).
 #[allow(clippy::too_many_arguments)]
 fn open_edit(
     m: &pnex_core::FluidMixture,
@@ -494,7 +494,7 @@ fn draft_composition(
     }
 }
 
-/// Sauvegarde (create ou update selon editing_id).
+/// Save (create or update depending on editing_id).
 #[allow(clippy::too_many_arguments)]
 fn save_mixture(
     mut editing_id: Signal<Option<String>>,
@@ -539,7 +539,7 @@ fn save_mixture(
     });
 }
 
-/// Suppression avec confirmation en deux clics (pas de modal).
+/// Deletion with two-click confirmation (no modal).
 fn delete_mixture(
     id: String,
     mut confirm: Signal<Option<String>>,

@@ -160,7 +160,7 @@ fn MetricLabelRow(
 
 #[component]
 pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool) -> Element {
-    // Champs booléens copiés avant le move d'`initial` dans les signaux.
+    // Boolean fields copied before `initial` is moved into the signals.
     let active = initial.active;
     let console = initial.console;
     let mut complete = use_signal(move || initial.complete.clone().unwrap_or_default());
@@ -230,12 +230,12 @@ pub(super) fn DebugForm(mut cx: EditorCx, initial: DebugConfig, can_write: bool)
     }
 }
 
-/// ─────────────── display (sonde) ───────────────
+/// ─────────────── display (probe) ───────────────
 
 #[component]
 pub(super) fn DisplayForm(can_write: bool) -> Element {
-    // Aucune config saisie : l'identité est estampillée par la projection au
-    // deploy (pnex_node_id/flow/version) — le formulaire est informatif.
+    // No config entered: the identity is stamped by the projection at
+    // deploy (pnex_node_id/flow/version) — the form is informative.
     let _ = can_write;
     rsx! {
         div { class: "space-y-3",

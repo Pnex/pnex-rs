@@ -1,32 +1,32 @@
-//! Carte POI-first (D35–D39, PRD `docs/architecture/viz-bases.md`) :
-//! service unique d'écriture des POI (`map_pins`), du **clustering
-//! backend** (D37) et des **positions GPS devices** (D38). École
-//! `services/flow.rs` : contrôleurs (et futurs outils IA) passent par ici,
-//! jamais par les entités directement.
+//! POI-first map (D35–D39, PRD `docs/architecture/viz-bases.md`):
+//! single write service for POIs (`map_pins`), **backend
+//! clustering** (D37) and **device GPS positions** (D38). Modelled on
+//! `services/flow.rs`: controllers (and future AI tools) go through here,
+//! never through the entities directly.
 //!
-//! Règles portées ici (la DB ne les a pas toutes) :
-//! - org imposé partout (D2) : device, media_asset, dashboard, diagram sont
-//!   résolus **dans l'org**, sinon `*Unknown` (→ 400/404 masqué) ;
-//! - POI **géo uniquement** en V1 (`mode="geo"`) — `mode`/`x`/`y` restent en
-//!   base pour les plans futurs sans hiérarchie (CHECK `chk_map_pins_mode_coords`) ;
-//! - D43 : un device = **un seul** placement (`device_placements`
-//!   UNIQUE `device_registry_id`) mais un POI porte
-//!   **plusieurs** devices ; `location_detail` par placement (in-site) ;
-//!   device résolu dans `device_registries` de l'org. Amendement
-//!   2026-09-13 : le **détachement** existe (DELETE placement, le device
-//!   redevient libre) ; attacher ailleurs reste possible = déplacer (PATCH
-//!   `pin_id`, confirmation 409) — l'unicité ne bouge pas ;
-//! - champs d'usage carte **typés et validés** (hardening) :
-//!   `location_detail` ≤ 255, emoji ≤ 8 chars, lat/lon bornés — le
-//!   `metadata` JSONB libre reste pour le reste (école device.metadata) ;
-//! - liens (D39 → D42) : arêtes `placed_on` de la couche d'organisation
-//!   transverse (`resource_edges`, `viz_links` absorbé) — cibles à
-//!   existence org validée ; suppression du POI ⇒ purge **symétrique** des
-//!   arêtes (2 bouts) via `resources::purge_for` ;
-//! - D38 : convention GPS = métriques télémétrie `latitude`/`longitude`
-//!   (WGS84 degrés décimaux) + optionnels `gps_*` ; **dernière** position
-//!   par device upsertée au tap du sink (`GpsTapSink`) ; l'historique
-//!   complet reste dans OpenObserve (séries métriques par org).
+//! Rules carried here (the DB does not have them all):
+//! - org enforced everywhere (D2): device, media_asset, dashboard, diagram are
+//!   resolved **within the org**, otherwise `*Unknown` (→ masked 400/404);
+//! - POI **geo only** in V1 (`mode="geo"`) — `mode`/`x`/`y` stay in the
+//!   database for future floor plans without hierarchy (CHECK `chk_map_pins_mode_coords`);
+//! - D43: a device = **a single** placement (`device_placements`
+//!   UNIQUE `device_registry_id`) but a POI carries
+//!   **several** devices; `location_detail` per placement (in-site);
+//!   device resolved in the org's `device_registries`. Amendment
+//!   2026-09-13: **detaching** exists (DELETE placement, the device
+//!   becomes free again); attaching elsewhere stays possible = moving (PATCH
+//!   `pin_id`, 409 confirmation) — uniqueness does not change;
+//! - map usage fields **typed and validated** (hardening):
+//!   `location_detail` ≤ 255, emoji ≤ 8 chars, bounded lat/lon — the free
+//!   JSONB `metadata` stays for the rest (device.metadata pattern);
+//! - links (D39 → D42): `placed_on` edges of the cross-cutting organisation
+//!   layer (`resource_edges`, `viz_links` absorbed) — targets with
+//!   org existence validated; deleting the POI ⇒ **symmetric** purge of the
+//!   edges (both ends) via `resources::purge_for`;
+//! - D38: GPS convention = telemetry metrics `latitude`/`longitude`
+//!   (WGS84 decimal degrees) + optional `gps_*`; **latest** position
+//!   per device upserted at the sink tap (`GpsTapSink`); the full
+//!   history stays in OpenObserve (metric series per org).
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -44,17 +44,17 @@ use crate::models::_entities::{
 };
 use crate::services::telemetry::{TelemetryPoint, TelemetrySink};
 
-/// Pictogramme par défaut d'un POI (un graphème emoji, rendu comme du texte).
+/// Default pictogram of a POI (one emoji grapheme, rendered as text).
 pub const PIN_EMOJI_DEFAULT: &str = "📍";
 pub const PIN_MODE_GEO: &str = "geo";
 
-/// Aperçu épinglé : kinds épinglables (objets attachés à visuel read-only —
-/// les devices n'ont pas d'aperçu).
+/// Pinned preview: pinnable kinds (attached objects with a read-only visual —
+/// devices have no preview).
 pub const PREVIEW_KINDS: [&str; 3] = ["media_asset", "dashboard", "tour"];
 
-/// D37 : au-delà de ce nombre de points dans la bbox, on agrège en clusters.
+/// D37: beyond this number of points in the bbox, we aggregate into clusters.
 pub const CLUSTER_INDIVIDUAL_MAX: usize = 200;
-/// D37 : cap d'items renvoyés (cellule doublée jusqu'à tenir dans le cap).
+/// D37: cap on returned items (cell doubled until it fits in the cap).
 pub const CLUSTER_ITEMS_CAP: usize = 500;
 pub const ZOOM_MAX: i32 = 22;
 
@@ -96,11 +96,11 @@ mod tests {
         assert!((cell_size_deg(0) - 45.0).abs() < 1e-9, "360 / (8 × 2⁰)");
         assert!((cell_size_deg(1) - 22.5).abs() < 1e-9);
         assert!(cell_size_deg(10) < cell_size_deg(5));
-        assert_eq!(cell_size_deg(-5), cell_size_deg(0), "zoom borné bas");
+        assert_eq!(cell_size_deg(-5), cell_size_deg(0), "zoom clamped low");
         assert_eq!(
             cell_size_deg(99),
             cell_size_deg(ZOOM_MAX),
-            "zoom borné haut"
+            "zoom clamped high"
         );
     }
 
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn au_dessu_du_seuil_agregation_en_centroides() {
-        // 250 points quasi confondus + 1 très loin : 2 buckets (zoom 3).
+        // 250 nearly overlapping points + 1 very far: 2 buckets (zoom 3).
         let mut points: Vec<ClusterPoint> = (0..CLUSTER_INDIVIDUAL_MAX + 50)
             .map(|i| {
                 point(
@@ -135,22 +135,22 @@ mod tests {
             .collect();
         points.push(point("ffffffff-ffff-ffff-ffff-ffffffffff01", 10.0, 20.0));
         let items = cluster_points(&points, cell_size_deg(3));
-        assert_eq!(items.len(), 2, "deux cellules occupées");
+        assert_eq!(items.len(), 2, "two occupied cells");
         let big = items.iter().find(|i| i.count > 1).expect("groupe dense");
         assert_eq!(big.count as usize, CLUSTER_INDIVIDUAL_MAX + 50);
-        assert!(big.id.is_none(), "cluster sans id");
-        // Centroïde ≈ barycentre des jitter.
+        assert!(big.id.is_none(), "cluster without an id");
+        // Centroid ≈ barycentre of the jitter.
         assert!((big.lat - 45.0).abs() < 1e-4);
         assert!((big.lon - 4.0).abs() < 1e-4);
-        let lone = items.iter().find(|i| i.count == 1).expect("point isolé");
-        assert!(lone.id.is_some(), "singleton garde son id");
+        let lone = items.iter().find(|i| i.count == 1).expect("isolated point");
+        assert!(lone.id.is_some(), "singleton keeps its id");
         assert!((lone.lat - 10.0).abs() < 1e-9);
     }
 
     #[test]
     fn le_cap_ditems_doubl_la_cellule() {
-        // 300 points équirépartis en diagonale : à zoom 22 la cellule est
-        // minuscule → beaucoup de buckets ; le cap force la croissance.
+        // 300 points evenly spread on a diagonal: at zoom 22 the cell is
+        // tiny → many buckets; the cap forces growth.
         let points: Vec<ClusterPoint> = (0..CLUSTER_INDIVIDUAL_MAX + 100)
             .map(|i| {
                 point(
@@ -163,13 +163,13 @@ mod tests {
         let items = cluster_points(&points, cell_size_deg(22));
         assert!(
             items.len() <= CLUSTER_ITEMS_CAP,
-            "cap respecté : {} items",
+            "cap respected: {} items",
             items.len()
         );
         assert_eq!(
             items.iter().map(|i| i.count as usize).sum::<usize>(),
             points.len(),
-            "aucun point perdu"
+            "no point lost"
         );
     }
 
@@ -189,6 +189,6 @@ mod tests {
         let counts: Vec<u32> = items.iter().map(|i| i.count).collect();
         let mut sorted = counts.clone();
         sorted.sort_unstable_by(|a, b| b.cmp(a));
-        assert_eq!(counts, sorted, "items triés par count desc");
+        assert_eq!(counts, sorted, "items sorted by count desc");
     }
 }

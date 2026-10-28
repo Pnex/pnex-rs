@@ -1,10 +1,10 @@
-//! Page de connexion — portée du `AuthWrapper.tsx` React : wordmark logo
-//! officiel, fond animé « gerbe de faisceaux » WebGL2 (assets/tron-gerbe.js
-//! via le pont `crate::tron`), dégradé sombre en secours (WebGL2 absent).
+//! Login page — port of the React `AuthWrapper.tsx`: official logo
+//! wordmark, animated WebGL2 "beam sheaf" background (assets/tron-gerbe.js
+//! via the `crate::tron` bridge), dark gradient as fallback (no WebGL2).
 //!
-//! Le login est un **redirect PKCE** vers Rauthy via le proxy backend (pas
-//! de formulaire mot de passe dans l'UI) ; création de compte et réinitialisation
-//! passent par les pages UI Rauthy (register/account).
+//! Login is a **PKCE redirect** to Rauthy via the backend proxy (no
+//! password form in the UI); account creation and reset go through
+//! the Rauthy UI pages (register/account).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -15,21 +15,21 @@ use crate::tron;
 
 #[component]
 pub fn Login() -> Element {
-    // Les trois actions passent par le même flow PKCE sur toutes les cibles :
-    // web = redirection navigateur, natif = navigateur système + pont backend
+    // The three actions go through the same PKCE flow on every target:
+    // web = browser redirect, native = system browser + backend bridge
     // (auth/native.rs).
     let signin = move |_| api::auth::start_pkce_login(None);
     let register = move |_| api::auth::start_pkce_login(Some("register"));
     let reset = move |_| api::auth::start_pkce_login(Some("reset"));
 
-    // Libère canvas + contexte GL à la navigation hors login.
+    // Frees canvas + GL context when navigating away from login.
     use_drop(tron::unmount);
 
     rsx! {
         div { class: "relative min-h-screen overflow-hidden bg-gray-900",
-            // Fond : gerbe WebGL montée dans ce div au onmounted (id passé
-            // au pont JS) ; le dégradé teal sombre n'est visible que si
-            // WebGL2 manque — même teinte que le fond du shader.
+            // Background: WebGL sheaf mounted in this div on onmounted (id passed
+            // to the JS bridge); the dark teal gradient is only visible if
+            // WebGL2 is missing — same tint as the shader background.
             div {
                 id: "tron-gerbe-bg",
                 class: "absolute inset-0",
@@ -40,8 +40,8 @@ pub fn Login() -> Element {
             div { class: "relative z-10 min-h-screen flex items-center justify-center px-4",
                 div { class: "max-w-md w-full",
                     div { class: "bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-8 space-y-8",
-                        // Branding : wordmark officiel — le logo contient déjà
-                        // le nom, pas de titre texte redondant.
+                        // Branding: official wordmark — the logo already holds
+                        // the name, no redundant text title.
                         div { class: "text-center",
                             img {
                                 src: asset!("/assets/logo.png"),
@@ -73,8 +73,8 @@ pub fn Login() -> Element {
                                     {t!("login-reset")}
                                 }
                             }
-                            // Sélection du serveur auto-hébergé intégrée à la
-                            // page (façon Bitwarden) — web : ne rend rien.
+                            // Self-hosted server selection built into the
+                            // page (Bitwarden-style) — web: renders nothing.
                             crate::pages::server_url::SelfHostedSection {}
                         }
 
@@ -88,9 +88,9 @@ pub fn Login() -> Element {
                                 option { value: "en-US", "English" }
                             }
                         }
-                        // Version de l'app — visible avant toute connexion :
-                        // le refus propre (porte de compatibilité) s'appuie
-                        // sur une identification claire des deux côtés.
+                        // App version — visible before any login:
+                        // the clean refusal (compatibility gate) relies
+                        // on a clear identification of both sides.
                         p { class: "pt-3 text-center text-xs text-gray-500",
                             {t!("login-app-version", version : crate ::version::APP_VERSION)}
                         }

@@ -1,6 +1,6 @@
-//! Client API de la carte POI-first (D35–D39) : POI, clustering backend
-//! (D37), liens typés (D39), positions GPS devices (D38). Miroir de
-//! `controllers/pois.rs` (contrat : `docs/contracts/viz.http`).
+//! API client for the POI-first map (D35–D39): POI, backend clustering
+//! (D37), typed links (D39), device GPS positions (D38). Mirror of
+//! `controllers/pois.rs` (contract: `docs/contracts/viz.http`).
 
 use serde::{Deserialize, Serialize};
 
@@ -10,8 +10,8 @@ use crate::api::media::urlencode;
 
 // ─────────────────────────── DTO ───────────────────────────
 
-/// Arête POI→cible (D42 : `resource_edges`, `viz_links` absorbé) —
-/// l'id est un entier, le `label` vit dans `placement.label`.
+/// POI→target edge (D42: `resource_edges`, `viz_links` absorbed) —
+/// the id is an integer, the `label` lives in `placement.label`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VizLink {
     pub id: i64,
@@ -20,40 +20,40 @@ pub struct VizLink {
     pub target_kind: String,
     pub target_id: String,
     pub placement: Option<serde_json::Value>,
-    /// Nom résolu côté serveur (batch org) — `None` si cible morte ou
-    /// hydratation en échec.
+    /// Name resolved server-side (org batch) — `None` if the target is dead or
+    /// hydration failed.
     #[serde(default)]
     pub target_label: Option<String>,
-    /// Cible disparue des tables (supprimée hors cascade) — ligne
-    /// désactivée côté UI (D26 : tolérée au rendu, jamais panic).
+    /// Target gone from the tables (deleted outside a cascade) — row
+    /// disabled in the UI (D26: tolerated at render, never a panic).
     #[serde(default)]
     pub target_dead: bool,
 }
 
-/// Placement d'un device sur un POI (D43) — plusieurs devices par repère,
-/// mais un device = **un seul** placement à la fois (objet physique).
+/// Placement of a device on a POI (D43) — several devices per marker,
+/// but a device = **a single** placement at a time (physical object).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DevicePlacement {
     pub id: i64,
     pub device_id: String,
-    /// Localisation fine dans le site (« Rack 3 — Allée B »).
+    /// Fine location within the site ("Rack 3 — Aisle B").
     pub location_detail: Option<String>,
 }
 
-/// Le POI (objet primaire de la carte — D35).
+/// The POI (primary object of the map — D35).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Poi {
     pub id: String,
     pub mode: String,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
-    /// Devices placés sur ce POI (D43 — remplace la colonne `device_id`).
+    /// Devices placed on this POI (D43 — replaces the `device_id` column).
     #[serde(default)]
     pub devices: Vec<DevicePlacement>,
     pub label: String,
     pub emoji: String,
     pub location_detail: Option<String>,
-    /// Aperçu épinglé (000020) : kind ∈ media_asset | dashboard | tour.
+    /// Pinned preview (000020): kind ∈ media_asset | dashboard | tour.
     #[serde(default)]
     pub preview_kind: Option<String>,
     #[serde(default)]
@@ -64,8 +64,8 @@ pub struct Poi {
     pub updated_at: String,
 }
 
-/// Position GPS live d'un device (D38 — dernière connue, source
-/// `telemetry` ou `manual`).
+/// Live GPS position of a device (D38 — last known, source
+/// `telemetry` or `manual`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DevicePosition {
     pub device_id: String,
@@ -79,8 +79,8 @@ pub struct DevicePosition {
     pub positioned_at: String,
 }
 
-/// Item de la réponse cluster : point individuel (`count == 1`, `id`
-/// renseigné) ou cluster numéroté (D37).
+/// Item of the cluster response: single point (`count == 1`, `id`
+/// set) or numbered cluster (D37).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ClusterItem {
     pub lat: f64,
@@ -115,8 +115,8 @@ pub struct PoiFilters {
 }
 
 impl PoiFilters {
-    /// Paires de filtres communes liste / cluster (bbox/zoom/pagination en
-    /// plus selon l'endpoint).
+    /// Filter pairs shared by list / cluster (bbox/zoom/pagination on
+    /// top depending on the endpoint).
     fn filter_pairs(&self) -> Vec<String> {
         let mut pairs: Vec<String> = Vec::new();
         if let Some(search) = self.search.as_deref().filter(|s| !s.is_empty()) {
@@ -165,7 +165,7 @@ pub struct PoiPage {
 
 // ─────────────────────────── POI ───────────────────────────
 
-/// `GET /api/v1/pois` — liste globale org (D14).
+/// `GET /api/v1/pois` — global org list (D14).
 pub async fn list_pois(filters: &PoiFilters) -> Result<PoiPage, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -175,7 +175,7 @@ pub async fn list_pois(filters: &PoiFilters) -> Result<PoiPage, ApiError> {
     .await
 }
 
-/// `POST /api/v1/pois` — création (label + lat/lon requis).
+/// `POST /api/v1/pois` — creation (label + lat/lon required).
 pub async fn create_poi(body: serde_json::Value) -> Result<Poi, ApiError> {
     client::request(reqwest::Method::POST, "/api/v1/pois", Some(body)).await
 }
@@ -185,8 +185,8 @@ pub async fn poi_detail(id: &str) -> Result<Poi, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/pois/{id}"), None).await
 }
 
-/// `PATCH /api/v1/pois/{id}` — édition/déplacement (`null` efface : emoji,
-/// location_detail ; 1 PATCH au pointer-up, D34).
+/// `PATCH /api/v1/pois/{id}` — edit/move (`null` clears: emoji,
+/// location_detail; 1 PATCH on pointer-up, D34).
 pub async fn update_poi(id: &str, body: serde_json::Value) -> Result<Poi, ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -196,7 +196,7 @@ pub async fn update_poi(id: &str, body: serde_json::Value) -> Result<Poi, ApiErr
     .await
 }
 
-/// `POST /api/v1/pois/{id}/devices` — attache un device (D43, délibéré).
+/// `POST /api/v1/pois/{id}/devices` — attaches a device (D43, deliberate).
 /// 409 = device already placed: `ApiError.args` carries the current
 /// placement (`current_placement_id`, `current_pin_id`, `current_pin_label`,
 /// strings) so the UI offers the move knowingly.
@@ -216,9 +216,9 @@ pub async fn attach_poi_device(
     .await
 }
 
-/// `PATCH /api/v1/pois/placements/{id}` — édition de `location_detail`
-/// et/ou **déplacement** (`{"pin_id": …}`). Le retrait passe par
-/// [`delete_poi_placement`] (amendement D43, 2026-09-13).
+/// `PATCH /api/v1/pois/placements/{id}` — edits `location_detail`
+/// and/or **moves** (`{"pin_id": …}`). Removal goes through
+/// [`delete_poi_placement`] (D43 amendment, 2026-09-13).
 pub async fn update_poi_placement(
     placement_id: i64,
     body: serde_json::Value,
@@ -231,9 +231,9 @@ pub async fn update_poi_placement(
     .await
 }
 
-/// `DELETE /api/v1/pois/placements/{id}` — détache le device (204) : il
-/// redevient libre, plaçable n'importe où ; « au plus un POI à la fois »
-/// reste garanti par l'UNIQUE côté serveur (amendement D43).
+/// `DELETE /api/v1/pois/placements/{id}` — detaches the device (204): it
+/// becomes free again, placeable anywhere; "at most one POI at a time"
+/// stays guaranteed by the server-side UNIQUE (D43 amendment).
 pub async fn delete_poi_placement(placement_id: i64) -> Result<Option<()>, ApiError> {
     client::request_opt(
         reqwest::Method::DELETE,
@@ -243,7 +243,7 @@ pub async fn delete_poi_placement(placement_id: i64) -> Result<Option<()>, ApiEr
     .await
 }
 
-/// `DELETE /api/v1/pois/{id}` — 204 (liens sources en cascade).
+/// `DELETE /api/v1/pois/{id}` — 204 (source links cascade).
 pub async fn delete_poi(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(reqwest::Method::DELETE, &format!("/api/v1/pois/{id}"), None).await
 }
@@ -268,12 +268,12 @@ pub async fn cluster_pois(
     .await
 }
 
-// ─────────────────────────── liens (D39 → D42) ───────────────────────────
-// Attach/detach passent désormais par le client générique `api::resources`
-// (`POST|DELETE /api/v1/resources/edges`, thin-wrappers `/viz/links`
-// legacy) — voir `pages/map.rs`.
+// ─────────────────────────── links (D39 → D42) ───────────────────────────
+// Attach/detach now go through the generic `api::resources` client
+// (`POST|DELETE /api/v1/resources/edges`, `/viz/links` legacy
+// thin-wrappers) — see `pages/map.rs`.
 
-// ─────────────────────────── positions GPS (D38) ───────────────────────────
+// ─────────────────────────── GPS positions (D38) ───────────────────────────
 
 /// `GET /api/v1/device-positions`: live layer of the map (15 s poll),
 /// every page.

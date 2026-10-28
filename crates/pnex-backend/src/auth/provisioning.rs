@@ -1,13 +1,13 @@
 //! JIT provisioning (multi-tenant):
-//! à la première requête authentifiée d'un utilisateur IdP inconnu, on
-//! crée en une transaction :
+//! on the first authenticated request of an unknown IdP user, we
+//! create in one transaction:
 //!
-//! 1. `users` (idp_sub = `sub` de l'IdP, email, full_name)
+//! 1. `users` (idp_sub = IdP `sub`, email, full_name)
 //! 2. `user_profiles` (default values)
-//! 3. son **organisation personnelle** (owner) sur le tier **Free**
+//! 3. their **personal organization** (owner) on the **Free** tier
 //!
-//! Un utilisateur déjà connu est resynchronisé si son email/nom change côté
-//! Rauthy. Idempotent et sûr en concurrence (re-vérification dans la tx).
+//! An already known user is resynchronized if their email/name changes on the
+//! Rauthy side. Idempotent and concurrency-safe (re-check inside the tx).
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -24,7 +24,7 @@ use super::claims::Claims;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProvisionError {
-    #[error("le token ne contient pas d'email — requis à la première connexion")]
+    #[error("the token carries no email — required on first login")]
     MissingEmail,
     /// An account already uses this email, and the IdP did not verify it:
     /// relinking would let anyone claiming the address take the account
@@ -35,8 +35,8 @@ pub enum ProvisionError {
     Db(#[from] sea_orm::DbErr),
 }
 
-/// Trouve l'utilisateur par `idp_sub`, ou le crée avec son profil et
-/// son org personnelle owner (tier Free).
+/// Finds the user by `idp_sub`, or creates them with their profile and
+/// their personal owner org (Free tier).
 ///
 /// Then promotes the user to platform admin when their email is listed in
 /// `PNEX_PLATFORM_ADMIN_EMAILS` (the flag is never revoked automatically:
@@ -106,8 +106,8 @@ async fn find_or_create_user(
 
     db.transaction(|txn| {
         Box::pin(async move {
-            // Re-vérification dans la transaction : deux requêtes simultanées du
-            // même nouvel utilisateur ne doivent produire qu'une ligne users.
+            // Re-check inside the transaction: two simultaneous requests from the
+            // same new user must produce only one users row.
             if let Some(existing) = users::Entity::find()
                 .filter(users::Column::IdpSub.eq(&idp_sub))
                 .one(txn)
@@ -116,10 +116,10 @@ async fn find_or_create_user(
                 return Ok(existing);
             }
 
-            // Liaison par email : même personne avec un `sub` inconnu (IdP
-            // migré — cas concret : Keycloak → Rauthy, les subs changent ; ou
-            // realm réimporté). `users.email` est unique : on RE-LIE la ligne
-            // existante au lieu d'insérer un doublon (qui violerait la contrainte).
+            // Link by email: same person with an unknown `sub` (migrated
+            // IdP — real case: Keycloak → Rauthy, subs change; or a
+            // re-imported realm). `users.email` is unique: we RE-LINK the existing
+            // row instead of inserting a duplicate (which would violate the constraint).
             if let Some(existing) = users::Entity::find()
                 .filter(users::Column::Email.eq(&email))
                 .one(txn)
@@ -137,7 +137,7 @@ async fn find_or_create_user(
                 let relinked = active.update(txn).await?;
                 tracing::info!(
                     user_id = relinked.id,
-                    "utilisateur re-lie par email (sub IdP change, migration Keycloak→Rauthy)"
+                    "user re-linked by email (IdP sub changed, Keycloak→Rauthy migration)"
                 );
                 return Ok(relinked);
             }
@@ -192,8 +192,8 @@ async fn sync_user(
     Ok(user)
 }
 
-/// Org personnelle : tier par défaut (`PNEX_DEFAULT_ORG_TIER`, dev : Admin
-/// pour débrider le compte de test — Free sinon), l'utilisateur en est owner.
+/// Personal org: default tier (`PNEX_DEFAULT_ORG_TIER`, dev: Admin
+/// to unlock the test account — Free otherwise), the user is its owner.
 async fn create_personal_org<C>(
     db: &C,
     user: &users::Model,
@@ -216,8 +216,8 @@ where
 
     // Language-neutral name: the UI renders it as is in every locale (O41).
     let base = display.to_string();
-    // `organizations.name` est unique : on suffixe par l'id user en cas de
-    // collision (deux « Alice Martin » peuvent exister).
+    // `organizations.name` is unique: we suffix with the user id on
+    // collision (two "Alice Martin" can exist).
     let name = match organizations::Entity::find()
         .filter(organizations::Column::Name.eq(&base))
         .one(db)

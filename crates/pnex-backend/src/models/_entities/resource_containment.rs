@@ -1,8 +1,8 @@
-//! `SeaORM` Entity — couche d'organisation transverse (D42).
+//! `SeaORM` Entity — cross-cutting organization layer (D42).
 //!
-//! Arbre d'appartenance : un seul parent par enfant (index unique
-//! `uniq_resource_containment_child`). Pas de FK polymorphe — existence +
-//! tenancy validées par le service ; `purge_for` remplace la cascade.
+//! Membership tree: a single parent per child (unique index
+//! `uniq_resource_containment_child`). No polymorphic FK — existence +
+//! tenancy validated by the service; `purge_for` replaces the cascade.
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ pub struct Model {
     pub child_id: String,
     pub parent_kind: String,
     pub parent_id: String,
-    /// Ordre stable au sein du parent (drag & drop) — léxicographique.
+    /// Stable order within the parent (drag & drop) — lexicographic.
     pub sort_key: Option<String>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

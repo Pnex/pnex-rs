@@ -1,5 +1,5 @@
-//! Pagineur réutilisable — navigue un signal de page 0-based sur une liste
-//! paginée serveur (enveloppe `{count, …}` D14). Caché si une seule page.
+//! Reusable pager — navigates a 0-based page signal over a server-paginated
+//! list (`{count, …}` D14 envelope). Hidden if there is a single page.
 
 use crate::components::ui::BTN_SECONDARY_SM;
 use dioxus::prelude::*;
@@ -7,15 +7,15 @@ use dioxus_i18n::t;
 
 #[component]
 pub fn Pager(
-    /// Total renvoyé par l'enveloppe.
+    /// Total returned by the envelope.
     count: i64,
-    /// Taille de page de la liste.
+    /// Page size of the list.
     page_size: i64,
-    /// Signal de la page courante (0-based).
+    /// Signal of the current page (0-based).
     page: Signal<i64>,
     on_navigate: Callback<i64>,
 ) -> Element {
-    // Arrondi supérieur (div_ceil signé instable sur cette toolchain).
+    // Ceiling division (signed div_ceil unstable on this toolchain).
     let pages = (count + page_size - 1) / page_size;
     if pages <= 1 {
         return rsx! {};

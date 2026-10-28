@@ -1,0 +1,208 @@
+# Country layer "B2B prospecting, France" (account-mapping.md D337, D343)
+# of the generic `prospecting_b2b` pack. Convention: `<generic pack>_<country>`
+# is the country layer of a generic pack (like `companies_fr` over
+# `companies`): it holds only what is specific to the country, here the
+# French registers. It joins `companies_fr` (SIREN, the register) and
+# `prospecting_b2b` (account status, list contacts), so neither has to know
+# the other.
+# Target list: one API import per saved search of the company register
+# (its filters in the URL: NAF codes, headcount bands, département…), paged
+# up to the register's 10,000 results. New SIRENs enter as `target`; an
+# existing account keeps its status. The latest revenue the company
+# published fills `last_revenue` (its year stays in the register). The
+# search gives the legal unit and its head office, not the other sites: the
+# register import of `companies_fr` brings them, company by company.
+# The shipped URL is an example (manufacturing, 100 employees and more,
+# active): edit it to the org's ideal customer before running.
+# Legal announcements (D335, BODACC): for each followed account (customer,
+# prospect, target), the announcements of the register of commerce (sales,
+# changes, openings, insolvency proceedings; account filings left out)
+# become commercial signals linked to the account, `to_validate` when first
+# seen and never reset after a human decided.
+# List contacts (D337, type and file import in `prospecting_b2b`): a flow
+# finds each company's SIREN in the French register (`org_resolve`), fills
+# the contact's `registry_id`, creates the company and proposes the
+# contact's attachment to it (to validate); an ambiguous company keeps its
+# candidates for a human.
+# Since 2.0.0 every identifier is English (breaking); the pack was
+# `prospection_fr` before 2.0.0.
+key: prospecting_b2b_fr
+name: B2B prospecting, France layer
+names: {fr: "Prospection B2B, couche France"}
+version: "2.0.0"
+requires: [companies_fr, prospecting_b2b]
+description: "The French layer of B2B prospecting: target lists from the company register (a saved search becomes accounts to target, without touching the status of known accounts), legal announcements as signals, and the SIREN of list contacts."
+descriptions: {fr: "La couche France de la prospection B2B : listes de ciblage depuis le registre des entreprises (une recherche enregistrée devient des comptes à cibler, sans toucher au statut des comptes connus), annonces légales en signaux, et SIREN des contacts de liste."}
+imports:
+  - name: Target list (company register search)
+    source: api
+    source_url: "https://recherche-entreprises.api.gouv.fr/search?section_activite_principale=C&tranche_effectif_salarie=22,31,32,41,42,51,52,53&etat_administratif=A&per_page=25"
+    max_pages: 400
+    mapping:
+      key: targeting_list
+      name: Target list
+      names: {fr: "Liste de ciblage"}
+      format: json
+      rows: results
+      page_param: page
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          title: nom_complet
+          defaults: { account_status: target }
+          properties:
+            siren: siren
+            legal_form: nature_juridique
+            naf: activite_principale
+            administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, C: ceased } }] }
+            created_on: date_creation
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [&headcount_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [&headcount_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
+            country: { value: FR }
+            activity_code: { from: activite_principale, convert: ["left:5"] }
+            last_revenue: { from: finances.@last.ca, convert: ["money:EUR"] }
+        - as: siege
+          type: map_pin
+          key: siret
+          title: nom_complet
+          location: { lat: siege.latitude, lon: siege.longitude }
+          properties:
+            siret: siege.siret
+            head_office: { value: true }
+            administrative_state: { from: siege.etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
+            headcount_band: siege.tranche_effectif_salarie
+            headcount_min: { from: siege.tranche_effectif_salarie, convert: [*headcount_min] }
+            headcount_max: { from: siege.tranche_effectif_salarie, convert: [*headcount_max] }
+      links:
+        - { type: establishment_of, from: siege, to: ul }
+  - name: Legal announcements (BODACC)
+    source: api
+    source_url: "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=registre%3D%22{value}%22%20and%20familleavis!%3D%22dpc%22&order_by=dateparution%20desc&limit=20"
+    max_pages: 200
+    mapping:
+      key: bodacc
+      name: Legal announcements
+      names: {fr: "Annonces légales (BODACC)"}
+      format: json
+      rows: results
+      per_object:
+        type: organization
+        property: siren
+        only: { property: account_status, values: [customer, prospect, target] }
+      objects:
+        - as: ul
+          type: organization
+          key: siren
+          create: false
+          missing: skip
+          properties:
+            siren: { from: registre.0, convert: [digits] }
+        - as: sig
+          type: sales_signal
+          key: ref
+          title: { concat: [commercant, familleavis_lib], sep: " · " }
+          needs: ul
+          defaults: { state: to_validate }
+          properties:
+            ref: id
+            kind: { from: familleavis, convert: [{ enum: { creation: new_establishment, radiation: establishment_closure, "*": legal_notice } }] }
+            topic: familleavis
+            summary: { concat: [familleavis_lib, typeavis_lib], sep: " — " }
+            date: dateparution
+            source_url: url_complete
+        - as: sig_modif
+          type: sales_signal
+          key: ref
+          when: { from: familleavis, equals: modification }
+          needs: ul
+          properties:
+            ref: id
+            excerpt: { from: modificationsgenerales, convert: [json, "field:descriptif"] }
+        - as: sig_jugement
+          type: sales_signal
+          key: ref
+          when: { from: familleavis, equals: collective }
+          needs: ul
+          properties:
+            ref: id
+            excerpt: { from: jugement, convert: [json, "field:nature"] }
+        - as: sig_acte
+          type: sales_signal
+          key: ref
+          when: { from: familleavis, equals: immatriculation }
+          needs: ul
+          properties:
+            ref: id
+            excerpt: { from: acte, convert: [json, "field:descriptif"] }
+      links:
+        - { type: signal_about, from: sig, to: ul }
+functions:
+  - name: pl_prepare
+    language: starlark
+    description: The company of a list contact, as org_resolve asks it.
+    code: |
+      # The contact travels with the lookup (msg.contact).
+      def handle(inputs, msg):
+          p = msg["payload"]
+          o = msg["object"]
+          return {
+              "payload": {"name": p.get("company", ""), "city": p.get("city", ""),
+                          "postcode": p.get("postal_code", "")},
+              "contact": {"id": o["id"], "title": o["title"]},
+          }
+  - name: pl_found
+    language: starlark
+    description: A company found for a list contact, and the contact marked.
+    code: |
+      # @output company any "The company to create or update, by SIREN"
+      # @output contact any "The contact, marked found"
+      def handle(inputs, msg):
+          p = msg["payload"]
+          best = p["candidates"][0]
+          return [
+              {"payload": {"siren": best["siren"], "country": "FR"}, "title": best["name"]},
+              {"payload": {"matching": "found", "registry_id": best["siren"]},
+               "object_id": msg["contact"]["id"]},
+          ]
+  - name: pl_review
+    language: starlark
+    description: An ambiguous or unknown company, its candidates kept for a human.
+    code: |
+      def handle(inputs, msg):
+          c = msg["payload"].get("candidates", [])
+          lines = [x["name"] + " (" + x["siren"] + ", " + x.get("city", "") + ", " + str(x["score"]) + ")" for x in c]
+          return {
+              "payload": {"matching": "to_review" if lines else "not_found",
+                          "candidates": "\n".join(lines)},
+              "object_id": msg["contact"]["id"],
+          }
+  - name: pl_link
+    language: starlark
+    description: Proposed attachment of the list contact to the company found.
+    code: |
+      def handle(inputs, msg):
+          return {"payload": {"source_id": msg["contact"]["id"], "target_id": msg["object"]["id"],
+                              "attributes": {}}}
+flows:
+  - name: "Prospection · list contacts to companies"
+    note: "Every 15 minutes, up to 100 list contacts not looked up yet get their company's SIREN from the company register (org_resolve): a clear match creates the company and proposes the contact's attachment on the To validate page; an ambiguous one keeps its candidates on the contact (Company found: to_review). Deploy after importing a list."
+    graph:
+      nodes:
+        - { id: tick, kind: inject, config: { cron: "*/15 * * * *" }, outputs: [{ port: 0, targets: [todo] }] }
+        - id: todo
+          kind: ontology_query
+          config:
+            object_type: list_contact
+            filters: [{ key: matching, op: missing }]
+            limit: 100
+          outputs: [{ port: 0, targets: [ask] }]
+        - { id: ask, kind: pnex_function, config: { function_name: pl_prepare, language: starlark }, outputs: [{ port: 0, targets: [resolve] }] }
+        - { id: resolve, kind: org_resolve, outputs: [{ port: 0, targets: [found] }, { port: 1, targets: [review] }] }
+        - { id: found, kind: pnex_function, config: { function_name: pl_found, language: starlark }, outputs: [{ port: 0, targets: [company] }, { port: 1, targets: [mark] }] }
+        - { id: company, kind: object_upsert, config: { object_type: organization, key: siren }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: pl_link, language: starlark }, outputs: [{ port: 0, targets: [attach] }] }
+        - { id: attach, kind: link_upsert, config: { link_type: contact_of, skip_closed: true, propose: true } }
+        - { id: review, kind: pnex_function, config: { function_name: pl_review, language: starlark }, outputs: [{ port: 0, targets: [mark] }] }
+        - { id: mark, kind: object_upsert, config: { object_type: list_contact, key: id } }

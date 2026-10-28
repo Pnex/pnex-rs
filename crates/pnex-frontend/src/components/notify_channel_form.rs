@@ -1,11 +1,11 @@
-//! Formulaire de canal de notification — rendu **depuis le backend**
-//! (`GET /api/v1/notify/kinds` → `field_spec`, source unique de vérité,
-//! zéro drift front/back). École `ai_connector_form.rs` (pré-remplissage,
-//! secret « vide = garder », toasts).
+//! Notification channel form — rendered **from the backend**
+//! (`GET /api/v1/notify/kinds` → `field_spec`, single source of truth,
+//! zero front/back drift). `ai_connector_form.rs` school (prefill,
+//! secret "empty = keep", toasts).
 //!
-//! Secrets (D54) : jamais rendus — `secrets_set` affiche « défini » et le
-//! champ reste vide ; l'envoi met `null` pour les secrets non saisis
-//! (merge côté serveur = inchangé).
+//! Secrets (D54): never rendered — `secrets_set` shows "set" and the
+//! field stays empty; submitting sends `null` for secrets not typed
+//! (server-side merge = unchanged).
 //!
 //! Vault (secrets.md D113, lot S4): each `secret` field is a
 //! [`SecretField`] — type a value (owner/admin, stored in the channel's
@@ -22,16 +22,16 @@ use crate::components::ui::BTN_PRIMARY;
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
-/// Champs du formulaire : valeurs texte/secret/nombre par id de champ.
-/// Un seul signal-map (pas de `use_signal` par champ dans une boucle,
-/// piège dioxus #2784).
+/// Form fields: text/secret/number values by field id.
+/// A single signal-map (no `use_signal` per field in a loop,
+/// dioxus pitfall #2784).
 type FieldValues = std::collections::HashMap<String, String>;
 
 /// Vault state of each `secret` field, by field id.
 type SecretDrafts = std::collections::HashMap<String, SecretDraft>;
 
-/// Config JSON assemblé depuis le field_spec : secret → its vault input
-/// (`null` = unchanged), nombre → f64, texte → string.
+/// JSON config assembled from the field_spec: secret → its vault input
+/// (`null` = unchanged), number → f64, text → string.
 fn build_config(
     field_spec: &[FieldSpec],
     values: &FieldValues,
@@ -91,7 +91,7 @@ pub fn NotifyChannelForm(
             .unwrap_or_default()
     });
     let mut enabled = use_signal(|| existing.as_ref().map(|c| c.enabled).unwrap_or(true));
-    // Valeurs initiales = config masquée (les secrets sont null/vide).
+    // Initial values = masked config (secrets are null/empty).
     let values = use_signal::<FieldValues>(|| {
         let mut map = FieldValues::new();
         if let Some(ch) = &existing {
@@ -195,7 +195,7 @@ pub fn NotifyChannelForm(
                     }
                 }
 
-                // Formulaire généré depuis le field_spec backend.
+                // Form generated from the backend field_spec.
                 for f in field_spec.clone() {
                     if f.r#type == FieldType::Secret {
                         SecretSlot {
@@ -209,7 +209,7 @@ pub fn NotifyChannelForm(
                     }
                 }
 
-                // Canal websocket : aucun champ — bloc informatif.
+                // Websocket channel: no field, an informative block only.
                 if field_spec.is_empty() {
                     div { class: "rounded-lg bg-signal-50 border border-signal-200 p-3 text-sm text-signal-800",
                         {t!("notify-kind-in-app-noconfig")}
@@ -294,9 +294,9 @@ fn SecretSlot(spec: FieldSpec, mut drafts: Signal<SecretDrafts>, can_manage: boo
     }
 }
 
-/// Un champ du field_spec → son input (texte, nombre, select, bool).
-/// Composant dédié (pas de `use_signal` par champ dans une boucle) : lit et
-/// écrit dans la map partagée du formulaire.
+/// One field_spec field → its input (text, number, select, bool).
+/// Dedicated component (no `use_signal` per field in a loop): reads and
+/// writes the form's shared map.
 #[component]
 fn FieldInput(spec: FieldSpec, mut values: Signal<FieldValues>) -> Element {
     let id = spec.id.clone();

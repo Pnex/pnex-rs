@@ -1,17 +1,17 @@
-//! Base des URLs API, dépendante de la plateforme.
+//! API URL base, platform-dependent.
 //!
-//! - **web** : le front est servi par le backend → same-origin. reqwest exige
-//!   des URLs **absolues** (même en wasm, le parse `Url` refuse les chemins
-//!   seuls) : la base est donc l'origine de la page, sauf override à la
-//!   compilation (`PNEX_API_BASE_URL`, utilisé par la boucle de dev hot —
-//!   `task dev:hot` sert le front via dx sur :5151, l'API Loco est sur :5150).
-//! - **natif (future cible desktop/ios/android)** : le front n'est PAS servi
-//!   par le backend — URL serveur « auto-hébergée » façon Bitwarden, lue à
-//!   l'exécution (env, puis préférence stockée par l'écran `ServerUrl`).
-//!   C'est le seam multi-plateforme du portage : rien d'autre ne connaît
-//!   l'origine de l'API.
+//! - **web**: the front is served by the backend → same-origin. reqwest requires
+//!   **absolute** URLs (even in wasm, the `Url` parse rejects bare paths):
+//!   so the base is the page origin, unless overridden at compile time
+//!   (`PNEX_API_BASE_URL`, used by the hot dev loop —
+//!   `task dev:hot` serves the front via dx on :5151, the Loco API is on :5150).
+//! - **native (future desktop/ios/android target)**: the front is NOT served
+//!   by the backend — "self-hosted" server URL, Bitwarden style, read at
+//!   runtime (env, then the preference stored by the `ServerUrl` screen).
+//!   This is the multi-platform seam of the port: nothing else knows
+//!   the API origin.
 
-// Uniquement côté natif (lecture de l'URL serveur stockée — cible desktop).
+// Native only (reads the stored server URL — desktop target).
 #[cfg(not(target_arch = "wasm32"))]
 use crate::storage::KeyValueStorage;
 
@@ -37,11 +37,11 @@ fn normalize_locked(raw: Option<&str>) -> Option<String> {
     }
 }
 
-/// Base à préfixer à tous les chemins d'API (jamais de slash final).
+/// Base to prefix to every API path (never a trailing slash).
 pub fn api_base() -> String {
     #[cfg(target_arch = "wasm32")]
     {
-        // Compile-time d'abord (dev hot), sinon origine de la page (same-origin).
+        // Compile-time first (hot dev), else the page origin (same-origin).
         match option_env!("PNEX_API_BASE_URL") {
             Some(base) => base.trim_end_matches('/').to_string(),
             None => web_sys::window()
@@ -83,7 +83,7 @@ mod tests {
         );
     }
 
-    /// En natif sans config : base vide (la cible desktop fournira l'URL).
+    /// Native without config: empty base (the desktop target will provide the URL).
     #[test]
     #[cfg(not(target_arch = "wasm32"))]
     fn base_native_sans_config_vide() {

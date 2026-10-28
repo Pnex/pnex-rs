@@ -1,11 +1,11 @@
-//! Studio (mode panorama V1) — CRUD versionné des parcours de visite 3D,
-//! scoping org (D2). École `controllers/flows.rs` : save append-only avec
-//! concurrence optimiste (409), publication = pointeur `published_version_id`
-//! (pas de superviseur ici : publier un tour est un simple marquage DB).
+//! Studio (panorama mode V1) — versioned CRUD of 3D visit tours,
+//! org scoping (D2). `controllers/flows.rs` pattern: append-only save with
+//! optimistic concurrency (409), publication = `published_version_id` pointer
+//! (no supervisor here: publishing a tour is a simple DB flag).
 //!
-//! Le **share** génère un token (32 hex) qui expose la version publiée sur
-//! l'endpoint public sans auth (`controllers/public_tours.rs`, phase 2) —
-//! le token ne quitte l'API que pour les writers de l'org.
+//! **Share** generates a token (32 hex) that exposes the published version on
+//! the public endpoint without auth (`controllers/public_tours.rs`, phase 2) —
+//! the token only leaves the API for the org's writers.
 //!
 //! Errors: `ErrorDetail` everywhere (`field-invalid`, `tour-invalid` with
 //! `errors.violations`, coded 403/409); 404 hides other orgs.
@@ -44,7 +44,7 @@ fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
 
-/// Tour de l'org courante, sinon None (→ 404 masqué).
+/// Tour of the current org, otherwise None (→ hidden 404).
 async fn find_tour(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -57,7 +57,7 @@ async fn find_tour(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Dernière version d'un tour (numéro le plus élevé).
+/// Latest version of a tour (highest number).
 async fn latest_version(
     db: &DatabaseConnection,
     tour_id: Uuid,
@@ -70,7 +70,7 @@ async fn latest_version(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Numéro de la version publiée (résolu depuis la FK circulaire).
+/// Number of the published version (resolved from the circular FK).
 async fn published_number_of(
     db: &DatabaseConnection,
     published_version_id: Option<Uuid>,
@@ -181,8 +181,8 @@ fn tour_write_error_response(e: crate::services::tour::TourWriteError) -> Respon
 
 // ─────────────────────────── POST /tours ───────────────────────────
 
-/// `POST /api/v1/tours` — crée le tour **et sa version 1** (une
-/// transaction), document minimal (un étage « RDC »). Non publié.
+/// `POST /api/v1/tours` — creates the tour **and its version 1** (one
+/// transaction), minimal document (one "RDC" floor). Not published.
 #[utoipa::path(
     post,
     path = "/api/v1/tours",
@@ -246,8 +246,8 @@ struct ListToursQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/tours` — tours de l'org, paginés (D14), filtres `search`
-/// (nom) et `mode`.
+/// `GET /api/v1/tours` — org tours, paginated (D14), filters `search`
+/// (name) and `mode`.
 #[utoipa::path(
     get,
     path = "/api/v1/tours",
@@ -305,7 +305,7 @@ async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Hydratation en vrac (pas de N+1) : latest + numéro publié par tour.
+    // Bulk hydration (no N+1): latest + published number per tour.
     let ids: Vec<Uuid> = page_rows.iter().map(|t| t.id).collect();
     let latest: std::collections::HashMap<Uuid, i64> = if ids.is_empty() {
         Default::default()
@@ -379,8 +379,8 @@ struct DetailQuery {
     version: Option<i64>,
 }
 
-/// `GET /api/v1/tours/{id}[?version=n]` — détail + document (dernière
-/// version par défaut, ou la version demandée).
+/// `GET /api/v1/tours/{id}[?version=n]` — detail + document (latest
+/// version by default, or the requested version).
 #[utoipa::path(
     get,
     path = "/api/v1/tours/{id}",
@@ -445,8 +445,8 @@ async fn detail(
 
 // ─────────────────────────── PATCH /tours/{id} ───────────────────────────
 
-/// `PATCH /api/v1/tours/{id}` — enregistre une **nouvelle version**
-/// (append-only). 409 si `expected_version_number` ≠ version courante.
+/// `PATCH /api/v1/tours/{id}` — saves a **new version**
+/// (append-only). 409 if `expected_version_number` ≠ current version.
 #[utoipa::path(
     patch,
     path = "/api/v1/tours/{id}",
@@ -501,8 +501,8 @@ async fn update(
 
 // ─────────────────────────── DELETE /tours/{id} ───────────────────────────
 
-/// `DELETE /api/v1/tours/{id}` — 204 ; versions supprimées en cascade. Aucun
-/// octet à purger : les assets média sont référencés, jamais possédés (D21).
+/// `DELETE /api/v1/tours/{id}` — 204; versions deleted in cascade. No
+/// bytes to purge: media assets are referenced, never owned (D21).
 #[utoipa::path(
     delete,
     path = "/api/v1/tours/{id}",
@@ -525,7 +525,7 @@ async fn delete(
     let Some(tour) = find_tour(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // D42 : purge symétrique de la couche d'organisation avant le delete.
+    // D42: symmetric purge of the organization layer before the delete.
     crate::services::resources::purge_for(
         &ctx.db,
         org.org.id,
@@ -538,14 +538,14 @@ async fn delete(
         .exec(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    tracing::info!(tour_id = tour.id.to_string().as_str(), "tour supprimé");
+    tracing::info!(tour_id = tour.id.to_string().as_str(), "tour deleted");
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 // ─────────────────────────── GET /tours/{id}/versions ───────────────────────────
 
-/// `GET /api/v1/tours/{id}/versions` — historique append-only, paginé (D14),
-/// du plus récent au plus ancien.
+/// `GET /api/v1/tours/{id}/versions` — append-only history, paginated (D14),
+/// newest to oldest.
 #[utoipa::path(
     get,
     path = "/api/v1/tours/{id}/versions",
@@ -615,8 +615,8 @@ struct VersionsQuery {
 
 // ─────────────────────────── GET /tours/{id}/versions/{n} ───────────────────────────
 
-/// `GET /api/v1/tours/{id}/versions/{n}` — document d'une version précise
-/// (audit / rechargement éditeur — « restaurer » = la charger puis save).
+/// `GET /api/v1/tours/{id}/versions/{n}` — document of a specific version
+/// (audit / editor reload — "restore" = load it then save).
 #[utoipa::path(
     get,
     path = "/api/v1/tours/{id}/versions/{version_number}",
@@ -664,9 +664,9 @@ async fn version_detail(
 
 // ─────────────────────────── POST /tours/{id}/publish | /unpublish ───────────────────────────
 
-/// `POST /tours/{id}/publish` — publie une version (`version_number` absent =
-/// dernière) : simple marquage DB (le doc publié sert le viewer in-app et
-/// l'endpoint public).
+/// `POST /tours/{id}/publish` — publishes a version (`version_number` absent =
+/// latest): simple DB flag (the published doc serves the in-app viewer and
+/// the public endpoint).
 #[utoipa::path(
     post,
     path = "/api/v1/tours/{id}/publish",
@@ -718,7 +718,7 @@ async fn publish(
     tracing::info!(
         tour_id = tour.id.to_string().as_str(),
         version = version_number,
-        "tour publié"
+        "tour published"
     );
     let doc: pnex_core::TourDoc =
         serde_json::from_value(version.doc).map_err(|_| Error::InternalServerError)?;
@@ -737,8 +737,8 @@ async fn publish(
     .into_response())
 }
 
-/// `POST /tours/{id}/unpublish` — dépublie **et** révoque le lien public
-/// (un seul interrupteur « public »).
+/// `POST /tours/{id}/unpublish` — unpublishes **and** revokes the public link
+/// (a single "public" switch).
 #[utoipa::path(
     post,
     path = "/api/v1/tours/{id}/unpublish",
@@ -768,7 +768,7 @@ async fn unpublish(
         .update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    tracing::info!(tour_id = tour.id.to_string().as_str(), "tour dépublié");
+    tracing::info!(tour_id = tour.id.to_string().as_str(), "tour unpublished");
     let latest = latest_version(&ctx.db, tour.id).await?;
     let latest_number = latest.as_ref().map(|v| v.version_number).unwrap_or(0);
     let doc: pnex_core::TourDoc = latest
@@ -788,8 +788,8 @@ async fn unpublish(
 
 // ─────────────────────────── POST/DELETE /tours/{id}/share ───────────────────────────
 
-/// `POST /tours/{id}/share` — génère (ou régénère : l'ancien token meurt) le
-/// token du lien public. 409 `not_published` si aucune version publiée.
+/// `POST /tours/{id}/share` — generates (or regenerates: the old token dies) the
+/// public link token. 409 `not_published` if no version is published.
 #[utoipa::path(
     post,
     path = "/api/v1/tours/{id}/share",
@@ -826,7 +826,10 @@ async fn create_share(
         .update(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    tracing::info!(tour_id = tour.id.to_string().as_str(), "lien public généré");
+    tracing::info!(
+        tour_id = tour.id.to_string().as_str(),
+        "public link generated"
+    );
     Ok(format::json(TourShare {
         share_token: token,
         share_enabled: true,
@@ -842,8 +845,8 @@ struct TourShare {
     share_enabled: bool,
 }
 
-/// `DELETE /tours/{id}/share` — révoque le lien public en gardant la
-/// publication (le viewer in-app reste servi par `published_version_id`).
+/// `DELETE /tours/{id}/share` — revokes the public link while keeping the
+/// publication (the in-app viewer is still served by `published_version_id`).
 #[utoipa::path(
     delete,
     path = "/api/v1/tours/{id}/share",

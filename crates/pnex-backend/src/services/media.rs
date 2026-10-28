@@ -18,9 +18,9 @@ use pnex_firmware_builder::sanitize_segment;
 
 use crate::services::artifact_store::S3Config;
 
-/// Plafond d'un upload média — relevé explicitement sur les routes POST
-/// (`DefaultBodyLimit` ; aucun précédent dans le repo, premier chemin
-/// body-bytes).
+/// Media upload cap — raised explicitly on the POST routes
+/// (`DefaultBodyLimit`; no precedent in the repo, first
+/// body-bytes path).
 pub const DEFAULT_MAX_BYTES: usize = 256 * 1024 * 1024;
 
 /// Media settings — `settings.media` (env `PNEX_MEDIA_MAX_BYTES`); the
@@ -29,12 +29,12 @@ pub const DEFAULT_MAX_BYTES: usize = 256 * 1024 * 1024;
 pub struct MediaSettings {
     /// Object store (secret masked in Debug).
     pub storage: S3Config,
-    /// Plafond d'upload média (réponse 413 JSON propre au-delà ; la limite
-    /// axum, posée à max+1 Mo, reste le filet).
+    /// Media upload cap (clean JSON 413 beyond it; the axum
+    /// limit, set to max+1 MB, remains the safety net).
     pub max_bytes: usize,
 }
 
-/// Forme sérialisable partielle de `settings.media` (tout optionnel).
+/// Partial serializable form of `settings.media` (all optional).
 #[derive(Default, Deserialize)]
 struct MediaPartial {
     max_bytes: Option<usize>,
@@ -50,7 +50,7 @@ impl Default for MediaSettings {
 }
 
 impl MediaSettings {
-    /// `settings.media` optionnelle — défauts champ par champ.
+    /// Optional `settings.media` — defaults field by field.
     pub fn from_config(config: &Config) -> Self {
         let partial: MediaPartial = config
             .settings
@@ -76,7 +76,7 @@ impl MediaSettings {
         Ok(Arc::new(self.storage.store()?) as Arc<dyn MediaStore>)
     }
 
-    /// Clé logique d'une version média.
+    /// Logical key of a media version.
     pub fn storage_key(org_id: i64, asset_id: Uuid, version_number: i64, filename: &str) -> String {
         format!(
             "org_{org_id}/media/{asset_id}/{version_number}_{}",
@@ -114,27 +114,27 @@ pub fn multi_pod_configured(config: &Config) -> bool {
     !cluster.advertise_url.is_empty() || !cluster.token.is_empty()
 }
 
-/// Erreur du magasin média (école `BuildError` — trait local, pas de
-/// couplage à pnex-firmware-builder).
+/// Media store error (`BuildError` pattern — local trait, no
+/// coupling to pnex-firmware-builder).
 #[derive(Debug, thiserror::Error)]
 pub enum MediaError {
-    #[error("média introuvable : {0}")]
+    #[error("media not found: {0}")]
     NotFound(String),
-    #[error("magasin média : {0}")]
+    #[error("media store: {0}")]
     Store(String),
 }
 
-/// Magasin d'octets média (même forme que `ArtifactStore`, trait local).
+/// Media byte store (same shape as `ArtifactStore`, local trait).
 #[async_trait]
 pub trait MediaStore: Send + Sync {
-    /// Écrit (écrase si présent).
+    /// Writes (overwrites if present).
     ///
     /// Takes ownership of a ref-counted buffer: the upload body is handed
     /// to the store without any copy (a 256 MiB upload stays 256 MiB).
     async fn put(&self, key: &str, bytes: Bytes) -> Result<(), MediaError>;
-    /// `MediaError::NotFound` si absent.
+    /// `MediaError::NotFound` if absent.
     async fn get(&self, key: &str) -> Result<Vec<u8>, MediaError>;
-    /// Idempotent (absent ≠ erreur) — parité S3.
+    /// Idempotent (absent ≠ error) — S3 parity.
     async fn delete(&self, key: &str) -> Result<(), MediaError>;
     async fn exists(&self, key: &str) -> Result<bool, MediaError>;
 }
@@ -206,7 +206,7 @@ pub fn user_content_headers(declared: &str, filename: &str) -> [(&'static str, S
     ]
 }
 
-/// sha256 hexadécimal (école artifact_store).
+/// Hex sha256 (artifact_store pattern).
 pub fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -260,8 +260,8 @@ mod tests {
             .starts_with("inline"));
     }
 
-    /// Format de clé : org_{id}/media/{asset}/{version}_{filename} avec
-    /// sanitize du nom de fichier (hors [A-Za-z0-9._-] → `_`).
+    /// Key format: org_{id}/media/{asset}/{version}_{filename} with
+    /// the file name sanitized (outside [A-Za-z0-9._-] → `_`).
     #[test]
     fn cle_de_stockage_sanitize() {
         let asset = Uuid::new_v4();

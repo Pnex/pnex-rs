@@ -28,8 +28,8 @@ pub(super) fn field_status(field: &str, msg: &str) -> Response {
     crate::controllers::field_error(field, msg)
 }
 
-/// Asset de l'org courante, sinon None (→ 404 masquant le cross-org,
-/// école device_of_org). Uuid en Path : PK UUID (école sites).
+/// Asset of the current org, otherwise None (→ 404 masking cross-org,
+/// device_of_org school). Uuid in Path: UUID PK (sites school).
 pub(super) async fn find_asset(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -45,7 +45,7 @@ pub(super) async fn find_asset(
         })
 }
 
-/// Versions d'un asset, numéros croissants.
+/// Versions of an asset, ascending numbers.
 pub(super) async fn versions_of(
     db: &DatabaseConnection,
     asset_id: Uuid,

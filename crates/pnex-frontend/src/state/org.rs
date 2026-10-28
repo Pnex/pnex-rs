@@ -1,9 +1,9 @@
-//! Org courante (le tenant actif) — signal global réactif pour l'UI +
-//! persistance `pnex.org` lue par le client HTTP pour `X-Org-Id`.
+//! Current org (the active tenant) — reactive global signal for the UI +
+//! `pnex.org` persistence read by the HTTP client for `X-Org-Id`.
 //!
-//! Le stockage est la source de vérité du header ; le signal est le miroir
-//! réactif (écrit par le sélecteur d'org et la page Organisations, qui
-//! persistent en même temps).
+//! The storage is the source of truth of the header; the signal is the reactive
+//! mirror (written by the org selector and the Organisations page, which
+//! persist at the same time).
 
 use dioxus::prelude::*;
 
@@ -11,24 +11,24 @@ use crate::storage::{self, KeyValueStorage, KEY_ORG};
 
 pub static ORG: GlobalSignal<Option<i64>> = GlobalSignal::new(|| None);
 
-/// Org courante si définie.
+/// Current org if set.
 pub fn current() -> Option<i64> {
     *ORG.read()
 }
 
-/// Sélectionne l'org (et la persiste).
+/// Selects the org (and persists it).
 pub fn set(id: i64) {
-    // Méthode intrinsèque de Global (&self) — les static ne prêtent pas à
-    // &mut (les setters du trait Writable exigent &mut).
+    // Intrinsic method of Global (&self) — statics do not lend themselves to
+    // &mut (the setters of the Writable trait require &mut).
     ORG.with_mut(|v| *v = Some(id));
     storage::local().set(KEY_ORG, &id.to_string());
 }
 
-/// Restaure l'org au boot : la dernière sélectionnée si l'utilisateur en est
-/// toujours membre, sinon sa première org où il n'est pas viewer (l'org
-/// personnelle JIT en pratique — le backend liste les orgs par id croissant).
-/// Un viewer ne peut ni créer ni voir grand-chose : éviter ces orgs au
-/// fallback empêche d'atterrir sur une coquille vide (observation O1).
+/// Restores the org at boot: the last selected one if the user is
+/// still a member, otherwise their first org where they are not a viewer (the
+/// JIT personal org in practice — the backend lists orgs by increasing id).
+/// A viewer can neither create nor see much: avoiding these orgs on
+/// fallback prevents landing on an empty shell (observation O1).
 pub fn restore(memberships: &[pnex_core::OrgMembership]) {
     let stored = storage::local()
         .get(KEY_ORG)
@@ -47,7 +47,7 @@ pub fn restore(memberships: &[pnex_core::OrgMembership]) {
     }
 }
 
-/// Désélectionne l'org courante.
+/// Deselects the current org.
 pub fn clear() {
     ORG.with_mut(|v| *v = None);
     storage::local().remove(KEY_ORG);

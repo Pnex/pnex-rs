@@ -1,7 +1,7 @@
-//! Sélecteur d'asset média (modal) — liste filtrée par kind (école
-//! `UploadModal`/`AttachPlan` de la page média) : recherche + Pager, choix
-//! unique. Pas d'upload ici (le plan/panorama se prépare dans la page
-//! Média) — V1.
+//! Media asset picker (modal) — list filtered by kind (approach of the
+//! media page's `UploadModal`/`AttachPlan`): search + Pager, single
+//! choice. No upload here (the plan/panorama is prepared in the Media
+//! page) — V1.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -15,9 +15,9 @@ use crate::components::ui::INPUT;
 
 const PAGE_SIZE: i64 = 8;
 
-/// Modal de choix d'un asset média. `kind` = usage sémantique (étiquette +
-/// liste filtrée — le plan d'étage admet aussi les `photo`) ; `on_picked`
-/// au choix. Pas d'upload ici : la page Média prépare les fichiers.
+/// Modal to choose a media asset. `kind` = semantic use (label +
+/// filtered list — the floor plan also accepts `photo`); `on_picked`
+/// on choice. No upload here: the Media page prepares the files.
 #[component]
 pub(crate) fn MediaPicker(
     kind: MediaKind,
@@ -33,9 +33,9 @@ pub(crate) fn MediaPicker(
         _ => t!("media-kind-photo"),
     };
 
-    // Un plan d'étage n'exige pas le kind `floorplan` : n'importe quelle
-    // image s'affiche (photo incluse) — on liste les deux kinds. Les autres
-    // usages restent stricts (scène = panorama, sinon rendu cassé).
+    // A floor plan does not require the `floorplan` kind: any
+    // image displays (photo included) — we list both kinds. The other
+    // uses stay strict (scene = panorama, otherwise broken rendering).
     let kinds: Vec<MediaKind> = match kind {
         MediaKind::Floorplan => vec![MediaKind::Floorplan, MediaKind::Photo],
         other => vec![other],
@@ -96,8 +96,8 @@ pub(crate) fn MediaPicker(
                                 }
                             }
                         }
-                        // Le compte vient d'une resource séparée : on paginate
-                        // sur la taille de page courante (le Picker compte tout).
+                        // The count comes from a separate resource: we paginate
+                        // on the current page size (the Picker counts everything).
                         Pager {
                             count: items.len() as i64,
                             page_size: PAGE_SIZE,

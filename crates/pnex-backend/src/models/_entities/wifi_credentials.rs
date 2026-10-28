@@ -13,10 +13,10 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i64,
     #[sea_orm(unique_key = "uniq_wifi_credentials_org_ssid")]
-    /// Org propriétaire (référentiel org-scoped, FK CASCADE).
+    /// Owning org (org-scoped reference data, FK CASCADE).
     pub org_id: i64,
     #[sea_orm(unique_key = "uniq_wifi_credentials_org_ssid")]
-    /// Case-sensitive (byte-sensitive 802.11) — l'upsert (org, ssid) l'est aussi.
+    /// Case-sensitive (byte-sensitive 802.11) — so is the (org, ssid) upsert.
     pub ssid: String,
     /// Vault secret holding the password (secrets.md S6).
     pub secret_id: Option<Uuid>,

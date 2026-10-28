@@ -1,71 +1,71 @@
-//! Réglages du moteur de flow ETL (D18) — `settings.flow` de la config Loco,
-//! champ par champ avec défauts (pattern `FirmwareSettings`).
+//! ETL flow engine settings (D18) — `settings.flow` of the Loco config,
+//! field by field with defaults (`FirmwareSettings` pattern).
 //!
-//! Le runtime (`pnex-flow-runtime`) est un **process enfant supervisé** (mode
-//! B) : le backend ne lie jamais les crates EdgeLinkd — isolation du stade
-//! alpha. `enabled` (défaut `false`) coupe tout : sans lui ni process ni
-//! déploiement (les flows restent éditables en base).
+//! The runtime (`pnex-flow-runtime`) is a **supervised child process** (mode
+//! B): the backend never links the EdgeLinkd crates — alpha-stage
+//! isolation. `enabled` (default `false`) turns everything off: without it,
+//! no process and no deploy (flows stay editable in the database).
 
 use crate::services::openobserve::OpenobserveSettings;
 use loco_rs::config::Config;
 use serde::Deserialize;
 
-/// Réglages résolus du superviseur de flows.
+/// Resolved settings of the flow supervisor.
 ///
-/// Debug manuel : l'allowlist d'env ne sont que des *noms* de variables
-/// (les valeurs ne transitent jamais ici).
+/// Manual debug: the env allowlist holds only variable *names*
+/// (values never pass through here).
 #[derive(Clone)]
 pub struct FlowSettings {
-    /// Supervision + déploiement actifs (défaut : non).
+    /// Supervision + deploy enabled (default: no).
     pub enabled: bool,
-    /// Commande du runtime (résolue comme `resolve_program` du firmware :
-    /// chemin relatif → cwd → racine du monorepo).
+    /// Runtime command (resolved like the firmware's `resolve_program`:
+    /// relative path → cwd → monorepo root).
     pub runtime_cmd: String,
-    /// Répertoire d'état (flows.json + runtime.json).
+    /// State directory (flows.json + runtime.json).
     pub state_dir: String,
-    /// Backoff initial de relance après crash (exponentiel, borné).
+    /// Initial restart backoff after a crash (exponential, bounded).
     pub restart_backoff_secs: u64,
     /// Backoff maximal de relance.
     pub restart_backoff_max_secs: u64,
-    /// Délai SIGTERM → SIGKILL à l'arrêt du runtime.
+    /// SIGTERM → SIGKILL delay when stopping the runtime.
     pub terminate_secs: u64,
-    /// Délai d'attente de l'acquittement de rechargement (runtime.json).
+    /// Wait time for the reload acknowledgement (runtime.json).
     pub reload_ack_secs: u64,
-    /// Délai du pré-flight deploy (`--check` du runtime sur le candidat).
+    /// Deploy pre-flight timeout (runtime `--check` on the candidate).
     pub check_timeout_secs: u64,
-    /// Variables d'environnement autorisées à franchir la frontière vers le
+    /// Environment variables allowed to cross the boundary to the
     /// runtime (names only — e.g. `VALKEY_URL`; the runtime never gets
     /// `DATABASE_URL`).
     pub env_allowlist: Vec<String>,
-    /// Outils de debug (panneau Debug) actifs — **mode dev/debug uniquement** :
-    /// défaut `false`, activé par la config de dev ; en mode run l'endpoint
-    /// répond 403 et l'éditeur masque le bouton.
+    /// Debug tools (Debug panel) enabled — **dev/debug mode only**:
+    /// default `false`, enabled by the dev config; in run mode the endpoint
+    /// answers 403 and the editor hides the button.
     pub debug_tools: bool,
-    /// Credentials OpenObserve résolus depuis `settings.openobserve` du yaml
-    /// — **injectés** dans l'env enfant (OPENOBSERVE_URL/_ROOT_EMAIL/
-    /// _ROOT_PASSWORD) au-delà de l'allowlist : le serveur tient ces creds du
-    /// yaml, pas de son env process (qui ne les a jamais — retour e2e
-    /// 2026-09-04 : le nœud device échouait au build et le moteur
-    /// crash-loopait sans acquittement). Même domaine de confiance que
-    /// `DATABASE_URL`. `None` = O2 non configuré (tests).
+    /// OpenObserve credentials resolved from the yaml's `settings.openobserve`
+    /// — **injected** into the child env (OPENOBSERVE_URL/_ROOT_EMAIL/
+    /// _ROOT_PASSWORD) beyond the allowlist: the server holds these creds from
+    /// the yaml, not from its process env (which never has them — e2e feedback
+    /// 2026-09-04: the device node failed at build and the engine
+    /// crash-looped without acknowledgement). Same trust domain as
+    /// `DATABASE_URL`. `None` = O2 not configured (tests).
     pub o2: Option<OpenobserveSettings>,
-    /// URL de la Valkey du cache live dernier-point (`settings.valkey.url`)
-    /// — injectée dans l'env enfant (`VALKEY_URL`) au-delà de l'allowlist,
-    /// miroir de l'injection O2 : le serveur tient l'URL du yaml, pas de son
-    /// env process. `None` = cache désactivé (le nœud `device-read` retombe
-    /// sur le chemin OpenObserve).
+    /// URL of the Valkey for the live last-point cache (`settings.valkey.url`)
+    /// — injected into the child env (`VALKEY_URL`) beyond the allowlist,
+    /// mirroring the O2 injection: the server holds the URL from the yaml, not
+    /// from its process env. `None` = cache disabled (the `device-read` node
+    /// falls back to the OpenObserve path).
     pub valkey_url: Option<String>,
-    /// Coordonnées de livraison notify (D50/D54) — `Some((deliver_url,
-    /// token))` injectées dans l'env enfant (`PNEX_NOTIFY_DELIVER_URL` /
-    /// `_TOKEN`) quand `settings.notifications.internal_token` est posé ;
-    /// `None` = canal websocket indisponible pour les nœuds flow (env
-    /// absente → `BadFlowsJson` au build du nœud, explicitement).
+    /// Notify delivery coordinates (D50/D54) — `Some((deliver_url,
+    /// token))` injected into the child env (`PNEX_NOTIFY_DELIVER_URL` /
+    /// `_TOKEN`) when `settings.notifications.internal_token` is set;
+    /// `None` = websocket channel unavailable for flow nodes (env
+    /// missing → `BadFlowsJson` at node build, explicitly).
     pub notify_deliver: Option<(String, String)>,
-    /// Coordonnées d'écriture device (`pnex-device-write`) — `Some((url,
-    /// token))` injectées dans l'env enfant (`PNEX_FLOW_WRITE_URL` /
-    /// `_TOKEN`) quand `settings.flow.runtime_token` est posé (env
-    /// `PNEX_FLOW_RUNTIME_TOKEN` prioritaire) ; `None` = le nœud
-    /// `device-write` échoue fort au build (BadFlowsJson, école notify).
+    /// Device write coordinates (`pnex-device-write`) — `Some((url,
+    /// token))` injected into the child env (`PNEX_FLOW_WRITE_URL` /
+    /// `_TOKEN`) when `settings.flow.runtime_token` is set (env
+    /// `PNEX_FLOW_RUNTIME_TOKEN` takes precedence); `None` = the
+    /// `device-write` node fails hard at build (BadFlowsJson, notify pattern).
     pub device_write: Option<(String, String)>,
     /// Fencing identity of the worker running this runtime (`<id>:<boot>`,
     /// D106) — injected as `PNEX_FLOW_WORKER_FENCE`; the runtime stamps it on
@@ -120,7 +120,7 @@ impl Default for FlowSettings {
     }
 }
 
-/// Forme sérialisable partielle de `settings.flow` (tout optionnel).
+/// Partial serializable form of `settings.flow` (all optional).
 #[derive(Default, Deserialize)]
 struct FlowPartial {
     enabled: Option<bool>,
@@ -133,13 +133,13 @@ struct FlowPartial {
     check_timeout_secs: Option<u64>,
     env_allowlist: Option<Vec<String>>,
     debug_tools: Option<bool>,
-    /// Token interne des nœuds `device-write` (env `PNEX_FLOW_RUNTIME_TOKEN`
-    /// prioritaire sur le yaml).
+    /// Internal token of the `device-write` nodes (env `PNEX_FLOW_RUNTIME_TOKEN`
+    /// takes precedence over the yaml).
     runtime_token: Option<String>,
 }
 
 impl FlowSettings {
-    /// `settings.flow` optionnelle — défauts champ par champ.
+    /// Optional `settings.flow` — defaults field by field.
     pub fn from_config(config: &Config) -> Self {
         let partial: FlowPartial = config
             .settings
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn defauts_et_partiel() {
         let d = FlowSettings::default();
-        assert!(!d.enabled, "le moteur est coupé par défaut");
+        assert!(!d.enabled, "the engine is off by default");
         assert_eq!(d.runtime_cmd, "pnex-flow-runtime");
         assert_eq!(
             d.env_allowlist,
@@ -214,36 +214,36 @@ mod tests {
             ]
         );
 
-        // Config sans section `flow` → défauts (logger seul champ requis).
+        // Config without a `flow` section → defaults (logger is the only required field).
         let minimal = serde_json::json!({
             "logger": { "enable": false, "level": "info", "format": "compact" },
             "server": { "port": 5150, "host": "http://localhost" },
             "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 }
         });
         let config: Config =
-            serde_json::from_value(minimal.clone()).expect("config minimale désérialisable");
+            serde_json::from_value(minimal.clone()).expect("minimal config deserializable");
         let s = FlowSettings::from_config(&config);
         assert_eq!(s.state_dir, d.state_dir);
         assert!(
             s.o2.is_none(),
-            "sans section openobserve : pas de creds à injecter"
+            "without an openobserve section: no creds to inject"
         );
 
-        // Section partielle : seuls les champs fournis surchargent.
+        // Partial section: only the provided fields override.
         let config: Config = serde_json::from_value(serde_json::json!({
             "logger": { "enable": false, "level": "info", "format": "compact" },
             "server": { "port": 5150, "host": "http://localhost" },
             "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 },
             "settings": { "flow": { "enabled": true, "state_dir": "/tmp/flow-etat" } }
         }))
-        .expect("config partielle désérialisable");
+        .expect("partial config deserializable");
         let s = FlowSettings::from_config(&config);
         assert!(s.enabled);
         assert_eq!(s.state_dir, "/tmp/flow-etat");
-        assert_eq!(s.runtime_cmd, d.runtime_cmd, "champ absent → défaut");
+        assert_eq!(s.runtime_cmd, d.runtime_cmd, "missing field → default");
 
-        // Section `openobserve` présente : les creds sont résolues pour
-        // injection dans l'env enfant (le Debug n'imprime jamais la valeur).
+        // `openobserve` section present: creds are resolved for
+        // injection into the child env (Debug never prints the value).
         let config: Config = serde_json::from_value(serde_json::json!({
             "logger": { "enable": false, "level": "info", "format": "compact" },
             "server": { "port": 5150, "host": "http://localhost" },
@@ -256,16 +256,16 @@ mod tests {
                 }
             }
         }))
-        .expect("config avec openobserve désérialisable");
+        .expect("config with openobserve deserializable");
         let s = FlowSettings::from_config(&config);
-        assert!(s.o2.is_some(), "creds O2 résolues depuis le yaml");
+        assert!(s.o2.is_some(), "O2 creds resolved from the yaml");
         assert!(
             !format!("{s:?}").contains("pass"),
-            "le Debug ne fuite pas le secret"
+            "Debug does not leak the secret"
         );
 
-        // Section `valkey` présente : l'URL est résolue pour injection dans
-        // l'env enfant (le Debug n'imprime que le booléen, jamais l'URL).
+        // `valkey` section present: the URL is resolved for injection into
+        // the child env (Debug prints only the boolean, never the URL).
         let config: Config = serde_json::from_value(serde_json::json!({
             "logger": { "enable": false, "level": "info", "format": "compact" },
             "server": { "port": 5150, "host": "http://localhost" },
@@ -274,27 +274,27 @@ mod tests {
                 "valkey": { "url": "redis://127.0.0.1:6379" }
             }
         }))
-        .expect("config avec valkey désérialisable");
+        .expect("config with valkey deserializable");
         let s = FlowSettings::from_config(&config);
         assert_eq!(
             s.valkey_url.as_deref(),
             Some("redis://127.0.0.1:6379"),
-            "URL valkey résolue depuis le yaml"
+            "valkey URL resolved from the yaml"
         );
         assert!(
             !format!("{s:?}").contains("redis://"),
-            "le Debug ne fuite pas l'URL"
+            "Debug does not leak the URL"
         );
     }
 }
 
-// ─────────── Écriture des flows (partagée contrôleur ↔ assistant IA) ───────────
+// ─────────── Flow writes (shared controller ↔ AI assistant) ───────────
 //
-// Point d'écriture **unique** des versions de flow : le contrôleur HTTP
-// (`controllers/flows.rs`) et les outils de l'assistant IA
-// (`services/ai/tools.rs`) passent tous deux par ici — jamais de self-call
-// HTTP, un seul endroit où valider avant de persister. Le deploy
-// (`flow_supervisor`) reste hors de ce module : l'IA n'y a pas accès.
+// **Single** write point for flow versions: the HTTP controller
+// (`controllers/flows.rs`) and the AI assistant tools
+// (`services/ai/tools.rs`) both go through here — never an HTTP
+// self-call, one single place to validate before persisting. Deploy
+// (`flow_supervisor`) stays outside this module: the AI has no access to it.
 
 use pnex_core::{FlowGraph, FlowViolation};
 use sea_orm::{
@@ -304,22 +304,22 @@ use sea_orm::{
 
 use crate::models::_entities::{device_registries, flow_versions, flows};
 
-/// Erreurs d'écriture d'un flow — le contrôleur les mappe en HTTP
-/// (400 champ/violations, 409 conflit, 500) ; l'assistant les rend
-/// lisibles pour le modèle.
+/// Flow write errors — the controller maps them to HTTP
+/// (400 field/violations, 409 conflict, 500); the assistant renders them
+/// readable for the model.
 #[derive(Debug)]
 pub enum FlowWriteError {
-    /// `validate_graph` non satisfait (le client/correction attendu).
+    /// `validate_graph` not satisfied (client correction expected).
     Violations(Vec<FlowViolation>),
-    /// Nom vide après trim.
+    /// Name empty after trim.
     NameRequired,
-    /// Nom > 200 caractères.
+    /// Name > 200 characters.
     NameTooLong,
-    /// device_registry_id hors de l'org.
+    /// device_registry_id outside the org.
     DeviceUnknown,
-    /// Concurrence optimiste perdue.
+    /// Optimistic concurrency lost.
     Conflict { expected: i64, current: i64 },
-    /// Échec base de données.
+    /// Database failure.
     Db,
     /// A secret field could not be stored (unknown secret, value typed
     /// without the right, vault failure).
@@ -329,7 +329,7 @@ pub enum FlowWriteError {
     Deployed,
 }
 
-/// Validation commune (nom + graphe + device) avant toute écriture.
+/// Shared validation (name + graph + device) before any write.
 async fn validate_flow_write(
     db: &DatabaseConnection,
     org_id: i64,
@@ -363,8 +363,8 @@ async fn validate_flow_write(
     Ok(())
 }
 
-/// Crée un flow **et sa version 1** (une transaction). Aucun effet runtime :
-/// le flow reste `draft` jusqu'au deploy (qui ne passe jamais par ici).
+/// Creates a flow **and its version 1** (one transaction). No runtime effect:
+/// the flow stays `draft` until deploy (which never goes through here).
 ///
 /// Secret fields are stored as vault references (lot S5): the returned
 /// graph is the stored one, never the typed values.
@@ -410,12 +410,12 @@ pub async fn create_flow(
         .await
         .map_err(FlowWriteError::Secret)?;
     txn.commit().await.map_err(|_| FlowWriteError::Db)?;
-    tracing::info!(flow_id = flow.id, org_id, "flow créé (v1)");
+    tracing::info!(flow_id = flow.id, org_id, "flow created (v1)");
     Ok((flow, 1, graph))
 }
 
-/// Numéro de la dernière version d'un flow (0 si aucune — ne doit pas
-/// arriver : la création pose toujours v1).
+/// Number of a flow's latest version (0 if none — must not
+/// happen: creation always sets v1).
 async fn latest_version_number<C: sea_orm::ConnectionTrait>(
     db: &C,
     flow_id: i64,
@@ -432,9 +432,9 @@ async fn latest_version_number<C: sea_orm::ConnectionTrait>(
         .unwrap_or(0))
 }
 
-/// Enregistre une **nouvelle version** (append-only) avec concurrence
-/// optimiste : `expected_version_number` doit être la version courante.
-/// Aucun rechargement runtime — l'exécution ne change qu'au deploy.
+/// Saves a **new version** (append-only) with optimistic
+/// concurrency: `expected_version_number` must be the current version.
+/// No runtime reload — execution only changes on deploy.
 #[allow(clippy::too_many_arguments)]
 pub async fn append_version(
     db: &DatabaseConnection,
@@ -578,7 +578,7 @@ async fn append_version_with(
     tracing::info!(
         flow_id = flow.id,
         version = new_version.version_number,
-        "flow enregistré (nouvelle version)"
+        "flow saved (new version)"
     );
     Ok((flow, new_version.version_number, graph))
 }

@@ -357,21 +357,21 @@ pack**, jamais dans le noyau.
 > refuse tout nom de type, de lien ou de pack livré dans le code du moteur.
 
 > **2026-10-19 (`partner-watch.md`, proposé)** : deux packs de plus,
-> `entreprises_fr` (unité légale = `organization` étendue, établissement =
-> `map_pin`, dirigeants par lien temporel `dirige`, D304) et
+> `companies_fr` (unité légale = `organization` étendue, établissement =
+> `map_pin`, dirigeants par lien temporel `manages`, D304) et
 > `quali_watch` (contrôle des réseaux de certificateurs). Le format de
 > pack gagne `extends:` (D306), la propriété `unique` (D302), des
 > mappings d'import (D301), des fonctions et des modèles de flows non
 > déployés (D316).
 
-> **2026-10-21 (`account-mapping.md`, D329)** : pack `prospection_b2b`
-> (`requires: [entreprises_fr]`) : statut commercial des comptes et des
-> sites, persona, liens `recommande`, `suit_le_compte`, `filiale_de`,
-> `utilise_solution`, hiérarchie `groupe_commercial`. Aucun type nouveau.
+> **2026-10-21 (`account-mapping.md`, D329)** : pack `prospecting_b2b`
+> (`requires: [companies_fr]`) : statut commercial des comptes et des
+> sites, persona, liens `recommended`, `follows_account`, `subsidiary_of`,
+> `uses_solution`, hiérarchie `sales_group`. Aucun type nouveau.
 
-> **2026-10-21 (D343)** : pack mondial `entreprises` (pays, LEI, NACE,
-> effectif chiffré, `etablissement_de`, `dirige`, hiérarchie `groupe`) ;
-> `entreprises_fr` 2.0.0 en devient le pack France. Une clé passe d'un pack
+> **2026-10-21 (D343)** : pack mondial `companies` (pays, LEI, NACE,
+> effectif chiffré, `establishment_of`, `manages`, hiérarchie `group`) ;
+> `companies_fr` 2.0.0 en devient le pack France. Une clé passe d'un pack
 > au pack dont il dépend désormais, à la mise à jour.
 
 ### D191 — Migration 0.1 → 0.2 : non destructive
@@ -789,9 +789,9 @@ confiance, auteur machine.
 - **Une seule boîte « à valider »** et **un seul journal des décisions**
   (qui, quand, pourquoi). Accepter applique la différence par le service
   partagé avec l'UI : mêmes contrôles, mêmes 409.
-- Les packs **cessent de déclarer** un état `a_valider` par type.
-- **Migration** des champs existants : `filiale_de.etat`,
-  `a_pour_site.statut`, `signal_commercial.etat`, constats de
+- Les packs **cessent de déclarer** un état `to_validate` par type.
+- **Migration** des champs existants : `subsidiary_of.state`,
+  `has_website.status`, `sales_signal.state`, constats de
   `quali_watch`. Elle reste bon marché tant que ces données sont peu
   nombreuses.
 - À coder en premier.
@@ -824,7 +824,7 @@ confiance, auteur machine.
     la carte en vigueur dans chaque nœud Starlark de l'org : un changement
     s'applique au prochain déploiement, geste humain (D123).
   - UI : bouton « Réglages » sur la ligne d'un pack installé.
-  - Premier usage : `presence_web` 1.4.0 (`seuil_confirme`, `seuil_propose`).
+  - Premier usage : `web_presence` 1.4.0 (`confirm_threshold`, `propose_threshold`).
   - Montée de version des fonctions et flows (2026-10-22) : une fonction
     dont la dernière version porte encore la note `pack <clé> <version>`,
     ou un flow dont la dernière version a pour auteur `pack:<clé>`, reçoit
@@ -889,7 +889,7 @@ confiance, auteur machine.
 
 ### D370 — Clé d'énumération stable, libellé séparé
 
-- La **clé** d'une valeur d'énumération (`client`, `cible`, `a_valider`…)
+- La **clé** d'une valeur d'énumération (`customer`, `target`, `to_validate`…)
   est un identifiant stable, **jamais renommé**, pas même pour la
   traduire.
 - Le **libellé affiché** est séparé, par langue et surchargeable par

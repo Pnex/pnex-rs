@@ -1,10 +1,10 @@
 use super::*;
 
-// ─────────────────────── Écriture versionnée ───────────────────────
+// ─────────────────────── Versioned write ───────────────────────
 
-/// Contenu d'une nouvelle version (regroupé pour l'arity de write_version).
-/// `pub(crate)` : réutilisé par le worker de stitch serveur (Take 360 V2),
-/// qui publie son panorama HD comme version n+1 de l'asset.
+/// Content of a new version (grouped for write_version's arity).
+/// `pub(crate)`: reused by the server stitch worker (Take 360 V2),
+/// which publishes its HD panorama as version n+1 of the asset.
 pub(crate) struct IncomingVersion {
     pub filename: String,
     pub content_type: String,
@@ -13,14 +13,14 @@ pub(crate) struct IncomingVersion {
     pub bytes: axum::body::Bytes,
 }
 
-/// Écrit une nouvelle version : **storage d'abord, DB ensuite** (un blob
-/// orphelin est acceptable/purgeable, une ligne sans blob ne l'est pas) ;
-/// en cas d'échec DB, le blob fraîchement écrit est supprimé (best effort).
-/// La nouvelle version devient la version courante de l'asset.
+/// Writes a new version: **storage first, DB next** (an orphan blob
+/// is acceptable/purgeable, a row without a blob is not);
+/// on DB failure, the freshly written blob is deleted (best effort).
+/// The new version becomes the asset's current version.
 ///
-/// `pub(crate)` + `org_id` en paramètre (et non `&OrgContext`) : le worker
-/// de stitch tourne hors requête HTTP — il ne porte qu'un `org_id` relu du
-/// job. Écart assumé à la forme d'origine pour éviter la duplication.
+/// `pub(crate)` + `org_id` as a parameter (and not `&OrgContext`): the stitch
+/// worker runs outside an HTTP request — it only carries an `org_id` re-read
+/// from the job. Deliberate deviation from the original shape to avoid duplication.
 pub(crate) async fn write_version(
     ctx: &AppContext,
     org_id: i64,
@@ -39,7 +39,7 @@ pub(crate) async fn write_version(
         .filter(|_| media_sniff::accepts(&asset.kind, &filename, &bytes))
         .ok_or_else(super::helpers::format_unsupported)?;
     let sha = sha256_hex(&bytes);
-    // Version n+1 (école flow_versions : incrémental par asset).
+    // Version n+1 (flow_versions school: incremental per asset).
     let next: i64 = media_versions::Entity::find()
         .filter(media_versions::Column::AssetId.eq(asset.id))
         .select_only()
@@ -88,7 +88,7 @@ pub(crate) async fn write_version(
         .insert(&txn)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    // La nouvelle version devient courante.
+    // The new version becomes current.
     let mut a: media_assets::ActiveModel = asset.clone().into();
     a.current_version_id = Set(Some(version.id));
     a.updated_at = Set(chrono::Utc::now().into());
@@ -96,8 +96,8 @@ pub(crate) async fn write_version(
         .await
         .map_err(|_| Error::InternalServerError)?;
     txn.commit().await.map_err(|e| {
-        // DB en échec après put : purge du blob fraîchement écrit (best
-        // effort) — pas de ligne sans blob.
+        // DB failed after put: purge the freshly written blob (best
+        // effort) — no row without a blob.
         let store = store.clone();
         let key = key.clone();
         tokio::spawn(async move {

@@ -1,5 +1,5 @@
-//! Référentiel des hosts serveur PNeX de l'org (`host` nu + `ws_ssl`) —
-//! évite la ressaisie dans le wizard device (payload `CreateBuild` inchangé).
+//! Reference list of the org's PNeX server hosts (bare `host` + `ws_ssl`) —
+//! avoids re-typing in the device wizard (`CreateBuild` payload unchanged).
 pub use super::_entities::pnex_hosts::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;
 pub type PnexHosts = Entity;

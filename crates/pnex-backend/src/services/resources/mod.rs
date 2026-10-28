@@ -1,23 +1,23 @@
-//! Couche d'organisation transverse (D42) — le **moteur** (labels /
-//! containment / edges / folders) + le **registre des kinds**.
+//! Cross-cutting organisation layer (D42) — the **engine** (labels /
+//! containment / edges / folders) + the **kinds registry**.
 //!
-//! École `services/pois.rs` : contrôleurs (et futurs outils IA) passent par
-//! ici, jamais par les entités directement. Le moteur ne fait **jamais** de
-//! `match` sur les kinds : existence+tenancy passent par le registre
+//! `services/pois.rs` pattern: controllers (and future AI tools) go through
+//! here, never through the entities directly. The engine **never** does a
+//! `match` on kinds: existence+tenancy go through the registry
 //! ([`registry`]), containment and relation validity come from the type
 //! definitions (`pnex_core::ontology`).
 //!
-//! Sous-modules :
+//! Submodules:
 //! - [`registry`] — registry derived from the system types + one resolver
 //!   per type;
-//! - [`labels`] — classification requêtable (GIN `@>` sur PG) + labels
-//!   effectifs (héritage ancêtres, résolu **au read**) ;
-//! - [`containment`] — arbre à parent unique (cycle → `CycleDetected`) ;
-//!   détacher ne supprime **jamais** une entité ;
-//! - [`edges`] — liens croisés many-to-many + `placement` opaque ;
-//! - [`folders`] — CRUD du kind `folder` ;
-//! - [`purge_for`] — cascade **symétrique** au delete d'une entité :
-//!   labels + sous-arbre (re-rooté, jamais supprimé) + arêtes (2 bouts).
+//! - [`labels`] — queryable classification (GIN `@>` on PG) + effective
+//!   labels (ancestor inheritance, resolved **at read**);
+//! - [`containment`] — single-parent tree (cycle → `CycleDetected`);
+//!   detaching **never** deletes an entity;
+//! - [`edges`] — many-to-many cross links + opaque `placement`;
+//! - [`folders`] — CRUD of the `folder` kind;
+//! - [`purge_for`] — **symmetric** cascade on an entity delete:
+//!   labels + subtree (re-rooted, never deleted) + edges (both ends).
 
 pub mod containment;
 pub mod edges;
@@ -30,36 +30,36 @@ pub mod registry;
 
 #[derive(Debug)]
 pub enum ResourceError {
-    /// kind hors registre.
+    /// kind outside the registry.
     KindInvalid,
-    /// Ressource introuvable dans l'org (→ 404 masqué côté contrôleur).
+    /// Resource not found in the org (→ masked 404 in the controller).
     ResourceUnknown,
     /// Invalid label set (too many, bad name or value): field token
     /// `invalid` on `labels`.
     LabelInvalid,
     /// Invalid folder name: field token (`required`, `max_length:255`).
     NameInvalid(String),
-    /// Attachement créerait un cycle (une ressource ne peut pas être son
-    /// propre ancêtre).
+    /// Attachment would create a cycle (a resource cannot be its own
+    /// ancestor).
     CycleDetected,
-    /// Relation inconnue pour ce kind source (spec).
+    /// Unknown relation for this source kind (spec).
     RelationInvalid,
-    /// Cible hors spec du kind source (kind×relation×kind).
+    /// Target outside the source kind's spec (kind×relation×kind).
     TargetInvalid,
-    /// Arête déjà existante pour cette paire (index unique).
+    /// Edge already exists for this pair (unique index).
     Conflict,
     /// Invalid `placement` (not an object, or too large).
     PlacementInvalid,
     Db,
 }
 
-// ─────────────────────────── purge symétrique ───────────────────────────
+// ─────────────────────────── symmetric purge ───────────────────────────
 
-/// Purge app-level de **toute** trace d'organisation d'une ressource —
-/// appelée (1 ligne) par chaque contrôleur `delete` d'entité. Cascade
-/// **symétrique** (l'incohérence viz_links disparaît) : arêtes purgées des
-/// deux bouts ; le sous-arbre est **re-rooté** (détaché), jamais supprimé —
-/// la couche d'organisation ne détruit jamais une entité métier.
+/// App-level purge of **every** organisation trace of a resource —
+/// called (1 line) by each entity `delete` controller. **Symmetric**
+/// cascade (the viz_links inconsistency is gone): edges purged from both
+/// ends; the subtree is **re-rooted** (detached), never deleted — the
+/// organisation layer never destroys a business entity.
 pub async fn purge_for<C: sea_orm::ConnectionTrait>(
     db: &C,
     org_id: i64,
@@ -80,8 +80,8 @@ pub async fn purge_for<C: sea_orm::ConnectionTrait>(
         .exec(db)
         .await?;
 
-    // 2. Containment : la ligne de la ressource + celles de tout son
-    //    sous-arbre (BFS org-scopé, ensembles bornés) → descendants re-rootés.
+    // 2. Containment: the resource's row + those of its whole subtree
+    //    (org-scoped BFS, bounded sets) → descendants re-rooted.
     let mut frontier = vec![(kind.to_string(), id.to_string())];
     while let Some((k, i)) = frontier.pop() {
         let children = resource_containment::Entity::find()
@@ -146,7 +146,7 @@ pub async fn purge_for<C: sea_orm::ConnectionTrait>(
         .exec(db)
         .await?;
 
-    // 5. Le kind `folder` est lui-même une entité — sa ligne part avec lui.
+    // 5. The `folder` kind is itself an entity — its row goes with it.
     if kind == pnex_core::resources::KIND_FOLDER {
         if let Ok(numeric) = id.parse::<i64>() {
             crate::models::_entities::resource_folders::Entity::delete_by_id(numeric)

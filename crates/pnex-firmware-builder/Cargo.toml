@@ -3,7 +3,7 @@ name = "pnex-firmware-builder"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Orchestration des builds firmware (shell-out toolchain PlatformIO/esptool) — Phase 6"
+description = "Firmware build orchestration (shell-out to the PlatformIO/esptool toolchain) — Phase 6"
 
 [dependencies]
 pnex-core = { workspace = true }
@@ -20,7 +20,7 @@ tokio = { version = "1.45", default-features = false, features = [
 ] }
 tracing = "0.1"
 tempfile = "3"
-# Empreinte de l'image app brute (payload OTA) — BuildArtifact.ota_sha256.
+# Fingerprint of the raw app image (OTA payload) — BuildArtifact.ota_sha256.
 sha2 = "0.10"
 
 [dev-dependencies]

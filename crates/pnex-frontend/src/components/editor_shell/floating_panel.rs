@@ -1,8 +1,8 @@
-//! Panneau flottant annexe — aujourd'hui uniquement l'éditeur studio
-//! (liste des étages, mode liaison, compteur de scènes), rendu dans le slot
-//! `tools` de `EditorShell` à côté du `+`. Même grammaire visuelle que la
-//! carte de `PalettePopover` : ancré `absolute left-0 top-12` sur le wrapper
-//! du slot.
+//! Auxiliary floating panel — today only the studio editor
+//! (floor list, link mode, scene counter), rendered in the `tools` slot
+//! of `EditorShell` next to the `+`. Same visual grammar as the
+//! `PalettePopover` card: anchored `absolute left-0 top-12` on the slot
+//! wrapper.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -11,11 +11,11 @@ use crate::components::icons;
 
 #[component]
 pub fn FloatingPanel(
-    /// En-tête du panneau (« Étages »…).
+    /// Panel header ("Floors"…).
     title: String,
     /// Fermeture (croix).
     on_close: Callback<()>,
-    /// Corps (liste des étages, outils du studio…).
+    /// Body (floor list, studio tools…).
     children: Element,
 ) -> Element {
     let close_label = t!("eshell-close");

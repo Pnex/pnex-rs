@@ -1,23 +1,23 @@
-//! Réglages d'ingestion lus depuis `settings.ingestion` de la config Loco.
-//! Absents de la config (tests) → défauts ci-dessous.
+//! Ingestion settings read from `settings.ingestion` of the Loco config.
+//! Absent from the config (tests) → defaults below.
 
 use loco_rs::config::Config;
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
-// Section yaml partielle : les champs absents prennent leur défaut — sans
-// ce default conteneur, `from_value` échoue et `from_config` retombe en
-// silence sur TOUT le struct par défaut (constat 2026-09-14 : token notify
-// perdu car delivery_ttl_days/prune_interval_secs absents du yaml).
+// Partial yaml section: absent fields take their default — without this
+// container default, `from_value` fails and `from_config` silently falls
+// back to the WHOLE default struct (found 2026-09-14: notify token lost
+// because delivery_ttl_days/prune_interval_secs were absent from the yaml).
 #[serde(default)]
 pub struct IngestSettings {
-    /// Bail de vie : silence au-delà duquel un device est considéré parti
-    /// (reaper → `active=false`, anti-clone). 10 s = 2 PING manqués à 5 s
+    /// Liveness lease: silence after which a device is considered gone
+    /// (reaper → `active=false`, anti-clone). 10 s = 2 missed PINGs at 5 s
     /// (user value 2026-08-16).
     pub silence_ttl_secs: i64,
-    /// Cadence du reaper.
+    /// Reaper cadence.
     pub reaper_interval_secs: u64,
-    /// Cache de revalidation token/device par frame (§7.8 ws-channels-crypto :
+    /// Per-frame token/device revalidation cache (§7.8 ws-channels-crypto:
     /// 0 = always revalidate).
     /// Each revalidation is a cheap token + fingerprint check; the full
     /// session snapshot is rebuilt only when the fingerprint changed (or
@@ -40,7 +40,7 @@ pub struct IngestSettings {
     pub admission_wait_ms: u64,
     /// Telemetry batch: max number of points before a flush.
     pub batch_max: usize,
-    /// Batch télémétrie : délai max avant flush.
+    /// Telemetry batch: max delay before flush.
     pub batch_flush_secs: u64,
     /// D154: device links (`/ws/device`, `/ws/camera`,
     /// OTA download) are accepted only through the TLS edge, which sets
@@ -88,7 +88,7 @@ impl IngestSettings {
         std::time::Duration::from_secs(secs)
     }
 
-    /// `settings.ingestion` optionnelle — défauts si absente/incomplète.
+    /// Optional `settings.ingestion` — defaults if absent/incomplete.
     /// The edge secret comes from the environment only.
     pub fn from_config(config: &Config) -> Self {
         let mut settings: Self = config
@@ -105,17 +105,17 @@ impl IngestSettings {
     }
 }
 
-/// Réglages notifications lus depuis `settings.notifications` de la config
-/// Loco (D53/D54). `internal_token` : env `PNEX_NOTIFY_INTERNAL_TOKEN`
-/// prioritaire sur la valeur yaml — vide/absent ⇒ `/internal/notify/deliver`
-/// rejette tout (et un warn est émis au boot).
+/// Notification settings read from `settings.notifications` of the Loco
+/// config (D53/D54). `internal_token`: env `PNEX_NOTIFY_INTERNAL_TOKEN`
+/// takes precedence over the yaml value — empty/absent ⇒
+/// `/internal/notify/deliver` rejects everything (and a warn is emitted at boot).
 #[derive(Clone, Debug, Deserialize)]
-// Default conteneur obligatoire : le yaml ne définit qu'un sous-ensemble
-// des champs (internal_token/deliver_url en dev) — voir IngestSettings.
+// Container default required: the yaml only defines a subset of the
+// fields (internal_token/deliver_url in dev) — see IngestSettings.
 #[serde(default)]
 pub struct NotifySettings {
-    /// Jeton de service partagé backend ↔ runtime de flows (livraison
-    /// websocket des nœuds `pnex-notify`). Jamais loggé.
+    /// Service token shared between backend ↔ flow runtime (websocket
+    /// delivery of `pnex-notify` nodes). Never logged.
     #[serde(default)]
     pub internal_token: Option<String>,
     /// Internal delivery endpoint URL (Test loopback + runtime env).
@@ -136,7 +136,7 @@ impl Default for NotifySettings {
 }
 
 impl NotifySettings {
-    /// `settings.notifications` optionnelle — défauts si absente/incomplète.
+    /// Optional `settings.notifications` — defaults if absent/incomplete.
     pub fn from_config(config: &Config) -> Self {
         let mut settings: Self = config
             .settings
@@ -186,18 +186,18 @@ pub fn journal_url_of(deliver_url: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Régression 2026-09-14 : la section yaml ne définit qu'un sous-ensemble
-    /// des champs — sans default conteneur, `from_value` échouait et
-    /// `from_config` retombait en silence sur `Default` (internal_token None
-    /// ⇒ fail-closed 401 sur /internal/notify/deliver + toast « token
-    /// manquant » au bouton Test).
+    /// Regression 2026-09-14: the yaml section only defines a subset of the
+    /// fields — without a container default, `from_value` failed and
+    /// `from_config` silently fell back to `Default` (internal_token None
+    /// ⇒ fail-closed 401 on /internal/notify/deliver + "missing token"
+    /// toast on the Test button).
     #[test]
     fn section_partielle_garde_le_token() {
         let s: NotifySettings = serde_json::from_value(serde_json::json!({
             "internal_token": "tok-dev",
             "deliver_url": "http://127.0.0.1:5150/internal/notify/deliver"
         }))
-        .expect("la section partielle doit désérialiser");
+        .expect("the partial section must deserialize");
         assert_eq!(s.internal_token.as_deref(), Some("tok-dev"));
         assert_eq!(
             s.journal_url(),
@@ -207,7 +207,7 @@ mod tests {
         let i: IngestSettings = serde_json::from_value(serde_json::json!({
             "silence_ttl_secs": 10
         }))
-        .expect("la section ingestion partielle doit désérialiser");
+        .expect("the partial ingestion section must deserialize");
         assert_eq!(i.batch_max, 500);
     }
 }

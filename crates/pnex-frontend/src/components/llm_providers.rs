@@ -54,7 +54,7 @@ pub fn LlmProviders(can_manage: bool) -> Element {
                     p { class: "text-xs text-gray-500 mt-1", {help} }
                 }
                 if can_manage && editing().is_none() {
-                    // Same primary « + » action as « Add member » (org page).
+                    // Same primary "+" action as "Add member" (org page).
                     button {
                         r#type: "button",
                         class: "{BTN_PRIMARY} self-start whitespace-nowrap",

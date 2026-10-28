@@ -235,11 +235,11 @@ struct MixtureBody {
     composition: serde_json::Value,
 }
 
-/// `POST /api/v1/fluid-mixtures` — crée un mélange. La composition est
-/// validée (pnex-core), convertie en base molaire si massique, puis la
-/// spec résultante est instanciée par CoolProp (400 avec son message si
-/// rejet). Le doublon de nom dans l'org répond 400 `name` (école
-/// `viz_widgets`).
+/// `POST /api/v1/fluid-mixtures` — creates a mixture. The composition is
+/// validated (pnex-core), converted to a molar basis if by mass, then the
+/// resulting spec is instantiated by CoolProp (400 with its message if
+/// rejected). A duplicate name in the org answers 400 `name` (`viz_widgets`
+/// school).
 #[utoipa::path(
     post,
     path = "/api/v1/fluid-mixtures",
@@ -314,8 +314,8 @@ async fn create(
     Ok((StatusCode::CREATED, format::json(dto(m)?)).into_response())
 }
 
-/// `PUT /api/v1/fluid-mixtures/{id}` — remplacement complet
-/// (nom, description, composition revalidée + reconvertie).
+/// `PUT /api/v1/fluid-mixtures/{id}` — full replacement
+/// (name, description, composition revalidated + reconverted).
 #[utoipa::path(
     put,
     path = "/api/v1/fluid-mixtures/{id}",
@@ -394,9 +394,9 @@ async fn update(
     Ok(format::json(dto(updated)?).into_response())
 }
 
-/// `DELETE /api/v1/fluid-mixtures/{id}` — 204. Les flows/widgets qui ont
-/// figé la spec inline restent valides (la spec CoolProp ne dépend pas de
-/// la ligne en base).
+/// `DELETE /api/v1/fluid-mixtures/{id}` — 204. Flows/widgets that
+/// froze the spec inline stay valid (the CoolProp spec does not depend on
+/// the database row).
 #[utoipa::path(
     delete,
     path = "/api/v1/fluid-mixtures/{id}",

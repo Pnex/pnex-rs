@@ -2,11 +2,11 @@ use super::*;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 
-// ───────────────────── formulaire POI (création/édition) ───────────────────
+// ───────────────────── POI form (create/edit) ───────────────────
 
-/// D43 : plus de `<select>` device dans ce formulaire — les devices
-/// s'attachent **délibérément** depuis le drawer (« Objets attachés »,
-/// picker onglet Device, déplacement confirmé s'ils sont déjà placés).
+/// D43: no more device `<select>` in this form — devices are
+/// attached **deliberately** from the drawer ("Attached objects",
+/// Device tab picker, confirmed move if they are already placed).
 #[component]
 pub(super) fn PoiFormModal(
     #[props(default)] initial: Option<viz::Poi>,
@@ -71,7 +71,7 @@ pub(super) fn PoiFormModal(
     });
     let mut saving = use_signal(|| false);
 
-    // Copie légère (pas de double move de `initial` dans les closures).
+    // Light copy (no double move of `initial` into the closures).
     let is_edit = initial.is_some();
     let edit_id = initial.as_ref().map(|p| p.id.clone());
 
@@ -157,7 +157,7 @@ pub(super) fn PoiFormModal(
                         class: BTN_PRIMARY,
                         disabled: saving(),
                         onclick: move |_| {
-                            // Garde client : coords numériques obligatoires.
+                            // Client guard: numeric coords required.
                             let (Some(lat_v), Some(lon_v)) = (
                                 lat().trim().parse::<f64>().ok(),
                                 lon().trim().parse::<f64>().ok(),

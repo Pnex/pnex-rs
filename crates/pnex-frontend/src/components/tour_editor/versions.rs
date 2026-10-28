@@ -1,9 +1,9 @@
-//! Drawer d'historique des versions + bloc publication (publier une version,
-//! dépublier, lien public copiable) — école `flow_editor/versions.rs`.
+//! Version history drawer + publication block (publish a version,
+//! unpublish, copyable public link) — `flow_editor/versions.rs` style.
 //!
-//! Prop `tour_id` String : chaque closure reçoit **son propre clone local
-//! nommé** (école CanvasNode « un clone local par closure ») — une closure
-//! `move` ne peut pas partager un String avec ses sœurs.
+//! `tour_id` String prop: each closure gets **its own named local
+//! clone** (CanvasNode style "one local clone per closure") — a `move`
+//! closure cannot share a String with its siblings.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -15,9 +15,9 @@ use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_DANGER, BTN_SECONDARY_SM};
 use crate::state::toasts;
 
-/// Drawer latéral : historique append-only + publication.
-/// `on_loaded` : version à charger dans l'éditeur (restauration par édition) ;
-/// `on_changed` : le tour a changé côté serveur (publish/unpublish/share).
+/// Side drawer: append-only history + publication.
+/// `on_loaded`: version to load into the editor (restore by editing);
+/// `on_changed`: the tour changed server-side (publish/unpublish/share).
 #[component]
 pub(crate) fn VersionsDrawer(
     tour_id: String,
@@ -40,8 +40,8 @@ pub(crate) fn VersionsDrawer(
 
     let close = move |_| on_close.call(());
 
-    // Un clone local nommé par closure (l'historique est rendu via des
-    // tuples possédant leur propre clone — voir `items` plus bas).
+    // One named local clone per closure (the history is rendered via
+    // tuples owning their own clone — see `items` below).
     let tour_id_publish_latest = tour_id.clone();
     let tour_id_unpublish = tour_id.clone();
     let tour_id_share = tour_id.clone();
@@ -176,9 +176,9 @@ pub(crate) fn VersionsDrawer(
                     }
                 }
 
-                // ─── Historique ───
-                // Ligne dédiée (école `flow_row`) : valeurs
-                // possédées par ligne → closures sans conflit.
+                // ─── History ───
+                // Dedicated row (`flow_row` style): values
+                // owned per row → conflict-free closures.
                 {
                     match &*versions.value().read() {
                         Some(Ok(paged)) if paged.results.is_empty() => rsx! {
@@ -215,7 +215,7 @@ pub(crate) fn VersionsDrawer(
             }
         }
 
-        // Confirmation : publier une version antérieure (= repointage).
+        // Confirmation: publish an earlier version (= re-pointing).
         if let Some(version_number) = confirm_publish() {
             ConfirmDialog {
                 key: "publish-{version_number}",
@@ -247,8 +247,8 @@ pub(crate) fn VersionsDrawer(
     }
 }
 
-/// Ligne d'historique : valeurs possédées (école `flow_row`) — les closures
-/// capturent leurs propres copies sans conflit entre lignes.
+/// History row: owned values (`flow_row` style) — the closures
+/// capture their own copies without conflict between rows.
 #[allow(clippy::too_many_arguments)]
 fn version_row(
     version: pnex_core::TourVersionSummary,

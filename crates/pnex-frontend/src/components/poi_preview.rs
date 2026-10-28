@@ -1,13 +1,13 @@
-//! Panneau d'aperçu READ-ONLY des objets attachés à un POI (/map) — le
-//! panneau **couvre la zone carte** (la carte reste montée dessous), il se
-//! remplace d'asset en asset quand on clique les lignes de l'arbre du
-//! drawer. Jamais de popup ni de navigation pour CONSULTER ; l'édition
-//! reste dans l'onglet de chaque app (bouton « Éditer » du header).
+//! READ-ONLY preview panel of the objects attached to a POI (/map) — the
+//! panel **covers the map area** (the map stays mounted underneath), it is
+//! swapped from asset to asset when clicking the rows of the drawer tree.
+//! Never a popup or navigation to VIEW; editing stays in each app's tab
+//! ("Edit" button of the header).
 //!
-//! Épingle (★) : le POI porte `preview_kind`/`preview_id` (migration
-//! 000020) — premier objet attaché = épinglé par défaut, changement/retrait
-//! via l'étoile des lignes de l'arbre. La logique PATCH vit dans
-//! `pages/map.rs` ; ce module n'affiche que.
+//! Pin (★): the POI carries `preview_kind`/`preview_id` (migration
+//! 000020) — first attached object = pinned by default, change/removal
+//! via the star of the tree rows. The PATCH logic lives in
+//! `pages/map.rs`; this module only displays.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -24,7 +24,7 @@ use crate::components::tour_viewer::{TourViewer, ViewerSource};
 use crate::components::ui::BTN_SECONDARY_SM;
 use crate::util::media_blob_url_tracked;
 
-/// Cible d'aperçu : (kind, id, nom) d'un objet attaché au POI.
+/// Preview target: (kind, id, name) of an object attached to the POI.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PreviewTarget {
     pub kind: String,
@@ -32,7 +32,7 @@ pub struct PreviewTarget {
     pub name: String,
 }
 
-/// Panneau d'aperçu plein-cadre sur la carte.
+/// Full-frame preview panel over the map.
 #[component]
 pub fn PoiPreviewPanel(
     target: PreviewTarget,
@@ -48,7 +48,7 @@ pub fn PoiPreviewPanel(
 
     rsx! {
         div { class: "flex h-full w-full flex-col",
-            // Header : icône kind + nom + badge kind + actions.
+            // Header: kind icon + name + kind badge + actions.
             div { class: "flex items-center gap-2 px-3 py-2 border-b border-gray-200 shrink-0 sm:px-4",
                 KindIcon { kind: target.kind.clone() }
                 span { class: "min-w-0 text-sm font-semibold text-gray-900 truncate",
@@ -72,7 +72,7 @@ pub fn PoiPreviewPanel(
                     icons::X { class: "h-4 w-4" }
                 }
             }
-            // Corps : dispatch par kind (read-only, aucun handler d'écriture).
+            // Body: dispatch by kind (read-only, no write handler).
             div { class: "flex-1 min-h-0 flex flex-col overflow-hidden",
                 {
                     match target.kind.as_str() {
@@ -103,7 +103,7 @@ pub fn PoiPreviewPanel(
     }
 }
 
-/// Corps média : fetch `media::detail` puis rendu (image ou viewer JS).
+/// Media body: fetch `media::detail` then render (image or JS viewer).
 #[component]
 fn MediaPreviewBody(asset_id: String, asset_name: String) -> Element {
     let detail = use_resource(move || {
@@ -155,10 +155,10 @@ fn annotatable(asset: &api::media::MediaAsset) -> bool {
     }
 }
 
-/// Rendu d'un asset média en inline (porté de `MediaViewerModal`, sans la
-/// chrome modale) : Photo/Floorplan → `<img>` blob ; Panorama/Splat →
-/// viewer JS (`media_viewer::mount`, hauteur inline — piège pannellum) ;
-/// fallback natif si le montage JS échoue.
+/// Inline rendering of a media asset (ported from `MediaViewerModal`,
+/// without the modal chrome): Photo/Floorplan → blob `<img>`; Panorama/Splat →
+/// JS viewer (`media_viewer::mount`, inline height — pannellum pitfall);
+/// native fallback if the JS mount fails.
 #[component]
 fn MediaAssetView(asset: api::media::MediaAsset) -> Element {
     let asset_kind = asset.media_kind();
@@ -225,8 +225,8 @@ fn MediaAssetView(asset: api::media::MediaAsset) -> Element {
     }
 }
 
-/// Corps tour : fetch `tours::detail` → `TourViewer` compact (host unique
-/// par tour — deux viewers pannellum ne peuvent pas partager un host DOM).
+/// Tour body: fetch `tours::detail` → compact `TourViewer` (unique host
+/// per tour — two pannellum viewers cannot share a DOM host).
 #[component]
 fn TourPreviewBody(tour_id: String) -> Element {
     let tour_id_for_view = tour_id.clone();

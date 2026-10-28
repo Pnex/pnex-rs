@@ -1,25 +1,25 @@
-//! Annotations sur médias (D55–D60, doctrine `docs/architecture/annotations.md`)
-//! — document JSONB des couches (`annotation_layer_versions.doc`, structure
-//! `pnex_core::AnnotationDoc`) : items ancrés sur des `media_assets` par UUID
-//! (jamais sur une scène ni un tour — D55), cibles faibles résolues au read
-//! (D57). École `tour.rs` : types partagés backend ↔ front, serde-only
-//! (wasm32-safe), validation **structurelle** pure ici — l'existence des
-//! assets/kind et des devices référencés est validée **en base** côté service
-//! backend (`services/annotation_layer.rs`).
+//! Media annotations (D55–D60, doctrine `docs/architecture/annotations.md`)
+//! — JSONB document of the layers (`annotation_layer_versions.doc`, structure
+//! `pnex_core::AnnotationDoc`): items anchored on `media_assets` by UUID
+//! (never on a scene or a tour — D55), weak targets resolved at read
+//! (D57). `tour.rs` school: types shared backend ↔ front, serde-only
+//! (wasm32-safe), pure **structural** validation here — the existence of the
+//! referenced assets/kind and devices is validated **in the database** by the backend
+//! service (`services/annotation_layer.rs`).
 //!
-//! Sémantique de versioning (école flows/D18 école `tours`) : append-only,
-//! save = nouvelle version avec concurrence optimiste
-//! (`expected_version_number` → 409) ; la version « courante » est la
-//! dernière ; la version publique est pointée par
-//! `annotation_layers.published_version_id` (FK circulaire, école
+//! Versioning semantics (flows/D18 school, `tours` school): append-only,
+//! save = new version with optimistic concurrency
+//! (`expected_version_number` → 409); the "current" version is the
+//! latest; the public version is pointed to by
+//! `annotation_layers.published_version_id` (circular FK, school of
 //! `tours.published_version_id`).
 
 use serde::{Deserialize, Serialize};
 
-/// Kinds d'item — string applicatif, cohérence avec `target.type` validée à
-/// l'écriture (`kind_target_mismatch`). Le device est identifié par **slug**
-/// (`device_registries.device_id`), la pin par **gpio** (identité machine
-/// stable, pas un label éditable).
+/// Item kinds — application string, consistency with `target.type` validated on
+/// write (`kind_target_mismatch`). The device is identified by **slug**
+/// (`device_registries.device_id`), the pin by **gpio** (stable machine
+/// identity, not an editable label).
 pub const ANNOTATION_KIND_DEVICE: &str = "device";
 pub const ANNOTATION_KIND_PIN: &str = "pin";
 pub const ANNOTATION_KIND_STATUS: &str = "status";
@@ -112,8 +112,8 @@ impl<'de> Deserialize<'de> for AnnotationGeometry {
     }
 }
 
-/// Cible faible d'un item (D57) — résolue **au read, en batch** (école
-/// `link_target_labels`) ; référence morte tolérée (`dead: true`, jamais 500).
+/// Weak target of an item (D57) — resolved **at read, in batch** (school of
+/// `link_target_labels`); dead reference tolerated (`dead: true`, never 500).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AnnotationTarget {
@@ -264,7 +264,7 @@ pub struct AnnotationItem {
     pub target: AnnotationTarget,
 }
 
-/// Document complet d'une couche (contenu de
+/// Full document of a layer (content of
 /// `annotation_layer_versions.doc`).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -281,8 +281,8 @@ fn violation(subject: Option<&str>, code: &str, message: String) -> AnnotationVi
     }
 }
 
-/// Cible compatible avec le kind ? (le kind est un string applicatif, la
-/// cohérence kind ↔ target.type est la seule règle).
+/// Target compatible with the kind? (the kind is an application string,
+/// kind ↔ target.type consistency is the only rule).
 fn kind_matches_target(kind: &str, target: &AnnotationTarget) -> bool {
     match target {
         AnnotationTarget::Device { .. } => kind == ANNOTATION_KIND_DEVICE,
@@ -294,9 +294,9 @@ fn kind_matches_target(kind: &str, target: &AnnotationTarget) -> bool {
     }
 }
 
-/// Validation **structurelle** pure du document (école `validate_tour_doc`) —
-/// nulle accès base : l'existence/kind des assets et l'existence des devices
-/// référencés sont vérifiés côté service (batch, école `validate_doc_assets`).
+/// Pure **structural** validation of the document (`validate_tour_doc` school) —
+/// no database access: the existence/kind of the assets and the existence of the referenced
+/// devices are checked on the service side (batch, `validate_doc_assets` school).
 pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> {
     let mut v = Vec::new();
     let mut ids = std::collections::HashSet::new();
@@ -424,7 +424,7 @@ pub fn validate_annotation_doc(doc: &AnnotationDoc) -> Vec<AnnotationViolation> 
             }
             _ => {}
         }
-        // Couleur `#rrggbb` stricte (D55 §4 : `^#[0-9a-fA-F]{6}$`).
+        // Strict `#rrggbb` color (D55 §4: `^#[0-9a-fA-F]{6}$`).
         if let Some(color) = &item.color {
             let hex = color.strip_prefix('#').unwrap_or("");
             if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -450,8 +450,8 @@ pub fn geometry_media_kinds(g: &AnnotationGeometry) -> &'static [&'static str] {
     }
 }
 
-/// `true` si la géométrie exige un média kind `panorama` (sinon image plate :
-/// `photo`/`floorplan` — même liste que les plans d'étage des tours).
+/// `true` if the geometry requires a `panorama` kind media (otherwise flat image:
+/// `photo`/`floorplan` — same list as the tours' floor plans).
 pub fn geometry_requires_panorama(g: &AnnotationGeometry) -> bool {
     matches!(g, AnnotationGeometry::Equirect { .. })
 }
@@ -796,7 +796,7 @@ mod tests {
         let json = serde_json::to_string(&doc).unwrap();
         let back: AnnotationDoc = serde_json::from_str(&json).unwrap();
         assert_eq!(back, doc);
-        // Forme wire conforme à la doctrine §4.
+        // Wire form compliant with the doctrine §4.
         assert!(json.contains(r#""type":"equirect""#));
         assert!(json.contains(r#""type":"flat""#));
         assert!(json.contains(r#""pin_gpio":4"#));
@@ -804,7 +804,7 @@ mod tests {
 
     #[test]
     fn doc_tolerant_aux_champs_manquants() {
-        // Doc ancien sans color/label : défauts posés, doc accepté.
+        // Old doc without color/label: defaults set, doc accepted.
         let doc: AnnotationDoc = serde_json::from_str(
             r#"{"items":[{"id":"a1","media_asset_id":"00000000-0000-0000-0000-000000000000",
                 "kind":"device","geometry":{"type":"equirect","yaw":1.0,"pitch":-2.0},
@@ -837,10 +837,10 @@ mod tests {
         };
         assert!(
             validate_annotation_doc(&doc).is_empty(),
-            "doc valide sans violation"
+            "valid doc without violation"
         );
 
-        // Doublon + id vide + asset vide + kind/cible incohérents.
+        // Duplicate + empty id + empty asset + inconsistent kind/target.
         doc.items.push(item(
             "a1",
             ANNOTATION_KIND_DEVICE,
@@ -903,7 +903,7 @@ mod tests {
             "{codes:?}"
         );
 
-        // Bornes géométrie : yaw/pitch équirect, x/y flat, couleur.
+        // Geometry bounds: equirect yaw/pitch, flat x/y, color.
         let mut doc = AnnotationDoc::default();
         let mut bad = item(
             "a1",
@@ -933,7 +933,7 @@ mod tests {
         assert!(codes.iter().any(|c| c == "invalid_position"), "{codes:?}");
         assert!(codes.iter().any(|c| c == "invalid_color"), "{codes:?}");
 
-        // NaN rejeté (non fini) — pas seulement hors bornes.
+        // NaN rejected (non-finite) — not just out of bounds.
         let nan = f64::NAN;
         let mut doc = AnnotationDoc::default();
         doc.items.push(item(

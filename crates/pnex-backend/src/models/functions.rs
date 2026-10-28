@@ -1,4 +1,4 @@
-//! Fonction du registre « Fonctions » — wrapper modèle (école flows.rs).
+//! Function of the "Functions" registry — model wrapper (flows.rs pattern).
 
 pub use super::_entities::functions::{ActiveModel, Entity, Model};
 use sea_orm::entity::prelude::*;

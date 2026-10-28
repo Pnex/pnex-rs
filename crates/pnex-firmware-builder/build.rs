@@ -1,18 +1,18 @@
-//! Copie filtrée de l'arborescence `firmware/` du monorepo vers `OUT_DIR`,
-//! pour embarquement via `include_dir!` (cf. `src/embedded.rs`).
+//! Filtered copy of the monorepo `firmware/` tree into `OUT_DIR`,
+//! for embedding via `include_dir!` (see `src/embedded.rs`).
 //!
-//! Le filtre reproduit `copy_dir_recursive` (pipeline.rs) : jamais
-//! `.git`/`.pio`/`.venv`/`node_modules` — sur une machine de dev ces
-//! dossiers totalisent des centaines de Mo (le venv pio seul ~54 Mo) et
-//! gonfleraient le binaire serveur. `build.sh` est exclu aussi : c'est un
-//! fichier local de convenience qui a historiquement contenu des secrets.
+//! The filter mirrors `copy_dir_recursive` (pipeline.rs): never
+//! `.git`/`.pio`/`.venv`/`node_modules` — on a dev machine these
+//! folders add up to hundreds of MB (the pio venv alone ~54 MB) and
+//! would bloat the server binary. `build.sh` is excluded too: it is a
+//! local convenience file that historically contained secrets.
 //!
-//! `rerun-if-changed` est émis sur la **racine** `firmware/` (scan récursif
-//! cargo) : un projet *nouveau* (ex. `generic_esp8266`, qui a coûté une
-//! heure de diagnostic quand il n'était jamais ré-embarqué) déclenche le
-//! script. Contrepartie assumée : le churn `.pio`/`.venv` local re-déclenche
-//! une recompilation — sans effet sur la copie (ces dossiers sont filtrés),
-//! seul le temps de build incremental serveur paie le churn.
+//! `rerun-if-changed` is emitted on the `firmware/` **root** (cargo recursive
+//! scan): a *new* project (e.g. `generic_esp8266`, which cost an
+//! hour of diagnosis when it was never re-embedded) triggers the
+//! script. Accepted trade-off: local `.pio`/`.venv` churn re-triggers
+//! a recompilation — with no effect on the copy (those folders are filtered),
+//! only the incremental server build time pays for the churn.
 
 use std::fs;
 use std::path::Path;
@@ -45,23 +45,23 @@ fn main() {
     let source = Path::new(&manifest).join("../../firmware");
     let target = Path::new(&out).join("firmware-embed");
 
-    // Repartir d'une copie propre à chaque exécution (retrait des fichiers
-    // disparus de l'arborescence source).
+    // Start from a clean copy on every run (removes files
+    // gone from the source tree).
     let _ = fs::remove_dir_all(&target);
-    fs::create_dir_all(&target).expect("créer firmware-embed");
+    fs::create_dir_all(&target).expect("create firmware-embed");
 
     if source.is_dir() {
         copy_filtered(&source, &target).expect("copier firmware/ vers OUT_DIR");
-        // Scan récursif cargo sur la racine : capte les projets/fichiers
-        // *nouveaux* (le per-fichier seul laissait l'embarquement périmé).
+        // Cargo recursive scan on the root: catches *new*
+        // projects/files (per-file alone left the embedding stale).
         println!("cargo:rerun-if-changed={}", source.display());
         // Content-based trigger for cached target/ dirs (Docker cache
         // mount): mtimes are not reliable there, the image build exports a
         // hash of firmware/ instead (deploy/docker/Dockerfile).
         println!("cargo:rerun-if-env-changed=PNEX_FIRMWARE_TREE_HASH");
     } else {
-        // Crate compilée hors monorepo : arborescence vide — l'erreur claire
-        // est levée à l'exécution (embedded.rs), pas à la compilation.
-        println!("cargo:warning=arborescence firmware/ introuvable — source embarquée vide");
+        // Crate compiled outside the monorepo: empty tree — the clear error
+        // is raised at runtime (embedded.rs), not at compile time.
+        println!("cargo:warning=firmware/ tree not found — embedded source empty");
     }
 }

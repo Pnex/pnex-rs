@@ -1,11 +1,11 @@
-//! Compile la bibliothèque C++ CoolProp (épinglée au tag v8.0.0, submodule
-//! `vendor/CoolProp`) en bibliothèque statique et la lie au crate.
+//! Compiles the CoolProp C++ library (pinned to tag v8.0.0, submodule
+//! `vendor/CoolProp`) as a static library and links it into the crate.
 //!
-//! Si le submodule n'est pas initialisé (checkout frais sans
-//! `git submodule update --init`), il est cloné à la une depuis le dépôt
-//! officiel au tag épinglé pour que `cargo build` reste autosuffisant.
+//! If the submodule is not initialised (fresh checkout without
+//! `git submodule update --init`), it is cloned on the fly from the official
+//! repository at the pinned tag so that `cargo build` stays self-sufficient.
 //!
-//! Origine : adapté du projet coolprop-rs (MIT, même auteur).
+//! Origin: adapted from the coolprop-rs project (MIT, same author).
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -47,15 +47,15 @@ fn main() {
         .define("COOLPROP_RELEASE", "ON")
         .define("COOLPROP_NO_EXAMPLES", "ON")
         .define("CMAKE_POSITION_INDEPENDENT_CODE", "ON")
-        // La cible static-library ne pose pas ce define elle-même (seul le
-        // build shared le fait), mais c'est lui qui rend EXPORT_CODE
-        // `extern "C"` dans CoolPropLib.h — sans lui chaque symbole est
-        // manglé C++ et impossible à lier depuis Rust.
+        // The static-library target does not set this define itself (only the
+        // shared build does), but it is what makes EXPORT_CODE
+        // `extern "C"` in CoolPropLib.h — without it every symbol is
+        // C++-mangled and impossible to link from Rust.
         .define("CMAKE_CXX_FLAGS", "-DCOOLPROP_LIB");
-    // Cross-compil Linux (CI : pnex-flow-runtime est vérifié aarch64/armv7) :
-    // cmake doit connaître la cible et le compilateur croisé, sinon il teste
-    // le compilateur hôte et refuse. Les C croisés (gcc-*-linux) étaient déjà
-    // installés pour ring/rquickjs ; il faut ici les C++ croisés.
+    // Linux cross-compile (CI: pnex-flow-runtime is checked aarch64/armv7):
+    // cmake must know the target and the cross compiler, otherwise it tests
+    // the host compiler and refuses. The C cross compilers (gcc-*-linux) were already
+    // installed for ring/rquickjs; here the C++ cross compilers are needed.
     if let Some(processor) = cross_processor() {
         cfg.define("CMAKE_SYSTEM_NAME", "Linux")
             .define("CMAKE_SYSTEM_PROCESSOR", processor)
@@ -116,11 +116,11 @@ fn ensure_vendored(vendor: &Path) {
     }
 }
 
-/// Applique le patch porté (voir `vendor/patches/coolprop/`) : les wrappers
-/// KSI dépréciés d'amont (`Props1`, `PropsS`, `cair_sat`) ne rattrapent pas
-/// les exceptions C++ ; une exception qui traverse la frontière `extern "C"`
-/// est UB pour l'appelant FFI. Le patch ajoute le même try/catch que les
-/// autres exports. Idempotent : `git apply --check` échoue une fois appliqué.
+/// Applies the ported patch (see `vendor/patches/coolprop/`): the deprecated
+/// upstream KSI wrappers (`Props1`, `PropsS`, `cair_sat`) do not catch
+/// C++ exceptions; an exception crossing the `extern "C"` boundary
+/// is UB for the FFI caller. The patch adds the same try/catch as the
+/// other exports. Idempotent: `git apply --check` fails once applied.
 fn apply_patches(patch: &Path, vendor: &Path) {
     if !patch.exists() {
         panic!(
@@ -150,8 +150,8 @@ fn apply_patches(patch: &Path, vendor: &Path) {
         }
         return;
     }
-    // Checkout sans .git (tarball) : `patch(1)` en repli, --forward pour
-    // rester idempotent.
+    // Checkout without .git (tarball): `patch(1)` as fallback, --forward to
+    // stay idempotent.
     let status = Command::new("patch")
         .args(["-p1", "--forward", "-d"])
         .arg(vendor)
@@ -162,9 +162,9 @@ fn apply_patches(patch: &Path, vendor: &Path) {
     eprintln!("applied exception-guard patch to vendored CoolProp (patch(1))");
 }
 
-/// Processeur cmake de la cible si l'on cross-compile Linux
-/// (aarch64 / armv7 — cibles Raspberry Pi de la CI), sinon `None`
-/// (build hôte : cmake auto-détecte).
+/// cmake processor of the target when cross-compiling Linux
+/// (aarch64 / armv7 — the CI's Raspberry Pi targets), otherwise `None`
+/// (host build: cmake auto-detects).
 fn cross_processor() -> Option<&'static str> {
     let target = env::var("TARGET").unwrap_or_default();
     if target.starts_with("aarch64") {
@@ -176,7 +176,7 @@ fn cross_processor() -> Option<&'static str> {
     }
 }
 
-/// Compilateur C++ croisé correspondant à la cible (paquets Debian
+/// C++ cross compiler matching the target (Debian packages
 /// `g++-aarch64-linux-gnu` / `g++-arm-linux-gnueabihf`).
 fn cross_cxx() -> &'static str {
     let target = env::var("TARGET").unwrap_or_default();
@@ -187,7 +187,7 @@ fn cross_cxx() -> &'static str {
     }
 }
 
-/// Localise le répertoire contenant libCoolProp.a (ou CoolProp.lib sous Windows).
+/// Locates the directory containing libCoolProp.a (or CoolProp.lib on Windows).
 fn find_library_dir(root: &Path) -> Option<PathBuf> {
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {

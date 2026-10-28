@@ -1,23 +1,23 @@
-//! Nœud de flow PNEX **sonde** (`pnex-display`) pour le runtime EdgeLinkd
+//! PNEX **probe** flow node (`pnex-display`) for the headless EdgeLinkd
 //! headless — same convention as [`pnex_node_device`]: registered through
 //! `inventory` (`#[flow_node]` macro), typed build, secrets never in
 //! flows.json.
 //!
-//! - passthrough **intact** : le message continue vers l'aval inchangé ;
-//! - publication au **canal debug** du moteur avec l'id canvas **brut**
-//!   (`pnex_node_id` estampillé par la projection — `"n3"`) : c'est la clé
-//!   de rattachement du badge live de l'éditeur et du panneau de debug ;
-//! - valeur capturée = `msg.payload` si présent, sinon le message entier ;
-//!   la valeur est publiée **brute** (le debug builtin pré-stringifie).
+//! - **intact** passthrough: the message continues downstream unchanged;
+//! - publication to the engine's **debug channel** with the **raw** canvas id
+//!   (`pnex_node_id` stamped by the projection — `"n3"`): this is the
+//!   attachment key of the editor's live badge and of the debug panel;
+//! - captured value = `msg.payload` if present, otherwise the whole message;
+//!   the value is published **raw** (the builtin debug pre-stringifies).
 //!
-//! L'identité est estampillée par la projection au deploy — jamais lue
-//! d'une config client (anti-forgery d'attribution) ; le backend n'expose
-//! de toute façon que ce que le runtime a attribué au tab (`flow`).
+//! The identity is stamped by the projection at deploy — never read
+//! from a client config (attribution anti-forgery); the backend only exposes
+//! anyway what the runtime attributed to the tab (`flow`).
 
 pub mod display;
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit
-/// que l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees
+/// that linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
 #[cfg(test)]

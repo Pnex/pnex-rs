@@ -1,8 +1,8 @@
-//! Tests notifications (D49–D54) : CRUD canaux/templates, masquage des
-//! secrets (D54), 409 d'unicité, isolation org, aperçu, test-draft webhook
-//! contre récepteur local, endpoint interne + bus WS + journal.
+//! Notification tests (D49–D54): channel/template CRUD, secret masking
+//! (D54), uniqueness 409, org isolation, preview, webhook test-draft
+//! against a local receiver, internal endpoint + WS bus + journal.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -78,8 +78,8 @@ async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
 
 const INTERNAL_TOKEN: &str = "test-internal-token";
 
-/// Récepteur webhook local (axum) — retourne (url, seen) où seen contient
-/// (headers, body) de la dernière requête.
+/// Local webhook receiver (axum) — returns (url, seen) where seen holds
+/// (headers, body) of the last request.
 async fn spawn_webhook_receiver() -> (
     String,
     std::sync::Arc<tokio::sync::Mutex<Option<(axum::http::HeaderMap, serde_json::Value)>>>,
@@ -107,7 +107,7 @@ async fn spawn_webhook_receiver() -> (
 
 use axum::Json;
 
-/// Crée un canal et retourne (id, payload de réponse).
+/// Creates a channel and returns (id, response payload).
 async fn create_channel(
     server: &axum_test::TestServer,
     token: &str,
@@ -123,7 +123,7 @@ async fn create_channel(
         .await;
     let status = resp.status_code();
     let json = resp.json::<serde_json::Value>();
-    assert_eq!(status, 201, "création canal : {json}");
+    assert_eq!(status, 201, "channel creation: {json}");
     (json["id"].as_str().unwrap().to_string(), json)
 }
 
@@ -143,9 +143,9 @@ async fn kinds_exposent_les_canaux_livres() {
         assert!(names.contains(&"websocket"), "{names:?}");
         assert!(names.contains(&"webhook"), "{names:?}");
         assert!(names.contains(&"ntfy"), "{names:?}");
-        // Contrat notify-kinds.v1 : websocket sans champ, webhook avec url
-        // requis + secret write-only, ntfy avec server/topic requis + token
-        // secret optionnel.
+        // notify-kinds.v1 contract: websocket without fields, webhook with a
+        // required url + write-only secret, ntfy with required server/topic +
+        // optional secret token.
         let webhook = list.iter().find(|k| k["kind"] == "webhook").unwrap();
         let fields = webhook["field_spec"].as_array().unwrap();
         assert!(fields
@@ -165,7 +165,7 @@ async fn kinds_exposent_les_canaux_livres() {
         assert!(fields
             .iter()
             .any(|f| f["id"] == "token" && f["type"] == "secret" && f["required"] == false));
-        // Telegram : bot_token secret requis + chat_id requis.
+        // Telegram: secret bot_token required + chat_id required.
         let telegram = list.iter().find(|k| k["kind"] == "telegram").unwrap();
         let fields = telegram["field_spec"].as_array().unwrap();
         assert!(fields
@@ -185,7 +185,7 @@ async fn kinds_exposent_les_canaux_livres() {
                 "{kind}"
             );
         }
-        // SMTP : password secret, tls en select avec ses 3 options.
+        // SMTP: secret password, tls as a select with its 3 options.
         let smtp = list.iter().find(|k| k["kind"] == "smtp").unwrap();
         let fields = smtp["field_spec"].as_array().unwrap();
         assert!(fields
@@ -220,12 +220,12 @@ async fn cycle_crud_masquage_et_409() {
         )
         .await;
 
-        // ── D54 : le secret n'est JAMAIS rendu, seule sa présence l'est.
+        // ── D54: the secret is NEVER returned, only its presence is.
         assert_eq!(created["config"]["secret_value"], serde_json::Value::Null);
         assert_eq!(created["secrets_set"], serde_json::json!(["secret_value"]));
         assert_eq!(created["config"]["url"], "https://home.example/hook");
 
-        // ── PUT sans le secret : conservé (merge registre).
+        // ── PUT without the secret: kept (registry merge).
         let updated = server
             .put(&format!("/api/v1/notify/channels/{id}"))
             .add_header("Content-Type", "application/json")
@@ -244,7 +244,7 @@ async fn cycle_crud_masquage_et_409() {
         assert_eq!(updated["config"]["secret_value"], serde_json::Value::Null);
         assert_eq!(updated["secrets_set"], serde_json::json!(["secret_value"]));
 
-        // ── Unicité (org, name) : 409 (divergence école viz : clé naturelle).
+        // ── (org, name) uniqueness: 409 (differs from viz: natural key).
         let clash = server
             .post("/api/v1/notify/channels")
             .add_header("Content-Type", "application/json")
@@ -257,7 +257,7 @@ async fn cycle_crud_masquage_et_409() {
             .await;
         assert_eq!(clash.status_code(), 409);
 
-        // ── Validation : kind inconnu et URL manquante → 400 champ.
+        // ── Validation: unknown kind and missing URL → field 400.
         let bad_kind = server
             .post("/api/v1/notify/channels")
             .add_header("Content-Type", "application/json")
@@ -296,8 +296,8 @@ async fn cycle_crud_masquage_et_409() {
     .await;
 }
 
-/// D54 sur un second kind : le bot_token est masqué au GET, `secrets_set`
-/// le liste, et un PUT sans le secret le conserve (merge registre).
+/// D54 on a second kind: the bot_token is masked on GET, `secrets_set`
+/// lists it, and a PUT without the secret keeps it (registry merge).
 #[tokio::test]
 #[serial]
 async fn cycle_crud_masquage_telegram() {
@@ -323,7 +323,7 @@ async fn cycle_crud_masquage_telegram() {
         assert_eq!(created["secrets_set"], serde_json::json!(["bot_token"]));
         assert_eq!(created["config"]["chat_id"], "-1001234567890");
 
-        // PUT sans le secret : conservé.
+        // PUT without the secret: kept.
         let updated = server
             .put(&format!("/api/v1/notify/channels/{id}"))
             .add_header("Content-Type", "application/json")
@@ -360,7 +360,7 @@ async fn isolation_org_et_viewer() {
         )
         .await;
 
-        // Bob sur son org : liste vide, détail 404 masqué.
+        // Bob on his org: empty list, masked detail 404.
         let list = server
             .get("/api/v1/notify/channels")
             .add_header("Authorization", bearer(&env.bob))
@@ -375,7 +375,7 @@ async fn isolation_org_et_viewer() {
             .await;
         assert_eq!(cross.status_code(), 404);
 
-        // Viewer de l'org A : lit, n'écrit pas.
+        // Viewer of org A: reads, doesn't write.
         server
             .post(&format!("/api/v1/orgs/{org_a}/members"))
             .add_header("Content-Type", "application/json")
@@ -421,7 +421,7 @@ async fn templates_crud_et_preview() {
         let tpl = created.json::<serde_json::Value>();
         let id = tpl["id"].as_str().unwrap().to_string();
 
-        // Preview : vars manquante → exemple ; payload exposé à la racine.
+        // Preview: missing vars → example; payload exposed at the root.
         let preview = server
             .post(&format!("/api/v1/notify/templates/{id}/preview"))
             .add_header("Content-Type", "application/json")
@@ -439,7 +439,7 @@ async fn templates_crud_et_preview() {
         );
         assert!(preview["body"].as_str().unwrap().contains("82.5"));
 
-        // Preview avec override de var.
+        // Preview with a var override.
         let preview2 = server
             .post(&format!("/api/v1/notify/templates/{id}/preview"))
             .add_header("Content-Type", "application/json")
@@ -453,7 +453,7 @@ async fn templates_crud_et_preview() {
             .json::<serde_json::Value>();
         assert!(preview2["body"].as_str().unwrap().contains("seuil 90"));
 
-        // Template syntaxiquement cassé → 400 champ body.
+        // Syntactically broken template → 400 body field.
         let bad = server
             .post("/api/v1/notify/templates")
             .add_header("Content-Type", "application/json")
@@ -473,7 +473,7 @@ async fn test_draft_et_test_canal_webhook() {
         let org = personal_org(&server, &env.alice).await;
         let (url, seen) = spawn_webhook_receiver().await;
 
-        // ── Test-draft avant sauvegarde : le récepteur reçoit le payload.
+        // ── Test-draft before saving: the receiver gets the payload.
         let draft = server
             .post("/api/v1/notify/channels/test-draft")
             .add_header("Content-Type", "application/json")
@@ -486,7 +486,7 @@ async fn test_draft_et_test_canal_webhook() {
             }))
             .await;
         assert_eq!(draft.status_code(), 204, "{}", draft.text());
-        let (headers, body) = seen.lock().await.take().expect("webhook reçu");
+        let (headers, body) = seen.lock().await.take().expect("webhook received");
         assert_eq!(
             headers.get("x-sig").and_then(|v| v.to_str().ok()),
             Some("tok")
@@ -494,7 +494,7 @@ async fn test_draft_et_test_canal_webhook() {
         assert!(body["subject"].as_str().unwrap().contains("brouillon"));
         assert_eq!(body["meta"]["test"], true);
 
-        // ── Test d'un canal persisté : journalisé source test.
+        // ── Test of a persisted channel: journaled with source test.
         let (id, _) = create_channel(
             &server,
             &env.alice,
@@ -505,7 +505,7 @@ async fn test_draft_et_test_canal_webhook() {
             }),
         )
         .await;
-        // enabled:false est contourné par le test (c'est son but).
+        // enabled:false is bypassed by the test (that's its purpose).
         let tested = server
             .post(&format!("/api/v1/notify/channels/{id}/test"))
             .add_header("Authorization", bearer(&env.alice))
@@ -546,7 +546,7 @@ async fn test_canal_avec_template_rendu() {
         let org = personal_org(&server, &env.alice).await;
         let (url, seen) = spawn_webhook_receiver().await;
 
-        // Template avec var déclarée (example 80) + canal webhook persisté.
+        // Template with a declared var (example 80) + persisted webhook channel.
         let created = server
             .post("/api/v1/notify/templates")
             .add_header("Content-Type", "application/json")
@@ -575,8 +575,8 @@ async fn test_canal_avec_template_rendu() {
         )
         .await;
 
-        // ── Test avec template : le message rendu part sur le canal
-        //    (override de var gagne sur l'example déclaré).
+        // ── Test with a template: the rendered message goes out on the channel
+        //    (the var override wins over the declared example).
         let tested = server
             .post(&format!("/api/v1/notify/channels/{id}/test"))
             .add_header("Content-Type", "application/json")
@@ -588,13 +588,13 @@ async fn test_canal_avec_template_rendu() {
             }))
             .await;
         assert_eq!(tested.status_code(), 204, "{}", tested.text());
-        let (headers, body) = seen.lock().await.take().expect("webhook reçu");
+        let (headers, body) = seen.lock().await.take().expect("webhook received");
         let _ = headers;
         assert_eq!(body["subject"], "[chaudiere] seuil dépassé");
         assert_eq!(body["body"], "⚠️ chaudiere : 97.5 (seuil 95)");
         assert_eq!(body["meta"]["test"], true);
 
-        // ── Template inconnu → 404.
+        // ── Unknown template → 404.
         let missing = server
             .post(&format!("/api/v1/notify/channels/{id}/test"))
             .add_header("Content-Type", "application/json")
@@ -607,18 +607,18 @@ async fn test_canal_avec_template_rendu() {
     .await;
 }
 
-// Endpoint interne fail-closed : sans `PNEX_NOTIFY_INTERNAL_TOKEN`, toute
-// livraison est 401 (et rien n'est journalisé).
+// Fail-closed internal endpoint: without `PNEX_NOTIFY_INTERNAL_TOKEN`, every
+// delivery is 401 (and nothing is journaled).
 
-/// Test-draft d'un canal ntfy contre un récepteur local — chemin complet
-/// validate → send (publication JSON `{topic, message, title}` vers
+/// Test-draft of an ntfy channel against a local receiver — full path
+/// validate → send (JSON publication `{topic, message, title}` to
 /// `{server}/`).
 #[tokio::test]
 #[serial]
 async fn test_draft_ntfy_contre_recepteur_local() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Récepteur ntfy : le canal publie sur `{server}/` en JSON.
+        // ntfy receiver: the channel publishes to `{server}/` as JSON.
         use axum::routing::post;
         let seen = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let seen_for_handler = seen.clone();
@@ -656,7 +656,7 @@ async fn test_draft_ntfy_contre_recepteur_local() {
             }))
             .await;
         assert_eq!(draft.status_code(), 204, "{}", draft.text());
-        let (headers, body) = seen.lock().await.take().expect("publication ntfy reçue");
+        let (headers, body) = seen.lock().await.take().expect("ntfy publication received");
         assert_eq!(
             headers.get("authorization").and_then(|v| v.to_str().ok()),
             Some("Bearer tk_test")
@@ -702,8 +702,8 @@ async fn interne_sans_token_refuse() {
     .await;
 }
 
-/// Chaîne complète : WS abonné + endpoint interne (token valide) → frame
-/// reçue + journal (source flow). Mauvais token → 401.
+/// Full chain: subscribed WS + internal endpoint (valid token) → frame
+/// received + journal (source flow). Wrong token → 401.
 #[tokio::test]
 #[serial]
 async fn interne_delivre_frame_ws_et_journalise() {
@@ -728,7 +728,7 @@ async fn interne_delivre_frame_ws_et_journalise() {
             .await;
         assert_eq!(bad.status_code(), 401);
 
-        // Abonné WS (JWT + org valide).
+        // WS subscriber (valid JWT + org).
         unsafe { std::env::set_var("PNEX_NOTIFY_INTERNAL_TOKEN", INTERNAL_TOKEN) };
         let mut ws = server
             .get_websocket(&format!(
@@ -755,8 +755,8 @@ async fn interne_delivre_frame_ws_et_journalise() {
         let body = resp.json::<serde_json::Value>();
         assert_eq!(body["delivered"], 1);
 
-        // La frame JSON est reçue par l'abonné (en filtrant les Pings du
-        // heartbeat, dont le premier tick est immédiat).
+        // The JSON frame is received by the subscriber (filtering out the
+        // heartbeat Pings, whose first tick is immediate).
         let frame = loop {
             let m = ws.receive_message().await;
             if let axum_test::WsMessage::Text(t) = m {
@@ -826,7 +826,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
             .into_websocket()
             .await;
 
-        // Brouillon websocket : channel_id nil côté deliver, aucun row créé.
+        // Websocket draft: nil channel_id on the deliver side, no row created.
         let draft = server
             .post("/api/v1/notify/channels/test-draft")
             .add_header("Content-Type", "application/json")
@@ -840,8 +840,8 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
             .await;
         assert_eq!(draft.status_code(), 204, "{:?}", draft.text());
 
-        // La frame du brouillon est reçue par l'abonné (Pings du heartbeat
-        // filtrés — premier tick immédiat).
+        // The draft's frame is received by the subscriber (heartbeat Pings
+        // filtered — first tick immediate).
         let frame = loop {
             let m = ws.receive_message().await;
             if let axum_test::WsMessage::Text(t) = m {
@@ -853,7 +853,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
         assert_eq!(item["meta"]["test"], true);
         assert_eq!(item["id"], 0);
 
-        // Aucun canal créé par le test-draft.
+        // No channel created by the test-draft.
         let channels = server
             .get("/api/v1/notify/channels")
             .add_header("Authorization", bearer(&env.alice))
@@ -872,7 +872,7 @@ async fn test_draft_websocket_draft_reaches_the_bus() {
 async fn ws_notify_rejets_auth() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Sans token : la connexion est acceptée puis fermée (4002).
+        // Without a token: the connection is accepted then closed (4002).
         let mut ws = server
             .get_websocket("/ws/notify")
             .await

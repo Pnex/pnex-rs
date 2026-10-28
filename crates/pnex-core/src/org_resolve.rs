@@ -1,7 +1,7 @@
 //! Company name → SIREN (account-mapping.md D332): the `org_resolve` flow
 //! node asks the public company register for a name (and a city or postcode)
 //! and returns up to five scored candidates. It writes nothing: a clear
-//! match leaves on its own port for a flow to propose the link (`a_valider`),
+//! match leaves on its own port for a flow to propose the link (`to_validate`),
 //! anything else goes to a human.
 
 use serde::{Deserialize, Serialize};

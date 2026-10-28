@@ -4,8 +4,8 @@ use super::*;
 
 // ─────────────────────────── erreurs ───────────────────────────
 
-/// D43 : conflit de placement — tout ce qu'il faut au front pour proposer
-/// le déplacement en connaissance de cause (409).
+/// D43: placement conflict — everything the front needs to offer
+/// the move knowingly (409).
 #[derive(Debug)]
 pub struct PlacementConflict {
     pub device_id: String,
@@ -20,27 +20,27 @@ pub enum VizWriteError {
     LabelTooLong,
     LocationDetailTooLong,
     EmojiTooLong,
-    /// latitude hors [-90, 90] ou non finie.
+    /// latitude outside [-90, 90] or not finite.
     LatitudeInvalid,
-    /// longitude hors [-180, 180] ou non finie.
+    /// longitude outside [-180, 180] or not finite.
     LongitudeInvalid,
-    /// `device_id` absent du registre de l'org.
+    /// `device_id` absent from the org's registry.
     DeviceUnknown,
-    /// D43 : le device a déjà un placement — l'erreur porte tout ce qu'il
-    /// faut au front pour la confirmation de déplacement (jamais silencieux).
+    /// D43: the device already has a placement — the error carries everything
+    /// the front needs for the move confirmation (never silent).
     DeviceAlreadyPlaced(PlacementConflict),
-    /// PATCH placement introuvable dans l'org (→ 404 masqué).
+    /// PATCH placement not found in the org (→ masked 404).
     PlacementUnknown,
-    /// POI cible d'un déplacement inconnu dans l'org (→ 400 champ pin_id).
+    /// Target POI of a move unknown in the org (→ 400 on field pin_id).
     PinUnknown,
-    /// source_kind de lien non supporté ou POI source introuvable dans l'org.
+    /// Unsupported link source_kind or source POI not found in the org.
     LinkSourceInvalid,
-    /// target_kind non supporté ou cible introuvable dans l'org.
+    /// Unsupported target_kind or target not found in the org.
     LinkTargetInvalid,
-    /// Lien déjà existant pour cette paire (arête D42 en double).
+    /// Link already exists for this pair (duplicate D42 edge).
     LinkConflict,
-    /// Aperçu épinglé : kind hors liste épinglable, ou kind sans id (le
-    /// couple est posé/cleared ensemble).
+    /// Pinned preview: kind not in the pinnable list, or kind without id (the
+    /// pair is set/cleared together).
     PreviewKindInvalid,
     Db,
 }
@@ -58,7 +58,7 @@ pub(super) fn validate_label(label: Option<&str>) -> Result<String, VizWriteErro
     Ok(label.to_string())
 }
 
-/// Localisation libre dans le bâtiment (« Bât. A — Étage 2 — Salle 204 »).
+/// Free location inside the building (« Bldg A — Floor 2 — Room 204 »).
 pub(super) fn validate_location_detail(
     detail: Option<&str>,
 ) -> Result<Option<String>, VizWriteError> {
@@ -69,8 +69,8 @@ pub(super) fn validate_location_detail(
     }
 }
 
-/// Pictogramme POI : ≤ 8 `char`s (un graphème emoji courant tient largement ;
-/// varchar(16) en DB).
+/// POI pictogram: ≤ 8 `char`s (a common emoji grapheme fits easily;
+/// varchar(16) in the DB).
 pub(super) fn validate_emoji(emoji: Option<&str>) -> Result<Option<String>, VizWriteError> {
     match emoji.map(str::trim).filter(|e| !e.is_empty()) {
         None => Ok(None),
@@ -79,8 +79,8 @@ pub(super) fn validate_emoji(emoji: Option<&str>) -> Result<Option<String>, VizW
     }
 }
 
-/// lat/lon bornés et finis (hardening — la DB ne vérifie que le CHECK
-/// geo/plan, pas les plages WGS84).
+/// Bounded and finite lat/lon (hardening — the DB only checks the
+/// geo/plan CHECK, not the WGS84 ranges).
 pub(super) fn validate_lat(lat: f64) -> Result<Decimal, VizWriteError> {
     if !(-90.0..=90.0).contains(&lat) || !lat.is_finite() {
         return Err(VizWriteError::LatitudeInvalid);

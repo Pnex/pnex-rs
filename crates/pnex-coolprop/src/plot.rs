@@ -1,79 +1,79 @@
-//! Moteur de diagrammes thermodynamiques — sweeps CoolProp en Rust.
+//! Thermodynamic diagram engine — CoolProp sweeps in Rust.
 //!
-//! La classe C++ `PropertyPlot` (iso-lignes) n'est pas exportée dans l'API C
-//! : les courbes sont calculées par **sweeps** du wrapper safe — dôme de
-//! saturation, iso-lignes, psychrométrique — segmentées aux discontinuités
-//! (sortie sans NaN : l'avant ne dessine que des polylines).
+//! The C++ `PropertyPlot` class (iso-lines) is not exported in the C API:
+//! curves are computed by **sweeps** of the safe wrapper — saturation
+//! dome, iso-lines, psychrometric — split at discontinuities
+//! (NaN-free output: the front only draws polylines).
 //!
-//! Pur : entrées = strings + ranges, sortie = polylines SI + méta d'axes ;
-//! le front projette (log/lin par axe), l'unité est déclarée ici.
+//! Pure: inputs = strings + ranges, output = SI polylines + axis meta;
+//! the front projects (log/lin per axis), the unit is declared here.
 
 use serde::{Deserialize, Serialize};
 
 use crate::safe;
 
-/// Type de diagramme. `Psychro` = air humide (chemin `haprops_si`, séparé
-/// des fluides purs — cf. plan D7).
+/// Diagram type. `Psychro` = humid air (`haprops_si` path, separate
+/// from pure fluids — see plan D7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DiagramKind {
-    /// log(p)-h : x = Hmass (J/kg), y = P (Pa) — y log au rendu.
+    /// log(p)-h: x = Hmass (J/kg), y = P (Pa) — y log when rendered.
     Ph,
     /// T-s : x = Smass (J/kg·K), y = T (K).
     Ts,
-    /// Psychrométrique : x = T (°C), y = W (kg eau / kg air sec), pression
-    /// atmosphérique paramétrable.
+    /// Psychrometric: x = T (°C), y = W (kg water / kg dry air), configurable
+    /// atmospheric pressure.
     Psychro,
 }
 
-/// Plage d'un axe (unités SI du diagramme).
+/// Range of an axis (SI units of the diagram).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AxisRange {
     pub min: f64,
     pub max: f64,
 }
 
-/// Une iso-ligne demandée : paramètre CoolProp + valeurs.
+/// A requested iso-line: CoolProp parameter + values.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IsolineSpec {
     pub param: String,
     pub values: Vec<f64>,
 }
 
-/// Méta d'un axe (projection et habillage côté front).
+/// Axis meta (projection and dressing on the front side).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AxisMeta {
     pub label: String,
     pub unit: String,
     pub min: f64,
     pub max: f64,
-    /// L'axe se rend en échelle logarithmique (y du p-h).
+    /// The axis renders on a logarithmic scale (y of the p-h).
     pub log: bool,
 }
 
-/// Résultat d'un diagramme : polylines SI découpées + méta d'axes.
+/// Diagram result: split SI polylines + axis meta.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagramResult {
-    /// Courbes : dôme de saturation, iso-lignes, chaque polyline continue.
+    /// Curves: saturation dome, iso-lines, each a continuous polyline.
     pub polylines: Vec<DiagramCurve>,
     pub x: AxisMeta,
     pub y: AxisMeta,
 }
 
-/// Une courbe nommée (pour la légende / le style côté front).
+/// A named curve (for the legend / styling on the front side).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagramCurve {
-    /// Identifiant de série (ex. `"sat_liq"`, `"sat"`, `"T:400"`, `"P:1e5"`).
+    /// Series identifier (e.g. `"sat_liq"`, `"sat"`, `"T:400"`, `"P:1e5"`).
     pub id: String,
     pub points: Vec<[f64; 2]>,
 }
 
-/// Échantillonne `n` points log-équirépartis sur [min, max] (≥ 2).
+/// Samples `n` log-evenly-spaced points over [min, max] (≥ 2).
 fn log_grid(min: f64, max: f64, n: usize) -> Vec<f64> {
     let n = n.max(2);
     if min <= 0.0 || max <= min {
-        // Repli linéaire (ranges psychro autour de 0 °C en P… non applicable
-        // ici : grille sur T/P toujours > 0) — sécurité.
+        // Linear fallback (psychro ranges around 0 °C in P… not applicable
+        // here: grid on T/P always > 0) — safety.
         return (0..n)
             .map(|i| min + (max - min) * i as f64 / (n - 1) as f64)
             .collect();
@@ -88,7 +88,7 @@ fn log_grid(min: f64, max: f64, n: usize) -> Vec<f64> {
         .collect()
 }
 
-/// Échantillonne `n` points équirépartis sur [min, max] (≥ 2).
+/// Samples `n` evenly spaced points over [min, max] (≥ 2).
 fn lin_grid(min: f64, max: f64, n: usize) -> Vec<f64> {
     let n = n.max(2);
     (0..n)
@@ -96,19 +96,19 @@ fn lin_grid(min: f64, max: f64, n: usize) -> Vec<f64> {
         .collect()
 }
 
-/// Politique de coupure sur saut de x : [`None`] = courbes continues
-/// (saturation, iso-RH — jamais coupées, seulement aux trous) ;
-/// `Some(frac)` = coupure si |Δx|/|x| dépasse `frac` après 3 points
-/// (isothermes traversant le dôme).
+/// Cut policy on an x jump: [`None`] = continuous curves
+/// (saturation, iso-RH — never cut, only at holes);
+/// `Some(frac)` = cut if |Δx|/|x| exceeds `frac` after 3 points
+/// (isotherms crossing the dome).
 #[derive(Debug, Clone, Copy)]
 enum Jump {
     None,
     Relative(f64),
 }
 
-/// Sweep générique : échantillonne la grille, découpe aux échecs de `sample`
-/// et aux sauts (politique [`Jump`]). Les polylines < 2 points sont
-/// abandonnées. Pur — testé sans CoolProp.
+/// Generic sweep: samples the grid, splits at `sample` failures
+/// and at jumps ([`Jump`] policy). Polylines < 2 points are
+/// dropped. Pure — tested without CoolProp.
 fn sweep(
     grid: Vec<f64>,
     jump: Jump,
@@ -125,7 +125,7 @@ fn sweep(
             last = None;
             continue;
         };
-        // Saut détecté (changement de branche) → nouvelle polyline.
+        // Jump detected (branch change) → new polyline.
         if let (Some(prev), Some(cur)) = (last, Some(p)) {
             let _ = cur;
             if let Jump::Relative(frac) = jump {
@@ -146,29 +146,29 @@ fn sweep(
     curves.into_iter().filter(|c| c.len() >= 2).collect()
 }
 
-/// Requête d'un diagramme (tout optionnel sauf fluide + type).
+/// Diagram request (everything optional except fluid + type).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DiagramRequest {
-    /// Fluide pur, mélange prédéfini ou spec inline
+    /// Pure fluid, predefined mixture or inline spec
     /// (`"Water"`, `"R410A"`, `"Propane[0.5]&Ethane[0.5]"`).
     pub fluid: String,
     pub diagram: DiagramKind,
-    /// Bornes d'axes SI ; `None` = auto-fit sur les calculs.
+    /// SI axis bounds; `None` = auto-fit on the computations.
     #[serde(default)]
     pub x_range: Option<AxisRange>,
     #[serde(default)]
     pub y_range: Option<AxisRange>,
     #[serde(default)]
     pub isolines: Vec<IsolineSpec>,
-    /// Points par sweep (défaut 80, borné 10..=300).
+    /// Points per sweep (default 80, bounded 10..=300).
     #[serde(default)]
     pub n_points: Option<usize>,
-    /// Psychro uniquement : pression atmosphérique (défaut 101_325 Pa).
+    /// Psychro only: atmospheric pressure (default 101_325 Pa).
     #[serde(default)]
     pub pressure: Option<f64>,
 }
 
-/// Bornes d'échantillonnage par diagramme (SI).
+/// Sampling bounds per diagram (SI).
 struct Frame {
     t_range: (f64, f64),
     p_range: (f64, f64),
@@ -178,8 +178,8 @@ fn frame_for(kind: DiagramKind, fluid: &str) -> safe::Result<Frame> {
     let _ = fluid;
     Ok(match kind {
         DiagramKind::Ph | DiagramKind::Ts => Frame {
-            // Plage universelle de sweeps : 0.9×T_triple → 0.95×T_crit pour
-            // le dôme ; iso-lignes bornées par les réussites CoolProp.
+            // Universal sweep range: 0.9×T_triple → 0.95×T_crit for
+            // the dome; iso-lines bounded by CoolProp successes.
             t_range: (273.16, 647.0),
             p_range: (100.0, 5.0e7),
         },
@@ -190,8 +190,8 @@ fn frame_for(kind: DiagramKind, fluid: &str) -> safe::Result<Frame> {
     })
 }
 
-/// Calcule un diagramme complet (dôme + iso-lignes). Erreur = CoolProp a
-/// rejeté le fluide/diagramme ou une iso-ligne est incohérente.
+/// Computes a full diagram (dome + iso-lines). Error = CoolProp
+/// rejected the fluid/diagram or an iso-line is inconsistent.
 pub fn compute_diagram(req: &DiagramRequest) -> safe::Result<DiagramResult> {
     let n = req.n_points.unwrap_or(80).clamp(10, 300);
     match req.diagram {
@@ -200,7 +200,7 @@ pub fn compute_diagram(req: &DiagramRequest) -> safe::Result<DiagramResult> {
     }
 }
 
-/// Arrondit à `d` chiffres significatifs (labels d'iso-lignes stables).
+/// Rounds to `d` significant digits (stable iso-line labels).
 fn round_sig(v: f64, digits: u32) -> f64 {
     if v == 0.0 || !v.is_finite() {
         return v;
@@ -210,12 +210,12 @@ fn round_sig(v: f64, digits: u32) -> f64 {
     (v / factor).round() * factor
 }
 
-/// Iso-lignes « traits de base » quand la requête n'en demande aucune :
-/// un dôme nu est illisible (retour utilisateur 2026-09-18). Ph =
-/// iso-T (zone utile du cycle) + iso-Q ; Ts = iso-P + iso-Q — sauf
-/// fluides pseudo-purs (R410A…), qui rejettent 0<Q<1 (« quality must be
-/// equal to 0 or 1 ») : iso-Q absente, sonde CoolProp à l'appui. Toute
-/// iso-ligne explicite de la requête désactive le défaut.
+/// "Base line" iso-lines when the request asks for none:
+/// a bare dome is unreadable (user feedback 2026-09-18). Ph =
+/// iso-T (useful zone of the cycle) + iso-Q; Ts = iso-P + iso-Q — except
+/// pseudo-pure fluids (R410A…), which reject 0<Q<1 ("quality must be
+/// equal to 0 or 1"): no iso-Q, backed by a CoolProp probe. Any
+/// explicit iso-line in the request disables the default.
 fn default_isolines(
     kind: DiagramKind,
     fluid: &str,
@@ -223,8 +223,8 @@ fn default_isolines(
     t_triple: f64,
     p_crit: f64,
 ) -> Vec<IsolineSpec> {
-    // Sonde : 0<Q<1 défini pour ce fluide ? (vrai = fluide pur, faux =
-    // pseudo-pur). Un seul appel CoolProp, T sous le critère.
+    // Probe: is 0<Q<1 defined for this fluid? (true = pure fluid, false =
+    // pseudo-pure). A single CoolProp call, T below critical.
     let q_supported =
         safe::props_si("P", "T", (t_triple * 1.3).min(tc * 0.9), "Q", 0.5, fluid).is_ok();
     let mut specs = vec![];
@@ -254,17 +254,17 @@ fn default_isolines(
     specs
 }
 
-/// Diagrammes fluides purs (Ph / Ts) : dôme de saturation (branches liquide
-/// et vapeur par sweep en température réduite) + iso-lignes (sweeps avec
-/// découpe aux échecs/sauts — les zones deux-phases font naturellement des
-/// trous).
+/// Pure fluid diagrams (Ph / Ts): saturation dome (liquid and vapour
+/// branches by sweep in reduced temperature) + iso-lines (sweeps with
+/// splitting at failures/jumps — two-phase zones naturally make
+/// holes).
 fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
     if req.fluid.contains('&') || req.fluid.contains('[') {
-        // Un mélange inline n'a pas de dôme simple (VLE de mélange) : v1
-        // refuse, le message guide vers un fluide pur ou prédéfini.
+        // An inline mixture has no simple dome (mixture VLE): v1
+        // refuses, the message points to a pure or predefined fluid.
         return Err(safe::CoolPropError(
-            "diagramme de mélange inline non supporté en v1 (fluide pur ou \
-             mélange prédéfini requis, ex. R410A)"
+            "inline mixture diagram not supported in v1 (pure fluid or \
+             predefined mixture required, e.g. R410A)"
                 .into(),
         ));
     }
@@ -272,22 +272,22 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
     let (tc, t_triple) = critical_and_triple(&req.fluid)?;
     let p_crit = safe::props_1si(&req.fluid, "Pcrit")?;
 
-    // Grille de température du dôme : évite Tc (sweep sensible) en s'arrêtant
-    // à 0.999·Tc ; log-spaced pour denser près du point critique.
+    // Dome temperature grid: avoids Tc (sensitive sweep) by stopping
+    // at 0.999·Tc; log-spaced to be denser near the critical point.
     let t_min = (t_triple * 1.005).max(200.0);
     let t_max = tc * 0.999;
     let dome_t = log_grid(t_min, t_max, n);
-    // Seuil bas de pression = Psat au bas du dôme (« ajustement auto ») :
-    // les sweeps d'isothermes partaient du plancher absolu (100 Pa) et leurs
-    // queues de vapeur surchauffée étiraient l'axe y sur des décades
-    // inutiles — le dôme se retrouvait en sire en haut du canvas.
+    // Low pressure threshold = Psat at the bottom of the dome ("auto fit"):
+    // isotherm sweeps started from the absolute floor (100 Pa) and their
+    // superheated vapour tails stretched the y axis over useless
+    // decades — the dome ended up squashed at the top of the canvas.
     let p_floor = safe::props_si("P", "T", t_min, "Q", 0.0, &req.fluid)
         .unwrap_or(frame.p_range.0)
         .max(frame.p_range.0);
 
     let mut curves: Vec<DiagramCurve> = Vec::new();
 
-    // ── Dôme de saturation (Q=0 liquide, Q=1 vapeur) ──
+    // ── Saturation dome (Q=0 liquid, Q=1 vapour) ──
     let sat_liq: Vec<Vec<[f64; 2]>> = sweep(dome_t.clone(), Jump::None, |t| {
         let p = safe::props_si("P", "T", t, "Q", 0.0, &req.fluid).ok()?;
         let x = match req.diagram {
@@ -319,7 +319,7 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
         });
     }
 
-    // ── Iso-lignes (défauts « traits de base » si la requête est vide) ──
+    // ── Iso-lines ("base line" defaults if the request is empty) ──
     let defaults;
     let isolines: &[IsolineSpec] = if req.isolines.is_empty() {
         defaults = default_isolines(req.diagram, &req.fluid, tc, t_triple, p_crit);
@@ -330,15 +330,15 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
     for iso in isolines {
         match iso.param.as_str() {
             "P" => {
-                // Isobare : horizontale dans Ph, courbe (s(T,P) vs T) dans Ts.
+                // Isobar: horizontal in Ph, curve (s(T,P) vs T) in Ts.
                 for &p in &iso.values {
                     let pts: Vec<[f64; 2]> = match req.diagram {
-                        DiagramKind::Ph => vec![], // traité par le front (droite)
+                        DiagramKind::Ph => vec![], // handled by the front (straight line)
                         _ => {
-                            // Isobare Ts : sweep en T (sonde) du bas du dôme
-                            // jusqu'en vapeur surchauffée. L'ancienne grille
-                            // melangeait les unités (bornes en Pa lues comme
-                            // des K → s absurdes et axe x étiré).
+                            // Ts isobar: sweep in T (probe) from the bottom of the dome
+                            // up to superheated vapour. The old grid
+                            // mixed units (bounds in Pa read as
+                            // K → absurd s and stretched x axis).
                             let grid = log_grid(t_min, tc * 1.2, n);
                             sweep(grid, Jump::Relative(0.35), |t_probe| {
                                 let t =
@@ -360,8 +360,8 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
                 }
             }
             "T" => {
-                // Isotherme : sweep en P (gaz + liquide sous-saturation), la
-                // zone deux-phases coupe naturellement.
+                // Isotherm: sweep in P (gas + subcooled liquid), the
+                // two-phase zone splits naturally.
                 for &t in &iso.values {
                     let grid = log_grid(p_floor, p_crit * 1.2, n);
                     let segs = sweep(grid, Jump::Relative(0.35), |p| {
@@ -393,7 +393,7 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
                 }
             }
             "Q" => {
-                // Iso-qualité (intérieur du dôme) : sweep en T.
+                // Iso-quality (inside the dome): sweep in T.
                 for &q in &iso.values {
                     if !(0.0..=1.0).contains(&q) {
                         continue;
@@ -424,7 +424,7 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
             }
             other => {
                 return Err(safe::CoolPropError(format!(
-                    "iso-ligne inconnue : {other:?} (P, T, Q supportés)"
+                    "unknown iso-line: {other:?} (P, T, Q supported)"
                 )));
             }
         }
@@ -438,7 +438,7 @@ fn compute_pure(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
     })
 }
 
-/// Coordonnée y selon le diagramme : P (Ph) ou T (Ts).
+/// y coordinate per diagram: P (Ph) or T (Ts).
 fn p_or_t(kind: DiagramKind, t: f64, p: f64) -> f64 {
     match kind {
         DiagramKind::Ph => p,
@@ -446,15 +446,15 @@ fn p_or_t(kind: DiagramKind, t: f64, p: f64) -> f64 {
     }
 }
 
-/// Tc et T_triple du fluide (bornes du dôme).
+/// Tc and T_triple of the fluid (dome bounds).
 fn critical_and_triple(fluid: &str) -> safe::Result<(f64, f64)> {
     let tc = safe::props_1si(fluid, "Tcrit")?;
     let tt = safe::props_1si(fluid, "Ttriple")?;
     Ok((tc, tt))
 }
 
-/// Psychrométrique : x = T en °C, y = W (kg/kg air sec) via `haprops_si`.
-/// Courbe de saturation (RH=1) + iso-RH ; W constants = horizontales (front).
+/// Psychrometric: x = T in °C, y = W (kg/kg dry air) via `haprops_si`.
+/// Saturation curve (RH=1) + iso-RH; constant W = horizontal lines (front).
 fn compute_psychro(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult> {
     let p_atm = req.pressure.unwrap_or(101_325.0);
     let (t_lo, t_hi) = {
@@ -463,7 +463,7 @@ fn compute_psychro(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult
     };
     let grid = lin_grid(t_lo, t_hi, n);
     let rh_values: Vec<f64> = {
-        // Défaut : iso-RH 20/40/60/80 % ; saturée toujours.
+        // Default: iso-RH 20/40/60/80 %; saturated always.
         let custom: Vec<f64> = req
             .isolines
             .iter()
@@ -482,7 +482,7 @@ fn compute_psychro(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult
     let mut t_min_seen = t_hi;
     let mut t_max_seen = t_lo;
 
-    // Saturation (RH = 1) : borne haute de W sur chaque T.
+    // Saturation (RH = 1): upper bound of W at each T.
     let sat: Vec<Vec<[f64; 2]>> = sweep(grid.clone(), Jump::None, |t| {
         let w = safe::haprops_si("W", "T", t, "P", p_atm, "R", 1.0).ok()?;
         Some([(t - 273.15), w])
@@ -504,7 +504,7 @@ fn compute_psychro(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult
     // Iso-RH.
     for rh in rh_values {
         if !(0.0..=1.0).contains(&rh) {
-            return Err(safe::CoolPropError(format!("RH invalide : {rh}")));
+            return Err(safe::CoolPropError(format!("invalid RH: {rh}")));
         }
         let segs = sweep(grid.clone(), Jump::None, |t| {
             let w = safe::haprops_si("W", "T", t, "P", p_atm, "R", rh).ok()?;
@@ -544,7 +544,7 @@ fn compute_psychro(req: &DiagramRequest, n: usize) -> safe::Result<DiagramResult
     })
 }
 
-/// Méta d'axes : demandée, sinon auto-fit sur les courbes calculées.
+/// Axis meta: as requested, otherwise auto-fit on the computed curves.
 fn axis_meta(
     kind: DiagramKind,
     x_range: &Option<AxisRange>,
@@ -572,10 +572,10 @@ fn axis_meta(
         let d = (max - min).abs();
         (min - d * 0.05, max + d * 0.05)
     };
-    // Padding multiplicatif sur un axe log : un pad linéaire (5 % de
-    // l'amplitude) rend le min négatif quand le min ≪ amplitude (p-h, P de
-    // ~10⁵ à ~10⁶ Pa) — et un min ≤ 0 sur un axe log écrase toutes les
-    // courbes contre le bord haut (bug visible du p-h).
+    // Multiplicative padding on a log axis: a linear pad (5 % of
+    // the amplitude) makes the min negative when min ≪ amplitude (p-h, P from
+    // ~10⁵ to ~10⁶ Pa) — and a min ≤ 0 on a log axis crushes all
+    // curves against the top edge (visible p-h bug).
     let log_pad = |min: f64, max: f64| -> (f64, f64) {
         if min > 0.0 {
             (min * 0.8, max * 1.25)
@@ -617,33 +617,33 @@ fn axis_meta(
 
 // ─────────────────────────── cycles ───────────────────────────
 
-/// Un point d'état d'un cycle : paire d'inputs CoolProp (nom, ex.
-/// `PT_INPUTS`) + valeurs, et un label libre.
+/// A cycle state point: CoolProp input pair (name, e.g.
+/// `PT_INPUTS`) + values, and a free label.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CyclePointInput {
     pub label: String,
-    /// Nom de paire CoolProp (`PT_INPUTS`, `HmassP_INPUTS`, `PQ_INPUTS`…) —
-    /// jamais un indice (les ordres d'enums C ne sont pas une API stable).
+    /// CoolProp pair name (`PT_INPUTS`, `HmassP_INPUTS`, `PQ_INPUTS`…) —
+    /// never an index (C enum orders are not a stable API).
     pub input_pair: String,
     pub v1: f64,
     pub v2: f64,
 }
 
-/// Résultat pour un point de cycle : propriétés complètes + coordonnées
-/// du diagramme cible (x = Hmass/Smass/T °C, y = P/T/W).
+/// Result for a cycle point: full properties + coordinates
+/// in the target diagram (x = Hmass/Smass/T °C, y = P/T/W).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CyclePointOutput {
     pub label: String,
-    /// Propriétés SI calculées (T, P, Hmass, Smass, Dmass, Q si deux-phases).
+    /// Computed SI properties (T, P, Hmass, Smass, Dmass, Q if two-phase).
     pub props: std::collections::BTreeMap<String, f64>,
     pub coords: [f64; 2],
-    /// Phase textuelle quand elle est disponible (fluides purs).
+    /// Textual phase when available (pure fluids).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<String>,
 }
 
-/// Calcule chaque point d'un cycle (AbstractState par appel — la spec peut
-/// être un mélange) et retourne les coordonnées du diagramme.
+/// Computes each point of a cycle (AbstractState per call — the spec may
+/// be a mixture) and returns the diagram coordinates.
 pub fn cycle_points(
     fluid: &str,
     diagram: DiagramKind,
@@ -653,21 +653,18 @@ pub fn cycle_points(
     let mut out = Vec::with_capacity(points.len());
     for p in points {
         let idx = safe::get_input_pair_index(&p.input_pair).map_err(|e| {
-            safe::CoolPropError(format!(
-                "paire d'inputs inconnue {:?} : {}",
-                p.input_pair, e.0
-            ))
+            safe::CoolPropError(format!("unknown input pair {:?}: {}", p.input_pair, e.0))
         })?;
-        // PropsSI accepte toute paire par ses noms de propriétés : on passe
-        // par AbstractState pour respecter input_pair littéralement.
+        // PropsSI accepts any pair by its property names: we go
+        // through AbstractState to honour input_pair literally.
         let props = state_props(fluid, idx, p.v1, p.v2)?;
         let coords = match diagram {
             DiagramKind::Ph => [props["Hmass"], props["P"]],
             DiagramKind::Ts => [props["Smass"], props["T"]],
             DiagramKind::Psychro => {
-                // Conversion (T, W ou RH…) → (T °C, W) : l'état doit venir
-                // d'une paire contenant W — on recalcule W par HAPropsSI si
-                // absent (T + RH par défaut).
+                // Conversion (T, W or RH…) → (T °C, W): the state must come
+                // from a pair containing W — W is recomputed by HAPropsSI if
+                // absent (T + RH by default).
                 let w = props.get("W").copied().unwrap_or_else(|| {
                     safe::haprops_si(
                         "W",
@@ -693,14 +690,14 @@ pub fn cycle_points(
     Ok(out)
 }
 
-/// Propriétés complètes d'un état via AbstractState (mélange OK).
+/// Full properties of a state via AbstractState (mixture OK).
 fn state_props(
     fluid: &str,
     input_pair: i64,
     v1: f64,
     v2: f64,
 ) -> safe::Result<std::collections::BTreeMap<String, f64>> {
-    // La spec peut porter un backend ("HEOS::…") — extract_backend.
+    // The spec may carry a backend ("HEOS::…") — extract_backend.
     let (backend, fluids) = safe::extract_backend(fluid).unwrap_or_default();
     let backend = if backend.is_empty() { "HEOS" } else { &backend };
     let handle = safe::abstract_state_factory(backend, fluids.trim_start_matches("HEOS::"))?;
@@ -720,7 +717,7 @@ fn state_props(
                 safe::abstract_state_keyed_output(handle, idx)?,
             );
         }
-        // Qualité (hors domaine / fluide incompressible → Q omis).
+        // Quality (out of domain / incompressible fluid → Q omitted).
         if let Ok(qi) = safe::get_param_index("Q") {
             if let Ok(q) = safe::abstract_state_keyed_output(handle, qi) {
                 if q.is_finite() && (0.0..=1.0).contains(&q) {

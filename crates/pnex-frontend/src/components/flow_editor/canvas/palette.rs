@@ -1,6 +1,6 @@
 use super::*;
 
-/// Liste canonique des kinds proposés à l'ajout (ordre de la maquette).
+/// Canonical list of the kinds offered for adding (mockup order).
 pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
     PaletteKind::Inject,
     PaletteKind::ControlSource,
@@ -52,8 +52,8 @@ pub(crate) const PALETTE_KINDS: [PaletteKind; 48] = [
     PaletteKind::Debug,
 ];
 
-/// Clé stable d'un kind — clé de pick de la palette (data plate, jamais
-/// d'index de tableau).
+/// Stable key of a kind — palette pick key (plain data, never an
+/// array index).
 pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
     match kind {
         PaletteKind::Inject => "inject",
@@ -107,8 +107,8 @@ pub(crate) fn kind_key(kind: PaletteKind) -> &'static str {
     }
 }
 
-/// Kind depuis la clé de pick — inverse de `kind_key` (un simple find sur la
-/// liste canonique : impossible de désynchroniser les deux).
+/// Kind from the pick key — inverse of `kind_key` (a simple find on the
+/// canonical list: impossible to desynchronise the two).
 pub(crate) fn kind_from_key(key: &str) -> Option<PaletteKind> {
     PALETTE_KINDS
         .iter()
@@ -116,8 +116,8 @@ pub(crate) fn kind_from_key(key: &str) -> Option<PaletteKind> {
         .copied()
 }
 
-/// Icône + tuile d'un kind (palette + en-tête d'inspecteur) — classes
-/// littérales complètes, tonalité proche de la couleur du nœud au canvas.
+/// Icon + tile of a kind (palette + inspector header) — full literal
+/// classes, tone close to the node colour on the canvas.
 pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
     match kind {
         PaletteKind::Inject => (PaletteIcon::Activity, "bg-emerald-50 text-emerald-600"),
@@ -174,7 +174,7 @@ pub(crate) fn kind_icon(kind: PaletteKind) -> (PaletteIcon, &'static str) {
     }
 }
 
-/// Kind d'un nœud existant (en-tête de l'inspecteur : icône + libellé).
+/// Kind of an existing node (inspector header: icon + label).
 pub(crate) fn kind_of(kind: &FlowNodeKind) -> PaletteKind {
     match kind {
         FlowNodeKind::Inject { .. } => PaletteKind::Inject,
@@ -360,7 +360,7 @@ pub(crate) fn palette_items() -> Vec<PaletteItem> {
         .collect()
 }
 
-/// Libellés i18n d'un kind (littéraux obligatoires pour `t!`).
+/// i18n labels of a kind (literals required for `t!`).
 pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
     match kind {
         PaletteKind::Inject => (
@@ -558,7 +558,7 @@ pub(crate) fn kind_labels(kind: PaletteKind) -> (String, String) {
     }
 }
 
-/// Ajoute un nœud du kind au centre visible du canevas et le sélectionne.
+/// Adds a node of the kind at the visible centre of the canvas and selects it.
 pub(crate) fn add_node_to_canvas(mut cx: EditorCx, kind: PaletteKind) {
     let Some(rect) = geometry::canvas_rect() else {
         return;

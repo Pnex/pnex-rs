@@ -1,84 +1,84 @@
-//! Guidage de capture 360 — math pure, aucune dépendance, compilé sur
-//! toutes les cibles (wasm inclus) : testable sur hôte.
+//! 360 capture guidance — pure math, no dependency, compiled on
+//! every target (wasm included): testable on the host.
 //!
-//! V3 (2026-09-10) : retour au PAS-À-PAS STRICT — le déclenchement
-//! continu (V1, pivot device 2026-09-09) a vécu : il prenait des frames
-//! en marche arrière (|Δyaw| comptait le retour utilisateur) et
-//! sous-capture l'anneau (pas ~20° × 15 + hfov portrait 43,7° ≈ 348° <
-//! 360° — trou azimutal constaté sur la 1re capture HD 2026-09-10).
-//! Nouveau modèle, celui des apps 360 du commerce :
+//! V3 (2026-09-10): back to STRICT STEP-BY-STEP — continuous triggering
+//! (V1, device pivot 2026-09-09) is over: it took frames
+//! while moving backwards (|Δyaw| counted the user's return) and
+//! under-captured the ring (step ~20° × 15 + portrait hfov 43.7° ≈ 348° <
+//! 360° — azimuth gap observed on the 1st HD capture 2026-09-10).
+//! New model, the one of commercial 360 apps:
 //!
-//! 1. l'utilisateur ancre son point de départ (« Ancrer ici ») ;
-//! 2. chaque anneau a N cibles fixes (yaw = k·pas, pitch = consigne
-//!    d'anneau) — N et le pas sont calculés sur la hfov PORTRAIT réelle
-//!    de la caméra (`ring_plan`) : le recouvrement voisin est garanti
-//!    ≥ [`MIN_OVERLAP_DEG`] et l'anneau se referme par construction ;
-//! 3. une frame ne part QUE sur la cible courante, quand les trois
-//!    conditions sont tenues ensemble pendant [`DWELL_MS`] :
-//!    aligné (yaw/pitch/roll dans les tolérances) + stable (vitesse
-//!    angulaire < [`MAX_RATE_DEG_S`]). Tourner en arrière, se tromper
-//!    d'inclinaison ou passer trop vite : RIEN ne se déclenche ;
-//! 4. capture validée → cible suivante. « Reprendre » déclenche la
-//!    cible précédente (la frame est retirée de la mémoire).
+//! 1. the user anchors the starting point ("Anchor here");
+//! 2. each ring has N fixed targets (yaw = k·step, pitch = ring
+//!    setpoint) — N and the step are computed from the camera's real PORTRAIT
+//!    hfov (`ring_plan`): neighbour overlap is guaranteed
+//!    ≥ [`MIN_OVERLAP_DEG`] and the ring closes by construction;
+//! 3. a frame fires ONLY on the current target, when the three
+//!    conditions hold together for [`DWELL_MS`]:
+//!    aligned (yaw/pitch/roll within tolerances) + steady (angular
+//!    rate < [`MAX_RATE_DEG_S`]). Turning backwards, getting the tilt
+//!    wrong or moving too fast: NOTHING fires;
+//! 4. capture validated → next target. "Retake" triggers the
+//!    previous target (the frame is removed from memory).
 //!
-//! Convention d'angles : la MÊME que `pnex-stitcher::geom` (yaw = azimuth
-//! du regard, pitch = élévation, roll autour de l'axe optique). Le capteur
-//! Android → angles se fait dans `sensors.rs` via
-//! `pnex_stitcher::geom` — une seule source de vérité, la cohérence est
-//! verrouillée par les tests de la crate stitcher.
+//! Angle convention: the SAME as `pnex-stitcher::geom` (yaw = gaze
+//! azimuth, pitch = elevation, roll around the optical axis). The Android
+//! sensor → angles conversion is in `sensors.rs` via
+//! `pnex_stitcher::geom` — a single source of truth, consistency is
+//! locked by the stitcher crate tests.
 
-// Les consommateurs runtime sont cfg android (overlay) — sans allow, ces
-// items sont « morts » côté desktop (école capture.rs : allow documenté,
-// pas de code fantôme dans les cibles natives non-android).
+// The runtime consumers are cfg android (overlay) — without allow, these
+// items are "dead" on desktop (capture.rs style: documented allow,
+// no ghost code in non-android native targets).
 #![allow(dead_code)]
 
-/// Nombre d'anneaux du protocole (à plat, haut, bas).
+/// Number of rings in the protocol (level, up, down).
 pub const N_RINGS: usize = 3;
-/// Protocole 3 anneaux : à plat (l'ancre), incliné vers le HAUT, incliné
-/// vers le BAS — l'union des bandes lat couvre ~[-72°, +72°] de latitude
-/// en contenu réel (le tiers bas de l'équirect reste synthétique : cf.
-/// `pnex-stitcher::render` pôles).
+/// 3-ring protocol: level (the anchor), tilted UP, tilted
+/// DOWN — the union of the lat bands covers ~[-72°, +72°] of latitude
+/// in real content (the bottom third of the equirect stays synthetic: see
+/// `pnex-stitcher::render` poles).
 pub const RING_TILT_DEG: f32 = 40.0;
-/// Demi-largeur de la bande de pitch d'un anneau incliné : cible ±40°,
-/// bande tenable [28°, 52°] — à vfov portrait ~65°, toute frame de
-/// l'anneau haut couvre au moins lat [-4°, +60°] → recouvrement ≥ 27°
-/// avec l'anneau à plat (couvre jusqu'à ±32,5°).
+/// Half-width of the pitch band of a tilted ring: target ±40°,
+/// holdable band [28°, 52°] — at portrait vfov ~65°, every frame of
+/// the up ring covers at least lat [-4°, +60°] → overlap ≥ 27°
+/// with the level ring (covers up to ±32.5°).
 pub const RING_PITCH_TOL_DEG: f32 = 12.0;
-/// Recouvrement azimutal visé entre frames voisines d'un anneau : le pas
-/// de cible = hfov − 20° (à hfov portrait 43,7° → N = 16, pas réel
-/// 22,5°). Le pipeline Quality serveur réaligne les poses par features —
-/// 20° de recouvrement donne ~10° de marge d'erreur de visée.
+/// Target azimuth overlap between neighbour frames of a ring: the target
+/// step = hfov − 20° (at portrait hfov 43.7° → N = 16, real step
+/// 22.5°). The server Quality pipeline realigns the poses by features —
+/// 20° of overlap gives ~10° of aiming error margin.
 pub const MIN_OVERLAP_DEG: f32 = 20.0;
-/// Tolérance d'alignement en azimut (degrés). Élargie device (constat
-/// 2026-09-09 : 2°/1°/4° introuvable à la main tenue — jamais de dwell) ;
-/// le serveur Quality réaligne par features (corrections jusqu'à ~10°
-/// constatées), la précision de visée n'est plus le facteur limitant.
+/// Azimuth alignment tolerance (degrees). Widened on device (observed
+/// 2026-09-09: 2°/1°/4° impossible to hit hand-held — never a dwell);
+/// the Quality server realigns by features (corrections up to ~10°
+/// observed), aiming precision is no longer the limiting factor.
 pub const TOL_YAW_DEG: f32 = 6.0;
-/// Tolérance d'élévation — le pitch est RELATIF à la posture de début de
-/// session (zéro de pitch, cf. sensors.rs) : tu tiens le téléphone
-/// naturellement, l'anneau suit ta hauteur de visée.
+/// Elevation tolerance — pitch is RELATIVE to the posture at session
+/// start (pitch zero, see sensors.rs): you hold the phone
+/// naturally, the ring follows your aiming height.
 pub const TOL_PITCH_DEG: f32 = 8.0;
-/// Tolérance de roulis (degrés) — large : le serveur redresse par
-/// features, seul le confort utilisateur compte ici.
+/// Roll tolerance (degrees) — wide: the server straightens by
+/// features, only user comfort matters here.
 pub const TOL_ROLL_DEG: f32 = 10.0;
-/// Durée d'alignement tenu avant déclenchement (ms) — tenue = aligné ET
-/// stable en continu (toute perte annule et remet le compteur à zéro).
+/// Alignment hold time before triggering (ms) — held = aligned AND
+/// steady continuously (any loss cancels and resets the counter).
 pub const DWELL_MS: u64 = 700;
-/// Vitesse angulaire max (°/s, max absolu sur les 3 axes) pour être
-/// « stable » — trémulation main < 1°/s, micro-ajustement 5-15°/s :
-/// au-delà de 3,5°/s on est en plein mouvement. La frame part pose
-/// immobile : la pose enregistrée = la pose visée.
+/// Max angular rate (°/s, absolute max over the 3 axes) to be
+/// "steady" — hand tremor < 1°/s, micro-adjustment 5-15°/s:
+/// beyond 3.5°/s you are in full motion. The frame fires with the pose
+/// still: the recorded pose = the aimed pose.
 pub const MAX_RATE_DEG_S: f32 = 3.5;
-/// Déplacement du point guideur (px par degré d'erreur).
+/// Guide dot displacement (px per degree of error).
 pub const DOT_PX_PER_DEG: f32 = 2.0;
-/// Sens de rotation demandé : la pose yaw est l'azimut ENU (croît en
-/// tournant à GAUCHE — euler_from_mat, cf. `sensors.rs`) — pour que le
-/// chevron/point pointent PHYSIQUEMENT vers la cible, il faut donc −1 :
-/// err_yaw > 0 (cible à yaw plus haut) = cible à gauche → flèche « ← ».
-/// Constante isolée pour le retournement smoke-test device.
+/// Requested rotation direction: the yaw pose is the ENU azimuth (grows when
+/// turning LEFT — euler_from_mat, see `sensors.rs`) — for the
+/// chevron/dot to point PHYSICALLY at the target, it must therefore be −1:
+/// err_yaw > 0 (target at higher yaw) = target on the left → arrow "←".
+/// Constant isolated for the device smoke-test flip.
 pub const ROTATION_DIR: f32 = -1.0;
 
-/// Pose du téléphone (degrés), convention stitcher.
+/// Phone pose (degrees), stitcher convention.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pose {
     pub yaw: f32,
@@ -86,18 +86,18 @@ pub struct Pose {
     pub roll: f32,
 }
 
-/// Plan d'un anneau : nombre de cibles et pas angulaire.
+/// Plan of a ring: number of targets and angular step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RingPlan {
     pub n_steps: usize,
     pub step_deg: f32,
 }
 
-/// Plan d'anneau pour une hfov portrait donnée : pas = hfov −
-/// [`MIN_OVERLAP_DEG`], N = ceil(360/pas) borné [10, 20]. La fermeture
-/// d'anneau est garantie PAR CONSTRUCTION : (N−1)·pas + hfov = 360 +
-/// recouvrement ≥ 360 dès que hfov > pas, i.e. hfov > 360/N — vrai pour
-/// tout N ≤ 20 et hfov ≥ 30° (bornes du clamp).
+/// Ring plan for a given portrait hfov: step = hfov −
+/// [`MIN_OVERLAP_DEG`], N = ceil(360/step) clamped to [10, 20]. Ring
+/// closure is guaranteed BY CONSTRUCTION: (N−1)·step + hfov = 360 +
+/// overlap ≥ 360 as soon as hfov > step, i.e. hfov > 360/N — true for
+/// every N ≤ 20 and hfov ≥ 30° (clamp bounds).
 #[must_use]
 pub fn ring_plan(hfov_deg: f32) -> RingPlan {
     let hfov = hfov_deg.clamp(30.0, 75.0);
@@ -110,7 +110,7 @@ pub fn ring_plan(hfov_deg: f32) -> RingPlan {
     }
 }
 
-/// Pitch de consigne d'un anneau : 0 (à plat), +40 (haut), −40 (bas).
+/// Setpoint pitch of a ring: 0 (level), +40 (up), −40 (down).
 #[must_use]
 pub fn ring_pitch(ring: usize) -> f32 {
     match ring {
@@ -120,14 +120,14 @@ pub fn ring_pitch(ring: usize) -> f32 {
     }
 }
 
-/// Cible courante (yaw, pitch) : yaw relatif à l'ancre (k·pas), pitch =
-/// consigne d'anneau.
+/// Current target (yaw, pitch): yaw relative to the anchor (k·step), pitch =
+/// ring setpoint.
 #[must_use]
 pub fn target_for(ring: usize, step: usize, step_deg: f32) -> (f32, f32) {
     (step as f32 * step_deg, ring_pitch(ring))
 }
 
-/// Repli dans [−180, 180).
+/// Wrap into [−180, 180).
 #[must_use]
 pub fn wrap180(deg: f32) -> f32 {
     let mut d = deg % 360.0;
@@ -140,7 +140,7 @@ pub fn wrap180(deg: f32) -> f32 {
     d
 }
 
-/// Erreurs signées (cible − pose) en degrés, enveloppées à 180 :
+/// Signed errors (target − pose) in degrees, wrapped at 180:
 /// (yaw, pitch, roll).
 #[must_use]
 pub fn signed_error(target_yaw: f32, target_pitch: f32, pose: Pose) -> (f32, f32, f32) {
@@ -151,15 +151,15 @@ pub fn signed_error(target_yaw: f32, target_pitch: f32, pose: Pose) -> (f32, f32
     )
 }
 
-/// Aligné sur la cible courante (les trois tolérances).
+/// Aligned on the current target (all three tolerances).
 #[must_use]
 pub fn aligned(err: (f32, f32, f32)) -> bool {
     err.0.abs() <= TOL_YAW_DEG && err.1.abs() <= TOL_PITCH_DEG && err.2.abs() <= TOL_ROLL_DEG
 }
 
-/// Déplacement du point guideur (px) : il PRÉCÈDE — l'utilisateur va VERS
-/// lui. Sens : cible à yaw plus haut = physiquement à gauche (azimut ENU)
-/// → dx négatif via [`ROTATION_DIR`] ; cible au-dessus → dy positif.
+/// Guide dot displacement (px): it LEADS — the user moves TOWARDS
+/// it. Direction: target at higher yaw = physically on the left (ENU azimuth)
+/// → negative dx via [`ROTATION_DIR`]; target above → positive dy.
 #[must_use]
 pub fn dot_offset_px(err: (f32, f32, f32), max_px: f32) -> (f32, f32) {
     let dx = (err.0 * DOT_PX_PER_DEG * ROTATION_DIR).clamp(-max_px, max_px);
@@ -167,7 +167,7 @@ pub fn dot_offset_px(err: (f32, f32, f32), max_px: f32) -> (f32, f32) {
     (dx, dy)
 }
 
-/// Avance après capture : pas suivant, anneau suivant, ou terminé.
+/// Advance after capture: next step, next ring, or done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Advance {
     NextStep,
@@ -175,10 +175,10 @@ pub enum Advance {
     Finish,
 }
 
-/// Transition (anneau, pas) après une capture validée. Le pas-à-pas
-/// garantit l'ordre : on ne peut ni sauter ni revenir en arrière via le
-/// déclenchement (le seul retour en arrière = « Reprendre », piloté par
-/// l'UI).
+/// Transition (ring, step) after a validated capture. Step-by-step
+/// guarantees the order: triggering can neither skip nor go back
+/// (the only way back = "Retake", driven by the
+/// UI).
 #[must_use]
 pub fn advance(ring: usize, step: usize, n_steps: usize) -> Advance {
     if step + 1 < n_steps {
@@ -190,10 +190,10 @@ pub fn advance(ring: usize, step: usize, n_steps: usize) -> Advance {
     }
 }
 
-/// Vitesse angulaire max (°/s) sur la fenêtre d'échantillons
-/// `(t_ms, (yaw, pitch, roll))` — max absolu sur les 3 axes entre paires
-/// consécutives, yaw enveloppé. Fenêtre vide ou d'échantillon unique → 0
-/// (stable) : on ne pénalise pas un capteur qui démarre.
+/// Max angular rate (°/s) over the sample window
+/// `(t_ms, (yaw, pitch, roll))` — absolute max over the 3 axes between
+/// consecutive pairs, yaw wrapped. Empty or single-sample window → 0
+/// (steady): a sensor that is starting is not penalised.
 #[must_use]
 pub fn max_rate_deg_s(samples: &[(u64, Pose)]) -> f32 {
     let mut max = 0.0f32;
@@ -212,27 +212,27 @@ pub fn max_rate_deg_s(samples: &[(u64, Pose)]) -> f32 {
     max
 }
 
-/// Décision de la boucle de guidage, pure et testable.
+/// Decision of the guidance loop, pure and testable.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Decision {
-    /// Pas (ou plus) aligné/stable : viser, montrer la direction.
+    /// Not (or no longer) aligned/steady: aim, show the direction.
     Wait,
-    /// Vient d'être aligné+stable : démarrer le dwell maintenant.
+    /// Just became aligned+steady: start the dwell now.
     StartDwell,
-    /// Dwell en cours, conditions tenues — durée écoulée (ms).
+    /// Dwell in progress, conditions held — elapsed time (ms).
     Dwell(u64),
-    /// Dwell expiré avec conditions tenues : DÉCLENCHER.
+    /// Dwell expired with conditions held: FIRE.
     Fire,
-    /// Conditions perdues pendant le dwell : annuler et re-chercher.
+    /// Conditions lost during the dwell: cancel and search again.
     CancelDwell,
 }
 
-/// Décide de l'étape suivante : pure, pas d'horloge ni d'effet.
+/// Decides the next step: pure, no clock nor effect.
 ///
-/// Le dwell exige aligné ET stable EN CONTINU : toute perte (pose absente,
-/// tolérance dépassée, mouvement) annule. `dwell_started_ms` = instant de
-/// démarrage du dwell courant (None = pas de dwell), `now_ms` = horloge
-/// courante (ms, même origine).
+/// The dwell requires aligned AND steady CONTINUOUSLY: any loss (pose missing,
+/// tolerance exceeded, motion) cancels. `dwell_started_ms` = start instant of
+/// the current dwell (None = no dwell), `now_ms` = current
+/// clock (ms, same origin).
 #[must_use]
 pub fn decide(
     target_yaw: f32,
@@ -273,10 +273,10 @@ mod tests {
         Some(Pose { yaw, pitch, roll })
     }
 
-    /// Fermeture d'anneau : pour toute hfov plausible, (N−1)·pas + hfov
-    /// couvre 360° et le recouvrement voisin reste confortable. C'est le
-    /// correctif du trou azimutal ~33° constaté sur la 1re HD (V1
-    /// continu : pas ~20° × 15 frames).
+    /// Ring closure: for any plausible hfov, (N−1)·step + hfov
+    /// covers 360° and neighbour overlap stays comfortable. This is the
+    /// fix for the ~33° azimuth gap observed on the 1st HD (continuous V1:
+    /// step ~20° × 15 frames).
     #[test]
     fn ring_plan_ferme_l_anneau_partout() {
         let mut hfov = 30.0f32;
@@ -290,7 +290,7 @@ mod tests {
                 plan.n_steps,
                 plan.step_deg
             );
-            // Recouvrement voisin ≥ 10° (les paires du réalignement serveur).
+            // Neighbour overlap ≥ 10° (the pairs of the server realignment).
             assert!(
                 hfov - plan.step_deg >= 10.0,
                 "hfov={hfov} overlap={:.1}",
@@ -300,8 +300,8 @@ mod tests {
         }
     }
 
-    /// Cas nominal : hfov portrait 43,7° → 16 cibles de 22,5° (comme le
-    /// protocole d'origine, mais refermé).
+    /// Nominal case: portrait hfov 43.7° → 16 targets of 22.5° (like the
+    /// original protocol, but closed).
     #[test]
     fn ring_plan_hfov_portrait() {
         let plan = ring_plan(43.7);
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn cibles_et_bandes_de_pitch() {
-        // Anneau 0 à plat : pitch cible 0.
+        // Ring 0 level: target pitch 0.
         assert_eq!(ring_pitch(0), 0.0);
         assert_eq!(ring_pitch(1), RING_TILT_DEG);
         assert_eq!(ring_pitch(2), -RING_TILT_DEG);
@@ -323,21 +323,21 @@ mod tests {
 
     #[test]
     fn erreur_et_alignement() {
-        // Sur la cible : erreurs nulles → aligné.
+        // On target: zero errors → aligned.
         let err = signed_error(22.5, RING_TILT_DEG, pose(22.5, RING_TILT_DEG, 0.0).unwrap());
         assert!(err.0.abs() < 1e-5 && err.1.abs() < 1e-5 && err.2.abs() < 1e-5);
         assert!(aligned(err));
-        // Enveloppe à 180 : cible 170, pose −170 → erreur −20.
+        // Wrap at 180: target 170, pose −170 → error −20.
         let err = signed_error(170.0, 0.0, pose(-170.0, 0.0, 0.0).unwrap());
         assert!((err.0 + 20.0).abs() < 1e-4);
-        // Hors tolérances (marge au-delà des constantes).
+        // Out of tolerance (margin beyond the constants).
         assert!(!aligned((0.0, TOL_PITCH_DEG + 1.0, 0.0)));
         assert!(!aligned((0.0, 0.0, TOL_ROLL_DEG + 1.0)));
         assert!(!aligned((TOL_YAW_DEG + 0.5, 0.0, 0.0)));
     }
 
-    /// Vitesse angulaire : immobile → 0, rotation franche → bien au-delà
-    /// du seuil de stabilité.
+    /// Angular rate: still → 0, clear rotation → well beyond
+    /// the steadiness threshold.
     #[test]
     fn vitesse_angulaire() {
         let statique = vec![
@@ -394,7 +394,7 @@ mod tests {
             ),
         ];
         assert!((max_rate_deg_s(&rotation) - 30.0).abs() < 0.1);
-        // Fenêtre trop courte (0 ou 1 échantillon) → 0 (stable).
+        // Window too short (0 or 1 sample) → 0 (steady).
         assert_eq!(max_rate_deg_s(&[]), 0.0);
         assert_eq!(
             max_rate_deg_s(&[(
@@ -407,8 +407,8 @@ mod tests {
             )]),
             0.0
         );
-        // Enveloppe yaw : 179 → −179 = +2° par le chemin court (20°/s),
-        // PAS −358° (le wrap évite la fausse pointe de vitesse).
+        // Yaw wrap: 179 → −179 = +2° by the short path (20°/s),
+        // NOT −358° (the wrap avoids the false rate spike).
         let saut = vec![
             (
                 0,
@@ -431,32 +431,32 @@ mod tests {
         assert!((rate - 20.0).abs() < 0.1, "rate={rate}");
     }
 
-    /// Table de transitions de `decide` avec le gate de stabilité.
+    /// Transition table of `decide` with the steadiness gate.
     #[test]
     fn transitions_decide() {
         let (cible_y, cible_p) = (22.5, RING_TILT_DEG);
         let sur_cible = pose(cible_y, cible_p, 0.0);
-        // Pas aligné → Wait.
+        // Not aligned → Wait.
         assert_eq!(
             decide(cible_y, cible_p, pose(0.0, cible_p, 0.0), true, None, 0),
             Decision::Wait
         );
-        // Instable sur la cible → Wait (pas de départ de dwell).
+        // Unsteady on target → Wait (no dwell start).
         assert_eq!(
             decide(cible_y, cible_p, sur_cible, false, None, 0),
             Decision::Wait
         );
-        // Pose absente → Wait.
+        // Pose missing → Wait.
         assert_eq!(
             decide(cible_y, cible_p, None, true, None, 0),
             Decision::Wait
         );
-        // Aligné + stable → StartDwell.
+        // Aligned + steady → StartDwell.
         assert_eq!(
             decide(cible_y, cible_p, sur_cible, true, None, 1000),
             Decision::StartDwell
         );
-        // Tenue → Dwell(écoulé), puis Fire au terme.
+        // Held → Dwell(elapsed), then Fire at the end.
         assert_eq!(
             decide(cible_y, cible_p, sur_cible, true, Some(1000), 1500),
             Decision::Dwell(500)
@@ -465,7 +465,7 @@ mod tests {
             decide(cible_y, cible_p, sur_cible, true, Some(1000), 1700),
             Decision::Fire
         );
-        // Dérive yaw pendant le dwell → CancelDwell.
+        // Yaw drift during the dwell → CancelDwell.
         assert_eq!(
             decide(
                 cible_y,
@@ -477,17 +477,17 @@ mod tests {
             ),
             Decision::CancelDwell
         );
-        // Instabilité pendant le dwell → CancelDwell.
+        // Instability during the dwell → CancelDwell.
         assert_eq!(
             decide(cible_y, cible_p, sur_cible, false, Some(1000), 1500),
             Decision::CancelDwell
         );
-        // Pose perdue pendant le dwell → CancelDwell.
+        // Pose lost during the dwell → CancelDwell.
         assert_eq!(
             decide(cible_y, cible_p, None, true, Some(0), 500),
             Decision::CancelDwell
         );
-        // Roll hors tolérance → pas de dwell.
+        // Roll out of tolerance → no dwell.
         assert_eq!(
             decide(
                 cible_y,
@@ -501,22 +501,22 @@ mod tests {
         );
     }
 
-    /// Transitions d'avancement : pas → anneau → fin, sans jamais sauter.
+    /// Advance transitions: step → ring → end, never skipping.
     #[test]
     fn avance_sans_sauter() {
         assert_eq!(advance(0, 3, 16), Advance::NextStep);
-        // Dernier pas de l'anneau (15/16) → anneau suivant.
+        // Last step of the ring (15/16) → next ring.
         assert_eq!(advance(0, 15, 16), Advance::NextRing);
         assert_eq!(advance(1, 15, 16), Advance::NextRing);
         assert_eq!(advance(2, 15, 16), Advance::Finish);
-        // Dernier pas du dernier anneau avec n différent.
+        // Last step of the last ring with a different n.
         assert_eq!(advance(2, 9, 10), Advance::Finish);
     }
 
     #[test]
     fn point_guideur_clamp() {
-        // Sens : err_yaw > 0 (cible à yaw plus haut = physiquement à
-        // GAUCHE, azimut ENU) → dx NÉGATIF (dot à gauche, cf. ROTATION_DIR).
+        // Direction: err_yaw > 0 (target at higher yaw = physically on the
+        // LEFT, ENU azimuth) → NEGATIVE dx (dot on the left, see ROTATION_DIR).
         let (dx, dy) = dot_offset_px((50.0, -50.0, 0.0), 40.0);
         assert!((dx + 40.0).abs() < 1e-5);
         assert!((dy + 40.0).abs() < 1e-5);

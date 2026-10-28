@@ -1,8 +1,8 @@
-//! Maintien du réveil d'écran — `Window.FLAG_KEEP_SCREEN_ON` via JNI brut
-//! (pas de permission, déterministe dans la webview ; l'API JS Wake Lock
-//! est inégale selon les versions de WebView).
+//! Keeps the screen awake — `Window.FLAG_KEEP_SCREEN_ON` via raw JNI
+//! (no permission, deterministic in the webview; the JS Wake Lock API
+//! is uneven across WebView versions).
 //!
-//! `ndk_context` porte l'Activity (posée par dioxus-mobile) :
+//! `ndk_context` carries the Activity (set by dioxus-mobile):
 //! `getWindow().addFlags/clearFlags(0x80)`.
 
 use crate::capture::attach_env;
@@ -10,7 +10,7 @@ use crate::capture::attach_env;
 /// Constante `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
 const FLAG_KEEP_SCREEN_ON: i32 = 0x0000_0080;
 
-/// Active/désactive le maintien du réveil d'écran.
+/// Enables/disables keeping the screen awake.
 pub fn keep_screen_on(on: bool) {
     let Some(env) = attach_env() else {
         return;

@@ -49,7 +49,7 @@ fn ToastCard(id: u64, kind: ToastKind, message: ToastMessage) -> Element {
         .await;
         close();
     });
-    // Classes conditionnelles = littéraux complets (scan Tailwind).
+    // Conditional classes = full literals (Tailwind scan).
     let (colors, icon) = match kind {
         ToastKind::Success => (
             "bg-green-50 border-green-200",

@@ -107,7 +107,7 @@ séparateur (`;` `,` tabulation `|`), lignes exactes, par colonne
 Avant le plafond de l'import. `equals`, `in`, `in_objects`
 (`{object_type, property}` : valeurs des objets vivants de l'org,
 restreints par `only: {property, values}` — p. ex. certifications
-`statut: actif` pour les partenaires) ;
+`status: active` pour les partenaires) ;
 conversions D301 sur la colonne avant comparaison (`digits` pour les SIRET
 précédés d'une tabulation). Écrit un CSV filtré en staging (même
 séparateur). Manifeste `{rows_in, rows_out, distinct_kept, staging_key}`.
@@ -146,22 +146,22 @@ lignes.
 
 ## 4. France Compétences dans le pack `quali_watch` (1.1.0)
 
-Imports `fc_certificateurs` (incrémental), `fc_fiches` (incrémental,
-`create: false`), `fc_partenaires` (snapshot) et le flow brouillon
+Imports `fc_certifiers` (incrémental), `fc_sheets` (incrémental,
+`create: false`), `fc_partners` (snapshot) et le flow brouillon
 « Ingestion France Compétences ». Conversions : répertoire = `left:2` puis
 enum `RN → rncp`, `RS → rs` (aucune conversion nouvelle) ;
-`date_enregistrement` = `concat [Date_Effet, Date_Decision]` +
+`registered_on` = `concat [Date_Effet, Date_Decision]` +
 **`before:|`** (nouvelle conversion D301 générique : texte avant le premier
 séparateur, donc la première colonne non vide — `Date_Effet` est vide sur
-les fiches RS) ; périmètre `ORGA_FORM → les_deux`, `FORMER → preparation`,
-`ORGANISER → evaluation`. Le brouillon ne se déploie pas tant que le filtre
+les fiches RS) ; périmètre `ORGA_FORM → both`, `FORMER → preparation`,
+`ORGANISER → assessment`. Le brouillon ne se déploie pas tant que le filtre
 « Certificateurs » n'a pas de SIRET (Q-I1).
 
 ### Contenu des fiches (pack 1.2.0, 2026-10-20)
 
-`fc_blocs` (CSV `Blocs_De_Compétences` du même zip, filtré sur les
-certifications de l'org) crée les blocs RNCP (`competence`, nature
-`bloc`, clé `RNCP183BC02`, rang = chiffres après `BC`). `fc_rs_xml` lit
+`fc_blocks` (CSV `Blocs_De_Compétences` du même zip, filtré sur les
+certifications de l'org) crée les blocs RNCP (`skill`, nature
+`skill_block`, clé `RNCP183BC02`, rang = chiffres après `BC`). `fc_rs_xml` lit
 l'export XML RS (`export-fiches-rs-v4-1-*.zip`, second téléchargement du
 même dataset, ~130 Mo décompressés, 4 920 fiches) **sans filtre** :
 `rows_filter` ne sait pas réécrire un XML, et le registre entier tient
@@ -169,9 +169,9 @@ sous le plafond de 50 000 enregistrements. Les certifications sont des
 lookups `missing: skip`, les compétences portent `needs: cert` : rien
 n'est écrit pour une fiche hors de l'org. Une compétence par paragraphe
 de `CAPACITES_ATTESTEES` (`split_spaces:3`, vérifié sur RS0101 : C1–C6),
-clé `RS0101-C<rang>` (`#`). `habilite_pour` est seulement complété
-(`create: false`) : `etat_fc`, `date_actif`, `date_etat` ; plusieurs
-SIRET d'un SIREN → `actif` si l'un l'est. Le `<ACTIF>` du XML n'est pas
+clé `RS0101-C<rank>` (`#`). `accredited_for` est seulement complété
+(`create: false`) : `fc_state`, `active_since`, `state_date` ; plusieurs
+SIRET d'un SIREN → `active` si l'un l'est. Le `<ACTIF>` du XML n'est pas
 fiable : le statut reste celui du CSV Standard. Les deux imports sont en
 `snapshot` : un référentiel révisé ferme les compétences disparues.
 
@@ -181,8 +181,8 @@ sa taille ; 128 Mo décompressés, à mesurer sur dev) ; `EACH_MAX` =
 active, 4 267 toutes fiches) et 500 000 objets planifiés par run ; une
 ligne en erreur refuse tout le run snapshot (D303) — mesuré le
 2026-10-20 : seuls `Actif`/`Inactif`, dates toutes au format jj/mm/aaaa.
-`nb_certifies` = l'année la plus récente (`max_by:ANNEE`) : l'ordre des
-promotions n'est pas fiable. Programmes, modules, `couvre` et l'action `programme.analyser`
+`certified_count` = l'année la plus récente (`max_by:ANNEE`) : l'ordre des
+promotions n'est pas fiable. Programmes, modules, `covers` et l'action `syllabus.analyser`
 (tableau croisé, écarts PROG-*) : schéma seul, calcul hors de ce lot (Q8,
 Q9 du PRD).
 
@@ -204,9 +204,9 @@ Q9 du PRD).
 - **Q-I1** — Certificateur client : SIRET dans le filtre du flow livré
   (fait en V1, faute de mieux) ou objet `organization` marqué « client » ?
 - **Q-I2** — Granularité de l'habilitation : France Compétences habilite un
-  SIRET, le pack relie `habilite_pour` au SIREN (un lien par paire). V1 :
+  SIRET, le pack relie `accredited_for` au SIREN (un lien par paire). V1 :
   plusieurs SIRET d'un même SIREN sur une fiche → un seul lien ; périmètres
-  différents → `les_deux` (nouvelle option D301 générique `on_conflict` d'un
+  différents → `both` (nouvelle option D301 générique `on_conflict` d'un
   lien d'import : valeur prise quand des lignes d'une même paire divergent ;
   sans elle la première ligne gagne, avec un avertissement « conflict »).
   Proposition : attribut `sirets` + périmètre le plus

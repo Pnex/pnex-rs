@@ -1,23 +1,23 @@
-//! Flows ETL (D18) — CRUD versionné + déploiement du runtime, scoping org
-//! (D2). Source de vérité = la base ; le `flows.json` n'est qu'un artefact
-//! projeté à chaque deploy.
+//! ETL flows (D18) — versioned CRUD + runtime deployment, org scoping
+//! (D2). Source of truth = the database; `flows.json` is only an artifact
+//! projected at each deploy.
 //!
-//! Contrat versioning :
-//! - **Enregistrer ≠ déployer** : `POST`/`PATCH` créent des versions
-//!   (append-only) **sans toucher au runtime** ; le déploiement est une
-//!   action explicite (`POST /{id}/deploy`) qui publie une version ;
-//! - concurrence optimiste : `PATCH` porte `expected_version_number`, un
-//!   enregistrement périmé est rejeté **409** (exigence PRD — écart assumé
-//!   vs la convention 400 du reste du repo) ;
-//! - rollback = redéploiement d'une version antérieure (`/rollback`) ;
-//! - l'artefact projeté contient **tous** les flows `deployed` de
-//!   l'instance (le runtime exécute un flows.json multi-tabs) — le deploy
-//!   reprojette donc l'ensemble, pas seulement le flow publié.
+//! Versioning contract:
+//! - **Save ≠ deploy**: `POST`/`PATCH` create versions
+//!   (append-only) **without touching the runtime**; deployment is an
+//!   explicit action (`POST /{id}/deploy`) that publishes a version;
+//! - optimistic concurrency: `PATCH` carries `expected_version_number`, a
+//!   stale save is rejected **409** (PRD requirement — deliberate deviation
+//!   from the 400 convention of the rest of the repo);
+//! - rollback = redeploy of an earlier version (`/rollback`);
+//! - the projected artifact contains **all** the `deployed` flows of
+//!   the instance (the runtime runs a multi-tab flows.json) — the deploy
+//!   therefore reprojects the whole set, not only the published flow.
 //!
-//! Erreurs : `{"<champ>": "<jeton>"}` pour les 400 champ-par-champ ;
-//! violations de graphe en 400 `{"violations": [...]}` ; 409/503 via
-//! `Error::CustomError` (corps Loco `{"error": code, "description": msg}`,
-//! patron `orgs.rs::conflict`).
+//! Errors: `{"<field>": "<token>"}` for field-by-field 400s;
+//! graph violations as 400 `{"violations": [...]}`; 409/503 via
+//! `Error::CustomError` (Loco body `{"error": code, "description": msg}`,
+//! `orgs.rs::conflict` pattern).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;

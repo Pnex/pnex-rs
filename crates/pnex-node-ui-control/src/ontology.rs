@@ -464,15 +464,15 @@ mod tests {
     #[test]
     fn filter_values_resolve_per_message() {
         let filters: Vec<PropertyFilter> = serde_json::from_value(json!([
-            {"key": "prochaine_echeance", "op": "lte", "value": "$today"},
+            {"key": "next_due", "op": "lte", "value": "$today"},
             {"key": "siren", "op": "eq", "value": "$msg.payload.siren"},
-            {"key": "etat", "op": "in", "value": ["ouverte"]}
+            {"key": "state", "op": "in", "value": ["open"]}
         ]))
         .unwrap();
         let v = values_for(&filters, &json!({"payload": {"siren": "123456789"}}));
         assert_eq!(v[0].as_str().unwrap().len(), 10);
         assert_eq!(v[1], json!("123456789"));
-        assert_eq!(v[2], json!(["ouverte"]));
+        assert_eq!(v[2], json!(["open"]));
     }
 
     #[test]

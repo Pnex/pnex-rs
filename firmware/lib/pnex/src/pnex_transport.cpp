@@ -1,14 +1,14 @@
 //
-// pnex-transport — implémentation (cf. pnex_transport.h pour le contrat et
-// la règle de linkage config.h).
+// pnex-transport — implementation (see pnex_transport.h for the contract and
+// the config.h linkage rule).
 //
 #include "pnex_transport.h"
 
-#include "pnex_status.h"  // publication TX (compteur data, no-op sans écran)
+#include "pnex_status.h"  // TX publication (data counter, no-op without a screen)
 
-// ESP8266 et ESP32 (C3…) — le reste de la lib est de l'Arduino neutre
-// (WiFi.begin/status, pnex_ws, ChaCha) : seul l'en-tête WiFi
-// diverge, et le watchdog du connect bloquant.
+// ESP8266 and ESP32 (C3…) — the rest of the lib is neutral Arduino
+// (WiFi.begin/status, pnex_ws, ChaCha): only the WiFi header
+// diverges, plus the watchdog of the blocking connect.
 #if defined(ESP32)
 #include <WiFi.h>
 #else
@@ -21,7 +21,7 @@
 #include "pnex_tls.h"
 #include "pnex_ws.h"
 
-// ───────────────────────── État interne ─────────────────────────
+// ───────────────────────── Internal state ─────────────────────────
 
 static PnexWsClient s_client;
 
@@ -40,8 +40,8 @@ static char s_conn_log[256];
 
 static PnexTransportInit s_init;
 
-// Dernier signe de vie serveur (text « PONG » ou pong WS), réarmé au
-// connect. Base du PONG timeout (brick0 : 15 s pour le pin_slave).
+// Last server sign of life (text "PONG" or WS pong), re-armed on
+// connect. Base of the PONG timeout (brick0: 15 s for the pin_slave).
 static unsigned long s_last_pong_ms = 0;
 
 // Noise link of the current connection (D156): pnex_ws_connect() sends the
@@ -179,7 +179,7 @@ bool pnex_crypto_ready() {
 // ───────────────────────── WiFi / WS ─────────────────────────
 
 bool pnex_wifi_connect(unsigned max_attempts, PnexWaitTickFn tick) {
-    Serial.printf("[WiFi] connexion à %s ", s_ssid);
+    Serial.printf("[WiFi] connecting to %s ", s_ssid);
     WiFi.begin(s_ssid, s_password);
     unsigned attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < max_attempts) {
@@ -194,7 +194,7 @@ bool pnex_wifi_connect(unsigned max_attempts, PnexWaitTickFn tick) {
         Serial.print(".");
         ++attempts;
 #if defined(ESP32)
-        yield();  // pas de WDT arme sur la loop Arduino-ESP32
+        yield();  // no WDT armed on the Arduino-ESP32 loop
 #else
         ESP.wdtFeed();
 #endif
@@ -270,7 +270,7 @@ bool pnex_ws_connect() {
                       (unsigned)ESP.getFreeHeap(),
                       (unsigned)ESP.getMaxFreeBlockSize());
 #endif
-        // Base PONG réarmée à chaque connexion établie.
+        // PONG base re-armed on every established connection.
         s_last_pong_ms = millis();
     }
     return ok;
@@ -278,14 +278,14 @@ bool pnex_ws_connect() {
 
 void pnex_ws_poll() {
     s_client.poll();
-    // Horloge RELUE après le poll : le callback PONG peut avoir avancé
-    // millis() pendant poll() — un `now` d'avant-poll ferait wrapper la
-    // soustraction non-signée et déclencherait le timeout immédiatement
-    // après avoir reçu… le PONG (leçon 2026-09-03 : la carte bouclait
-    // reconnect toutes les ~6 s).
+    // Clock RE-READ after the poll: the PONG callback may have advanced
+    // millis() during poll() — a pre-poll `now` would make the unsigned
+    // subtraction wrap and trigger the timeout right
+    // after receiving… the PONG (lesson 2026-09-03: the board looped
+    // reconnect every ~6 s).
     unsigned long now = millis();
     if (s_init.pong_timeout_ms != 0 && now - s_last_pong_ms >= s_init.pong_timeout_ms) {
-        Serial.printf("[WS] PONG timeout (%lu s) — close, safe-states au tour suivant\n",
+        Serial.printf("[WS] PONG timeout (%lu s) — close, safe-states on the next round\n",
                       s_init.pong_timeout_ms / 1000);
         s_client.close();
         s_last_pong_ms = millis();
@@ -307,9 +307,9 @@ void pnex_ws_send(const char* plain) {
     if (plain == nullptr || plain[0] == '\0') {
         return;
     }
-    // Point de passage unique du trafic data (announce/ack/state_report) —
-    // les PING passent par pnex_ws_send_ping et ne comptent pas. Simple
-    // incrément : jamais sur le chemin de données.
+    // Single passage point of data traffic (announce/ack/state_report) —
+    // PINGs go through pnex_ws_send_ping and do not count. Plain
+    // increment: never on the data path.
     const String wire = cryptoSealText(s_link, plain);
     if (wire.length() == 0) {
         // Link not ready or payload over the chip budget: dropped here,

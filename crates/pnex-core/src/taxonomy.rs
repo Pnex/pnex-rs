@@ -257,7 +257,7 @@ mod tests {
         let text = "Le POUVOIR D’ACHAT et l'Économie : les hopitaux et la santé publique, \
                     marché boursier en baisse.";
         // Typographic apostrophe splits like a plain one; `hopitaux` is not
-        // `hôpital`, `boursier` is not `bourse`.
+        // `hôpital`, `boursier` is not `bourse`.  english-guard: allow (French example)
         assert_eq!(
             classify_keywords(text, &topics),
             vec!["economie".to_string(), "sante".to_string()]

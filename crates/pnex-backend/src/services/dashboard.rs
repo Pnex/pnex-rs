@@ -1,12 +1,12 @@
-//! Dashboard (2026-08-19) — lecture seule pour
-//! `GET /api/v1/dashboard/summary` : liveness PG, stats builds PG,
-//! dernières mesures OpenObserve.
+//! Dashboard (2026-08-19) — read-only for
+//! `GET /api/v1/dashboard/summary`: PG liveness, PG build stats,
+//! latest OpenObserve measurements.
 //!
-//! Doctrine : la branche télémétrie ne fait **jamais** échouer la requête
-//! (org non provisionnée, O2 injoignable, timeout 3 s →
-//! `telemetry.available == false`) et ne déclenche **jamais** de
-//! provisioning (`provisioned_credentials`, lecture seule). Les sections
-//! PG sont toujours servies.
+//! Doctrine: the telemetry branch **never** fails the request
+//! (unprovisioned org, O2 unreachable, 3 s timeout →
+//! `telemetry.available == false`) and **never** triggers
+//! provisioning (`provisioned_credentials`, read-only). The PG
+//! sections are always served.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -23,27 +23,27 @@ use crate::services::device_liveness;
 use crate::services::openobserve::{self, client::Client};
 use crate::services::visualization;
 
-/// Fenêtre de recherche du dernier échantillon de chaque série.
+/// Search window for the latest sample of each series.
 const LATEST_WINDOW: &str = "1h";
 /// [`LATEST_WINDOW`] in seconds (SQL last-sample lookup).
 const LATEST_WINDOW_SECS: i64 = 3_600;
 
-/// Timeout de TOUT le chemin O2 du summary (découverte des streams +
-/// queries) — le dashboard répond quoi qu'il arrive, une page ne doit pas
-/// traîner 10 s (timeout http du client) parce qu'O2 est lent.
+/// Timeout of the WHOLE O2 path of the summary (stream discovery +
+/// queries) — the dashboard answers no matter what, a page must not
+/// hang for 10 s (client http timeout) because O2 is slow.
 const O2_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Borné côté serveur : la table du dashboard reste lisible (demande user
-/// 2026-08-19 — « only latest ~10 », pas tout l'historique).
+/// Capped server-side: the dashboard table stays readable (user request
+/// 2026-08-19 — « only latest ~10 », not the whole history).
 const LATEST_CAP: usize = 10;
 
-/// Idem pour la liste liveness : les ~10 devices les plus récemment
-/// actifs (live d'abord) — les compteurs de la carte restent calculés
-/// sur l'ensemble des devices de l'org.
+/// Same for the liveness list: the ~10 most recently active devices
+/// (live first) — the card counters are still computed over all of
+/// the org's devices.
 const LIVENESS_CAP: usize = 10;
 
-/// Nombre max de streams interrogés (défensif : sélecteur borné même si
-/// une org a des dizaines de métriques dynamiques).
+/// Max number of streams queried (defensive: bounded selector even if
+/// an org has dozens of dynamic metrics).
 const STREAMS_CAP: usize = 12;
 
 /// Liveness of the org's devices: registry × liveness store (Valkey +
@@ -180,7 +180,7 @@ pub async fn build_stats(db: &DatabaseConnection, org_id: i64) -> Result<BuildSt
     Ok(BuildStats {
         total,
         succeeded,
-        // 0.0 si aucun build : jamais de NaN côté wasm.
+        // 0.0 if no build: never NaN on the wasm side.
         success_rate: if total == 0 {
             0.0
         } else {
@@ -189,13 +189,13 @@ pub async fn build_stats(db: &DatabaseConnection, org_id: i64) -> Result<BuildSt
     })
 }
 
-/// Dernières mesures de l'org depuis OpenObserve — **dégradée par
-/// conception** : aucune erreur ne remonte, `available: false` suffit.
+/// The org's latest measurements from OpenObserve — **degraded by
+/// design**: no error bubbles up, `available: false` is enough.
 ///
-/// Constat e2e v0.92.1 : pas de sélecteur regex sur `__name__` (renvoie
-/// vide) → les noms de métriques se découvrent via `/streams?type=metrics`
-/// puis **une requête par nom** (`last_over_time(nom[1h])`), le tout sous
-/// le timeout global `O2_TIMEOUT`.
+/// e2e finding v0.92.1: no regex selector on `__name__` (returns
+/// empty) → metric names are discovered via `/streams?type=metrics`
+/// then **one query per name** (`last_over_time(nom[1h])`), all under
+/// the global `O2_TIMEOUT`.
 pub async fn latest_measurements(
     db: &DatabaseConnection,
     client: &Client,
@@ -205,8 +205,8 @@ pub async fn latest_measurements(
         available: false,
         latest: vec![],
     };
-    // Lecture seule : une org sans données n'est pas provisionnée, on ne
-    // provisionne pas depuis le chemin HTTP utilisateur.
+    // Read-only: an org without data is not provisioned, we do not
+    // provision from the user HTTP path.
     let Some(creds) = openobserve::provisioned_credentials(db, org_id)
         .await
         .ok()
@@ -241,11 +241,11 @@ pub async fn latest_measurements(
                 tracing::debug!(org_id, metric = %name, error = %e, "last seen not queried");
                 Default::default()
             });
-            // Une métrique injoignable n'emporte pas les autres.
+            // One unreachable metric does not take the others down.
             match res {
                 Ok(resp) => samples.extend(resp.data.result.into_iter().map(|s| (s, seen.clone()))),
                 Err(e) => {
-                    tracing::debug!(org_id, metric = %name, erreur = %e, "stream non interrogé")
+                    tracing::debug!(org_id, metric = %name, erreur = %e, "stream not queried")
                 }
             }
         }
@@ -255,20 +255,20 @@ pub async fn latest_measurements(
     let samples = match fetch {
         Ok(Ok(samples)) => samples,
         Ok(Err(e)) => {
-            tracing::warn!(org_id, erreur = %e, "dashboard : O2 en échec, télémétrie dégradée");
+            tracing::warn!(org_id, erreur = %e, "dashboard: O2 failed, telemetry degraded");
             return degraded;
         }
         Err(_) => {
             tracing::warn!(
                 org_id,
-                "dashboard : chemin O2 expiré (3 s), télémétrie dégradée"
+                "dashboard: O2 path timed out (3 s), telemetry degraded"
             );
             return degraded;
         }
     };
 
-    // Séries sans métrique/device/valeur numérique : skip silencieux
-    // (défensif — les valeurs sont déjà filtrées à l'ingest).
+    // Series without metric/device/numeric value: silent skip
+    // (defensive — values are already filtered at ingest).
     let mut latest: Vec<LatestMeasurement> = samples
         .into_iter()
         .filter_map(|(s, seen)| {
@@ -312,7 +312,7 @@ pub async fn latest_measurements(
             Err(e) => tracing::warn!(org_id, error = %e, "flow series not filtered"),
         }
     }
-    // RFC 3339 UTC (même convertisseur) : tri lexicographique sûr.
+    // RFC 3339 UTC (same converter): lexicographic sort is safe.
     latest.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     latest.truncate(LATEST_CAP);
     TelemetrySummary {

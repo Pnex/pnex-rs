@@ -1,30 +1,30 @@
-//! `pnex-flow-runtime` — binaire headless du moteur de flow ETL PNEX (D18).
+//! `pnex-flow-runtime` — headless binary of the PNEX ETL flow engine (D18).
 //!
-//! Notre propre `main` au-dessus de `edgelink-core` (jamais le `edgelinkd`
-//! upstream, dont l'API admin web ne doit jamais être exposée) :
-//! - **ferme d'engines** : un `Engine` edgelinkd **par flow** (1 tab = 1
-//!   engine, cf. `engines.rs`) — un tab invalide ne fait échouer que son
-//!   engine, les autres continuent (plus d'exit(1) global pour un flow
-//!   fautif) ;
-//! - **stdout = événements JSON-lines machine** (`started`, `flow_started`,
-//!   `flow_error`, `debug`, `redeployed`, `stopped`…) consommés par le
-//!   superviseur Loco ;
-//! - **stderr = logs** du moteur en JSON-lines (+ paniques via hook) ;
-//! - **SIGUSR1 = rechargement à chaud** : relecture du `flows.json`, diff
-//!   par tab — seuls les engines des tabs modifiés sont swappés (aucune
-//!   pause d'ingestion pour les autres). Échec **fichier** (lecture/JSON) →
-//!   `reload_failed` et les engines courants sont conservés ;
-//! - **ctrl_c/SIGTERM via ctrl_c** = arrêt propre (stop de tous les engines).
-//! - **`--check <flows.json>`** = pré-flight du deploy : construit chaque
-//!   engine sans `start()`, rapport par tab sur stdout, exit 0/1.
-//! - **`--check-function <request.json>`** = validation compile-only d'une
-//!   fonction du registre (barre d'erreurs de l'éditeur) — une ligne JSON
+//! Our own `main` on top of `edgelink-core` (never the upstream `edgelinkd`,
+//! whose web admin API must never be exposed):
+//! - **engine farm**: one edgelinkd `Engine` **per flow** (1 tab = 1
+//!   engine, see `engines.rs`) — an invalid tab only fails its own
+//!   engine, the others keep running (no more global exit(1) for a faulty
+//!   flow);
+//! - **stdout = machine JSON-lines events** (`started`, `flow_started`,
+//!   `flow_error`, `debug`, `redeployed`, `stopped`…) consumed by the
+//!   Loco supervisor;
+//! - **stderr = engine logs** as JSON-lines (+ panics via hook);
+//! - **SIGUSR1 = hot reload**: re-reads `flows.json`, diff
+//!   per tab — only the engines of modified tabs are swapped (no
+//!   ingestion pause for the others). **File** failure (read/JSON) →
+//!   `reload_failed` and the current engines are kept;
+//! - **ctrl_c/SIGTERM via ctrl_c** = clean shutdown (stop of all engines).
+//! - **`--check <flows.json>`** = deploy pre-flight: builds each
+//!   engine without `start()`, per-tab report on stdout, exit 0/1.
+//! - **`--check-function <request.json>`** = compile-only validation of a
+//!   registry function (editor error bar) — one JSON line
 //!   `FunctionValidateResponse`, exit 0/1.
 //!
 //! PNEX custom nodes register themselves at link time (`inventory`) — the
 //! explicit `pnex_node_*::registered()` references are anti-stripping guards.
 //!
-//! Usage : `pnex-flow-runtime <flows.json> [--home <dir>]`
+//! Usage: `pnex-flow-runtime <flows.json> [--home <dir>]`
 //!         `pnex-flow-runtime --check <flows.json>`
 //!         `pnex-flow-runtime --test-function <request.json>`
 //!         `pnex-flow-runtime --check-function <request.json>`
@@ -48,15 +48,15 @@ fn main() -> ExitCode {
     log::set_boxed_logger(Box::new(logger)).expect("logger unique");
     log::set_max_level(logger::max_level_from_env());
 
-    // Paniques → stderr JSON (canal logs du superviseur). Une panic dans une
-    // tâche nœud ne tue pas le process (frontière tokio) mais meurt
-    // silencieusement côté vendor — le hook la rend au moins visible.
+    // Panics → JSON stderr (supervisor log channel). A panic in a
+    // node task does not kill the process (tokio boundary) but dies
+    // silently on the vendor side — the hook at least makes it visible.
     std::panic::set_hook(Box::new(|info| {
         let line = serde_json::json!({
             "ts": logger::epoch_secs(),
             "level": "ERROR",
             "target": "panic",
-            "message": format!("panique dans une tâche : {info}"),
+            "message": format!("panic in a task: {info}"),
         });
         let _ = writeln!(std::io::stderr(), "{line}");
     }));
@@ -99,19 +99,19 @@ async fn run() -> ExitCode {
                 None => return usage(),
             },
             other if other.starts_with('-') => {
-                eprintln!("option inconnue : {other}");
+                eprintln!("unknown option: {other}");
                 return usage();
             }
             other => flows_path = Some(other.to_string()),
         }
     }
-    // Mode « test en live » : court-circuite le registre/moteur — la
-    // fonction est exécutée sandboxée et une ligne JSON est imprimée.
+    // "Live test" mode: bypasses the registry/engine — the
+    // function runs sandboxed and one JSON line is printed.
     if let Some(path) = test_fn_path {
         return test_fn::run(&path).await;
     }
-    // Mode « validation compile-only » : même court-circuit, sans exécution
-    // du code — diagnostics structurés en une ligne JSON.
+    // "Compile-only validation" mode: same bypass, without running
+    // the code — structured diagnostics in one JSON line.
     if let Some(path) = check_fn_path {
         return check_fn::run(&path).await;
     }
@@ -121,20 +121,20 @@ async fn run() -> ExitCode {
 
     // Link-time guard: PNEX nodes register through inventory; these
     // references guarantee their inclusion in the binary.
-    // Nœuds Phase 6 (device/calc/metric) — même garde-fou anti-élagage.
+    // Phase 6 nodes (device/calc/metric) — same anti-pruning guard.
     pnex_node_device::registered();
-    // Sonde (panneau debug + badge éditeur) — même garde-fou.
+    // Probe (debug panel + editor badge) — same guard.
     pnex_node_display::registered();
     // Fixed or random payload (pnex-value) — same anti-stripping guard.
     pnex_node_value::registered();
-    // Cartes de régulation mixtes (TT heat/cool, PID) — sans ce crate lié,
-    // le type inconnu tomberait dans le fallback `unknown` (no-op silencieux).
+    // Mixed control cards (TT heat/cool, PID) — without this crate linked,
+    // the unknown type would fall into the `unknown` fallback (silent no-op).
     pnex_node_control::registered();
-    // Propriétés thermophysiques in-process (pnex-coolprop) — même garde-fou.
+    // In-process thermophysical properties (pnex-coolprop) — same guard.
     pnex_node_coolprop::registered();
-    // Notifications multi-canaux (D49–D54) — même garde-fou.
+    // Multi-channel notifications (D49–D54) — same guard.
     pnex_node_notify::registered();
-    // Requête HTTP client (C1a, amendement edge-model 2026-09-15) — même garde-fou.
+    // Client HTTP request (C1a, edge-model amendment 2026-09-15) — same guard.
     pnex_node_http_fetch::registered();
     // Camera frame source + video recorder (camera-video.md D78).
     pnex_node_camera::registered();
@@ -149,13 +149,13 @@ async fn run() -> ExitCode {
     // Org controls written from the surfaces (D127): control-source.
     pnex_node_ui_control::registered();
     pnex_node_weather::registered();
-    // Fonctions Starlark du registre « Fonctions » — même garde-fou.
+    // Starlark functions of the "Functions" registry — same guard.
     pnex_node_starlark::registered();
 
     let reg = match allowlisted_registry() {
         Ok(r) => r,
         Err(e) => {
-            log::error!("Registre de nœuds indisponible : {e}");
+            log::error!("Node registry unavailable: {e}");
             return ExitCode::FAILURE;
         }
     };
@@ -184,9 +184,9 @@ fn allowlisted_registry() -> edgelink_core::Result<edgelink_core::runtime::regis
     builder.build()
 }
 
-/// Pré-flight du deploy : construit chaque engine **sans `start()`** — ni
-/// tâche nœud, ni effet de bord ; `--home` accepté mais inutile. Rapport
-/// par tab sur stdout, exit 0/1.
+/// Deploy pre-flight: builds each engine **without `start()`** — no
+/// node task, no side effect; `--home` accepted but useless. Report
+/// per tab on stdout, exit 0/1.
 async fn run_check(
     reg: &edgelink_core::runtime::registry::RegistryHandle,
     flows_path: &str,
@@ -194,7 +194,7 @@ async fn run_check(
     let (tabs, _rev) = match engines::read_tabs(flows_path).await {
         Ok(t) => t,
         Err(e) => {
-            // Fichier illisible / JSON invalide / structure non groupable.
+            // Unreadable file / invalid JSON / structure that can't be grouped.
             emit(
                 "check_done",
                 serde_json::json!({ "ok": false, "total": 0, "errors": 0, "error": e }),
@@ -234,24 +234,24 @@ async fn run_serve(
     flows_path: String,
     home: PathBuf,
 ) -> ExitCode {
-    // Échec **fichier** au boot : exit(1) — le superviseur relance avec
-    // backoff (même comportement qu'avant la ferme).
+    // **File** failure at boot: exit(1) — the supervisor restarts with
+    // backoff (same behaviour as before the farm).
     let (tabs, rev) = match engines::read_tabs(&flows_path).await {
         Ok(t) => t,
         Err(e) => {
-            log::error!("flows.json illisible : {flows_path} : {e}");
+            log::error!("flows.json unreadable: {flows_path}: {e}");
             return ExitCode::FAILURE;
         }
     };
 
     let mut farm = engines::EngineFarm::new(reg);
-    // Issues émises à la volée (stdout → acquittement deploy) : un tab lent
-    // au boot ne retarde pas l'annonce des suivants.
+    // Outcomes emitted on the fly (stdout → deploy acknowledgement): a tab slow
+    // at boot does not delay the announcement of the following ones.
     farm.boot(tabs, &mut emit_outcome_streamed).await;
 
-    // Pas de méta de version ici : l'artefact est multi-flows et le
-    // runtime.json ne porte que la santé du process — la version déployée
-    // d'un flow vit en DB, tenue par le deploy acquitté.
+    // No version meta here: the artifact is multi-flow and
+    // runtime.json only carries process health — the deployed version
+    // of a flow lives in the DB, kept by the acknowledged deploy.
     let mut redeploys: u64 = 0;
     let mut st = state::RuntimeState {
         pid: std::process::id(),
@@ -269,20 +269,20 @@ async fn run_serve(
         }),
     );
 
-    // Pompe debug par engine (chaque engine a son propre canal broadcast) —
-    // (re)lancée après chaque cycle boot/reload pour les engines nouveaux ou
-    // swappés (l'ancienne pompe meurt d'elle-même : canal fermé au drop).
+    // Debug pump per engine (each engine has its own broadcast channel) —
+    // (re)started after each boot/reload cycle for new or swapped
+    // engines (the old pump dies by itself: channel closed on drop).
     let mut pumps: HashMap<i64, tokio::task::JoinHandle<()>> = HashMap::new();
     reconcile_pumps(&farm, &mut pumps, &[]);
 
-    // SIGUSR1 = reload diff (unix). En l'absence (non-unix), seul ctrl_c
-    // arrête.
+    // SIGUSR1 = diff reload (unix). Without it (non-unix), only ctrl_c
+    // stops.
     #[cfg(unix)]
     let mut sigusr1 =
         match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::user_defined1()) {
             Ok(s) => s,
             Err(e) => {
-                log::error!("Installation de SIGUSR1 impossible : {e}");
+                log::error!("Cannot install SIGUSR1: {e}");
                 return ExitCode::FAILURE;
             }
         };
@@ -294,15 +294,15 @@ async fn run_serve(
             Action::Stop => break,
             Action::Reload => match engines::read_tabs(&flows_path).await {
                 Err(e) => {
-                    // Fichier illisible/JSON invalide : on garde les engines
-                    // courants (jamais d'exit pour un artefact fautif — le
-                    // superviseur re-signalisera au prochain deploy).
+                    // Unreadable file/invalid JSON: keep the current
+                    // engines (never exit for a faulty artifact — the
+                    // supervisor will re-signal on the next deploy).
                     emit("reload_failed", serde_json::json!({ "error": e }));
                 }
                 Ok((tabs, rev)) => {
                     let report = farm.reload(tabs, &mut emit_outcome_streamed).await;
-                    // Compteur incrémenté par cycle appliqué (artefact lisible),
-                    // même sans changement — compat acquittement supervisor.
+                    // Counter incremented per applied cycle (readable artifact),
+                    // even with no change — supervisor acknowledgement compat.
                     redeploys += 1;
                     st.redeploys = redeploys;
                     st.flow_rev = Some(rev);
@@ -330,9 +330,9 @@ async fn run_serve(
     ExitCode::SUCCESS
 }
 
-/// (Re)lance les pompes debug : nouvelles engines après boot/reload, retrait
-/// des pompes des flows supprimés. Une pompe swappée meurt d'elle-même
-/// (canal de l'ancien engine fermé au drop) — `is_finished` couvre ce cas.
+/// (Re)starts the debug pumps: new engines after boot/reload, removal
+/// of the pumps of deleted flows. A swapped pump dies by itself
+/// (old engine's channel closed on drop) — `is_finished` covers that case.
 fn reconcile_pumps(
     farm: &engines::EngineFarm,
     pumps: &mut HashMap<i64, tokio::task::JoinHandle<()>>,
@@ -362,9 +362,9 @@ fn reconcile_pumps(
     }
 }
 
-/// Prochain événement d'ordonnancement du runtime. `select!` de tokio
-/// n'acceptant pas de `#[cfg]` sur ses branches, la gestion de SIGUSR1
-/// (unix) est isolée ici.
+/// Next scheduling event of the runtime. Since tokio's `select!`
+/// does not accept `#[cfg]` on its branches, SIGUSR1 handling
+/// (unix) is isolated here.
 enum Action {
     Stop,
     Reload,
@@ -423,8 +423,8 @@ fn emit_outcome(oc: &engines::FlowOutcome) {
     }
 }
 
-/// Adaptateur pour les callbacks de `boot`/`reload` (`FnMut` par valeur) —
-/// émission immédiate sur stdout de chaque issue de cycle.
+/// Adapter for the `boot`/`reload` callbacks (`FnMut` by value) —
+/// immediate stdout emission of each cycle outcome.
 fn emit_outcome_streamed(oc: engines::FlowOutcome) {
     emit_outcome(&oc);
 }
@@ -437,8 +437,8 @@ async fn pump_debug(
     loop {
         match rx.recv().await {
             Ok(m) => {
-                // Id éditeur quand connu (le fallback = m.id brut couvre les
-                // nœuds pnex-display, qui s'identifient eux-mêmes).
+                // Editor id when known (the fallback = raw m.id covers the
+                // pnex-display nodes, which identify themselves).
                 let node_red = node_by_hex
                     .get(&m.id)
                     .cloned()
@@ -450,10 +450,10 @@ async fn pump_debug(
                     "name": m.name,
                     "msg": m.msg,
                     "msgid": m.msgid,
-                    // Marqueur de source : la sonde pnex-display s'identifie
-                    // via `format` ; les nœuds debug builtin portent un format
-                    // d'affichage (« Number », « Object »…) → tout le reste
-                    // reste « debug » (badge + tag cyan du drawer).
+                    // Source marker: the pnex-display probe identifies itself
+                    // via `format`; builtin debug nodes carry a display
+                    // format ("Number", "Object"…) → everything else
+                    // stays "debug" (badge + cyan tag of the drawer).
                     "source": match m.format.as_deref() {
                         Some("pnex-display") => "pnex-display",
                         // Camera/vision node status (D103).
@@ -464,7 +464,7 @@ async fn pump_debug(
                 emit("debug", fields);
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                log::warn!("flow {flow_id} : canal debug saturé : {n} messages perdus");
+                log::warn!("flow {flow_id}: debug channel saturated: {n} messages lost");
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
         }

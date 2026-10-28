@@ -1,7 +1,7 @@
-//! Drawer d'historique des versions d'une couche d'annotations + bloc
-//! publication (école `tour_editor/versions.rs`) : publier (défaut =
-//! dernière), publier une version antérieure (= repointage, D56),
-//! dépublier, charger une version dans l'éditeur.
+//! Version history drawer of an annotation layer + publishing
+//! block (`tour_editor/versions.rs` pattern): publish (default =
+//! latest), publish an older version (= repointing, D56),
+//! unpublish, load a version into the editor.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -13,9 +13,9 @@ use crate::components::gerbe::Gerbe;
 use crate::components::ui::BTN_SECONDARY_SM;
 use crate::state::toasts;
 
-/// Drawer latéral : historique append-only + publication d'une couche.
-/// `on_loaded` : version à charger dans l'éditeur (restauration par
-/// édition, D56) ; `on_changed` : la couche a changé côté serveur.
+/// Side drawer: append-only history + publishing of a layer.
+/// `on_loaded`: version to load into the editor (restore by
+/// editing, D56); `on_changed`: the layer changed on the server.
 #[component]
 pub fn AnnotationVersionsDrawer(
     layer_id: String,
@@ -147,7 +147,7 @@ pub fn AnnotationVersionsDrawer(
             }
         }
 
-        // Confirmation : publier une version antérieure (= repointage, D56).
+        // Confirmation: publish an older version (= repointing, D56).
         if let Some(version_number) = confirm_publish() {
             ConfirmDialog {
                 key: "annot-publish-{version_number}",
@@ -179,8 +179,8 @@ pub fn AnnotationVersionsDrawer(
     }
 }
 
-/// Ligne d'historique : valeurs possédées (école tour_editor/versions) —
-/// closures sans conflit entre lignes.
+/// History row: owned values (tour_editor/versions pattern) —
+/// closures without conflicts between rows.
 fn version_row(
     version: pnex_core::AnnotationLayerVersionSummary,
     layer_id: String,

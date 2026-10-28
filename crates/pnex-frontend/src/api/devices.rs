@@ -1,24 +1,24 @@
-//! Endpoints devices — registre scopé org + catalogue global (Phase 4).
+//! Device endpoints — org-scoped registry + global catalogue (Phase 4).
 //!
-//! `create` renvoie un JSON brut : 201 → `Device`, ou 200 `{"reactivated": true}`
-//! (réactivation d'un device inactif connu) — l'appelant distingue sur la
-//! présence de `reactivated`.
+//! `create` returns raw JSON: 201 → `Device`, or 200 `{"reactivated": true}`
+//! (reactivation of a known inactive device) — the caller tells them apart
+//! by the presence of `reactivated`.
 
 use pnex_core::{CreateDevice, Device, DeviceCapability, Paginated, PredefinedDevice};
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/devices` + pagination (D14) — absents = défauts
-/// serveur (limit 10, offset 0).
+/// Filters of `GET /api/v1/devices` + pagination (D14) — absent = server
+/// defaults (limit 10, offset 0).
 #[derive(Default)]
 pub struct DeviceFilters {
-    /// Nom de type (« all » côté serveur = no-op, ici on n'envoie rien).
+    /// Type name ("all" on the server = no-op, here we send nothing).
     pub device_type: Option<String>,
     pub capability: Option<String>,
     /// Correspondance exacte.
     pub device_id: Option<String>,
-    /// Recherche OU multi-champs (device_id, modèle, type, capacités).
+    /// Multi-field OR search (device_id, model, type, capabilities).
     pub search: Option<String>,
     pub active: Option<bool>,
     /// D42 effective label filter (`name` or `name:value`).
@@ -62,7 +62,7 @@ impl DeviceFilters {
     }
 }
 
-/// Encodage percent minimal (le front n'a pas la crate url).
+/// Minimal percent encoding (the front has no url crate).
 fn urlencode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {
@@ -76,7 +76,7 @@ fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/devices` — devices de l'org courante, enveloppe paginée.
+/// `GET /api/v1/devices` — devices of the current org, paginated envelope.
 pub async fn list(filters: &DeviceFilters) -> Result<Paginated<Device>, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -92,7 +92,7 @@ pub async fn list_all(filters: &DeviceFilters) -> Result<Vec<Device>, ApiError> 
     client::request_all(&format!("/api/v1/devices{}", filters.to_query())).await
 }
 
-/// `POST /api/v1/devices` — création (201) ou réactivation (200).
+/// `POST /api/v1/devices` — creation (201) or reactivation (200).
 pub async fn create(params: CreateDevice) -> Result<serde_json::Value, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -102,7 +102,7 @@ pub async fn create(params: CreateDevice) -> Result<serde_json::Value, ApiError>
     .await
 }
 
-/// `GET /api/v1/devices/{id}` — détail.
+/// `GET /api/v1/devices/{id}` — detail.
 pub async fn detail(id: i64) -> Result<Device, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/devices/{id}"), None).await
 }
@@ -140,8 +140,8 @@ pub async fn predefined_devices() -> Result<Vec<PredefinedDevice>, ApiError> {
     client::request_all("/api/v1/predefined-devices").await
 }
 
-/// Filtres de la page Catalogue — recherche + type + board, poussés au
-/// serveur (D14 : la grille est paginée côté API).
+/// Filters of the Catalogue page — search + type + board, pushed to the
+/// server (D14: the grid is paginated by the API).
 #[derive(Default)]
 pub struct CatalogFilters {
     pub search: Option<String>,
@@ -151,7 +151,7 @@ pub struct CatalogFilters {
     pub offset: i64,
 }
 
-/// `GET /api/v1/predefined-devices` — page du catalogue avec filtres.
+/// `GET /api/v1/predefined-devices` — catalogue page with filters.
 pub async fn predefined_devices_page(
     filters: &CatalogFilters,
 ) -> Result<Paginated<PredefinedDevice>, ApiError> {

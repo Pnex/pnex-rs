@@ -1,10 +1,10 @@
-//! Endpoint meta PUBLIC — version du serveur + version du contrat d'API.
+//! PUBLIC meta endpoint — server version + API contract version.
 //!
-//! Non authentifié : l'app doit pouvoir valider la compatibilité avant tout
-//! login (porte de compatibilité du front au boot), et le scan LAN s'en sert
-//! pour identifier un serveur PNEX sur le réseau local. Sans CORS : le front
-//! web est servi same-origin par ce serveur, et l'APK fait des sockets natifs
-//! (hyper) hors WebView — cf. `docs/architecture/features.md`.
+//! Unauthenticated: the app must be able to validate compatibility before any
+//! login (the front's compatibility gate at boot), and the LAN scan uses it
+//! to identify a PNEX server on the local network. No CORS: the web front
+//! is served same-origin by this server, and the APK uses native sockets
+//! (hyper) outside the WebView — see `docs/architecture/features.md`.
 
 use axum::http::StatusCode;
 use axum::routing::get;

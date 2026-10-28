@@ -1,10 +1,10 @@
-//! Nœud `pnex-calc` (Phase 6 ETL) — évalue l'expression sur les clés du
-//! payload device via l'évaluateur partagé `pnex_core::eval_calc` (même
-//! fonction que la validation live de l'éditeur : ce qui est validé à la
-//! sauvegarde est exactement ce qui est exécuté).
+//! `pnex-calc` node (Phase 6 ETL) — evaluates the expression over the keys of the
+//! device payload via the shared evaluator `pnex_core::eval_calc` (same
+//! function as the editor's live validation: what is validated at
+//! save time is exactly what is executed).
 //!
-//! Contrat d'entrée : payload objet `clé → numérique` (sortie d'un nœud
-//! `pnex-device`), booléens convertis 1/0 — rejet typé sinon. Sortie :
+//! Input contract: object payload `key → numeric` (output of a
+//! `pnex-device` node), booleans converted to 1/0 — typed rejection otherwise. Output:
 //! `msg.payload = <f64>`.
 
 use std::collections::HashMap;
@@ -45,9 +45,8 @@ impl PnexCalcNode {
         config: &RedFlowNodeConfig,
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
-        let cfg = CalcNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-calc : config invalide : {e}"))
-        })?;
+        let cfg = CalcNodeConfig::deserialize(&config.rest)
+            .map_err(|e| EdgelinkError::BadFlowsJson(format!("pnex-calc: invalid config: {e}")))?;
         if let Some(e) = pnex_core::validate_calc(&cfg.expression).first() {
             return Err(EdgelinkError::BadFlowsJson(format!("pnex-calc : {e}")).into());
         }
@@ -68,7 +67,7 @@ impl PnexCalcNode {
             let payload_json = match m.get("payload").cloned() {
                 Some(v) => Some(serde_json::to_value(&v).map_err(|e| {
                     EdgelinkError::InvalidOperation(format!(
-                        "pnex-calc : payload non sérialisable : {e}"
+                        "pnex-calc: payload not serializable: {e}"
                     ))
                 })?),
                 None => None,
@@ -92,7 +91,7 @@ impl PnexCalcNode {
             expression = self.config.expression
         );
         let payload: Variant = serde_json::from_value(serde_json::json!(value)).map_err(|e| {
-            EdgelinkError::InvalidOperation(format!("pnex-calc : résultat non convertible : {e}"))
+            EdgelinkError::InvalidOperation(format!("pnex-calc: result not convertible: {e}"))
         })?;
         {
             let mut m = msg.write().await;

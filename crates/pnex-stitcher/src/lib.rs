@@ -1,34 +1,34 @@
-//! Assemblage d'un anneau de photos guidées en équirectangulaire 2:1.
+//! Stitches a ring of guided photos into a 2:1 equirectangular.
 //!
-//! Take 360 v1 : l'app mobile capture 16 frames en tournant sur place
-//! (guidage capteur), en notant pour chacune la pose (yaw, pitch, roll)
-//! au déclenchement. Cette crate rassemble les frames sur la sphère
-//! **sans détection de points d'intérêt** — le placement vient uniquement
-//! des poses (hypothèse : capteur fusionné, dérive acceptée en v1).
+//! Take 360 v1: the mobile app captures 16 frames while turning on the spot
+//! (sensor guidance), recording for each the pose (yaw, pitch, roll)
+//! at the trigger. This crate assembles the frames on the sphere
+//! **without interest point detection** — placement comes solely
+//! from the poses (assumption: fused sensor, drift accepted in v1).
 //!
 //! ## Pipeline
 //!
-//! 1. préparation (focale rectiligne depuis la HFOV, matrice monde→caméra,
-//!    bande de latitude couverte) — [`project`] ;
-//! 2. rendu équirect par lignes, **sélection** pondérée par distance au bord
-//!    (pas de moyennage → pas de fantômes) précédée d'une compensation de
-//!    gain inter-frames, échantillonnage bilinéaire — [`render`] ;
-//! 3. contrôle de couverture **dans la bande couverte** (un anneau
-//!    horizontal ne couvre qu'une tranche de l'équirect) ;
-//! 4. remplissage des pôles par étalement de la ligne couverte la plus
-//!    proche (quick & dirty assumé) ;
-//! 5. encodage JPEG + métadonnées GPano ([`gpano`]) — le sniff backend
-//!    classe ensuite l'asset en `panorama` tout seul.
+//! 1. preparation (rectilinear focal length from the HFOV, world→camera matrix,
+//!    covered latitude band) — [`project`];
+//! 2. row-wise equirect render, **selection** weighted by distance to the edge
+//!    (no averaging → no ghosts) preceded by an inter-frame gain
+//!    compensation, bilinear sampling — [`render`];
+//! 3. coverage check **within the covered band** (a horizontal
+//!    ring only covers a slice of the equirect);
+//! 4. pole filling by spreading the nearest covered row
+//!    (quick & dirty, on purpose);
+//! 5. JPEG encoding + GPano metadata ([`gpano`]) — the backend sniff
+//!    then classifies the asset as `panorama` on its own.
 //!
-//! Pure Rust, sans OpenCV, aucune dépendance native : compilable partout,
-//! testable sur hôte avec une scène synthétique ([`tests`] en intégration).
+//! Pure Rust, no OpenCV, no native dependency: compiles everywhere,
+//! testable on host with a synthetic scene ([`tests`] as integration).
 //!
-//! ## Mémoire / perf
+//! ## Memory / perf
 //!
-//! Les accumulateurs sont des lignes f32 (pas de tampon f32 pleine image).
-//! Largeur de sortie : [`Params::out_width`] — 2048 par défaut (device) ;
-//! 4096 reste possible mais se juge sur `stitch_ms` mesuré sur le téléphone
-//! (cf. docs/architecture/media.md).
+//! The accumulators are f32 rows (no full-image f32 buffer).
+//! Output width: [`Params::out_width`] — 2048 by default (device);
+//! 4096 remains possible but is judged on `stitch_ms` measured on the phone
+//! (see docs/architecture/media.md).
 
 pub mod align;
 pub mod geom;
@@ -46,122 +46,122 @@ use thiserror::Error;
 
 pub use jpeg::{decode_jpeg_rgb, decode_jpeg_rgb_capped, encode_jpeg, JpegError};
 
-/// HFOV de repli (degrés) si la requête Camera2 échoue — principal
-/// grand-angle arrière des téléphones actuels.
+/// Fallback HFOV (degrees) if the Camera2 query fails — main rear
+/// wide-angle of current phones.
 pub const FALLBACK_HFOV_DEG: f32 = 65.0;
 
-/// Largeur de sortie par défaut (device) — knob perf : 1024 = complétion
-/// garantie sur un téléphone sous pression mémoire (constat 2026-09-09 :
-/// 2048 + swap → stitch jamais terminé) ; monter vers [`SPEC_OUT_WIDTH`]
-/// quand la perf le permet.
+/// Default output width (device) — perf knob: 1024 = guaranteed
+/// completion on a phone under memory pressure (finding 2026-09-09:
+/// 2048 + swap → stitch never finished); raise towards [`SPEC_OUT_WIDTH`]
+/// when perf allows.
 pub const DEVICE_OUT_WIDTH: u32 = 1024;
 
-/// Qualité d'encodage du panorama final. 90 (au lieu de 85) : la sélection
-/// nette du blend crée des coutures plus franches que le moyennage — la
-/// marge JPEG supplémentaire évite le ringing au raccord, et la sortie
-/// device gagne en fidélité pour ~+25 % de poids fichier.
+/// Encoding quality of the final panorama. 90 (instead of 85): the sharp
+/// selection of the blend creates crisper seams than averaging — the
+/// extra JPEG margin avoids ringing at the join, and the device
+/// output gains fidelity for ~+25 % file weight.
 pub const OUTPUT_JPEG_QUALITY: u8 = 90;
 
-/// Une frame capturée : pixels RGB8 + pose au déclenchement.
+/// A captured frame: RGB8 pixels + pose at the trigger.
 #[derive(Debug, Clone)]
 pub struct Frame {
-    /// Pixels RGB8, `width·height·3` octets.
+    /// RGB8 pixels, `width·height·3` bytes.
     pub rgb: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    /// Yaw en degrés, relatif au repère de début de session.
+    /// Yaw in degrees, relative to the session start frame.
     pub yaw_deg: f32,
-    /// Élévation du regard en degrés (+ = vers le haut).
+    /// Gaze elevation in degrees (+ = upwards).
     pub pitch_deg: f32,
-    /// Roulis en degrés autour de l'axe optique.
+    /// Roll in degrees around the optical axis.
     pub roll_deg: f32,
 }
 
-/// Paramètres de stitching.
+/// Stitching parameters.
 #[derive(Debug, Clone)]
 pub struct Params {
-    /// HFOV horizontale de l'objectif (degrés) — requête Camera2 côté
-    /// appelant, [`FALLBACK_HFOV_DEG`] en repli.
+    /// Horizontal HFOV of the lens (degrees) — Camera2 query on the
+    /// caller side, [`FALLBACK_HFOV_DEG`] as fallback.
     pub hfov_deg: f32,
-    /// Largeur de sortie (hauteur = largeur/2).
+    /// Output width (height = width/2).
     pub out_width: u32,
-    /// Couverture minimale du **cœur de bande** (0-1) : fraction de pixels
-    /// couverts parmi les lignes couvertes à ≥ 90 % (cf.
-    /// [`render::band_coverage`]). Sous ce seuil l'anneau a un trou (frame
-    /// manquante) et le résultat est refusé.
+    /// Minimum coverage of the **band core** (0-1): fraction of covered pixels
+    /// among the rows covered at ≥ 90 % (see
+    /// [`render::band_coverage`]). Below this threshold the ring has a hole (missing
+    /// frame) and the result is refused.
     pub min_band_coverage: f32,
-    /// Pipeline de rendu : [`Pipeline::Legacy`] (sélection par centralité,
-    /// défaut — le device Android garde exactement le comportement V1) ou
-    /// [`Pipeline::Quality`] (alignement + coutures DP + multi-bandes,
-    /// destiné au serveur).
+    /// Render pipeline: [`Pipeline::Legacy`] (selection by centrality,
+    /// default — the Android device keeps exactly the V1 behaviour) or
+    /// [`Pipeline::Quality`] (alignment + DP seams + multi-band,
+    /// intended for the server).
     pub pipeline: Pipeline,
-    /// Réglages fins du pipeline [`Pipeline::Quality`].
+    /// Fine settings of the [`Pipeline::Quality`] pipeline.
     pub quality: QualityParams,
 }
 
-/// Choix du pipeline de rendu.
+/// Render pipeline choice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Pipeline {
-    /// Blend « sélection » V1 (interior^P), poses capteur brutes. Défaut :
-    /// comportement historique octet pour octet.
+    /// V1 "selection" blend (interior^P), raw sensor poses. Default:
+    /// historical behaviour byte for byte.
     #[default]
     Legacy,
-    /// Pipeline qualité : gains per-channel → alignement par les images →
-    /// coutures DP → blending multi-bandes → fills.
+    /// Quality pipeline: per-channel gains → image-based alignment →
+    /// DP seams → multi-band blending → fills.
     Quality,
 }
 
-/// Réglages du pipeline Quality (valeurs par défaut = tuning initial,
-/// cf. docs/architecture/media.md).
+/// Quality pipeline settings (default values = initial tuning,
+/// see docs/architecture/media.md).
 #[derive(Debug, Clone)]
 pub struct QualityParams {
-    /// Raffinement de pose par les images (A/B tests : `false` = poses
-    /// capteur brutes).
+    /// Image-based pose refinement (A/B tests: `false` = raw sensor
+    /// poses).
     pub align: bool,
-    /// Largeur de travail des strips équirect gris pour l'alignement.
+    /// Working width of the grey equirect strips for alignment.
     pub align_work_width: u32,
-    /// Fenêtre de recherche du décalage par paire (degrés).
+    /// Per-pair offset search window (degrees).
     pub align_search_deg: f32,
-    /// Seuil NCC minimal, paires même pitch.
+    /// Minimum NCC threshold, same-pitch pairs.
     pub align_min_ncc_intra: f32,
-    /// Seuil NCC minimal, paires inter-anneaux (contenu étiré ×1/cos φ →
-    /// pic structurellement plus bas).
+    /// Minimum NCC threshold, inter-ring pairs (content stretched ×1/cos φ →
+    /// structurally lower peak).
     pub align_min_ncc_inter: f32,
-    /// Régularisation Tikhonov vers la pose capteur (1/rad²) — c'est la
-    /// jauge du solve ; ≈ (σ_mesure/σ_pose)² avec σ_mesure ≈ 0,15° et
-    /// σ_pose ≈ 1,5°.
+    /// Tikhonov regularisation towards the sensor pose (1/rad²) — it is the
+    /// gauge of the solve; ≈ (σ_measure/σ_pose)² with σ_measure ≈ 0.15° and
+    /// σ_pose ≈ 1.5°.
     pub align_lambda_reg: f32,
-    /// Itérations Gauss-Newton maximales.
+    /// Maximum Gauss-Newton iterations.
     pub align_max_iters: u32,
-    /// Niveaux de la pyramide de Laplace (1-8). DÉFAUT 3 (histoire
-    /// 2026-09-11 : 2 → 1 → 3 — à 2, les bugs signe-Laplacien inversé +
-    /// numérateur non pondéré par le masque faisaient du « blending » une
-    /// double-exposition ; corrigés, 3 niveaux fondent large sans
-    /// fantôme). 1 = chemin plat crossfade + fondu étroit (recours).
+    /// Levels of the Laplacian pyramid (1-8). DEFAULT 3 (history
+    /// 2026-09-11: 2 → 1 → 3 — at 2, the inverted-Laplacian-sign bugs +
+    /// numerator not weighted by the mask turned "blending" into a
+    /// double exposure; fixed, 3 levels melt wide without
+    /// ghosting). 1 = flat crossfade path + narrow feather (fallback).
     pub multiband_levels: u32,
-    /// Coutures DP à demi-résolution (2× plus rapide, lissage naturel).
+    /// DP seams at half resolution (2× faster, natural smoothing).
     pub seam_half_res: bool,
-    /// Canaux de la compensation de gain : 1 = luminance répliquée
-    /// (Legacy), 3 = R/G/B indépendants (dérives de balance des blancs).
+    /// Gain compensation channels: 1 = replicated luminance
+    /// (Legacy), 3 = independent R/G/B (white balance drifts).
     pub gain_channels: u32,
-    // ─── Raffinement de pose par modèle (`pose-model`, serveur) ───
-    /// Plus grand côté de l'image de travail SuperPoint (multiple de 8 en
-    /// pratique via `pose_model::work_size`). 896 ≈ 0,44 Mpx → extraction
-    /// ~0,3 s/paire RPi.
+    // ─── Model-based pose refinement (`pose-model`, server) ───
+    /// Longest side of the SuperPoint working image (multiple of 8 in
+    /// practice via `pose_model::work_size`). 896 ≈ 0.44 Mpx → extraction
+    /// ~0.3 s/pair on RPi.
     pub model_work_px: u32,
-    /// Inliers RANSAC minimaux pour accepter une paire (une paire à 10
-    /// inliers sur du texte fin peut être un mirage ; 15 est prudent sans
-    /// être avare).
+    /// Minimum RANSAC inliers to accept a pair (a pair with 10
+    /// inliers on fine text can be a mirage; 15 is cautious without
+    /// being stingy).
     pub model_min_inliers: u32,
-    /// Tolérance RANSAC en pixels de l'image de travail (erreur angulaire
-    /// équivalente via la focale de travail). 3 px ≈ 0,27° à 504×896.
+    /// RANSAC tolerance in pixels of the working image (equivalent angular
+    /// error via the working focal length). 3 px ≈ 0.27° at 504×896.
     pub model_max_err_px: f32,
-    /// Prior capteur yaw — FAIBLE : le magnétomètre intérieur est la
-    /// principale source d'erreur, on laisse le solve bouger le yaw
-    /// librement (jauge assurée par le graphe de paires).
+    /// Sensor yaw prior — WEAK: the indoor magnetometer is the
+    /// main source of error, we let the solve move the yaw
+    /// freely (gauge ensured by the pair graph).
     pub model_lambda_yaw: f64,
-    /// Prior capteur pitch/roll — plus fort : la gravité (accéléromètre) est
-    /// fiable, le solve ne doit les retoucher qu'à la marge.
+    /// Sensor pitch/roll prior — stronger: gravity (accelerometer) is
+    /// reliable, the solve should only touch them marginally.
     pub model_lambda_pitch_roll: f64,
 }
 
@@ -175,15 +175,15 @@ impl Default for QualityParams {
             align_min_ncc_inter: 0.35,
             align_lambda_reg: 0.05,
             align_max_iters: 5,
-            // 3 (histoire 2026-09-11 : 2 → 1 → 3). À 2, le blend
-            // « adoucissait » en réalité via DEUX bugs (signe du Laplacien
-            // inversé + numérateur non pondéré par le masque :
-            // double-comptage du contenu plein dans le recouvrement) —
-            // d'où halos blancs saturés, franges et diffusion en fantômes.
-            // Corrigés (tests recouvrement_constant_sans_double_comptage +
-            // reconstruction à octave fine), le multibande fait son travail
-            // : fondu large sans fantôme. LEVELS=1 = chemin plat
-            // crossfade + fondu étroit (knob de recours).
+            // 3 (history 2026-09-11: 2 → 1 → 3). At 2, the blend
+            // actually "softened" through TWO bugs (inverted Laplacian
+            // sign + numerator not weighted by the mask:
+            // double counting of full content in the overlap) —
+            // hence saturated white halos, fringes and ghosting diffusion.
+            // Fixed (tests recouvrement_constant_sans_double_comptage +
+            // fine-octave reconstruction), the multi-band does its job
+            // : wide feather without ghosting. LEVELS=1 = flat path
+            // crossfade + narrow feather (fallback knob).
             // 5 since 2026-09-28: once each frame's image extends past its
             // weight (multiband.rs, `dilate_support`), wide levels no longer
             // halo — seams and per-frame exposure steps melt, no added
@@ -192,12 +192,12 @@ impl Default for QualityParams {
             seam_half_res: true,
             gain_channels: 3,
             model_work_px: 896,
-            // 8 (était 15) : les zones sans texture (mur blanc, tableau,
-            // plafond) laissaient leurs paires rejetées → aucune contrainte
-            // d'image → poses capteur brutes → contenu DOUBLÉ aux coutures
-            // (~30 px à 4096, constat réel 2026-09-11 capture 52fdd79b,
-            // zone tableau blanc). Horn/RANSAC reste gardé par le
-            // median_err ≤ model_max_err_px — 8 inliers suffit.
+            // 8 (was 15): textureless areas (white wall, whiteboard,
+            // ceiling) left their pairs rejected → no image
+            // constraint → raw sensor poses → DOUBLED content at the seams
+            // (~30 px at 4096, real finding 2026-09-11 capture 52fdd79b,
+            // whiteboard area). Horn/RANSAC stays guarded by
+            // median_err ≤ model_max_err_px — 8 inliers is enough.
             model_min_inliers: 8,
             model_max_err_px: 3.0,
             model_lambda_yaw: 0.3,
@@ -218,76 +218,76 @@ impl Default for Params {
     }
 }
 
-/// Résultat d'un stitching réussi.
+/// Result of a successful stitching.
 #[derive(Debug, Clone)]
 pub struct Stitched {
-    /// JPEG complet (métadonnées GPano incluses).
+    /// Complete JPEG (GPano metadata included).
     pub jpeg: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    /// Couverture mesurée de la bande couverte (0-1).
+    /// Measured coverage of the covered band (0-1).
     pub band_coverage: f32,
-    /// Durée du stitching (rendu + encodage), millisecondes.
+    /// Stitching duration (render + encoding), milliseconds.
     pub stitch_ms: u32,
-    /// Rapport d'alignement (pipeline Quality uniquement) : corrections de
-    /// pose appliquées, résidus par paire — journalisation serveur.
+    /// Alignment report (Quality pipeline only): applied pose
+    /// corrections, per-pair residuals — server logging.
     pub align_report: Option<align::AlignReport>,
 }
 
-/// Erreurs du stitching.
+/// Stitching errors.
 #[derive(Debug, Error)]
 pub enum StitchError {
-    /// Aucune frame fournie.
-    #[error("aucune frame")]
+    /// No frame provided.
+    #[error("no frame")]
     NoFrames,
-    /// Frame incohérente (buffer ≠ w·h·3).
-    #[error("frame {index} incohérente : {got} octets, attendu {expected}")]
+    /// Inconsistent frame (buffer ≠ w·h·3).
+    #[error("frame {index} inconsistent: {got} bytes, expected {expected}")]
     InvalidFrame {
-        /// Index de la frame fautive.
+        /// Index of the faulty frame.
         index: usize,
-        /// Taille reçue.
+        /// Received size.
         got: usize,
-        /// Taille attendue (w·h·3).
+        /// Expected size (w·h·3).
         expected: usize,
     },
-    /// Paramètre hors bornes.
-    #[error("paramètre invalide : {0}")]
+    /// Out-of-bounds parameter.
+    #[error("invalid parameter: {0}")]
     Params(String),
-    /// Anneau troué : couverture de bande insuffisante.
-    #[error("couverture de bande insuffisante : {0:.0} %")]
+    /// Ring with a hole: insufficient band coverage.
+    #[error("insufficient band coverage: {0:.0} %")]
     Coverage(f32),
-    /// Échec d'encodage du panorama.
-    #[error("encodage : {0}")]
+    /// Panorama encoding failure.
+    #[error("encoding: {0}")]
     Encode(#[from] JpegError),
 }
 
-/// Référence optionnelle au modèle de pose — type fantôme pour partager
-/// `stitch_inner` entre les builds device (pas de modèle) et serveur
-/// (feature `pose-model`).
+/// Optional reference to the pose model — phantom type to share
+/// `stitch_inner` between the device (no model) and server
+/// (feature `pose-model`) builds.
 #[cfg(feature = "pose-model")]
 pub type ModelRef<'a> = pose_model::PoseModel;
-/// Variante device : aucun modèle, l'alias existe pour la signature seule.
+/// Device variant: no model, the alias exists for the signature only.
 #[cfg(not(feature = "pose-model"))]
 pub type ModelRef<'a> = ();
 
-/// Assemble les frames en un JPEG équirectangulaire 2:1 (GPano inclus).
+/// Assembles the frames into a 2:1 equirectangular JPEG (GPano included).
 ///
-/// # Erreurs
-/// - [`StitchError::NoFrames`] / [`StitchError::InvalidFrame`] : entrées ;
-/// - [`StitchError::Params`] : hfov ou largeur absurdes ;
-/// - [`StitchError::Coverage`] : trou dans l'anneau (voir
-///   [`Params::min_band_coverage`]) ;
-/// - [`StitchError::Encode`] : échec JPEG.
+/// # Errors
+/// - [`StitchError::NoFrames`] / [`StitchError::InvalidFrame`]: inputs;
+/// - [`StitchError::Params`]: absurd hfov or width;
+/// - [`StitchError::Coverage`]: hole in the ring (see
+///   [`Params::min_band_coverage`]);
+/// - [`StitchError::Encode`]: JPEG failure.
 pub fn stitch(frames: &[Frame], params: &Params) -> Result<Stitched, StitchError> {
     stitch_inner(frames, params, None)
 }
 
-/// Comme [`stitch`], avec raffinement de pose par modèle IA (SuperPoint +
-/// LightGlue) — feature `pose-model`, serveur uniquement. `None` = chemin
-/// NCC historique.
+/// Like [`stitch`], with pose refinement by AI model (SuperPoint +
+/// LightGlue) — feature `pose-model`, server only. `None` = historical
+/// NCC path.
 ///
-/// # Erreurs
-/// Identiques à [`stitch`].
+/// # Errors
+/// Same as [`stitch`].
 #[cfg(feature = "pose-model")]
 pub fn stitch_with_model(
     frames: &[Frame],
@@ -297,8 +297,8 @@ pub fn stitch_with_model(
     stitch_inner(frames, params, model)
 }
 
-/// Cœur du stitching — `model` = raffinement de pose par les images
-/// (rotation 3 DOF) quand fourni, sinon raffinement NCC translation 2 DOF.
+/// Stitching core — `model` = image-based pose refinement
+/// (3 DOF rotation) when provided, otherwise 2 DOF NCC translation refinement.
 fn stitch_inner(
     frames: &[Frame],
     params: &Params,
@@ -318,7 +318,7 @@ fn stitch_inner(
     }
     let out_height = out_width / 2;
 
-    // Préparation : validation + focale + matrice + bande de latitude.
+    // Preparation: validation + focal length + matrix + latitude band.
     let mut prepared: Vec<project::PreparedFrame> = Vec::with_capacity(frames.len());
     for (k, f) in frames.iter().enumerate() {
         let expected = f.width as usize * f.height as usize * 3;
@@ -341,7 +341,7 @@ fn stitch_inner(
             f_px,
             lat_min,
             lat_max,
-            // Fondu : ~10 % du plus petit côté, borné pour rester utile.
+            // Feather: ~10 % of the shortest side, bounded to stay useful.
             feather_px: (f.width.min(f.height) as f32 * 0.10).max(1.0),
             gain: [1.0; 3],
             local_gain: Vec::new(),
@@ -359,12 +359,12 @@ fn stitch_inner(
         for (pf, g) in prepared.iter_mut().zip(gains) {
             pf.gain = g;
         }
-        // 2) alignement par les images. Avec modèle (serveur) : rotations
-        //    relatives 3 DOF (SuperPoint+LightGlue → Horn/RANSAC → solve
-        //    géodésique SO(3)) ; la pose capteur n'est qu'un prior. Sinon
-        //    (device / modèle absent / paires trop rares) : NCC translation
-        //    2 DOF historique. Re-dérive inv/bande lat via refresh_pose.
-        // Poses capteur (pour le repli du chemin modèle — cfg pose-model).
+        // 2) image-based alignment. With a model (server): 3 DOF relative
+        //    rotations (SuperPoint+LightGlue → Horn/RANSAC → SO(3) geodesic
+        //    solve); the sensor pose is only a prior. Otherwise
+        //    (device / missing model / too few pairs): historical 2 DOF
+        //    NCC translation. Re-derives inv/lat band via refresh_pose.
+        // Sensor poses (for the model path fallback — cfg pose-model).
         #[cfg_attr(not(feature = "pose-model"), allow(unused_variables))]
         let sensor_poses: Vec<[f32; 3]> = prepared
             .iter()
@@ -374,9 +374,9 @@ fn stitch_inner(
             #[cfg(feature = "pose-model")]
             Some(m) => {
                 let rep = align::refine_poses_model(&mut prepared, qp, m);
-                // Repli NCC si le modèle n'a pas ancré assez de paires
-                // (scène sans texture, modèle défaillant) : on repart des
-                // poses capteur, jamais d'un semi-état.
+                // NCC fallback if the model did not anchor enough pairs
+                // (textureless scene, failing model): we restart from the
+                // sensor poses, never from a half-state.
                 let gate = (prepared.len() / 3).max(2);
                 if rep.converged && rep.accepted.len() >= gate {
                     rep
@@ -393,32 +393,32 @@ fn stitch_inner(
             _ => align::refine_poses(&mut prepared, qp),
         };
         align_report = Some(report);
-        // 2ter) Warp local (mesh) : colle les recouvrements au niveau
-        // local (~0,1-0,3° de résidu que l'align global 3 DOF ne voit
-        // pas) — franges cuivre sur les edges bois et objets « déchirés »
-        // disparaissent. HISTORIQUE 2026-09-11 : désactivé le soir car
-        // « hyper contrasté » — mais le vrai coupable était le
-        // double-comptage du multibande (bugs signe + pondération,
-        // corrigés ce même soir) qui amplifiait tout ; réactivé après
-        // validation pleine frame warp × pyramide corrigée. LOCALWARP=0 :
-        // knob A/B.
+        // 2ter) Local warp (mesh): sticks the overlaps together at the
+        // local level (~0.1-0.3° of residual the global 3 DOF align does not
+        // see) — copper fringes on wooden edges and "torn" objects
+        // disappear. HISTORY 2026-09-11: disabled in the evening because
+        // "hyper contrasted" — but the real culprit was the
+        // multi-band double counting (sign + weighting bugs,
+        // fixed that same evening) which amplified everything; re-enabled after
+        // full-frame validation of warp × fixed pyramid. LOCALWARP=0:
+        // A/B knob.
         if std::env::var("LOCALWARP").ok().as_deref() != Some("0") {
             align::estimate_local_warp(&mut prepared);
         }
-        // 3) gains finaux sur poses corrigées.
+        // 3) final gains on corrected poses.
         let gains = render::estimate_gains(&prepared, qp.gain_channels);
         for (pf, g) in prepared.iter_mut().zip(gains) {
             pf.gain = g;
         }
-        // 3bis) gains locaux basse fréquence (aplani les gradients
-        // d'illumination — sinon jointures en rectangles visibles).
-        // LOCALGAIN=0 : knob A/B (capture 3 anneaux, constat 2026-09-10).
+        // 3bis) low-frequency local gains (flatten the illumination
+        // gradients — otherwise visible rectangular joins).
+        // LOCALGAIN=0: A/B knob (3-ring capture, finding 2026-09-10).
         if std::env::var("LOCALGAIN").ok().as_deref() != Some("0") {
             render::estimate_local_gains(&mut prepared);
         }
-        // 4) coutures DP par paire → carte de propriété.
+        // 4) per-pair DP seams → ownership map.
         let owner = seam::find_seams(&prepared, out_width, qp);
-        // 5) blending multi-bandes (masques binaires), 6) fills APRÈS.
+        // 5) multi-band blending (binary masks), 6) fills AFTER.
         let coverage = render::band_coverage(out_width, &owner.covered_per_row());
         if coverage < params.min_band_coverage {
             return Err(StitchError::Coverage(coverage * 100.0));
@@ -428,7 +428,7 @@ fn stitch_inner(
         covered = owner.covered_per_row();
         mask = covered_mask;
     } else {
-        // Pipeline Legacy : gains luminance répliqués + rendu sélection.
+        // Legacy pipeline: replicated luminance gains + selection render.
         let gains = render::estimate_gains(&prepared, 1);
         for (pf, g) in prepared.iter_mut().zip(gains) {
             pf.gain = g;
@@ -439,28 +439,28 @@ fn stitch_inner(
         mask = mask_px;
     }
 
-    // Handedness d'affichage : le mapping interne (u croît avec la lon ENU)
-    // rend une image en miroir à l'affichage « depuis l'intérieur » — le
-    // miroir de sortie (rgb + masque, `covered` est invariant) rétablit le
-    // standard équirect : u croît en tournant à DROITE. Une seule inversion
-    // dans la chaîne, à la frontière — le pipeline interne (align NCC +
-    // sonde, solve, seams, multiband) garde sa convention historique.
-    // Constat device 2026-09-11 : « propre mais en miroir » gauche-droite.
+    // Display handedness: the internal mapping (u grows with ENU lon)
+    // renders a mirrored image when displayed "from the inside" — the
+    // output mirror (rgb + mask, `covered` is invariant) restores the
+    // equirect standard: u grows when turning RIGHT. A single inversion
+    // in the chain, at the boundary — the internal pipeline (NCC align +
+    // probe, solve, seams, multiband) keeps its historical convention.
+    // Device finding 2026-09-11: "clean but mirrored" left-right.
     render::mirror_rows(&mut rgb, out_width);
     render::mirror_mask(&mut mask, out_width);
 
-    // Contrôle de couverture de bande (AVANT tout remplissage : la métrique
-    // doit refléter la capture réelle, pas l'habillage).
+    // Band coverage check (BEFORE any filling: the metric
+    // must reflect the real capture, not the dressing).
     let coverage = render::band_coverage(out_width, &covered);
     if coverage < params.min_band_coverage {
         return Err(StitchError::Coverage(coverage * 100.0));
     }
 
-    // Trous intra-bande (retraits de coins), puis pôles par étalement.
+    // Intra-band holes (corner insets), then poles by spreading.
     render::fill_band_holes(&mut rgb, out_width, &mask);
     render::fill_poles(&mut rgb, out_width, &covered);
 
-    // Encodage + GPano.
+    // Encoding + GPano.
     let plain = encode_jpeg(&rgb, out_width, out_height, OUTPUT_JPEG_QUALITY)?;
     let jpeg = gpano::write_gpano_xmp(&plain, out_width, out_height);
 
@@ -478,9 +478,9 @@ fn stitch_inner(
 mod tests {
     use super::*;
 
-    /// Une frame unique face au rayon lon 0 : rendu sans erreur, couverture
-    /// ≈ hfov/360 (bande pleine en latitude, pas en longitude — une seule
-    /// frame ne fait pas un anneau), dimensions 2:1, GPano en tête.
+    /// A single frame facing the lon 0 ray: renders without error, coverage
+    /// ≈ hfov/360 (band full in latitude, not in longitude — a single
+    /// frame does not make a ring), 2:1 dimensions, GPano at the head.
     #[test]
     fn frame_unique() {
         let (w, h) = (64u32, 48u32);
@@ -499,29 +499,29 @@ mod tests {
         let out = stitch(&[frame], &params).unwrap();
         assert_eq!(out.width, DEVICE_OUT_WIDTH);
         assert_eq!(out.height, DEVICE_OUT_WIDTH / 2);
-        // Une frame seule : couverture de bande ≈ hfov/360 (bande pleine
-        // en latitude, trouée en longitude — ce n'est pas un anneau).
+        // A single frame: band coverage ≈ hfov/360 (band full
+        // in latitude, holed in longitude — it is not a ring).
         assert!(
             (out.band_coverage - 65.0 / 360.0).abs() < 0.02,
-            "couverture = {}",
+            "coverage = {}",
             out.band_coverage
         );
         assert!(out.stitch_ms < 60_000);
-        // Sniff-like : les littéraux GPano sont bien dans les 128 premiers Ko.
+        // Sniff-like: the GPano literals are indeed within the first 128 KB.
         let head = &out.jpeg[..out.jpeg.len().min(128 * 1024)];
         assert!(head.windows(6).any(|w| w == b"GPano:"));
         assert!(head.windows(15).any(|w| w == b"equirectangular"));
     }
 
-    /// SONDE handedness : le contenu à gauche de l'image d'une frame
-    /// (lon > yaw de la frame, cf. euler_to_mat : image right = lon plus
-    /// PETITE) doit sortir à GAUCHE du centre dans l'équirect finale —
-    /// standard : u croît en tournant à droite. Verrouille le miroir de
-    /// sortie de [`stitch`] (constat device 2026-09-11 : miroir G-D).
+    /// Handedness PROBE: the content on the left of a frame's image
+    /// (lon > the frame's yaw, see euler_to_mat: image right = SMALLER
+    /// lon) must come out to the LEFT of centre in the final equirect —
+    /// standard: u grows when turning right. Locks the output mirror of
+    /// [`stitch`] (device finding 2026-09-11: L-R mirror).
     #[test]
     fn rendu_handedness() {
         let (w, h) = (512u32, 384u32);
-        // Moitié gauche d'image blanche (lon > 30), droite noire (lon < 30).
+        // Left half of the image white (lon > 30), right black (lon < 30).
         let mut rgb = vec![0u8; (w * h * 3) as usize];
         for j in 0..h {
             for i in 0..w {
@@ -551,8 +551,8 @@ mod tests {
         assert_eq!((dec_w, dec_h), (360, 180));
         let mid = 90usize; // lat ≈ 0
         let at = |col: usize| px[(mid * 360 + col) * 3];
-        // lon 30 → colonne interne 210 → miroir : 359−210 = 149. La zone
-        // blanche (lon > 30) finit À GAUCHE de 149, la noire à droite.
+        // lon 30 → internal column 210 → mirror: 359−210 = 149. The white
+        // area (lon > 30) ends to the LEFT of 149, the black one to the right.
         let blanc = at(145);
         let noir = at(155);
         assert!(
@@ -561,7 +561,7 @@ mod tests {
         );
     }
 
-    /// Paramètres absurdes → erreurs nommées.
+    /// Absurd parameters → named errors.
     #[test]
     fn parametres_invalides() {
         let frame = Frame {
@@ -585,7 +585,7 @@ mod tests {
             Err(StitchError::Params(_))
         ));
         let bad = Params {
-            out_width: 1001, // impair → invalide
+            out_width: 1001, // odd → invalid
             ..Params::default()
         };
         assert!(matches!(
@@ -594,7 +594,7 @@ mod tests {
         ));
     }
 
-    /// Frame incohérente → `InvalidFrame` avec l'index.
+    /// Inconsistent frame → `InvalidFrame` with the index.
     #[test]
     fn frame_incoherente() {
         let frame = Frame {

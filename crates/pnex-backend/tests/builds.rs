@@ -4,9 +4,9 @@
 //! toolchain failure/timeout via the fixtures, proxied download — cf.
 //! `docs/contracts/build.http`.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Toolchain remplacée par tests/fixtures/firmware (config test.yaml) :
-//! `fail`/`sleep` en WIFI_SSID pilotent échec/timeout.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! Toolchain replaced by tests/fixtures/firmware (test.yaml config):
+//! `fail`/`sleep` as WIFI_SSID drive failure/timeout.
 
 mod common;
 
@@ -151,9 +151,9 @@ async fn records(
         .json()
 }
 
-/// Cycle complet : 201 → worker inline (ForegroundBlocking) → record
-/// `succeeded` + artefact dans le magasin → download proxifié avec les
-/// secrets propagés (WiFi clair, host base64 — matérialisés par la fixture).
+/// Full cycle: 201 → inline worker (ForegroundBlocking) → `succeeded`
+/// record + artifact in the store → proxied download with the propagated
+/// secrets (WiFi in clear, host base64 — materialised by the fixture).
 #[tokio::test]
 #[serial]
 async fn build_reussi_chemin_complet() {
@@ -167,8 +167,8 @@ async fn build_reussi_chemin_complet() {
         assert_eq!(body["status"], "queued");
         let build_id = body["build_id"].as_i64().expect("build_id");
 
-        // ForegroundBlocking : le build a tourné dans la requête — le
-        // record est déjà terminal.
+        // ForegroundBlocking: the build ran inside the request — the
+        // record is already terminal.
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["count"], 1);
         let record = &list["results"][0];
@@ -190,8 +190,8 @@ async fn build_reussi_chemin_complet() {
         assert_eq!(row.ota_sha256.as_deref().map(str::len), Some(64));
         assert!(row.ota_size_bytes.unwrap_or(0) > 0);
 
-        // Download : proxy + attachment + contenu de la fixture (les env du
-        // sous-process y sont matérialisées ; HOST arrive en base64).
+        // Download: proxy + attachment + fixture content (the subprocess
+        // env is materialised there; HOST arrives in base64).
         let dl = server
             .get(&format!("/api/v1/download/firmware/{pk}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -233,15 +233,15 @@ async fn build_intervalle_429() {
         let first = post_build(&server, &env.alice, org, "dev-a", "coloc").await;
         first.assert_status(axum_test::http::StatusCode::CREATED);
 
-        // Tier Free : min_build_interval 300 s — l'intervalle compte les
-        // builds RÉUSSIS, tous devices confondus.
+        // Free tier: min_build_interval 300 s — the interval counts
+        // SUCCESSFUL builds, all devices combined.
         let second = post_build(&server, &env.alice, org, "dev-b", "coloc").await;
         second.assert_status(axum_test::http::StatusCode::TOO_MANY_REQUESTS);
         let body: serde_json::Value = second.json();
         assert_eq!(body["error"], "build-interval-not-met", "{body}");
 
         let list = records(&server, &env.alice, org, "").await;
-        assert_eq!(list["count"], 1, "pas de record pour le build refusé");
+        assert_eq!(list["count"], 1, "no record for the refused build");
     })
     .await;
 }
@@ -388,7 +388,7 @@ async fn validation_400() {
     .await;
 }
 
-/// Échec de toolchain (fixture `fail`) : 201 quand même, record `failed`,
+/// Toolchain failure (`fail` fixture): 201 anyway, `failed` record,
 /// download 404.
 #[tokio::test]
 #[serial]
@@ -419,8 +419,8 @@ async fn build_echec_outil() {
     .await;
 }
 
-/// Timeout dur (fixture `sleep`, budget test 2 s) : build `failed` en
-/// temps borné.
+/// Hard timeout (`sleep` fixture, test budget 2 s): build `failed` in
+/// bounded time.
 #[tokio::test]
 #[serial]
 async fn build_timeout() {
@@ -431,16 +431,16 @@ async fn build_timeout() {
         let started = std::time::Instant::now();
         let res = post_build(&server, &env.alice, org, "dev-slow", "sleep").await;
         res.assert_status(axum_test::http::StatusCode::CREATED);
-        // Inline : le timeout a déjà couru dans la requête (2 s budget).
+        // Inline: the timeout already ran inside the request (2 s budget).
         assert!(
             started.elapsed().as_secs() >= 2,
-            "le timeout doit avoir couru"
+            "the timeout must have run"
         );
 
         let list = records(&server, &env.alice, org, "").await;
         assert_eq!(list["results"][0]["build_phase"], "failed");
         assert_eq!(list["results"][0]["failure_code"], "build_timeout");
-        assert!(started.elapsed().as_secs() < 30, "test borné");
+        assert!(started.elapsed().as_secs() < 30, "bounded test");
     })
     .await;
 }
@@ -703,8 +703,8 @@ async fn device_deletion_cleans_its_records() {
     .await;
 }
 
-/// Liste : enveloppe D14 + filtres device_id/build_phase. (Deux builds en
-/// échec : un succès bloquerait le second via l'intervalle 429.)
+/// List: D14 envelope + device_id/build_phase filters. (Two failing
+/// builds: a success would block the second via the 429 interval.)
 #[tokio::test]
 #[serial]
 async fn liste_enveloppe_et_filtres() {
@@ -720,8 +720,8 @@ async fn liste_enveloppe_et_filtres() {
 
         let all = records(&server, &env.alice, org, "?limit=1&offset=1").await;
         assert_eq!(all["count"], 2);
-        assert!(all["next"].is_null(), "dernière page : {all}");
-        assert!(all["previous"].is_string(), "lien previous présent : {all}");
+        assert!(all["next"].is_null(), "last page: {all}");
+        assert!(all["previous"].is_string(), "previous link present: {all}");
         assert_eq!(all["results"].as_array().map(Vec::len), Some(1));
 
         let by_device = records(&server, &env.alice, org, "?device_id=dev-f1").await;
@@ -736,8 +736,8 @@ async fn liste_enveloppe_et_filtres() {
     .await;
 }
 
-/// Isolation org : bob ne voit ni ne touche les builds d'alice ; sans
-/// token → 401.
+/// Org isolation: bob neither sees nor touches alice's builds; without
+/// a token → 401.
 #[tokio::test]
 #[serial]
 async fn isolation_org_et_auth() {
@@ -747,8 +747,8 @@ async fn isolation_org_et_auth() {
         let pk = create_device(&server, &env.alice, alice_org, "dev-iso").await;
         post_build(&server, &env.alice, alice_org, "dev-iso", "coloc").await;
 
-        // Bob : liste vide, download 404, build sur le device
-        // d'alice → 404 (le device n'existe pas dans SON org).
+        // Bob: empty list, download 404, build on alice's
+        // device → 404 (the device does not exist in HIS org).
         let bob_list = records(&server, &env.bob, bob_org, "").await;
         assert_eq!(bob_list["count"], 0);
 
@@ -762,7 +762,7 @@ async fn isolation_org_et_auth() {
         let cross = post_build(&server, &env.bob, bob_org, "dev-iso", "coloc").await;
         cross.assert_status(axum_test::http::StatusCode::NOT_FOUND);
 
-        // Sans token → 401 sur tous les endpoints builds.
+        // Without a token → 401 on all builds endpoints.
         let download = format!("/api/v1/download/firmware/{pk}");
         for (method, path) in [
             ("POST", "/api/v1/build-firmware"),

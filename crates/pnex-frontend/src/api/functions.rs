@@ -1,7 +1,7 @@
-//! Client API du registre « Fonctions » (groupe « Automation ») — fonctions
-//! utilisateur versionnées (js | starlark), test en live. Types
-//! `pnex_core::functions` (source de vérité partagée, wasm32) ; `save_version`
-//! porte la concurrence optimiste (`expected_version_number`, 409 si périmé).
+//! API client of the "Functions" registry ("Automation" group) — versioned
+//! user functions (js | starlark), live test. Types
+//! `pnex_core::functions` (shared source of truth, wasm32); `save_version`
+//! carries optimistic concurrency (`expected_version_number`, 409 if stale).
 
 use pnex_core::{
     CreateFunction, FunctionDetail, FunctionSummary, FunctionTestRequest, FunctionTestResponse,
@@ -12,8 +12,8 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/functions` (all pages) — registre de l'org (le picker et la
-/// liste ne paginent pas ; recherche côté client).
+/// `GET /api/v1/functions` (all pages) — the org's registry (the picker and
+/// the list do not paginate; client-side search).
 pub async fn list() -> Result<Vec<FunctionSummary>, ApiError> {
     list_labeled(None).await
 }
@@ -31,8 +31,8 @@ fn labeled_path(path: &str, label: Option<String>) -> String {
     }
 }
 
-/// `POST /api/v1/functions` — création (fonction + version 1, code =
-/// squelette du langage choisi).
+/// `POST /api/v1/functions` — creation (function + version 1, code =
+/// skeleton of the chosen language).
 pub async fn create(input: CreateFunction) -> Result<FunctionDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -42,8 +42,8 @@ pub async fn create(input: CreateFunction) -> Result<FunctionDetail, ApiError> {
     .await
 }
 
-/// `GET /api/v1/functions/{id}` — détail (code + interface de la version
-/// courante).
+/// `GET /api/v1/functions/{id}` — detail (code + interface of the current
+/// version).
 pub async fn detail(id: i64) -> Result<FunctionDetail, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -53,9 +53,9 @@ pub async fn detail(id: i64) -> Result<FunctionDetail, ApiError> {
     .await
 }
 
-/// `PATCH /api/v1/functions/{id}` — enregistre une **nouvelle version**
-/// (append-only) et/ou les métadonnées ; 409 si `expected_version_number`
-/// est périmé, 400 `field-invalid` or `function-directive-invalid`.
+/// `PATCH /api/v1/functions/{id}` — saves a **new version**
+/// (append-only) and/or the metadata; 409 if `expected_version_number`
+/// is stale, 400 `field-invalid` or `function-directive-invalid`.
 pub async fn save_version(
     id: i64,
     params: SaveFunctionVersion,
@@ -100,8 +100,8 @@ pub async fn delete(id: i64) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-/// `POST /api/v1/functions/{id}/test` — exécution sandboxée par le runtime
-/// (code ad-hoc ou version épinglée) ; 503 = runtime indisponible.
+/// `POST /api/v1/functions/{id}/test` — sandboxed run by the runtime
+/// (ad-hoc code or pinned version); 503 = runtime unavailable.
 pub async fn test(id: i64, params: FunctionTestRequest) -> Result<FunctionTestResponse, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -111,8 +111,8 @@ pub async fn test(id: i64, params: FunctionTestRequest) -> Result<FunctionTestRe
     .await
 }
 
-/// `POST /api/v1/functions/validate` — validation compile-only par le
-/// runtime (barre d'erreurs de l'éditeur) ; 503 = runtime indisponible.
+/// `POST /api/v1/functions/validate` — compile-only validation by the
+/// runtime (editor error bar); 503 = runtime unavailable.
 pub async fn validate(
     params: FunctionValidateRequest,
 ) -> Result<FunctionValidateResponse, ApiError> {

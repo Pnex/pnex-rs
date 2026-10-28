@@ -1,17 +1,17 @@
-//! Canal device bidirectionnel — WS `/ws/device` (Brick 0, brick0.md §3).
+//! Bidirectional device channel — WS `/ws/device` (Brick 0, brick0.md §3).
 //!
 //! Auth and framing from `device_link` (`authenticate_device`, Noise
-//! NNpsk0 transport frames), PING/PONG; messages métier JSON tagué `t`
-//! (`pnex_core::proto` — miroir firmware C++). Sémantique RPC à la
-//! ThingsBoard : toute commande porte un `cmd_id`, le device répond `Ack`.
+//! NNpsk0 transport frames), PING/PONG; business messages as JSON tagged `t`
+//! (`pnex_core::proto` — mirrors the C++ firmware). ThingsBoard-style RPC
+//! semantics: every command carries a `cmd_id`, the device answers `Ack`.
 //!
 //! - `Announce` → `services::provisioning::admit` (policy Validated) →
-//!   `ProvisionAck` avec la pin map complète ;
+//!   `ProvisionAck` with the full pin map;
 //! - `StateReport` → OpenObserve metrics (telemetry sink,
-//!   series `<label normalisé>{device_id, pred_dev, source_type=generic_gpio}`) ;
-//! - downlink : registre `DEVICE_SESSIONS` (mpsc par device) où poussent les
-//!   commandes REST (`controllers/pins.rs`) ; le loop `select` interleaving
-//!   uplink/downlink ;
+//!   series `<normalized label>{device_id, pred_dev, source_type=generic_gpio}`);
+//! - downlink: `DEVICE_SESSIONS` registry (mpsc per device) where the REST
+//!   commands are pushed (`controllers/pins.rs`); the `select` loop interleaves
+//!   uplink/downlink;
 //! - anti-clone: Valkey lease (4003 while a live session holds it),
 //!   close codes 4001/4002/4003/4005/4011/4013/4014).
 
@@ -37,9 +37,9 @@ use pnex_core::{DeviceMsg, Mode, SafeState, ServerMsg};
 
 // ─────────────── Registres de session (downlink + last values) ───────────────
 
-/// Sessions device ouvertes dans CE process : device_registry_id → canal
-/// downlink. L'entrée est posée AVANT le spawn du loop et retirée à sa
-/// sortie — les commandes REST poussent dedans (409 si absent = offline).
+/// Device sessions open in THIS process: device_registry_id → downlink
+/// channel. The entry is set BEFORE the loop is spawned and removed on its
+/// exit — REST commands push into it (409 if absent = offline).
 static DEVICE_SESSIONS: LazyLock<Mutex<HashMap<i64, LocalSession>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -59,23 +59,23 @@ pub(crate) enum Downlink {
     Json(String),
 }
 
-/// Dernières valeurs rapportées par gpio (mémoire de session) — alimente
-/// GET /pins (« — » si offline). Vidées à la sortie de session.
+/// Last values reported per gpio (session memory) — feeds
+/// GET /pins ("—" if offline). Cleared on session exit.
 pub(crate) static LAST_VALUES: LazyLock<Mutex<HashMap<i64, HashMap<i32, serde_json::Value>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Watchdog d'inactivité d'une session device : AUCUNE frame reçue pendant
-/// cette durée → la session est fermée (garde libéré, reconnexion
-/// possible). Le firmware pingue toutes les 5 s quand il est vivant ; 45 s
-/// de silence = pair mort (power cycle, reflash — la carte meurt sans
-/// close TCP). Sans lui, la tâche reste parkée sur `socket.recv()` à jamais
-/// (TCP half-open) : l'entrée `DEVICE_SESSIONS` rejette alors toute
-/// reconnexion en 4003 « Device already connected » — une carte reflashée
-/// restait verrouillée dehors jusqu'au redémarrage du serveur (leçon
+/// Inactivity watchdog of a device session: NO frame received for
+/// this duration → the session is closed (guard released, reconnection
+/// possible). The firmware pings every 5 s when alive; 45 s
+/// of silence = dead peer (power cycle, reflash — the board dies without
+/// a TCP close). Without it, the task stays parked on `socket.recv()` forever
+/// (TCP half-open): the `DEVICE_SESSIONS` entry then rejects any
+/// reconnection with 4003 "Device already connected" — a reflashed board
+/// stayed locked out until the server restarted (lesson
 /// 2026-09-02).
 const DEVICE_WATCHDOG_SECS: u64 = 45;
 
-/// Retire le device des registres à la sortie, tous chemins compris.
+/// Removes the device from the registries on exit, all paths included.
 /// Registry cleanup of one device session (id, session id): only the
 /// entries still owned by this session are removed — a newer session of
 /// the same device admitted meanwhile keeps its registrations.
@@ -104,19 +104,19 @@ impl Drop for DeviceSessionGuard {
 
 // ─────────────────────────── Snapshot device ───────────────────────────
 
-/// État validé du device pour la session : identité + carte label/gpio +
-/// contraintes validées par pin (rafraîchi à chaque `Announce`).
+/// Validated device state for the session: identity + label/gpio map +
+/// validated constraints per pin (refreshed on each `Announce`).
 pub(crate) struct DeviceSnapshot {
     pub(crate) device_registry_id: i64,
     pub(crate) org_id: i64,
     pub(crate) device_id: String,
     pub(crate) pred_dev: String,
-    /// gpio → label overlay (dénormalisé pour l'affichage /pins).
+    /// gpio → overlay label (denormalized for the /pins display).
     pub(crate) labels: HashMap<i32, String>,
-    /// gpio → contraintes validées (mode courant, safe_state, pullup).
+    /// gpio → validated constraints (current mode, safe_state, pullup).
     pub(crate) pins: HashMap<i32, pnex_core::ValidatedPin>,
-    /// gpio → cadence de lecture persistée (0 = pas de subscribe) —
-    /// re-poussée après chaque `Announce` (restauration du desired-state).
+    /// gpio → persisted read cadence (0 = no subscribe) —
+    /// re-pushed after each `Announce` (desired-state restore).
     pub(crate) intervals: HashMap<i32, u32>,
     /// Custom metric ids (`metric` caps) of the session's announce (D87) —
     /// a gpio-less StateReport must name one of them.
@@ -124,7 +124,7 @@ pub(crate) struct DeviceSnapshot {
 }
 
 impl DeviceSnapshot {
-    /// Recharge les instances persistées après admission (ou re-announce).
+    /// Reloads the persisted instances after admission (or re-announce).
     async fn reload_pins(&mut self, db: &DatabaseConnection) {
         let (pins, intervals) = load_pins(db, self.device_registry_id).await;
         self.pins = pins;
@@ -228,9 +228,9 @@ async fn ws_device(
 
 // ───────────────────────────── Boucle de session ─────────────────────────────
 
-/// Boucle de session : `select` entre uplink (frames device) et downlink
-/// (commandes REST poussées dans `DEVICE_SESSIONS`). Sortie = déconnexion
-/// (guard drop → registres nettoyés + liveness release).
+/// Session loop: `select` between uplink (device frames) and downlink
+/// (REST commands pushed into `DEVICE_SESSIONS`). Exit = disconnection
+/// (guard drop → registries cleaned + liveness release).
 #[allow(clippy::too_many_arguments)]
 async fn session_loop(
     mut socket: WebSocket,
@@ -264,7 +264,7 @@ async fn session_loop(
     });
     loop {
         tokio::select! {
-            // ── Downlink : commande REST à pousser (chiffrée) ──
+            // ── Downlink: REST command to push (encrypted) ──
             item = downlink.recv() => {
                 let Some(item) = item else {
                     // The registry entry was replaced: a newer session of
@@ -317,8 +317,8 @@ async fn session_loop(
                     }
                 }
             }
-            // ── Uplink : frame du device, sous watchdog d'inactivité (une
-            // tâche parkée sur un TCP half-open ne meurt jamais seule) ──
+            // ── Uplink: device frame, under inactivity watchdog (a
+            // task parked on a TCP half-open never dies by itself) ──
             incoming = tokio::time::timeout(
                 Duration::from_secs(DEVICE_WATCHDOG_SECS),
                 socket.recv(),
@@ -358,13 +358,13 @@ async fn session_loop(
                 }
                 let plain = match codec.open(&text) {
                     Some(p) => p,
-                    None => { tracing::warn!(device = %snap.device_id, "frame device indéchiffrable"); continue; }
+                    None => { tracing::warn!(device = %snap.device_id, "undecryptable device frame"); continue; }
                 };
-                // Frame-level PING/PONG — le firmware
-                // pingue toutes les 5 s ; sans réponse il ferme après 15 s
-                // (PONG timeout) et boucle reconnexion. Manquait sur /ws/device
-                // (leçon 2026-09-02 : sessions de 15 s, device « actif » mais
-                // jamais provisionné).
+                // Frame-level PING/PONG — the firmware
+                // pings every 5 s; without an answer it closes after 15 s
+                // (PONG timeout) and loops reconnecting. Was missing on /ws/device
+                // (lesson 2026-09-02: 15 s sessions, device "active" but
+                // never provisioned).
                 let is_ping = plain.trim().eq_ignore_ascii_case("ping");
                 if is_ping {
                     let _ = socket
@@ -410,13 +410,13 @@ async fn session_loop(
                         }
                         Ok(DeviceMsg::StateReport { gpio: Some(gpio), value, cap_id, uptime_ms, boot_id, seq }) => {
                             handle_state_report(&ctx, &snap, gpio, value, cap_id.as_deref()).await;
-                            // Champs d'horloge D46 : dédup/reconstruction quand le
-                            // buffering existera (F3) — journalisés en debug pour
-                            // la traçabilité du fil (ne polluent pas les séries).
+                            // D46 clock fields: dedup/reconstruction once
+                            // buffering exists (F3) — logged at debug for
+                            // wire traceability (they do not pollute the series).
                             if let (Some(b), Some(s)) = (boot_id.as_deref(), seq) {
                                 tracing::debug!(
                                     device = %snap.device_id, gpio, boot_id = b, seq = s, uptime_ms = ?uptime_ms,
-                                    "state_report horodaté device"
+                                    "device-timestamped state_report"
                                 );
                             }
                         }
@@ -425,7 +425,7 @@ async fn session_loop(
                                 tracing::debug!(device = %snap.device_id, cmd = %cmd_id, %what, ok, rtt_ms = rtt.as_millis() as u64, "command acknowledged");
                             }
                             if !ok {
-                                tracing::warn!(device = %snap.device_id, cmd = %cmd_id, "commande refusée par le device : {:?}", err);
+                                tracing::warn!(device = %snap.device_id, cmd = %cmd_id, "command refused by the device: {:?}", err);
                                 // OTA: an explicit device refusal fails the active
                                 // assignment (cmd_id correlation, single session).
                                 // Most refusals are not OTA: the session cache
@@ -469,17 +469,17 @@ async fn session_loop(
                             }
                         }
                         Ok(DeviceMsg::RegState { entries }) => {
-                            // Diagnostic des régulations embarquées (cartes
-                            // mixtes) — toléré absent (le générique ne l'émet
-                            // jamais). Routé vers la télémétrie O2 (F2 : lève la
-                            // limite « journalisé, pas encore routé » du §8 de
+                            // Diagnostics of embedded control loops (mixed
+                            // boards) — tolerated when absent (the generic never
+                            // emits it). Routed to O2 telemetry (F2: lifts the
+                            // "logged, not yet routed" limit of §8 of
                             // control-cards.md).
                             for e in &entries {
                                 handle_reg_diag(&snap, e);
                             }
                             tracing::debug!(
                                 device = %snap.device_id,
-                                "reg_state : {} régulation(s) rapportée(s)",
+                                "reg_state: {} control loop(s) reported",
                                 entries.len()
                             );
                         }
@@ -506,7 +506,7 @@ async fn session_loop(
             }
         }
     }
-    // Sortie de session : bail liveness libéré (owner-checked) + registres
+    // Session exit: liveness lease released (owner-checked) + registries
     // (guard). The shared GPIO last values are cleared only by the session
     // that still owned the lease.
     if let Ok(true) = device_liveness::release(&ctx.db, snap.device_registry_id, &guard.1).await {
@@ -665,7 +665,7 @@ async fn fingerprint_of(
     })
 }
 
-/// Revalidation périodique du token en session (4005 si invalidé).
+/// Periodic in-session token revalidation (4005 if invalidated).
 /// Cheap path: one token+device query and one aggregate over the pin
 /// instances; the full snapshot is rebuilt only when that fingerprint
 /// changed (or when `force`, the periodic safety net).
@@ -700,7 +700,7 @@ async fn revalidate(
 /// Announce → admission (Validated) → refresh snapshot → ProvisionAck.
 /// Generic model: overlay admission; custom firmware: admission by the
 /// declared pins (`Announce.pins`).
-#[allow(clippy::too_many_arguments)] // même école que session_loop
+#[allow(clippy::too_many_arguments)] // same pattern as session_loop
 async fn handle_announce(
     ctx: &AppContext,
     socket: &mut WebSocket,
@@ -712,13 +712,13 @@ async fn handle_announce(
     caps: Option<&[pnex_core::CapDesc]>,
     pins: Option<&[pnex_core::PinDecl]>,
 ) -> Option<String> {
-    // Manifeste de capacités (D47) : attestation pour un firmware compilé
-    // par le serveur (l'overlay board reste l'autorité des pins — bascule
-    // douce §7) ; « le serveur sait quelle version tourne où » (réservation
-    // OTA, §9) = ce journal. Un fil historique sans manifeste reste valide.
+    // Capability manifest (D47): attestation for a firmware compiled
+    // by the server (the board overlay stays the pin authority — soft
+    // switchover §7); "the server knows which version runs where" (OTA
+    // reservation, §9) = this log. A legacy wire without a manifest stays valid.
     if let Some(caps) = caps {
         let ids: Vec<&str> = caps.iter().map(|c| c.id.as_str()).collect();
-        tracing::info!(device = %snap.device_id, fw, "manifeste annoncé : [{}]", ids.join(", "));
+        tracing::info!(device = %snap.device_id, fw, "manifest announced: [{}]", ids.join(", "));
     }
     // Custom metrics accepted for this session (D87).
     snap.metrics = caps
@@ -727,7 +727,7 @@ async fn handle_announce(
         .filter(|c| c.family == "metric")
         .map(|c| c.id.clone())
         .collect();
-    tracing::info!(device = %snap.device_id, board, fw, "announce device générique");
+    tracing::info!(device = %snap.device_id, board, fw, "generic device announce");
     let device = match device_registries::Entity::find_by_id(snap.device_registry_id)
         .one(&ctx.db)
         .await
@@ -738,7 +738,7 @@ async fn handle_announce(
                 socket,
                 codec,
                 &ServerMsg::Reject {
-                    reason: "device introuvable".into(),
+                    reason: "device not found".into(),
                 },
             )
             .await;
@@ -781,10 +781,10 @@ async fn handle_announce(
         Ok(specs) => {
             snap.reload_pins(&ctx.db).await;
             send_server_msg(socket, codec, &ServerMsg::ProvisionAck { caps: specs }).await;
-            // Restauration du desired-state : le ProvisionAck ne porte pas
-            // les cadences — re-pousser les Subscribe persistés, sinon un
-            // reflash/reconnect perdait les lectures périodiques alors que
-            // la base reste la source de vérité (leçon 2026-09-03).
+            // Desired-state restore: the ProvisionAck does not carry
+            // the cadences — re-push the persisted Subscribes, otherwise a
+            // reflash/reconnect lost the periodic reads while
+            // the DB stays the source of truth (lesson 2026-09-03).
             for (&gpio, &ms) in &snap.intervals {
                 if ms > 0 {
                     send_server_msg(
@@ -799,11 +799,11 @@ async fn handle_announce(
                     .await;
                 }
             }
-            // Cartes de régulation mixtes (control-cards) : re-cast du
-            // desired-state APRÈS le ProvisionAck + Subscribe (l'apply
-            // ProvisionAck du firmware réinitialise ses pins). Un reflash/
-            // reconnect retrouve ses régulations sans EEPROM — même leçon
-            // que les cadences re-poussées ci-dessus. Vide → rien à caster.
+            // Mixed control boards (control-cards): re-cast of the
+            // desired-state AFTER the ProvisionAck + Subscribe (the firmware's
+            // ProvisionAck apply resets its pins). A reflash/
+            // reconnect gets its control loops back without EEPROM — same lesson
+            // as the cadences re-pushed above. Empty → nothing to cast.
             match crate::services::regulator::configs_for_device(&ctx.db, snap.device_registry_id)
                 .await
             {
@@ -822,7 +822,7 @@ async fn handle_announce(
                 Err(e) => {
                     tracing::warn!(
                         device = %snap.device_id,
-                        "re-cast des régulations à l'announce impossible : {e}"
+                        "re-cast of control loops on announce failed: {e}"
                     );
                 }
             }
@@ -913,12 +913,12 @@ async fn handle_announce(
             }
         }
         Err(e) => {
-            tracing::error!(device = %snap.device_id, "admission refusée : {e}");
+            tracing::error!(device = %snap.device_id, "admission refused: {e}");
             send_server_msg(
                 socket,
                 codec,
                 &ServerMsg::Reject {
-                    reason: format!("admission refusée : {e}"),
+                    reason: format!("admission refused: {e}"),
                 },
             )
             .await;
@@ -927,13 +927,13 @@ async fn handle_announce(
     offered
 }
 
-/// StateReport → mémoire last_values (GET /pins) + sortie metrics O2
-/// (série = label normalisé D16, même sortie que l'ingest).
+/// StateReport → last_values memory (GET /pins) + O2 metrics output
+/// (series = normalized label D16, same output as ingest).
 ///
-/// F2 (D47, bascule douce) : un `cap_id` présent route la série
-/// sémantiquement (`{org}/{device}/{capacité}`, source_type `generic_cap`)
-/// ; absent → routage par label overlay inchangé (autorité du pin_slave).
-/// LAST_VALUES reste mis à jour par gpio dans les deux cas (UI /pins).
+/// F2 (D47, soft switchover): a present `cap_id` routes the series
+/// semantically (`{org}/{device}/{capability}`, source_type `generic_cap`)
+/// ; absent → routing by overlay label unchanged (pin_slave authority).
+/// LAST_VALUES stays updated per gpio in both cases (UI /pins).
 async fn handle_state_report(
     ctx: &AppContext,
     snap: &DeviceSnapshot,
@@ -942,7 +942,7 @@ async fn handle_state_report(
     cap_id: Option<&str>,
 ) {
     let Some(pin) = snap.pins.get(&(gpio as i32)) else {
-        tracing::debug!(device = %snap.device_id, gpio, "StateReport pour un pin inconnu — ignoré");
+        tracing::debug!(device = %snap.device_id, gpio, "StateReport for an unknown pin — ignored");
         return;
     };
     let label = snap
@@ -950,9 +950,9 @@ async fn handle_state_report(
         .get(&(gpio as i32))
         .cloned()
         .unwrap_or_else(|| gpio.to_string());
-    // Routage de la série : capacité déclarée > label overlay. La présence
-    // d'un cap_id ne crée JAMAIS une série « à côté » de l'UI : LAST_VALUES
-    // reste alimenté par gpio (bascule douce §7).
+    // Series routing: declared capability > overlay label. The presence
+    // of a cap_id NEVER creates a series "beside" the UI: LAST_VALUES
+    // stays fed per gpio (soft switchover §7).
     let name = match cap_id {
         Some(cap) if !cap.is_empty() => super::device_link::normalize_measurement_name(cap),
         _ => super::device_link::normalize_measurement_name(&label),
@@ -976,11 +976,11 @@ async fn handle_state_report(
         },
     )
     .await;
-    // Prometheus n'a pas de booléens (remote-write = f64) : un pin digital
-    // est stocké 1/0. La valeur brute reste dans LAST_VALUES pour l'UI
-    // (HIGH/LOW). Avant ce fix, `promwrite::series_of` parsait un f64 et
-    // TOUS les StateReports digitaux étaient silencieusement jetés —
-    // « aucune donnée en visualisation » malgré un subscribe 1 s (leçon
+    // Prometheus has no booleans (remote-write = f64): a digital pin
+    // is stored as 1/0. The raw value stays in LAST_VALUES for the UI
+    // (HIGH/LOW). Before this fix, `promwrite::series_of` parsed an f64 and
+    // ALL digital StateReports were silently dropped —
+    // "no data in visualization" despite a 1 s subscribe (lesson
     // 2026-09-03).
     let numeric = match &value {
         serde_json::Value::Bool(b) => serde_json::json!(i64::from(*b)),
@@ -1040,11 +1040,11 @@ fn handle_metric_report(snap: &DeviceSnapshot, cap_id: Option<&str>, value: serd
     });
 }
 
-/// Une entrée `RegState` → points de télémétrie O2 (F2 : lève la limite
-/// « journalisé, pas encore routé » du §8 de control-cards.md). Trois séries
-/// par régulation : `<node>_sensor`, `<node>_out`, `<node>_cycles` —
-/// `source_type=reg_state`. Mesure NaN (capteur illisible) = pas de point
-/// (trou, jamais de donnée inventée) ; sortie/cycles toujours finis.
+/// A `RegState` entry → O2 telemetry points (F2: lifts the
+/// "logged, not yet routed" limit of §8 of control-cards.md). Three series
+/// per control loop: `<node>_sensor`, `<node>_out`, `<node>_cycles` —
+/// `source_type=reg_state`. NaN measurement (unreadable sensor) = no point
+/// (gap, never invented data); output/cycles always finite.
 fn handle_reg_diag(snap: &DeviceSnapshot, e: &pnex_core::RegDiag) {
     let push = |suffix: &str, value: serde_json::Value| {
         let name = super::device_link::normalize_measurement_name(&format!(
@@ -1074,7 +1074,7 @@ fn handle_reg_diag(snap: &DeviceSnapshot, e: &pnex_core::RegDiag) {
     push("cycles", serde_json::json!(e.cycle_count));
 }
 
-/// Envoi serveur → device (chiffré).
+/// Server → device send (encrypted).
 async fn send_server_msg(socket: &mut WebSocket, codec: &mut FrameCodec, msg: &ServerMsg) {
     let Ok(plain) = serde_json::to_string(msg) else {
         return;
@@ -1082,8 +1082,8 @@ async fn send_server_msg(socket: &mut WebSocket, codec: &mut FrameCodec, msg: &S
     let _ = socket.send(Message::Text(codec.seal(&plain).into())).await;
 }
 
-/// Snapshot device complet : identité + carte gpio→label + contraintes
-/// par pin (instances persistées).
+/// Full device snapshot: identity + gpio→label map + constraints
+/// per pin (persisted instances).
 ///
 /// Generic model: labels from the board overlay (`pred_dev` = overlay
 /// board). Custom firmware: labels of the instances persisted at admission
@@ -1138,10 +1138,10 @@ async fn build_snapshot(
     Ok(snap)
 }
 
-/// Instances persistées → cartes gpio → (contraintes validées, cadences).
-/// Source de vérité : la base, remplie à l'admission et par les SetMode/
-/// Subscribe REST — les modes survivent aux re-announce (upsert), les
-/// cadences sont re-poussées après chaque Announce.
+/// Persisted instances → gpio maps → (validated constraints, cadences).
+/// Source of truth: the DB, filled at admission and by the REST SetMode/
+/// Subscribe — modes survive re-announces (upsert), the
+/// cadences are re-pushed after each Announce.
 #[allow(clippy::type_complexity)]
 async fn load_pins(
     db: &DatabaseConnection,
@@ -1181,8 +1181,8 @@ async fn load_pins(
     (pins, intervals)
 }
 
-/// Mode fil (snake_case) → Mode code. `analog_in` (base) et `adc_in`
-/// (fil) acceptés — même alias que pins.rs / provisioning.rs.
+/// Wire mode (snake_case) → Mode code. `analog_in` (DB) and `adc_in`
+/// (wire) accepted — same alias as pins.rs / provisioning.rs.
 fn str_to_mode(s: &str) -> Mode {
     match s {
         "digital_out" => Mode::DigitalOut,

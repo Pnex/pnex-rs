@@ -1,16 +1,16 @@
-//! Nœud custom EdgeLinkd `pnex-starlark` — exécuteur Starlark sandboxé pour
-//! les fonctions du registre « Fonctions » (langage `starlark`).
+//! Custom EdgeLinkd node `pnex-starlark` — sandboxed Starlark executor for
+//! the functions of the "Functions" registry (`starlark` language).
 //!
-//! Rôle dans l'architecture :
-//! - `executor.rs` = lib d'exécution **partagée** par le nœud de flow et par
-//!   le CLI de test `pnex-flow-runtime --test-function` → parité test ≡
-//!   runtime in-flow garantie par construction ;
-//! - **compile/eval au build du nœud** (syntaxe + `handle` défini) → le
-//!   pré-flight `--check` du deploy attrape les erreurs (400 `engine_load`),
-//!   là où le nœud `function` vendor n'évalue qu'au 1er message ;
-//! - limits Evaluator (ticks, heap, callstack, deadline wall-time) —
-//!   Starlark est sans I/O par design ; l'isolation des fonctions «
-//!   bizarres » reste un sujet d'infra (1 tenant = 1 process).
+//! Role in the architecture:
+//! - `executor.rs` = execution lib **shared** by the flow node and by
+//!   the `pnex-flow-runtime --test-function` test CLI → test ≡
+//!   in-flow runtime parity guaranteed by construction;
+//! - **compile/eval at node build** (syntax + `handle` defined) → the
+//!   deploy's `--check` pre-flight catches errors (400 `engine_load`),
+//!   whereas the vendor `function` node only evaluates on the 1st message;
+//! - Evaluator limits (ticks, heap, callstack, wall-time deadline) —
+//!   Starlark has no I/O by design; isolating "weird" functions
+//!   remains an infra topic (1 tenant = 1 process).
 
 pub mod executor;
 
@@ -20,9 +20,9 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
-// Imports en wildcards comme le plugin de référence edgelink-nodes-dummy :
-// la macro `#[flow_node]` développe du code (MetaNode, NodeFactory,
-// FlowsElement, ElementId, Context…) résolu dans le scope du module.
+// Wildcard imports like the reference plugin edgelink-nodes-dummy:
+// the `#[flow_node]` macro expands code (MetaNode, NodeFactory,
+// FlowsElement, ElementId, Context…) resolved in the module scope.
 use edgelink_core::runtime::context::*;
 use edgelink_core::runtime::flow::*;
 use edgelink_core::runtime::model::json::*;
@@ -31,8 +31,8 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit que
-/// l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees that
+/// linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
 fn default_timeout_ms() -> u64 {
@@ -41,12 +41,12 @@ fn default_timeout_ms() -> u64 {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct StarlarkNodeConfig {
-    /// Code Starlark inline par la projection (version épinglée).
+    /// Starlark code inlined by the projection (pinned version).
     code: String,
-    /// L'interface déclarée (`inputs` présente dans l'artefact, informative)
-    /// n'est PAS déclarée ici : l'exécuteur reparsé les directives du code —
-    /// source de vérité ; chaque entrée lit implicitement `payload.<nom>`.
-    /// Deadline wall-time par message (borne anti boucle infinie).
+    /// The declared interface (`inputs` present in the artefact, informative)
+    /// is NOT declared here: the executor reparses the code's directives —
+    /// source of truth; each input implicitly reads `payload.<name>`.
+    /// Wall-time deadline per message (bound against infinite loops).
     #[serde(default = "default_timeout_ms")]
     timeout_ms: u64,
     /// The org's pack settings (D368), stamped at deploy.
@@ -69,12 +69,12 @@ impl StarlarkNode {
         _options: Option<&config::Config>,
     ) -> Result<Box<dyn FlowNodeBehavior>> {
         let cfg = StarlarkNodeConfig::deserialize(&config.rest).map_err(|e| {
-            EdgelinkError::BadFlowsJson(format!("pnex-starlark : config invalide : {e}"))
+            EdgelinkError::BadFlowsJson(format!("pnex-starlark: invalid config: {e}"))
         })?;
 
-        // Compile + évalue le module (defs uniquement) et exige `handle` :
-        // erreur = rejet au BUILD → pré-flight `--check` échoue (400
-        // engine_load) — l'éditeur voit l'erreur moteur réelle au deploy.
+        // Compiles + evaluates the module (defs only) and requires `handle`:
+        // error = rejection at BUILD → `--check` pre-flight fails (400
+        // engine_load) — the editor sees the real engine error at deploy.
         executor::compile_check(&cfg.code)
             .map_err(|e| EdgelinkError::BadFlowsJson(format!("pnex-starlark : {e}")))?;
 
@@ -85,20 +85,20 @@ impl StarlarkNode {
     }
 
     async fn execute(&self, msg: MsgHandle, cancel: CancellationToken) -> Result<()> {
-        // 1) Lecture du msg entrant en objet JSON (frontière sérialisable).
+        // 1) Reads the incoming msg as a JSON object (serializable boundary).
         let incoming: serde_json::Value = {
             let m = msg.read().await;
             serde_json::to_value(&*m).map_err(|e| {
                 EdgelinkError::InvalidOperation(format!(
-                    "pnex-starlark [{}] : msg non sérialisable : {e}",
+                    "pnex-starlark [{}]: msg not serializable: {e}",
                     self.name()
                 ))
             })?
         };
 
-        // 2) Exécution sandboxée hors de la boucle async (spawn_blocking) et
-        //    annulable (arrêt du flow). Le runtime d'exécution est reconstruit
-        //    par message (école du nœud function vendor : contexte frais).
+        // 2) Sandboxed execution outside the async loop (spawn_blocking) and
+        //    cancellable (flow stop). The execution runtime is rebuilt
+        //    per message (vendor function node pattern: fresh context).
         let code = self.config.code.clone();
         let incoming_exec = incoming.clone();
         let timeout_ms = self.config.timeout_ms;
@@ -109,7 +109,7 @@ impl StarlarkNode {
         let outcome = tokio::select! {
             res = exec => res.map_err(|e| {
                 EdgelinkError::InvalidOperation(format!(
-                    "pnex-starlark [{}] : tâche d'exécution : {e}",
+                    "pnex-starlark [{}]: execution task: {e}",
                     self.name()
                 ))
             })?,
@@ -119,14 +119,14 @@ impl StarlarkNode {
             EdgelinkError::InvalidOperation(format!("pnex-starlark [{}] : {e}", self.name()))
         })?;
 
-        // 3) Mapping du retour (même contrat que le wrapper JS) → fan-out.
+        // 3) Return mapping (same contract as the JS wrapper) → fan-out.
         let outs = executor::map_return(&outcome.return_json, &outcome.outputs, &incoming);
         let mut envelopes: smallvec::SmallVec<[Envelope; 4]> = smallvec::SmallVec::new();
         for (port, out) in outs.into_iter().enumerate() {
             if let Some(v) = out {
                 let variant: Variant = serde_json::from_value(v).map_err(|e| {
                     EdgelinkError::InvalidOperation(format!(
-                        "pnex-starlark [{}] : sortie non convertible : {e}",
+                        "pnex-starlark [{}]: output not convertible: {e}",
                         self.name()
                     ))
                 })?;
@@ -155,12 +155,12 @@ impl FlowNodeBehavior for StarlarkNode {
                 self.as_ref(),
                 cancel.child_token(),
                 |node: &StarlarkNode, msg: MsgHandle| async move {
-                    // `with_uow` route les erreurs vers `flow.handle_error` sans
-                    // les logger : on journalise ici pour l'exploitation.
+                    // `with_uow` routes errors to `flow.handle_error` without
+                    // logging them: we log here for operations.
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
-                            log::warn!("pnex-starlark [{}] : message rejeté : {e}", node.name());
+                            log::warn!("pnex-starlark [{}]: message rejected: {e}", node.name());
                             Err(e)
                         }
                     }
@@ -182,7 +182,7 @@ mod tests {
             .expect("registre");
         let meta = reg
             .get("pnex-starlark")
-            .expect("nœud pnex-starlark absent du registre");
+            .expect("pnex-starlark node missing from the registry");
         assert_eq!(meta.type_, "pnex-starlark");
     }
 

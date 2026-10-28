@@ -28,10 +28,10 @@ use pnex_coolprop::{
     IsolineSpec,
 };
 
-/// Cache en mémoire (D3) : clé = hash du body canonique **+ spec résolue**
-/// ⇒ éditer un mélange invalide automatiquement les entrées périmées.
-/// Cap 32, éviction FIFO (le mutex global CoolProp sérialise de toute façon
-/// les calculs, le cache protège surtout les ticks de polling 15 s).
+/// In-memory cache (D3): key = hash of the canonical body **+ resolved spec**
+/// ⇒ editing a mixture automatically invalidates the stale entries.
+/// Cap 32, FIFO eviction (the global CoolProp mutex serializes the
+/// computations anyway, the cache mostly protects the 15 s polling ticks).
 type CacheState = (
     HashMap<String, Arc<DiagramResult>>,
     std::collections::VecDeque<String>,
@@ -132,9 +132,9 @@ pub struct ThermoFluids {
     pub mixture_specs: std::collections::BTreeMap<String, String>,
 }
 
-/// `GET /api/v1/thermo/fluids` — plus de saisie libre du fluide : l'org
-/// fournit ses mélanges, CoolProp ses fluides (retour utilisateur
-/// 2026-09-18 : « l'utilisateur doit deviner les fluides »).
+/// `GET /api/v1/thermo/fluids` — no more free-text fluid input: the org
+/// provides its mixtures, CoolProp its fluids (user feedback
+/// 2026-09-18: "the user has to guess the fluids").
 #[utoipa::path(
     get,
     path = "/api/v1/thermo/fluids",

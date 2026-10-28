@@ -1,5 +1,5 @@
-//! Client HTTP OpenObserve (admin pour le provisioning, Basic pour
-//! l'ingestion). Erreurs remontées en texte — relayées dans
+//! OpenObserve HTTP client (admin for provisioning, Basic for
+//! ingestion). Errors bubbled up as text — relayed into
 //! `openobserve_orgs.last_error`.
 
 use std::collections::HashMap;
@@ -35,8 +35,8 @@ struct PasscodeResponse {
     data: PasscodeData,
 }
 
-/// Réponse d'une requête instantanée Prometheus (`/api/v1/query`) —
-/// forme vector attendue : un échantillon par série active.
+/// Response of a Prometheus instant query (`/api/v1/query`) —
+/// expected vector shape: one sample per active series.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PromQueryResponse {
     pub status: String,
@@ -52,16 +52,16 @@ pub struct PromQueryData {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PromQuerySample {
-    /// Labels de la série — `__name__` + labels portés à l'ingest
+    /// Series labels — `__name__` + labels carried at ingest
     /// (`device_id`, `pred_dev`, `source_type`, `ts_source`).
     pub metric: HashMap<String, String>,
-    /// (timestamp en secondes epoch, valeur en texte — re-parse
-    /// défensif côté consommateur).
+    /// (timestamp in epoch seconds, value as text — defensive
+    /// re-parse on the consumer side).
     pub value: (f64, String),
 }
 
-/// Réponse d'une requête range Prometheus
-/// (`/api/v1/query_range`) — une série porte sa liste de points.
+/// Response of a Prometheus range query
+/// (`/api/v1/query_range`) — a series carries its list of points.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PromRangeResponse {
     pub status: String,
@@ -77,15 +77,15 @@ pub struct PromRangeData {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PromRangeSample {
-    /// Labels de la série — `__name__` + labels portés à l'ingest.
+    /// Series labels — `__name__` + labels carried at ingest.
     pub metric: HashMap<String, String>,
-    /// Points `(timestamp secondes epoch, valeur texte)` — O2 ne remplit
-    /// pas les trous entre deux pas : seuls les points réels sont rendus.
+    /// Points `(timestamp epoch seconds, value text)` — O2 does not fill
+    /// the gaps between two steps: only real points are returned.
     pub values: Vec<(f64, String)>,
 }
 
-/// Réponse de `GET /api/{org}/streams?type=metrics` — seuls les noms nous
-/// intéressent (les stats/schema sont ignorés par serde).
+/// Response of `GET /api/{org}/streams?type=metrics` — only the names
+/// matter to us (stats/schema are ignored by serde).
 #[derive(Debug, Clone, Deserialize)]
 struct StreamsResponse {
     list: Vec<StreamRow>,
@@ -155,8 +155,8 @@ fn newest_first(mut rows: Vec<StreamRow>) -> Vec<String> {
     rows.into_iter().map(|r| r.name).collect()
 }
 
-/// Client OpenObserve — un pour le boot (root), réutilisable pour
-/// l'ingestion avec le Basic `email:passcode` stocké en base.
+/// OpenObserve client — one for boot (root), reusable for
+/// ingestion with the Basic `email:passcode` stored in the database.
 #[derive(Clone)]
 pub struct Client {
     base: String,
@@ -237,11 +237,11 @@ impl Client {
         }
         serde_json::from_str::<OrgsResponse>(&text)
             .map(|r| r.data)
-            .map_err(|e| format!("list orgs illisible : {e}"))
+            .map_err(|e| format!("list orgs unreadable: {e}"))
     }
 
-    /// Identifier d'une org par nom — O2 ne dédoublonne pas les noms, on
-    /// cherche TOUJOURS avant de créer.
+    /// Identifier of an org by name — O2 does not deduplicate names, we
+    /// ALWAYS search before creating.
     pub async fn find_org_by_name(&self, name: &str) -> Result<Option<String>, String> {
         Ok(self
             .organizations()
@@ -251,7 +251,7 @@ impl Client {
             .map(|o| o.identifier))
     }
 
-    /// Crée l'org → identifier.
+    /// Creates the org → identifier.
     pub async fn create_org(&self, name: &str) -> Result<String, String> {
         let (status, text) = self
             .json_request(
@@ -266,11 +266,11 @@ impl Client {
         }
         serde_json::from_str::<OrgRow>(&text)
             .map(|o| o.identifier)
-            .map_err(|e| format!("create org illisible : {e}"))
+            .map_err(|e| format!("create org unreadable: {e}"))
     }
 
-    /// Crée le user d'ingestion (role admin, seul natif). Ok(false) =
-    /// existait déjà (« User already exists »).
+    /// Creates the ingestion user (admin role, the only native one). Ok(false) =
+    /// already existed (« User already exists »).
     pub async fn create_user(
         &self,
         org_identifier: &str,
@@ -296,7 +296,7 @@ impl Client {
         Ok(true)
     }
 
-    /// Root reprend un user sans son ancien mot de passe (ligne PG perdue).
+    /// Root takes over a user without its old password (lost PG row).
     pub async fn reset_user_password(
         &self,
         org_identifier: &str,
@@ -319,7 +319,7 @@ impl Client {
         Ok(())
     }
 
-    /// Passcode du user (auth Basic email:password du user lui-même).
+    /// User passcode (Basic auth email:password of the user itself).
     pub async fn passcode(
         &self,
         org_identifier: &str,
@@ -339,12 +339,12 @@ impl Client {
         }
         serde_json::from_str::<PasscodeResponse>(&text)
             .map(|r| r.data.passcode)
-            .map_err(|e| format!("passcode illisible : {e}"))
+            .map_err(|e| format!("passcode unreadable: {e}"))
     }
 
-    /// Ingestion d'un lot Prometheus remote-write (protobuf compressé
-    /// snappy) — les points atterrissent dans les **metrics** de l'org,
-    /// avec le Basic `email:passcode` stocké dans
+    /// Ingestion of a Prometheus remote-write batch (snappy-compressed
+    /// protobuf) — points land in the org's **metrics**,
+    /// with the Basic `email:passcode` stored in
     /// `openobserve_orgs.ingestion_token`.
     pub async fn ingest_prometheus(
         &self,
@@ -540,12 +540,12 @@ impl Client {
             .unwrap_or_default())
     }
 
-    /// GET authentifié avec bascule : Basic `email:passcode` d'abord, sur
-    /// 401/403 retry en Basic root — **c'est le chemin réel** : constaté
-    /// e2e sur O2 v0.92.1, le Basic email:passcode est refusé sur les
-    /// endpoints de lecture (il ne sert que l'ingestion). Le passcode
-    /// reste tenté d'abord (moindre privilège, future-proof si O2
-    /// l'accepte un jour). Retourne le corps texte en cas de succès.
+    /// Authenticated GET with fallback: Basic `email:passcode` first, on
+    /// 401/403 retry with Basic root — **this is the real path**: seen
+    /// e2e on O2 v0.92.1, Basic email:passcode is refused on the
+    /// read endpoints (it only serves ingestion). The passcode
+    /// is still tried first (least privilege, future-proof if O2
+    /// accepts it one day). Returns the text body on success.
     async fn get_with_auth_fallback(
         &self,
         url: &str,
@@ -577,19 +577,19 @@ impl Client {
             return Ok(text);
         }
         Err(format!(
-            "{what} refusé (passcode puis root) : {last_denial}"
+            "{what} refused (passcode then root): {last_denial}"
         ))
     }
 
-    /// Requête instantanée Prometheus
-    /// (`GET /api/{org}/prometheus/api/v1/query?query=…`) — lecture des
-    /// métriques de l'org (dashboard).
+    /// Prometheus instant query
+    /// (`GET /api/{org}/prometheus/api/v1/query?query=…`) — reads the
+    /// org's metrics (dashboard).
     ///
-    /// ⚠ Constat e2e sur O2 v0.92.1 : les sélecteurs `{__name__=~"..."}`
-    /// (regex) ne renvoient **rien**, même avec des noms explicites —
-    /// seul le **nom nu** (`last_over_time(soil_moisture[1h])`) ou
-    /// l'égalité `{__name__="x"}` fonctionnent. Les noms à interroger se
-    /// découvrent via [`Client::metric_streams`].
+    /// ⚠ e2e finding on O2 v0.92.1: `{__name__=~"..."}` selectors
+    /// (regex) return **nothing**, even with explicit names —
+    /// only the **bare name** (`last_over_time(soil_moisture[1h])`) or
+    /// equality `{__name__="x"}` work. The names to query are
+    /// discovered via [`Client::metric_streams`].
     pub async fn prom_query(
         &self,
         org_identifier: &str,
@@ -605,17 +605,17 @@ impl Client {
             )
             .await?;
         serde_json::from_str::<PromQueryResponse>(&text)
-            .map_err(|e| format!("query illisible : {e}"))
+            .map_err(|e| format!("query unreadable: {e}"))
     }
 
-    /// Requête range Prometheus
+    /// Prometheus range query
     /// (`GET /api/{org}/prometheus/api/v1/query_range?query&start&end&step`)
-    /// — lecture d'une série sur une fenêtre (page Visualisation).
+    /// — reads a series over a window (Visualisation page).
     ///
-    /// Constat e2e v0.92.1 : le nom nu ou l'égalité
-    /// (`soil_moisture{device_id="x"}`) fonctionnent — `start`/`end` en
-    /// secondes epoch, `step` en secondes. O2 rend les points réels sans
-    /// remplir les trous.
+    /// e2e finding v0.92.1: the bare name or equality
+    /// (`soil_moisture{device_id="x"}`) work — `start`/`end` in
+    /// epoch seconds, `step` in seconds. O2 returns the real points without
+    /// filling the gaps.
     pub async fn prom_query_range(
         &self,
         org_identifier: &str,
@@ -642,13 +642,13 @@ impl Client {
             )
             .await?;
         serde_json::from_str::<PromRangeResponse>(&text)
-            .map_err(|e| format!("query range illisible : {e}"))
+            .map_err(|e| format!("query range unreadable: {e}"))
     }
 
-    /// Streams **metrics** de l'org (noms de métriques existantes) —
-    /// `GET /api/{org}/streams?type=metrics`. Sert de découverte pour la
-    /// query Prometheus (cf. `prom_query` : pas de sélecteur regex sur
-    /// `__name__` en v0.92.1).
+    /// The org's **metrics** streams (names of existing metrics) —
+    /// `GET /api/{org}/streams?type=metrics`. Used as discovery for the
+    /// Prometheus query (see `prom_query`: no regex selector on
+    /// `__name__` in v0.92.1).
     pub async fn metric_streams(
         &self,
         org_identifier: &str,
@@ -664,7 +664,7 @@ impl Client {
             .await?;
         serde_json::from_str::<StreamsResponse>(&text)
             .map(|r| newest_first(r.list))
-            .map_err(|e| format!("streams illisibles : {e}"))
+            .map_err(|e| format!("streams unreadable: {e}"))
     }
 
     /// Metrics streams of the org with stats and retention (root auth:
@@ -785,8 +785,8 @@ impl Client {
             .and_then(|v| v.get("id").and_then(|id| id.as_str()).map(str::to_string)))
     }
 
-    /// `/healthz` répond (readiness — vérifié : `/health` n'existe pas en
-    /// v0.92.1, il répond 401 sans auth puis 404 avec).
+    /// `/healthz` answers (readiness — checked: `/health` does not exist in
+    /// v0.92.1, it answers 401 without auth then 404 with).
     pub async fn healthy(&self) -> bool {
         self.http
             .get(format!("{}/healthz", self.base))

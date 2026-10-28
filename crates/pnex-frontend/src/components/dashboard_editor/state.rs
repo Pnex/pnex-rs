@@ -1,8 +1,8 @@
-//! Reducers purs du document dashboard (école `flow_editor/state.rs`) —
-//! **toutes** les mutations du layout passent ici, jamais en ligne dans
-//! le rsx. Chaque reducer renvoie un nouveau document ; l'undo/redo
-//! (absent du flow editor, demandé par la PRD §5) empile des snapshots
-//! entiers — un synoptique fait quelques Ko, la simplicité gagne.
+//! Pure reducers of the dashboard document (`flow_editor/state.rs` school) —
+//! **all** layout mutations go through here, never inline in the rsx.
+//! Each reducer returns a new document; undo/redo (absent from the flow
+//! editor, requested by PRD §5) stacks whole snapshots — a synoptic
+//! weighs a few KB, simplicity wins.
 
 use pnex_core::{
     CanvasSpec, DashboardFormat, DashboardLayout, MobilePage, MobileSection, SectionStyle,
@@ -12,9 +12,9 @@ use pnex_core::{
 
 use super::geometry::default_size;
 
-/// Nouveau widget **posé depuis un template** — l'instance est un
-/// **snapshot** (D41) : la copie du template est définitive, éditer ou
-/// supprimer le modèle n'affecte jamais ce widget.
+/// New widget **placed from a template** — the instance is a
+/// **snapshot** (D41): the template copy is final, editing or deleting
+/// the model never affects this widget.
 pub fn place_widget(
     layout: &mut DashboardLayout,
     template: &WidgetTemplate,
@@ -27,8 +27,8 @@ pub fn place_widget(
     layout.widgets.push(widget);
 }
 
-/// Widget neuf vide (bouton « + Nouveau » de la palette, hors
-/// bibliothèque) — source à compléter dans l'inspecteur.
+/// Blank new widget (palette "+ New" button, outside the library) —
+/// source to fill in the inspector.
 /// Top-left corner of the first free `w`×`h` area of a desktop canvas
 /// (row by row, 20 px grid, 16 px gap to the other widgets); `fallback`
 /// when the canvas is full. Additions used to cascade by 24 px and stack
@@ -60,10 +60,10 @@ pub fn free_slot(layout: &DashboardLayout, w: i64, h: i64, fallback: (i64, i64))
 
 pub fn new_widget(layout: &mut DashboardLayout, id: String, widget_type: &str, x: i64, y: i64) {
     let (w, h) = default_size(widget_type);
-    // thermo_chart : pas de source « primaire » vide (les sources viennent
-    // des points du cycle, gérées par l'inspecteur) ; options thermo posées.
-    // text : idem, aucune source — la validation côté serveur rejette
-    // toute source sur un widget texte (`text_with_source`).
+    // thermo_chart: no empty "primary" source (sources come from the
+    // cycle points, handled by the inspector); thermo options set.
+    // text: likewise, no source — server-side validation rejects any
+    // source on a text widget (`text_with_source`).
     let (source, thermo) = if widget_type == "thermo_chart" {
         (
             vec![],
@@ -186,7 +186,7 @@ pub fn new_symbol(layout: &mut DashboardLayout, id: String, shape: &str, x: i64,
     });
 }
 
-/// Déplace (snap déjà appliqué par l'appelant au pointer-up).
+/// Moves (snap already applied by the caller on pointer-up).
 pub fn move_widget(layout: &mut DashboardLayout, id: &str, x: i64, y: i64) {
     if let Some(w) = layout.widgets.iter_mut().find(|w| w.id == id) {
         w.x = x;
@@ -194,8 +194,8 @@ pub fn move_widget(layout: &mut DashboardLayout, id: &str, x: i64, y: i64) {
     }
 }
 
-/// Redimensionne (le widget reste dans le canvas — bornes vérifiées à
-/// la validation).
+/// Resizes (the widget stays inside the canvas — bounds checked at
+/// validation).
 pub fn resize_widget(layout: &mut DashboardLayout, id: &str, w: i64, h: i64) {
     if let Some(w0) = layout.widgets.iter_mut().find(|w| w.id == id) {
         w0.w = w;
@@ -203,8 +203,8 @@ pub fn resize_widget(layout: &mut DashboardLayout, id: &str, w: i64, h: i64) {
     }
 }
 
-/// Supprime un widget **et ses traits attachés** (une accroche sans
-/// widget n'existe pas).
+/// Deletes a widget **and its attached lines** (an anchor without a
+/// widget does not exist).
 pub fn delete_widget(layout: &mut DashboardLayout, id: &str) {
     layout.widgets.retain(|w| w.id != id);
     for sec in &mut layout.sections {
@@ -215,8 +215,8 @@ pub fn delete_widget(layout: &mut DashboardLayout, id: &str) {
         .retain(|t| t.from.widget_id != id && t.to.widget_id != id);
 }
 
-/// Ajoute un trait entre deux accroches (les doublons sont ignorés :
-/// un trait = une arête, école `viz_links`).
+/// Adds a line between two anchors (duplicates are ignored:
+/// one line = one edge, `viz_links` school).
 pub fn add_wire(layout: &mut DashboardLayout, wire: Wire) {
     let exists = layout.wires.iter().any(|t| {
         (t.from.widget_id == wire.from.widget_id
@@ -788,8 +788,8 @@ pub fn initial_layout(format: DashboardFormat, first_section: &str) -> Dashboard
 
 // ───────────────────────────── Undo / Redo ─────────────────────────────
 
-/// Pile undo/redo par snapshots entiers (cap 50 — au-delà, on perd le
-/// plus ancien ; un layout complet pèse quelques Ko).
+/// Undo/redo stack of whole snapshots (cap 50 — beyond, the oldest is
+/// lost; a full layout weighs a few KB).
 #[derive(Default, PartialEq)]
 pub struct History {
     past: Vec<DashboardLayout>,
@@ -799,9 +799,9 @@ pub struct History {
 const HISTORY_CAP: usize = 50;
 
 impl History {
-    /// À appeler **avant** chaque mutation (le document courant rejoint
-    /// le passé). Les gestes continus (drag/resize) ne pushent qu'au
-    /// pointer-down, pas à chaque frame.
+    /// To call **before** each mutation (the current document joins
+    /// the past). Continuous gestures (drag/resize) only push on
+    /// pointer-down, not on every frame.
     pub fn push(&mut self, current: &DashboardLayout) {
         if self.past.len() >= HISTORY_CAP {
             self.past.remove(0);
@@ -810,14 +810,14 @@ impl History {
         self.future.clear();
     }
 
-    /// Undo → document restauré, ou None si rien à annuler.
+    /// Undo → restored document, or None if nothing to undo.
     pub fn undo(&mut self, current: &DashboardLayout) -> Option<DashboardLayout> {
         let previous = self.past.pop()?;
         self.future.push(current.clone());
         Some(previous)
     }
 
-    /// Redo → document restauré, ou None.
+    /// Redo → restored document, or None.
     pub fn redo(&mut self, current: &DashboardLayout) -> Option<DashboardLayout> {
         let next = self.future.pop()?;
         self.past.push(current.clone());
@@ -825,15 +825,15 @@ impl History {
     }
 }
 
-/// Nouvel id de widget/trait — local, suffisant et lisible.
+/// New widget/line id — local, sufficient and readable.
 pub fn next_id(prefix: &str, counter: u32) -> String {
     format!("{prefix}-{counter:04}")
 }
 
-/// Amorce du compteur d'ids : max des suffixes numériques des ids
-/// persistés (`w-…` widgets, `t-…` traits). Sinon le premier ajout d'une
-/// session ré-émet `w-0001` en collision avec un id déjà en base ⇒ panic
-/// dioxus « keyed siblings must each have a unique key » au rendu.
+/// Seed of the id counter: max of the numeric suffixes of the persisted
+/// ids (`w-…` widgets, `t-…` lines). Otherwise the first addition of a
+/// session re-emits `w-0001`, colliding with an id already stored ⇒ dioxus
+/// panic "keyed siblings must each have a unique key" at render.
 pub fn seed_counter(layout: &DashboardLayout) -> u32 {
     layout
         .widgets
@@ -848,18 +848,18 @@ pub fn seed_counter(layout: &DashboardLayout) -> u32 {
 }
 
 impl History {
-    /// Un bouton undo grisé quand la pile du passé est vide.
+    /// An undo button greyed out when the past stack is empty.
     pub fn undo_disabled(&self) -> bool {
         self.past.is_empty()
     }
 
-    /// Un bouton redo grisé quand la pile du futur est vide.
+    /// A redo button greyed out when the future stack is empty.
     pub fn redo_disabled(&self) -> bool {
         self.future.is_empty()
     }
 }
 
-/// Widget par id (clone — les reducers possèdent leurs données).
+/// Widget by id (clone — reducers own their data).
 pub fn find_widget(layout: &DashboardLayout, id: &str) -> Option<Widget> {
     layout.widgets.iter().find(|w| w.id == id).cloned()
 }
@@ -948,7 +948,7 @@ mod tests {
         place_widget(&mut l, &template, "w-0001".into(), 40, 60);
         assert_eq!(l.widgets.len(), 1);
         assert_eq!(l.widgets[0].x, 40);
-        assert_eq!(l.widgets[0].w, 240, "taille par défaut du type gauge");
+        assert_eq!(l.widgets[0].w, 240, "default size of the gauge type");
         move_widget(&mut l, "w-0001", 100, 120);
         assert_eq!(l.widgets[0].x, 100);
         resize_widget(&mut l, "w-0001", 300, 260);
@@ -977,7 +977,7 @@ mod tests {
             },
         );
         assert_eq!(l.wires.len(), 1);
-        // Doublon ignoré.
+        // Duplicate ignored.
         add_wire(
             &mut l,
             Wire {
@@ -994,7 +994,7 @@ mod tests {
         );
         assert_eq!(l.wires.len(), 1);
         delete_widget(&mut l, "w-0001");
-        assert!(l.wires.is_empty(), "le trait attaché disparaît");
+        assert!(l.wires.is_empty(), "the attached line disappears");
     }
 
     #[test]
@@ -1015,14 +1015,14 @@ mod tests {
         assert_eq!(l.widgets.len(), 1);
 
         assert!(history.undo(&l).is_some(), "un undo reste possible");
-        // Après ce second undo, le passé est vide : plus rien à annuler.
+        // After this second undo, the past is empty: nothing left to undo.
         assert!(history.undo(&l).is_none());
     }
 
     #[test]
     fn compteur_amorce_sur_les_ids_persistes() {
         let mut l = empty_layout();
-        assert_eq!(seed_counter(&l), 0, "layout vide → 0");
+        assert_eq!(seed_counter(&l), 0, "empty layout → 0");
         new_widget(&mut l, "w-0003".into(), "stat", 0, 0);
         new_widget(&mut l, "w-0011".into(), "stat", 40, 0);
         add_wire(
@@ -1042,7 +1042,7 @@ mod tests {
         assert_eq!(
             seed_counter(&l),
             11,
-            "max des suffixes sur les deux préfixes w/t"
+            "max of the suffixes over both w/t prefixes"
         );
     }
 
@@ -1154,7 +1154,7 @@ mod tests {
             history.push(&l);
             l.canvas.width += 1;
         }
-        assert!(history.past.len() <= 50, "cap respecté");
+        assert!(history.past.len() <= 50, "cap respected");
     }
 
     #[test]

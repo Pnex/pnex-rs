@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn latest_build_absent_parses() {
-        // Charge sans le champ (client ancien / backend non enrichi) → None.
+        // Payload without the field (old client / non-enriched backend) → None.
         let json = r#"{
             "id": 42,
             "org_id": 7,
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn create_device_minimal() {
-        // Charge minimale du contrat (docs/contracts/device.http).
+        // Minimal contract payload (docs/contracts/device.http).
         let payload: CreateDevice = serde_json::from_str(
             r#"{ "device_id": "4-chan-dev-shan", "predefined_device_name": "relay_1ch" }"#,
         )

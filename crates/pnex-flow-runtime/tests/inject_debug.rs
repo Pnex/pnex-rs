@@ -1,5 +1,5 @@
-//! Acceptance Phase 0/1 (a) — un flow `inject → debug` tourne headless et
-//! produit des événements observables, lancé/arrêté proprement (SIGINT).
+//! Phase 0/1 (a) acceptance — an `inject → debug` flow runs headless and
+//! produces observable events, started/stopped cleanly (SIGINT).
 
 mod common;
 
@@ -13,7 +13,7 @@ fn inject_debug_tourne_headless() {
 
     let rt = common::RuntimeProc::spawn(&flows, &home);
 
-    // Le moteur annonce son démarrage puis le debug diffuse le payload.
+    // The engine announces its start then the debug broadcasts the payload.
     rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
@@ -22,7 +22,7 @@ fn inject_debug_tourne_headless() {
         |v| common::is_debug_with(v, "bonjour"),
         Duration::from_secs(30),
     );
-    // Drop = SIGINT + reap (le harnais vérifie la sortie).
+    // Drop = SIGINT + reap (the harness checks the exit).
 }
 
 #[test]
@@ -39,6 +39,6 @@ fn arret_propose_code_zero() {
     unsafe {
         libc::kill(rt.child.id() as libc::pid_t, libc::SIGINT);
     }
-    let status = rt.child.wait().expect("wait après SIGINT");
-    assert!(status.success(), "exit code attendu 0, obtenu : {status}");
+    let status = rt.child.wait().expect("wait after SIGINT");
+    assert!(status.success(), "exit code 0 expected, got: {status}");
 }

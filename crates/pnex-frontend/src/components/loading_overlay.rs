@@ -1,18 +1,17 @@
-//! Overlay de chargement léger et réutilisable — la variante minimale de
-//! l'animation de l'écran de login (pas de traits animés : un voile
-//! translucide + un spinner + un message court). À poser dans un parent
-//! `relative` pour couvrir une carte/zone ; pensé pour servir sur toutes
-//! les pages (opérations qui attendent le serveur : delete de flow,
-//! déploiements, builds…).
+//! Light, reusable loading overlay — the minimal variant of the login
+//! screen animation (no animated lines: a translucent veil + a spinner +
+//! a short message). Place it in a `relative` parent to cover a card/area;
+//! meant to serve on every page (operations waiting on the server: flow
+//! delete, deployments, builds…).
 
 use crate::components::gerbe::Gerbe;
 use dioxus::prelude::*;
 
-/// Voile translucide + spinner centré, message optionnel. Classes
-/// littérales complètes (scan Tailwind) — opacité en syntaxe slash v4.
+/// Translucent veil + centred spinner, optional message. Full literal
+/// classes (Tailwind scan) — opacity in v4 slash syntax.
 #[component]
 pub fn LoadingOverlay(
-    /// Message affiché à côté du spinner (vide = spinner seul).
+    /// Message shown next to the spinner (empty = spinner only).
     #[props(default)]
     message: String,
 ) -> Element {

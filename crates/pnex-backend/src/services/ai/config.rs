@@ -10,7 +10,7 @@ use serde::Deserialize;
 use super::provider::Provider;
 use crate::services::secrets::Keyring;
 
-/// Interrupteur global (kill-switch) — `settings.ai.enabled`, défaut `true`.
+/// Global switch (kill-switch) — `settings.ai.enabled`, default `true`.
 #[derive(Clone, Copy, Debug)]
 pub struct AiSettings {
     pub enabled: bool,
@@ -28,7 +28,7 @@ struct AiPartial {
 }
 
 impl AiSettings {
-    /// `settings.ai` optionnelle — défauts champ par champ.
+    /// Optional `settings.ai` — field-by-field defaults.
     pub fn from_config(config: &Config) -> Self {
         let partial: AiPartial = config
             .settings
@@ -42,7 +42,7 @@ impl AiSettings {
     }
 }
 
-/// Configuration effective, prête à servir un appel LLM.
+/// Effective configuration, ready to serve an LLM call.
 #[derive(Clone)]
 pub struct ResolvedAiConfig {
     pub provider: Provider,
@@ -60,13 +60,13 @@ impl std::fmt::Debug for ResolvedAiConfig {
             .field("name", &self.name)
             .field("base_url", &self.base_url)
             .field("model", &self.model)
-            .field("api_key", &"<secrète>")
+            .field("api_key", &"<secret>")
             .finish()
     }
 }
 
-/// URL de base par défaut d'Anthropic (le champ peut rester vide côté
-/// connecteur d'org).
+/// Anthropic's default base URL (the field may stay empty in the
+/// org connector).
 pub const ANTHROPIC_BASE_URL: &str = "https://api.anthropic.com";
 
 /// Effective configuration of an org for `usage`: the provider routed to
@@ -109,7 +109,7 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
-    /// Config Loco minimale (logger+server+database requis par le désérialiseur).
+    /// Minimal Loco config (logger+server+database required by the deserializer).
     fn minimal_config(settings: Value) -> Config {
         serde_json::from_value(serde_json::json!({
             "logger": { "enable": false, "level": "info", "format": "compact" },
@@ -117,13 +117,13 @@ mod tests {
             "database": { "uri": "postgres://pnex:pnex@localhost:5432/pnex", "enable_logging": false, "auto_migrate": false, "connect_timeout": 500, "idle_timeout": 500, "min_connections": 1, "max_connections": 5 },
             "settings": settings
         }))
-        .expect("config désérialisable")
+        .expect("deserializable config")
     }
 
     #[test]
     fn kill_switch_par_defaut_actif_et_coupre_si_false() {
         let c = minimal_config(serde_json::json!({}));
-        assert!(AiSettings::from_config(&c).enabled, "défaut : activé");
+        assert!(AiSettings::from_config(&c).enabled, "default: enabled");
         let c = minimal_config(serde_json::json!({ "ai": { "enabled": false } }));
         assert!(
             !AiSettings::from_config(&c).enabled,

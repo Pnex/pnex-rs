@@ -1,29 +1,29 @@
-//! Pont vers la carte géo POI-first (D27 + D35–D37) — `assets/map.js`
-//! (bundle esbuild IIFE de maplibre-gl 4.x, chargé dans `main.rs`, pattern
-//! viewers.js).
+//! Bridge to the POI-first geo map (D27 + D35–D37) — `assets/map.js`
+//! (esbuild IIFE bundle of maplibre-gl 4.x, loaded in `main.rs`, viewers.js
+//! pattern).
 //!
-//! Le module JS : `window.pnexMap` :
-//!   - `mount(hostId, opts)` → bool : carte maplibre dans le div hôte
-//!     (style Protomaps auto-hébergé, markers HTML — l'emoji couleur ne
-//!     passe pas dans les glyphes SDF de maplibre) ;
-//!   - `setItems(hostId, items)` : pins POI, clusters numérotés (D37) et
-//!     positions GPS live (D38) ;
+//! The JS module: `window.pnexMap`:
+//!   - `mount(hostId, opts)` → bool: maplibre map in the host div
+//!     (self-hosted Protomaps style, HTML markers — colour emoji does
+//!     not fit maplibre's SDF glyphs);
+//!   - `setItems(hostId, items)`: POI pins, numbered clusters (D37) and
+//!     live GPS positions (D38);
 //!   - `flyTo(hostId, lon, lat, zoom)`, `unmount`, `error` (lib|webgl|…).
 //!
-//! Événements vers Rust (polling, école tron.rs : pas de closure
-//! traversante, marche wasm ET natif via document::eval) :
+//! Events to Rust (polling, tron.rs school: no crossing closure,
+//! works on wasm AND native via document::eval):
 //!   - `window.__pnexMapLastClick = {seq, kind, id, label, lng, lat}` —
-//!     `kind` ∈ `pin|cluster|position|map` (clic carte nue = coords) ;
+//!     `kind` ∈ `pin|cluster|position|map` (bare map click = coords);
 //!   - `window.__pnexMapView = {seq, west, south, east, north, zoom,
-//!     center}` sur `moveend` debouncé → refetch du cluster côté page.
+//!     center}` on debounced `moveend` → cluster refetch on the page side.
 //!
-//! Échecs silencieux (script absent, hôte introuvable, WebGL manquant) →
-//! `false` : la page affiche le badge « carte indisponible » — jamais de
-//! panic (école media_viewer.rs).
+//! Silent failures (missing script, host not found, missing WebGL) →
+//! `false`: the page shows the "map unavailable" badge — never a
+//! panic (media_viewer.rs school).
 
 use serde::Deserialize;
 
-/// Paramètres de mount de la carte globale.
+/// Mount parameters of the global map.
 pub struct MapOpts {
     pub style_url: String,
     /// Style used while the app theme is dark (the basemap's dark variant).
@@ -33,24 +33,24 @@ pub struct MapOpts {
     pub items: Vec<MapItem>,
 }
 
-/// Un item affiché sur la carte (marker HTML).
+/// An item shown on the map (HTML marker).
 #[derive(Clone, PartialEq)]
 pub struct MapItem {
-    /// `pin` (POI), `cluster` (numéro) ou `position` (device GPS live).
+    /// `pin` (POI), `cluster` (number) or `position` (live GPS device).
     pub kind: &'static str,
-    /// Id du POI (clic → détail) — `None` pour un cluster.
+    /// POI id (click → detail) — `None` for a cluster.
     pub id: Option<String>,
     pub lon: f64,
     pub lat: f64,
     pub label: String,
     pub emoji: String,
-    /// Nombre agrégé (clusters).
+    /// Aggregated count (clusters).
     pub count: u32,
     /// Colour token of the pin's status (D339): `green`, `amber`…
     pub color: Option<String>,
 }
 
-/// Dernier clic remonté par map.js (item ou carte nue).
+/// Last click reported by map.js (item or bare map).
 #[derive(Debug, Deserialize)]
 pub struct MapClick {
     pub seq: u64,
@@ -64,7 +64,7 @@ pub struct MapClick {
     pub lat: Option<f64>,
 }
 
-/// Viewport courant (moveend debouncé) — pilote le refetch cluster (D37).
+/// Current viewport (debounced moveend) — drives the cluster refetch (D37).
 #[derive(Debug, Deserialize)]
 pub struct MapViewport {
     pub seq: u64,
@@ -79,8 +79,8 @@ pub struct MapViewport {
     pub center: (f64, f64),
 }
 
-/// Monte la carte dans le div `host_id` (retry 100 ms × 50 — le bundle peut
-/// finir de charger après le premier rendu, école tron.rs) ; `true` si monté.
+/// Mounts the map in the `host_id` div (retry 100 ms × 50 — the bundle may
+/// finish loading after the first render, tron.rs school); `true` if mounted.
 pub async fn mount(host_id: &str, opts: &MapOpts) -> bool {
     let items: Vec<serde_json::Value> = opts
         .items
@@ -103,8 +103,8 @@ pub async fn mount(host_id: &str, opts: &MapOpts) -> bool {
     mount_impl(host_id, &opts_json).await
 }
 
-/// Démonte la carte du hôte — fire-and-forget (wasm : la future est
-/// consommée ; natif : l'implémentation rend `()`).
+/// Unmounts the map from the host — fire-and-forget (wasm: the future is
+/// consumed; native: the implementation returns `()`).
 #[cfg(target_arch = "wasm32")]
 pub fn unmount(host_id: &str) {
     let _ = unmount_impl(host_id);
@@ -115,12 +115,12 @@ pub fn unmount(host_id: &str) {
     unmount_impl(host_id);
 }
 
-/// Code d'erreur du dernier mount (`lib`|`webgl`|`map`|message) — pour le badge.
+/// Error code of the last mount (`lib`|`webgl`|`map`|message) — for the badge.
 pub async fn error(host_id: &str) -> Option<String> {
     error_impl(host_id).await
 }
 
-/// Remplace tous les markers (items = pins/clusters/positions).
+/// Replaces all markers (items = pins/clusters/positions).
 pub async fn set_items(host_id: &str, items: &[MapItem]) -> bool {
     let json: Vec<serde_json::Value> = items
         .iter()
@@ -150,19 +150,19 @@ pub async fn set_time(host_id: &str, t_ms: i64) -> bool {
     set_time_impl(host_id, t_ms).await
 }
 
-/// Consomme le dernier clic (poll côté page, ~300 ms) — `None` si rien de
-/// neuf depuis le dernier appel.
+/// Consumes the last click (polled by the page, ~300 ms) — `None` if nothing
+/// new since the last call.
 pub async fn take_click(prev_seq: u64) -> Option<MapClick> {
     take_click_impl(prev_seq).await
 }
 
-/// Consomme le dernier viewport (poll côté page) — `None` si inchangé.
+/// Consumes the last viewport (polled by the page) — `None` if unchanged.
 pub async fn take_viewport(prev_seq: u64) -> Option<MapViewport> {
     take_viewport_impl(prev_seq).await
 }
 
-/// Centre la carte (doux) sur un point — cluster zoomé (D37), recentrage
-/// POI. Nom JS `flyTo` conservé côté pont.
+/// Centres the map (smoothly) on a point — zoomed cluster (D37), POI
+/// recentring. JS name `flyTo` kept on the bridge side.
 #[allow(non_snake_case)]
 pub async fn flyTo(host_id: &str, lon: f64, lat: f64, zoom: f64) -> bool {
     fly_to_impl(host_id, lon, lat, zoom).await
@@ -184,9 +184,9 @@ mod wasm {
         global_method(object, method)
             .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
             .and_then(|f| {
-                // apply(thisArg, args) — le NULL est le `this`, PAS un
-                // argument (sinon mount reçoit (null, host, opts) et
-                // getElementById(null) rend faux silencieusement).
+                // apply(thisArg, args) — the NULL is the `this`, NOT an
+                // argument (otherwise mount receives (null, host, opts) and
+                // getElementById(null) silently returns false).
                 f.apply(&JsValue::NULL, &js_sys::Array::from_iter(args.iter()))
                     .ok()
             })
@@ -222,7 +222,7 @@ fn try_mount(host_id: &str, opts_json: &str) -> bool {
 
 #[cfg(target_arch = "wasm32")]
 fn unmount_impl(host_id: &str) {
-    // Fire-and-forget assumé (JS synchrone côté map.js).
+    // Deliberate fire-and-forget (synchronous JS in map.js).
     wasm::call(
         "pnexMap",
         "unmount",
@@ -308,7 +308,7 @@ async fn fly_to_impl(host_id: &str, lon: f64, lat: f64, zoom: f64) -> bool {
     .unwrap_or(false)
 }
 
-// ─────────────────────────── natif (wry) ───────────────────────────
+// ─────────────────────────── native (wry) ───────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn mount_impl(host_id: &str, opts_json: &str) -> bool {
@@ -323,7 +323,7 @@ async fn mount_impl(host_id: &str, opts_json: &str) -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn try_mount(host_id: &str, opts_json: &str) -> bool {
-    // Échappement JS des chaînes injectées (école media_viewer.rs natif).
+    // JS escaping of injected strings (native media_viewer.rs school).
     let host_id_q = host_id.replace('\'', "");
     let opts_q = opts_json.replace('\\', "\\\\").replace('\'', "\\'");
     let js =

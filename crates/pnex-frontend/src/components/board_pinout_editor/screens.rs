@@ -3,13 +3,13 @@
 
 use super::*;
 
-/// Option du picker écran (précalculée — pas de `let` dans les rsx).
+/// Screen picker option (precomputed — no `let` in rsx).
 pub(crate) struct ScreenOptionView {
     pub(crate) label: String,
-    /// Kind du driver (`None` = aucun écran).
+    /// Driver kind (`None` = no screen).
     pub(crate) kind: Option<String>,
     pub(crate) active: bool,
-    /// Écran soudé (builtin) — verrouillé actif.
+    /// Soldered screen (builtin) — locked active.
     pub(crate) locked: bool,
 }
 
@@ -21,16 +21,16 @@ pub(crate) fn screen_state_kind(board: &api::pins::BoardSummary) -> Option<Strin
     }
 }
 
-/// Une ligne de la légende de câblage : rôle écran → broche de la carte.
+/// One line of the wiring legend: screen role → board pin.
 #[derive(Clone, PartialEq)]
 pub(crate) struct ScreenWiringRow {
     pub(crate) role: String,
     pub(crate) label: String,
 }
 
-/// Légende de câblage pour le kind d'écran donné, lue depuis le profil
-/// board (rôles) + les labels du pinout (broche). Affichée au-dessus du
-/// SVG et dans le modal build (pour le choix qui va être flashé).
+/// Wiring legend for the given screen kind, read from the board profile
+/// (roles) + the pinout labels (pin). Shown above the SVG and in the build
+/// modal (for the choice about to be flashed).
 pub(crate) fn screen_wiring(
     board: &api::pins::BoardSummary,
     pins: &[api::pins::PinoutPin],
@@ -67,7 +67,7 @@ pub(crate) fn screen_wiring(
     (!rows.is_empty()).then_some((name, rows))
 }
 
-/// Bandeau de câblage affiché au-dessus du SVG quand un écran est choisi.
+/// Wiring banner shown above the SVG when a screen is chosen.
 #[component]
 pub(crate) fn ScreenWiring(name: String, rows: Vec<ScreenWiringRow>) -> Element {
     rsx! {
@@ -82,7 +82,7 @@ pub(crate) fn ScreenWiring(name: String, rows: Vec<ScreenWiringRow>) -> Element 
     }
 }
 
-/// Options du picker depuis le profil board + l'état résolu du device.
+/// Picker options from the board profile + the device's resolved state.
 /// The server state (`peripherals_state.screen`) is a kind.
 pub(crate) fn screen_options(board: &api::pins::BoardSummary) -> Vec<ScreenOptionView> {
     let screens = board
@@ -124,9 +124,9 @@ pub(crate) fn screen_options(board: &api::pins::BoardSummary) -> Vec<ScreenOptio
     options
 }
 
-/// Écran choisi (génériques à écran) — PUT /peripherals `{"screen": kind|null}`.
-/// Choix écran d'un device — `PUT /peripherals` `{"screen": kind|null}`,
-/// partagé avec le modal build (appliqué juste avant le build).
+/// Chosen screen (generics with a screen) — PUT /peripherals `{"screen": kind|null}`.
+/// Screen choice of a device — `PUT /peripherals` `{"screen": kind|null}`,
+/// shared with the build modal (applied right before the build).
 pub(crate) async fn set_screen(device_pk: i64, screen: Option<String>) -> Result<(), String> {
     let body = serde_json::json!({ "screen": screen });
     crate::api::client::request::<serde_json::Value>(

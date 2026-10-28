@@ -1,14 +1,14 @@
 # Country pack "French companies" (partner-watch.md D304–D306,
 # account-mapping.md D343): the French specifics on top of the worldwide
-# `entreprises` pack. A legal unit carries its SIREN and its French codes,
+# `companies` pack. A legal unit carries its SIREN and its French codes,
 # an establishment its SIRET; the shared fields (country, NACE activity,
 # headcount range, status, dates) are filled from them by the import.
 # The NACE class is the NAF code without its letter (`62.01Z` → `62.01`);
 # the headcount range comes from the INSEE band (`NN` = not published).
 # Since 1.1.0 an establishment carries its own headcount (the register
 # publishes it per SIRET): targeting works at site level.
-# Since 2.0.0 the shared fields, `etablissement_de`, `dirige` and the
-# `groupe` hierarchy belong to `entreprises` (handed over on upgrade).
+# Since 2.0.0 the shared fields, `establishment_of`, `manages` and the
+# `group` hierarchy belong to `companies` (handed over on upgrade).
 # The company register import queries each known SIREN (weekly once a
 # recurrence is set on it): legal unit fields, head office and matching
 # establishments on the map, officers and holdings. Only known legal units
@@ -16,40 +16,41 @@
 # Since 2.1.0 the group structure comes from two worldwide sources
 # (account-mapping.md D331), each import taking the known companies in
 # turn: GLEIF gives the LEI of a SIREN and its declared direct and ultimate
-# parents (`filiale_de`, confirmed), and creates the parents it names
+# parents (`subsidiary_of`, confirmed), and creates the parents it names
 # (French ones by SIREN, others by LEI); Wikidata gives parents and
-# subsidiaries that have a SIREN (`filiale_de` of nature `wikidata`, as
+# subsidiaries that have a SIREN (`subsidiary_of` of nature `wikidata`, as
 # proposals on the To validate page since 2.2.0: community data). Sources
 # are never merged.
-key: entreprises_fr
+# Since 3.0.0 every identifier is English (breaking).
+key: companies_fr
 name: French companies
 names: {fr: "Entreprises françaises"}
-version: "2.2.0"
-requires: [entreprises]
+version: "3.0.0"
+requires: [companies]
 description: SIRENE legal units, establishments on the map and officers by mandate, synchronized from the public company registers.
 descriptions: {fr: "Unités légales SIRENE, établissements sur la carte et dirigeants par mandat, synchronisés depuis les registres publics des entreprises."}
 extends:
   - type: organization
     properties:
       - { key: siren, name: SIREN, names: {fr: "SIREN"}, kind: text, max_len: 9, unique: true }
-      - { key: forme_juridique, name: Legal form, names: {fr: "Forme juridique"}, kind: text, max_len: 255 }
+      - { key: legal_form, name: Legal form, names: {fr: "Forme juridique"}, kind: text, max_len: 255 }
       - { key: naf, name: NAF code, names: {fr: "Code NAF"}, kind: text, max_len: 8, indexed: true }
-      - { key: effectif_tranche, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
+      - { key: headcount_band, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
       - { key: nda, name: Training declaration number, names: {fr: "Numéro de déclaration d'activité"}, kind: text, max_len: 11, indexed: true }
       - { key: qualiopi, name: Qualiopi, names: {fr: "Qualiopi"}, kind: bool }
       - { key: qualiopi_categories, name: Qualiopi categories, names: {fr: "Catégories Qualiopi"}, kind: text, max_len: 255 }
-      - { key: qualiopi_maj, name: Qualiopi data of, names: {fr: "Donnée Qualiopi du"}, kind: date }
+      - { key: qualiopi_updated, name: Qualiopi data of, names: {fr: "Donnée Qualiopi du"}, kind: date }
   - type: map_pin
     properties:
       - { key: siret, name: SIRET, names: {fr: "SIRET"}, kind: text, max_len: 14, unique: true }
-      - { key: effectif_tranche, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
+      - { key: headcount_band, name: Headcount band, names: {fr: "Tranche d'effectif"}, kind: text, max_len: 8 }
 imports:
   - name: Company register (SIRENE)
     source: api
     source_url: "https://recherche-entreprises.api.gouv.fr/search?per_page=1"
     max_pages: 200
     mapping:
-      key: recherche_entreprises
+      key: company_search
       name: Company register
       names: {fr: "Recherche d'entreprises"}
       format: json
@@ -64,16 +65,16 @@ imports:
           missing: skip
           properties:
             siren: siren
-            forme_juridique: nature_juridique
+            legal_form: nature_juridique
             naf: activite_principale
-            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, C: cesse } }] }
-            date_creation: date_creation
-            date_cessation: date_fermeture
-            effectif_tranche: tranche_effectif_salarie
-            effectif_min: { from: tranche_effectif_salarie, convert: [&effectif_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
-            effectif_max: { from: tranche_effectif_salarie, convert: [&effectif_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
-            pays: { value: FR }
-            code_activite: { from: activite_principale, convert: ["left:5"] }
+            administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, C: ceased } }] }
+            created_on: date_creation
+            ceased_on: date_fermeture
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [&headcount_min { enum: { NN: "", "00": "0", "01": "1", "02": "3", "03": "6", "11": "10", "12": "20", "21": "50", "22": "100", "31": "200", "32": "250", "41": "500", "42": "1000", "51": "2000", "52": "5000", "53": "10000" } }] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [&headcount_max { enum: { NN: "", "00": "0", "01": "2", "02": "5", "03": "9", "11": "19", "12": "49", "21": "99", "22": "199", "31": "249", "32": "499", "41": "999", "42": "1999", "51": "4999", "52": "9999", "53": "" } }] }
+            country: { value: FR }
+            activity_code: { from: activite_principale, convert: ["left:5"] }
             qualiopi: complements.est_qualiopi
         - as: siege
           type: map_pin
@@ -82,11 +83,11 @@ imports:
           location: { lat: siege.latitude, lon: siege.longitude }
           properties:
             siret: siege.siret
-            siege: { value: true }
-            etat_administratif: { from: siege.etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
-            effectif_tranche: siege.tranche_effectif_salarie
-            effectif_min: { from: siege.tranche_effectif_salarie, convert: [*effectif_min] }
-            effectif_max: { from: siege.tranche_effectif_salarie, convert: [*effectif_max] }
+            head_office: { value: true }
+            administrative_state: { from: siege.etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
+            headcount_band: siege.tranche_effectif_salarie
+            headcount_min: { from: siege.tranche_effectif_salarie, convert: [*headcount_min] }
+            headcount_max: { from: siege.tranche_effectif_salarie, convert: [*headcount_max] }
         - as: etab
           type: map_pin
           key: siret
@@ -95,19 +96,19 @@ imports:
           location: { lat: latitude, lon: longitude }
           properties:
             siret: siret
-            siege: est_siege
-            etat_administratif: { from: etat_administratif, convert: [{ enum: { A: actif, F: ferme } }] }
-            effectif_tranche: tranche_effectif_salarie
-            effectif_min: { from: tranche_effectif_salarie, convert: [*effectif_min] }
-            effectif_max: { from: tranche_effectif_salarie, convert: [*effectif_max] }
+            head_office: est_siege
+            administrative_state: { from: etat_administratif, convert: [{ enum: { A: active, F: closed } }] }
+            headcount_band: tranche_effectif_salarie
+            headcount_min: { from: tranche_effectif_salarie, convert: [*headcount_min] }
+            headcount_max: { from: tranche_effectif_salarie, convert: [*headcount_max] }
         - as: personne
           type: person
-          key: identifiant_registre
+          key: registry_id
           each: dirigeants
           when: { from: type_dirigeant, equals: personne physique }
           title: { concat: [prenoms, nom] }
           properties:
-            identifiant_registre: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
+            registry_id: { concat: [nom, prenoms, date_de_naissance], sep: "|", convert: [upper] }
         - as: holding
           type: organization
           key: siren
@@ -117,9 +118,9 @@ imports:
           properties:
             siren: siren
       links:
-        - { type: etablissement_de, from: siege, to: ul }
-        - { type: etablissement_de, from: etab, to: ul }
-        - type: dirige
+        - { type: establishment_of, from: siege, to: ul }
+        - { type: establishment_of, from: etab, to: ul }
+        - type: manages
           from: personne
           to: ul
           attributes: &mandate
@@ -130,16 +131,16 @@ imports:
                 - enum:
                     "président": president
                     "président de sas": president
-                    "directeur général": directeur_general
-                    "directeur général délégué": dg_delegue
-                    "gérant": gerant
-                    "co-gérant": gerant
-                    "administrateur": administrateur
-                    "membre du directoire": membre_directoire
-                    "*": autre
-            qualite: qualite
+                    "directeur général": ceo
+                    "directeur général délégué": deputy_ceo
+                    "gérant": manager
+                    "co-gérant": manager
+                    "administrateur": director
+                    "membre du directoire": board_member
+                    "*": other
+            capacity: qualite
             source: { value: "recherche-entreprises.api.gouv.fr" }
-        - type: dirige
+        - type: manages
           from: holding
           to: ul
           attributes: *mandate
@@ -182,20 +183,20 @@ imports:
           properties:
             lei: relationships.ultimate-parent.data.id
       links:
-        - type: filiale_de
+        - type: subsidiary_of
           from: ul
           to: directe
           attributes:
-            nature: { value: consolidation_directe }
+            nature: { value: direct_consolidation }
             source: { value: "gleif.org" }
-          on_conflict: { nature: consolidation_directe }
-        - type: filiale_de
+          on_conflict: { nature: direct_consolidation }
+        - type: subsidiary_of
           from: ul
           to: ultime
           attributes:
-            nature: { value: consolidation_ultime }
+            nature: { value: ultimate_consolidation }
             source: { value: "gleif.org" }
-          on_conflict: { nature: consolidation_directe }
+          on_conflict: { nature: direct_consolidation }
   - name: Parent companies (GLEIF)
     source: api
     source_url: "https://api.gleif.org/api/v1/lei-records"
@@ -216,7 +217,7 @@ imports:
           properties:
             siren: { from: attributes.entity.registeredAs, convert: [digits] }
             lei: id
-            pays: { value: FR }
+            country: { value: FR }
         - as: mere_monde
           type: organization
           key: lei
@@ -224,13 +225,13 @@ imports:
           when: { from: attributes.entity.jurisdiction, equals: FR, not: true }
           properties:
             lei: id
-            pays: attributes.entity.legalAddress.country
+            country: attributes.entity.legalAddress.country
   - name: Parents and subsidiaries (Wikidata)
     source: api
     source_url: "https://query.wikidata.org/sparql?format=json&query=SELECT%20DISTINCT%20%3Fdir%20%3Fself_siren%20%3Fother_siren%20%3FotherLabel%20WHERE%20%7B%20BIND%28%22{value}%22%20AS%20%3Fself_siren%29%20%3Fs%20wdt%3AP1616%20%3Fself_siren%20.%20%7B%20%3Fs%20wdt%3AP749%20%3Fother%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP355%20%3Fs%20.%20BIND%28%22parent%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fs%20wdt%3AP355%20%3Fother%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20UNION%20%7B%20%3Fother%20wdt%3AP749%20%3Fs%20.%20BIND%28%22child%22%20AS%20%3Fdir%29%20%7D%20%3Fother%20wdt%3AP1616%20%3Fother_siren%20.%20SERVICE%20wikibase%3Alabel%20%7B%20bd%3AserviceParam%20wikibase%3Alanguage%20%22fr%2Cen%22.%20%7D%20%7D"
     max_pages: 200
     mapping:
-      key: wikidata_groupe
+      key: wikidata_group
       name: Parents and subsidiaries
       names: {fr: "Mères et filiales (Wikidata)"}
       format: json
@@ -252,7 +253,7 @@ imports:
           when: { from: dir.value, equals: parent }
           properties:
             siren: other_siren.value
-            pays: { value: FR }
+            country: { value: FR }
         - as: filiale
           type: organization
           key: siren
@@ -261,16 +262,16 @@ imports:
           when: { from: dir.value, equals: child }
           properties:
             siren: other_siren.value
-            pays: { value: FR }
+            country: { value: FR }
       links:
-        - type: filiale_de
+        - type: subsidiary_of
           from: ul
           to: mere
           propose: true
           attributes: &wikidata
             nature: { value: wikidata }
             source: { value: "wikidata.org" }
-        - type: filiale_de
+        - type: subsidiary_of
           from: filiale
           to: ul
           propose: true

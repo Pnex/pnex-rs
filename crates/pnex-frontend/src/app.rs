@@ -1,11 +1,11 @@
-//! Routage de l'app — routes **statiques** uniquement.
+//! App routing — **static** routes only.
 //!
-//! Le détail d'une organisation est piloté par le signal global `ORG` (pas
-//! par un segment dynamique) : les props de route ne sont pas des signaux et
-//! ne redémarrent pas `use_resource` — piège documenté (dioxus #2784).
+//! An organisation's detail is driven by the global `ORG` signal (not
+//! by a dynamic segment): route props are not signals and do not
+//! restart `use_resource` — documented pitfall (dioxus #2784).
 //!
-//! Sur web, `dioxus-web` fournit le `WebHistory` par défaut au launch : le
-//! `Router` nu bénéficie des deep links et du back/forward navigateur sans
+//! On web, `dioxus-web` provides the default `WebHistory` at launch: the
+//! bare `Router` gets deep links and browser back/forward without
 //! configuration.
 
 use crate::pages::access::Access;
@@ -27,14 +27,14 @@ use dioxus::prelude::*;
 #[derive(Clone, Debug, PartialEq, Routable)]
 #[rustfmt::skip]
 pub enum Route {
-    // Callback OAuth — HORS shell (redirection plein page depuis l'IdP Rauthy).
-    // Les segments query sont infaillibles : absents → chaîne vide, tester
-    // avec is_empty().
+    // OAuth callback — OUTSIDE the shell (full-page redirect from the Rauthy IdP).
+    // Query segments are infallible: absent → empty string, test
+    // with is_empty().
     #[route("/auth/callback?:code&:error&:error_description")]
     AuthCallback { code: String, error: String, error_description: String },
 
-    // Tour PUBLIC (lien de partage) — hors shell : la Shell porte la garde
-    // de session, ici la consultation est anonyme (token = seule clé).
+    // PUBLIC tour (share link) — outside the shell: the Shell carries the session
+    // guard, here viewing is anonymous (token = the only key).
     #[route("/share/:token")]
     ShareTour { token: String },
 
@@ -153,8 +153,8 @@ pub enum Route {
         #[route("/catalog")]
         Catalog {},
 
-        // Référentiels Edge (WiFi / serveurs PNeX) consommés par le wizard
-        // device et la file de build firmware.
+        // Edge references (WiFi / PNeX servers) used by the device wizard
+        // and the firmware build queue.
         #[route("/edges/refs")]
         EdgeRefs {},
 
@@ -203,8 +203,8 @@ pub enum Route {
         #[route("/admin/status")]
         AdminStatus {},
 
-        // Vitrine du socle CRUD (référence visuelle dev, hors nav — accès
-        // URL direct ; garde de session portée par la Shell).
+        // CRUD foundation showcase (dev visual reference, outside nav — direct
+        // URL access; session guard carried by the Shell).
         #[route("/_showcase")]
         Showcase {},
 

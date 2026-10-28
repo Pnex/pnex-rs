@@ -8,9 +8,9 @@ use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 use crate::state::toasts;
 
-/// Save : validation navigateur puis PATCH (nouvelle version = live).
-/// `name` : Some ⇒ renommage inline depuis le titre de la coquille (le
-/// layout voyage avec — renommer vaut publication de l'état courant, D24).
+/// Save: browser validation then PATCH (new version = live).
+/// `name`: Some ⇒ inline rename from the shell title (the
+/// layout travels along — renaming means publishing the current state, D24).
 pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
     let mut saving = cx.saving;
     if saving() {
@@ -46,7 +46,7 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
                 cx.conflict.set(true);
             }
             Err(e) => {
-                // 400 violations : mêmes messages que la validation locale.
+                // 400 violations: same messages as the local validation.
                 if let Some(v) = e.violations().cloned() {
                     if let Ok(list) = serde_json::from_value::<Vec<VizViolation>>(v) {
                         cx.violations.set(list);
@@ -59,7 +59,7 @@ pub(super) fn save(mut cx: EditorCx, name: Option<String>) {
     });
 }
 
-/// Modale 409 : recharger depuis le serveur ou écraser avec ma version.
+/// 409 modal: reload from the server or overwrite with my version.
 #[component]
 pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> Element {
     rsx! {
@@ -75,7 +75,7 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
                     button {
                         class: BTN_SECONDARY,
                         onclick: move |_| {
-                            // Recharger : le document serveur écrase l'éditeur.
+                            // Reload: the server document overwrites the editor.
                             let id = cx.dashboard_id.cloned();
                             spawn(async move {
                                 match api::dashboards::detail(&id).await {
@@ -96,9 +96,9 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
                     button {
                         class: BTN_PRIMARY,
                         onclick: move |_| {
-                            // Écraser : re-lire le pointeur serveur puis
-                            // re-PATCH avec MON layout (409 possible si un
-                            // autre save passe entre-temps — toast).
+                            // Overwrite: re-read the server pointer then
+                            // re-PATCH with MY layout (409 possible if
+                            // another save goes through meanwhile — toast).
                             let id = cx.dashboard_id.cloned();
                             let my_layout = cx.layout.read().clone();
                             spawn(async move {
@@ -136,8 +136,8 @@ pub(super) fn ConflictModal(mut cx: EditorCx, on_changed: EventHandler<()>) -> E
     }
 }
 
-/// Modale « enregistrer comme modèle » (D41) : la bibliothèque reçoit
-/// une **copie** du widget sans position.
+/// "Save as template" modal (D41): the library receives
+/// a **copy** of the widget without position.
 #[component]
 pub(super) fn SaveAsTemplate(mut cx: EditorCx, widget_id: String) -> Element {
     let mut name = use_signal(String::new);

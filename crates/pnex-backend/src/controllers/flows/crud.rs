@@ -2,8 +2,8 @@ use super::*;
 
 // ─────────────────────────── POST /flows ───────────────────────────
 
-/// `POST /api/v1/flows` — crée le flow **et sa version 1** (une transaction).
-/// Aucun effet runtime : le flow reste `draft` jusqu'au deploy.
+/// `POST /api/v1/flows` — creates the flow **and its version 1** (one transaction).
+/// No runtime effect: the flow stays `draft` until deploy.
 #[utoipa::path(
     post,
     path = "/api/v1/flows",
@@ -85,8 +85,8 @@ pub(super) struct ListFlowsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/flows` — flows de l'org, paginés (D14), filtres
-/// `search` (nom) et `status`.
+/// `GET /api/v1/flows` — the org's flows, paginated (D14), filters
+/// `search` (name) and `status`.
 #[utoipa::path(
     get,
     path = "/api/v1/flows",
@@ -139,7 +139,7 @@ pub(super) async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Hydratation en vrac (pas de N+1) : dernier + numéro déployé par flow.
+    // Bulk hydration (no N+1): latest + deployed number per flow.
     let ids: Vec<i64> = page_rows.iter().map(|f| f.id).collect();
     let latest: std::collections::HashMap<i64, i64> = flow_versions::Entity::find()
         .select_only()
@@ -202,7 +202,7 @@ pub(super) async fn list(
 
 // ─────────────────────────── GET /flows/{id} ───────────────────────────
 
-/// `GET /api/v1/flows/{id}` — détail + graphe de la dernière version.
+/// `GET /api/v1/flows/{id}` — detail + graph of the latest version.
 #[utoipa::path(
     get,
     path = "/api/v1/flows/{id}",
@@ -236,9 +236,9 @@ pub(super) async fn detail(
 
 // ─────────────────────────── PATCH /flows/{id} ───────────────────────────
 
-/// `PATCH /api/v1/flows/{id}` — enregistre une **nouvelle version**
-/// (append-only). 409 si `expected_version_number` ≠ version courante.
-/// Aucun rechargement runtime — l'exécution ne change qu'au deploy.
+/// `PATCH /api/v1/flows/{id}` — saves a **new version**
+/// (append-only). 409 if `expected_version_number` ≠ current version.
+/// No runtime reload — execution only changes at deploy.
 #[utoipa::path(
     patch,
     path = "/api/v1/flows/{id}",
@@ -286,11 +286,11 @@ pub(super) async fn update(
 
 // ─────────────────────────── DELETE /flows/{id} ───────────────────────────
 
-/// `DELETE /api/v1/flows/{id}` — 204 ; versions supprimées en cascade. Si le
-/// flow était déployé, l'artefact est reprojeté sans lui (runtime rechargé)
-/// — **best-effort** : la ligne est déjà supprimée, un échec de rechargement
-/// ne peut plus défaire le delete, l'API répond 204 et le problème est
-/// loggué (jamais de 503 « le flow est parti mais la réponse dit l'inverse »).
+/// `DELETE /api/v1/flows/{id}` — 204; versions deleted by cascade. If the
+/// flow was deployed, the artifact is reprojected without it (runtime reloaded)
+/// — **best-effort**: the row is already deleted, a reload failure
+/// can no longer undo the delete, the API answers 204 and the problem is
+/// logged (never a 503 "the flow is gone but the response says otherwise").
 #[utoipa::path(
     delete,
     path = "/api/v1/flows/{id}",
@@ -326,9 +326,9 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
         return Err(Error::NotFound);
     };
     let was_deployed = flow.deployed_version_id.is_some();
-    // Devices régulés par CE flow : capturés AVANT le delete — la cascade
-    // FK efface les lignes de projection et le sync ne peut plus les
-    // deviner ; ce sont eux qui recevront le clear (`[]`).
+    // Devices regulated by THIS flow: captured BEFORE the delete — the FK
+    // cascade erases the projection rows and the sync can no longer
+    // guess them; they are the ones that will receive the clear (`[]`).
     let cast_targets: Vec<i64> = crate::models::_entities::regulator_configs::Entity::find()
         .filter(crate::models::_entities::regulator_configs::Column::FlowId.eq(flow.id))
         .all(&ctx.db)
@@ -337,9 +337,9 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
         .iter()
         .map(|r| r.device_registry_id)
         .collect();
-    // Clé d'ack du retrait : méta du flow supprimé (le runtime émettra
-    // `flow_stopped` sur lui) — capturée AVANT la cascade qui efface sa
-    // version déployée (piège de la meta vide, même école que stop).
+    // Removal ack key: meta of the deleted flow (the runtime will emit
+    // `flow_stopped` for it) — captured BEFORE the cascade that erases its
+    // deployed version (empty meta trap, same school as stop).
     // A stopped flow keeps its deployed version but is not running: the
     // runtime never emits `flow_stopped` for it, so waiting for that ack
     // only burned the reload timeout on every delete.
@@ -349,7 +349,7 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
     } else {
         None
     };
-    // D42 : purge symétrique de la couche d'organisation avant le delete.
+    // D42: symmetric purge of the organization layer before the delete.
     crate::services::resources::purge_for(
         &ctx.db,
         org.org.id,
@@ -371,18 +371,18 @@ async fn delete_locked(ctx: &AppContext, org: &OrgContext, id: i64) -> Result<Re
         if let Err(e) = reproject_and_cast_extra(ctx, org.org.id, &cast_targets, ack_meta).await {
             tracing::error!(
                 flow_id = flow.id,
-                "flow supprimé mais rechargement du runtime en échec : {e}"
+                "flow deleted but runtime reload failed: {e}"
             );
         }
     }
-    tracing::info!(flow_id = flow.id, "flow supprimé");
+    tracing::info!(flow_id = flow.id, "flow deleted");
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 // ─────────────────────────── GET /flows/{id}/versions ───────────────────────────
 
-/// `GET /api/v1/flows/{id}/versions` — historique append-only, paginé (D14),
-/// du plus récent au plus ancien.
+/// `GET /api/v1/flows/{id}/versions` — append-only history, paginated (D14),
+/// from the most recent to the oldest.
 #[utoipa::path(
     get,
     path = "/api/v1/flows/{id}/versions",
@@ -467,8 +467,8 @@ pub(super) struct VersionsQuery {
 
 // ─────────────────────────── GET /flows/{id}/versions/{n} ───────────────────────────
 
-/// `GET /api/v1/flows/{id}/versions/{n}` — graphe d'une version précise
-/// (rollback ou audit).
+/// `GET /api/v1/flows/{id}/versions/{n}` — graph of a given version
+/// (rollback or audit).
 #[utoipa::path(
     get,
     path = "/api/v1/flows/{id}/versions/{version_number}",

@@ -1,21 +1,21 @@
-//! API média (D21) — client du contrôleur `/api/v1/media` (contrat
-//! `docs/contracts/media.http`). Upload octet-stream via
-//! `client::request_upload` (pas de multipart), listing paginé D14.
+//! Media API (D21) — client of the `/api/v1/media` controller (contract
+//! `docs/contracts/media.http`). Octet-stream upload via
+//! `client::request_upload` (no multipart), D14 paginated listing.
 
 use serde::{Deserialize, Serialize};
 
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Kind d'asset média — miroir du contrôleur (`photo | panorama | splat`).
+/// Media asset kind — mirror of the controller (`photo | panorama | splat`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaKind {
     Photo,
     Panorama,
     Splat,
-    /// Plan d'étage — consommé par la base map (viz) et référencé par
-    /// `tour_versions.doc` (S9 studio.md) ; kind = string applicatif.
+    /// Floor plan — consumed by the base map (viz) and referenced by
+    /// `tour_versions.doc` (S9 studio.md); kind = application string.
     Floorplan,
     /// ONNX model backing a vision registry entry (camera-video.md D81).
     Model,
@@ -48,7 +48,7 @@ impl MediaKind {
     }
 }
 
-/// Version d'un asset média.
+/// Version of a media asset.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MediaVersion {
     pub id: String,
@@ -63,7 +63,7 @@ pub struct MediaVersion {
     pub created_at: String,
 }
 
-/// Asset média (détail = même forme que la réponse d'upload 201).
+/// Media asset (detail = same shape as the 201 upload response).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct MediaAsset {
     pub id: String,
@@ -71,7 +71,7 @@ pub struct MediaAsset {
     pub name: String,
     pub description: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    /// Labels propres (D42) — effectifs via la couche transverse.
+    /// Own labels (D42) — effective ones via the cross-cutting layer.
     #[serde(default)]
     pub labels: std::collections::BTreeMap<String, Option<String>>,
     pub latest_version_number: i64,
@@ -84,7 +84,7 @@ pub struct MediaAsset {
 }
 
 impl MediaAsset {
-    /// Kind typé (défaut photo si valeur serveur inconnue).
+    /// Typed kind (defaults to photo if the server value is unknown).
     pub fn media_kind(&self) -> MediaKind {
         match self.kind.as_str() {
             "panorama" => MediaKind::Panorama,
@@ -101,11 +101,11 @@ impl MediaAsset {
     }
 }
 
-/// Asset résumé (liste = même forme).
+/// Asset summary (list = same shape).
 pub type MediaAssetSummary = MediaAsset;
 
-/// Enveloppe paginée D14 (next/previous consommés par l'UI V2 — Pager
-/// n'utilise que count).
+/// D14 paginated envelope (next/previous consumed by the V2 UI — Pager
+/// only uses count).
 #[derive(Clone, Debug, Deserialize)]
 #[allow(dead_code)]
 pub struct MediaPage {
@@ -115,13 +115,13 @@ pub struct MediaPage {
     pub results: Vec<MediaAssetSummary>,
 }
 
-/// Filtres de liste (D14) — encodés en query string maison (école flows.rs).
+/// List filters (D14) — encoded as a home-made query string (as in flows.rs).
 #[derive(Debug, Default, Clone)]
 pub struct MediaFilters {
-    /// Kinds souhaités (vide = tous) — encodés `kind=a,b` côté serveur.
+    /// Wanted kinds (empty = all) — encoded `kind=a,b` for the server.
     pub kinds: Vec<MediaKind>,
     pub search: Option<String>,
-    /// Filtre label effectif `name` ou `name:valeur` (D42).
+    /// Effective label filter `name` or `name:value` (D42).
     pub label: Option<String>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -154,7 +154,7 @@ impl MediaFilters {
     }
 }
 
-/// Percent-encoding minimal (le front n'a pas la crate url — école flows.rs).
+/// Minimal percent-encoding (the front has no url crate — as in flows.rs).
 pub(crate) fn urlencode(value: &str) -> String {
     let mut out = String::new();
     for byte in value.bytes() {
@@ -168,7 +168,7 @@ pub(crate) fn urlencode(value: &str) -> String {
     out
 }
 
-/// `GET /api/v1/media` — liste paginée.
+/// `GET /api/v1/media` — paginated list.
 pub async fn list(filters: &MediaFilters) -> Result<MediaPage, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -184,7 +184,7 @@ pub async fn list_all(filters: &MediaFilters) -> Result<Vec<MediaAssetSummary>, 
     client::request_all(&format!("/api/v1/media{}", filters.to_query())).await
 }
 
-/// `GET /api/v1/media/{id}` — détail + versions.
+/// `GET /api/v1/media/{id}` — detail + versions.
 pub async fn detail(id: &str) -> Result<MediaAsset, ApiError> {
     client::request(reqwest::Method::GET, &format!("/api/v1/media/{id}"), None).await
 }
@@ -351,7 +351,7 @@ pub async fn start_analyses(
     .await
 }
 
-/// Paramètres d'upload (métadonnées en query, octets en corps).
+/// Upload parameters (metadata in the query, bytes in the body).
 #[derive(Debug, Default, Clone)]
 pub struct UploadParams {
     pub name: Option<String>,
@@ -408,7 +408,7 @@ pub async fn upload(params: &UploadParams, bytes: Vec<u8>) -> Result<MediaAsset,
     .await
 }
 
-/// `POST /api/v1/media/{id}/versions` — nouvelle version (append-only).
+/// `POST /api/v1/media/{id}/versions` — new version (append-only).
 pub async fn add_version(
     asset_id: &str,
     params: &UploadParams,
@@ -425,7 +425,7 @@ pub async fn add_version(
     .await
 }
 
-/// `DELETE /api/v1/media/{id}` — purge l'asset et ses blobs.
+/// `DELETE /api/v1/media/{id}` — purges the asset and its blobs.
 pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
     client::request_opt(
         reqwest::Method::DELETE,
@@ -435,8 +435,8 @@ pub async fn delete(id: &str) -> Result<Option<()>, ApiError> {
     .await
 }
 
-/// `DELETE /api/v1/media/{id}/versions/{n}` — purge une version et son blob
-/// (409 si dernière version).
+/// `DELETE /api/v1/media/{id}/versions/{n}` — purges a version and its blob
+/// (409 if latest version).
 pub async fn delete_version(asset_id: &str, n: i64) -> Result<Option<()>, ApiError> {
     client::request_opt(
         reqwest::Method::DELETE,
@@ -446,8 +446,8 @@ pub async fn delete_version(asset_id: &str, n: i64) -> Result<Option<()>, ApiErr
     .await
 }
 
-/// `POST /api/v1/media/{id}/versions/{n}/restore` — re-positionne la
-/// version courante.
+/// `POST /api/v1/media/{id}/versions/{n}/restore` — sets the current
+/// version again.
 pub async fn restore(asset_id: &str, n: i64) -> Result<MediaAsset, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -457,22 +457,22 @@ pub async fn restore(asset_id: &str, n: i64) -> Result<MediaAsset, ApiError> {
     .await
 }
 
-/// Chemin d'API des octets de la version courante (pour `media_blob_url`).
+/// API path of the current version's bytes (for `media_blob_url`).
 pub fn content_path(id: &str) -> String {
     format!("/api/v1/media/{}/content", urlencode(id))
 }
 
-/// Chemin d'API des octets de la version n (téléchargement par version).
+/// API path of version n's bytes (per-version download).
 pub fn version_content_path(id: &str, n: i64) -> String {
     format!("/api/v1/media/{}/versions/{n}/content", urlencode(id))
 }
 
-/// Octets de la version courante (téléchargement média).
+/// Bytes of the current version (media download).
 pub async fn content_bytes(id: &str) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(reqwest::Method::GET, &content_path(id)).await
 }
 
-/// Octets de la version n (téléchargement par version).
+/// Bytes of version n (per-version download).
 pub async fn version_content_bytes(asset_id: &str, n: i64) -> Result<Vec<u8>, ApiError> {
     client::request_bytes(reqwest::Method::GET, &version_content_path(asset_id, n)).await
 }

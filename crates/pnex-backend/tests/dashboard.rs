@@ -1,10 +1,10 @@
-//! Tests du summary dashboard (2026-08-19) : sections PG servies quoi
-//! qu'il arrive, télémétrie dégradée sans OpenObserve (section absente de
-//! test.yaml), X-Org-Id requis, lecture ouverte au viewer.
+//! Dashboard summary tests (2026-08-19): PG sections served whatever
+//! happens, telemetry degraded without OpenObserve (section absent from
+//! test.yaml), X-Org-Id required, read open to the viewer.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Le parcours télémétrie disponible (available:true) vit dans
-//! tests/openobserve.rs contre le mock O2.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! The telemetry-available path (available:true) lives in
+//! tests/openobserve.rs against the O2 mock.
 
 mod common;
 
@@ -17,7 +17,7 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app + seed du catalogue minimal (même harnais que devices.rs).
+/// Boots the app + seeds the minimal catalog (same harness as devices.rs).
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env, loco_rs::app::AppContext) -> Fut,
@@ -77,9 +77,9 @@ async fn summary(
         .await
 }
 
-/// Sans O2 configuré : 200 quand même, sections PG correctes (liveness du
-/// device jamais vu, builds vides sans NaN), télémétrie dégradée, et
-/// X-Org-Id requis (400).
+/// Without O2 configured: 200 anyway, correct PG sections (liveness of a
+/// never-seen device, empty builds without NaN), degraded telemetry, and
+/// X-Org-Id required (400).
 #[tokio::test]
 #[serial]
 async fn dashboard_summary_degrade_sans_o2() {
@@ -99,11 +99,11 @@ async fn dashboard_summary_degrade_sans_o2() {
         assert_eq!(res.status_code(), 200);
         let body: serde_json::Value = res.json();
 
-        // Télémétrie dégradée, jamais d'erreur depuis cette branche.
+        // Degraded telemetry, never an error from this branch.
         assert_eq!(body["telemetry"]["available"], false);
         assert_eq!(body["telemetry"]["latest"].as_array().unwrap().len(), 0);
 
-        // Liveness : le device existe mais n'a jamais émis.
+        // Liveness: the device exists but never emitted.
         assert_eq!(body["liveness"]["total"], 1);
         assert_eq!(body["liveness"]["live"], 0);
         let device = &body["liveness"]["devices"][0];
@@ -112,14 +112,14 @@ async fn dashboard_summary_degrade_sans_o2() {
         assert_eq!(device["live"], false);
         assert!(device["last_seen"].is_null());
 
-        // Builds : zéro, sans NaN.
+        // Builds: zero, without NaN.
         assert_eq!(body["builds"]["total"], 0);
         assert_eq!(body["builds"]["succeeded"], 0);
         assert_eq!(body["builds"]["success_rate"], 0.0);
 
-        // Cap liveness : 12 devices de plus (insertion directe, quota
-        // contourné) → total 13 mais liste plafonnée à 10, compteurs
-        // complets (demande user : « only latest ~10 »).
+        // Liveness cap: 12 more devices (direct insert, quota
+        // bypassed) → total 13 but list capped at 10, full counters
+        // (user request: "only latest ~10").
         {
             use pnex_backend::models::_entities::{device_registries, predefined_devices};
             use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
@@ -145,9 +145,9 @@ async fn dashboard_summary_degrade_sans_o2() {
         assert_eq!(body["liveness"]["total"], 13, "compteur complet");
         assert_eq!(body["liveness"]["live"], 0);
         let list = body["liveness"]["devices"].as_array().unwrap();
-        assert_eq!(list.len(), 10, "liste plafonnée à ~10");
+        assert_eq!(list.len(), 10, "list capped at ~10");
 
-        // Sans X-Org-Id → 400 (extracteur OrgContext).
+        // Without X-Org-Id → 400 (OrgContext extractor).
         let res = server
             .get("/api/v1/dashboard/summary")
             .add_header("Authorization", bearer(&env.alice))
@@ -170,8 +170,8 @@ async fn dashboard_summary_degrade_sans_o2() {
     .await;
 }
 
-/// Lecture seule : un viewer d'une autre org voit son propre summary
-/// (cloisonnement D2 — devices de l'org d'alice absents).
+/// Read only: a viewer of another org sees its own summary
+/// (D2 partitioning — devices of alice's org absent).
 #[tokio::test]
 #[serial]
 async fn dashboard_summary_cloisonne_par_org() {
@@ -187,7 +187,7 @@ async fn dashboard_summary_cloisonne_par_org() {
             }))
             .await;
 
-        // Bob : org personnelle distincte, sans devices.
+        // Bob: distinct personal org, without devices.
         let org_bob = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&env.bob))
@@ -197,7 +197,7 @@ async fn dashboard_summary_cloisonne_par_org() {
             .expect("org perso bob");
 
         let body: serde_json::Value = summary(&server, &env.bob, org_bob).await.json();
-        assert_eq!(body["liveness"]["total"], 0, "org de bob vide");
+        assert_eq!(body["liveness"]["total"], 0, "bob's org empty");
         assert_eq!(body["builds"]["total"], 0);
     })
     .await;

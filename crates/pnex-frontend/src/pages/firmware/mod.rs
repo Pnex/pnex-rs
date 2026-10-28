@@ -1,7 +1,7 @@
 //! Custom firmware IDE (custom-firmware.md D87–D94) — projects list and
 //! editor sub-view (signal `selected`, same pattern as `functions`). One
 //! `main.cpp` per project, versioned server-side (append-only revisions),
-//! PneX library + pinned catalog libraries, compile-only « Verify » checks.
+//! PneX library + pinned catalog libraries, compile-only "Verify" checks.
 //! Writes are owner/admin only (the server enforces, the UI hides).
 
 use dioxus::prelude::*;

@@ -3,14 +3,14 @@ name = "pnex-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Types partagés PNEX — compile en natif + wasm32, aucune dépendance native hors features optionnelles"
+description = "PNEX shared types — compiles native + wasm32, no native dependency outside optional features"
 
 [features]
-# Normalisation des labels de mesures (deunicode) — backend + runtime de
-# flows uniquement ; le front wasm n'en a pas besoin (il affiche le label
-# brut, la clé payload passe par sanitize_key sans dep).
+# Measurement label normalization (deunicode) — backend + flow runtime
+# only; the wasm front does not need it (it shows the raw
+# label, the payload key goes through sanitize_key without a dep).
 naming = ["dep:deunicode"]
-# Messages prompb (remote-write OpenObserve) — backend + pnex-node-device.
+# prompb messages (OpenObserve remote-write) — backend + pnex-node-device.
 prompb = ["dep:prost"]
 # Device/agent link encryption: Noise NNpsk0 inside TLS (D155–D157) —
 # backend + edge agent only; never enabled by the wasm frontend.
@@ -26,8 +26,8 @@ openapi = ["dep:utoipa"]
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-# serde-only (JAMAIS `v4` : getrandom ne compile pas wasm32) — les UUIDs
-# notif sont générés côté backend uniquement.
+# serde-only (NEVER `v4`: getrandom does not compile for wasm32) — notify
+# UUIDs are generated on the backend only.
 uuid = { version = "1", default-features = false, features = ["serde"] }
 deunicode = { version = "1", optional = true }
 prost = { version = "0.13", optional = true }
@@ -50,7 +50,7 @@ lopdf = { version = "0.45", default-features = false, optional = true }
 calamine = { version = "0.36", optional = true }
 
 [dev-dependencies]
-# roundtrip serde du graphe + projection flows.json.
+# serde roundtrip of the graph + flows.json projection.
 serde_json = { workspace = true }
 # Digest of the chunked frame in the Noise golden vectors.
 sha2 = "0.10"

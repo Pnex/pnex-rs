@@ -61,10 +61,10 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Orgs dont l'utilisateur est membre, avec tier et rôle. Ordre déterministe
-    // par id d'org croissant (l'org personnelle JIT d'abord) — sans cela
-    // l'ordre est arbitraire côté Postgres et le fallback d'org du front peut
-    // atterrir sur une org viewer (observation O1).
+    // Orgs the user is a member of, with tier and role. Deterministic order
+    // by ascending org id (the JIT personal org first) — without it
+    // the order is arbitrary in Postgres and the front's org fallback can
+    // land on a viewer org (observation O1).
     let memberships = organization_members::Entity::find()
         .filter(organization_members::Column::UserId.eq(user.id))
         .order_by_asc(organization_members::Column::OrgId)
@@ -106,7 +106,7 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
         }));
     }
 
-    // Comptage devices sur les orgs du user (via predefined → device_type).
+    // Device count over the user's orgs (via predefined → device_type).
     let mut by_type: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     let mut total = 0usize;
     let mut active = 0usize;
@@ -147,9 +147,9 @@ pub async fn user_info(State(ctx): State<AppContext>, auth: AuthUser) -> Result<
 
     let body = serde_json::json!({
         "id": user.id,
-        // Tokens d'accès Rauthy lean : pas de preferred_username (il vit dans
-        // l'id_token) → fallback email de l'utilisateur provisionné. Null est
-        // interdit ici : le contrat UserInfo attend un string (D19).
+        // Lean Rauthy access tokens: no preferred_username (it lives in
+        // the id_token) → fallback to the provisioned user's email. Null is
+        // forbidden here: the UserInfo contract expects a string (D19).
         "username": auth.claims.preferred_username.clone().unwrap_or_else(|| user.email.clone()),
         "email": user.email,
         "full_name": user.full_name,
@@ -279,8 +279,8 @@ async fn update_profile(
         }
     };
 
-    // Le profil est créé par le JIT provisioning ; par robustesse on le crée
-    // avec les défauts s'il manque (ordre d'appels en test, reprise de données).
+    // The profile is created by JIT provisioning; for robustness it is created
+    // with defaults if missing (call order in tests, data recovery).
     let existing = user_profiles::Entity::find()
         .filter(user_profiles::Column::UserId.eq(auth.user.id))
         .one(&ctx.db)

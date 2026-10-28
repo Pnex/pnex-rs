@@ -1,7 +1,7 @@
-//! Registre « Fonctions » — CRUD org-scoped + versioning append-only +
-//! test en live. École `controllers/edge_refs.rs` : scoping org (404 masqué
-//! cross-org), writes gated by their IAM permission, 400 field by field. Le test
-//! spawn le binaire runtime (`--test-function`) — viewer autorisé (lecture).
+//! "Functions" registry — org-scoped CRUD + append-only versioning +
+//! live test. `controllers/edge_refs.rs` school: org scoping (cross-org 404
+//! masked), writes gated by their IAM permission, 400 field by field. The test
+//! spawns the runtime binary (`--test-function`) — viewer allowed (read).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -72,8 +72,8 @@ pub fn openapi() -> utoipa::openapi::OpenApi {
 
 // ───────────────────────────── DTO mappers ─────────────────────────────
 
-/// FunctionDetail — le save_version renvoie la version fraîche (l'éditeur
-/// recharge sans second GET).
+/// FunctionDetail — save_version returns the fresh version (the editor
+/// reloads without a second GET).
 fn detail_dto(f: &functions::Model, version: &function_versions::Model) -> FunctionDetail {
     FunctionDetail {
         id: f.id,
@@ -90,7 +90,7 @@ fn detail_dto(f: &functions::Model, version: &function_versions::Model) -> Funct
     }
 }
 
-/// Résumé (liste, sans code).
+/// Summary (list, without code).
 fn summary_dto(f: &functions::Model, current: i64) -> FunctionSummary {
     FunctionSummary {
         id: f.id,
@@ -127,8 +127,8 @@ struct PageQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/functions` — registre de l'org (name ASC). Le numéro de
-/// version courante est calculé batch (une requête versions pour le lot).
+/// `GET /api/v1/functions` — the org's registry (name ASC). The current
+/// version number is computed in batch (one versions query for the batch).
 #[utoipa::path(
     get,
     path = "/api/v1/functions",
@@ -170,7 +170,7 @@ async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
     let count = rows.len() as i64;
-    // Numéros de version courants du lot : une seule requête versions.
+    // Current version numbers of the batch: a single versions query.
     let ids: Vec<i64> = rows.iter().map(|f| f.id).collect();
     let all_versions = if ids.is_empty() {
         Vec::new()
@@ -211,8 +211,8 @@ async fn list(
     .into_response())
 }
 
-/// `POST /api/v1/functions` — fonction + version 1. 201 = FunctionDetail
-/// (l'éditeur enchaîne sans second GET) ; 400 champ-par-champ.
+/// `POST /api/v1/functions` — function + version 1. 201 = FunctionDetail
+/// (the editor chains without a second GET); 400 field by field.
 #[utoipa::path(
     post,
     path = "/api/v1/functions",
@@ -262,7 +262,7 @@ fn write_error_response(e: FunctionWriteError) -> Response {
     }
 }
 
-/// Fonction de l'org demandée, sinon 404 (cross-org masqué).
+/// Requested function of the org, otherwise 404 (cross-org masked).
 async fn find_function(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -276,8 +276,8 @@ async fn find_function(
     Ok(row)
 }
 
-/// `GET /api/v1/functions/{id}` — fonction + version courante (code +
-/// interface extraite).
+/// `GET /api/v1/functions/{id}` — function + current version (code +
+/// extracted interface).
 #[utoipa::path(
     get,
     path = "/api/v1/functions/{id}",
@@ -309,8 +309,8 @@ async fn detail(
     Ok(format::json(detail_dto(&f, &version)).into_response())
 }
 
-/// `PATCH /api/v1/functions/{id}` — nouvelle version (append-only) et/ou
-/// métadonnées. 409 si `expected_version_number` ≠ version courante.
+/// `PATCH /api/v1/functions/{id}` — new version (append-only) and/or
+/// metadata. 409 if `expected_version_number` ≠ current version.
 #[utoipa::path(
     patch,
     path = "/api/v1/functions/{id}",
@@ -337,8 +337,8 @@ async fn save_version(
     let Some(f) = find_function(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // Concurrence optimiste (école flows) : la comparaison porte sur la plus
-    // grande version enregistrée (append-only).
+    // Optimistic concurrency (flows school): the comparison is against the
+    // highest saved version (append-only).
     let current = latest_version(&ctx.db, f.id)
         .await
         .map_err(|_| Error::InternalServerError)?
@@ -465,9 +465,9 @@ async fn delete(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// `POST /api/v1/functions/{id}/test` — viewer autorisé (outil de mise au
-/// point en lecture). 503 `flow_runtime` si le runtime n'est pas activé ou
-/// injoignable ; le résultat script voyage en 200 (`ok:false` + `error`).
+/// `POST /api/v1/functions/{id}/test` — viewer allowed (read-only
+/// tuning tool). 503 `flow_runtime` if the runtime is not enabled or
+/// unreachable; the script result travels as 200 (`ok:false` + `error`).
 #[utoipa::path(
     post,
     path = "/api/v1/functions/{id}/test",
@@ -510,10 +510,10 @@ async fn test(
     }
 }
 
-/// `POST /api/v1/functions/validate` — validation compile-only du code
-/// (barre d'erreurs de l'éditeur, aucune exécution). Viewer autorisé,
-/// aucun accès DB : le corps porte langage + code. Même garde 503 que le
-/// test (le binaire runtime est requis pour compiler).
+/// `POST /api/v1/functions/validate` — compile-only validation of the code
+/// (editor error bar, no execution). Viewer allowed,
+/// no DB access: the body carries language + code. Same 503 guard as the
+/// test (the runtime binary is required to compile).
 #[utoipa::path(
     post,
     path = "/api/v1/functions/validate",

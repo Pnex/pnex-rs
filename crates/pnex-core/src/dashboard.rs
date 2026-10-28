@@ -1,15 +1,15 @@
-//! DTO du dashboard (2026-08-19) — réponse unique de
-//! `GET /api/v1/dashboard/summary` : liveness PG + dernières mesures
-//! OpenObserve + stats builds.
+//! Dashboard DTO (2026-08-19) — single response of
+//! `GET /api/v1/dashboard/summary`: PG liveness + latest OpenObserve
+//! measurements + build stats.
 //!
-//! La télémétrie vit uniquement dans OpenObserve (D1, aucune table de
-//! mesures en PG) : sa section est donc **dégradée par conception** —
-//! `telemetry.available == false` quand l'org n'a pas de credentials O2 ou
-//! que la requête échoue/expire. Les sections PG (liveness, builds) sont
-//! toujours servies : le summary ne fait jamais 500 depuis la branche O2.
+//! Telemetry lives only in OpenObserve (D1, no measurement
+//! table in PG): its section is therefore **degraded by design** —
+//! `telemetry.available == false` when the org has no O2 credentials or
+//! the query fails/times out. The PG sections (liveness, builds) are
+//! always served: the summary never returns 500 from the O2 branch.
 //!
-//! Champs dates en chaînes RFC 3339 (sérialisation SeaORM / timestamps
-//! epoch Prometheus convertis côté backend), pas de chrono dans le core
+//! Date fields as RFC 3339 strings (SeaORM serialization / Prometheus epoch
+//! timestamps converted on the backend), no chrono in the core
 //! (wasm32).
 
 use serde::{Deserialize, Serialize};
@@ -91,7 +91,7 @@ pub struct BuildStats {
 mod tests {
     use super::*;
 
-    /// Forme complète telle que sérialisée par le backend.
+    /// Full form as serialized by the backend.
     #[test]
     fn dashboard_summary_roundtrip() {
         let json = r#"{
@@ -146,8 +146,8 @@ mod tests {
         );
     }
 
-    /// Org vide / O2 absent : tout à zéro, disponible false — la page
-    /// dashboard doit pouvoir se dessiner avec cette seule forme.
+    /// Empty org / O2 absent: everything at zero, available false — the dashboard
+    /// page must be able to draw itself with this form alone.
     #[test]
     fn dashboard_summary_minimal_degrade() {
         let json = r#"{

@@ -1,4 +1,4 @@
-//! « Compare » two versions of a document (partner-watch.md D311): the
+//! "Compare" two versions of a document (partner-watch.md D311): the
 //! paragraphs added, removed and changed, from the server diff.
 
 use dioxus::prelude::*;

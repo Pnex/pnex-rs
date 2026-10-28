@@ -1,20 +1,20 @@
-//! Stockage clé/valeur du front, abstrait de la plateforme.
+//! Front key/value storage, abstracted from the platform.
 //!
-//! - **web (wasm32)** : `localStorage` (persistance) et `sessionStorage`
-//!   (verifier PKCE — survit à la redirection vers l'IdP mais pas à la
-//!   fermeture de l'onglet) via web-sys. Les navigateurs hostiles au storage
-//!   (mode privé Safari) dégradent silencieusement no-op.
-//! - **natif** : le store persistant est dosé par un fichier JSON dans le
-//!   dossier privé de l'app (`pnex-storage.json`, Android : files dir via
-//!   JNI brut — cf. `imp::app_files_dir`) ; le store session (verifier
-//!   PKCE) reste mémoire seule. Desktop: per-user data dir (see
+//! - **web (wasm32)**: `localStorage` (persistence) and `sessionStorage`
+//!   (PKCE verifier — survives the redirect to the IdP but not closing
+//!   the tab) via web-sys. Storage-hostile browsers
+//!   (Safari private mode) silently degrade to no-op.
+//! - **native**: the persistent store is backed by a JSON file in the
+//!   app's private folder (`pnex-storage.json`, Android: files dir via
+//!   raw JNI — see `imp::app_files_dir`); the session store (PKCE
+//!   verifier) stays memory only. Desktop: per-user data dir (see
 //!   `imp::app_files_dir`); no resolvable dir → memory only, silently.
 
-// Socle posé avant ses consommateurs (session, PKCE, sélecteur d'org) : les
-// clés et le storage session deviennent utilisés aux commits suivants.
+// Base laid before its consumers (session, PKCE, org selector): the
+// keys and the session storage become used in the following commits.
 #![allow(dead_code)]
 
-/// Clés utilisées par l'app (préfixe `pnex.`).
+/// Keys used by the app (`pnex.` prefix).
 pub const KEY_ACCESS_TOKEN: &str = "pnex.access_token";
 pub const KEY_REFRESH_TOKEN: &str = "pnex.refresh_token";
 pub const KEY_ID_TOKEN: &str = "pnex.id_token";
@@ -23,27 +23,27 @@ pub const KEY_ID_TOKEN: &str = "pnex.id_token";
 pub const KEY_FORCE_LOGIN: &str = "pnex.force_login";
 pub const KEY_ORG: &str = "pnex.org";
 pub const KEY_LOCALE: &str = "pnex.locale";
-/// Sidebar desktop repliée en rail d'icônes (préférence UI, cf. `state::ui`).
+/// Desktop sidebar collapsed into an icon rail (UI preference, see `state::ui`).
 pub const KEY_SIDEBAR_RAIL: &str = "pnex.sidebar_rail";
 /// Last applied theme preference (light/dark/auto), replayed at boot so the
 /// login screen does not flash light before the profile arrives.
 pub const KEY_THEME: &str = "pnex.theme";
 /// Basemap chosen on the map, per org: `pnex.basemap.<org id>` (geo-layers.md L25).
 pub const KEY_BASEMAP_PREFIX: &str = "pnex.basemap.";
-/// URL du serveur auto-hébergé — cible desktop/mobile uniquement (le web est
-/// same-origin, la clé n'est jamais écrite).
+/// URL of the self-hosted server — desktop/mobile target only (the web is
+/// same-origin, the key is never written).
 pub const KEY_API_BASE: &str = "pnex.api_base";
 /// Root CA (PEM) of the self-hosted server's TLS edge, pinned after a
 /// trust-on-first-use confirmation — native targets only (cf. `api::tls`).
 pub const KEY_SERVER_CA: &str = "pnex.server_ca";
-/// Verifier PKCE — stockage *session* (consommé au callback, jamais persisté).
+/// PKCE verifier — *session* storage (consumed at callback, never persisted).
 pub const KEY_PKCE_VERIFIER: &str = "pnex.pkce_verifier";
 
 pub trait KeyValueStorage {
     fn get(&self, key: &str) -> Option<String>;
     fn set(&self, key: &str, value: &str);
     fn remove(&self, key: &str);
-    /// Supprime plusieurs clés d'un coup (logout).
+    /// Deletes several keys at once (logout).
     fn purge(&self, keys: &[&str]) {
         for key in keys {
             self.remove(key);
@@ -108,9 +108,9 @@ mod imp {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
 
-    /// Chemin du fichier store persistant — résolu une seule fois. Le nom
-    /// de fichier est joint ICI (et pas dans `app_files_dir`) : sans lui on
-    /// lit/écrit le répertoire lui-même (EISDIR, constat 2026-09-09).
+    /// Path of the persistent store file — resolved only once. The file
+    /// name is joined HERE (and not in `app_files_dir`): without it we
+    /// read/write the directory itself (EISDIR, finding 2026-09-09).
     fn store_file() -> &'static Option<std::path::PathBuf> {
         static PATH: OnceLock<Option<std::path::PathBuf>> = OnceLock::new();
         // Unit tests stay memory-only: never read or clobber the real user store.
@@ -128,32 +128,32 @@ mod imp {
             Ok(bytes) => match serde_json::from_slice(&bytes) {
                 Ok(map) => map,
                 Err(err) => {
-                    eprintln!("pnex-storage: fichier illisible ({err}) — démarrage à vide");
+                    eprintln!("pnex-storage: unreadable file ({err}) — starting empty");
                     HashMap::new()
                 }
             },
-            // Absent = premier lancement (pas une erreur).
+            // Absent = first launch (not an error).
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
             Err(err) => {
-                eprintln!("pnex-storage: lecture impossible ({err}) — démarrage à vide");
+                eprintln!("pnex-storage: read failed ({err}) — starting empty");
                 HashMap::new()
             }
         }
     }
 
-    /// Écriture atomique (tmp + rename) — un kill pendant l'écriture ne
-    /// laisse jamais un fichier à moitié écrit.
+    /// Atomic write (tmp + rename) — a kill during the write never
+    /// leaves a half-written file.
     fn save_store(map: &HashMap<String, String>) {
         let Some(path) = store_file() else { return };
         let tmp = path.with_extension("json.tmp");
         let write = || -> std::io::Result<()> {
-            // Un write en échec fait échouer le rename juste après (fichier
-            // absent) — l'erreur remonte par le rename.
+            // A failed write makes the rename right after fail (file
+            // missing) — the error surfaces through the rename.
             let _ = std::fs::write(&tmp, serde_json::to_vec(map).unwrap_or_default());
             std::fs::rename(&tmp, path)
         };
         if let Err(err) = write() {
-            eprintln!("pnex-storage: écriture impossible ({err})");
+            eprintln!("pnex-storage: write failed ({err})");
         }
     }
 
@@ -196,10 +196,10 @@ mod imp {
     mem_impl!(LocalStorage, true);
     mem_impl!(SessionStorage, false);
 
-    /// Dossier privé de l'app (`Context.getFilesDir()`), par JNI brut sur le
-    /// contexte posé par le glue Android de Dioxus — même école que le patch
-    /// webbrowser vendu (jni bas niveau, jamais de panic : un échec dégrade
-    /// en mémoire seule).
+    /// Private app folder (`Context.getFilesDir()`), via raw JNI on the
+    /// context set by Dioxus's Android glue — same school as the vendored
+    /// webbrowser patch (low-level jni, never a panic: a failure degrades
+    /// to memory only).
     #[cfg(target_os = "android")]
     fn app_files_dir() -> Option<std::path::PathBuf> {
         type EnvPtr = *mut jni::sys::JNIEnv;
@@ -208,8 +208,8 @@ mod imp {
         let vm = ctx.vm() as *mut jni::sys::JavaVM;
 
         unsafe {
-            // Threads du glue déjà attachés : GetEnv suffit ; sinon attach
-            // daemon en filet de sécurité (tâches async de l'exécuteur).
+            // Glue threads already attached: GetEnv is enough; otherwise a
+            // daemon attach as a safety net (async tasks of the executor).
             let mut env: EnvPtr = std::ptr::null_mut();
             let status = ((**vm).v1_2.GetEnv)(
                 vm,
@@ -230,7 +230,7 @@ mod imp {
                         .cast_mut(),
                 );
                 if attached != jni::sys::JNI_OK || env.is_null() {
-                    eprintln!("pnex-storage: attach JVM impossible — mémoire seule");
+                    eprintln!("pnex-storage: JVM attach failed — memory only");
                     return None;
                 }
             }
@@ -289,7 +289,7 @@ mod imp {
                 ((**env).v1_1.ReleaseStringUTFChars)(env, jstr, chars);
                 Some(path)
             })() else {
-                eprintln!("pnex-storage: getFilesDir JNI impossible — mémoire seule");
+                eprintln!("pnex-storage: getFilesDir JNI failed — memory only");
                 return None;
             };
             Some(std::path::PathBuf::from(files_dir))

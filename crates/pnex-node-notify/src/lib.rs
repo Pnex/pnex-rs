@@ -1,16 +1,16 @@
-//! Nœud custom EdgeLinkd `pnex-notify` (D49–D54) — notification
-//! multi-canaux rendue depuis un template minijinja de l'org.
+//! Custom EdgeLinkd node `pnex-notify` (D49–D54) — multi-channel
+//! notification rendered from an org minijinja template.
 //!
-//! Doctrine D50 (snapshot au deploy) : ce nœud porte dans l'artefact un
-//! **snapshot** résolu par le backend (`pnex_notify_channels` enabled-only +
-//! `pnex_notify_template`) — il ne fait **aucune** résolution ni aller-
-//! retour backend au send (le backend ne lie jamais le moteur). Éditer un
-//! canal/template ne mute pas les flows déjà déployés : re-déployer.
+//! D50 doctrine (snapshot at deploy): this node carries in the artefact a
+//! **snapshot** resolved by the backend (`pnex_notify_channels` enabled-only +
+//! `pnex_notify_template`) — it does **no** resolution nor backend
+//! round-trip at send (the backend never links the engine). Editing a
+//! channel/template does not mutate already deployed flows: redeploy.
 //!
-//! Sémantique D53 : **lenient par défaut** — un échec d'envoi ne fait pas
-//! tomber le flow (warn + passthrough) ; `strict: true` → le message est
-//! rejeté (erreur routée vers `flow.handle_error`, flow_error isolé,
-//! jamais de crash-loop). Le msg est **toujours** forwardé en sortie.
+//! D53 semantics: **lenient by default** — a send failure does not bring
+//! the flow down (warn + passthrough); `strict: true` → the message is
+//! rejected (error routed to `flow.handle_error`, isolated flow_error,
+//! never a crash-loop). The msg is **always** forwarded to the output.
 //!
 //! Named-anchor mode (non-empty template vars stamped in the snapshot):
 //! "complete set then clear" accumulation — each message fills the vars
@@ -39,9 +39,9 @@
 //! The gate is MANDATORY: an artifact without the flag (unwired trigger) is
 //! refused at build — the old always-send semantics spammed on fast sources.
 //!
-//! Secrets : les canaux `websocket` reçoivent leurs coordonnées
-//! (`PNEX_NOTIFY_DELIVER_URL`/`_TOKEN`) de l'env du runtime — absentes au
-//! build ⇒ `BadFlowsJson` explicite.
+//! Secrets: `websocket` channels get their coordinates
+//! (`PNEX_NOTIFY_DELIVER_URL`/`_TOKEN`) from the runtime env — missing at
+//! build ⇒ explicit `BadFlowsJson`.
 //!
 //! Vault (secrets.md D115, lot S4): the snapshot only carries
 //! `{"secret_id"}` references. The node fetches their values from
@@ -71,12 +71,12 @@ use edgelink_core::runtime::nodes::*;
 use edgelink_core::{EdgelinkError, Result};
 use edgelink_macro::*;
 
-/// Point d'ancrage référencé par le binaire `pnex-flow-runtime` : garantit que
-/// l'édition de liens conserve les soumissions `inventory` de ce crate.
+/// Anchor referenced by the `pnex-flow-runtime` binary: guarantees that
+/// linking keeps this crate's `inventory` submissions.
 pub fn registered() {}
 
-/// Canal résolu du snapshot — l'artefact ne transporte jamais les canaux
-/// désactivés (filtrés au deploy, cf. `resolve_notify_snapshots`).
+/// Resolved channel of the snapshot — the artefact never carries disabled
+/// channels (filtered at deploy, see `resolve_notify_snapshots`).
 #[derive(Debug, Deserialize)]
 struct ChannelSnapshot {
     id: String,
@@ -90,19 +90,19 @@ struct TemplateSnapshot {
     #[serde(default)]
     subject: Option<String>,
     body: String,
-    /// Vars de template stampées au deploy depuis la colonne mergée
-    /// (« détectées + déclarées ») — non vide ⇒ mode accumulation « set
-    /// complet puis clear » : chaque message remplit les vars (topic = nom
-    /// via les taggers, sinon clés du payload objet), le rendu + envoi
-    /// n'ont lieu qu'au set complet, puis reset. Vide ⇒ mode immédiat
-    /// (rendu + envoi à chaque message, vieux flows inchangés).
+    /// Template vars stamped at deploy from the merged column
+    /// ("detected + declared") — non-empty ⇒ "complete set then clear"
+    /// accumulation mode: each message fills the vars (topic = name
+    /// via the taggers, otherwise keys of the object payload), render + send
+    /// only happen once the set is complete, then reset. Empty ⇒ immediate mode
+    /// (render + send on every message, old flows unchanged).
     #[serde(default)]
     vars: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct PnexNotifyNodeConfig {
-    /// Estampilles de traçabilité du deploy.
+    /// Deploy traceability stamps.
     #[serde(default)]
     pnex_flow_id: i64,
     #[serde(default)]
@@ -113,25 +113,25 @@ struct PnexNotifyNodeConfig {
     /// Graph node id stamped at deploy (journal + message meta).
     #[serde(default)]
     pnex_node_id: String,
-    /// Un échec d'envoi rejette le message (strict) ou passe sous silence
-    /// (lenient, défaut).
+    /// A send failure rejects the message (strict) or is silently ignored
+    /// (lenient, default).
     #[serde(default)]
     strict: bool,
-    /// Overrides du nœud — littéral OU `{{ msg.x }}` (composition 2 niveaux).
+    /// Node overrides — literal OR `{{ msg.x }}` (2-level composition).
     #[serde(default)]
     vars: BTreeMap<String, String>,
-    /// Snapshot des canaux (résolu au deploy, clés estampées par le
-    /// backend) — **requis** : un artefact sans snapshot est un artefact
-    /// périmé (refus explicite au build).
+    /// Channel snapshot (resolved at deploy, keys stamped by the
+    /// backend) — **required**: an artefact without a snapshot is a stale
+    /// artefact (explicit refusal at build).
     #[serde(rename = "pnex_notify_channels")]
     channels: Vec<ChannelSnapshot>,
-    /// Snapshot du template — **requis** au même titre.
+    /// Template snapshot — **required** likewise.
     #[serde(rename = "pnex_notify_template")]
     template: TemplateSnapshot,
-    /// Anti-spam — fenêtre fixe « max N envois / fenêtre de D secondes » :
-    /// le premier envoi ouvre la fenêtre, le surplus est bloqué (warn,
-    /// l'envoi est différé — pas perdu — quand des vars sont accumulées ;
-    /// jeté en mode immédiat). `None` = pas de limite.
+    /// Anti-spam — fixed window "max N sends / window of D seconds":
+    /// the first send opens the window, the surplus is blocked (warn,
+    /// the send is deferred — not lost — when vars are accumulated;
+    /// dropped in immediate mode). `None` = no limit.
     #[serde(default)]
     anti_spam: Option<pnex_core::AntiSpamConfig>,
     /// Boolean gate input, deploy-derived (true iff a wire is annotated on
@@ -153,16 +153,16 @@ struct PnexNotifyNodeConfig {
     pnex_version: i64,
 }
 
-/// État muable du nœud (école vendor join.rs : `Mutex` std, scopes courts,
-/// jamais gardé across `.await`) — accumulation des vars (mode ancres
-/// nommées) + fenêtre anti-spam.
+/// Mutable node state (vendor join.rs pattern: std `Mutex`, short scopes,
+/// never held across `.await`) — var accumulation (named-anchor
+/// mode) + anti-spam window.
 #[derive(Debug, Default)]
 struct NotifyNodeState {
-    /// Vars remplies en attente du set complet (mode accumulation).
+    /// Vars filled while waiting for the complete set (accumulation mode).
     filled: BTreeMap<String, serde_json::Value>,
-    /// Début de la fenêtre anti-spam courante (None = pas encore ouverte).
+    /// Start of the current anti-spam window (None = not opened yet).
     window_start: Option<Instant>,
-    /// Envois comptés dans la fenêtre courante.
+    /// Sends counted in the current window.
     sent_in_window: u32,
     /// Trigger gate: data messages only render+send while armed (meaningful
     /// only when the trigger input is wired, `config.trigger`).
@@ -256,8 +256,8 @@ impl NotifyNodeState {
 struct PnexNotifyNode {
     base: BaseFlowNodeState,
     config: PnexNotifyNodeConfig,
-    /// Canaux prêts à l'envoi : (kind, config effective) — les canaux
-    /// websocket ont leur config composée ici depuis l'env (une fois).
+    /// Channels ready to send: (kind, effective config) — websocket
+    /// channels get their config composed here from the env (once).
     resolved: Vec<(String, serde_json::Value)>,
     /// Channel ids, aligned with `resolved` (journal entries).
     channel_ids: Vec<uuid::Uuid>,
@@ -273,7 +273,7 @@ struct PnexNotifyNode {
     recipient_check: Option<(String, String)>,
     /// Sendable configs resolved from the vault, by channel index.
     secret_cache: Mutex<BTreeMap<usize, serde_json::Value>>,
-    /// État muable : accumulation + anti-spam.
+    /// Mutable state: accumulation + anti-spam.
     state: Mutex<NotifyNodeState>,
     /// Wakes the commit task when a trigger commit gets scheduled.
     commit_wake: tokio::sync::Notify,
@@ -316,8 +316,8 @@ impl PnexNotifyNode {
         };
         for ch in &cfg.channels {
             if ch.kind == "websocket" {
-                // Coordonnées injectées par le supervisor ( FlowSettings
-                // .notify_deliver → apply_runtime_env). Jamais en flows.json.
+                // Coordinates injected by the supervisor ( FlowSettings
+                // .notify_deliver → apply_runtime_env). Never in flows.json.
                 let url = std::env::var("PNEX_NOTIFY_DELIVER_URL").map_err(|_| {
                     EdgelinkError::InvalidOperation(
                         "pnex-notify: PNEX_NOTIFY_DELIVER_URL missing from the runtime \
@@ -986,9 +986,9 @@ fn fill_vars(
     stamped.iter().all(|v| filled.contains_key(v))
 }
 
-/// Porte anti-spam fenêtre fixe : true = envoi autorisé. Le premier envoi
-/// ouvre la fenêtre ; `max_msgs` envois y sont autorisés, ensuite refusé
-/// jusqu'à expiration (`window_secs`), puis la fenêtre se rouvre.
+/// Fixed-window anti-spam gate: true = send allowed. The first send
+/// opens the window; `max_msgs` sends are allowed in it, then refused
+/// until expiry (`window_secs`), then the window reopens.
 fn anti_spam_gate(
     window_start: &mut Option<Instant>,
     sent_in_window: &mut u32,
@@ -1101,8 +1101,8 @@ impl FlowNodeBehavior for PnexNotifyNode {
                 self.as_ref(),
                 cancel.child_token(),
                 |node: &PnexNotifyNode, msg: MsgHandle| async move {
-                    // `with_uow` route les erreurs vers `flow.handle_error` sans
-                    // les logger : on journalise ici pour l'exploitation.
+                    // `with_uow` routes errors to `flow.handle_error` without
+                    // logging them: we log here for operations.
                     match node.execute(msg.clone(), cancel.child_token()).await {
                         Ok(()) => Ok(()),
                         Err(e) => {
@@ -1139,7 +1139,7 @@ mod tests {
         let reg = RegistryBuilder::default().build().expect("registre");
         let meta = reg
             .get("pnex-notify")
-            .expect("nœud pnex-notify absent du registre");
+            .expect("pnex-notify node missing from the registry");
         assert_eq!(meta.type_, "pnex-notify");
     }
 
@@ -1148,8 +1148,8 @@ mod tests {
         registered();
     }
 
-    /// L'artefact périmé (sans snapshot) est refusé avec un message
-    /// explicite « redéployez » — jamais de nœud silencieux sans canaux.
+    /// The stale artefact (without snapshot) is refused with an explicit
+    /// "redeploy" message — never a silent node without channels.
     #[test]
     fn config_rejete_snapshot_manquant() {
         let err = serde_json::from_str::<PnexNotifyNodeConfig>(
@@ -1170,11 +1170,11 @@ mod tests {
                 "anti_spam": {"max_msgs": 3, "window_secs": 600}
             }"#,
         )
-        .expect("snapshot complet désérialisable");
+        .expect("complete snapshot deserializable");
         assert!(cfg.strict);
         assert_eq!(cfg.channels.len(), 1);
         assert_eq!(cfg.template.body, "{{ value }}");
-        // Nouveautés : vars du snapshot (mode accumulation) + anti-spam.
+        // New: snapshot vars (accumulation mode) + anti-spam.
         assert!(cfg.template.vars.is_empty());
         assert_eq!(
             cfg.anti_spam,
@@ -1318,7 +1318,7 @@ mod tests {
                 "pnex_notify_template": {"body": "x", "vars": ["seuil", "value"]}
             }"#,
         )
-        .expect("vars de snapshot désérialisables");
+        .expect("snapshot vars deserializable");
         assert_eq!(
             cfg.template.vars,
             vec!["seuil".to_string(), "value".to_string()]
@@ -1329,14 +1329,14 @@ mod tests {
     fn fill_par_topic_puis_par_cles_payload() {
         let stamped = vec!["seuil".to_string(), "value".to_string()];
         let mut filled = BTreeMap::new();
-        // Tagger : topic = var, payload entier = valeur de la var.
+        // Tagger: topic = var, whole payload = the var's value.
         assert!(!fill_vars(
             &mut filled,
             &stamped,
             Some("seuil"),
             &serde_json::json!(80),
         ));
-        // Payload objet : les clés stampées remplissent leurs vars.
+        // Object payload: the stamped keys fill their vars.
         assert!(fill_vars(
             &mut filled,
             &stamped,
@@ -1493,9 +1493,9 @@ mod tests {
 
     #[test]
     fn fill_immediate_mode_complete_on_first_msg() {
-        // Sans var stampée, pas d'accumulation (le mode immédiat est géré en
-        // amont par la branche vars.is_empty() — ici on vérifie que fill
-        // sur un set vide est trivialement complet).
+        // Without a stamped var, no accumulation (immediate mode is handled
+        // upstream by the vars.is_empty() branch — here we check that fill
+        // on an empty set is trivially complete).
         let mut filled = BTreeMap::new();
         assert!(fill_vars(
             &mut filled,
@@ -1527,13 +1527,13 @@ mod tests {
         let mut start = None;
         let mut count = 0;
         let t0 = Instant::now();
-        // Fenêtre fraîche : max envois autorisés.
+        // Fresh window: max sends allowed.
         assert!(anti_spam_gate(&mut start, &mut count, cfg, t0));
         assert!(anti_spam_gate(&mut start, &mut count, cfg, t0));
         assert!(anti_spam_gate(&mut start, &mut count, cfg, t0));
-        // 4e dans la fenêtre : bloqué.
+        // 4th in the window: blocked.
         assert!(!anti_spam_gate(&mut start, &mut count, cfg, t0));
-        // Après expiration : la fenêtre se rouvre (compteur reset).
+        // After expiry: the window reopens (counter reset).
         assert!(anti_spam_gate(
             &mut start,
             &mut count,
@@ -1551,8 +1551,8 @@ mod tests {
         };
         let mut start = None;
         let mut count = 0;
-        // Instant::now() « loin » dans le futur d'un start=None : aucune
-        // expiration possible, la fenêtre s'ouvre au 1er appel.
+        // Instant::now() "far" in the future of a start=None: no
+        // expiry possible, the window opens on the 1st call.
         let t0 = Instant::now();
         assert!(anti_spam_gate(&mut start, &mut count, cfg, t0));
         assert_eq!(start, Some(t0));

@@ -1,12 +1,12 @@
-//! Canal `ntfy` — push vers un serveur ntfy (ntfy.sh ou self-hosté).
+//! `ntfy` channel — push to an ntfy server (ntfy.sh or self-hosted).
 //!
-//! Publication **en JSON** (`POST {server}/` avec `{topic, message,
-//! title, priority, tags}`) et non en headers `X-Title` : le sujet vient
-//! d'un template (UTF-8 arbitraire), et un header HTTP non-ASCII ferait
-//! refuser/planter la requête côté reqwest. D54 : le token est un champ
-//! secret write-only, transmis en `Authorization: Bearer`, jamais en URL
-//! ni loggé. Pas de garde de taille (D63) : au-delà de 4096 octets le
-//! serveur ntfy attache en pièce jointe au lieu de rejeter.
+//! Publishing **as JSON** (`POST {server}/` with `{topic, message,
+//! title, priority, tags}`) and not as `X-Title` headers: the subject comes
+//! from a template (arbitrary UTF-8), and a non-ASCII HTTP header would make
+//! reqwest refuse/crash the request. D54: the token is a write-only secret
+//! field, sent as `Authorization: Bearer`, never in the URL
+//! nor logged. No size guard (D63): beyond 4096 bytes the
+//! ntfy server attaches it as a file instead of rejecting.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -140,8 +140,8 @@ impl Channel for NtfyChannel {
     }
 }
 
-/// Topic ntfy : `[-_A-Za-z0-9]{1,64}` — contrainte du serveur, testée
-/// côté canal pour un message d'erreur affichable.
+/// ntfy topic: `[-_A-Za-z0-9]{1,64}` — server constraint, checked
+/// on the channel side for a displayable error message.
 fn topic_valide(topic: &str) -> bool {
     !topic.is_empty()
         && topic.len() <= 64
@@ -215,8 +215,8 @@ mod tests {
 
     #[tokio::test]
     async fn http_401_non_retryable_et_500_retryable() {
-        // Le canal poste toujours sur `{server}/` — un seul récepteur, un
-        // compteur pour varier la réponse (401 puis 500).
+        // The channel always posts to `{server}/` — a single receiver, a
+        // counter to vary the response (401 then 500).
         use std::sync::atomic::{AtomicU32, Ordering};
         let calls = Arc::new(AtomicU32::new(0));
         let calls_for_handler = calls.clone();

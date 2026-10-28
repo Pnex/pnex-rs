@@ -4,7 +4,7 @@ use super::*;
 
 // ─────────────── pnex-notify (D49–D54) ───────────────
 
-/// Lignes de vars éditables `(clé, valeur)` — littéral OU `{{ msg.x }}`.
+/// Editable var rows `(key, value)` — literal OR `{{ msg.x }}`.
 type NotifyVarRows = Vec<(String, String)>;
 
 /// Nil UUID of the "no template" option — also the template-pick sentinel.
@@ -12,7 +12,7 @@ const NIL_UUID: &str = "00000000-0000-0000-0000-000000000000";
 
 #[component]
 pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write: bool) -> Element {
-    // Copiés avant le move d'`initial` dans les signaux (école DebugForm).
+    // Copied before `initial` is moved into the signals (DebugForm approach).
     let strict = initial.strict;
     let attach_field = initial.attach_field.clone();
     let to_field = initial.to_field.clone();
@@ -31,8 +31,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
     // Template vars already stamped into the node (canvas anchors) — the
     // reference to re-stamp a node whose template changed.
     let mut stamped_vars = use_signal(|| initial.template_vars.clone());
-    // Anti-spam : enable + max + fenêtre en minutes (fenêtre fixe « compteur
-    // × durée », une phrase lisible — l'AntiSpamConfig porte des secondes).
+    // Anti-spam: enable + max + window in minutes (fixed "count
+    // × duration" window, one readable sentence — AntiSpamConfig carries seconds).
     let mut anti_enabled = use_signal(move || anti.is_some());
     let mut anti_max = use_signal(move || anti.map_or("3".to_string(), |a| a.max_msgs.to_string()));
     let mut anti_window_min =
@@ -98,8 +98,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
         });
     });
 
-    // Commit anti-spam : clamp min côté form (max ≥ 1, fenêtre ≥ 1 min) —
-    // validate_graph reste le garde-fou structurel.
+    // Anti-spam commit: min clamp on the form side (max ≥ 1, window ≥ 1 min) —
+    // validate_graph remains the structural safeguard.
     let mut commit_anti_spam = move |enabled: bool| {
         let rule = if enabled {
             Some(pnex_core::AntiSpamConfig {
@@ -136,8 +136,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
             (id, label, selected)
         })
         .collect();
-    // Vars du template sélectionné (colonne mergée « détectées + déclarées »)
-    // — lues du live (resource), jamais du stamp graphique.
+    // Vars of the selected template (merged "detected + declared" column)
+    // — read from live (resource), never from the graph stamp.
     let template_vars_now: Vec<String> = templates_value
         .iter()
         .find(|tpl| tpl.id.to_string() == selected_template)
@@ -146,7 +146,7 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
 
     rsx! {
         div { class: "space-y-3",
-            // ── Canaux (rows répétables, école DeviceForm) ──
+            // ── Channels (repeatable rows, DeviceForm approach) ──
             div { class: "space-y-1",
                 span { class: "text-xs font-medium text-gray-500 block", {t!("flows-notify-channels")} }
                 for (i, cid) in channel_rows.iter().enumerate() {
@@ -215,8 +215,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
                         option { value: tpl_id.clone(), selected: tpl_selected, {tpl_label} }
                     }
                 }
-                // Vars du template = ancres d'entrée nommées (stampées au
-                // pick, routées au deploy par tagger topic = var).
+                // Template vars = named input anchors (stamped on
+                // pick, routed at deploy by topic tagger = var).
                 if !template_vars_now.is_empty() {
                     div { class: "space-y-1",
                         span { class: "text-xs text-gray-500 block",
@@ -418,8 +418,8 @@ pub(super) fn NotifyForm(mut cx: EditorCx, initial: NotifyNodeConfig, can_write:
     }
 }
 
-/// Une ligne de sélection de canal — composant dédié (pas de `let` dans le
-/// `for` rsx, piège dioxus). `on_pick((index, channel_id))` remonte le choix.
+/// A channel selection row — dedicated component (no `let` in the
+/// rsx `for`, dioxus pitfall). `on_pick((index, channel_id))` reports the choice.
 #[component]
 fn NotifyChannelRow(
     index: usize,
@@ -428,7 +428,7 @@ fn NotifyChannelRow(
     can_write: bool,
     on_pick: EventHandler<(usize, String)>,
 ) -> Element {
-    // Options pré-calculées (pas de `let` dans un `for` rsx).
+    // Precomputed options (no `let` in an rsx `for`).
     let options: Vec<(String, String, bool)> = channels
         .iter()
         .map(|ch| {

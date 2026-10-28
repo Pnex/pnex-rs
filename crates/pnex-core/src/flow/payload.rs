@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// Map numérique extraite d'un payload (clés device sanitisées → valeur).
+/// Numeric map extracted from a payload (sanitized device keys → value).
 pub type NumericMap = std::collections::HashMap<String, f64>;
 
 /// Input contract of the `calc` node: a JSON object whose numeric keys are
@@ -43,8 +43,8 @@ pub fn numeric_map_from_payload(
     Ok(out)
 }
 
-/// Contrat d'entrée du nœud `metric` : une valeur numérique (sortie d'un
-/// nœud `calc`) — booléen converti 1/0, sinon rejet typé.
+/// Input contract of the `metric` node: a numeric value (output of a
+/// `calc` node) — boolean converted to 1/0, otherwise typed rejection.
 pub fn metric_value_from_payload(
     payload: Option<&serde_json::Value>,
 ) -> Result<f64, FlowViolation> {

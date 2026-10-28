@@ -1,8 +1,8 @@
-//! Authentification côté front : PKCE (génération + redirection), session.
+//! Front-side authentication: PKCE (generation + redirect), session.
 
 pub mod pkce;
 
-// Login natif : navigateur système + pont backend (polling) — n'existe pas
-// sur web, où le callback /auth/callback arrive dans le même navigateur.
+// Native login: system browser + backend bridge (polling) — does not exist
+// on the web, where the /auth/callback callback lands in the same browser.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod native;

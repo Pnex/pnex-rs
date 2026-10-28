@@ -3,7 +3,7 @@ name = "pnex-node-starlark"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Nœud de flow PNEX — exécuteur Starlark sandboxé (registre « Fonctions »)"
+description = "PNEX flow node — sandboxed Starlark executor (\"Functions\" registry)"
 
 [dependencies]
 pnex-core = { workspace = true }

@@ -1,13 +1,13 @@
-//! Canal `websocket` — bus interne du serveur (D51, amendé 2026-09-14 :
-//! pas de centre de notif dans le front, le WS est un canal configurable
-//! que tout client externe authentifié consomme via `/ws/notify`).
+//! `websocket` channel — the server's internal bus (D51, amended 2026-09-14:
+//! no notification center in the front, the WS is a configurable channel
+//! consumed by any authenticated external client via `/ws/notify`).
 //!
-//! Particularité : la config DB du canal est `{}` — les coordonnées de
-//! livraison (`deliver_url`, `token`) sont **injectées** :
-//! - runtime de flows : env `PNEX_NOTIFY_DELIVER_URL` / `PNEX_NOTIFY_DELIVER_TOKEN`
-//!   (posées par le supervisor via `apply_runtime_env`) ;
-//! - backend (boutons Test) : `in_app_runtime_config(settings)`.
-//!   Aucun secret notify dans flows.json, même au sens permissif D54.
+//! Particularity: the channel's DB config is `{}` — the delivery
+//! coordinates (`deliver_url`, `token`) are **injected**:
+//! - flow runtime: env `PNEX_NOTIFY_DELIVER_URL` / `PNEX_NOTIFY_DELIVER_TOKEN`
+//!   (set by the supervisor via `apply_runtime_env`);
+//! - backend (Test buttons): `in_app_runtime_config(settings)`.
+//!   No notify secret in flows.json, even in the permissive D54 sense.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -16,8 +16,8 @@ use crate::channels::{str_field, INTERNAL_CLIENT};
 use crate::error::NotifyError;
 use crate::{Channel, Message};
 
-/// POST vers l'endpoint interne `deliver` du backend — le backend journalise
-/// (source `flow`) puis diffuse la frame aux sessions WS de l'org.
+/// POST to the backend's internal `deliver` endpoint — the backend logs
+/// (source `flow`) then broadcasts the frame to the org's WS sessions.
 pub struct WebSocketChannel;
 
 #[async_trait]
@@ -26,15 +26,15 @@ impl Channel for WebSocketChannel {
         "websocket"
     }
 
-    /// Aucun champ éditable — le front rend un bloc informatif.
+    /// No editable field — the front renders an informative block.
     fn field_spec(&self) -> Vec<pnex_core::FieldSpec> {
         vec![]
     }
 
     fn validate(&self, _config: &serde_json::Value) -> Result<(), String> {
-        // Config DB toujours vide ; les coords injectées sont validées au
-        // send (Config error) et au build du nœud (BadFlowsJson si env
-        // absente).
+        // DB config always empty; the injected coords are validated at
+        // send (Config error) and at node build (BadFlowsJson if env
+        // missing).
         Ok(())
     }
 
@@ -62,8 +62,8 @@ impl Channel for WebSocketChannel {
             "body": msg.body,
             "meta": msg.meta,
         });
-        // Le token ne transite QUE dans le header (D54 : jamais dans une
-        // URL, qui est loggable).
+        // The token travels ONLY in the header (D54: never in a
+        // URL, which is loggable).
         let resp = INTERNAL_CLIENT
             .post(deliver_url)
             .bearer_auth(token)
@@ -75,7 +75,7 @@ impl Channel for WebSocketChannel {
             .json(&payload)
             .send()
             .await
-            .map_err(|e| NotifyError::Network(format!("deliver inatteignable : {e}")))?;
+            .map_err(|e| NotifyError::Network(format!("deliver unreachable: {e}")))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(NotifyError::Http {

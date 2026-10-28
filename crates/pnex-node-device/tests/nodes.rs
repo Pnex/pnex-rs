@@ -1,7 +1,7 @@
-//! Tests des nœuds device/calc/metric — registre `inventory` + client O2
-//! contre un serveur HTTP mocké (axum, pattern `spawn_mock_rauthy` du
-//! backend). Le remote-write capturé est décodé (snappy+prost) pour vérifier
-//! les labels exacts des séries `etl_*`.
+//! device/calc/metric node tests — `inventory` registry + O2 client
+//! against a mocked HTTP server (axum, the backend's `spawn_mock_rauthy`
+//! pattern). The captured remote-write is decoded (snappy+prost) to check
+//! the exact labels of the `etl_*` series.
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -11,8 +11,8 @@ use prost::Message;
 
 type CapturedLabels = Arc<Mutex<Vec<Vec<Vec<(String, String)>>>>>;
 
-/// Mock O2 : GET …/query → réponse vector JSON ; POST …/write → décode
-/// prompb (snappy) et stocke les labels. Refuse 401 sans Authorization.
+/// O2 mock: GET …/query → JSON vector response; POST …/write → decodes
+/// prompb (snappy) and stores the labels. Refuses 401 without Authorization.
 async fn spawn_mock_o2() -> (String, CapturedLabels) {
     let captured: CapturedLabels = Arc::default();
     let store = captured.clone();
@@ -89,9 +89,9 @@ async fn spawn_mock_o2() -> (String, CapturedLabels) {
     (format!("http://{addr}"), captured)
 }
 
-/// Env O2 factice pour `O2Client::from_env`. Les tests partagent UN mock :
-/// les vars d'env sont process-global, deux mocks sur des ports différents
-/// se marcheraient dessus (tests parallèles).
+/// Fake O2 env for `O2Client::from_env`. The tests share ONE mock:
+/// env vars are process-global, two mocks on different ports
+/// would step on each other (parallel tests).
 fn set_env(base: &str) {
     std::env::set_var("OPENOBSERVE_URL", base);
     std::env::set_var("OPENOBSERVE_ROOT_EMAIL", "root@pnex.local");
@@ -107,14 +107,14 @@ async fn client_o2_lit_et_ecrit() {
     set_env(&base);
     let client = pnex_node_device::o2::O2Client::from_env().expect("client");
 
-    // ── Lecture : dernière valeur de la série (fenêtre fraîche). ──
+    // ── Read: last value of the series (fresh window). ──
     let sample = client
         .query_last("pnex_org_1", "d1", "cap-1", 60.0)
         .await
         .expect("query");
     assert_eq!(sample, Some((21.5, 1_786_890_000_500)));
 
-    // ── Écriture : remote-write → labels vérifiés après décodage. ──
+    // ── Write: remote-write → labels checked after decoding. ──
     let series = vec![pnex_node_device::o2::etl_series(
         "etl_moyenne".into(),
         "flow_9".into(),
@@ -124,7 +124,7 @@ async fn client_o2_lit_et_ecrit() {
     client.write("pnex_org_1", series).await.expect("write");
 
     let writes = captured.lock().expect("lock");
-    assert_eq!(writes.len(), 1, "un seul remote-write");
+    assert_eq!(writes.len(), 1, "a single remote-write");
     let labels = &writes[0][0];
     let get = |name: &str| {
         labels
@@ -153,16 +153,16 @@ fn registre_contient_les_noeuds_device() {
     ] {
         let meta = reg
             .get(type_name)
-            .unwrap_or_else(|| panic!("nœud {type_name} absent du registre"));
+            .unwrap_or_else(|| panic!("node {type_name} missing from the registry"));
         assert_eq!(meta.type_, type_name);
     }
 }
 
 #[test]
 fn noms_et_cles_phase6() {
-    // Clés de payload device : identiques éditeur/runtime.
+    // Device payload keys: identical editor/runtime.
     assert_eq!(pnex_core::device_payload_key("cap-1", "D1"), "cap_1_D1");
-    // Préfixe etl_ idempotent + normalisé.
+    // etl_ prefix idempotent + normalized.
     assert_eq!(
         pnex_core::etl_metric_name("Moyenne Serre"),
         "etl_moyenne_serre"

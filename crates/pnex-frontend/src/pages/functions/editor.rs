@@ -1,10 +1,10 @@
 use super::*;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY_SM};
 
-/// Éditeur d'une fonction : métadonnées, code, aperçu de signature (extraction
-/// wasm des directives), test en live, historique. Remonté par `key` sur
-/// `fn_id` ; le compteur `generation` re-charge le détail après save (et
-/// ré-initialise les champs — la vérité serveur remplace l'état local).
+/// Editor of a function: metadata, code, signature preview (wasm extraction
+/// of the directives), live test, history. Remounted by `key` on
+/// `fn_id`; the `generation` counter reloads the detail after save (and
+/// resets the fields — the server truth replaces the local state).
 #[component]
 pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>) -> Element {
     let mut generation = use_signal(|| 0u32);
@@ -16,8 +16,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         async move { (gen, api::functions::detail(fn_id).await) }
     });
 
-    // Champs édités localement, initialisés depuis le détail (une fois par
-    // génération — l'effet ne re-crashe pas les saisies entre deux reloads).
+    // Locally edited fields, initialised from the detail (once per
+    // generation — the effect does not clobber input between two reloads).
     let mut name = use_signal(String::new);
     let mut description = use_signal(String::new);
     let mut code = use_signal(String::new);
@@ -38,12 +38,12 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         init_done.set(Some(gen));
     });
 
-    // Aperçu de signature : la même extraction que le save serveur, en wasm.
+    // Signature preview: the same extraction as the server save, in wasm.
     let signature = parse_directives(&code());
     let mut versions_open = use_signal(|| false);
     let mut test_open = use_signal(|| false);
 
-    // Validation live (compile-only, débounced) + référence/snippets.
+    // Live validation (compile-only, debounced) + reference/snippets.
     let mut server_diags: Signal<Vec<pnex_core::FunctionDiagnostic>> = use_signal(Vec::new);
     let mut validate_gen = use_signal(|| 0u64);
     let mut ref_open = use_signal(|| false);
@@ -55,8 +55,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         insert_req.set(Some((insert_gen(), text)));
     };
 
-    // Débounce 700 ms : la dernière génération seule écrit ; les erreurs
-    // d'infra (503) dégradent en silence (barre vidée, pas de toast).
+    // 700 ms debounce: only the latest generation writes; infra
+    // errors (503) degrade silently (bar cleared, no toast).
     use_effect(move || {
         let current = code();
         validate_gen.with_mut(|g| *g += 1);
@@ -79,15 +79,15 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         });
     });
 
-    // Panneau de test : valeurs brutes par input (converties à l'exécution),
-    // msg entrant simulé, résultat.
+    // Test panel: raw values per input (converted at execution),
+    // simulated incoming msg, result.
     let test_inputs = use_signal(BTreeMap::<String, String>::new);
     let test_msg = use_signal(|| "{}".to_string());
     let mut test_result = use_signal(|| None::<FunctionTestResponse>);
     let mut test_running = use_signal(|| false);
 
-    // Dirty : comparaison à la dernière valeur chargée (jamais un signal
-    // dirty tenu à jour — leçon brick0 « zéro set en render »).
+    // Dirty: comparison with the last loaded value (never a dirty signal
+    // kept up to date — brick0 lesson "zero set in render").
     let dirty = loaded().is_some_and(|d| {
         code() != d.code
             || name().trim() != d.name
@@ -118,20 +118,20 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 expected_version_number: expected,
                 code: params_code,
                 name: params_name,
-                // Some(vide) = réinitialisation de la description côté serveur.
+                // Some(empty) = reset of the description on the server.
                 description: params_description.map(|v| v.unwrap_or_default()),
                 note: None,
             };
             match api::functions::save_version(fn_id, params).await {
                 Ok(_) => {
                     toasts::success("toast-function-saved");
-                    // Reload du détail → l'effet ré-initialise les champs et
-                    // `current_version_number` est à jour (nouvelle version).
+                    // Reload of the detail → the effect resets the fields and
+                    // `current_version_number` is up to date (new version).
                     generation.with_mut(|g| *g += 1);
                 }
                 Err(err) if err.status == Some(409) => {
-                    // Version périmée : quelqu'un a sauvé avant nous —
-                    // rechargement simple + toast (pas de modal overwrite).
+                    // Stale version: someone saved before us —
+                    // simple reload + toast (no overwrite modal).
                     toasts::error(t!("functions-save-conflict").to_string());
                     generation.with_mut(|g| *g += 1);
                 }
@@ -140,8 +140,8 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         });
     };
 
-    // Exécution du test : conversion typée des valeurs brutes, code ad-hoc =
-    // contenu courant du textarea (testable avant save).
+    // Test run: typed conversion of the raw values, ad-hoc code =
+    // current content of the textarea (testable before save).
     let run_test = move |_| {
         let Ok(sig) = parse_directives(&code()) else {
             toasts::error(t!("functions-test-directives-invalid").to_string());
@@ -212,7 +212,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
 
     let detail_language = loaded().map(|d| d.language).unwrap_or(FunctionLanguage::Js);
 
-    // "Formater" : réindentation complète du buffer (idempotent).
+    // "Format": full reindentation of the buffer (idempotent).
     let format_code = move |_| {
         let current = code();
         let formatted = crate::components::code_editing::reindent(&current, detail_language);
@@ -221,7 +221,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
         }
     };
 
-    // Insertion des directives d'un port non déclaré (chips + tout ajouter).
+    // Insertion of the directives of an undeclared port (chips + add all).
     let declare_ports = |names: Vec<(String, bool)>, base: String| {
         move |_| {
             let mut next = base.clone();
@@ -328,7 +328,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 }
             }
 
-            // ── Code + aside (aperçu nœud, détectés, ports) ──
+            // ── Code + aside (node preview, detected, ports) ──
             div { class: "grid grid-cols-1 xl:grid-cols-3 gap-4 items-start",
                 div { class: "xl:col-span-2 space-y-0",
                     div { class: "flex items-center gap-2 px-3.5 py-2 rounded-t-xl border border-b-0 border-gray-200 bg-white",
@@ -450,7 +450,7 @@ pub(super) fn FunctionEditor(fn_id: i64, can_write: bool, on_back: Callback<()>)
                 }
             }
 
-            // ── Modale Référence (snippets + lecture) ──
+            // ── Reference modal (snippets + reading) ──
             FunctionsReferenceModal {
                 open: ref_open(),
                 lang: detail_language,

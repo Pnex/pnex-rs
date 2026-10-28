@@ -3,8 +3,8 @@ use super::*;
 
 // ─────────────── device-read / device-write (2026-09-19) ───────────────
 
-/// Toutes les pins d'un device (n'importe quel mode) — le nœud device-read
-/// peut relire l'état des sorties aussi bien que les entrées.
+/// All pins of a device (any mode) — the device-read node can read back
+/// the state of outputs as well as inputs.
 fn all_pins_of(
     devices: &Resource<Vec<pnex_core::Device>>,
     cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinoutPin>>>,
@@ -150,8 +150,8 @@ fn metric_rows_of(
         .collect()
 }
 
-/// Charge le pinout du device référencé par le nœud courant (cache + effet
-/// graphe-dépendant, école DeviceForm historique). Retourne le pk du device.
+/// Loads the pinout of the device referenced by the current node (cache +
+/// graph-dependent effect, historical DeviceForm school). Returns the device pk.
 /// Picker label: the slug, marked when the device is offline (O68).
 fn device_option_label(device: &pnex_core::Device) -> String {
     if device.active {
@@ -230,11 +230,11 @@ pub(super) fn DeviceReadForm(
         &all_pins_of(&devices, &pins_cache, &device_slug),
         &initial.pins,
     );
-    // Pas de `let` dans rsx : (pin, déjà cochée, pin de sortie) précalculés.
-    // Une pin de sortie (digital_out/pwm_out) n'est pas une entrée de
-    // lecture : checkbox **désactivée** (grisée) — sauf si déjà cochée
-    // (config héritée : il faut pouvoir la décocher), la validation reste
-    // le garde-fou.
+    // No `let` in rsx: (pin, already checked, output pin) precomputed.
+    // An output pin (digital_out/pwm_out) is not a read
+    // input: checkbox **disabled** (greyed) — unless already checked
+    // (inherited config: it must be uncheckable), validation stays
+    // the safeguard.
     let pin_rows: Vec<(api::pins::PinoutPin, bool, bool)> =
         all_pins_of(&devices, &pins_cache, &device_slug)
             .into_iter()

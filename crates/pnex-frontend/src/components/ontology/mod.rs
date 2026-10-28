@@ -80,7 +80,7 @@ pub fn precision_label(p: &str) -> String {
 
 /// A `fuzzy_time` value read at its precision: `2019-03` for a month,
 /// `≈ a → b` for an approximation (UTC).
-/// « 1 250,50 EUR (estimé) », in the UI language.
+/// "1 250,50 EUR (estimé)", in the UI language.  english-guard: allow (French example)
 pub fn money_label(v: &serde_json::Value) -> String {
     let Some(m) = pnex_core::ontology::schema::Money::parse(v) else {
         return v.to_string();
@@ -384,10 +384,10 @@ mod tests {
             include_str!("../../../../pnex-backend/packs/investigation.yaml"),
             include_str!("../../../../pnex-backend/packs/maintenance.yaml"),
             include_str!("../../../../pnex-backend/packs/media_coverage.yaml"),
-            include_str!("../../../../pnex-backend/packs/entreprises.yaml"),
-            include_str!("../../../../pnex-backend/packs/entreprises_fr.yaml"),
+            include_str!("../../../../pnex-backend/packs/companies.yaml"),
+            include_str!("../../../../pnex-backend/packs/companies_fr.yaml"),
             include_str!("../../../../pnex-backend/packs/quali_watch.yaml"),
-            include_str!("../../../../pnex-backend/packs/prospection_b2b.yaml"),
+            include_str!("../../../../pnex-backend/packs/prospecting_b2b.yaml"),
             include_str!("../../../../pnex-backend/packs/crm.yaml"),
         ];
         for line in packs.iter().flat_map(|p| p.lines()) {

@@ -1,8 +1,8 @@
-//! Inspecteur divulgatif (principe 4) — le configurateur n'existe qu'au clic
-//! sur un élément : glisse depuis la droite par-dessus le canvas, se ferme à
-//! la croix ou Échap. Le corps du formulaire reste la propriété de l'éditeur
-//! (`body: Element`) ; la coquille fournit l'en-tête (icône + nom + réf +
-//! croix) et le socle du panneau.
+//! Progressive-disclosure inspector (principle 4) — the configurator exists
+//! only on click on an element: slides in from the right over the canvas,
+//! closes with the cross or Escape. The form body stays owned by the editor
+//! (`body: Element`); the shell provides the header (icon + name + ref +
+//! cross) and the panel base.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -10,23 +10,23 @@ use dioxus_i18n::t;
 use super::palette::{IconView, PaletteIcon};
 use crate::components::icons;
 
-/// Panneau inspecteur — `absolute inset-y-0 right-0` dans le corps de
-/// `EditorShell`. Échap sur le panneau (ou bubbling depuis un champ du
-/// formulaire) ferme via `on_close` ; la désélection par le canvas ferme
-/// aussi (None ⇒ panneau absent).
+/// Inspector panel — `absolute inset-y-0 right-0` in the body of
+/// `EditorShell`. Escape on the panel (or bubbling from a form field)
+/// closes via `on_close`; deselecting through the canvas closes too
+/// (None ⇒ no panel).
 #[component]
 pub fn InspectorPanel(
-    /// Icône du type édité (tuile d'en-tête).
+    /// Icon of the edited type (header tile).
     #[props(default)]
     icon: Option<PaletteIcon>,
-    /// Nom de l'élément (ou label du type si le nom est vide).
+    /// Element name (or the type label if the name is empty).
     title: String,
-    /// Référence annexe (« #N1 »).
+    /// Secondary reference ("#N1").
     #[props(default)]
     subtitle: Option<String>,
-    /// Fermeture (croix / Échap) — l'éditeur désélectionne.
+    /// Close (cross / Escape) — the editor deselects.
     on_close: Callback<()>,
-    /// Corps du formulaire, fourni par l'éditeur.
+    /// Form body, provided by the editor.
     body: Element,
 ) -> Element {
     let close_label = t!("eshell-close");

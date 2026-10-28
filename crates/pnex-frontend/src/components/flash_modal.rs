@@ -1,7 +1,7 @@
-//! Modale de flash navigateur — Web Serial + esptool-js (cf. flash.rs et
-//! js/flasher.js). Les octets firmware sont téléchargés à l'ouverture, PAS au
-//! clic : `requestPort()` exige un geste utilisateur sans attente réseau
-//! intermédiaire.
+//! Browser flash modal — Web Serial + esptool-js (see flash.rs and
+//! js/flasher.js). The firmware bytes are downloaded on opening, NOT on
+//! click: `requestPort()` requires a user gesture with no network wait
+//! in between.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -14,10 +14,10 @@ use super::{icons, modal::Modal};
 use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_PRIMARY, BTN_SECONDARY};
 
-/// Étape du flow après le clic (« None » = prêt, en attente du clic).
+/// Flow step after the click ("None" = ready, waiting for the click).
 #[derive(Clone, PartialEq)]
 enum FlashState {
-    /// Stage brute du glue JS (connect/write/reset) + progression 0-100.
+    /// Raw stage of the JS glue (connect/write/reset) + progress 0-100.
     Flashing {
         stage: String,
         percent: u8,
@@ -30,7 +30,7 @@ enum FlashState {
     },
 }
 
-/// Libellé i18n d'une étape du glue JS.
+/// i18n label of a JS glue step.
 fn stage_label(stage: &str) -> String {
     match stage {
         "connect" => t!("flash-stage-connect"),
@@ -57,14 +57,14 @@ fn error_state(error: FlashError) -> Option<FlashState> {
 
 #[component]
 pub fn FlashModal(device_pk: i64, on_close: Callback<()>) -> Element {
-    // Octets du firmware (image mergée @0x0) — un téléchargement à l'ouverture.
+    // Firmware bytes (merged image @0x0) — one download on opening.
     let firmware = use_resource(move || async move { api::builds::download(device_pk).await });
     let mut state = use_signal(|| None::<FlashState>);
-    // Chip détecté au sync (affiché tel quel, ex. « ESP32-D0WD-V3 »).
+    // Chip detected at sync (shown as is, e.g. "ESP32-D0WD-V3").
     let mut chip = use_signal(String::new);
 
-    // Le clic déclenche tout le flow d'un trait : requestPort() (sélecteur
-    // natif) → sync → écriture → redémarrage.
+    // The click triggers the whole flow in one go: requestPort() (native
+    // selector) → sync → write → reboot.
     let start = move |_| {
         let bytes = match &*firmware.read() {
             Some(Ok(bytes)) => bytes.clone(),
@@ -76,8 +76,8 @@ pub fn FlashModal(device_pk: i64, on_close: Callback<()>) -> Element {
         }));
         chip.set(String::new());
         spawn(async move {
-            // Image unique @0x0 — le device est compilé par device (décision
-            // du 2026-09-02 : plus de secteur PNEXCFG à 0x200000).
+            // Single image @0x0 — the firmware is compiled per device (decision
+            // of 2026-09-02: no more PNEXCFG sector at 0x200000).
             let entries: Vec<(u32, Vec<u8>)> = vec![(0x0, bytes)];
             let outcome = flash::flash(entries, |event| match event {
                 FlashEvent::Stage { stage } => state.with_mut(|current| {
@@ -101,9 +101,9 @@ pub fn FlashModal(device_pk: i64, on_close: Callback<()>) -> Element {
                 })),
             })
             .await;
-            // Rejet de la promise JS : le glue émet déjà un événement error,
-            // ce Err réécrit le même état normalisé (ex. flasher.js absent
-            // du build).
+            // JS promise rejected: the glue already emits an error event,
+            // this Err rewrites the same normalised state (e.g. flasher.js missing
+            // from the build).
             if let Err(error) = outcome {
                 state.set(error_state(error));
             }

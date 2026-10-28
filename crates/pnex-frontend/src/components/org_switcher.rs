@@ -1,6 +1,6 @@
-//! Sélecteur d'organisation — le tenant actif (header `X-Org-Id`). Liste les
-//! orgs du user-info courant ; l'écriture passe par `state::org::set`
-//! (signal réactif + persistance, source du header côté client HTTP).
+//! Organisation switcher — the active tenant (`X-Org-Id` header). Lists the
+//! orgs of the current user-info; writing goes through `state::org::set`
+//! (reactive signal + persistence, source of the header in the HTTP client).
 
 use dioxus::prelude::*;
 

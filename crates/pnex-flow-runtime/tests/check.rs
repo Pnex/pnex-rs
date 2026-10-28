@@ -1,5 +1,5 @@
-//! Tests E2E du mode `--check` (pré-flight du deploy) : construit chaque
-//! engine sans `start()`, rapport par tab sur stdout, exit 0/1 — sans `--home`.
+//! E2E tests of the `--check` mode (deploy pre-flight): builds each
+//! engine without `start()`, per-tab report on stdout, exit 0/1 — without `--home`.
 
 use std::process::{Command, Stdio};
 
@@ -7,8 +7,8 @@ mod common;
 
 use serde_json::Value;
 
-/// Exécute `pnex-flow-runtime --check <flows.json>` et retourne
-/// (exit code, lignes JSON stdout).
+/// Runs `pnex-flow-runtime --check <flows.json>` and returns
+/// (exit code, stdout JSON lines).
 fn run_check(flows: &std::path::Path) -> (std::process::ExitStatus, Vec<Value>) {
     let out = Command::new(env!("CARGO_BIN_EXE_pnex-flow-runtime"))
         .arg("--check")
@@ -30,7 +30,7 @@ fn event_of(v: &Value) -> Option<&str> {
 
 #[test]
 fn check_rapporte_par_tab_et_exit_1_sur_echec() {
-    // Mixte : tab 1 valide (inject → debug), tab 2 cassé (wire fantôme).
+    // Mixed: tab 1 valid (inject → debug), tab 2 broken (ghost wire).
     let dir = common::tmp_home("check-mixte");
     let flows = dir.join("flows.json");
     std::fs::write(
@@ -61,7 +61,7 @@ fn check_rapporte_par_tab_et_exit_1_sur_echec() {
     .unwrap();
 
     let (status, lines) = run_check(&flows);
-    assert!(!status.success(), "exit 1 attendu (un tab invalide)");
+    assert!(!status.success(), "exit 1 expected (an invalid tab)");
 
     let flows1: Vec<&Value> = lines
         .iter()
@@ -80,7 +80,7 @@ fn check_rapporte_par_tab_et_exit_1_sur_echec() {
             .get("error")
             .and_then(|e| e.as_str())
             .is_some_and(|e| !e.is_empty()),
-        "erreur moteur réelle attendue : {flows2:?}"
+        "real engine error expected: {flows2:?}"
     );
 
     let done = lines
@@ -99,7 +99,7 @@ fn check_sur_artefact_valide_exit_0() {
     std::fs::write(&flows, common::inject_debug_flows("x")).unwrap();
 
     let (status, lines) = run_check(&flows);
-    assert!(status.success(), "exit 0 attendu");
+    assert!(status.success(), "exit 0 expected");
     let done = lines
         .iter()
         .find(|v| event_of(v) == Some("check_done"))
@@ -122,5 +122,5 @@ fn check_sur_fichier_illisible_exit_1() {
         .find(|v| event_of(v) == Some("check_done"))
         .expect("check_done");
     assert_eq!(done["ok"], false);
-    assert!(done.get("error").is_some(), "erreur fichier attendue");
+    assert!(done.get("error").is_some(), "file error expected");
 }

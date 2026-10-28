@@ -1,17 +1,17 @@
-//! Client API « stitch-jobs » — assemblage 360° côté serveur (Take 360 V2).
+//! "stitch-jobs" API client — server-side 360° stitching (Take 360 V2).
 //!
-//! L'app téléverse les frames capturées + poses au backend, qui lance le
-//! pipeline Quality (alignement, coutures DP, multi-bandes) à `out_width`
-//! serveur (4096 par défaut) et attache le résultat comme **nouvelle
-//! version** de l'asset panorama (aperçu device = version 1). L'UI médias
-//! suit l'état du job via [`get`] — modèle « build_phase » pollé.
+//! The app uploads the captured frames + poses to the backend, which runs the
+//! Quality pipeline (alignment, DP seams, multi-band) at the server
+//! `out_width` (4096 by default) and attaches the result as a **new
+//! version** of the panorama asset (device preview = version 1). The media UI
+//! follows the job state via [`get`] — polled "build_phase" model.
 
 use serde::{Deserialize, Serialize};
 
 use super::client;
 use super::media::urlencode;
 
-/// Une pose au déclenchement (degrés) — miroir de `capture360::guidance::Pose`.
+/// A pose at trigger time (degrees) — mirror of `capture360::guidance::Pose`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct JobPose {
     pub yaw_deg: f32,
@@ -19,7 +19,7 @@ pub struct JobPose {
     pub roll_deg: f32,
 }
 
-/// Charge de création du job.
+/// Job creation payload.
 #[derive(Debug, Serialize)]
 pub struct CreateJob {
     pub asset_id: String,
@@ -28,7 +28,7 @@ pub struct CreateJob {
     pub poses: Vec<JobPose>,
 }
 
-/// État d'un job d'assemblage serveur.
+/// State of a server stitching job.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StitchJob {
     pub id: String,
@@ -39,7 +39,7 @@ pub struct StitchJob {
     pub frames_received: u32,
 }
 
-/// `POST /api/v1/stitch-jobs` — crée le job (poses + hfov), renvoie l'état.
+/// `POST /api/v1/stitch-jobs` — creates the job (poses + hfov), returns the state.
 pub async fn create(req: &CreateJob) -> Result<StitchJob, crate::api::error::ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -52,8 +52,8 @@ pub async fn create(req: &CreateJob) -> Result<StitchJob, crate::api::error::Api
     .await
 }
 
-/// `POST /api/v1/stitch-jobs/{id}/frames/{k}` — téléverse la frame k
-/// (octet-stream, même mécanique que l'upload média : retry 401, org header).
+/// `POST /api/v1/stitch-jobs/{id}/frames/{k}` — uploads frame k
+/// (octet-stream, same mechanics as the media upload: 401 retry, org header).
 pub async fn upload_frame(
     job_id: &str,
     k: usize,
@@ -67,7 +67,7 @@ pub async fn upload_frame(
     .await
 }
 
-/// `GET /api/v1/stitch-jobs/{id}` — état (poll UI légère).
+/// `GET /api/v1/stitch-jobs/{id}` — state (light UI poll).
 pub async fn get(job_id: &str) -> Result<StitchJob, crate::api::error::ApiError> {
     client::request::<StitchJob>(
         reqwest::Method::GET,
@@ -77,9 +77,9 @@ pub async fn get(job_id: &str) -> Result<StitchJob, crate::api::error::ApiError>
     .await
 }
 
-/// `GET /api/v1/stitch-jobs/by-asset/{asset_id}` — dernier job d'un asset.
-/// `Ok(None)` sur 404 : l'asset n'a jamais été stitché serveur (pas d'overlay
-/// HD dans l'UI médias). Erreurs réseau/serveur remontent telles quelles.
+/// `GET /api/v1/stitch-jobs/by-asset/{asset_id}` — latest job of an asset.
+/// `Ok(None)` on 404: the asset was never stitched server-side (no HD
+/// overlay in the media UI). Network/server errors bubble up as is.
 pub async fn latest_for_asset(
     asset_id: &str,
 ) -> Result<Option<StitchJob>, crate::api::error::ApiError> {

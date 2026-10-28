@@ -1,9 +1,9 @@
 use super::*;
 use crate::components::ui::FIELD_LABEL;
 
-/// Mutation du nœud **sélectionné** (l'inspecteur ne cible que lui, et il
-/// est remonté par `key` à chaque sélection). Pas de capture de `String`
-/// dans les handlers : `cx` est `Copy`, l'id est relu du signal.
+/// Mutation of the **selected** node (the inspector only targets it, and it
+/// is remounted by `key` on every selection). No `String` capture in the
+/// handlers: `cx` is `Copy`, the id is re-read from the signal.
 pub(super) fn patch_selected(cx: &mut EditorCx, f: impl FnOnce(&mut FlowNode) + 'static) {
     let Some(node_id) = cx.selected_node.peek().clone() else {
         return;
@@ -15,7 +15,7 @@ pub(super) fn patch_selected(cx: &mut EditorCx, f: impl FnOnce(&mut FlowNode) + 
     });
 }
 
-/// Supprime le nœud sélectionné (id relu du signal — aucune capture).
+/// Deletes the selected node (id re-read from the signal — no capture).
 pub(super) fn remove_selected(cx: &mut EditorCx) {
     let Some(node_id) = cx.selected_node.peek().clone() else {
         return;
@@ -29,9 +29,9 @@ pub(super) fn parse_secs(raw: &str) -> Option<f64> {
     value.is_finite().then_some(value)
 }
 
-/// Pins **d'entrée** disponibles pour un device d'une ligne de lecture :
-/// résout le pk depuis la liste devices, puis le pinout en cache. Vide si
-/// le device est inconnu ou le pinout pas encore chargé.
+/// **Input** pins available for a device of a read row: resolves
+/// the pk from the device list, then the cached pinout. Empty if
+/// the device is unknown or the pinout not loaded yet.
 pub(super) fn input_pins_of(
     devices: &Resource<Vec<pnex_core::Device>>,
     cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinoutPin>>>,
@@ -62,8 +62,8 @@ pub(super) fn input_pins_of(
         .collect()
 }
 
-/// Pins de **sortie** (actionneur, `digital_out`) d'un device — l'inverse
-/// d'`input_pins_of`, pour le pin actionneur d'une carte de régulation.
+/// **Output** pins (actuator, `digital_out`) of a device — the inverse
+/// of `input_pins_of`, for the actuator pin of a control card.
 pub(super) fn output_pins_of(
     devices: &Resource<Vec<pnex_core::Device>>,
     cache: &Signal<std::collections::HashMap<i64, Vec<api::pins::PinoutPin>>>,
@@ -89,8 +89,8 @@ pub(super) fn output_pins_of(
         .collect()
 }
 
-/// Config TT d'un nœud reg (heat ou cool) — les deux variantes partagent le
-/// formulaire, seul le sens diffère.
+/// TT config of a reg node (heat or cool) — both variants share the
+/// form, only the direction differs.
 pub(super) fn reg_tt_config_mut(node: &mut FlowNode) -> Option<&mut RegTtConfig> {
     match &mut node.kind {
         FlowNodeKind::RegTtHeat { config } | FlowNodeKind::RegTtCool { config } => Some(config),
@@ -98,7 +98,7 @@ pub(super) fn reg_tt_config_mut(node: &mut FlowNode) -> Option<&mut RegTtConfig>
     }
 }
 
-/// Config PID d'un nœud reg.
+/// PID config of a reg node.
 pub(super) fn reg_pid_config_mut(node: &mut FlowNode) -> Option<&mut RegPidConfig> {
     match &mut node.kind {
         FlowNodeKind::RegPid { config } => Some(config),
@@ -106,14 +106,14 @@ pub(super) fn reg_pid_config_mut(node: &mut FlowNode) -> Option<&mut RegPidConfi
     }
 }
 
-/// `""` → `None`, sinon u32 (champs entiers des cartes reg).
+/// `""` → `None`, otherwise u32 (integer fields of reg cards).
 pub(super) fn parse_u32(raw: &str) -> Option<u32> {
     raw.trim().parse::<u32>().ok()
 }
 
-// ─────────────── helpers de champs ───────────────
+// ─────────────── field helpers ───────────────
 
-/// Champ texte générique (texte local + commit via réducteur).
+/// Generic text field (local text + commit via reducer).
 pub(super) fn text_field(
     label: impl Into<String>,
     value: Signal<String>,
@@ -135,7 +135,7 @@ pub(super) fn text_field(
     }
 }
 
-/// f64 → chaîne sans décimales inutiles (5.0 → « 5 »).
+/// f64 → string without needless decimals (5.0 → "5").
 pub(super) fn v_to_string(value: f64) -> String {
     if value.fract() == 0.0 {
         format!("{}", value as i64)
@@ -144,7 +144,7 @@ pub(super) fn v_to_string(value: f64) -> String {
     }
 }
 
-/// Payload injecté → texte d'édition (null = vide).
+/// Injected payload → edit text (null = empty).
 pub(super) fn payload_text(value: &serde_json::Value) -> String {
     match value {
         serde_json::Value::Null => String::new(),

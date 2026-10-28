@@ -2,13 +2,13 @@
 
 use super::*;
 
-// ─────────────────────────── liens (D39 → D42, arêtes `placed_on`) ───────
+// ─────────────────────────── links (D39 → D42, `placed_on` edges) ───────
 
-/// Relation POI → média/dashboard posé sur la carte (spec du kind `map_pin`).
+/// POI → media/dashboard relation placed on the map (`map_pin` kind spec).
 pub const LINK_RELATION: &str = "placed_on";
 
-/// Arêtes sources d'un lot de POI (batch — école pins list ; hydratation
-/// `poi_dto` en 1 requête, pas de N+1).
+/// Source edges of a batch of POIs (batch — pins list pattern; `poi_dto`
+/// hydration in 1 query, no N+1).
 pub async fn links_for_pins(
     db: &DatabaseConnection,
     org_id: i64,
@@ -30,11 +30,11 @@ pub async fn links_for_pins(
         .await
 }
 
-/// Noms d'affichage des cibles d'arêtes, par lot (1 requête par kind cible —
-/// école batch anti-N+1). Clé `(target_kind, target_id)` ; cible absente des
-/// tables = absente de la map → le DTO la marque `target_dead`. Seuls
-/// `media_asset`/`dashboard`/`tour` sont des cibles `placed_on` en V1 (spec
-/// du kind `map_pin`, registre D42) — tout autre kind reste non résolu.
+/// Display names of edge targets, by batch (1 query per target kind —
+/// anti-N+1 batch pattern). Key `(target_kind, target_id)`; a target missing from
+/// the tables = missing from the map → the DTO marks it `target_dead`. Only
+/// `media_asset`/`dashboard`/`tour` are `placed_on` targets in V1 (`map_pin`
+/// kind spec, D42 registry) — any other kind stays unresolved.
 pub async fn link_target_labels(
     db: &DatabaseConnection,
     org_id: i64,

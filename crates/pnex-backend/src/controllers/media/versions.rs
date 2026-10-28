@@ -198,7 +198,7 @@ pub(super) async fn delete_version(
         .delete(&ctx.db)
         .await
         .map_err(|_| Error::InternalServerError)?;
-    // Si c'était la version courante : la plus haute restante devient courante.
+    // If it was the current version: the highest remaining one becomes current.
     if was_current {
         let next_current = all
             .iter()

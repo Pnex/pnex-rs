@@ -1,11 +1,11 @@
-//! Bibliothèque de widgets du studio SCADA (D41) — CRUD **mutable**
-//! (pas de versioning : D24 réserve celui-ci aux documents composites).
-//! Une instance posée dans un dashboard copie le template au drag : la
-//! modification/suppression d'un template n'affecte jamais les
-//! dashboards existants.
+//! SCADA studio widget library (D41) — **mutable** CRUD
+//! (no versioning: D24 reserves it for composite documents).
+//! An instance dropped in a dashboard copies the template on drag:
+//! changing/deleting a template never affects existing
+//! dashboards.
 //!
-//! École `flows.rs` : scoping org (404 masqué), IAM permission on
-//! writes, 400 champ-par-champ, violations de config en 400
+//! `flows.rs` pattern: org scoping (hidden 404), IAM permission on
+//! writes, field-by-field 400, config violations as 400
 //! `{"violations": [...]}`.
 
 use axum::extract::{Path, Query, State};
@@ -24,7 +24,7 @@ use crate::models::_entities::viz_widget_library;
 use crate::models::viz_widget_library::VizWidgetLibraries;
 use pnex_core::{err_codes, VizViolation};
 
-/// Template de l'org, sinon None (→ 404 masqué cross-org).
+/// Org template, otherwise None (→ hidden cross-org 404).
 async fn find_template(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -51,8 +51,8 @@ fn dto(m: viz_widget_library::Model) -> Result<pnex_core::VizWidget> {
     })
 }
 
-/// Valide un template complet (nom, cohérence kind/widget_type, config) —
-/// `Some(response)` = invalide (réponse 400 prête), `None` = valide.
+/// Validates a full template (name, kind/widget_type consistency, config) —
+/// `Some(response)` = invalid (400 response ready), `None` = valid.
 fn validate_template(
     name: &str,
     kind: &str,
@@ -82,8 +82,8 @@ fn validate_template(
         &config.options,
         &mut violations,
     );
-    // Le titre du template est obligatoire (un bouton de palette sans
-    // libellé est inexploitable).
+    // The template title is mandatory (a palette button without a
+    // label is unusable).
     if config.title.trim().is_empty() {
         violations.push(VizViolation::new(
             Some("template"),
@@ -139,8 +139,8 @@ struct ListWidgetsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/viz/widgets` — templates de l'org (D14), filtres
-/// `search` (nom) et `kind`.
+/// `GET /api/v1/viz/widgets` — the org's templates (D14), filters
+/// `search` (name) and `kind`.
 #[utoipa::path(
     get,
     path = "/api/v1/viz/widgets",
@@ -218,7 +218,7 @@ async fn detail(
     Ok(format::json(dto(m)?).into_response())
 }
 
-/// `POST /api/v1/viz/widgets` — ajoute un template à la bibliothèque.
+/// `POST /api/v1/viz/widgets` — adds a template to the library.
 #[utoipa::path(
     post,
     path = "/api/v1/viz/widgets",
@@ -258,7 +258,7 @@ async fn create(
     Ok((StatusCode::CREATED, format::json(dto(m)?)).into_response())
 }
 
-/// `PATCH /api/v1/viz/widgets/{id}` — renomme et/ou remplace la config.
+/// `PATCH /api/v1/viz/widgets/{id}` — renames and/or replaces the config.
 #[utoipa::path(
     patch,
     path = "/api/v1/viz/widgets/{id}",
@@ -305,8 +305,8 @@ async fn update(
     Ok(format::json(dto(updated)?).into_response())
 }
 
-/// `DELETE /api/v1/viz/widgets/{id}` — 204. Les dashboards déjà composés
-/// gardent leur snapshot (aucune cascade métier).
+/// `DELETE /api/v1/viz/widgets/{id}` — 204. Already composed dashboards
+/// keep their snapshot (no business cascade).
 #[utoipa::path(
     delete,
     path = "/api/v1/viz/widgets/{id}",

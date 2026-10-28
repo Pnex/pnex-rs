@@ -1,23 +1,23 @@
-//! Politique de livraison at-least-once (D53) : 3 retries à backoff fixe
-//! 1 s / 5 s / 25 s, timeout 10 s par tentative (le timeout est posé sur
-//! le client reqwest partagé, cf. `channels`).
+//! At-least-once delivery policy (D53): 3 retries with fixed backoff
+//! 1 s / 5 s / 25 s, 10 s timeout per attempt (the timeout is set on
+//! the shared reqwest client, see `channels`).
 //!
-//! Seuls les échecs [`NotifyError::retryable`] déclenchent un retry — un
-//! 4xx ou une config invalide reproduirait la même erreur.
+//! Only [`NotifyError::retryable`] failures trigger a retry — a
+//! 4xx or an invalid config would reproduce the same error.
 
 use std::time::Duration;
 
 use crate::error::NotifyError;
 
-/// Backoff par défaut (D53).
+/// Default backoff (D53).
 pub const DEFAULT_DELAYS: [Duration; 3] = [
     Duration::from_secs(1),
     Duration::from_secs(5),
     Duration::from_secs(25),
 ];
 
-/// Exécute `op` avec retry at-least-once : 1 tentative initiale + 3
-/// retries sur échec transitoire.
+/// Runs `op` with at-least-once retry: 1 initial attempt + 3
+/// retries on transient failure.
 pub async fn with_retry<T, F, Fut>(op: F) -> Result<T, NotifyError>
 where
     F: FnMut() -> Fut,
@@ -26,7 +26,7 @@ where
     with_retry_delays(DEFAULT_DELAYS, op).await
 }
 
-/// Variante à délais injectables (tests) — même sémantique.
+/// Variant with injectable delays (tests) — same semantics.
 pub async fn with_retry_delays<T, F, Fut>(
     delays: [Duration; 3],
     mut op: F,
@@ -49,7 +49,7 @@ where
             }
         }
     }
-    Err(last.expect("au moins une tentative"))
+    Err(last.expect("at least one attempt"))
 }
 
 #[cfg(test)]

@@ -1,12 +1,12 @@
-//! Flux ETL (D18) — liste des flows de l'org (filtres + pagination D14) et
-//! éditeur drag & drop (`components/flow_editor/`, sous-vue pilotée par le
-//! signal local `selected` — pattern `devices.rs`). La page compose le
-//! socle CRUD (`components/crud/` — README du module pour la doctrine) :
+//! ETL flows (D18) — list of the org's flows (filters + D14 pagination) and
+//! drag & drop editor (`components/flow_editor/`, sub-view driven by the
+//! local `selected` signal — `devices.rs` pattern). The page composes the
+//! CRUD base (`components/crud/` — module README for the doctrine):
 //! ListLayout / FilterBar / ListStates / DataTable / ListPager.
 //!
-//! Le scoping org vient du client (`X-Org-Id`), l'écriture est réservée
-//! owner/admin (le serveur force, l'UI masque). La création démarre le flow
-//! avec un nœud inject par défaut : l'API refuse un graphe vide
+//! Org scoping comes from the client (`X-Org-Id`), writing is reserved to
+//! owner/admin (the server enforces, the UI hides). Creation starts the flow
+//! with a default inject node: the API refuses an empty graph
 //! (`empty_graph`).
 
 use dioxus::prelude::*;
@@ -54,10 +54,10 @@ pub fn Flows(id: String) -> Element {
     // D42: effective label filter ("name" or "name:value").
     let filter_label = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
-    // Cible de suppression (id, nom) — confirmation à la demande.
+    // Deletion target (id, name) — confirmation on demand.
     let mut delete_target = use_signal(|| None::<(i64, String)>);
-    // Suppression en cours (id) : le delete attend l'acquittement runtime —
-    // la ligne montre un spinner pour ne pas donner l'impression d'un clic perdu.
+    // Deletion in progress (id): the delete waits for the runtime ack —
+    // the row shows a spinner so it does not look like a lost click.
     let mut deleting = use_signal(|| None::<i64>);
 
     let can_write = crate::state::access::can("flows:write");
@@ -97,8 +97,8 @@ pub fn Flows(id: String) -> Element {
         }
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD : le
-    // discriminant d'état et les lignes sortent du match avant le rsx).
+    // Synchronous read of the resource (CRUD base doctrine: the state
+    // discriminant and the rows come out of the match before the rsx).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(paged)) => (
@@ -110,8 +110,8 @@ pub fn Flows(id: String) -> Element {
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
-    // Colonnes de la table — les closures d'action capturent les signaux
-    // (Copy) de la page ; les classes td historiques via with_td_class.
+    // Table columns — the action closures capture the page's (Copy)
+    // signals; historical td classes via with_td_class.
     let columns = vec![
         Column::new(t!("flows-col-name").to_string(), move |flow: &FlowSummary| {
             let labels = row_labels.get(&flow.id.to_string()).cloned().unwrap_or_default();
@@ -150,8 +150,8 @@ pub fn Flows(id: String) -> Element {
             t!("common-actions").to_string(),
             move |flow: &FlowSummary| {
                 let pk = flow.id;
-                // Cloné AVANT la closure onclick : la référence `flow` ne
-                // sort pas du corps de la cellule (E0521).
+                // Cloned BEFORE the onclick closure: the `flow` reference
+                // does not leave the cell body (E0521).
                 let name_delete = flow.name.clone();
                 let is_deleting = deleting() == Some(pk);
                 rsx! {
@@ -183,19 +183,19 @@ pub fn Flows(id: String) -> Element {
 
     rsx! {
         if let Some(flow_id) = selected() {
-            // Éditeur plein écran, HORS ListLayout — plus de bouton
-            // « + Nouveau flow » en contexte d'édition (principe 1 de la
-            // coquille d'éditeur : l'ajout vit dans le canvas).
+            // Full-screen editor, OUTSIDE ListLayout — no more
+            // "+ New flow" button in editing context (principle 1 of the
+            // editor shell: adding lives in the canvas).
             crate::components::flow_editor::FlowEditor {
                 key: "{flow_id}",
                 flow_id,
                 can_write,
                 on_back: move |_| {
                     selected.set(None);
-                    // Retour à la liste : refetch systématique —
-                    // la vérité serveur (flow créé, renommage,
-                    // deploy faits dans l'éditeur) s'affiche sans
-                    // passer par le bouton refresh.
+                    // Back to the list: systematic refetch —
+                    // the server truth (flow created, renamed,
+                    // deploys done in the editor) shows up without
+                    // going through the refresh button.
                     reload.with_mut(|r| *r += 1);
                 },
                 on_changed: move |_| reload.with_mut(|r| *r += 1),
@@ -208,10 +208,10 @@ pub fn Flows(id: String) -> Element {
                 can_write,
                 add_label: Some(t!("flows-new").to_string()),
                 on_add: move |_| {
-                    // Création immédiate, sans modale : nom daté + graphe
-                    // de départ, puis ouverture directe de l'éditeur
-                    // (fluidité — retour user 2026-09-18). Le renommage
-                    // reste possible après coup.
+                    // Immediate creation, no modal: dated name + starting
+                    // graph, then the editor opens directly
+                    // (fluidity — user feedback 2026-09-18). Renaming
+                    // stays possible afterwards.
                     let params = pnex_core::CreateFlow {
                         name: default_name("flows-default-name"),
                         device_id: None,
@@ -298,18 +298,18 @@ pub fn Flows(id: String) -> Element {
                                 rows,
                                 row_key: RowKey::new(|flow: &FlowSummary| flow.id.to_string()),
                             }
-                            // Opération serveur en cours (delete attend
-                            // l'acquittement runtime) — feedback global.
+                            // Server operation in progress (delete waits
+                            // for the runtime ack) — global feedback.
                             if deleting().is_some() {
                                 LoadingOverlay { message: t!("flows-deleting").to_string() }
                             }
                         }
                         ListPager { count, page }
                     }
-                    // Modal de création supprimée : « + Nouveau » crée
-                    // directement (nom daté) et ouvre l'éditeur.
+                    // Creation modal removed: "+ New" creates
+                    // directly (dated name) and opens the editor.
 
-                    // Suppression confirmée d'une ligne.
+                    // Confirmed deletion of a row.
                     if let Some((flow_id, flow_name)) = delete_target() {
                         ConfirmDialog {
                             title: t!("flows-confirm-delete-title"),
@@ -322,9 +322,9 @@ pub fn Flows(id: String) -> Element {
                                 delete_target.set(None);
                                 deleting.set(Some(flow_id));
                                 spawn(async move {
-                                    // La liste est rafraîchie dans les deux
-                                    // cas : elle reflète la vérité serveur
-                                    // (un échec = le flow existe encore).
+                                    // The list is refreshed in both
+                                    // cases: it reflects the server truth
+                                    // (a failure = the flow still exists).
                                     let outcome = api::flows::delete(flow_id).await;
                                     deleting.set(None);
                                     match outcome {
@@ -343,7 +343,7 @@ pub fn Flows(id: String) -> Element {
     }
 }
 
-/// Badge de statut — classes littérales complètes (scan Tailwind).
+/// Status badge — full literal classes (Tailwind scan).
 fn status_badge(status: &str) -> (&'static str, String) {
     let label = match status {
         "deployed" => t!("flows-status-deployed"),
@@ -360,8 +360,8 @@ fn status_badge(status: &str) -> (&'static str, String) {
     (badge, label)
 }
 
-/// Graphe de départ d'un nouveau flow : un nœud inject en **répétition
-/// continue** (l'API refuse un graphe vide — violation `empty_graph`).
+/// Starting graph of a new flow: an inject node in **continuous
+/// repetition** (the API refuses an empty graph — `empty_graph` violation).
 pub(crate) fn starter_graph() -> FlowGraph {
     FlowGraph {
         nodes: vec![FlowNode {

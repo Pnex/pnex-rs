@@ -1,13 +1,13 @@
-//! Contrat d'interopérabilité PNEX — source de vérité unique app ↔ serveur.
+//! PNEX interoperability contract — single source of truth app ↔ server.
 //!
-//! Embarqué par le backend ET le front (wasm32 comme natif) : le numéro de
-//! contrat compilé dans chaque binaire est comparé à l'exécution via
-//! `GET {META_VERSION_PATH}` — une app périmée devant un serveur plus récent
-//! (ou l'inverse) est rejetée proprement au boot au lieu de produire des
-//! erreurs API opaques. Règle de bump : toute rupture d'API incrémente
-//! `CONTRACT` ici, les deux côtés basculent ensemble au build suivant.
+//! Embedded by the backend AND the front (wasm32 and native): the contract
+//! number compiled into each binary is compared at runtime via
+//! `GET {META_VERSION_PATH}` — an outdated app facing a newer server
+//! (or the reverse) is rejected cleanly at boot instead of producing opaque
+//! API errors. Bump rule: any API break increments
+//! `CONTRACT` here, both sides switch together on the next build.
 //!
-//! wasm-safe (serde seul) — même exigence que `pnex-core`.
+//! wasm-safe (serde only) — same requirement as `pnex-core`.
 
 use serde::{Deserialize, Serialize};
 
@@ -17,12 +17,12 @@ pub mod exposure;
 /// Who may call each operation and assistant tool (iam.md D289).
 pub mod iam;
 
-/// Version du contrat attendue par CE binaire. Un bump = rupture d'API.
+/// Contract version expected by THIS binary. A bump = API break.
 ///
-/// 2 (2026-09-12, D43) : `Poi.device_id` (colonne unique) remplacé par
-/// `Poi.devices: Vec<DevicePlacement>` — plusieurs devices par POI ;
-/// attacher via `POST /pois/{id}/devices`, déplacer via
-/// `PATCH /pois/placements/{id}` (plus de PATCH `device_id` sur le POI).
+/// 2 (2026-09-12, D43): `Poi.device_id` (single column) replaced by
+/// `Poi.devices: Vec<DevicePlacement>` — several devices per POI;
+/// attach via `POST /pois/{id}/devices`, move via
+/// `PATCH /pois/placements/{id}` (no more PATCH `device_id` on the POI).
 ///
 /// 3 (2026-10-17, D238–D244): harmonized contract — one error shape
 /// (`ErrorDetail`, `errors.fields` / `errors.violations`), every list
@@ -32,12 +32,12 @@ pub mod iam;
 /// `GET /flows/{id}/ingest-steps` are removed; an import carries its steps.
 pub const CONTRACT: u32 = 4;
 
-/// Identité annoncée par le endpoint meta — aligned with
-/// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). Le scan LAN compare ce champ pour distinguer un serveur
-/// PNEX de toute autre chose répondant sur :5150.
+/// Identity announced by the meta endpoint — aligned with
+/// `pnex_core::SERVICE_NAME` (the service is `pnex-server`). The LAN scan compares this field to tell a PNEX
+/// server apart from anything else answering on :5150.
 pub const SERVICE: &str = "pnex-server";
 
-/// Chemin du endpoint meta (scan LAN + porte de compatibilité).
+/// Path of the meta endpoint (LAN scan + compatibility gate).
 pub const META_VERSION_PATH: &str = "/api/v1/meta/version";
 
 /// Public download of the root CA that signs the TLS edge certificate
@@ -65,8 +65,8 @@ pub struct ServerInfo {
     pub origin: Option<String>,
 }
 
-/// Compatibilité app ↔ serveur : égalité stricte des contrats (pas de
-/// fenêtre de tolérance — un désaccord est une rupture, on la nomme).
+/// App ↔ server compatibility: strict equality of contracts (no
+/// tolerance window — a mismatch is a break, we name it).
 #[must_use]
 pub fn compatible(a: u32, b: u32) -> bool {
     a == b
@@ -107,7 +107,7 @@ mod tests {
 
     #[test]
     fn identite_service_est_pnex_server() {
-        // Le scan LAN rejette tout ce qui ne s'annonce pas exactement ainsi.
+        // The LAN scan rejects anything that does not announce itself exactly so.
         assert_eq!(SERVICE, "pnex-server");
     }
 }

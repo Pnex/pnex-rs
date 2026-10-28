@@ -1,10 +1,10 @@
-//! Canal `slack` — incoming webhook : POST `{"text": …}`.
+//! `slack` channel — incoming webhook: POST `{"text": …}`.
 //!
-//! D65 : l'URL du webhook **est** le secret (token dans le chemin) —
-//! classée champ `secret` write-only, jamais loggée. La réponse de succès
-//! est du texte plaintext (`ok`), jamais du JSON — on ne teste que le
-//! statut. Pas de garde de taille (D63) : la borne réelle (~40 k) est
-//! loin au-delà des 64 KiB du rendu, le 400 du serveur suffit.
+//! D65: the webhook URL **is** the secret (token in the path) —
+//! classified as a write-only `secret` field, never logged. The success response
+//! is plaintext (`ok`), never JSON — we only check the
+//! status. No size guard (D63): the real bound (~40 k) is
+//! far beyond the 64 KiB of the render, the server's 400 is enough.
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -78,7 +78,7 @@ mod tests {
         let seen_for_handler = seen.clone();
         let app = axum::Router::new().route(
             "/services/x/y/z",
-            // Succès Slack = 200 body plaintext « ok » — pas du JSON.
+            // Slack success = 200 with plaintext body "ok" — not JSON.
             post(move |Json(body): Json<Value>| {
                 let seen = seen_for_handler.clone();
                 async move {

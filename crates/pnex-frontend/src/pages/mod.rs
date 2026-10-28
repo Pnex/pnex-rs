@@ -1,8 +1,8 @@
-//! Pages de l'app. Chaque page est un composant routé (cf. `app::Route`) ;
-//! `shell::Shell` est le layout racine (sidebar + garde de session).
+//! App pages. Each page is a routed component (see `app::Route`);
+//! `shell::Shell` is the root layout (sidebar + session guard).
 
-/// Page dédiée annotations (D55 + porte D60(3)) — flow canonique des
-/// couches, indépendant des tours.
+/// Dedicated annotations page (D55 + D60(3) gate) — canonical flow of
+/// layers, independent of tours.
 /// Access management of the org (iam.md §9).
 pub mod access;
 pub mod admin_status;
@@ -22,8 +22,8 @@ pub mod browser_agents;
 /// Investigation cases (cases.md).
 pub mod cases;
 pub mod docs;
-/// Référentiels Edge (WiFi / serveurs PNeX) — CRUD consommé par le wizard
-/// device et la file de build firmware.
+/// Edge references (WiFi / PNeX servers) — CRUD used by the device
+/// wizard and the firmware build queue.
 pub mod edge_refs;
 /// JSON events written by flows (camera-video.md D84).
 pub mod events;
@@ -54,7 +54,7 @@ pub mod secrets;
 pub mod server_url;
 pub mod share;
 pub mod shell;
-/// Vitrine du socle CRUD (/_showcase) — fixtures locales, hors nav.
+/// CRUD foundation showcase (/_showcase) — local fixtures, outside nav.
 pub mod showcase;
 pub mod site_pages;
 pub mod streams;

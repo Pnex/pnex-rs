@@ -189,10 +189,10 @@ impl FluidMixtureComposition {
         v
     }
 
-    /// Spec CoolProp inline depuis les fractions molaires stockées
-    /// (`"Propane[0.5]&Ethane[0.5]"`, sans préfixe de backend — HEOS est
-    /// le défaut). Erreur si les fractions molaires ne sont pas encore
-    /// calculées (composition non convertie).
+    /// Inline CoolProp spec from the stored mole fractions
+    /// (`"Propane[0.5]&Ethane[0.5]"`, without a backend prefix — HEOS is
+    /// the default). Error if the mole fractions are not computed yet
+    /// (composition not converted).
     pub fn to_coolprop_spec(&self) -> Result<String, String> {
         if self.mole_fractions.len() != self.components.len() {
             return Err("mole fractions not computed (composition not converted)".into());
@@ -206,9 +206,9 @@ impl FluidMixtureComposition {
         Ok(parts.join("&"))
     }
 
-    /// Conversion massique→molaire : x_i = (w_i/M_i) / Σ(w_j/M_j).
-    /// `molar_masses` en kg/mol, même ordre que `components`. Pure et
-    /// testable — la lecture CoolProp des masses molaires est côté serveur.
+    /// Mass→molar conversion: x_i = (w_i/M_i) / Σ(w_j/M_j).
+    /// `molar_masses` in kg/mol, same order as `components`. Pure and
+    /// testable — the CoolProp read of the molar masses is on the server.
     pub fn to_mole_fractions(&self, molar_masses: &[f64]) -> Result<Vec<f64>, String> {
         if molar_masses.len() != self.components.len() {
             return Err("molar masses: one per component expected".into());
@@ -231,9 +231,9 @@ impl FluidMixtureComposition {
         Ok(mols.iter().map(|n| n / total).collect())
     }
 
-    /// Masse molaire du mélange en kg/mol depuis des masses molaires de
-    /// composants (kg/mol) : M = Σx_i·M_i en base molaire,
-    /// M = 1/Σ(w_i/M_i) en base massique.
+    /// Molar mass of the mixture in kg/mol from component molar
+    /// masses (kg/mol): M = Σx_i·M_i on a molar basis,
+    /// M = 1/Σ(w_i/M_i) on a mass basis.
     pub fn mixture_molar_mass(&self, molar_masses: &[f64]) -> Result<f64, String> {
         if molar_masses.len() != self.components.len() {
             return Err("molar masses: one per component expected".into());
@@ -261,9 +261,9 @@ impl FluidMixtureComposition {
     }
 }
 
-/// Règle : la base est uniforme par mélange — c'est structurellement vrai
-/// ici (`basis` unique sur la composition), la conversion massique est
-/// faite à la sauvegarde (`mole_fractions` toujours présentes en base).
+/// Rule: the basis is uniform per mixture — structurally true
+/// here (single `basis` on the composition), the mass conversion is
+/// done on save (`mole_fractions` always present in the database).
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,8 +305,8 @@ mod tests {
 
     #[test]
     fn conversion_massique_vers_molaire() {
-        // 50 % massique eau (M=0.018) / 50 % éthanol (M=0.046) :
-        // moles 27.78/10.87 → x_eau ≈ 0.7187.
+        // 50 % mass water (M=0.018) / 50 % ethanol (M=0.046):
+        // moles 27.78/10.87 → x_water ≈ 0.7187.
         let m = FluidMixtureComposition {
             basis: MixtureBasis::Mass,
             components: vec![

@@ -1,10 +1,10 @@
-//! Authentification Rauthy (IdP OIDC) : extracteurs Axum.
+//! Rauthy authentication (OIDC IdP): Axum extractors.
 //!
-//! - [`AuthUser`] : `Authorization: Bearer <jwt>` validé par JWKS (RS256,
-//!   `iss`/`aud`/`exp`), puis JIT provisioning (`users` + profil + org
-//!   personnelle). Refus par défaut : sans token valide → 401.
-//! - [`OrgContext`] : [`AuthUser`] + sélection d'org via l'en-tête
-//!   `X-Org-Id`, vérifiée contre le membership → 403 si non membre.
+//! - [`AuthUser`]: `Authorization: Bearer <jwt>` validated through JWKS (RS256,
+//!   `iss`/`aud`/`exp`), then JIT provisioning (`users` + profile + personal
+//!   org). Deny by default: without a valid token → 401.
+//! - [`OrgContext`]: [`AuthUser`] + org selection through the
+//!   `X-Org-Id` header, checked against the membership → 403 if not a member.
 //!   This is the anchor of multi-tenant scoping (Phase 0 report §3).
 //! - [`PlatformAdmin`]: [`AuthUser`] with `users.platform_admin = true`
 //!   (infra status, global retention) → 403 `platform-admin-required`.
@@ -165,7 +165,7 @@ async fn authenticate(parts: &Parts, state: &AppContext) -> Result<AuthUser, loc
     })
 }
 
-/// Utilisateur authentifié + org sélectionnée (`X-Org-Id`) + rôle effectif.
+/// Authenticated user + selected org (`X-Org-Id`) + effective role.
 pub struct OrgContext {
     pub auth: AuthUser,
     pub org: organizations::Model,
@@ -199,9 +199,9 @@ impl FromRequestParts<AppContext> for OrgContext {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok());
         let not_member = || {
-            // 403 et non 404 : l'utilisateur a fourni un id, on lui dit
-            // qu'il n'en est pas membre (isolation par cloisonnement
-            // fonctionnel, pas par obscurcissement).
+            // 403 and not 404: the user supplied an id, we tell them
+            // they are not a member of it (isolation by functional
+            // partitioning, not by obscurity).
             crate::controllers::coded_error(
                 axum::http::StatusCode::FORBIDDEN,
                 pnex_core::err_codes::ORG_NOT_MEMBER,

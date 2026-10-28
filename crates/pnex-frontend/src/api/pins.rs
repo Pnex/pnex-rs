@@ -1,5 +1,5 @@
-//! Endpoints pins Brick 0 — `GET /api/v1/devices/{id}/pins` et
-//! `POST /api/v1/devices/{id}/commands` (action manuelle D17).
+//! Brick 0 pin endpoints — `GET /api/v1/devices/{id}/pins` and
+//! `POST /api/v1/devices/{id}/commands` (manual action D17).
 
 use crate::api::client;
 use crate::api::error::ApiError;
@@ -13,7 +13,7 @@ pub struct PinReservation {
     pub flow_name: String,
 }
 
-/// Un pin du device générique (miroir du PinDto backend).
+/// A pin of the generic device (mirror of the backend PinDto).
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PinInfo {
     pub gpio: i32,
@@ -23,9 +23,9 @@ pub struct PinInfo {
     pub pullup: bool,
     pub safe_state: String,
     pub enabled: bool,
-    /// Cadence de lecture persistée (ms, 0/absent = manuel) — initialise
-    /// le select de cadence à sa valeur effective (leçon des selects
-    /// contrôlés : le select doit AFFICHER l'état réel, pas un défaut).
+    /// Persisted read cadence (ms, 0/absent = manual) — initialises
+    /// the cadence select to its effective value (lesson of controlled
+    /// selects: the select must SHOW the real state, not a default).
     #[serde(default)]
     pub interval_ms: Option<u32>,
     #[serde(default)]
@@ -40,14 +40,14 @@ pub struct PinInfo {
     pub reserved_by: Vec<PinReservation>,
 }
 
-/// Réponse `GET /devices/{id}/pins`.
+/// `GET /devices/{id}/pins` response.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
 pub struct PinsResponse {
     pub pins: Vec<PinInfo>,
     pub connected: bool,
 }
 
-/// Corps `POST /devices/{id}/commands` (op set_mode | write | subscribe).
+/// `POST /devices/{id}/commands` body (op set_mode | write | subscribe).
 #[derive(Debug, Clone)]
 pub struct Command {
     pub op: &'static str,
@@ -56,8 +56,8 @@ pub struct Command {
     pub safe_state: Option<&'static str>,
     pub value: Option<serde_json::Value>,
     pub interval_ms: Option<u32>,
-    /// set_mode seulement — `true` après confirmation UI « arrêter les
-    /// flows puis appliquer » (garde 409 `pin-flow-conflict`).
+    /// set_mode only — `true` after the UI confirmation "stop the
+    /// flows then apply" (409 guard `pin-flow-conflict`).
     pub confirm_stop_flows: Option<bool>,
 }
 
@@ -85,22 +85,22 @@ pub async fn pins(device_pk: i64) -> Result<PinsResponse, ApiError> {
     .await
 }
 
-/// Un pin du pinout (`source` = instance | overlay — le défaut de la carte
-/// quand le device n'a jamais été connecté).
+/// A pin of the pinout (`source` = instance | overlay — the board default
+/// when the device has never connected).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PinoutPin {
-    /// `None` = pin alim/masse/reset (non configurable, rendu par le SVG).
+    /// `None` = power/ground/reset pin (not configurable, drawn by the SVG).
     pub gpio: Option<i32>,
     pub label: String,
-    /// `None` = pin écran réservé (aucun mode, grisé dans l'éditeur).
+    /// `None` = reserved screen pin (no mode, greyed out in the editor).
     pub mode: Option<String>,
-    /// `instance` (mode réel) ou `overlay` (défaut carte, device jamais
-    /// connecté) — consommé par l'inspecteur (suffixe du label du pin).
+    /// `instance` (real mode) or `overlay` (board default, device never
+    /// connected) — consumed by the inspector (suffix of the pin label).
     pub source: String,
-    /// Souscription active (`interval_ms`) — `None` = jamais souscrit (ou
-    /// désabonné) : le firmware générique ne publie rien pour ce pin.
+    /// Active subscription (`interval_ms`) — `None` = never subscribed (or
+    /// unsubscribed): the generic firmware publishes nothing for this pin.
     pub subscribed_ms: Option<u32>,
-    // ── Enrichissement board v2 (tous optionnels — absents hors profil v2).
+    // ── Board v2 enrichment (all optional — absent outside a v2 profile).
     pub pos: Option<serde_json::Value>,
     pub kind: Option<String>,
     pub fns: Vec<String>,
@@ -114,8 +114,8 @@ pub struct PinoutPin {
     pub reserved_by: Vec<PinReservation>,
 }
 
-/// Section `board` du pinout (profil v2) — `None` hors profil (le front
-/// bascule alors sur l'ancienne grille de cartes).
+/// `board` section of the pinout (v2 profile) — `None` outside a profile (the
+/// front then falls back to the old card grid).
 #[derive(Clone, Debug, PartialEq)]
 pub struct BoardSummary {
     pub id: Option<i64>,
@@ -126,15 +126,15 @@ pub struct BoardSummary {
     pub profile_id: Option<String>,
     pub layout: serde_json::Value,
     pub peripherals: serde_json::Value,
-    /// État écran du device ({"screen": bool}).
+    /// Device screen state ({"screen": bool}).
     pub peripherals_state: serde_json::Value,
 }
 
-/// Réponse `GET /devices/{id}/pinout` — pins + connexion WS du device.
+/// `GET /devices/{id}/pinout` response — pins + WS connection of the device.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pinout {
-    /// Le device générique est-il connecté au serveur ? `false` = hors
-    /// ligne (pas encore reconnecté après un restart, par exemple).
+    /// Is the generic device connected to the server? `false` = offline
+    /// (not reconnected yet after a restart, for instance).
     pub connected: bool,
     pub board: Option<BoardSummary>,
     pub pins: Vec<PinoutPin>,
@@ -142,7 +142,7 @@ pub struct Pinout {
     pub commands: Vec<String>,
 }
 
-/// `GET /devices/{id}/pinout` — pinout complet (instances + profil v2).
+/// `GET /devices/{id}/pinout` — full pinout (instances + v2 profile).
 pub async fn pinout(device_pk: i64) -> Result<Pinout, ApiError> {
     let body = client::request::<serde_json::Value>(
         reqwest::Method::GET,
@@ -206,7 +206,7 @@ pub async fn pinout(device_pk: i64) -> Result<Pinout, ApiError> {
     })
 }
 
-/// Liste de strings tolérante (champ absent/null/array).
+/// Tolerant list of strings (field absent/null/array).
 fn json_str_list(v: Option<&serde_json::Value>) -> Vec<String> {
     v.and_then(|x| x.as_array())
         .map(|a| {
@@ -217,13 +217,13 @@ fn json_str_list(v: Option<&serde_json::Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `POST /devices/{id}/commands` — 400 si illégal (raison chip-caps
-/// relayée telle quelle), 409 si le device est offline. Le corps de réponse
-/// est retourné tel quel (contient `flow_impacts` quand un set_mode a arrêté
-/// des flows déployés — Phase 6).
+/// `POST /devices/{id}/commands` — 400 if illegal (chip-caps reason
+/// relayed as is), 409 if the device is offline. The response body
+/// is returned as is (contains `flow_impacts` when a set_mode stopped
+/// deployed flows — Phase 6).
 pub enum CommandOutcome {
-    /// Commande envoyée (contient `flow_impacts` quand un set_mode a arrêté
-    /// des flows déployés).
+    /// Command sent (contains `flow_impacts` when a set_mode stopped
+    /// deployed flows).
     Sent(serde_json::Value),
     /// 409 `pin-flow-conflict`: deployed flows affected, stop to confirm
     /// (flow names).

@@ -1,10 +1,10 @@
-//! Inspecteur — réglages du widget/trait sélectionné : titre, **binding
-//! télémétrie** (métrique × appareil × fenêtre via le catalogue
-//! `/telemetry/catalog` hissé dans `DashboardEditor`), unité/bornes/
-//! décimales/texte. Le corps seul est rendu ici : la coquille
-//! (`InspectorPanel`) fournit le panneau, l'en-tête et la fermeture.
-//! Les modifications mutent le document via les reducers purs ; le
-//! save (et sa validation) reste au bouton de la barre.
+//! Inspector — settings of the selected widget/wire: title, **telemetry
+//! binding** (metric × device × window via the `/telemetry/catalog`
+//! catalogue hoisted into `DashboardEditor`), unit/bounds/
+//! decimals/text. Only the body is rendered here: the shell
+//! (`InspectorPanel`) provides the panel, the header and closing.
+//! Changes mutate the document through the pure reducers; the
+//! save (and its validation) stays with the bar button.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,18 +25,18 @@ use super::state;
 use super::{EditorCx, Selection};
 use crate::components::ui::BTN_DANGER;
 
-/// Catalogue télémétrie **remodelé par source** — l'inspecteur fait
-/// choisir la source (device réel ou device virtuel d'un flow) d'abord,
-/// la métrique ensuite (liste filtrée à la source choisie). `flows`
-/// porte les device_id virtuels (`pred_dev="virtual_device"`, slug
-/// `flow_{id}`) pour séparer les deux groupes dans le select.
+/// Telemetry catalogue **reshaped by source** — the inspector makes the
+/// user pick the source (real device or a flow's virtual device) first,
+/// then the metric (list filtered to the chosen source). `flows`
+/// carries the virtual device_ids (`pred_dev="virtual_device"`, slug
+/// `flow_{id}`) to split the two groups in the select.
 #[derive(Clone, Default, PartialEq)]
 pub struct SourceCatalog {
-    /// device_id → métriques publiées sur cette source.
+    /// device_id → metrics published on this source.
     pub by_source: BTreeMap<String, Vec<String>>,
-    /// Devices virtuels de flows (`flow_{id}`).
+    /// Virtual devices of flows (`flow_{id}`).
     pub flows: BTreeSet<String>,
-    /// Catalogue chargé (ressource résolue) — faux pendant le fetch.
+    /// Catalogue loaded (resource resolved) — false during the fetch.
     pub ready: bool,
     /// Org shared memory live keys → numeric fields (`""` = scalar value),
     /// written by the flow `memory-write` nodes.
@@ -45,9 +45,9 @@ pub struct SourceCatalog {
     pub labelled: Vec<pnex_core::TelemetryLabelSet>,
 }
 
-/// Corps de l'inspecteur — monté seulement sur sélection (principe 4).
-/// `metrics` (métrique → devices) reste pour `ThermoPanel` ; `catalog`
-/// est la vue par source pour le binding des widgets classiques.
+/// Inspector body — mounted only on selection (principle 4).
+/// `metrics` (metric → devices) stays for `ThermoPanel`; `catalog`
+/// is the per-source view for binding the classic widgets.
 #[component]
 pub fn InspectorBody(
     cx: EditorCx,
@@ -141,9 +141,9 @@ fn widget_panel(
         .as_ref()
         .map(|m| m.field.clone())
         .unwrap_or_default();
-    // Métriques de la source choisie ; la métrique enregistrée reste
-    // visible même si le catalogue ne la connaît plus (série disparue)
-    // — l'affichage reflète l'état, jamais l'inverse.
+    // Metrics of the chosen source; the saved metric stays
+    // visible even if the catalogue no longer knows it (series gone)
+    // — the display reflects the state, never the other way round.
     let source_metrics: Vec<String> = catalog
         .by_source
         .get(&primary.device_id)
@@ -154,8 +154,8 @@ fn widget_panel(
     let metric_locked = !can_write || primary.device_id.is_empty() || source_metrics.is_empty();
     let is_control = pnex_core::CONTROL_WIDGET_TYPES.contains(&w.widget_type.as_str());
     let is_mobile = cx.layout.read().format == pnex_core::DashboardFormat::Mobile;
-    // Copie pour la closure du select source (piège FnMut/Fn captures :
-    // `catalog` sert aussi au rendu, jamais de move partagé).
+    // Copy for the source select closure (FnMut/Fn captures trap:
+    // `catalog` is also used for rendering, never a shared move).
     let cat_for_source = catalog.clone();
     let label_options = label_source_options(&catalog, &primary);
 
@@ -204,7 +204,7 @@ fn widget_panel(
                     catalog: catalog.clone(),
                 }
             }
-            // thermo_chart : panneau dédié, pas de binding générique.
+            // thermo_chart: dedicated panel, no generic binding.
             if w.widget_type == "thermo_chart" {
                 ThermoPanel {
                     cx,
@@ -214,13 +214,13 @@ fn widget_panel(
                     memory: catalog.memory.clone(),
                 }
             }
-            // Binding (sauf widget texte et thermo_chart) — la source
-            // (device ou flow) se choisit d'abord ; la métrique est
-            // filtrée à la source et verrouillée tant qu'elle n'est
-            // pas choisie. Chaque changement **s'écrit** dans la
-            // source : plus de valeur affichée qui ne serait pas dans
-            // l'état (l'ancien fallback `eff_*` produisait des saves
-            // en « device_id invalide : « » »).
+            // Binding (except text widget and thermo_chart) — the source
+            // (device or flow) is chosen first; the metric is
+            // filtered to the source and locked until it is
+            // chosen. Every change **is written** to the
+            // source: no more displayed value that would not be in
+            // the state (the old `eff_*` fallback produced saves
+            // with "invalid device_id: ''").
             // A static symbol (no source) has no binding either.
             if w.widget_type != "text" && w.widget_type != "thermo_chart"
                 && w.widget_type != pnex_core::home::HOME_WIDGET_TYPE
@@ -420,8 +420,8 @@ fn widget_panel(
                             }
                         }
                     }
-                    // Série enregistrée absente du catalogue (source
-                    // disparue depuis le save) : affichée telle quelle.
+                    // Saved series missing from the catalogue (source
+                    // gone since the save): shown as is.
                     if catalog.ready && catalog.by_source.is_empty() && catalog.labelled.is_empty() {
                         p { class: "text-xs text-gray-500 mt-1", {t!("insp-no-series")} }
                     }
@@ -648,7 +648,7 @@ fn SpanPicker(mut cx: EditorCx, widget: pnex_core::Widget, can_write: bool) -> E
     }
 }
 
-/// Label de champ (petite aide au-dessus des inputs).
+/// Field label (small hint above the inputs).
 #[component]
 fn field_label(label_key: String, label: String) -> Element {
     rsx! {
@@ -693,7 +693,7 @@ fn label_source_options(
     out
 }
 
-/// Sources réelles (hors devices virtuels de flows), triées — plus the
+/// Real sources (excluding flows' virtual devices), sorted — plus the
 /// stored device when it published nothing in the catalog window (kept
 /// visible and selected, like a stale memory key).
 fn devices_of(catalog: &SourceCatalog, current: &str) -> Vec<String> {
@@ -727,7 +727,7 @@ fn memory_keys_of(catalog: &SourceCatalog, current: Option<&str>) -> Vec<String>
     keys
 }
 
-/// Sources virtuelles de flows (`flow_{id}`), triées.
+/// Virtual sources of flows (`flow_{id}`), sorted.
 fn flows_of(catalog: &SourceCatalog) -> Vec<String> {
     catalog
         .by_source
@@ -737,9 +737,9 @@ fn flows_of(catalog: &SourceCatalog) -> Vec<String> {
         .collect()
 }
 
-/// L'id du widget sélectionné **relu du signal** : les closures des
-/// handlers ne capturent jamais le String (piège FnMut/fncaptures,
-/// école flow editor).
+/// The selected widget's id **re-read from the signal**: handler closures
+/// never capture the String (FnMut/fncaptures trap,
+/// flow editor pattern).
 fn selected_widget_id(cx: &EditorCx) -> Option<String> {
     match cx.selected.cloned() {
         Some(Selection::Widget(id)) => Some(id),
@@ -747,7 +747,7 @@ fn selected_widget_id(cx: &EditorCx) -> Option<String> {
     }
 }
 
-/// Met à jour la source primaire du widget (crée la source si absente).
+/// Updates the widget's primary source (creates the source if missing).
 /// Widgets reading one telemetry series that a type dashboard can bind.
 fn reads_series(widget_type: &str) -> bool {
     matches!(widget_type, "gauge" | "stat" | "line" | "indicator")

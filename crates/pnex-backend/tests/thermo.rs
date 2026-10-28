@@ -1,5 +1,5 @@
-//! Tests des endpoints thermo (diagram + cycle-points) : 200 avec
-//! polylines, cache, résolution des mélanges org, 400 CoolProp.
+//! Tests for the thermo endpoints (diagram + cycle-points): 200 with
+//! polylines, cache, org mixture resolution, 400 CoolProp.
 
 mod common;
 
@@ -91,7 +91,7 @@ async fn diagram_water_ph_et_cycle_points() {
         assert_eq!(body["x"]["label"], "Hmass");
         assert!(body["y"]["log"].as_bool().unwrap());
 
-        // Cache : second appel identique → même contenu.
+        // Cache: identical second call → same content.
         let again = post_diagram(
             &server,
             &env.alice,
@@ -105,7 +105,7 @@ async fn diagram_water_ph_et_cycle_points() {
         .await;
         assert_eq!(again.json::<serde_json::Value>(), body);
 
-        // cycle-points : état (P=1 bar, T=400 K) → coords (Hmass, P).
+        // cycle-points: state (P=1 bar, T=400 K) → coords (Hmass, P).
         let resp = server
             .post("/api/v1/thermo/cycle-points/query")
             .add_header("Content-Type", "application/json")
@@ -136,7 +136,7 @@ async fn diagram_resout_melange_org_et_rejette_inconnu() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Mélange org "MonMelange" 50/50 Propane/Éthane.
+        // Org mixture "MonMelange" 50/50 Propane/Ethane.
         let resp = server
             .post("/api/v1/fluid-mixtures")
             .add_header("Content-Type", "application/json")
@@ -169,10 +169,10 @@ async fn diagram_resout_melange_org_et_rejette_inconnu() {
             "{body}"
         );
 
-        // Le diagramme par NOM de mélange fonctionne (résolution org).
-        // NB : mélange → dôme non calculable → l'erreur CoolProp est
-        // attendue ici (400) : la résolution elle-même est prouvée par
-        // le message (pas « fluide inconnu »).
+        // The diagram by mixture NAME works (org resolution).
+        // NB: mixture → dome not computable → the CoolProp error is
+        // expected here (400): the resolution itself is proven by the
+        // message (not "unknown fluid").
         let resp = post_diagram(
             &server,
             &env.alice,

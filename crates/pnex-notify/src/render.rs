@@ -1,21 +1,21 @@
-//! Rendu minijinja des templates (D52) — partagé backend (preview API,
-//! boutons Test) et nœud flow (rendu au send).
+//! minijinja rendering of templates (D52) — shared by the backend (preview API,
+//! Test buttons) and the flow node (render at send).
 //!
-//! Contexte (deux niveaux) :
-//! 1. les `vars` du nœud sont rendues **d'abord** contre `{msg, meta}` —
-//!    une var peut être un littéral `"80"` ou une référence `"{{ msg.x }}"`
-//!    (expression injinja-invalide = littéral, pas d'erreur) ;
-//! 2. le template est rendu contre `{msg, meta, vars}`.
+//! Context (two levels):
+//! 1. the node's `vars` are rendered **first** against `{msg, meta}` —
+//!    a var can be a literal `"80"` or a reference `"{{ msg.x }}"`
+//!    (invalid-Jinja expression = literal, no error);
+//! 2. the template is rendered against `{msg, meta, vars}`.
 //!
-//! Le payload entrant est **aussi** exposé à la racine (`{{ temperature }}`
-//! = `{{ msg.temperature }}`) pour l'ergonomie ; en collision, la clé
-//! explicite (`msg`/`meta`/`vars`) gagne car insérée après.
-//! Les `vars` rendues suivent la même école : référençables sans préfixe
-//! (`{{ seuil }}` = `{{ vars.seuil }}`) — précédence : clé payload < var
-//! racine < namespace explicite.
+//! The incoming payload is **also** exposed at the root (`{{ temperature }}`
+//! = `{{ msg.temperature }}`) for ergonomics; on collision, the explicit
+//! key (`msg`/`meta`/`vars`) wins because it is inserted after.
+//! Rendered `vars` follow the same pattern: referenceable without a prefix
+//! (`{{ seuil }}` = `{{ vars.seuil }}`) — precedence: payload key < root
+//! var < explicit namespace.
 //!
-//! minijinja est sandbox par conception (pas d'accès disque, pas d'include
-//! arbitraire) ; la seule borne à poser soi-même est la longueur de sortie.
+//! minijinja is sandboxed by design (no disk access, no arbitrary
+//! include); the only bound to set ourselves is the output length.
 
 use std::collections::BTreeMap;
 
@@ -24,12 +24,12 @@ use minijinja::Value;
 use crate::error::NotifyError;
 use crate::Message;
 
-/// Borne anti auto-inondation : un template utilisateur peut se démultiplier
-/// (boucle + concat) — sortie totale (sujet + corps) plafonnée.
+/// Anti self-flooding bound: a user template can multiply itself
+/// (loop + concat) — total output (subject + body) capped.
 pub const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
-/// Rend le sujet (optionnel) et le corps d'un message depuis un template
-/// minijinja. `vars` = overrides du nœud (2 niveaux, cf. doc du module).
+/// Renders the (optional) subject and the body of a message from a
+/// minijinja template. `vars` = node overrides (2 levels, see the module doc).
 pub fn render(
     subject_tpl: Option<&str>,
     body_tpl: &str,
@@ -37,15 +37,15 @@ pub fn render(
     msg: serde_json::Value,
     meta: serde_json::Value,
 ) -> Result<Message, NotifyError> {
-    // Niveau 1 : les vars contre {msg, meta}. Une var qui n'est pas du
-    // Jinja valide est un littéral — jamais une erreur de rendu.
+    // Level 1: the vars against {msg, meta}. A var that is not valid
+    // Jinja is a literal — never a render error.
     let mut rendered_vars = BTreeMap::new();
     let inner = root_context(&msg, &meta, None);
     for (k, v) in vars {
         rendered_vars.insert(k.clone(), render_lenient(v, &inner));
     }
 
-    // Niveau 2 : le template contre {msg, meta, vars rendues}.
+    // Level 2: the template against {msg, meta, rendered vars}.
     let full = root_context(&msg, &meta, Some(rendered_vars.clone()));
     let subject = subject_tpl
         .map(|tpl| render_lenient_checked(tpl, &full))
@@ -212,8 +212,8 @@ fn tag_idents(expr: &str, out: &mut Vec<String>) {
     }
 }
 
-/// snake_case `[a-z_][a-z0-9_]*` — même école que les directives de
-/// fonction `@input`/`@output` (pnex-core/src/functions.rs).
+/// snake_case `[a-z_][a-z0-9_]*` — same pattern as the function
+/// directives `@input`/`@output` (pnex-core/src/functions.rs).
 fn is_snake_ident(s: &str) -> bool {
     let mut chars = s.chars();
     match chars.next() {
@@ -223,10 +223,10 @@ fn is_snake_ident(s: &str) -> bool {
     chars.all(|c| matches!(c, '_' | 'a'..='z' | '0'..='9'))
 }
 
-/// Contexte racine : clés du payload exposées à la racine (si objet), puis
-/// `vars` rendues sans préfixe, puis `msg`/`meta`/`vars` (toujours) —
-/// l'ordre d'insertion fait la précédence : payload < var racine <
-/// namespace explicite.
+/// Root context: payload keys exposed at the root (if object), then
+/// `vars` rendered without prefix, then `msg`/`meta`/`vars` (always) —
+/// insertion order sets the precedence: payload < root var <
+/// explicit namespace.
 fn root_context(
     msg: &serde_json::Value,
     meta: &serde_json::Value,
@@ -239,10 +239,10 @@ fn root_context(
         }
     }
     if let Some(vars) = &vars {
-        // Vars référençables sans préfixe (`{{ seuil }}` = `{{ vars.seuil }}`,
-        // même ergonomie que le payload) — insérées après le payload : la var
-        // explicite gagne ; insérées avant les namespaces : une var nommée
-        // `msg`/`meta`/`vars` ne masque jamais le namespace.
+        // Vars referenceable without prefix (`{{ seuil }}` = `{{ vars.seuil }}`,
+        // same ergonomics as the payload) — inserted after the payload: the explicit
+        // var wins; inserted before the namespaces: a var named
+        // `msg`/`meta`/`vars` never masks the namespace.
         for (k, v) in vars {
             root.insert(k.clone(), typed_var(v));
         }
@@ -322,13 +322,13 @@ fn json_to_minijinja(value: &serde_json::Value) -> Value {
     }
 }
 
-/// Rendu indulgent : expression injinja-invalide = littéral retourné tel
-/// quel (ergonomie « var = littéral OU référence »).
+/// Lenient render: invalid-Jinja expression = literal returned as
+/// is ("var = literal OR reference" ergonomics).
 fn render_lenient(tpl: &str, ctx: &serde_json::Value) -> String {
     render_str(tpl, ctx).unwrap_or_else(|_| tpl.to_string())
 }
 
-/// Rendu strict : les erreurs de syntaxe du template principal remontent.
+/// Strict render: syntax errors of the main template bubble up.
 fn render_str(tpl: &str, ctx: &serde_json::Value) -> Result<String, NotifyError> {
     let mut env = minijinja::Environment::new();
     env.add_template("t", tpl)
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn vars_deux_niveaux_litteral_ou_reference() {
-        // "80" = littéral ; "{{ msg.value }}" = référence pré-rendue.
+        // "80" = literal; "{{ msg.value }}" = pre-rendered reference.
         let m = render(
             None,
             "seuil {{ vars.seuil }} vs mesure {{ vars.mesure }}",
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn collision_cle_explicite_gagne() {
-        // Un payload portant une clé "meta" : le contexte explicite gagne.
+        // A payload carrying a "meta" key: the explicit context wins.
         let m = render(
             None,
             "{{ meta.ts }}",
@@ -434,8 +434,8 @@ mod tests {
 
     #[test]
     fn var_rendue_exposee_a_la_racine() {
-        // Régression UI 2026-09-14 : l'éditeur de templates laisse écrire
-        // `{{ test }}` sans préfixe — une var déclarée doit résoudre seul.
+        // UI regression 2026-09-14: the template editor allows writing
+        // `{{ test }}` without prefix — a declared var must resolve on its own.
         let m = render(
             None,
             "salut {{ test }}",
@@ -457,8 +457,8 @@ mod tests {
             json!({"ts": "T1"}),
         )
         .unwrap();
-        // var racine > clé payload ; namespace `vars` > var racine ; une var
-        // nommée `meta` ne masque pas le namespace `meta`.
+        // root var > payload key; `vars` namespace > root var; a var
+        // named `meta` does not mask the `meta` namespace.
         assert_eq!(m.body, "var|var|T1");
     }
 
@@ -494,7 +494,7 @@ mod tests {
             Some("[{{ device }}] {{ vars.seuil }}"),
             "v={{ value }} seuil={{ vars.seuil }} 2e={{ second }}",
         );
-        // Dédup première occurrence : seuil vu au sujet n'apparaît qu'une fois.
+        // First-occurrence dedup: seuil seen in the subject appears only once.
         assert_eq!(out, vec!["device", "seuil", "value", "second"]);
     }
 

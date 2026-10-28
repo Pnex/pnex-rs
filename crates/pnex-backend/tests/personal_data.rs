@@ -104,7 +104,7 @@ async fn org(server: &axum_test::TestServer, env: &Env) -> i64 {
     let (st, e) = call(
         server,
         "POST",
-        "/api/v1/ontology/packs/prospection_b2b/install",
+        "/api/v1/ontology/packs/prospecting_b2b/install",
         &env.alice,
         org,
         None,
@@ -178,7 +178,7 @@ async fn a_role_without_personal_read_sees_masked_people() {
             org,
             "person",
             "Ann Smith",
-            json!({"notes": "met at the fair", "persona": "decideur", "wikidata": "Q1"}),
+            json!({"notes": "met at the fair", "persona": "decision_maker", "wikidata": "Q1"}),
         )
         .await;
         let (st, e) = employs(&server, &env.alice, org, &acme, &ann).await;
@@ -283,7 +283,7 @@ async fn a_role_without_personal_read_sees_masked_people() {
                 json!({"type_key": "person", "filters": [
                     {"key": "notes", "op": "contains", "value": "fair"}]}),
                 json!({"type_key": "person", "filters": [
-                    {"key": "persona", "op": "eq", "value": "decideur"}]}),
+                    {"key": "persona", "op": "eq", "value": "decision_maker"}]}),
             ] {
                 let (_, q) = call(
                     &server,
@@ -305,7 +305,7 @@ async fn a_role_without_personal_read_sees_masked_people() {
             &format!("/api/v1/ontology/objects/{acme}/pages"),
             &env.bob,
             org,
-            Some(json!({"template": "plan_de_compte"})),
+            Some(json!({"template": "account_plan"})),
         )
         .await;
         assert_eq!(st, 201, "{page}");
@@ -571,7 +571,7 @@ async fn an_objection_dates_the_person_and_blocks_its_account() {
             None,
         )
         .await;
-        assert!(o["properties"]["opposition_le"].is_string(), "{o}");
+        assert!(o["properties"]["opposed_on"].is_string(), "{o}");
         let twin = object(&server, &env.alice, org, "person", "Ann Smith", json!({})).await;
         let (st, _) = employs(&server, &env.alice, org, &acme, &twin).await;
         assert_eq!(st, 409);

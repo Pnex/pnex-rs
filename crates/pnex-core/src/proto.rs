@@ -1,26 +1,26 @@
-//! Protocole fil du canal device — WS `/ws/device` (Brick 0, `docs/architecture/brick0.md` §3).
+//! Device channel wire protocol — WS `/ws/device` (Brick 0, `docs/architecture/brick0.md` §3).
 //!
-//! **Source de vérité du contrat** : ce fichier. Le firmware C++
-//! (`firmware/generic_esp8266`) en est un **miroir** — l'ESP8266 ne compile
-//! pas de Rust : le contrat est le schéma fil (tag `"t"`), pas le partage
-//! de code.
+//! **Source of truth of the contract**: this file. The C++ firmware
+//! (`firmware/generic_esp8266`) is a **mirror** of it — the ESP8266 does not compile
+//! Rust: the contract is the wire schema (tag `"t"`), not code
+//! sharing.
 //!
 //! Framing: token in `Authorization: Bearer` (D154), Noise NNpsk0 text
 //! frames (D156), frame-level `PING`/`PONG`, JSON messages tagged `t`.
 //!
-//! Sémantique RPC à la ThingsBoard : toute commande serveur→device est un
-//! RPC avec `cmd_id` et réponse `Ack{cmd_id, ok, err}` requise. La pin map
-//! est poussée par le serveur (`ProvisionAck`), jamais déclarée dans le
+//! ThingsBoard-style RPC semantics: every server→device command is an
+//! RPC with a `cmd_id` and a required `Ack{cmd_id, ok, err}` reply. The pin map
+//! is pushed by the server (`ProvisionAck`), never declared in the
 //! firmware.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Modes P0 d'une capability instance — le rôle sensor/actuator se dérive du
-/// mode (pas de colonne `role` : modèle sans copies, B0.6).
-/// `digital_in`/`adc_in` → sensor ; `digital_out`/`pwm_out` → actuator. ⚠ Le fil
-/// sérialise `AdcIn` → `"adc_in"` (serde snake_case) — la chaîne
-/// `analog_in` est la convention **base** (colonnes `mode`), jamais le fil.
+/// P0 modes of a capability instance — the sensor/actuator role derives from the
+/// mode (no `role` column: copy-free model, B0.6).
+/// `digital_in`/`adc_in` → sensor; `digital_out`/`pwm_out` → actuator. ⚠ The wire
+/// serializes `AdcIn` → `"adc_in"` (serde snake_case) — the string
+/// `analog_in` is the **database** convention (`mode` columns), never the wire.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -38,9 +38,9 @@ pub enum Mode {
     PwmOut,
 }
 
-/// État de repos d'une sortie — appliqué à la perte de lien, au boot et à
-/// l'admission (safe-states, brick0.md §8). Défaut `Low` — même convention
-/// que le défaut serveur de `ModeOpts::safe_state`.
+/// Idle state of an output — applied on link loss, at boot and at
+/// admission (safe-states, brick0.md §8). Default `Low` — same convention
+/// as the server default of `ModeOpts::safe_state`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -54,7 +54,7 @@ pub enum SafeState {
     High,
 }
 
-/// Options de configuration d'un pin, poussées dans `SetMode`.
+/// Configuration options of a pin, pushed in `SetMode`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[cfg_attr(
@@ -70,21 +70,21 @@ pub struct ModeOpts {
     pub safe_state: Option<SafeState>,
 }
 
-/// Pin admis, poussé au device dans `ProvisionAck` (miroir firmware : la
-/// carte de pins vient du serveur, jamais du `.bin`).
+/// Admitted pin, pushed to the device in `ProvisionAck` (firmware mirror: the
+/// pin map comes from the server, never from the `.bin`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PinSpec {
     pub gpio: u16,
-    /// Label overlay (« D1 », « A0 ») — dénormalisé pour l'affichage. For a
+    /// Overlay label ("D1", "A0") — denormalized for display. For a
     /// custom firmware device, the label declared in the sketch.
     pub label: String,
     pub mode: Mode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub safe_state: Option<SafeState>,
-    /// Options persistées (pullup) — additif : répare le round-trip du
-    /// pullup (avant, un pullup posé en UI était réinitialisé côté device
-    /// à chaque re-announce car absent du `ProvisionAck`). Absent sur un
-    /// fil historique → défauts, toléré par le firmware.
+    /// Persisted options (pullup) — additive: fixes the pullup round-trip
+    /// (before, a pullup set in the UI was reset on the device
+    /// at every re-announce because it was missing from `ProvisionAck`). Absent on a
+    /// historical wire → defaults, tolerated by the firmware.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opts: Option<ModeOpts>,
 }
@@ -97,8 +97,8 @@ pub struct PinSpec {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PinDecl {
     pub gpio: u16,
-    /// Label libre choisi dans le sketch (« pump », « dht22 »…) —
-    /// dénomme la série O2 `{org}/{device}/{label}`.
+    /// Free label chosen in the sketch ("pump", "dht22"…) —
+    /// names the O2 series `{org}/{device}/{label}`.
     pub label: String,
     pub mode: Mode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -107,20 +107,20 @@ pub struct PinDecl {
     pub safe_state: Option<SafeState>,
 }
 
-/// Description d'une capacité du manifeste (D47, edge-model.md §2/§7).
-/// Ids canon D16 (`[a-z0-9_:]`), familles D44 (`measurement` | `state` |
-/// `actuator`). Le manifeste est **additif only** (jamais de renommage,
-/// école CONTRACT).
+/// Description of a manifest capability (D47, edge-model.md §2/§7).
+/// Canonical D16 ids (`[a-z0-9_:]`), D44 families (`measurement` | `state` |
+/// `actuator`). The manifest is **additive only** (never a rename,
+/// CONTRACT school).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CapDesc {
-    /// Id de capacité — ex. `temperature`, `digital_state`, `adc_raw`.
+    /// Capability id — e.g. `temperature`, `digital_state`, `adc_raw`.
     pub id: String,
-    /// Famille sémantique D44.
+    /// D44 semantic family.
     pub family: String,
-    /// Unité (famille `measurement`) — informatif en P0.
+    /// Unit (`measurement` family) — informative in P0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
-    /// Version du contrat de capacité ; défaut 1.
+    /// Capability contract version; default 1.
     #[serde(default = "default_cap_version")]
     pub version: u32,
 }
@@ -129,14 +129,14 @@ fn default_cap_version() -> u32 {
     1
 }
 
-/// Une régulation castée à une carte mixte (`ControlConfig`) — struct plat
-/// unique (miroir ArduinoJson trivial côté C++, pas d'imbrication) : champs
-/// PID à 0 pour les TT, `deadband` ignoré pour le PID. Le sens TT est porté
-/// par `kind` (`tt_heat` | `tt_cool` | `pid`), comme `RegConfig::kind_str`.
+/// A control cast to a mixed card (`ControlConfig`) — a single flat struct
+/// (trivial ArduinoJson mirror on the C++ side, no nesting): PID fields
+/// at 0 for TT, `deadband` ignored for PID. The TT direction is carried
+/// by `kind` (`tt_heat` | `tt_cool` | `pid`), like `RegConfig::kind_str`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ControlSpec {
-    /// Id éditeur du nœud d'origine (`pnex_node_id` projeté) — clé du diag
-    /// `RegState` retourné par le device.
+    /// Editor id of the source node (projected `pnex_node_id`) — key of the
+    /// `RegState` diag returned by the device.
     pub node_id: String,
     pub sensor_gpio: u16,
     pub sensor_mode: Mode,
@@ -150,7 +150,7 @@ pub struct ControlSpec {
     pub ki: f64,
     #[serde(default)]
     pub kd: f64,
-    /// Période du cycle relais time-proportional (PID ; ignoré TT).
+    /// Time-proportional relay cycle period (PID; ignored for TT).
     #[serde(default)]
     pub cycle_time_secs: u32,
     #[serde(default)]
@@ -169,23 +169,23 @@ pub struct ControlSpec {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum DeviceMsg {
-    /// Premier message après connexion : admission policy `Validated`
-    /// (dérive overlay → `caps::validate` → persiste → `ProvisionAck`).
+    /// First message after connection: `Validated` admission policy
+    /// (derive overlay → `caps::validate` → persist → `ProvisionAck`).
     Announce {
-        /// « esp8266 » | « esp32-c3 » | « esp32 » — informative: admission
+        /// "esp8266" | "esp32-c3" | "esp32" — informative: admission
         /// validates against the SoC of the device's board.
         chip: String,
-        /// Board déclaré par le device (« nodemcu », « d1_mini »…) —
+        /// Board declared by the device ("nodemcu", "d1_mini"…) —
         /// informative only (the real board is the device's board in
         /// database).
         board: String,
-        /// Version du firmware générique (politique de re-flash, §10).
+        /// Generic firmware version (re-flash policy, §10).
         fw: String,
-        /// Manifeste de capacités (D47) — `None` pour un fil historique
-        /// sans manifeste (additif). Pour un firmware compilé par le
-        /// serveur (pin_slave), c'est une **attestation** (l'overlay board
-        /// reste l'autorité des pins, bascule douce §7) ; le serveur
-        /// journalise qui tourne avec quoi (réservation OTA, §9).
+        /// Capability manifest (D47) — `None` for a historical wire
+        /// without a manifest (additive). For a firmware compiled by the
+        /// server (pin_slave), it is an **attestation** (the board overlay
+        /// stays the pin authority, soft switch §7); the server
+        /// logs who runs with what (OTA reservation, §9).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         caps: Option<Vec<CapDesc>>,
         /// Pins declared by the sketch (custom firmware — additive).
@@ -195,13 +195,13 @@ pub enum DeviceMsg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pins: Option<Vec<PinDecl>>,
     },
-    /// Lecture périodique d'un pin input (ou réponse à un read).
+    /// Periodic read of an input pin (or reply to a read).
     ///
-    /// Étendu D46/D47 (additif) : un fil historique sans ces champs reste
-    /// valide. `cap_id` présent → routage sémantique de la série O2
-    /// (`{org}/{device}/{capacité}`) ; absent → routage par label overlay
-    /// (autorité du pin_slave). `uptime_ms`/`boot_id`/`seq` = clé de dédup
-    /// et reconstruction du temps quand le buffering existera (F3, D46).
+    /// Extended D46/D47 (additive): a historical wire without these fields stays
+    /// valid. `cap_id` present → semantic routing of the O2 series
+    /// (`{org}/{device}/{capability}`); absent → routing by overlay label
+    /// (pin_slave authority). `uptime_ms`/`boot_id`/`seq` = dedup key
+    /// and time reconstruction once buffering exists (F3, D46).
     ///
     /// D87 (custom firmware): `gpio` is absent for a custom metric — the
     /// report is then routed by `cap_id` alone, which must name a `metric`
@@ -210,20 +210,20 @@ pub enum DeviceMsg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         gpio: Option<u16>,
         value: Value,
-        /// Capacité rapportée (D47).
+        /// Reported capability (D47).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cap_id: Option<String>,
-        /// uptime `millis()` device à la capture (D46).
+        /// Device `millis()` uptime at capture (D46).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         uptime_ms: Option<u64>,
-        /// Id de boot (tiré au boot, D46) — clé de dédup `(boot_id, seq)`.
+        /// Boot id (drawn at boot, D46) — dedup key `(boot_id, seq)`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         boot_id: Option<String>,
-        /// Ordre par boot (D46) — clé de dédup `(boot_id, seq)`.
+        /// Order within a boot (D46) — dedup key `(boot_id, seq)`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         seq: Option<u64>,
     },
-    /// Accusé d'un RPC serveur (`cmd_id` requis — sémantique ThingsBoard).
+    /// Ack of a server RPC (`cmd_id` required — ThingsBoard semantics).
     Ack {
         cmd_id: String,
         ok: bool,
@@ -244,8 +244,8 @@ pub enum DeviceMsg {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         err: Option<String>,
     },
-    /// Diagnostic des régulations embarquées (cartes mixtes, control-cards)
-    /// — toléré absent : le firmware générique ne l'émet jamais.
+    /// Diagnostics of the embedded controls (mixed cards, control-cards)
+    /// — tolerated absent: the generic firmware never emits it.
     RegState { entries: Vec<RegDiag> },
     /// Edge agent (D95): durable, ordered batch of free-form points drained
     /// from the agent disk queue. `epoch` identifies the queue lifetime (the
@@ -443,10 +443,10 @@ fn opt_u8(v: &serde_json::Value, key: &str) -> Result<Option<u8>, String> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "t", rename_all = "snake_case")]
 pub enum ServerMsg {
-    /// Réponse à l'`Announce` : pin map complète à appliquer (modes initiaux
-    /// + safe-states). Remplace la déclaration statique du firmware.
+    /// Reply to the `Announce`: full pin map to apply (initial modes
+    /// + safe-states). Replaces the firmware's static declaration.
     ProvisionAck { caps: Vec<PinSpec> },
-    /// RPC : changer le mode d'un pin.
+    /// RPC: change the mode of a pin.
     SetMode {
         cmd_id: String,
         gpio: u16,
@@ -454,25 +454,25 @@ pub enum ServerMsg {
         #[serde(default)]
         opts: ModeOpts,
     },
-    /// RPC : écrire sur une sortie — booléen 0/1 pour `digital_out`,
-    /// duty % (nombre 0..=100) pour `pwm_out`.
+    /// RPC: write to an output — boolean 0/1 for `digital_out`,
+    /// duty % (number 0..=100) for `pwm_out`.
     Write {
         cmd_id: String,
         gpio: u16,
         value: Value,
     },
-    /// RPC : cadencer les lectures d'un pin input (0 = désabonner).
+    /// RPC: schedule the reads of an input pin (0 = unsubscribe).
     Subscribe {
         cmd_id: String,
         gpio: u16,
         interval_ms: u32,
     },
-    /// RPC : remplacement **complet** du jeu de régulations embarquées du
-    /// device (cartes mixtes, control-cards) — `configs = []` remet toutes
-    /// les sorties régulées en safe-state. Casté après `ProvisionAck` (à
-    /// l'announce) puis à chaque deploy qui change ces configs ; le device
-    /// répond `Ack{cmd_id}`. Le firmware générique ignore poliment (pas
-    /// d'Ack — comportement attendu, jamais une erreur).
+    /// RPC: **full** replacement of the device's set of embedded controls
+    /// (mixed cards, control-cards) — `configs = []` puts all the
+    /// controlled outputs back in safe-state. Cast after `ProvisionAck` (at
+    /// announce) then at every deploy that changes these configs; the device
+    /// replies `Ack{cmd_id}`. The generic firmware politely ignores it (no
+    /// Ack — expected behaviour, never an error).
     ControlConfig {
         cmd_id: String,
         configs: Vec<ControlSpec>,
@@ -523,7 +523,7 @@ pub enum ServerMsg {
         #[serde(default)]
         args: Value,
     },
-    /// Refus d'admission ou erreur fatale — suivi d'une close frame.
+    /// Admission refusal or fatal error — followed by a close frame.
     Reject { reason: String },
     /// Edge agent (D95): every point of `epoch` up to `up_to_seq` (inclusive)
     /// has been accepted (or was a duplicate) — the agent may purge them.
@@ -639,8 +639,8 @@ impl<'de> Deserialize<'de> for ServerMsg {
     }
 }
 
-/// « null » fil (ArduinoJson sérialise NaN/Inf en `null`) → `f64::NAN`.
-/// Sérialisation : serde_json émet déjà `null` pour NaN — symétrique.
+/// Wire "null" (ArduinoJson serializes NaN/Inf as `null`) → `f64::NAN`.
+/// Serialization: serde_json already emits `null` for NaN — symmetric.
 fn f64_nan_or_null<'de, D>(d: D) -> Result<f64, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -648,25 +648,25 @@ where
     Ok(Option::<f64>::deserialize(d)?.unwrap_or(f64::NAN))
 }
 
-/// Diagnostic d'une régulation embarquée, rapporté par le device
-/// (`RegState`, cadence lente ≤ 1 Hz) — alimente la télémétrie/diag.
+/// Diagnostics of an embedded control, reported by the device
+/// (`RegState`, slow rate ≤ 1 Hz) — feeds the telemetry/diag.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegDiag {
-    /// Id du nœud d'origine (`ControlSpec::node_id`).
+    /// Source node id (`ControlSpec::node_id`).
     pub node_id: String,
-    /// Sens de la carte (`tt_heat` | `tt_cool` | `pid`).
+    /// Card direction (`tt_heat` | `tt_cool` | `pid`).
     pub kind: String,
     pub setpoint: f64,
-    /// Dernière mesure du capteur (NaN si illisible ; `null` fil = NaN).
+    /// Latest sensor measurement (NaN if unreadable; wire `null` = NaN).
     #[serde(deserialize_with = "f64_nan_or_null")]
     pub sensor_value: f64,
-    /// Sortie courante : 0/100 (TT) ou duty % (PID).
+    /// Current output: 0/100 (TT) or duty % (PID).
     pub output_pct: f64,
     pub cycle_count: u64,
 }
 
-/// Résolution du rôle à partir du mode — sensor/actuator est un rôle dérivé,
-/// jamais une colonne (B0.6, modèle sans copies).
+/// Role resolution from the mode — sensor/actuator is a derived role,
+/// never a column (B0.6, copy-free model).
 pub fn role_of(mode: Mode) -> &'static str {
     match mode {
         Mode::DigitalIn | Mode::AdcIn => "sensor",
@@ -760,7 +760,7 @@ mod tests {
             ..
         } = &m
         else {
-            panic!("announce attendu, reçu : {m:?}");
+            panic!("expected announce, got: {m:?}");
         };
         assert_eq!(chip, "esp32-c3");
         assert_eq!(pins.len(), 3);
@@ -771,18 +771,18 @@ mod tests {
         assert_eq!(pins[0].safe_state, Some(SafeState::Low));
         assert_eq!(pins[1].pullup, Some(true));
         assert_eq!(pins[2].mode, Mode::AdcIn);
-        // Roundtrip : pullup=None absent du fil (skip_serializing_if).
+        // Roundtrip: pullup=None absent from the wire (skip_serializing_if).
         let wire = serde_json::to_string(&m).unwrap();
         let v: serde_json::Value = serde_json::from_str(&wire).unwrap();
         assert!(
             v["pins"][0].get("pullup").is_none(),
-            "pullup=None ne voyage pas : {wire}"
+            "pullup=None does not travel: {wire}"
         );
         let back: DeviceMsg = serde_json::from_str(&wire).unwrap();
         assert_eq!(back, m);
     }
 
-    /// D47 : manifeste annoncé, champs optionnels à défauts (unit absent,
+    /// D47: announced manifest, optional fields at defaults (unit absent,
     /// version=1).
     #[test]
     fn announce_avec_manifeste_caps_roundtrip() {
@@ -797,21 +797,21 @@ mod tests {
             caps: Some(caps), ..
         } = &m
         else {
-            panic!("announce attendu, reçu : {m:?}");
+            panic!("expected announce, got: {m:?}");
         };
         assert_eq!(caps.len(), 3);
         assert_eq!(caps[0].id, "digital_state");
         assert_eq!(caps[0].family, "state");
-        assert_eq!(caps[0].version, 1, "défaut version=1");
+        assert_eq!(caps[0].version, 1, "default version=1");
         assert_eq!(caps[0].unit, None);
         assert_eq!(caps[1].unit.as_deref(), Some("raw"));
-        // Roundtrip : unit absent pour None (skip_serializing_if), version
-        // toujours émis (pas de skip — forme fil stable).
+        // Roundtrip: unit absent for None (skip_serializing_if), version
+        // always emitted (no skip — stable wire form).
         let wire = serde_json::to_string(&m).unwrap();
         let v: serde_json::Value = serde_json::from_str(&wire).unwrap();
         assert!(
             v["caps"][0].get("unit").is_none(),
-            "unit=None ne voyage pas : {wire}"
+            "unit=None does not travel: {wire}"
         );
         assert_eq!(v["caps"][1]["unit"], serde_json::json!("raw"));
         let back: DeviceMsg = serde_json::from_str(&wire).unwrap();
@@ -867,7 +867,7 @@ mod tests {
 
     #[test]
     fn state_report_et_ack_roundtrip() {
-        // Fil historique sans champs étendus : reste valide (additif D46/D47).
+        // Historical wire without extended fields: stays valid (additive D46/D47).
         let m: DeviceMsg =
             serde_json::from_str(r#"{"t":"state_report","gpio":5,"value":true}"#).unwrap();
         assert!(
@@ -875,7 +875,7 @@ mod tests {
             if value == Value::Bool(true))
         );
 
-        // Forme étendue complète (F2) : cap_id + horloge D46.
+        // Full extended form (F2): cap_id + D46 clock.
         let m: DeviceMsg = serde_json::from_str(
             r#"{"t":"state_report","gpio":5,"value":true,"cap_id":"digital_state",
                 "uptime_ms":123456,"boot_id":"a1b2c3d4","seq":42}"#,
@@ -891,7 +891,7 @@ mod tests {
         );
 
         let m: DeviceMsg = serde_json::from_str(
-            r#"{"t":"ack","cmd_id":"abc","ok":false,"err":"pin non configuré"}"#,
+            r#"{"t":"ack","cmd_id":"abc","ok":false,"err":"pin not configured"}"#,
         )
         .unwrap();
         assert!(matches!(m, DeviceMsg::Ack { cmd_id, ok: false, .. }
@@ -927,8 +927,8 @@ mod tests {
                 && caps[0].safe_state == Some(SafeState::Low)
                 && caps[0].opts.is_none()));
 
-        // Round-trip du pullup persisté (fix : opts absents avant — le
-        // pullup posé en UI était réinitialisé au device à chaque
+        // Round-trip of the persisted pullup (fix: opts absent before — the
+        // pullup set in the UI was reset on the device at every
         // re-announce).
         let m: ServerMsg = serde_json::from_str(
             r#"{"t":"provision_ack","caps":[{"gpio":3,"label":"door","mode":"digital_in",
@@ -940,7 +940,7 @@ mod tests {
                 && caps[0].opts == Some(ModeOpts { pullup: Some(true), safe_state: None })));
         let wire = serde_json::to_string(&m).unwrap();
         assert!(wire.contains(r#""pullup":true"#), "{wire}");
-        // opts=None n'embarque pas d'objet vide (skip_serializing_if).
+        // opts=None does not embed an empty object (skip_serializing_if).
         let sans = ServerMsg::ProvisionAck {
             caps: vec![PinSpec {
                 gpio: 2,
@@ -954,9 +954,9 @@ mod tests {
         assert!(!wire.contains("opts"), "{wire}");
 
         let m: ServerMsg =
-            serde_json::from_str(r#"{"t":"reject","reason":"device inconnu"}"#).unwrap();
+            serde_json::from_str(r#"{"t":"reject","reason":"unknown device"}"#).unwrap();
         assert!(matches!(m, ServerMsg::Reject { reason }
-            if reason == "device inconnu"));
+            if reason == "unknown device"));
     }
 
     #[test]
@@ -997,7 +997,7 @@ mod tests {
 
     #[test]
     fn control_config_roundtrip() {
-        // Remplacement complet : 1 régulation TT + 1 PID sur la même carte.
+        // Full replacement: 1 TT control + 1 PID on the same card.
         let json = r#"{"t":"control_config","cmd_id":"c7","configs":[
             {"node_id":"r1","sensor_gpio":17,"sensor_mode":"adc_in","out_gpio":5,"kind":"tt_heat",
              "setpoint":19.0,"deadband":0.5,"min_on_secs":5,"min_off_secs":5,
@@ -1008,7 +1008,7 @@ mod tests {
         ]}"#;
         let m: ServerMsg = serde_json::from_str(json).unwrap();
         let ServerMsg::ControlConfig { cmd_id, configs } = &m else {
-            panic!("variante inattendue : {m:?}");
+            panic!("unexpected variant: {m:?}");
         };
         assert_eq!(cmd_id, "c7");
         assert_eq!(configs.len(), 2);
@@ -1021,14 +1021,14 @@ mod tests {
         assert_eq!(configs[1].kind, "pid");
         assert!((configs[1].kp - 2.0).abs() < 1e-9);
         assert_eq!(configs[1].cycle_time_secs, 10);
-        // Roundtrip : le fil re-sérialisé est réutilisable tel quel.
+        // Roundtrip: the re-serialized wire is reusable as is.
         let back: ServerMsg = serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
         assert_eq!(back, m);
     }
 
     #[test]
     fn control_config_vide_remplace_tout() {
-        // `[]` = clear : remet toutes les sorties régulées en safe.
+        // `[]` = clear: puts all the controlled outputs back in safe.
         let m: ServerMsg =
             serde_json::from_str(r#"{"t":"control_config","cmd_id":"c8","configs":[]}"#).unwrap();
         assert!(matches!(m, ServerMsg::ControlConfig { cmd_id, configs }
@@ -1051,13 +1051,13 @@ mod tests {
                 && (entries[0].sensor_value - 18.4).abs() < 1e-9
                 && entries[0].output_pct == 100.0
                 && entries[0].cycle_count == 3));
-        // Le générique n'émet jamais ce message — mais un fil historique
-        // sans `reg_state` reste valide : c'est une variante optionnelle.
+        // The generic never emits this message — but a historical wire
+        // without `reg_state` stays valid: it is an optional variant.
     }
 
-    /// Convention fil : ArduinoJson sérialise NaN/Inf en `null` — « null »
-    /// désérialise en NaN (avant ce fix, un RegState « capteur illisible »
-    /// était droppé au parse).
+    /// Wire convention: ArduinoJson serializes NaN/Inf as `null` — "null"
+    /// deserializes to NaN (before this fix, a "sensor unreadable" RegState
+    /// was dropped at parse).
     #[test]
     fn reg_state_sensor_null_devient_nan() {
         let m: DeviceMsg = serde_json::from_str(
@@ -1068,10 +1068,10 @@ mod tests {
         )
         .unwrap();
         let DeviceMsg::RegState { entries } = &m else {
-            panic!("reg_state attendu : {m:?}");
+            panic!("expected reg_state: {m:?}");
         };
         assert!(entries[0].sensor_value.is_nan());
-        // Symétrique : NaN ressort en « null » fil.
+        // Symmetric: NaN comes back as wire "null".
         let wire = serde_json::to_string(&m).unwrap();
         assert!(wire.contains(r#""sensor_value":null"#), "{wire}");
     }

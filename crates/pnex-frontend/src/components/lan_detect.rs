@@ -1,11 +1,11 @@
-//! Détection LAN des serveurs PNeX côté serveur (endpoint
-//! `GET /api/v1/edge/lan-scan`) — composant réutilisé par le picker host
-//! (wizard, modal rebuild) et le formulaire de la page Référentiels.
+//! Server-side LAN detection of PNeX servers (endpoint
+//! `GET /api/v1/edge/lan-scan`) — component reused by the host picker
+//! (wizard, rebuild modal) and the form of the Registries page.
 //!
-//! Le serveur sonde les /24 de ses interfaces privées (ou le préfixe saisi)
-//! avec la sonde meta du contrat : un hit = un `pnex-server` vérifié, pas
-//! un simple port ouvert. Déploiement conteneurisé (bridge 172.x) : saisir
-//! le préfixe LAN réel dans le champ dédié (l'outbound traverse le NAT).
+//! The server probes the /24s of its private interfaces (or the typed prefix)
+//! with the contract's meta probe: a hit = a verified `pnex-server`, not
+//! just an open port. Containerised deployment (bridge 172.x): type
+//! the real LAN prefix in the dedicated field (outbound goes through NAT).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -18,10 +18,10 @@ use crate::state::toasts;
 #[component]
 pub fn LanDetect(on_pick: Callback<String>) -> Element {
     let mut scanning = use_signal(|| false);
-    // Préfixe explicite « a.b.c. » — vide = auto-détection côté serveur
-    // (interfaces privées de l'hôte pnex-server).
+    // Explicit "a.b.c." prefix — empty = server-side auto-detection
+    // (private interfaces of the pnex-server host).
     let mut prefix = use_signal(String::new);
-    // Outer None = jamais lancé ; inner None = scan en erreur (toast).
+    // Outer None = never run; inner None = scan failed (toast).
     let mut result = use_signal(|| None::<Option<pnex_core::LanScanResult>>);
 
     let run = move |_| {

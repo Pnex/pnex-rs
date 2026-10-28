@@ -2,7 +2,7 @@
 //! reactivation, tier quotas, metadata-only update, shared global
 //! catalog.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -15,7 +15,7 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app + seed du catalogue minimal (tier Free 3/1/0, types sensor/
+/// Boots the app + seeds the minimal catalogue (Free tier 3/1/0, types sensor/
 /// actuator/mixed, capabilities, board, predefined devices).
 async fn with_app<F, Fut>(f: F)
 where
@@ -56,7 +56,7 @@ fn bearer(token: &str) -> String {
     format!("Bearer {token}")
 }
 
-/// Org personnelle de l'utilisateur (créée par JIT provisioning).
+/// Personal org of the user (created by JIT provisioning).
 async fn personal_org(server: &axum_test::TestServer, token: &str) -> i64 {
     server
         .get("/api/v1/user-info")
@@ -130,7 +130,7 @@ async fn sans_token_devices_et_catalogue_refuses() {
                 "GET" => server.get(path).await,
                 _ => server.post(path).await,
             };
-            assert_eq!(res.status_code(), 401, "{method} {path} sans token");
+            assert_eq!(res.status_code(), 401, "{method} {path} without a token");
         }
     })
     .await;
@@ -142,9 +142,9 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
     with_app(|server, env, ctx| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Création : inactive + token + clé de chiffrement (base64 44 chars).
+        // Creation: inactive + token + encryption key (base64 44 chars).
         let res = create_device(&server, &env.alice, org, "esp-001", "temp_sensor").await;
-        assert_eq!(res.status_code(), 201, "création → 201");
+        assert_eq!(res.status_code(), 201, "creation → 201");
         let body: serde_json::Value = res.json();
         let device_pk = body["id"].as_i64().expect("id");
         assert_eq!(body["active"], false, "created inactive");
@@ -155,7 +155,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(body["discovered_measurements"], serde_json::json!([]));
         let caps = body["capabilities"].as_array().expect("capabilities");
         assert_eq!(caps[0]["name"], "read_temperature");
-        assert_eq!(caps[0]["mode"], "input", "mode minuscule sur le wire");
+        assert_eq!(caps[0]["mode"], "input", "lowercase mode on the wire");
         let token = body["device_token"].as_object().expect("token auto");
         assert!(token["token"].as_str().is_some_and(|t| t.len() >= 40));
         assert_eq!(token["encryption_key"].as_str().unwrap().len(), 44);
@@ -166,7 +166,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         let agent: serde_json::Value = res.json();
         assert_eq!(agent["allow_dynamic_measurements"], true);
 
-        // Device inactif connu → réactivation 200 (pas de nouvelle création).
+        // Known inactive device → reactivation 200 (no new creation).
         let res = create_device(&server, &env.alice, org, "esp-001", "temp_sensor").await;
         assert_eq!(res.status_code(), 200);
         assert_eq!(res.json::<serde_json::Value>()["reactivated"], true);
@@ -179,10 +179,10 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
         assert_eq!(
             list["results"].as_array().unwrap().len(),
             2,
-            "pas de doublon : {list:?}"
+            "no duplicate: {list:?}"
         );
 
-        // Device inactif + token désactivé → réactivation réactive le token.
+        // Inactive device + disabled token → reactivation re-enables the token.
         use pnex_backend::models::_entities::{device_registries, device_tokens};
         use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
         let dev = device_registries::Entity::find_by_id(device_pk)
@@ -198,12 +198,12 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
             .expect("token");
         let mut t: device_tokens::ActiveModel = tok_row.into();
         t.is_active = Set(false);
-        t.update(&ctx.db).await.expect("désactive token");
+        t.update(&ctx.db).await.expect("disable token");
         let mut d: device_registries::ActiveModel = dev.into();
         d.active = Set(false);
-        d.update(&ctx.db).await.expect("désactive device");
+        d.update(&ctx.db).await.expect("disable device");
         let res = create_device(&server, &env.alice, org, "esp-001", "temp_sensor").await;
-        assert_eq!(res.status_code(), 200, "réactivation device inactif");
+        assert_eq!(res.status_code(), 200, "inactive device reactivation");
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/devices/{device_pk}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -211,7 +211,10 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
             .await
             .json();
         assert_eq!(detail["active"], true);
-        assert_eq!(detail["device_token"]["is_active"], true, "token réactivé");
+        assert_eq!(
+            detail["device_token"]["is_active"], true,
+            "token reactivated"
+        );
 
         // Device actif → 400 exact.
         let res = create_device(&server, &env.alice, org, "esp-001", "temp_sensor").await;
@@ -221,7 +224,7 @@ async fn cycle_creation_reactivation_et_refus_device_actif() {
             "device-already-active"
         );
 
-        // Predefined inconnu → 400 champ-par-champ.
+        // Unknown predefined → 400 field by field.
         let res = create_device(&server, &env.alice, org, "esp-x", "inconnu").await;
         assert_eq!(res.status_code(), 400);
         let body: serde_json::Value = res.json();
@@ -268,14 +271,14 @@ async fn filtres_de_liste() {
         let by_id = get("?device_id=esp-s1").await;
         assert_eq!(by_id["results"].as_array().unwrap().len(), 1);
 
-        // Recherche multi-champs : par identifiant, puis par capacité.
+        // Multi-field search: by identifier, then by capability.
         let by_search = get("?search=S1").await;
         assert_eq!(by_search["results"].as_array().unwrap().len(), 1);
         assert_eq!(by_search["results"][0]["device_id"], "esp-s1");
         let by_search_cap = get("?search=relay").await;
         assert_eq!(by_search_cap["results"].as_array().unwrap().len(), 1);
         assert_eq!(by_search_cap["results"][0]["device_id"], "esp-a1");
-        // Casse ignorée, terme introuvable → vide.
+        // Case ignored, term not found → empty.
         assert_eq!(
             get("?search=ESP-A1").await["results"]
                 .as_array()
@@ -291,7 +294,7 @@ async fn filtres_de_liste() {
             0
         );
 
-        // Aucun actif : le filtre active=true vide la liste.
+        // No active one: the active=true filter empties the list.
         assert_eq!(
             get("?active=true").await["results"]
                 .as_array()
@@ -355,13 +358,13 @@ async fn quotas_tier_par_type() {
             assert_eq!(res.status_code(), 201, "capteur {n}");
         }
         let res = create_device(&server, &env.alice, org, "esp-s4", "temp_sensor").await;
-        assert_eq!(res.status_code(), 400, "4e capteur refusé");
+        assert_eq!(res.status_code(), 400, "4th sensor refused");
         let body = res.json::<serde_json::Value>();
         assert_eq!(body["error"], "device-quota-reached");
         assert_eq!(body["errors"]["args"]["type"], "sensor");
 
         // Inactive devices count toward the quota:
-        // un seul actuator créé inactif → le 2e est déjà au-dessus du quota.
+        // a single actuator created inactive → the 2nd is already over the quota.
         let res = create_device(&server, &env.alice, org, "esp-a1", "relay_1ch").await;
         assert_eq!(res.status_code(), 201);
         let res = create_device(&server, &env.alice, org, "esp-a2", "relay_1ch").await;
@@ -370,8 +373,8 @@ async fn quotas_tier_par_type() {
         assert_eq!(body["error"], "device-quota-reached");
         assert_eq!(body["errors"]["args"]["type"], "actuator");
 
-        // mixed : 1 autorisé (Brick 0 — device générique prototypable en Free),
-        // le 2e est refusé.
+        // mixed: 1 allowed (Brick 0 — generic device prototypable in Free),
+        // the 2nd is refused.
         let res = create_device(&server, &env.alice, org, "esp-m1", "mixed_hub_v1").await;
         assert_eq!(res.status_code(), 201);
         let res = create_device(&server, &env.alice, org, "esp-m2", "mixed_hub_v1").await;
@@ -390,7 +393,7 @@ async fn isolation_tenant_et_roles() {
         let alice_org = personal_org(&server, &env.alice).await;
         let bob_org = personal_org(&server, &env.bob).await;
 
-        // Même device_id dans deux orgs : deux devices distincts.
+        // Same device_id in two orgs: two distinct devices.
         let created: serde_json::Value =
             create_device(&server, &env.alice, alice_org, "esp-001", "temp_sensor")
                 .await
@@ -403,10 +406,10 @@ async fn isolation_tenant_et_roles() {
         assert_ne!(
             created_bob["id"].as_i64().unwrap(),
             alice_device,
-            "devices distincts par org"
+            "distinct devices per org"
         );
 
-        // Chaque org ne voit que ses devices.
+        // Each org only sees its own devices.
         for (token, org_id, expected) in [(&env.alice, alice_org, 1), (&env.bob, bob_org, 1)] {
             let list: serde_json::Value = server
                 .get("/api/v1/devices")
@@ -417,7 +420,7 @@ async fn isolation_tenant_et_roles() {
             assert_eq!(list["results"].as_array().unwrap().len(), expected);
         }
 
-        // Bob n'atteint pas le device d'alice (ni lecture, ni écriture).
+        // Bob does not reach alice's device (neither read nor write).
         let res = server
             .get(&format!("/api/v1/devices/{alice_device}"))
             .add_header("Authorization", bearer(&env.bob))
@@ -431,14 +434,14 @@ async fn isolation_tenant_et_roles() {
             .await;
         assert_eq!(res.status_code(), 404);
 
-        // Sans X-Org-Id : rejet (le scoping est explicite).
+        // Without X-Org-Id: rejected (scoping is explicit).
         let res = server
             .get("/api/v1/devices")
             .add_header("Authorization", bearer(&env.alice))
             .await;
         assert_eq!(res.status_code(), 400);
 
-        // Viewer : lecture OK, écriture refusée.
+        // Viewer: read OK, write refused.
         server
             .post(&format!("/api/v1/orgs/{alice_org}/members"))
             .add_header("Content-Type", "application/json")
@@ -450,9 +453,9 @@ async fn isolation_tenant_et_roles() {
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", alice_org.to_string())
             .await;
-        assert_eq!(res.status_code(), 200, "viewer lit les devices de l'org");
+        assert_eq!(res.status_code(), 200, "viewer reads the org's devices");
         let res = create_device(&server, &env.bob, alice_org, "esp-v", "temp_sensor").await;
-        assert_eq!(res.status_code(), 403, "viewer ne crée pas");
+        assert_eq!(res.status_code(), 403, "viewer does not create");
 
         // SEC-8: device credentials never reach a viewer (list + detail),
         // nor the firmware image that embeds them; the owner keeps them.
@@ -485,7 +488,7 @@ async fn isolation_tenant_et_roles() {
         assert_eq!(
             res.status_code(),
             403,
-            "viewer ne télécharge pas le firmware"
+            "viewer does not download the firmware"
         );
 
         // SEC-7: a viewer neither deploys nor cancels an OTA rollout.
@@ -496,13 +499,13 @@ async fn isolation_tenant_et_roles() {
             .add_header("Content-Type", "application/json")
             .json(&serde_json::json!({ "force": true }))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer ne déploie pas d'OTA");
+        assert_eq!(res.status_code(), 403, "viewer does not deploy OTA");
         let res = server
             .delete(&format!("/api/v1/devices/{alice_device}/ota"))
             .add_header("Authorization", bearer(&env.bob))
             .add_header("X-Org-Id", alice_org.to_string())
             .await;
-        assert_eq!(res.status_code(), 403, "viewer n'annule pas d'OTA");
+        assert_eq!(res.status_code(), 403, "viewer does not cancel an OTA");
         let _ = ctx;
     })
     .await;
@@ -524,7 +527,7 @@ async fn suppression_nettoie_token_et_build_records() {
                 .json();
         let id = created["id"].as_i64().expect("id");
 
-        // Deux enregistrements firmware à nettoyer.
+        // Two firmware records to clean up.
         for phase in ["compile", "link"] {
             build_records::ActiveModel {
                 device_id: Set(Some("esp-001".into())),
@@ -549,19 +552,19 @@ async fn suppression_nettoie_token_et_build_records() {
             .one(&ctx.db)
             .await
             .unwrap();
-        assert!(remaining_dev.is_none(), "device supprimé");
+        assert!(remaining_dev.is_none(), "device deleted");
         let remaining_tok = device_tokens::Entity::find()
             .filter(device_tokens::Column::DeviceRegistryId.eq(id))
             .one(&ctx.db)
             .await
             .unwrap();
-        assert!(remaining_tok.is_none(), "token supprimé");
+        assert!(remaining_tok.is_none(), "token deleted");
         let remaining_builds = build_records::Entity::find()
             .filter(build_records::Column::OrgId.eq(org))
             .count(&ctx.db)
             .await
             .unwrap();
-        assert_eq!(remaining_builds, 0, "build records nettoyés");
+        assert_eq!(remaining_builds, 0, "build records cleaned up");
     })
     .await;
 }
@@ -580,8 +583,8 @@ async fn latest_build_hydrate_liste_et_detail() {
                 .json();
         create_device(&server, &env.alice, org, "esp-a1", "temp_sensor").await;
 
-        // Record de build succeeded pour esp-s1 uniquement (insertion directe —
-        // un record par (org, device_id), upsert côté contrôleur builds).
+        // Succeeded build record for esp-s1 only (direct insert —
+        // one record per (org, device_id), upsert in the builds controller).
         build_records::ActiveModel {
             device_id: Set(Some("esp-s1".into())),
             build_phase: Set("succeeded".into()),
@@ -592,7 +595,7 @@ async fn latest_build_hydrate_liste_et_detail() {
         .await
         .expect("build record");
 
-        // Liste : hydratation par device de la page (colonne Firmware).
+        // List: per-device hydration of the page (Firmware column).
         let list = list_devices(&server, &env.alice, org, "").await;
         let results = list["results"].as_array().expect("results");
         let s1_row = results
@@ -607,9 +610,9 @@ async fn latest_build_hydrate_liste_et_detail() {
             .iter()
             .find(|d| d["device_id"] == "esp-a1")
             .expect("esp-a1 en liste");
-        assert!(a1_row["latest_build"].is_null(), "sans build → null");
+        assert!(a1_row["latest_build"].is_null(), "without a build → null");
 
-        // Détail : même hydratation via device_full.
+        // Detail: same hydration via device_full.
         let detail: serde_json::Value = server
             .get(&format!("/api/v1/devices/{}", s1["id"].as_i64().unwrap()))
             .add_header("Authorization", bearer(&env.alice))
@@ -625,7 +628,7 @@ async fn latest_build_hydrate_liste_et_detail() {
 #[serial]
 async fn catalogue_global_partage() {
     with_app(|server, env, _ctx| async move {
-        // Capabilities : formes exactes + filtre mode (+ valeur inconnue vide).
+        // Capabilities: exact shapes + mode filter (+ unknown value empty).
         let caps: serde_json::Value = server
             .get("/api/v1/device-capabilities")
             .add_header("Authorization", bearer(&env.alice))
@@ -672,10 +675,10 @@ async fn catalogue_global_partage() {
         assert_eq!(relay_pd["capabilities"], serde_json::json!(["relay"]));
         assert!(
             relay_pd.get("id").is_none(),
-            "pas d'id dans le contrat catalogue"
+            "no id in the catalogue contract"
         );
 
-        // Filtres : device_type, capabilities (OU), name icontains.
+        // Filters: device_type, capabilities (OR), name icontains.
         let sensors: serde_json::Value = server
             .get("/api/v1/predefined-devices?device_type=sensor")
             .add_header("Authorization", bearer(&env.alice))
@@ -692,7 +695,7 @@ async fn catalogue_global_partage() {
         assert_eq!(
             by_caps["results"].as_array().unwrap().len(),
             3,
-            "OU sur capabilities : temp_sensor, relay_1ch et mixed_hub_v1"
+            "OR over capabilities: temp_sensor, relay_1ch and mixed_hub_v1"
         );
 
         let icontains: serde_json::Value = server
@@ -702,7 +705,7 @@ async fn catalogue_global_partage() {
             .json();
         assert_eq!(icontains["results"].as_array().unwrap().len(), 1);
 
-        // Recherche multi-champs (D14) : board, capacité, type — en SQL.
+        // Multi-field search (D14): board, capability, type — in SQL.
         let by_board: serde_json::Value = server
             .get("/api/v1/predefined-devices?search=ESP32")
             .add_header("Authorization", bearer(&env.alice))
@@ -719,7 +722,7 @@ async fn catalogue_global_partage() {
             .json();
         assert_eq!(
             by_cap_search["count"], 2,
-            "relay_1ch (nom et cap) + mixed_hub_v1 (cap relay)"
+            "relay_1ch (name and cap) + mixed_hub_v1 (relay cap)"
         );
         let by_type_search: serde_json::Value = server
             .get("/api/v1/predefined-devices?search=actuator")
@@ -728,7 +731,7 @@ async fn catalogue_global_partage() {
             .json();
         assert_eq!(by_type_search["count"], 1);
 
-        // Bob voit le même catalogue (global, pas scopé org).
+        // Bob sees the same catalog (global, not org-scoped).
         let bob_pds: serde_json::Value = server
             .get("/api/v1/predefined-devices")
             .add_header("Authorization", bearer(&env.bob))
@@ -744,7 +747,7 @@ async fn catalogue_global_partage() {
 async fn pagination_des_listes() {
     with_app(|server, env, _ctx| async move {
         let org = personal_org(&server, &env.alice).await;
-        // Tier Free : 3 capteurs max — parfait pour 3 pages de 2.
+        // Free tier: 3 sensors max — perfect for 3 pages of 2.
         for n in 1..=3 {
             create_device(
                 &server,
@@ -756,7 +759,7 @@ async fn pagination_des_listes() {
             .await;
         }
 
-        // Registre : page 1 → next explicite, previous absent.
+        // Registry: page 1 → explicit next, previous absent.
         let page1 = list_devices(&server, &env.alice, org, "?limit=2").await;
         assert_eq!(page1["count"], 3);
         assert_eq!(page1["results"].as_array().unwrap().len(), 2);
@@ -766,7 +769,7 @@ async fn pagination_des_listes() {
         );
         assert!(page1["previous"].is_null());
 
-        // Dernière page incomplète : next absent, previous pointe en 0.
+        // Incomplete last page: next absent, previous points at 0.
         let page2 = list_devices(&server, &env.alice, org, "?limit=2&offset=2").await;
         assert_eq!(page2["results"].as_array().unwrap().len(), 1);
         assert!(page2["next"].is_null());
@@ -775,23 +778,27 @@ async fn pagination_des_listes() {
             "/api/v1/devices?limit=2&offset=0"
         );
 
-        // Offset au-delà de la fin : page vide cohérente.
+        // Offset past the end: consistent empty page.
         let beyond = list_devices(&server, &env.alice, org, "?limit=2&offset=9").await;
         assert_eq!(beyond["count"], 3);
         assert_eq!(beyond["results"].as_array().unwrap().len(), 0);
         assert!(beyond["next"].is_null());
 
-        // Les liens conservent les filtres actifs.
+        // The links keep the active filters.
         let filtered = list_devices(&server, &env.alice, org, "?device_type=sensor&limit=2").await;
         assert_eq!(
             filtered["next"].as_str().unwrap(),
             "/api/v1/devices?device_type=sensor&limit=2&offset=2"
         );
 
-        // Défaut : 10 par page (var d'env PAGINATION_DEFAULT_LIMIT).
+        // Default: 10 per page (env var PAGINATION_DEFAULT_LIMIT).
         let def = list_devices(&server, &env.alice, org, "").await;
         assert_eq!(def["count"], 3);
-        assert_eq!(def["results"].as_array().unwrap().len(), 3, "3 < défaut 10");
+        assert_eq!(
+            def["results"].as_array().unwrap().len(),
+            3,
+            "3 < default 10"
+        );
 
         // Catalogue : pagination SQL (count exact, pages).
         let cat1: serde_json::Value = server
@@ -837,7 +844,7 @@ async fn pagination_des_listes() {
         assert_eq!(cat5["results"].as_array().unwrap().len(), 1);
         assert!(cat5["next"].is_null(), "fin de catalogue");
 
-        // Capabilities : même enveloppe.
+        // Capabilities: same envelope.
         let caps: serde_json::Value = server
             .get("/api/v1/device-capabilities?limit=1")
             .add_header("Authorization", bearer(&env.alice))
@@ -850,7 +857,7 @@ async fn pagination_des_listes() {
             "/api/v1/device-capabilities?limit=1&offset=1"
         );
 
-        // Orgs de l'utilisateur : enveloppe également (une org perso ici).
+        // User's orgs: envelope too (one personal org here).
         let orgs: serde_json::Value = server
             .get("/api/v1/orgs")
             .add_header("Authorization", bearer(&env.alice))
@@ -862,10 +869,10 @@ async fn pagination_des_listes() {
     .await;
 }
 
-/// `GET /devices/{id}/pinout` expose `connected` (état WS, pas DB) : un
-/// device jamais connecté répond `connected: false` avec ses pins overlay —
-/// l'éditeur de flows s'en sert pour dire « hors ligne » au lieu d'un faux
-/// « introuvable » quand le serveur a redémarré (retour utilisateur).
+/// `GET /devices/{id}/pinout` exposes `connected` (WS state, not DB): a
+/// never-connected device answers `connected: false` with its overlay pins —
+/// the flow editor uses it to say "offline" instead of a false
+/// "not found" when the server restarted (user feedback).
 #[tokio::test]
 #[serial]
 async fn pinout_exposes_connected_flag() {
@@ -873,7 +880,7 @@ async fn pinout_exposes_connected_flag() {
         let org = personal_org(&server, &env.alice).await;
         create_device(&server, &env.alice, org, "esp-off", "temp_sensor").await;
         let list = list_devices(&server, &env.alice, org, "?device_id=esp-off").await;
-        let pk = list["results"][0]["id"].as_i64().expect("device créé");
+        let pk = list["results"][0]["id"].as_i64().expect("device created");
 
         let body: serde_json::Value = server
             .get(&format!("/api/v1/devices/{pk}/pinout"))
@@ -881,7 +888,7 @@ async fn pinout_exposes_connected_flag() {
             .add_header("X-Org-Id", org.to_string())
             .await
             .json();
-        assert_eq!(body["connected"], false, "jamais connecté → hors ligne");
+        assert_eq!(body["connected"], false, "never connected → offline");
         assert_eq!(body["device_id"], "esp-off");
         assert!(body["pins"].is_array());
     })

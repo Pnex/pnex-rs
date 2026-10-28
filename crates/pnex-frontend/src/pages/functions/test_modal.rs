@@ -22,8 +22,8 @@ pub(super) fn FunctionTestModal(
     let running = test_running();
     let msg_value = test_msg();
 
-    // Lignes par port précalculées (pas de `let` dans rsx) : (libellé,
-    // muet, valeur pretty). L'ordre = ordre des @output déclarés.
+    // Rows per port precomputed (no `let` in rsx): (label,
+    // muted, pretty value). The order = order of the declared @output.
     let port_rows: Vec<(String, bool, String)> = match &result {
         Some(resp) if resp.ok => resp
             .outputs
@@ -144,8 +144,8 @@ pub(super) fn FunctionTestModal(
     }
 }
 
-/// Champ typé d'un input déclaré : number → pas de texte, string → texte,
-/// bool → case, any → JSON une ligne. Vide = champ absent de la requête.
+/// Typed field of a declared input: number → number step, string → text,
+/// bool → checkbox, any → one-line JSON. Empty = field absent from the request.
 fn test_field(
     input: pnex_core::FunctionInput,
     mut test_inputs: Signal<BTreeMap<String, String>>,

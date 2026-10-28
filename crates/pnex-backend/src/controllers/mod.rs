@@ -1,7 +1,7 @@
 pub mod ai;
 pub mod annotation_layers;
 pub mod apps;
-/// Profils de board (catalogue /api/v1/boards — éditeur pinout + wizard).
+/// Board profiles (/api/v1/boards catalogue — pinout editor + wizard).
 pub mod boards;
 pub mod builds;
 pub mod camera_recordings;
@@ -15,7 +15,7 @@ pub mod device_link;
 pub mod devices;
 pub mod doc_comments;
 pub mod docs;
-/// Référentiels Edge — credentials WiFi + hosts serveur PNeX (wizard device).
+/// Edge references — WiFi credentials + PNeX server hosts (device wizard).
 pub mod edge_agents;
 pub mod edge_refs;
 /// JSON events stored as OpenObserve logs (D84).
@@ -59,7 +59,7 @@ pub mod pins;
 pub mod pois;
 pub mod proposals;
 pub mod public_tours;
-/// Couche d'organisation transverse (D42) — endpoints kind-agnostiques.
+/// Cross-cutting organization layer (D42) — kind-agnostic endpoints.
 pub mod resources;
 /// Org secrets vault (D110–D118).
 pub mod secrets;
@@ -86,7 +86,7 @@ pub mod ws_doc;
 pub mod ws_extension;
 /// Media link of capture boxes (media-ingest.md D160, lot 6b).
 pub mod ws_media;
-/// Bus WS des notifications (canal `websocket`, D51).
+/// Notifications WS bus (`websocket` channel, D51).
 pub mod ws_notify;
 pub mod ws_ticket;
 

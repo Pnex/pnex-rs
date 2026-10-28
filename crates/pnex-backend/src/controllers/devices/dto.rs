@@ -15,7 +15,7 @@ pub fn capability_mode_str(mode: CapabilityMode) -> &'static str {
     capability_mode(mode).name()
 }
 
-/// Noms des mesures découvertes (clés du JSONB) si le dynamic est autorisé.
+/// Names of the discovered measurements (JSONB keys) if dynamic is allowed.
 pub(crate) fn discovered_names(value: &Option<serde_json::Value>) -> Vec<String> {
     value
         .as_ref()
@@ -24,7 +24,7 @@ pub(crate) fn discovered_names(value: &Option<serde_json::Value>) -> Vec<String>
         .unwrap_or_default()
 }
 
-/// Capacités par predefined device (join table), pour les ids donnés.
+/// Capabilities per predefined device (join table), for the given ids.
 pub(crate) async fn capabilities_of(
     db: &DatabaseConnection,
     pd_ids: &[i64],
@@ -122,8 +122,8 @@ async fn active_ota_for(
         .map(ota_state_dto))
 }
 
-/// Assemble le DTO `Device` (pnex-core) depuis le registre + son contexte.
-#[allow(clippy::too_many_arguments)] // même école que handle_announce
+/// Assembles the `Device` DTO (pnex-core) from the registry + its context.
+#[allow(clippy::too_many_arguments)] // same school as handle_announce
 pub(super) fn device_dto(
     device: device_registries::Model,
     predefined: &predefined_devices::Model,
@@ -173,7 +173,7 @@ pub(super) fn device_dto(
     }
 }
 
-/// DTO complet d'un device isolé (détail / création / update).
+/// Full DTO of a single device (detail / creation / update).
 pub(super) async fn device_full(
     db: &DatabaseConnection,
     device: device_registries::Model,

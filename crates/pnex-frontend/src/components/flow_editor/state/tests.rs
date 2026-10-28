@@ -14,14 +14,14 @@ fn ids_uniques_meme_apres_suppression() {
     let mut graph = graph_with_two();
     assert_eq!(next_node_id(&graph), "n3");
     remove_node(&mut graph, "n2");
-    // n2 supprimé : l'id est réutilisable, aucun conflit possible.
+    // n2 deleted: the id is reusable, no conflict possible.
     assert_eq!(next_node_id(&graph), "n2");
 }
 
-/// inject → notify, une annotation par var stampée ; re-stamp d'un
-/// template allégé : la var disparue prend son fil (jamais de shift sur
-/// la var voisine), la source fan-out garde son fil si elle nourrit
-/// encore une autre var.
+/// inject → notify, one annotation per stamped var; re-stamp of a
+/// trimmed template: the removed var takes its wire (never a shift onto
+/// the neighbouring var), the fan-out source keeps its wire if it still
+/// feeds another var.
 fn notify_wired(vars: &[&str]) -> FlowGraph {
     let mut graph = FlowGraph {
         nodes: vec![
@@ -38,10 +38,10 @@ fn notify_wired(vars: &[&str]) -> FlowGraph {
 #[test]
 fn notify_set_input_target_garde_et_prune() {
     let mut graph = notify_wired(&["seuil", "value"]);
-    // Le drop réel pose d'abord le fil runtime (add_target), puis
-    // l'annotation d'ancre.
+    // The real drop first sets the runtime wire (add_target), then
+    // the anchor annotation.
     add_target(&mut graph, "i1", 0, "nt");
-    // Garde : seule une var stampée est une ancre valide.
+    // Guard: only a stamped var is a valid anchor.
     set_input_target(&mut graph, "i1", 0, "nt", "seuil".into());
     set_input_target(&mut graph, "i1", 0, "nt", "phantom".into());
     let inputs = |g: &FlowGraph| -> Vec<(String, String, usize)> {
@@ -55,16 +55,16 @@ fn notify_set_input_target_garde_et_prune() {
         inputs(&graph),
         vec![("seuil".to_string(), "i1".to_string(), 0)]
     );
-    // Deux sources sur des vars distinctes : fan-in OK (une seule
-    // annotation par var, le fil runtime reste partagé).
+    // Two sources on distinct vars: fan-in OK (a single
+    // annotation per var, the runtime wire stays shared).
     set_input_target(&mut graph, "i1", 0, "nt", "value".into());
     assert_eq!(inputs(&graph).len(), 2);
     // The permanent `trigger` gate row is a valid anchor too.
     set_input_target(&mut graph, "i1", 0, "nt", "trigger".into());
     assert_eq!(inputs(&graph).len(), 3);
-    // Prune des vars ne survivant pas au re-stamp (ici « value ») :
-    // l'annotation part, le fil runtime reste tant que la source
-    // nourrit encore une autre var (« seuil »).
+    // Prune of the vars not surviving the re-stamp (here "value"):
+    // the annotation goes, the runtime wire stays as long as the source
+    // still feeds another var ("seuil").
     prune_notify_var_anchors(&mut graph, "nt", &["seuil".into()]);
     assert_eq!(
         inputs(&graph),
@@ -381,19 +381,19 @@ fn make_node_inject_a_un_declencheur() {
     let node = make_node("n9", PaletteKind::Inject, Position { x: 0.0, y: 0.0 });
     match &node.kind {
         FlowNodeKind::Inject { config } => {
-            // Défaut = trafic continu (repeat 30 s), plus jamais un tir
-            // unique « once » qui rendait le flow muet après 5 min.
+            // Default = continuous traffic (repeat 30 s), never again a single
+            // "once" shot that made the flow silent after 5 min.
             assert!(config.repeat_secs.is_some());
             assert_eq!(next_node_id(&FlowGraph { nodes: vec![node] }), "n10");
         }
-        other => panic!("inject attendu, reçu {other:?}"),
+        other => panic!("expected inject, got {other:?}"),
     }
 }
 
 #[test]
 fn make_node_notify_typed_but_incomplete() {
-    // Config typée mais volontairement incomplète : les violations
-    // `notify_no_*` du bandeau guident la saisie (école device/red).
+    // Typed but deliberately incomplete config: the banner's
+    // `notify_no_*` violations guide the input (device/red pattern).
     let node = make_node("n1", PaletteKind::PnexNotify, Position { x: 0.0, y: 0.0 });
     let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
         .iter()
@@ -408,7 +408,7 @@ fn make_node_notify_typed_but_incomplete() {
         "{codes:?}"
     );
 
-    // Complété (canal + template) : plus aucune violation notify.
+    // Completed (channel + template): no notify violation left.
     let mut node = make_node("n1", PaletteKind::PnexNotify, Position { x: 0.0, y: 0.0 });
     if let pnex_core::FlowNodeKind::PnexNotify { config } = &mut node.kind {
         config.channel_ids = vec![uuid::Uuid::from_u128(42)];
@@ -430,8 +430,8 @@ fn make_node_notify_typed_but_incomplete() {
 
 #[test]
 fn make_node_http_fetch_typed_but_incomplete() {
-    // Config typée mais volontairement incomplète : la violation
-    // `http_fetch_url_missing` du bandeau guide la saisie (école notify).
+    // Typed but deliberately incomplete config: the banner's
+    // `http_fetch_url_missing` violation guides the input (notify pattern).
     let node = make_node("n1", PaletteKind::HttpFetch, Position { x: 0.0, y: 0.0 });
     let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
         .iter()
@@ -441,14 +441,14 @@ fn make_node_http_fetch_typed_but_incomplete() {
         codes.contains(&"http_fetch_url_missing".to_string()),
         "{codes:?}"
     );
-    // Timeout par défaut : aucune violation parasite (Default manuel
-    // aligné sur le défaut serde = 30 s).
+    // Default timeout: no spurious violation (manual Default
+    // aligned with the serde default = 30 s).
     assert!(
         !codes.contains(&"http_fetch_timeout_range".to_string()),
         "{codes:?}"
     );
 
-    // Complété (URL + auth bearer + proxy) : plus aucune violation.
+    // Completed (URL + bearer auth + proxy): no violation left.
     let mut node = make_node("n1", PaletteKind::HttpFetch, Position { x: 0.0, y: 0.0 });
     if let pnex_core::FlowNodeKind::HttpFetch { config } = &mut node.kind {
         config.url = "https://api.exemple.dev/data".into();
@@ -468,9 +468,9 @@ fn make_node_http_fetch_typed_but_incomplete() {
 
 #[test]
 fn make_node_phase6_typed_but_incomplete() {
-    // Defaults typés mais volontairement incomplets : le bandeau guide
-    // la saisie (device_no_reads / calc_bad_expression /
-    // metric_name_missing), même règle que red.
+    // Typed but deliberately incomplete defaults: the banner guides
+    // the input (device_no_reads / calc_bad_expression /
+    // metric_name_missing), same rule as red.
     let node = make_node("n1", PaletteKind::DeviceRead, Position { x: 0.0, y: 0.0 });
     let codes: Vec<String> = pnex_core::validate_graph(&FlowGraph { nodes: vec![node] })
         .iter()
@@ -534,7 +534,7 @@ fn make_node_value_ships_json_template() {
 
 #[test]
 fn make_node_display_est_valide() {
-    // La sonde n'a aucune config saisie : le défaut est directement vert.
+    // The probe has no config to fill in: the default is green right away.
     let node = make_node("n1", PaletteKind::Display, Position { x: 0.0, y: 0.0 });
     assert!(matches!(&node.kind, FlowNodeKind::Display { .. }));
     assert!(pnex_core::validate_graph(&FlowGraph { nodes: vec![node] }).is_empty());
@@ -542,8 +542,8 @@ fn make_node_display_est_valide() {
 
 #[test]
 fn make_node_reg_typed_but_incomplete() {
-    // Cartes de régulation : config typée mais vide → violations reg_*
-    // qui guident la saisie (liaison device/pins, deadband, …).
+    // Control cards: typed but empty config → reg_* violations
+    // that guide the input (device/pins binding, deadband, …).
     for (kind, expected) in [
         (PaletteKind::RegTtHeat, "reg_bad_device"),
         (PaletteKind::RegTtCool, "reg_bad_device"),
@@ -558,14 +558,14 @@ fn make_node_reg_typed_but_incomplete() {
             codes.contains(&expected.to_string()),
             "{kind:?} → {codes:?}"
         );
-        // Pins manquants signalés aussi (double violation utile au guide).
+        // Missing pins flagged too (double violation useful as a guide).
         assert!(
             codes.contains(&"reg_pin_missing".to_string()),
             "{kind:?} → {codes:?}"
         );
     }
 
-    // Une carte complète (TT heat) est directement verte.
+    // A complete card (TT heat) is green right away.
     let mut node = make_node("n1", PaletteKind::RegTtHeat, Position { x: 0.0, y: 0.0 });
     if let FlowNodeKind::RegTtHeat { config } = &mut node.kind {
         config.device_id = "serre-1".into();
@@ -585,7 +585,7 @@ fn cablage_add_et_remove() {
     assert_eq!(graph.nodes[0].outputs[0].targets, vec!["n2".to_string()]);
     remove_target(&mut graph, "n1", 0, "n2");
     assert!(graph.nodes[0].outputs.is_empty());
-    // Câblage d'une source inconnue : no-op défensif.
+    // Wiring an unknown source: defensive no-op.
     add_target(&mut graph, "ghost", 0, "n2");
     assert!(graph.nodes[1].outputs.is_empty());
 }
@@ -599,7 +599,7 @@ fn suppression_node_nettoie_les_entrees() {
     assert!(graph.nodes[0].outputs.is_empty());
 }
 
-/// inject → split(keys=[temp, hum]) → 2 debug, câblés sur les ports 0-1.
+/// inject → split(keys=[temp, hum]) → 2 debug, wired on ports 0-1.
 fn split_wired(keys: &[&str]) -> FlowGraph {
     let mut graph = FlowGraph {
         nodes: vec![
@@ -619,10 +619,10 @@ fn split_wired(keys: &[&str]) -> FlowGraph {
 
 #[test]
 fn split_keys_suppression_emporte_le_fil() {
-    // Supprimer « temp » (port 0) : son fil disparaît ; « hum » garde le
-    // sien **même si son index a shifté** (1 → 0) — école rewire par
-    // label. Renommer une clé ne re-câble rien : l'index du port est
-    // stable (l'inspecteur ne patch que la config).
+    // Delete "temp" (port 0): its wire goes; "hum" keeps
+    // its own **even though its index shifted** (1 → 0) — rewire-by-label
+    // pattern. Renaming a key rewires nothing: the port index is
+    // stable (the inspector only patches the config).
     let mut graph = split_wired(&["temp", "hum"]);
     rewire_split_keys(
         &mut graph,
@@ -638,11 +638,11 @@ fn split_keys_suppression_emporte_le_fil() {
     assert_eq!(
         ports,
         vec![(0, vec!["dbg2".to_string()])],
-        "hum garde son fil, temp emporte le sien"
+        "hum keeps its wire, temp takes its own away"
     );
 }
 
-/// inject → merge(inputs=[temp]) → debug, annotation posée avec le fil.
+/// inject → merge(inputs=[temp]) → debug, annotation set with the wire.
 fn merge_wired(inputs: &[&str]) -> FlowGraph {
     let mut graph = FlowGraph {
         nodes: vec![
@@ -662,7 +662,7 @@ fn merge_wired(inputs: &[&str]) -> FlowGraph {
 #[test]
 fn merge_inputs_rename_suive_annotation() {
     let mut graph = merge_wired(&["temp"]);
-    // Renommer la ligne : même fil, même source, nouveau pin.
+    // Rename the row: same wire, same source, new pin.
     rename_merge_input(&mut graph, "mg", "temp", "humidity");
     let pins: Vec<String> = graph.nodes[1]
         .inputs
@@ -670,9 +670,9 @@ fn merge_inputs_rename_suive_annotation() {
         .map(|w| w.pin.clone())
         .collect();
     assert_eq!(pins, vec!["humidity".to_string()]);
-    // Le fil runtime reste posé (add_target du setup).
+    // The runtime wire stays set (add_target from the setup).
     assert_eq!(graph.nodes[0].outputs[0].targets, vec!["mg".to_string()]);
-    // Ancien nom inconnu : no-op défensif.
+    // Unknown old name: defensive no-op.
     rename_merge_input(&mut graph, "mg", "temp", "x");
     let pins: Vec<String> = graph.nodes[1]
         .inputs
@@ -684,8 +684,8 @@ fn merge_inputs_rename_suive_annotation() {
 
 #[test]
 fn sync_split_keys_auto_suivant_l_amont() {
-    // Split en mode auto câblé à un merge (value1/value2) : la synchro
-    // régénère les clés — donc les ports — et re-câble par label.
+    // Split in auto mode wired to a merge (value1/value2): the sync
+    // regenerates the keys — hence the ports — and rewires by label.
     let mut graph = FlowGraph {
         nodes: vec![
             make_node("mg", PaletteKind::JsonMerge, Position { x: 0.0, y: 0.0 }),
@@ -697,8 +697,8 @@ fn sync_split_keys_auto_suivant_l_amont() {
         config.inputs = vec!["value1".into(), "value2".into()];
     }
     add_target(&mut graph, "mg", 0, "sp");
-    // Le câblage déclenche la synchro via le funnel — ici on l'appelle
-    // directement : les ports apparaissent.
+    // Wiring triggers the sync through the funnel — here we call it
+    // directly: the ports appear.
     sync_split_keys_auto(&mut graph);
     let keys = match &graph.nodes[1].kind {
         FlowNodeKind::JsonSplit { config } => config.keys.clone(),
@@ -706,8 +706,8 @@ fn sync_split_keys_auto_suivant_l_amont() {
     };
     assert_eq!(keys, vec!["value1".to_string(), "value2".to_string()]);
 
-    // Le split câble son port 0 (= value1) au debug ; la fusion perd
-    // value1 → le fil suit son label et est emporté avec lui.
+    // The split wires its port 0 (= value1) to debug; the merge loses
+    // value1 → the wire follows its label and is carried away with it.
     add_target(&mut graph, "sp", 0, "dbg");
     if let FlowNodeKind::JsonMerge { config } = &mut graph.nodes[0].kind {
         config.inputs = vec!["value2".into()];
@@ -721,10 +721,10 @@ fn sync_split_keys_auto_suivant_l_amont() {
     assert_eq!(
         ports,
         vec![],
-        "value1 emporte son fil (école rewire par label)"
+        "value1 takes its wire away (rewire-by-label pattern)"
     );
 
-    // Mode manuel : aucune synchro.
+    // Manual mode: no sync.
     if let FlowNodeKind::JsonSplit { config } = &mut graph.nodes[1].kind {
         config.auto = false;
         config.keys = vec!["libre".into()];
@@ -739,22 +739,22 @@ fn sync_split_keys_auto_suivant_l_amont() {
 
 #[test]
 fn claim_input_row_prefere_une_ligne_libre() {
-    // temp est prise par i1 : une source i2 qui vise la ligne temp
-    // (curseur dessus) reçoit la ligne libre la plus proche (hum) —
-    // jamais de vol silencieux. i1, lui, re-prend sa propre ligne.
+    // temp is taken by i1: a source i2 aiming at the temp row
+    // (cursor over it) gets the nearest free row (hum) —
+    // never a silent theft. i1, for its part, takes its own row back.
     let graph = merge_wired(&["temp", "hum"]);
-    // merge à (200, 0), h = 60 : lignes à y = 20 (temp) et 40 (hum).
+    // merge at (200, 0), h = 60: rows at y = 20 (temp) and 40 (hum).
     assert_eq!(
         claim_input_row(&graph, "mg", "i2", 19.0),
         Some("hum".to_string()),
-        "ligne prise par un autre → ligne libre"
+        "row taken by another → free row"
     );
     assert_eq!(
         claim_input_row(&graph, "mg", "i1", 19.0),
         Some("temp".to_string()),
         "sa propre ligne reste visable"
     );
-    // Board pleine pour i3 : reprise explicite (la plus proche quand même).
+    // Full board for i3: explicit takeover (the nearest anyway).
     let full = {
         let mut g = merge_wired(&["temp", "hum"]);
         set_input_target(&mut g, "i1", 0, "mg", "hum".into());
@@ -765,22 +765,22 @@ fn claim_input_row_prefere_une_ligne_libre() {
         Some("temp".to_string()),
         "board pleine → takeover explicite"
     );
-    // Aucune ligne déclarée : pas de choix (fil nu, contrat legacy).
+    // No declared row: no choice (bare wire, legacy contract).
     let bare = graph_with_two();
     assert_eq!(claim_input_row(&bare, "n2", "n1", 20.0), None);
 }
 
 #[test]
 fn merge_inputs_prune_emporte_le_fil_si_non_partage() {
-    // Le port 0 de i1 nourrit la ligne « temp » seule : la prune retire
-    // le fil runtime. S'il nourrissait aussi une autre ligne (fan-out),
-    // le fil resterait posé.
+    // Port 0 of i1 feeds the "temp" row only: the prune removes
+    // the runtime wire. If it also fed another row (fan-out),
+    // the wire would stay set.
     let mut graph = merge_wired(&["temp"]);
     prune_merge_inputs(&mut graph, "mg", &[]);
-    assert!(graph.nodes[1].inputs.is_empty(), "annotation prunée");
-    assert!(graph.nodes[0].outputs.is_empty(), "fil runtime retiré");
+    assert!(graph.nodes[1].inputs.is_empty(), "annotation pruned");
+    assert!(graph.nodes[0].outputs.is_empty(), "runtime wire removed");
 
-    // Fan-out : le même port nourrit une seconde ligne → fil conservé.
+    // Fan-out: the same port feeds a second row → wire kept.
     let mut graph = merge_wired(&["temp", "hum"]);
     set_input_target(&mut graph, "i1", 0, "mg", "hum".into());
     prune_merge_inputs(&mut graph, "mg", &["hum".to_string()]);
@@ -789,11 +789,11 @@ fn merge_inputs_prune_emporte_le_fil_si_non_partage() {
         .iter()
         .map(|w| w.pin.clone())
         .collect();
-    assert_eq!(pins, vec!["hum".to_string()], "hum conservée");
+    assert_eq!(pins, vec!["hum".to_string()], "hum kept");
     assert_eq!(
         graph.nodes[0].outputs[0].targets,
         vec!["mg".to_string()],
-        "fil partagé conservé"
+        "shared wire kept"
     );
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 
-/// Filtres courants de la sidebar (liste ET cluster — mêmes sélections).
+/// Current sidebar filters (list AND cluster — same selections).
 pub(super) fn current_filters(
     search: Signal<String>,
     emoji: Signal<String>,
@@ -16,9 +16,9 @@ pub(super) fn current_filters(
     }
 }
 
-/// Refetch cluster (D37) + redessin des markers (items filtrés + couche GPS).
-/// Les erreurs restent silencieuses (école « badge, jamais panic » — pas de
-/// toast à chaque moveend si le réseau tombe).
+/// Cluster refetch (D37) + marker redraw (filtered items + GPS layer).
+/// Errors stay silent ("badge, never panic" pattern — no
+/// toast on every moveend if the network drops).
 /// Returns `false` when the cluster fetch failed: the page shows a status
 /// pill and retries.
 pub(super) async fn redraw_with(
@@ -75,13 +75,13 @@ pub(super) async fn handle_click(
     click: map_viewer::MapClick,
 ) {
     match click.kind.as_str() {
-        // POI individuel → drawer détail.
+        // Individual POI → detail drawer.
         "pin" => {
             if let Some(id) = click.id {
                 selected.set(Some(id));
             }
         }
-        // Cluster numéroté → zoom +2 (le moveend refetch redessinera).
+        // Numbered cluster → zoom +2 (the moveend refetch will redraw).
         "cluster" => {
             if let (Some(lon), Some(lat)) = (click.lng, click.lat) {
                 let zoom = (current_zoom() + 2.0).min(22.0);
@@ -90,7 +90,7 @@ pub(super) async fn handle_click(
         }
         // Device GPS live → info toast.
         "position" => toasts::info(format!("🛰️ {}", click.label)),
-        // Clic carte nue : en mode ajout (formulaire fermé), capture coords.
+        // Click on the bare map: in add mode (form closed), capture coords.
         "map" => {
             let coords = click.lng.zip(click.lat).map(|(lon, lat)| (lat, lon));
             if add_mode() && pending_add().is_none() {
@@ -101,7 +101,7 @@ pub(super) async fn handle_click(
     }
 }
 
-// ─────────────────────────── ligne de liste ───────────────────────────
+// ─────────────────────────── list row ───────────────────────────
 
 #[component]
 pub(super) fn PoiRow(
@@ -112,7 +112,7 @@ pub(super) fn PoiRow(
     #[props(default)]
     labels: crate::api::resources::LabelSet,
 ) -> Element {
-    // GPS si l'un des devices placés transmet (D43 : plusieurs possibles).
+    // GPS if one of the placed devices transmits (D43: several possible).
     let has_gps = poi
         .devices
         .iter()
@@ -129,7 +129,7 @@ pub(super) fn PoiRow(
         button {
             class: "w-full text-left px-4 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors",
             onclick: move |_| {
-                // Fly to the picked POI like « Recenter » (O55); no-op without a map.
+                // Fly to the picked POI like "Recenter" (O55); no-op without a map.
                 if let (Some(lat), Some(lon)) = (poi.latitude, poi.longitude) {
                     spawn(async move {
                         map_viewer::flyTo(MAP_HOST, lon, lat, 17.0).await;

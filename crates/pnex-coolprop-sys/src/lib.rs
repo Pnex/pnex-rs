@@ -1,11 +1,11 @@
-//! Liaisons FFI brutes à chaque fonction exportée par l'API C de CoolProp
+//! Raw FFI bindings to every function exported by the CoolProp C API
 //! (`include/CoolProp/CoolPropLib.h`, CoolProp v8.0.0, submodule
 //! `vendor/CoolProp`).
 //!
-//! Déclarations écrites à la main (pas de bindgen) — l'API est petite et
-//! stable, et le build reste exempt de dépendance libclang.
+//! Hand-written declarations (no bindgen) — the API is small and
+//! stable, and the build stays free of a libclang dependency.
 //!
-//! Origine : adapté du projet coolprop-rs (MIT, même auteur).
+//! Origin: adapted from the coolprop-rs project (MIT, same author).
 //!
 //! # Error conventions (see CoolPropLib.cpp)
 //!

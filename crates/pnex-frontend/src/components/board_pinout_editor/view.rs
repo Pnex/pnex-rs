@@ -3,16 +3,16 @@
 
 use super::*;
 
-/// Géométrie de rendu (héritée du prototype `pnex-pinout.html`).
+/// Rendering geometry (inherited from the `pnex-pinout.html` prototype).
 pub(super) const ROW_H: f64 = 34.0;
 pub(super) const PAD_TOP: f64 = 54.0;
 pub(super) const BOARD_X: f64 = 180.0;
 pub(super) const CHIP_W: f64 = 124.0;
 pub(super) const CHIP_H: f64 = 25.0;
 
-/// Hauteur du viewBox : le PCB (`board_h` = 2×PAD_TOP + rows + 14) commence
-/// à y=14 et doit rester entièrement visible — l'ancienne formule
-/// (`PAD_TOP + rows + PAD_BOT`) rognait le bas du PCB.
+/// viewBox height: the PCB (`board_h` = 2×PAD_TOP + rows + 14) starts
+/// at y=14 and must stay fully visible — the old formula
+/// (`PAD_TOP + rows + PAD_BOT`) clipped the bottom of the PCB.
 pub(super) fn svg_height(per_side: f64) -> f64 {
     2.0 * PAD_TOP + per_side * ROW_H + 34.0
 }
@@ -57,7 +57,7 @@ pub(super) fn svg_width(per_side: f64, ratio: f64) -> f64 {
     BOARD_X + board_w(per_side, ratio) + 180.0
 }
 
-/// Couleurs de capacité (prototype : information, pas de la déco).
+/// Capability colors (prototype: information, not decoration).
 pub(super) fn cap_color(fns: &[String], kind: Option<&str>) -> (&'static str, &'static str) {
     let key = match kind {
         Some("power") => "power",
@@ -96,7 +96,7 @@ pub(super) fn cap_color(fns: &[String], kind: Option<&str>) -> (&'static str, &'
     }
 }
 
-/// Sous-label d'un pin (« GPIO4 » ou le kind pour alim/masse/reset).
+/// Pin sub-label ("GPIO4", or the kind for power/ground/reset).
 pub(super) fn gpio_label(gpio: Option<i32>) -> String {
     gpio.map(|g| format!("GPIO{g}")).unwrap_or_default()
 }
@@ -121,7 +121,7 @@ pub(super) struct PinView {
     pub(super) last_value_label: Option<String>,
 }
 
-/// Précalcul des vues de pins (AUCUN `let` dans les boucles for rsx).
+/// Precomputed pin views (NO `let` in rsx for loops).
 pub(super) fn pin_views(
     board: &api::pins::BoardSummary,
     pins: &[api::pins::PinoutPin],
@@ -131,7 +131,7 @@ pub(super) fn pin_views(
     let mut views = Vec::with_capacity(pins.len());
     for pin in pins {
         let Some(pos) = pin.pos.as_ref() else {
-            continue; // hors géométrie v2 — ignoré dans le rendu SVG
+            continue; // outside v2 geometry — ignored in SVG rendering
         };
         let side = match pos["side"].as_str() {
             Some("right") => "right",
@@ -185,7 +185,7 @@ pub(super) fn pin_views(
     views
 }
 
-/// Légende des capacités utilisées (dédupliquée, ordre fixe).
+/// Legend of the capabilities used (deduplicated, fixed order).
 pub(super) fn legend_of(views: &[PinView]) -> Vec<(&'static str, &'static str)> {
     let order = [
         "board-legend-gpio",

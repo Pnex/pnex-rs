@@ -1,9 +1,9 @@
-//! `SeaORM` Entity — couche d'organisation transverse (D42).
+//! `SeaORM` Entity — cross-cutting organization layer (D42).
 //!
-//! Classification requêtable : 1 doc JSONB par ressource
-//! (unique `(org_id, resource_kind, resource_id)`), index GIN PG.
-//! `labels` nullable en DB (portable) — le service garantit la sémantique
-//! non-null (`COALESCE(labels, '{}')` au read, toujours `Some` à l'écrit).
+//! Queryable classification: 1 JSONB doc per resource
+//! (unique `(org_id, resource_kind, resource_id)`), PG GIN index.
+//! `labels` nullable in DB (portable) — the service guarantees non-null
+//! semantics (`COALESCE(labels, '{}')` on read, always `Some` on write).
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};

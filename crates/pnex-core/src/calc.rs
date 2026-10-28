@@ -1,27 +1,27 @@
 //! Expression evaluator of the `calc` node (Phase 6 ETL) — contract:
 //! operator/function/constant whitelist, ternary, everything else rejected.
-//! Pur, wasm-safe, **zéro dépendance**, jamais de panic : toute
-//! erreur remonte en [`CalcError`] (message en français affiché tel quel,
-//! règle PRD « violations jamais traduites »).
+//! Pure, wasm-safe, **zero dependency**, never a panic: every
+//! error surfaces as a [`CalcError`] (code + canonical English message,
+//! PRD rule "violations never translated").
 //!
-//! Même fonction utilisée côté éditeur (validation live dans le navigateur,
-//! via pnex-core wasm) et côté runtime (nœud `pnex-calc`) — l'expression
-//! validée à la sauvegarde est exactement celle évaluée en exécution.
+//! Same function used on the editor side (live validation in the browser,
+//! via pnex-core wasm) and on the runtime side (`pnex-calc` node) — the expression
+//! validated on save is exactly the one evaluated at execution.
 //!
-//! Langage : nombres, variables (identifiants `[A-Za-z_][A-Za-z0-9_]*`),
-//! `+ - * / %` , puissance `^` (droite-associative, plus prioritaire que le
-//! moins unaire : `-2^2 = -4`), comparaisons `== != < <= > >=` (→ 1/0),
-//! `&& ||` (logique sur != 0), ternaire `cond ? a : b`, constantes `pi`/`e`,
-//! fonctions `abs round floor ceil sqrt pow min max log log10 log2 exp sin
-//! cos tan asin acos atan atan2` (min/max variadiques ≥ 1, round(x[,n]),
-//! pow/atan2 binaires).
+//! Language: numbers, variables (identifiers `[A-Za-z_][A-Za-z0-9_]*`),
+//! `+ - * / %` , power `^` (right-associative, higher precedence than
+//! unary minus: `-2^2 = -4`), comparisons `== != < <= > >=` (→ 1/0),
+//! `&& ||` (logic on != 0), ternary `cond ? a : b`, constants `pi`/`e`,
+//! functions `abs round floor ceil sqrt pow min max log log10 log2 exp sin
+//! cos tan asin acos atan atan2` (variadic min/max ≥ 1, round(x[,n]),
+//! binary pow/atan2).
 
 use std::collections::HashMap;
 use std::fmt;
 
-/// Catégorie d'erreur calc — permet à l'éditeur de distinguer « à corriger
-/// maintenant » (lexical/syntaxe/fonction) d'« exécution » (variable absente
-/// du payload, division par zéro…).
+/// Calc error category — lets the editor tell "fix now"
+/// (lexical/syntax/function) from "execution" (variable missing
+/// from the payload, division by zero…).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CalcErrorKind {
     Lexical,
@@ -98,7 +98,7 @@ impl CalcError {
     }
 }
 
-/// Résultat d'évaluation non fini (NaN/infini) — débordements inclus.
+/// Non-finite evaluation result (NaN/infinity) — overflows included.
 fn finite(x: f64) -> Result<f64, CalcError> {
     if x.is_finite() {
         Ok(x)
@@ -205,7 +205,7 @@ fn lex(src: &str) -> Result<Vec<Token>, CalcError> {
             });
             continue;
         }
-        // Opérateurs multi-caractères puis single-caractère.
+        // Multi-character operators, then single-character ones.
         let (tok, len) = match (c, chars.get(i + 1).map(|(_, ch)| *ch)) {
             ('&', Some('&')) => (Tok::AndAnd, 2),
             ('|', Some('|')) => (Tok::OrOr, 2),
@@ -265,7 +265,7 @@ enum BinOp {
 #[derive(Debug, Clone)]
 enum Expr {
     Num(f64),
-    /// Variable + position (pour l'erreur « variable inconnue » localisée).
+    /// Variable + position (for the localized "unknown variable" error).
     Var(String, usize),
     Neg(Box<Expr>),
     Binary {
@@ -326,21 +326,21 @@ impl Parser {
         }
     }
 
-    /// Ternaire (branche haute) — `cond ? a : b`, branches recursives.
+    /// Ternary (top branch) — `cond ? a : b`, recursive branches.
     fn parse_expr(&mut self) -> Result<Expr, CalcError> {
         let cond = self.parse_binary(0)?;
         if self.peek() == Some(&Tok::Question) {
             self.bump();
             let then = self.parse_expr()?;
             self.expect(Tok::Colon, ":")?;
-            let els = self.parse_expr()?; // droite-associatif
+            let els = self.parse_expr()?; // right-associative
             return Ok(Expr::Ternary(Box::new(cond), Box::new(then), Box::new(els)));
         }
         Ok(cond)
     }
 
-    /// Grimpée de précédence des binaires (+ court-circuit &&/|| sémantique
-    /// en évaluation uniquement — le parseur est aveugle à la valeur).
+    /// Precedence climbing for binaries (+ &&/|| short-circuit semantics
+    /// in evaluation only — the parser is blind to the value).
     fn parse_binary(&mut self, min_prec: u8) -> Result<Expr, CalcError> {
         let mut left = self.parse_unary()?;
         while let Some((prec, op)) = self.peek().and_then(binary_op) {
@@ -360,7 +360,7 @@ impl Parser {
         Ok(left)
     }
 
-    /// Moins unaire — plus faible que `^` : `-2^2 = -4` (convention maths).
+    /// Unary minus — weaker than `^`: `-2^2 = -4` (math convention).
     fn parse_unary(&mut self) -> Result<Expr, CalcError> {
         if self.peek() == Some(&Tok::Minus) {
             self.bump();
@@ -374,8 +374,8 @@ impl Parser {
         self.parse_pow()
     }
 
-    /// Puissance droite-associative : `2^3^2 = 2^(3^2)`, exposant repasse
-    /// par unaire pour accepter `2^-3`.
+    /// Right-associative power: `2^3^2 = 2^(3^2)`, the exponent goes back
+    /// through unary to accept `2^-3`.
     fn parse_pow(&mut self) -> Result<Expr, CalcError> {
         let base = self.parse_primary()?;
         if self.peek() == Some(&Tok::Caret) {
@@ -425,7 +425,7 @@ impl Parser {
                         pos: t.pos,
                     });
                 }
-                // Constantes connues → valeurs ; sinon variable.
+                // Known constants → values; otherwise a variable.
                 match name.as_str() {
                     "pi" => Ok(Expr::Num(std::f64::consts::PI)),
                     "e" => Ok(Expr::Num(std::f64::consts::E)),
@@ -495,8 +495,8 @@ fn describe(tok: &Tok) -> String {
 
 // ─────────────────────── Analyse statique (validation) ───────────────────────
 
-/// Signature d'une fonction : (nom, arity min, arity max) — max None =
-/// variadique. `round(x[,n])` 1..=2 ; `pow`/`atan2` 2 ; min/max ≥ 1.
+/// Signature of a function: (name, min arity, max arity) — max None =
+/// variadic. `round(x[,n])` 1..=2; `pow`/`atan2` 2; min/max ≥ 1.
 const FUNCS: &[(&str, usize, Option<usize>)] = &[
     ("abs", 1, Some(1)),
     ("round", 1, Some(2)),
@@ -519,8 +519,8 @@ const FUNCS: &[(&str, usize, Option<usize>)] = &[
     ("atan2", 2, Some(2)),
 ];
 
-/// Erreurs **statiques** de l'expression (sans connaître les variables) —
-/// toutes collectées, pas seulement la première : l'éditeur surligne tout.
+/// **Static** errors of the expression (without knowing the variables) —
+/// all collected, not just the first: the editor highlights everything.
 fn analyze(expr: &Expr, out: &mut Vec<CalcError>) {
     match expr {
         Expr::Num(_) | Expr::Var(..) => {}
@@ -579,7 +579,7 @@ fn analyze(expr: &Expr, out: &mut Vec<CalcError>) {
     }
 }
 
-// ─────────────────────────────── Évaluation ───────────────────────────────
+// ─────────────────────────────── Evaluation ───────────────────────────────
 
 fn truthy(x: f64) -> bool {
     x != 0.0
@@ -713,9 +713,9 @@ fn call(name: &str, args: &[f64], pos: usize) -> Result<f64, CalcError> {
 
 // ─────────────────────────────── API publique ───────────────────────────────
 
-/// Évalue l'expression avec les variables fournies (clés de payload device).
-/// Échoue proprement (`CalcError`) sur variable absente, division par zéro,
-/// hors domaine — jamais de panic.
+/// Evaluates the expression with the given variables (device payload keys).
+/// Fails cleanly (`CalcError`) on a missing variable, division by zero,
+/// out of domain — never a panic.
 pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcError> {
     let toks = lex(expr)?;
     if toks.is_empty() {
@@ -729,7 +729,7 @@ pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcErr
     }
     let mut p = Parser { toks, i: 0 };
     let ast = p.parse_expr()?;
-    // Résidu : tout token restant est une erreur (ex. « 1 2 »).
+    // Leftover: any remaining token is an error (e.g. "1 2").
     if let Some(t) = p.bump() {
         return Err(CalcError::new(
             CalcErrorKind::Syntax,
@@ -745,9 +745,9 @@ pub fn eval_calc(expr: &str, vars: &HashMap<String, f64>) -> Result<f64, CalcErr
     eval(&ast, vars)
 }
 
-/// Erreurs statiques de l'expression (syntaxe, fonctions inconnues, arités)
-/// — tolère les variables non définies (elles viennent du payload au
-/// runtime). Vide = expression valide.
+/// Static errors of the expression (syntax, unknown functions, arities)
+/// — tolerates undefined variables (they come from the payload at
+/// runtime). Empty = valid expression.
 pub fn validate_calc(expr: &str) -> Vec<CalcError> {
     let mut errors = Vec::new();
     let toks = match lex(expr) {
@@ -786,15 +786,15 @@ pub fn validate_calc(expr: &str) -> Vec<CalcError> {
     errors
 }
 
-/// Variables référencées par l'expression (triées, dédupliquées) — alimente
-/// l'aide de l'inspecteur (« cette expression attend : a, b »).
+/// Variables referenced by the expression (sorted, deduplicated) — feeds
+/// the inspector help ("this expression expects: a, b").
 pub fn calc_variables(expr: &str) -> Vec<String> {
     let mut vars: Vec<String> = Vec::new();
     let Ok(toks) = lex(expr) else { return vars };
     for (i, t) in toks.iter().enumerate() {
         if let Tok::Ident(name) = &t.tok {
             let is_constant = matches!(name.as_str(), "pi" | "e");
-            // Un identifiant suivi de « ( » est un appel de fonction.
+            // An identifier followed by "(" is a function call.
             let is_call = toks
                 .get(i + 1)
                 .map(|n| n.tok == Tok::LParen)
@@ -837,7 +837,7 @@ mod tests {
         assert_eq!(eval_calc("t < 20 ? 1 : 0", &v).unwrap(), 0.0);
         assert_eq!(eval_calc("t >= 21.5 && t <= 22", &v).unwrap(), 1.0);
         assert_eq!(eval_calc("t == 21.5 || t == 99", &v).unwrap(), 1.0);
-        // Comparaison non chaînée : (t > 20) < 1 → 0.
+        // Non-chained comparison: (t > 20) < 1 → 0.
         assert_eq!(eval_calc("t > 20 < 1", &v).unwrap(), 0.0);
     }
 
@@ -864,7 +864,7 @@ mod tests {
         // Variable absente.
         let e = eval_calc("a + b", &v).unwrap_err();
         assert_eq!(e.kind, CalcErrorKind::UnknownVariable);
-        // Division par zéro.
+        // Division by zero.
         assert_eq!(
             eval_calc("1 / 0", &v).unwrap_err().kind,
             CalcErrorKind::DivisionByZero
@@ -873,7 +873,7 @@ mod tests {
             eval_calc("1 % 0", &v).unwrap_err().kind,
             CalcErrorKind::DivisionByZero
         );
-        // Hors domaine.
+        // Out of domain.
         assert_eq!(
             eval_calc("sqrt(-1)", &v).unwrap_err().kind,
             CalcErrorKind::MathRange
@@ -921,17 +921,17 @@ mod tests {
 
     #[test]
     fn validation_statique_tolere_les_variables() {
-        // Variables inconnues ≠ erreurs de validation (elles viennent du payload).
+        // Unknown variables ≠ validation errors (they come from the payload).
         assert!(validate_calc("a + b * 2").is_empty());
-        // Fonction inconnue.
+        // Unknown function.
         let errs = validate_calc("foo(1) + 1");
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].kind, CalcErrorKind::UnknownFunction);
-        // Arité.
+        // Arity.
         assert_eq!(validate_calc("min()").len(), 1);
         assert_eq!(validate_calc("pow(2)").len(), 1);
         assert_eq!(validate_calc("round(1, 2, 3)").len(), 1);
-        // Toutes les erreurs collectées.
+        // All errors collected.
         assert_eq!(validate_calc("foo(1) + bar(2)").len(), 2);
         assert_eq!(validate_calc("").len(), 1);
     }
@@ -957,6 +957,6 @@ mod tests {
         assert_eq!(calc_variables("pi * r^2"), vec!["r"]);
         assert_eq!(calc_variables("sin(x) + cos(x)"), vec!["x"]);
         assert!(calc_variables("1 + 2").is_empty());
-        assert!(calc_variables("foo(").is_empty()); // lexing échoue → liste vide
+        assert!(calc_variables("foo(").is_empty()); // lexing fails → empty list
     }
 }

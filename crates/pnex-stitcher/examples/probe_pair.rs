@@ -1,6 +1,6 @@
-//! Sonde paire réelle : extraction+matching SuperPoint/LightGlue + rotation
-//! Horn sur deux frames voisines du job réel. Compare avec la pose capteur.
-//! Usage : cargo run --release -p pnex-stitcher --features pose-model \
+//! Real pair probe: SuperPoint/LightGlue extraction+matching + Horn
+//! rotation on two neighbouring frames of the real job. Compares with the sensor pose.
+//! Usage: cargo run --release -p pnex-stitcher --features pose-model \
 //!   --example probe_pair -- <dir> [i] [j]
 use pnex_stitcher::geom::{euler_to_mat, norm, to_deg};
 use pnex_stitcher::pose_model::PoseModel;
@@ -20,12 +20,12 @@ fn main() {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1usize),
     );
-    let model = PoseModel::load("deploy/models").expect("modèle");
-    // Chargement des 2 frames
+    let model = PoseModel::load("deploy/models").expect("model");
+    // Load the 2 frames
     let load = |k: usize| -> (Vec<u8>, u32, u32, f32) {
         let p = format!("{dir}/frame_{k:03}.jpg");
         let jpeg = std::fs::read(&p).unwrap_or_else(|e| panic!("{p} : {e}"));
-        let (rgb, w, h) = pnex_stitcher::decode_jpeg_rgb(&jpeg).expect("décode");
+        let (rgb, w, h) = pnex_stitcher::decode_jpeg_rgb(&jpeg).expect("decode");
         eprintln!("frame {k} : {w}x{h}");
         (rgb, w, h, 43.711803_f32)
     };
@@ -41,7 +41,7 @@ fn main() {
         fa.h,
         fb.kpts_px.len()
     );
-    // A/B : échelle des keypoints envoyés au matcher (KPSCALE=<largeur virtuelle>).
+    // A/B: scale of the keypoints sent to the matcher (KPSCALE=<virtual width>).
     let kpscale: f32 = std::env::var("KPSCALE")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -63,7 +63,7 @@ fn main() {
         kpscale,
         kpscale
     );
-    // Rayons caméra
+    // Camera rays
     let ray = |f: &PreparedFrame, ft: &pnex_stitcher::pose_model::Features, p: [f32; 2]| {
         let s = ft.w as f32 / f.width as f32;
         let fpx = f.f_px * s;
@@ -108,19 +108,19 @@ fn main() {
     let f8 =
         0.5 * (pa.f_px * fa.w as f32 / pa.width as f32 + pb.f_px * fb.w as f32 / pb.width as f32);
     let tol = 3.0 / f8;
-    println!("tolérance = {:.4}° (f8={f8:.0})", to_deg(tol));
+    println!("tolerance = {:.4}° (f8={f8:.0})", to_deg(tol));
     let est = horn_ransac(&pts_a, &pts_b, tol, 400, 7).expect("ransac");
     println!(
-        "inliers = {} err médiane = {:.4}°",
+        "inliers = {} median err = {:.4}°",
         est.inliers.len(),
         to_deg(est.median_err)
     );
-    // Rotation relative attendue (capteur) : yaw_b - yaw_a = -20.17°
+    // Expected relative rotation (sensor): yaw_b - yaw_a = -20.17°
     println!(
-        "rotation relative estimée : axe-angle = {:?} rad",
+        "estimated relative rotation: axis-angle = {:?} rad",
         log_so3(est.rel)
     );
-    // axe-angle → décomposition yaw/pitch/roll approx : angle total
+    // axis-angle → approx yaw/pitch/roll decomposition: total angle
     let ang = to_deg(norm(log_so3(est.rel)));
-    println!("angle total = {ang:.2}° (capteur attendu ≈ 20,17°)");
+    println!("total angle = {ang:.2}° (expected sensor ≈ 20.17°)");
 }

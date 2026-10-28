@@ -385,7 +385,7 @@ pub struct ObjectMap {
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub properties: BTreeMap<String, FieldSpec>,
     /// Constants written only when the import creates the object, never
-    /// over an existing one (a new target enters as `cible`, a client stays
+    /// over an existing one (a new target enters as `target`, a client stays
     /// a client).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -459,7 +459,7 @@ pub struct LinkMap {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub propose: bool,
     /// Several records of one pair disagreeing on an attribute: it takes
-    /// this value (`perimetre: les_deux` merges preparation and
+    /// this value (`scope: both` merges preparation and
     /// evaluation). Without it the first record wins, with a warning.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -2000,7 +2000,7 @@ mod tests {
 
     fn mapping() -> Mapping {
         let yaml = json!({
-            "key": "reseau", "name": "Réseau",
+            "key": "network", "name": "Network",
             "objects": [
                 {"as": "org", "type": "organization", "key": "siren",
                  "title": "raison_sociale",

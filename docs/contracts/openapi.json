@@ -943,7 +943,7 @@
         "type": "string"
       },
       "AnnotationDoc": {
-        "description": "Document complet d'une couche (contenu de\n`annotation_layer_versions.doc`).",
+        "description": "Full document of a layer (content of\n`annotation_layer_versions.doc`).",
         "properties": {
           "items": {
             "default": [],
@@ -62201,7 +62201,7 @@
             }
           },
           {
-            "description": "Link type keys the path may follow, comma-separated (at most 20);\nall when absent. An introduction path follows the links between\npeople: `knows,recommande,employs,dirige,member_of`.",
+            "description": "Link type keys the path may follow, comma-separated (at most 20);\nall when absent. An introduction path follows the links between\npeople: `knows,recommended,employs,manages,member_of`.",
             "in": "query",
             "name": "links",
             "required": false,
@@ -62210,7 +62210,7 @@
             }
           },
           {
-            "description": "Instead of `from`: every object at the source of an open link of\nthese types, comma-separated (`suit_le_compte` = the team that\nfollows accounts); the shortest path from any of them wins (D338).",
+            "description": "Instead of `from`: every object at the source of an open link of\nthese types, comma-separated (`follows_account` = the team that\nfollows accounts); the shortest path from any of them wins (D338).",
             "in": "query",
             "name": "from_links",
             "required": false,

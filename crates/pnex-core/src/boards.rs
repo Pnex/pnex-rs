@@ -10,23 +10,23 @@ use serde::{Deserialize, Serialize};
 use crate::caps;
 use crate::proto::{Mode, ModeOpts, SafeState};
 
-/// Carte de pins d'une board — contenu de `mcu_boards.details`.
+/// Pin map of a board — content of `mcu_boards.details`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardOverlay {
-    /// Identifiant de board (« nodemcu », « d1_mini »…).
+    /// Board identifier ("nodemcu", "d1_mini"…).
     pub board: String,
-    /// Pins exposés à l'utilisateur.
+    /// Pins exposed to the user.
     pub pins: Vec<BoardPin>,
 }
 
-/// Un pin d'overlay.
+/// An overlay pin.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BoardPin {
-    /// Label overlay (« D1 », « A0 »).
+    /// Overlay label ("D1", "A0").
     pub label: String,
     pub gpio: u16,
-    /// digital | analog — un pin analog ne propose que `analog_in`.
+    /// digital | analog — an analog pin only offers `analog_in`.
     pub kind: PinKind,
     /// Mode applied when the pin is first provisioned (never overrides a
     /// pin already configured). `None` = derived from the chip caps.
@@ -45,7 +45,7 @@ pub enum PinKind {
 }
 
 impl BoardOverlay {
-    /// Cherche un pin par GPIO.
+    /// Looks up a pin by GPIO.
     pub fn pin_by_gpio(&self, gpio: u16) -> Option<BoardPin> {
         self.pins.iter().find(|p| p.gpio == gpio).cloned()
     }
@@ -342,7 +342,7 @@ mod tests {
         assert_eq!(o.pin_by_gpio(5).unwrap().label, "D1");
     }
 
-    /// Profile v2 minimal (style NodeMCU) — helper des tests ci-dessous.
+    /// Minimal v2 profile (NodeMCU style) — helper for the tests below.
     fn v2_json() -> String {
         r#"{
             "board": "nodemcu_oled",
@@ -360,7 +360,7 @@ mod tests {
                 {"label": "D1", "gpio": 5, "kind": "gpio", "pos": {"side": "right", "index": 0}},
                 {"label": "D2", "gpio": 4, "kind": "gpio", "pos": {"side": "right", "index": 1}},
                 {"label": "A0", "gpio": 17, "kind": "gpio", "pos": {"side": "left", "index": 1},
-                 "note": "canal ADC — identifiant fil 17"},
+                 "note": "ADC channel — wire identifier 17"},
                 {"label": "3V3", "gpio": null, "kind": "power", "pos": {"side": "right", "index": 2}},
                 {"label": "GND", "gpio": null, "kind": "gnd", "pos": {"side": "right", "index": 3}}
             ]
@@ -392,21 +392,21 @@ mod tests {
     #[test]
     fn board_details_sentinelle_invalide_echoue() {
         let res: Result<BoardDetails, _> = serde_json::from_str(r#"{"no":"details"}"#);
-        assert!(res.is_err(), "la sentinelle ne doit pas parser");
+        assert!(res.is_err(), "the sentinel must not parse");
     }
 
     #[test]
     fn admission_pins_exclut_flash_illegaux_garde_a0() {
-        // esp8266 : A0 (17) est illégal en DigitalIn mais légal en AdcIn → gardé ;
-        // 3V3/GND (gpio null) exclus.
+        // esp8266: A0 (17) is illegal in DigitalIn but legal in AdcIn → kept;
+        // 3V3/GND (null gpio) excluded.
         let d: BoardDetails = serde_json::from_str(&v2_json()).unwrap();
         let pins = d.admission_pins(caps::Soc::Esp8266);
         let gpios: Vec<u16> = pins.iter().map(|p| p.gpio).collect();
-        assert!(gpios.contains(&17), "A0 doit rester admissible (AdcIn)");
+        assert!(gpios.contains(&17), "A0 must stay admissible (AdcIn)");
         assert!(gpios.contains(&5) && gpios.contains(&4) && gpios.contains(&16));
         assert_eq!(pins.len(), 4);
 
-        // esp32 : un pin sur la flash (gpio 6) est exclu par les chip-caps.
+        // esp32: a pin on the flash (gpio 6) is excluded by the chip-caps.
         let esp32 = r#"{
             "board": "devkit36", "layout": {"kind": "dual_inline", "per_side": 18},
             "pins": [
@@ -419,7 +419,7 @@ mod tests {
         let gpios: Vec<u16> = pins.iter().map(|p| p.gpio).collect();
         assert!(
             !gpios.contains(&6),
-            "flash 6-11 doit être exclue à l'admission"
+            "flash 6-11 must be excluded at admission"
         );
         assert_eq!(gpios, vec![23]);
     }

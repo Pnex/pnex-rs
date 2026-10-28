@@ -2,7 +2,7 @@
 //! typed registry `pnex_core::catalog` (D121); tiers, conversions and
 //! formulas from the YAML fixtures under `fixtures/`.
 //!
-//! Usage : `cargo loco task seed` (depuis crates/pnex-backend).
+//! Usage: `cargo loco task seed` (from crates/pnex-backend).
 
 use loco_rs::prelude::*;
 use pnex_core::catalog;
@@ -102,15 +102,15 @@ type Db = DatabaseTransaction;
 
 fn read_yaml<T: for<'de> serde::Deserialize<'de>>(path: &std::path::Path) -> Result<Vec<T>> {
     let f = std::fs::File::open(path)
-        .map_err(|e| Error::string(&format!("fixture {} illisible : {e}", path.display())))?;
+        .map_err(|e| Error::string(&format!("fixture {} unreadable: {e}", path.display())))?;
     serde_saphyr::from_reader(f)
         .map_err(|e| Error::string(&format!("fixture {} invalide : {e}", path.display())))
 }
 
-/// Liste triée des fichiers YAML d'un dossier de fixtures.
+/// Sorted list of the YAML files of a fixtures folder.
 fn yaml_files(dir: &std::path::Path) -> Result<Vec<std::path::PathBuf>> {
     let mut files: Vec<_> = std::fs::read_dir(dir)
-        .map_err(|e| Error::string(&format!("dossier {} illisible : {e}", dir.display())))?
+        .map_err(|e| Error::string(&format!("directory {} unreadable: {e}", dir.display())))?
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "yaml"))
@@ -138,7 +138,7 @@ fn parse_duration_secs(s: &str) -> Result<i64> {
     let amount: i64 = parts
         .next()
         .and_then(|n| n.parse().ok())
-        .ok_or_else(|| Error::string(&format!("durée invalide : {s:?}")))?;
+        .ok_or_else(|| Error::string(&format!("invalid duration: {s:?}")))?;
     let unit = parts.next().unwrap_or("seconds");
     let mult = match unit.trim_end_matches('s') {
         "second" => 1,
@@ -148,11 +148,7 @@ fn parse_duration_secs(s: &str) -> Result<i64> {
         "week" => 604_800,
         "month" => 2_592_000,
         "year" => 31_536_000,
-        other => {
-            return Err(Error::string(&format!(
-                "unité de durée inconnue : {other:?}"
-            )))
-        }
+        other => return Err(Error::string(&format!("unknown duration unit: {other:?}"))),
     };
     Ok(amount * mult)
 }

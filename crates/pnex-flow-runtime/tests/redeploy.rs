@@ -1,6 +1,6 @@
-//! Acceptance Phase 0/1 — rechargement à chaud : SIGUSR1 → relecture du
-//! flows.json → `redeploy_flows`, **sans** redémarrage du process. Le graphe
-//! v2 (autre payload) prend effet immédiatement.
+//! Phase 0/1 acceptance — hot reload: SIGUSR1 → re-read of
+//! flows.json → `redeploy_flows`, **without** restarting the process. The v2
+//! graph (other payload) takes effect immediately.
 
 mod common;
 
@@ -17,13 +17,13 @@ fn sigusr1_recharge_le_graphe_sans_redemarrage() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("started"),
         Duration::from_secs(30),
     );
-    let pid_v1 = started["pid"].as_u64().expect("pid présent");
+    let pid_v1 = started["pid"].as_u64().expect("pid present");
     rt.wait_for(
         |v| common::is_debug_with(v, "version-1"),
         Duration::from_secs(30),
     );
 
-    // Le superviseur réécrit l'artefact (tmp + rename) puis envoie SIGUSR1.
+    // The supervisor rewrites the artifact (tmp + rename) then sends SIGUSR1.
     let tmp = home.join("flows.json.tmp");
     std::fs::write(&tmp, common::inject_debug_flows("version-2")).unwrap();
     std::fs::rename(&tmp, &flows).unwrap();
@@ -31,8 +31,8 @@ fn sigusr1_recharge_le_graphe_sans_redemarrage() {
         libc::kill(rt.child.id() as libc::pid_t, libc::SIGUSR1);
     }
 
-    // Contrat ferme : le flow rechargé confirme d'abord par flow_started
-    // (acquittement par flow), puis le cycle émet redeployed.
+    // Farm contract: the reloaded flow first confirms with flow_started
+    // (per-flow acknowledgement), then the cycle emits redeployed.
     rt.wait_for(
         |v| v.get("event").and_then(|e| e.as_str()) == Some("flow_started") && v["flow"] == 1,
         Duration::from_secs(30),
@@ -41,18 +41,18 @@ fn sigusr1_recharge_le_graphe_sans_redemarrage() {
         |v| v.get("event").and_then(|e| e.as_str()) == Some("redeployed"),
         Duration::from_secs(30),
     );
-    // Pas de méta de version dans les events (artefact multi-flows — les
-    // versions par flow vivent en DB) : seul l'empreinte du graphe est émise.
-    assert!(redeployed["flow_rev"].is_string(), "flow_rev attendu");
+    // No version meta in the events (multi-flow artifact — per-flow
+    // versions live in the DB): only the graph fingerprint is emitted.
+    assert!(redeployed["flow_rev"].is_string(), "flow_rev expected");
 
-    // Le graphe v2 s'exécute : le debug diffuse le nouveau payload.
+    // The v2 graph runs: the debug broadcasts the new payload.
     rt.wait_for(
         |v| common::is_debug_with(v, "version-2"),
         Duration::from_secs(30),
     );
 
-    // Même process : pas de redémarrage, le pid est inchangé (runtime.json
-    // ne porte aucune version — santé process uniquement).
+    // Same process: no restart, the pid is unchanged (runtime.json
+    // carries no version — process health only).
     let state: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(home.join("runtime.json")).expect("runtime.json"),
     )

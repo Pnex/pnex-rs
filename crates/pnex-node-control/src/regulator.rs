@@ -1,8 +1,8 @@
-//! Cartes de régulation mixtes (`pnex-reg-tt-heat` / `pnex-reg-tt-cool` /
-//! `pnex-reg-pid`) — nœuds **passifs** : voir la doc du crate. La
-//! validation au build reconstruit le contrat typé `pnex_core` et appelle
-//! la vraie `validate_graph` (même source de vérité que le backend et
-//! l'éditeur wasm).
+//! Mixed control cards (`pnex-reg-tt-heat` / `pnex-reg-tt-cool` /
+//! `pnex-reg-pid`) — **passive** nodes: see the crate doc. The
+//! build validation rebuilds the typed `pnex_core` contract and calls
+//! the real `validate_graph` (same source of truth as the backend and
+//! the wasm editor).
 
 use std::sync::Arc;
 
@@ -36,8 +36,8 @@ fn default_data_timeout_secs() -> u32 {
     30
 }
 
-/// Sens de la carte — porté par le **type Node-RED** (`pnex-reg-tt-heat`…),
-/// jamais par un champ de config : une faute de sens est impossible.
+/// Card direction — carried by the **Node-RED type** (`pnex-reg-tt-heat`…),
+/// never by a config field: a direction mistake is impossible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RegKind {
     TtHeat,
@@ -45,9 +45,9 @@ enum RegKind {
     Pid,
 }
 
-/// Config red d'une carte — struct plat miroir de l'entrée projetée (les
-/// champs TT/PID hors kind sont présents mais ignorés ; même philosophie
-/// que le `ControlSpec` fil).
+/// Red config of a card — flat struct mirroring the projected entry (the
+/// TT/PID fields outside the kind are present but ignored; same philosophy
+/// as the wire `ControlSpec`).
 #[derive(Debug, Clone, Deserialize)]
 struct RegNodeConfig {
     device_id: String,
@@ -74,8 +74,8 @@ struct RegNodeConfig {
     data_timeout_secs: u32,
     #[serde(default)]
     safe_state: SafeState,
-    // Estampillé par la projection au deploy (traçabilité + détection
-    // d'artefact périmé).
+    // Stamped by the projection at deploy (traceability + stale
+    // artefact detection).
     #[serde(default)]
     pnex_node_id: String,
     #[serde(default)]
@@ -83,14 +83,14 @@ struct RegNodeConfig {
 }
 
 impl RegNodeConfig {
-    /// Reconstruit le contrat typé pnex-core et passe la **vraie**
-    /// `validate_graph` (règles reg + unicité actuateur triviallement vraie
-    /// sur un graphe mono-nœud — l'unicité cross-flows reste garantie par le
-    /// sync backend).
+    /// Rebuilds the typed pnex-core contract and runs the **real**
+    /// `validate_graph` (reg rules + actuator uniqueness trivially true
+    /// on a single-node graph — cross-flow uniqueness stays guaranteed by the
+    /// backend sync).
     fn validate(&self, kind: RegKind) -> Result<()> {
         if self.pnex_flow_id <= 0 {
             return Err(EdgelinkError::BadFlowsJson(format!(
-                "{} : pnex_flow_id absent de l'artefact (redéployer le flow)",
+                "{}: pnex_flow_id missing from the artefact (redeploy the flow)",
                 kind.type_name()
             ))
             .into());
@@ -158,7 +158,7 @@ impl RegNodeConfig {
         } else {
             let messages: Vec<String> = violations.iter().map(|v| v.message.clone()).collect();
             Err(EdgelinkError::BadFlowsJson(format!(
-                "{} : config invalide : {}",
+                "{}: invalid config: {}",
                 kind.type_name(),
                 messages.join(" ; ")
             ))
@@ -177,8 +177,8 @@ impl RegKind {
     }
 }
 
-/// Déclare un type de carte passif + son build (le struct porte la config
-/// validée ; la boucle `run()` consomme et jette).
+/// Declares a passive card type + its build (the struct carries the validated
+/// config; the `run()` loop consumes and drops).
 macro_rules! reg_node {
     ($type_name:literal, $struct_name:ident, $kind:expr) => {
         #[flow_node($type_name, red_name = $type_name)]
@@ -196,7 +196,7 @@ macro_rules! reg_node {
                 _options: Option<&config::Config>,
             ) -> Result<Box<dyn FlowNodeBehavior>> {
                 let cfg = RegNodeConfig::deserialize(&config.rest).map_err(|e| {
-                    EdgelinkError::BadFlowsJson(format!("{} : config invalide : {e}", $type_name))
+                    EdgelinkError::BadFlowsJson(format!("{}: invalid config: {e}", $type_name))
                 })?;
                 cfg.validate($kind)?;
                 Ok(Box::new($struct_name {
@@ -213,16 +213,16 @@ macro_rules! reg_node {
             }
 
             async fn run(self: Arc<Self>, stop_token: CancellationToken) {
-                // Nœud passif : la régulation vit sur le device (D13/D17).
-                // Consommer et jeter évite l'engorgement du tampon d'entrée
-                // si un producteur est câblé en amont.
+                // Passive node: the control loop lives on the device (D13/D17).
+                // Consuming and dropping avoids clogging the input buffer
+                // if a producer is wired upstream.
                 while !stop_token.is_cancelled() {
                     with_uow(
                         self.as_ref(),
                         stop_token.child_token(),
                         |node: &$struct_name, msg: MsgHandle| async move {
                             log::trace!(
-                                "{} [{}] : message ignoré (carte d'authoring, pas de fan-out)",
+                                "{} [{}]: message ignored (authoring card, no fan-out)",
                                 $type_name,
                                 node.name()
                             );

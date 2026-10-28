@@ -1,19 +1,19 @@
 #!/bin/sh
-# Toolchain pio de fixture (tests Phase 6) — remplace PlatformIO.
+# Fixture pio toolchain (Phase 6 tests) — replaces PlatformIO.
 #
-# Comportement piloté par WIFI_SSID (env du child en base64, jamais argv) :
-#   b64("fail")  → exit 1 (échec de compilation, sortie standard renseignée)
-#   b64("sleep") → dort 60 s (chemin du timeout — test.yaml : timeout 2 s)
-#   autre        → fabrique .pio/build/stub/{firmware,bootloader,partitions}.bin
-#                 dont le contenu matérialise les env reçues (le test prouve
-#                 la propagation : les 5 vars device en base64, WS_SSL
+# Behaviour driven by WIFI_SSID (child env in base64, never argv):
+#   b64("fail")  → exit 1 (compile failure, stdout filled in)
+#   b64("sleep") → sleeps 60 s (timeout path — test.yaml: timeout 2 s)
+#   other        → builds .pio/build/stub/{firmware,bootloader,partitions}.bin
+#                 whose content materialises the received env (the test proves
+#                 the propagation: the 5 device vars in base64, WS_SSL
 #                 true/false; the WiFi password too, decrypted from the
 #                 vault by the worker — secrets.md S6).
 mkdir -p .pio/build/stub
 
 case "$WIFI_SSID" in
   ZmFpbA==)  # base64("fail")
-    echo "fixture: erreur de compilation simulée"
+    echo "fixture: erreur de compilation simulée" # english-guard: allow (asserted by tests/builds.rs)
     # A tool echoing its flags: the worker must mask the token (O4).
     echo "flags -DTOKEN=$TOKEN"
     exit 1

@@ -1,6 +1,6 @@
-//! Endpoints notifications (D49–D54) — canaux (formulaires générés depuis
-//! `field_spec`, secrets write-only), templates (preview), journal des
-//! livraisons, tests d'envoi. Mêmes conventions que `api/flows.rs`.
+//! Notification endpoints (D49–D54) — channels (forms generated from
+//! `field_spec`, write-only secrets), templates (preview), delivery log,
+//! test sends. Same conventions as `api/flows.rs`.
 
 use pnex_core::{
     NotifyChannel, NotifyDelivery, NotifyKindInfo, NotifyTemplate, NotifyTemplateInput, Paginated,
@@ -10,8 +10,8 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// `GET /api/v1/notify/kinds` — catalogue des canaux + field_spec
-/// (source du formulaire dynamique, contrat `notify-kinds.v1`).
+/// `GET /api/v1/notify/kinds` — channel catalog + field_spec
+/// (source of the dynamic form, contract `notify-kinds.v1`).
 pub async fn kinds() -> Result<Vec<NotifyKindInfo>, ApiError> {
     client::request_all("/api/v1/notify/kinds").await
 }
@@ -42,7 +42,7 @@ pub async fn get_channel(id: &str) -> Result<NotifyChannel, ApiError> {
     .await
 }
 
-/// `POST /api/v1/notify/channels` — création (secrets write-only).
+/// `POST /api/v1/notify/channels` — creation (write-only secrets).
 pub async fn create_channel(
     kind: &str,
     name: &str,
@@ -59,7 +59,7 @@ pub async fn create_channel(
     .await
 }
 
-/// `PUT /api/v1/notify/channels/{id}` — secrets `null`/absents = inchangés.
+/// `PUT /api/v1/notify/channels/{id}` — `null`/missing secrets = unchanged.
 pub async fn update_channel(
     id: &str,
     kind: &str,
@@ -109,10 +109,10 @@ pub async fn test_draft(
     .await
 }
 
-/// `POST /api/v1/notify/channels/{id}/test` — message built-in quand
-/// `template_id` est `None`, template rendu sinon (les vars manquantes
-/// prennent leur example déclaré côté serveur). Journalisé dans les deux
-/// cas (source `test`, template_id porté au journal).
+/// `POST /api/v1/notify/channels/{id}/test` — built-in message when
+/// `template_id` is `None`, rendered template otherwise (missing vars take
+/// their example declared on the server side). Logged in both cases
+/// (source `test`, template_id carried in the log).
 pub async fn test_channel(
     id: &str,
     template_id: Option<&str>,
@@ -232,7 +232,7 @@ pub async fn delete_template(id: &str) -> Result<(), ApiError> {
     .await
 }
 
-/// `POST /api/v1/notify/templates/{id}/preview` — rendu seul, jamais d'envoi.
+/// `POST /api/v1/notify/templates/{id}/preview` — render only, never sends.
 pub async fn preview_template(
     id: &str,
     vars: std::collections::BTreeMap<String, String>,
@@ -246,8 +246,8 @@ pub async fn preview_template(
     .await
 }
 
-/// Convertit les lignes `{name, example}` de l'éditeur en `TemplateVar`
-/// (trim ; lignes vides ignorées).
+/// Converts the editor's `{name, example}` rows into `TemplateVar`
+/// (trim; empty rows ignored).
 pub fn vars_from_rows(rows: Vec<(String, String)>) -> Vec<TemplateVar> {
     rows.into_iter()
         .filter(|(name, _)| !name.trim().is_empty())

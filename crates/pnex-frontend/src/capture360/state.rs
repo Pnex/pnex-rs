@@ -1,133 +1,133 @@
-//! État de session Take 360 — atomics purs, zéro lock, zéro signal dioxus.
+//! Take 360 session state — pure atomics, zero lock, zero dioxus signal.
 //!
-//! École `capture.rs` : les threads détachés (capteur, pipeline) et la
-//! boucle de guidage ne peuvent pas toucher aux signaux dioxus (contexte
-//! absent → panic → mutex runtime empoisonné). Toute la communication
-//! passe par ces atomics, sondés par l'overlay (tick 33 ms) et par la page
-//! media (polling 500 ms pour le toast final).
+//! `capture.rs` school: detached threads (sensor, pipeline) and the
+//! guidance loop cannot touch dioxus signals (missing context → panic →
+//! poisoned runtime mutex). All communication goes through these atomics,
+//! polled by the overlay (33 ms tick) and by the media page (500 ms
+//! polling for the final toast).
 
 use super::guidance::Pose;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicU8, Ordering};
 
-/// Phase de la session.
+/// Session phase.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
-    /// Aucune session.
+    /// No session.
     Idle = 0,
-    /// Session ouverte : capteur + caméra en cours d'ouverture.
+    /// Session open: sensor + camera being opened.
     Starting = 1,
-    /// Recherche d'alignement sur la cible courante.
+    /// Searching for alignment on the current target.
     Searching = 2,
-    /// Dwell en cours (alignement tenu).
+    /// Dwell in progress (alignment held).
     Dwelling = 3,
-    /// Grab de la frame en vol.
+    /// Frame grab in flight.
     Capturing = 4,
     /// Stitching on-device.
     Stitching = 5,
-    /// Upload en vol.
+    /// Upload in flight.
     Uploading = 6,
-    /// Panorama uploadé.
+    /// Panorama uploaded.
     Done = 7,
-    /// Erreur (cf. [`ERROR_CODE`]).
+    /// Error (see [`ERROR_CODE`]).
     Error = 8,
 }
 
 /// Phase courante.
 pub static PHASE: AtomicU8 = AtomicU8::new(Phase::Idle as u8);
-/// Frames capturées (0..=16).
+/// Captured frames (0..=16).
 pub static STEP: AtomicU8 = AtomicU8::new(0);
 /// Progression stitching/upload (0-100).
 pub static PROGRESS: AtomicU8 = AtomicU8::new(0);
-/// Code d'erreur : 0 aucune, 1 permission, 2 caméra, 3 capteur, 4 stitch,
+/// Error code: 0 none, 1 permission, 2 camera, 3 sensor, 4 stitch,
 /// 5 upload.
 pub static ERROR_CODE: AtomicU8 = AtomicU8::new(0);
-/// Compteur de sessions terminées + code résultat (toast page media).
+/// Counter of finished sessions + result code (media page toast).
 pub static RESULT_SEQ: AtomicU64 = AtomicU64::new(0);
 pub static RESULT_CODE: AtomicU8 = AtomicU8::new(0);
 
-/// Poses en millidegrés (i32 : ±180 000 suffit), relatifs au zéro de
-/// session. Écrites par le thread capteur à 30 Hz.
+/// Poses in millidegrees (i32: ±180 000 is enough), relative to the
+/// session zero. Written by the sensor thread at 30 Hz.
 pub static POSE_YAW: AtomicI32 = AtomicI32::new(0);
 pub static POSE_PITCH: AtomicI32 = AtomicI32::new(0);
 pub static POSE_ROLL: AtomicI32 = AtomicI32::new(0);
-/// Horodatage (ms unix) du dernier échantillon capteur — fraîcheur.
+/// Timestamp (unix ms) of the last sensor sample — freshness.
 pub static POSE_TICK: AtomicU64 = AtomicU64::new(0);
-/// Fraîcheur max d'une pose (ms) au-delà de laquelle `pose()` renvoie None.
+/// Max age of a pose (ms) beyond which `pose()` returns None.
 pub const POSE_MAX_AGE_MS: u64 = 250;
 
-/// Yaw de début de session (millidegrés) — posé par le thread capteur.
+/// Session start yaw (millidegrees) — set by the sensor thread.
 pub static ZERO_YAW: AtomicI32 = AtomicI32::new(0);
-/// Pitch de début de session (millidegrés) — idem : la cible de visée est
-/// la posture naturelle de départ.
+/// Session start pitch (millidegrees) — likewise: the aiming target is
+/// the natural starting posture.
 pub static ZERO_PITCH: AtomicI32 = AtomicI32::new(0);
-/// Ancre utilisateur (millidegrés, poses relatives zéro de session) :
-/// « Ancrer ici » redéfinit l'origine du ring sur la pose courante —
-/// utilise au départ ou à tout moment (dérive capteur).
+/// User anchor (millidegrees, poses relative to session zero):
+/// "Anchor here" redefines the ring origin on the current pose —
+/// usable at start or at any time (sensor drift).
 pub static ANCHOR_YAW: AtomicI32 = AtomicI32::new(0);
 pub static ANCHOR_PITCH: AtomicI32 = AtomicI32::new(0);
-/// Ancre posée ? Jusque-là : pas de cible, l'utilisateur vise son point de
-/// départ et appuie sur « Ancrer ici » (le zéro auto capturé au démarrage
-/// tombe sur la posture en MOUVEMENT — constat device 2026-09-09).
+/// Anchor set? Until then: no target, the user aims at their starting
+/// point and presses "Anchor here" (the auto zero captured at startup
+/// lands on the posture IN MOTION — device finding 2026-09-09).
 pub static ANCHOR_VALID: AtomicBool = AtomicBool::new(false);
-/// Yaw ancré de la dernière frame capturée (millidegrés) — debug + reco
-/// « Reprendre ».
+/// Anchored yaw of the last captured frame (millidegrees) — debug + "Retake"
+/// recovery.
 pub static LAST_FRAME_YAW: AtomicI32 = AtomicI32::new(0);
-/// HFOV PORTRAIT de la caméra arrière (millidegrés) — posée par l'overlay
-/// à l'ouverture de session (hfov capteur paysage × w/h du track).
-/// 0 = inconnue → repli [`DEFAULT_PORTRAIT_HFOV_MD`]. Le plan d'anneau
-/// (nombre de cibles, pas) en découle : fermeture garantie.
+/// PORTRAIT HFOV of the rear camera (millidegrees) — set by the overlay
+/// at session open (landscape sensor hfov × track w/h).
+/// 0 = unknown → fallback [`DEFAULT_PORTRAIT_HFOV_MD`]. The ring plan
+/// (number of targets, step) derives from it: closure guaranteed.
 pub static PORTRAIT_HFOV_MD: AtomicI32 = AtomicI32::new(0);
-/// HFOV portrait par défaut (millidegrés) — la mesure Camera2 échoue
-/// rarement, mais le plan d'anneau doit être posé même sans.
+/// Default portrait HFOV (millidegrees) — the Camera2 measurement rarely
+/// fails, but the ring plan must be set even without it.
 pub const DEFAULT_PORTRAIT_HFOV_MD: i32 = 43_700;
-/// Nombre de cibles par anneau (plan courant, cf. `guidance::ring_plan`)
-/// et pas angulaire (millidegrés) — posés à l'ouverture de session.
+/// Number of targets per ring (current plan, see `guidance::ring_plan`)
+/// and angular step (millidegrees) — set at session open.
 pub static N_STEPS: AtomicU8 = AtomicU8::new(16);
 pub static STEP_DEG_MD: AtomicI32 = AtomicI32::new(22_500);
-/// Séquence de capture : incrémentée à CHAQUE frame réussie — la couche
-/// DOM (eval 15 Hz) y lit le déclenchement pour le flash visuel sans
-/// re-render dioxus.
+/// Capture sequence: incremented on EACH successful frame — the DOM
+/// layer (15 Hz eval) reads the trigger from it for the visual flash
+/// without a dioxus re-render.
 pub static CAPTURE_SEQ: AtomicU64 = AtomicU64::new(0);
-/// Demande « Reprendre » (retirer la dernière frame, reculer la cible) —
-/// posée par le bouton UI, traitée par la boucle driver (single-writer).
+/// "Retake" request (remove the last frame, step the target back) —
+/// set by the UI button, handled by the driver loop (single-writer).
 pub static UNDO_REQUEST: AtomicBool = AtomicBool::new(false);
-/// Horodatage de la dernière capture (ms unix) — anti-rafales.
+/// Timestamp of the last capture (unix ms) — anti-burst.
 pub static LAST_CAPTURE_MS: AtomicU64 = AtomicU64::new(0);
-/// Dernière erreur de grab (0 = aucune, 1 = eval, 2 = json, 3 = pas de
-/// payload, 4 = préfixe data:, 5 = base64, 6 = vidéo absente/vide) —
-/// affichée dans la ligne debug (le logger ne sort pas, constat device).
+/// Last grab error (0 = none, 1 = eval, 2 = json, 3 = no payload,
+/// 4 = data: prefix, 5 = base64, 6 = video missing/empty) — shown
+/// in the debug line (the logger does not output, device finding).
 pub static LAST_GRAB_ERR: AtomicU8 = AtomicU8::new(0);
 
-/// Anneau de capture courant (Take 360 V2) : 0 = tour à plat, 1 = anneau
-/// incliné vers le haut (pôle nord réel). La fin d'un anneau n'entraîne le
-/// finish qu'après l'anneau 1 (cf. overlay — le stitcher accepte les poses
-/// arbitraires, les bandes lat suffisent).
+/// Current capture ring (Take 360 V2): 0 = flat turn, 1 = ring tilted
+/// upward (real north pole). The end of a ring triggers the finish only
+/// after ring 1 (see overlay — the stitcher accepts arbitrary poses,
+/// the lat bands are enough).
 pub static RING: AtomicU8 = AtomicU8::new(0);
-/// État du stitch (debug) : 0 idle, 1 decode, 2 render, 3 encode, 4 prêt,
-/// 5 erreur.
+/// Stitch state (debug): 0 idle, 1 decode, 2 render, 3 encode, 4 ready,
+/// 5 error.
 pub static STITCH_STATE: AtomicU8 = AtomicU8::new(0);
-/// Frame en cours de décodage (0-15) — debug.
+/// Frame being decoded (0-15) — debug.
 pub static STITCH_IDX: AtomicU8 = AtomicU8::new(0);
-/// Battement de cœur de la boucle driver (avance à chaque tick 33 ms) —
-/// si figé, la boucle/executor est morte ; si il avance, elle vit.
+/// Driver loop heartbeat (advances on each 33 ms tick) — if frozen, the
+/// loop/executor is dead; if it advances, it is alive.
 pub static DRIVER_BEAT: AtomicU64 = AtomicU64::new(0);
-/// Garde : un seul finish par session (la boucle driver a pu tripler —
-/// 3 threads stitch bloqués constatés device 2026-09-09).
+/// Guard: a single finish per session (the driver loop could triple —
+/// 3 blocked stitch threads seen on device 2026-09-09).
 pub static FINISH_STARTED: AtomicBool = AtomicBool::new(false);
-/// Garde : une seule boucle driver par process (use_effect ré-exécuté).
+/// Guard: a single driver loop per process (use_effect re-run).
 pub static DRIVER_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// Ancre posée ?
+/// Anchor set?
 #[must_use]
 pub fn anchored() -> bool {
     ANCHOR_VALID.load(Ordering::Relaxed)
 }
 
-/// Abandon demandé par l'UI (annulation ou démontage de l'overlay).
+/// Abort requested by the UI (cancellation or overlay unmount).
 pub static CANCEL: AtomicBool = AtomicBool::new(false);
 
-/// Horloge murale en ms unix (même origine que [`POSE_TICK`]).
+/// Wall clock in unix ms (same origin as [`POSE_TICK`]).
 #[must_use]
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -152,12 +152,12 @@ pub fn phase() -> Phase {
     }
 }
 
-/// Pose courante si fraîche (None si capteur muet > [`POSE_MAX_AGE_MS`] ou
-/// jamais vu).
+/// Current pose if fresh (None if the sensor is silent > [`POSE_MAX_AGE_MS`]
+/// or never seen).
 ///
-/// Cohérence : POSE_TICK est relu après les trois angles — s'il a avancé
-/// pendant la lecture, l'échantillon est mélangé → None (l'overlay
-/// réessayera au tick suivant, 33 ms).
+/// Consistency: POSE_TICK is re-read after the three angles — if it moved
+/// during the read, the sample is mixed → None (the overlay will retry
+/// on the next tick, 33 ms).
 #[must_use]
 pub fn pose(now: u64) -> Option<Pose> {
     let tick = POSE_TICK.load(Ordering::Relaxed);
@@ -172,8 +172,8 @@ pub fn pose(now: u64) -> Option<Pose> {
     if t1 != t2 {
         return None;
     }
-    // Ancre utilisateur : soustraite à la lecture — les cibles (k·22,5°)
-    // deviennent relatives au point ancré, à tout instant.
+    // User anchor: subtracted on read — the targets (k·22.5°) become
+    // relative to the anchored point, at any time.
     let anchor_yaw = ANCHOR_YAW.load(Ordering::Relaxed) as f32 / 1000.0;
     let anchor_pitch = ANCHOR_PITCH.load(Ordering::Relaxed) as f32 / 1000.0;
     Some(Pose {
@@ -183,9 +183,9 @@ pub fn pose(now: u64) -> Option<Pose> {
     })
 }
 
-/// « Ancrer ici » : l'origine du ring devient la pose courante (le pitch
-/// garde son roll, seul yaw/pitch sont reancrés). Utilisable à tout
-/// moment — la géométrie de l'anneau reste cohérente (tout est relatif).
+/// "Anchor here": the ring origin becomes the current pose (pitch keeps
+/// its roll, only yaw/pitch are re-anchored). Usable at any time — the
+/// ring geometry stays consistent (everything is relative).
 pub fn reanchor() {
     let yaw = POSE_YAW.load(Ordering::Relaxed);
     let pitch = POSE_PITCH.load(Ordering::Relaxed);
@@ -194,7 +194,7 @@ pub fn reanchor() {
     ANCHOR_VALID.store(true, Ordering::Relaxed);
 }
 
-/// Remise à zéro de l'état de session (à l'ouverture de l'overlay).
+/// Reset of the session state (when the overlay opens).
 pub fn reset_session() {
     PHASE.store(Phase::Idle as u8, Ordering::Relaxed);
     STEP.store(0, Ordering::Relaxed);

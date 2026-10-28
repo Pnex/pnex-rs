@@ -1,26 +1,26 @@
-//! Assemblage des variables d'environnement du sous-process `pio run`.
+//! Assembly of the environment variables of the `pio run` subprocess.
 //!
-//! Contrat du dépôt firmware (vérifié, firmware-build.md §2.1) : la config
-//! device se lit en **variables d'environnement** (platformio.ini
+//! Firmware repository contract (verified, firmware-build.md §2.1): the device
+//! config is read from **environment variables** (platformio.ini
 //! `-D WIFI_SSID="${sysenv.WIFI_SSID}"`…) — WIFI_SSID, WIFI_PASSWORD,
-//! HOST, TOKEN et DEVICE_ID **en base64** (le firmware les décode ; le
-//! base64 ne contient ni espace ni quote, un SSID littéral comme
-//! « Chez Shan » casserait le flag `-D`). Always wss (D154): no scheme
-//! variable. Jamais en argv : `ps` expose les arguments.
+//! HOST, TOKEN and DEVICE_ID **in base64** (the firmware decodes them; the
+//! base64 contains neither space nor quote, a literal SSID like
+//! « Chez Shan » would break the `-D` flag). Always wss (D154): no scheme
+//! variable. Never in argv: `ps` exposes the arguments.
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 
-/// Secrets d'un build. `token` et `encryption_key` viennent de la base au
-/// moment du `perform` (ils ne transitent jamais par la queue) ; le WiFi et
-/// l'hôte viennent de la requête utilisateur.
+/// Secrets of a build. `token` and `encryption_key` come from the database at
+/// `perform` time (they never go through the queue); the WiFi and
+/// the host come from the user request.
 #[derive(Debug, Clone)]
 pub struct BuildSecrets {
     pub wifi_ssid: String,
     pub wifi_password: String,
-    /// Hôte du serveur PNEX (tel que saisi, ex. `dev1.pnex.io`).
+    /// PNEX server host (as typed, e.g. `dev1.pnex.io`).
     pub host: String,
-    /// Token du device (`device_tokens.token`).
+    /// Device token (`device_tokens.token`).
     pub token: String,
     pub device_id: String,
     /// Noise pre-shared key, base64 (`device_tokens.encryption_key`), passed
@@ -41,7 +41,7 @@ fn b64(v: &str) -> String {
     STANDARD.encode(v)
 }
 
-/// Variables injectées au sous-process `pio run` (par-dessus l'env réduite).
+/// Variables injected into the `pio run` subprocess (on top of the reduced env).
 pub fn child_env(secrets: &BuildSecrets) -> Vec<(String, String)> {
     let mut vars = vec![
         // Everything is base64 on the server side and decoded by the
@@ -159,8 +159,8 @@ mod tests {
         assert_eq!(get("ENCRYPTION_KEY"), "Y2xlLWI2NC1zMk8=");
     }
 
-    /// SSID avec espaces : l'env transmise ne contient ni espace ni quote
-    /// (le flag `-D` de platformio.ini ne peut pas se casser).
+    /// SSID with spaces: the passed env contains neither space nor quote
+    /// (the platformio.ini `-D` flag cannot break).
     #[test]
     fn ssid_avec_espaces_devient_base64() {
         let mut s = secrets();

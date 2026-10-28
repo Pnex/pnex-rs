@@ -106,10 +106,10 @@ impl FrameCodec {
 
 // ──────────────── Measurement names ────────────────
 
-/// Harmonisation capability ↔ mesure (D16) — la fonction vit dans pnex-core
-/// (feature `naming`) : le nœud `device` du runtime de flows (Phase 6) doit
-/// lire les séries sous le MÊME nom normalisé que l'ingestion les écrit.
-/// Re-exportée ici pour ne pas déplacer les points d'appel.
+/// Capability ↔ measurement harmonization (D16) — the function lives in pnex-core
+/// (`naming` feature): the flow runtime's `device` node (Phase 6) must
+/// read the series under the SAME normalized name the ingestion writes them with.
+/// Re-exported here so as not to move the call sites.
 pub(crate) use pnex_core::normalize_measurement_name;
 
 // ─────────────────────── Admission throttling ───────────────────────
@@ -362,7 +362,7 @@ mod tests {
         }
     }
 
-    /// D16 : styles d'écriture variés → même nom canonique.
+    /// D16: varied writing styles → same canonical name.
     #[test]
     fn normalisation_noms_de_mesures() {
         assert_eq!(normalize_measurement_name("soil_moisture"), "soil_moisture");

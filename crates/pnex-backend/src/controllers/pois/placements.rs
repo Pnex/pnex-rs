@@ -2,10 +2,10 @@ use super::*;
 
 // ─────────────────────── placements devices (D43) ───────────────────────
 
-/// `POST /api/v1/pois/{id}/devices` — attache un device (délibéré) :
-/// 201 placement ; 400 device inconnu / location trop longue ; **409
-/// conflit** porteur du POI courant (le front propose le déplacement —
-/// jamais silencieux) ; 404 masqué cross-org.
+/// `POST /api/v1/pois/{id}/devices` — attaches a device (deliberate):
+/// 201 placement; 400 unknown device / location too long; **409
+/// conflict** carrying the current POI (the front offers the move —
+/// never silent); cross-org 404 hidden.
 #[utoipa::path(
     post,
     path = "/api/v1/pois/{id}/devices",
@@ -52,10 +52,10 @@ pub(super) async fn attach_device(
     }
 }
 
-/// `PATCH /api/v1/pois/placements/{id}` — édition de `location_detail`
-/// et/ou **déplacement** (`pin_id` cible). Le retrait passe par
-/// [`delete_placement`] (amendement D43, 2026-09-13) ; supprimer le POI
-/// cascade les placements côté DB.
+/// `PATCH /api/v1/pois/placements/{id}` — edit of `location_detail`
+/// and/or **move** (target `pin_id`). Removal goes through
+/// [`delete_placement`] (D43 amendment, 2026-09-13); deleting the POI
+/// cascades the placements in the DB.
 #[utoipa::path(
     patch,
     path = "/api/v1/pois/placements/{id}",
@@ -94,9 +94,9 @@ pub(super) async fn update_placement(
     }
 }
 
-/// `DELETE /api/v1/pois/placements/{id}` — détache le device (amendement
-/// D43, 2026-09-13) : 204, le device redevient libre, plaçable n'importe
-/// où. 404 masqué cross-org.
+/// `DELETE /api/v1/pois/placements/{id}` — detaches the device (D43
+/// amendment, 2026-09-13): 204, the device becomes free again, placeable
+/// anywhere. Cross-org 404 hidden.
 #[utoipa::path(
     delete,
     path = "/api/v1/pois/placements/{id}",

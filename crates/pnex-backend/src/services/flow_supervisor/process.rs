@@ -2,9 +2,9 @@
 
 use super::*;
 
-/// Env de l'enfant runtime (et du pré-flight) : allowlist + creds OpenObserve
-/// injectées depuis le yaml — identique pour les deux, le check doit voir ce
-/// que l'enfant verra.
+/// Env of the runtime child (and of the pre-flight): allowlist + OpenObserve creds
+/// injected from the yaml — identical for both, the check must see what
+/// the child will see.
 pub(crate) fn apply_runtime_env(cmd: &mut tokio::process::Command, settings: &FlowSettings) {
     cmd.env("PATH", std::env::var("PATH").unwrap_or_default())
         .env("HOME", std::env::var("HOME").unwrap_or_default())
@@ -172,15 +172,15 @@ fn parse_memory_limit_mb(raw: Option<&str>) -> Option<libc::rlim_t> {
     mb.checked_mul(1024 * 1024).map(|b| b as libc::rlim_t)
 }
 
-/// Spawn de l'enfant + pumps stdout/stderr → tracing. Retourne `None` si le
-/// lancement échoue (déjà logué).
+/// Spawns the child + stdout/stderr pumps → tracing. Returns `None` if the
+/// launch fails (already logged).
 pub(super) fn spawn_child(
     settings: &FlowSettings,
     flows_path: &std::path::Path,
     pending: PendingAcks,
 ) -> Option<ChildProc> {
     let program = resolve_program(&settings.runtime_cmd);
-    tracing::info!(cmd=%program, flows=%flows_path.display(), "démarrage du runtime de flow");
+    tracing::info!(cmd=%program, flows=%flows_path.display(), "starting the flow runtime");
     let mut cmd = tokio::process::Command::new(&program);
     cmd.arg(flows_path)
         .arg("--home")
@@ -223,19 +223,19 @@ pub(super) fn spawn_child(
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(cmd=%program, error=%e, "lancement du runtime de flow impossible");
+            tracing::error!(cmd=%program, error=%e, "cannot launch the flow runtime");
             return None;
         }
     };
-    let pid = child.id().expect("pid au spawn");
+    let pid = child.id().expect("pid at spawn");
 
-    let stdout = child.stdout.take().expect("stdout pipé");
-    let stderr = child.stderr.take().expect("stderr pipé");
+    let stdout = child.stdout.take().expect("stdout piped");
+    let stderr = child.stderr.take().expect("stderr piped");
     tokio::spawn(pump_lines(stdout, tracing::Level::INFO, Some(pending)));
     tokio::spawn(pump_lines(stderr, tracing::Level::WARN, None));
 
-    // Watcher de fin de vie : `child.wait()` en tâche dédiée pour garder la
-    // boucle de supervision libre (et récolter le process — pas de zombie).
+    // End-of-life watcher: `child.wait()` in a dedicated task to keep the
+    // supervision loop free (and reap the process — no zombie).
     let (exit_tx, exit_rx) = std_mpsc::channel();
     tokio::spawn(async move {
         let status = child.wait().await;
@@ -253,8 +253,8 @@ async fn pump_lines(
     let reader = BufReader::new(stream);
     let mut lines = reader.lines();
     while let Ok(Some(line)) = lines.next_line().await {
-        // Seul le stdout (INFO) est parsé : les événements consommés par le
-        // feed/acks descendent en `debug` pour éviter le bruit INFO.
+        // Only stdout (INFO) is parsed: events consumed by the
+        // feed/acks drop to `debug` to avoid INFO noise.
         if let Some(pending) = pending.as_ref().filter(|_| level == tracing::Level::INFO) {
             if handle_runtime_line(&line, pending) {
                 tracing::debug!(runtime=%line, "flow runtime");
@@ -396,7 +396,7 @@ mod runtime_log_tests {
 pub(super) fn signal_reload(pid: u32) -> Result<(), String> {
     #[cfg(unix)]
     {
-        // SIGUSR1 : réservé à l'application — notre contrat de rechargement.
+        // SIGUSR1: reserved for the application — our reload contract.
         let rc = unsafe { libc::kill(pid as libc::pid_t, libc::SIGUSR1) };
         if rc != 0 {
             return Err(std::io::Error::last_os_error().to_string());
@@ -406,7 +406,7 @@ pub(super) fn signal_reload(pid: u32) -> Result<(), String> {
     #[cfg(not(unix))]
     {
         let _ = pid;
-        Err("rechargement par signal non supporté sur cette plateforme".into())
+        Err("signal reload not supported on this platform".into())
     }
 }
 
@@ -421,12 +421,12 @@ pub(super) fn kill_child(pid: u32) {
     let _ = pid;
 }
 
-/// Le pid existe-t-il (signal 0) ? Tolérant aux plateformes sans support.
+/// Does the pid exist (signal 0)? Tolerant of platforms without support.
 pub(super) fn pid_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        // `kill(pid, 0)` : aucun signal envoyé, seulement la vérification.
-        // -1/ESRCH = mort ; -1/EPERM = vivant (autre utilisateur).
+        // `kill(pid, 0)`: no signal sent, only the check.
+        // -1/ESRCH = dead; -1/EPERM = alive (another user).
         let rc = unsafe { libc::kill(pid as libc::pid_t, 0) };
         rc == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
@@ -437,10 +437,10 @@ pub(super) fn pid_alive(pid: u32) -> bool {
     }
 }
 
-/// Un token-programme contenant un `/` est un chemin : résolu contre le cwd
-/// puis la racine du monorepo (copie de la règle `resolve_program` du
-/// firmware-builder — les chemins Taskfile/.env restent valides quel que soit
-/// le cwd du worker).
+/// A program token containing a `/` is a path: resolved against the cwd
+/// then the monorepo root (copy of the firmware-builder `resolve_program`
+/// rule — Taskfile/.env paths stay valid whatever the worker's
+/// cwd).
 pub(crate) fn resolve_program(token: &str) -> String {
     use std::path::Path;
     const REPO_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");

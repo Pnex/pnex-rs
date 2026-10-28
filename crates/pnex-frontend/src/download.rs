@@ -1,18 +1,17 @@
-//! Téléchargement média natif Android — enregistrement dans
-//! `Download/Pnex` via MediaStore.Downloads (JNI bas niveau, école
-//! capture.rs : jamais de panic, échec → `false`, CString obligatoire
-//! pour NewStringUTF).
+//! Native Android media download — saved into `Download/Pnex` via
+//! MediaStore.Downloads (low-level JNI, capture.rs school: never a panic,
+//! failure → `false`, CString mandatory for NewStringUTF).
 //!
-//! API 29+ : insertion MediaStore.Downloads (aucune permission requise —
-//! contribution scoped storage), écriture en un `write(byte[])`, purge de
-//! la ligne insérée si l'écriture échoue. API < 29 : repli
-//! `getExternalFilesDir("Download")` (app-specific, sans permission).
+//! API 29+: MediaStore.Downloads insert (no permission required —
+//! scoped storage contribution), written in one `write(byte[])`, the
+//! inserted row purged if the write fails. API < 29: fallback
+//! `getExternalFilesDir("Download")` (app-specific, no permission).
 //!
-//! Hors Android : no-op (le web passe par l'ancre blob de `util.rs`).
+//! Outside Android: no-op (the web goes through the blob anchor of `util.rs`).
 
-/// Enregistre `bytes` sous `filename` (type `mime`) dans `Download/Pnex`.
-/// `true` si le fichier est posé. Bloquant bref — à appeler depuis un
-/// contexte async (spawn), pas depuis le thread UI dioxus.
+/// Saves `bytes` as `filename` (type `mime`) in `Download/Pnex`.
+/// `true` if the file is written. Briefly blocking — call it from an
+/// async context (spawn), not from the dioxus UI thread.
 #[cfg(target_os = "android")]
 pub fn save_to_downloads(filename: &str, mime: &str, bytes: &[u8]) -> bool {
     let Some(env) = crate::capture::attach_env() else {
@@ -32,13 +31,13 @@ pub fn save_to_downloads(filename: &str, mime: &str, bytes: &[u8]) -> bool {
     }
 }
 
-/// Hors Android : no-op (échec → toast d'erreur côté UI).
+/// Outside Android: no-op (failure → error toast in the UI).
 #[cfg(not(target_os = "android"))]
 pub fn save_to_downloads(_filename: &str, _mime: &str, _bytes: &[u8]) -> bool {
     false
 }
 
-// ─────────────────────── JNI (école capture.rs) ───────────────────────
+// ─────────────────────── JNI (capture.rs school) ───────────────────────
 
 /// Build.VERSION.SDK_INT (MediaStore.Downloads existe depuis l'API 29).
 #[cfg(target_os = "android")]
@@ -66,8 +65,8 @@ unsafe fn media_store_save(
     bytes: &[u8],
 ) -> bool {
     unsafe {
-        // ContentValues : les 3 colonnes (littéraux des MediaColumns —
-        // DISPLAY_NAME / MIME_TYPE / RELATIVE_PATH, constants API 29+).
+        // ContentValues: the 3 columns (MediaColumns literals —
+        // DISPLAY_NAME / MIME_TYPE / RELATIVE_PATH, API 29+ constants).
         let Some(cv) = new_object(env, c"android/content/ContentValues", c"()V", &[]) else {
             return false;
         };
@@ -111,7 +110,7 @@ unsafe fn media_store_save(
             return false;
         };
 
-        // ContentResolver du contexte.
+        // ContentResolver of the context.
         let Some(cr) = call_object(
             env,
             ctx_obj,
@@ -123,7 +122,7 @@ unsafe fn media_store_save(
             return false;
         };
 
-        // insert(uri, values) → Uri de la nouvelle entrée.
+        // insert(uri, values) → Uri of the new entry.
         let Some(entry) = call_object(
             env,
             cr,
@@ -139,7 +138,7 @@ unsafe fn media_store_save(
         };
 
         // openOutputStream(entry) → OutputStream (FileNotFoundException /
-        // IOException levées possibles → None via call_object).
+        // IOException may be thrown → None via call_object).
         let Some(out) = call_object(
             env,
             cr,
@@ -152,8 +151,8 @@ unsafe fn media_store_save(
             return false;
         };
 
-        // write(byte[]) en un appel (taille bornée par la limite d'upload
-        // serveur — media-error-413).
+        // write(byte[]) in one call (size bounded by the server upload
+        // limit — media-error-413).
         let os_class = ((**env).v1_1.FindClass)(env, c"java/io/OutputStream".as_ptr());
         if os_class.is_null() {
             delete_entry(env, cr, entry);
@@ -186,8 +185,8 @@ unsafe fn media_store_save(
             return false;
         }
 
-        // close() — une IOException ici n'invalide pas l'écriture si le
-        // write a réussi : exception nettoyée, on garde `true`.
+        // close() — an IOException here does not invalidate the write if
+        // the write succeeded: exception cleared, we keep `true`.
         let mid_close =
             ((**env).v1_1.GetMethodID)(env, os_class, c"close".as_ptr(), c"()V".as_ptr());
         if !mid_close.is_null() {
@@ -200,9 +199,9 @@ unsafe fn media_store_save(
     }
 }
 
-/// Repli API < 29 : getExternalFilesDir("Download") (app-specific, sans
-/// permission) + écriture std::fs — vise les API anciens ; l'utilisateur
-/// ne voit que le toast générique.
+/// API < 29 fallback: getExternalFilesDir("Download") (app-specific, no
+/// permission) + std::fs write — targets old APIs; the user only sees
+/// the generic toast.
 #[cfg(target_os = "android")]
 unsafe fn external_files_save(
     env: *mut ::jni::sys::JNIEnv,
@@ -239,7 +238,7 @@ unsafe fn external_files_save(
     }
 }
 
-/// Purge la ligne MediaStore insérée pour rien (ContentResolver.delete —
+/// Purges the MediaStore row inserted for nothing (ContentResolver.delete —
 /// selector/args null).
 #[cfg(target_os = "android")]
 unsafe fn delete_entry(
@@ -272,10 +271,10 @@ unsafe fn delete_entry(
     }
 }
 
-// ── Helpers JNI génériques (null-check + ExceptionCheck + clear — même
-// sémantique que capture.rs, mutualisée ici) ──
+// ── Generic JNI helpers (null-check + ExceptionCheck + clear — same
+// semantics as capture.rs, shared here) ──
 
-/// FindClass + GetMethodID encapsulés.
+/// FindClass + GetMethodID wrapped.
 #[cfg(target_os = "android")]
 unsafe fn method_id(
     env: *mut ::jni::sys::JNIEnv,
@@ -296,7 +295,7 @@ unsafe fn method_id(
     }
 }
 
-/// NewObjectA encapsulé.
+/// NewObjectA wrapped.
 #[cfg(target_os = "android")]
 unsafe fn new_object(
     env: *mut ::jni::sys::JNIEnv,
@@ -322,8 +321,8 @@ unsafe fn new_object(
     }
 }
 
-/// CallObjectMethodA résolu par (classe, nom, signature) — None si absent
-/// ou levée Java.
+/// CallObjectMethodA resolved by (class, name, signature) — None if missing
+/// or a Java exception is thrown.
 #[cfg(target_os = "android")]
 unsafe fn call_object(
     env: *mut ::jni::sys::JNIEnv,
@@ -347,7 +346,7 @@ unsafe fn call_object(
     }
 }
 
-/// GetStaticObjectField encapsulé (constante statique d'une classe).
+/// GetStaticObjectField wrapped (static constant of a class).
 #[cfg(target_os = "android")]
 unsafe fn static_object_field(
     env: *mut ::jni::sys::JNIEnv,
@@ -399,8 +398,8 @@ unsafe fn file_path(env: *mut ::jni::sys::JNIEnv, file: ::jni::sys::jobject) -> 
     }
 }
 
-/// NewStringUTF sûr (jumeau du helper capture.rs — CString obligatoire :
-/// une &str Rust n'est pas terminée par NUL, constat 2026-09-09).
+/// Safe NewStringUTF (twin of the capture.rs helper — CString mandatory:
+/// a Rust &str is not NUL-terminated, finding 2026-09-09).
 #[cfg(target_os = "android")]
 unsafe fn java_string(env: *mut ::jni::sys::JNIEnv, s: &str) -> Option<::jni::sys::jobject> {
     let Some(cs) = std::ffi::CString::new(s).ok() else {

@@ -7,9 +7,9 @@ use super::view::{cap_color, gpio_label};
 use crate::components::icons;
 use crate::components::pins_panel::PinCard;
 
-/// Panneau de configuration du pin sélectionné : PinCard existante (pin
-/// provisionné), panneau réservé (écran activé) ou hint « non provisionné »
-/// (pin de profil jamais annoncé). Aucun pin sélectionné → hint.
+/// Configuration panel of the selected pin: existing PinCard (provisioned
+/// pin), reserved panel (screen enabled) or "not provisioned" hint
+/// (profile pin never announced). No pin selected → hint.
 #[component]
 fn PinConfigPanel(
     mut selected: Signal<Option<String>>,
@@ -30,7 +30,7 @@ fn PinConfigPanel(
     let Some(pin) = pinout_pins.iter().find(|p| p.label == label).cloned() else {
         return rsx! {};
     };
-    // Pin écran réservé (ou power/gnd/en sélectionné) : panneau informatif.
+    // Reserved screen pin (or power/gnd/en selected): informative panel.
     let non_gpio = pin.kind.as_deref().is_some_and(|k| k != "gpio");
     if pin.reserved || non_gpio {
         return rsx! {
@@ -41,9 +41,9 @@ fn PinConfigPanel(
                 }
                 if pin.reserved {
                     div { class: "rounded-lg bg-teal-50 border border-teal-200 px-3 py-2 text-sm text-teal-800",
-                        // « réservé pour l'écran » — le pin peut être
-                        // réservé par un écran externe choisi, pas
-                        // seulement soudé (builtin).
+                        // "reserved for the screen" — the pin can be
+                        // reserved by a chosen external screen, not
+                        // only a soldered one (builtin).
                         {t!("board-pin-reserved-screen")}
                     }
                     for w in pin.warnings {
@@ -57,7 +57,7 @@ fn PinConfigPanel(
             }
         };
     }
-    // Pin provisionné → PinCard (toute la mécanique commandes).
+    // Provisioned pin → PinCard (all the command machinery).
     let card = pins_data
         .as_ref()
         .and_then(|d| d.pins.iter().find(|p| Some(p.gpio) == pin.gpio).cloned());
@@ -73,7 +73,7 @@ fn PinConfigPanel(
             }
         };
     }
-    // Pin du profil jamais provisionné (device jamais connecté).
+    // Profile pin never provisioned (device never connected).
     let (color, _key) = cap_color(&pin.fns, pin.kind.as_deref());
     rsx! {
         div { class: "rounded-lg border border-gray-200 p-4 space-y-2",

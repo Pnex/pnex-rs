@@ -1,4 +1,4 @@
-//! « À valider » (proposals.md D374): every proposal of the org, by status.
+//! "To review" (proposals.md D374): every proposal of the org, by status.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

@@ -1,17 +1,17 @@
-//! Endpoint interne d'écriture device — `POST /internal/flow/device-write`.
+//! Internal device write endpoint — `POST /internal/flow/device-write`.
 //!
-//! Consommateur : le runtime de flows (nœud `pnex-device-write`) — le
-//! backend ne liant jamais le moteur, le downlink transite par HTTP interne
-//! (école `/internal/notify/deliver` : le runtime n'a jamais d'accès direct
-//! au WS device). Le backend applique les mêmes règles que le POST commands
-//! utilisateur : pin output-capable (`digital_out`/`pwm_out`), digital =
-//! booléen 0/1, pwm = duty % 0..=100 (le firmware met à l'échelle en 8-bit),
-//! `caps::validate` au set_mode, device hors ligne → 409.
+//! Consumer: the flow runtime (`pnex-device-write` node) — the
+//! backend never linking the engine, the downlink goes through internal HTTP
+//! (`/internal/notify/deliver` school: the runtime never has direct access
+//! to the device WS). The backend applies the same rules as the user's POST
+//! commands: output-capable pin (`digital_out`/`pwm_out`), digital =
+//! boolean 0/1, pwm = duty % 0..=100 (the firmware scales it to 8-bit),
+//! `caps::validate` on set_mode, device offline → 409.
 //!
-//! Auth : jeton de service dans `x-pnex-flow-token` comparé à
-//! `settings.flow.runtime_token` (env `PNEX_FLOW_RUNTIME_TOKEN` prioritaire)
-//! — absent/vide ⇒ 401 systématique (fail-closed, école
-//! `/internal/notify/deliver`). Le token n'apparaît jamais dans les logs.
+//! Auth: service token in `x-pnex-flow-token` compared with
+//! `settings.flow.runtime_token` (env `PNEX_FLOW_RUNTIME_TOKEN` takes precedence)
+//! — absent/empty ⇒ systematic 401 (fail-closed, `/internal/notify/deliver`
+//! school). The token never appears in the logs.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
@@ -32,9 +32,9 @@ const COMMAND_VALUE_MAX_BYTES: usize = 512;
 #[derive(Debug, Deserialize)]
 pub struct DeviceWriteInput {
     pub org_id: i64,
-    /// Slug du device cible.
+    /// Slug of the target device.
     pub device_id: String,
-    /// Map `{pin label: valeur}` — digital = bool/0-1, pwm = duty 0..=100.
+    /// Map `{pin label: value}` — digital = bool/0-1, pwm = duty 0..=100.
     #[serde(default)]
     pub values: serde_json::Map<String, serde_json::Value>,
     /// Custom-firmware commands `{name: value}` (D146) — each one is sent as
@@ -364,7 +364,7 @@ async fn device_write(
     headers: HeaderMap,
     body: axum::Json<DeviceWriteInput>,
 ) -> Result<Response> {
-    // Fail-closed : pas de token configuré ⇒ aucune écriture externe.
+    // Fail-closed: no configured token ⇒ no external write.
     let Some(expected) = FlowSettings::from_config(&ctx.config)
         .device_write
         .map(|(_, t)| t)
@@ -389,7 +389,7 @@ async fn device_write(
         ));
     }
 
-    // Device de l'org (slug), même masquage 404 que les routes org — one
+    // Device of the org (slug), same 404 masking as the org routes — one
     // joined query for the device and its pin instances (hot path: a flow
     // may write at a high rate).
     let found = device_registries::Entity::find()
@@ -401,14 +401,14 @@ async fn device_write(
         .map_err(|_| Error::InternalServerError)?;
     let Some((device, rows)) = found.into_iter().next() else {
         tracing::error!(
-            "device-write : device {} org {} introuvable",
+            "device-write: device {} org {} not found",
             body.device_id,
             body.org_id
         );
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
-    // Pas de session vivante ⇒ rien ne part (même convention que POST
-    // commands : jamais d'attente serveur). The session is resolved once
+    // No live session ⇒ nothing goes out (same convention as POST
+    // commands: never a server-side wait). The session is resolved once
     // (one route lookup) for every value of the request.
     let Some(target) = ws_device::target_of(device.id).await else {
         return Ok((
@@ -493,7 +493,7 @@ async fn device_write(
     format::json(serde_json::json!({ "results": results }))
 }
 
-/// Digital : `true/false` ou `0/1` (même contrat que POST commands).
+/// Digital: `true/false` or `0/1` (same contract as POST commands).
 fn check_digital(v: &serde_json::Value) -> Option<String> {
     let ok = matches!(
         v,

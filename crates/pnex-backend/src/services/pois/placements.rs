@@ -2,7 +2,7 @@
 
 use super::*;
 
-/// POI de l'org, sinon `None` (→ 404 masqué côté contrôleur).
+/// The org's POI, otherwise `None` (→ masked 404 in the controller).
 pub async fn find_pin(
     db: &DatabaseConnection,
     org_id: i64,
@@ -14,7 +14,7 @@ pub async fn find_pin(
         .await
 }
 
-/// Device du registre de l'org par slug, sinon `None`.
+/// Device of the org's registry by slug, otherwise `None`.
 pub(super) async fn find_device(
     db: &DatabaseConnection,
     org_id: i64,
@@ -34,10 +34,10 @@ pub struct NewPlacement<'a> {
     pub location_detail: Option<&'a str>,
 }
 
-/// Attache un device à un POI. L'attache est **délibérée** : le device doit
-/// exister dans l'org (`DeviceUnknown`) et ne pas avoir de placement
-/// (`DeviceAlreadyPlaced` portant le POI courant — même si c'est CE POI :
-/// le front reconnaît `current_pin_id == pin.id` et traite sans dialog).
+/// Attaches a device to a POI. Attaching is **deliberate**: the device must
+/// exist in the org (`DeviceUnknown`) and have no placement
+/// (`DeviceAlreadyPlaced` carrying the current POI — even if it is THIS POI:
+/// the front recognises `current_pin_id == pin.id` and handles it without a dialog).
 pub async fn attach_device(
     db: &DatabaseConnection,
     org_id: i64,
@@ -52,8 +52,8 @@ pub async fn attach_device(
         .await
         .map_err(|_| VizWriteError::Db)?
         .ok_or(VizWriteError::DeviceUnknown)?;
-    // Fenêtre de course garde-puis-insère (école D36) : le perdant tombe sur
-    // la contrainte UNIQUE (→ Db/500) — c'est l'index qui garantit.
+    // Guard-then-insert race window (D36 pattern): the loser hits
+    // the UNIQUE constraint (→ Db/500) — the index is the guarantee.
     if let Some(existing) = device_placements::Entity::find()
         .filter(device_placements::Column::OrgId.eq(org_id))
         .filter(device_placements::Column::DeviceRegistryId.eq(device.id))
@@ -87,16 +87,16 @@ pub async fn attach_device(
 }
 
 pub struct UpdatePlacement<'a> {
-    /// absent = inchangé, null = effacé, valeur = posée (école UpdatePin).
+    /// absent = unchanged, null = cleared, value = set (UpdatePin pattern).
     pub location_detail: Option<Option<&'a str>>,
-    /// Déplacement : POI cible validé dans l'org. no-op (pin courant)
-    /// autorisé — un device n'a qu'un placement, un move ne crée jamais de
-    /// doublon.
+    /// Move: target POI validated in the org. no-op (current pin)
+    /// allowed — a device has only one placement, a move never creates a
+    /// duplicate.
     pub pin_id: Option<Uuid>,
 }
 
-/// Édition/déplacement d'un placement (DELETE = détachement, voir
-/// [`delete_placement`] ; supprimer le POI cascade les placements côté DB).
+/// Edit/move of a placement (DELETE = detaching, see
+/// [`delete_placement`]; deleting the POI cascades the placements in the DB).
 pub async fn update_placement(
     db: &DatabaseConnection,
     org_id: i64,
@@ -126,11 +126,11 @@ pub async fn update_placement(
     am.update(db).await.map_err(|_| VizWriteError::Db)
 }
 
-/// Détachement d'un device (amendement D43, 2026-09-13) : le placement
-/// part, le device redevient **libre** — plaçable sur n'importe quel POI
-/// ensuite. La règle « au plus un POI à la fois » reste portée par l'UNIQUE
-/// `device_registry_id`. `false` = placement introuvable dans l'org (404
-/// masqué cross-org, école `delete_link`).
+/// Detaching a device (D43 amendment, 2026-09-13): the placement
+/// goes, the device becomes **free** again — placeable on any POI
+/// afterwards. The « at most one POI at a time » rule is still carried by the UNIQUE
+/// `device_registry_id`. `false` = placement not found in the org (masked
+/// cross-org 404, `delete_link` pattern).
 pub async fn delete_placement(
     db: &DatabaseConnection,
     org_id: i64,
@@ -151,8 +151,8 @@ pub async fn delete_placement(
     Ok(true)
 }
 
-/// Placements d'un lot de POI (batch anti-N+1 — école `links_for_pins`),
-/// triés par created_at asc (ordre d'attachement stable pour le drawer).
+/// Placements of a batch of POIs (anti-N+1 batch — `links_for_pins` pattern),
+/// sorted by created_at asc (stable attach order for the drawer).
 pub async fn placements_for_pins(
     db: &DatabaseConnection,
     org_id: i64,

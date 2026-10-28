@@ -26,7 +26,7 @@ Your **follow-up plan** is a list of **Follow-up steps**: *Day* after the start,
 The flow model **CRM · drafts** writes a *Draft* on the mails and network messages due by tomorrow, with your organization's LLM, from the step's instruction and the account. **Nothing is ever sent by PneX**: read the draft, send it yourself from your mailbox or the network, then set the activity to done.
 
 ## My day
-The flow model **CRM · my day** makes one text each morning: the activities due today or late, and the open opportunities with no activity for 14 days. Add your **Notification** node on its first port (template with a `texte` variable, trigger `payload.trigger`), then deploy. To change the delay, edit `$today-14` in its query node.
+The flow model **CRM · my day** makes one text each morning: the activities due today or late, and the open opportunities with no activity for 14 days. Add your **Notification** node on its first port (template with a `text` variable, trigger `payload.trigger`), then deploy. To change the delay, edit `$today-14` in its query node.
 
 ## When a link is refused
 **prospection-opposed** on a link: the person objected to the processing of their data, or was erased, and this link would recreate them at the same account. Do not insist: the objection is kept on purpose. See the card on personal data.

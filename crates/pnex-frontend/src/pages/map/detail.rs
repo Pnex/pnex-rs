@@ -2,32 +2,32 @@ use super::form::PoiFormModal;
 use super::*;
 use crate::components::ui::{BTN_DANGER, BTN_SECONDARY_SM};
 
-// ─────────────────────────── détail POI (drawer) ───────────────────────────
+// ─────────────────────────── POI detail (drawer) ───────────────────────────
 
 #[component]
 pub(super) fn PoiDetail(
     poi_id: String,
     /// Embedded preview: current target (closing it shows the map again).
     mut preview: Signal<Option<PreviewTarget>>,
-    /// Épingle POI (★) : objet affiché en priorité à l'ouverture.
+    /// POI pin (★): object shown first when opening.
     mut pinned: Signal<Option<PreviewTarget>>,
     on_close: EventHandler<()>,
     on_changed: EventHandler<()>,
 ) -> Element {
     let mut confirm_delete = use_signal(|| false);
     let mut editing = use_signal(|| false);
-    // D43 : conflit d'attache (device déjà placé ailleurs) — le corps 409
-    // alimente la boîte de confirmation de déplacement.
+    // D43: attach conflict (device already placed elsewhere) — the 409 body
+    // feeds the move confirmation box.
     let mut move_conflict = use_signal(|| None::<serde_json::Value>);
-    // Version du détail : incrémentée après chaque mutation réussie (device,
-    // liens, édition) → refetch du drawer. Sans dep réactive, la resource ne
-    // tourne qu'une fois et affiche des lignes fantômes après un detach (le
-    // clic suivant rejoue un DELETE sur un lien déjà supprimé → 404).
+    // Detail version: incremented after each successful mutation (device,
+    // links, edit) → drawer refetch. Without a reactive dep, the resource only
+    // runs once and shows ghost rows after a detach (the next
+    // click replays a DELETE on an already deleted link → 404).
     let mut detail_version = use_signal(|| 0u64);
-    // Picker d'objets à attacher (ouverture + onglet initial).
+    // Picker of objects to attach (open + initial tab).
     let mut picker_open = use_signal(|| false);
     let mut picker_tab = use_signal(|| PickerTab::Media);
-    // Navigation deep-link (dashboard attaché → /dashboards?id=…).
+    // Deep-link navigation (attached dashboard → /dashboards?id=…).
 
     let poi_id_for_res = poi_id.clone();
     let poi_resource = use_resource(move || {
@@ -35,7 +35,7 @@ pub(super) fn PoiDetail(
         let id = poi_id_for_res.clone();
         async move { viz::poi_detail(&id).await }
     });
-    // Un clone par closure (poi_id n'est pas Copy et sert à plusieurs `move`).
+    // One clone per closure (poi_id is not Copy and serves several `move`s).
     let poi_id_attach = poi_id.clone();
     let poi_id_delete = poi_id.clone();
     let poi_id_move = poi_id.clone();
@@ -56,8 +56,8 @@ pub(super) fn PoiDetail(
         .map(|p| p.results)
         .unwrap_or_default();
 
-    // Section unique « objets attachés » : placements devices (D43) en tête,
-    // puis les arêtes `placed_on` tous kinds confondus (D42).
+    // Single "attached objects" section: device placements (D43) first,
+    // then the `placed_on` edges of all kinds (D42).
     let attached_links: Vec<viz::VizLink> =
         poi.as_ref().map(|p| p.links.clone()).unwrap_or_default();
     let attached_devices: Vec<viz::DevicePlacement> =
@@ -72,13 +72,13 @@ pub(super) fn PoiDetail(
             )
         })
         .unwrap_or_default();
-    // Valeurs possédées pour les blocs conditionnels du rsx (pas de `let`
-    // dans les corps d'éléments).
+    // Owned values for the conditional rsx blocks (no `let`
+    // in element bodies).
     let actions_poi = poi.clone();
     let confirm_poi = poi.clone();
-    // D43 : message de la modale de suppression (avertissement « devices à
-    // replacer ») et données de la boîte de confirmation de déplacement —
-    // tout calculé hors rsx.
+    // D43: message of the deletion modal ("devices to
+    // re-place" warning) and data of the move confirmation box —
+    // all computed outside the rsx.
     let delete_message = confirm_poi.as_ref().map(|p| {
         let mut msg = t!("poi-delete-message", label: p.label.clone()).to_string();
         let device_count = p.devices.len();
@@ -101,16 +101,16 @@ pub(super) fn PoiDetail(
                 .unwrap_or_default(),
         )
     });
-    // Index devices (pk, slug, type) pour l'arbre — l'id containment device
-    // = PK entière (registre D42), pas le slug.
+    // Device index (pk, slug, type) for the tree — the device containment id
+    // = integer PK (D42 registry), not the slug.
     let device_index: Vec<(String, String, String)> = devices
         .iter()
         .map(|d| (d.id.to_string(), d.device_id.clone(), d.device_type.clone()))
         .collect();
 
-    // ── Épingle + aperçu : seed depuis le POI, UNE FOIS par POI (garde
-    // type `deep_seeded` — un effet qui re-consomme des données fixes boucle
-    // sans fin, leçon « Page Unresponsive » 2026-09-13) ──
+    // ── Pin + preview: seeded from the POI, ONCE per POI (typed
+    // `deep_seeded` guard — an effect that re-consumes fixed data loops
+    // forever, "Page Unresponsive" lesson 2026-09-13) ──
     let mut seeded_pin = use_signal(|| None::<String>);
     let poi_id_for_seed = poi_id.clone();
     use_effect(move || {
@@ -121,8 +121,8 @@ pub(super) fn PoiDetail(
         let Some(p) = detail_now else {
             return;
         };
-        // Nom du pin résolu dans les arêtes (objet à la racine) ; un objet
-        // rangé en dossier n'a plus d'arête → fallback sur l'id (cosmétique).
+        // Pin name resolved in the edges (object at the root); an object
+        // filed in a folder no longer has an edge → fallback on the id (cosmetic).
         let target = match (p.preview_kind.as_deref(), p.preview_id.as_deref()) {
             (Some(kind), Some(id)) if matches!(kind, "media_asset" | "dashboard" | "tour") => {
                 let name = p
@@ -140,13 +140,13 @@ pub(super) fn PoiDetail(
             _ => None,
         };
         pinned.set(target.clone());
-        // Auto-open : l'aperçu épinglé s'affiche à l'ouverture du POI.
+        // Auto-open: the pinned preview shows when the POI opens.
         preview.set(target);
         seeded_pin.set(Some(poi_id_for_seed.clone()));
     });
 
-    // Pose/retrait de l'épingle (★ des lignes de l'arbre) — toggle si déjà
-    // épinglé sur cet objet ; PATCH poi → refetch drawer via on_changed.
+    // Setting/removing the pin (★ of the tree rows) — toggle if already
+    // pinned on this object; PATCH poi → drawer refetch via on_changed.
     let pin_now = move |t: PreviewTarget| {
         let unpin = pinned
             .cloned()
@@ -182,11 +182,11 @@ pub(super) fn PoiDetail(
         });
     };
 
-    // Navigation « Éditer » du panneau (l'édition vit dans l'onglet de l'app).
+    // "Edit" navigation of the panel (editing lives in the app's tab).
     let navigator = use_navigator();
 
     rsx! {
-        // Overlay (école media.rs — backdrop + aside droite).
+        // Overlay (media.rs school — backdrop + right aside).
         div { class: "fixed inset-0 z-40",
             div {
                 class: "absolute inset-0 bg-black/30",
@@ -206,8 +206,8 @@ pub(super) fn PoiDetail(
                         target,
                         on_close: move |_| preview.set(None),
                         on_edit: move |_| {
-                            // Édition = onglet de l'app dédié (studio pour
-                            // les tours via deep-link OPEN_TOUR).
+                            // Editing = the dedicated app tab (studio for
+                            // tours via the OPEN_TOUR deep-link).
                             let Some(t) = preview.cloned() else { return };
                             let nav = navigator;
                             spawn(async move {
@@ -253,7 +253,7 @@ pub(super) fn PoiDetail(
                             div { class: "text-sm text-gray-500", {t!("poi-loading")} }
                         },
                         Some(p) => rsx! {
-                            // Localisation libre (remplace la hiérarchie).
+                            // Free-form location (replaces the hierarchy).
                             if let Some(detail) = p.location_detail.clone() {
                                 div { class: "text-sm text-gray-600", "{detail}" }
                             }
@@ -274,7 +274,7 @@ pub(super) fn PoiDetail(
                                     native_id: p.id.clone(),
                                 }
                             }
-                            // ── Objets attachés : arbre de dossiers ──
+                            // ── Attached objects: folder tree ──
                             div { class: "space-y-1.5",
                                 h3 { class: "text-xs font-semibold text-gray-500", {t!("poi-attachments-title")} }
                                 PoiTreeSection {
@@ -301,7 +301,7 @@ pub(super) fn PoiDetail(
                         },
                     }
                 }
-                // Barre d'actions (édition + suppression).
+                // Action bar (edit + delete).
                 if actions_poi.is_some() {
                     div { class: "px-4 py-3 border-t border-gray-200 flex justify-between gap-2",
                         div { class: "flex gap-2",
@@ -334,7 +334,7 @@ pub(super) fn PoiDetail(
                 }
             }
         }
-        // Formulaire d'édition (modale partagée création/édition).
+        // Edit form (modal shared by creation/editing).
         if let (true, Some(p)) = (editing(), poi.as_ref()) {
             PoiFormModal {
                 key: "edit-{p.id}",
@@ -348,8 +348,8 @@ pub(super) fn PoiDetail(
                 on_close: move |_| editing.set(false),
             }
         }
-        // Picker d'objets à attacher — le picker ne mute rien, le drawer
-        // exécute la mutation (edge D42 ou placement D43).
+        // Picker of objects to attach — the picker mutates nothing, the drawer
+        // runs the mutation (D42 edge or D43 placement).
         if picker_open() {
             ResourcePicker {
                 key: "poi-picker-{detail_version}",
@@ -357,8 +357,8 @@ pub(super) fn PoiDetail(
                 on_picked: move |pick: ResourcePick| {
                     picker_open.set(false);
                     let id = poi_id_attach.clone();
-                    // Auto-épingle : premier objet aperçuable attaché = pin
-                    // par défaut (si le POI n'en a pas déjà une).
+                    // Auto-pin: first attached previewable object = default
+                    // pin (if the POI does not already have one).
                     let pin_candidate: Option<(String, String, String)> = match &pick {
                         ResourcePick::MediaAsset { id, name } => {
                             Some(("media_asset".to_string(), id.clone(), name.clone()))
@@ -404,9 +404,9 @@ pub(super) fn PoiDetail(
                                     .map(|_| ())
                             }
                             ResourcePick::Device { slug } => {
-                                // D43 : attache délibérée (plus jamais un
-                                // remplacement silencieux — un device déjà
-                                // placé répond 409 et ouvre la confirmation).
+                                // D43: deliberate attach (never again a
+                                // silent replacement — an already placed
+                                // device answers 409 and opens the confirmation).
                                 viz::attach_poi_device(&id, &slug, None)
                                     .await
                                     .map(|_| ())
@@ -416,7 +416,7 @@ pub(super) fn PoiDetail(
                             Ok(_) => {
                                 detail_version += 1;
                                 on_changed.call(());
-                                // Auto-épingle du premier objet aperçuable.
+                                // Auto-pin of the first previewable object.
                                 if let Some((kind, target, name)) = pin_candidate {
                                     let already = poi_resource
                                         .value()
@@ -445,9 +445,9 @@ pub(super) fn PoiDetail(
                                 }
                             }
                             Err(err) if err.status == Some(409) => {
-                                // Device déjà placé : sur CE POI → simple
-                                // refresh ; ailleurs → boîte de confirmation
-                                // de déplacement (`errors.args` carries the
+                                // Device already placed: on THIS POI → simple
+                                // refresh; elsewhere → move confirmation
+                                // box (`errors.args` carries the
                                 // current placement, D43, never silent).
                                 if let Some(args) = err.args {
                                     if args["current_pin_id"].as_str() == Some(id.as_str()) {
@@ -466,8 +466,8 @@ pub(super) fn PoiDetail(
             }
         }
         if confirm_delete() && delete_message.is_some() {
-            // D43 : les devices placés perdent leur placement (cascade) —
-            // avertissement « à replacer » dans le message.
+            // D43: placed devices lose their placement (cascade) —
+            // "to re-place" warning in the message.
             ConfirmDialog {
                 title: t!("poi-delete-title").to_string(),
                 message: delete_message.clone().unwrap_or_default(),
@@ -489,8 +489,8 @@ pub(super) fn PoiDetail(
                 on_cancel: move |_| confirm_delete.set(false),
             }
         }
-        // D43 : confirmation de déplacement d'un device déjà placé ailleurs
-        // (le 409 a été silencieux — c'est ici que le déplacement se décide).
+        // D43: move confirmation of a device already placed elsewhere
+        // (the 409 was silent — this is where the move is decided).
         if let Some((slug, label, placement_id)) = move_conflict_data {
             ConfirmDialog {
                 title: t!("poi-device-move-title").to_string(),

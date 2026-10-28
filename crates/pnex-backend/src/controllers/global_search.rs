@@ -126,8 +126,8 @@ fn escape_like(term: &str) -> String {
     out
 }
 
-/// Case- and accent-insensitive containment on one column (« elodie »
-/// finds « Élodie », crm.md D447): the column folded by the shared table,
+/// Case- and accent-insensitive containment on one column ("elodie"
+/// finds "Élodie", crm.md D447): the column folded by the shared table,
 /// `LIKE pattern ESCAPE '\'`, the pattern folded by [`search_tokens`].
 fn contains_lower(col: impl IntoColumnRef, pattern: &str) -> Expr {
     let f = pnex_core::fold::sql_fold();

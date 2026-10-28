@@ -1,6 +1,6 @@
-//! Workers de fond (queue PostgreSQL `pg_loco_queue`). Enregistrés dans
-//! `connect_workers` — appelé uniquement en mode `BackgroundQueue`, drivé
-//! par `loco start --server-and-worker` (même binaire, flag différent).
+//! Background workers (PostgreSQL queue `pg_loco_queue`). Registered in
+//! `connect_workers` — called only in `BackgroundQueue` mode, driven
+//! by `loco start --server-and-worker` (same binary, different flag).
 
 pub mod build_firmware;
 pub mod check_asr_model;

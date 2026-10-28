@@ -1,12 +1,12 @@
-//! Toasts — notifications flottantes (porté du `Toast.tsx`/`ToastContainer.tsx`
-//! React) : auto-dismiss 5 s, types success/error/info.
+//! Toasts — floating notifications (ported from the React
+//! `Toast.tsx`/`ToastContainer.tsx`): 5 s auto-dismiss, success/error/info types.
 //!
 //! Three message kinds: `Api` (structured error — machine code resolved via
 //! `api::error_i18n` at render, verbatim fallback), `Text` (raw text:
 //! code-less errors, runtime text) and `Key` (local label, translated at
 //! display).
 
-// API complète du socle — success/info sont consommés par les pages suivantes.
+// Full API of the base — success/info are consumed by the upcoming pages.
 #![allow(dead_code)]
 
 use dioxus::prelude::*;
@@ -48,7 +48,7 @@ fn next_id() -> u64 {
 /// (`components::toasts`), never in the caller's scope.
 pub const AUTO_DISMISS_SECS: u64 = 5;
 
-/// Affiche un toast (auto-dismiss 5 s).
+/// Shows a toast (5 s auto-dismiss).
 pub fn show(kind: ToastKind, message: ToastMessage) {
     let toast = Toast {
         id: next_id(),
@@ -88,7 +88,7 @@ impl From<&'static str> for ToastMessage {
     }
 }
 
-/// Ferme un toast (bouton ×).
+/// Closes a toast (× button).
 pub fn dismiss(id: u64) {
     TOASTS.with_mut(|toasts| toasts.retain(|toast| toast.id != id));
 }

@@ -1,10 +1,10 @@
-//! Containment de la couche d'organisation (D42) — arbre à **parent
-//! unique** (garantie par `uniq_resource_containment_child`). Déplacer = 1
-//! UPDATE (re-parent). Cycle → [`ResourceError::CycleDetected`] (remontée
-//! d'ancêtres). Détacher ne supprime **jamais** une entité.
+//! Containment of the organisation layer (D42) — a **single-parent** tree
+//! (guaranteed by `uniq_resource_containment_child`). Moving = 1 UPDATE
+//! (re-parent). Cycle → [`ResourceError::CycleDetected`] (ancestor walk).
+//! Detaching **never** deletes an entity.
 //!
-//! Existence+tenancy des deux bouts via le **registre** (pas de match) ;
-//! validité parent×enfant déclarée par kind (`ContainmentRules`).
+//! Existence+tenancy of both ends via the **registry** (no match);
+//! parent×child validity declared per kind (`ContainmentRules`).
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
@@ -15,8 +15,8 @@ use crate::models::_entities::resource_containment as containment;
 use crate::services::resources::registry;
 use crate::services::resources::ResourceError;
 
-/// Parent d'une ressource, `None` = racine (jamais placée ou **détachée**
-/// — convention : ligne à parent vide `("", "")`).
+/// Parent of a resource, `None` = root (never placed or **detached**
+/// — convention: row with an empty parent `("", "")`).
 pub async fn parent_of(
     db: &DatabaseConnection,
     org_id: i64,
@@ -34,7 +34,7 @@ pub async fn parent_of(
         .map(|r| (r.parent_kind, r.parent_id)))
 }
 
-/// Enfants directs d'un parent (ordre = `sort_key` puis kind/id).
+/// Direct children of a parent (order = `sort_key` then kind/id).
 pub async fn children_of(
     db: &DatabaseConnection,
     org_id: i64,
@@ -56,7 +56,7 @@ pub async fn children_of(
         .collect())
 }
 
-/// Chemin complet d'une ressource (feuille → racine), pour le breadcrumb.
+/// Full path of a resource (leaf → root), for the breadcrumb.
 pub async fn path_of(
     db: &DatabaseConnection,
     org_id: i64,
@@ -70,7 +70,7 @@ pub async fn path_of(
             break;
         };
         if chain.contains(&(pk.clone(), pi.clone())) {
-            break; // défense en profondeur
+            break; // defence in depth
         }
         let edge = (pk.clone(), pi.clone());
         chain.push(edge.clone());
@@ -79,9 +79,9 @@ pub async fn path_of(
     Ok(chain)
 }
 
-/// (Re)parente : `parent = None` détache (la ressource devient racine — son
-/// sous-arbre suit, rien n'est supprimé). Remplace l'éventuel parent existant
-/// (parent unique). `sort_key` optionnel (ordre dans le parent).
+/// (Re)parents: `parent = None` detaches (the resource becomes a root — its
+/// subtree follows, nothing is deleted). Replaces any existing parent
+/// (single parent). Optional `sort_key` (order within the parent).
 pub async fn set_parent(
     db: &DatabaseConnection,
     org_id: i64,
@@ -94,8 +94,8 @@ pub async fn set_parent(
         .await
         .map_err(|_| ResourceError::Db)?;
 
-    // Le kind enfant doit pouvoir être contenu (tous les kinds vivants oui,
-    // sauf évolution future — chemin unique par la spec).
+    // The child kind must be containable (all living kinds are, barring
+    // future change — single path through the spec).
     if !reg.allows_detach(child_kind) {
         return Err(ResourceError::KindInvalid);
     }
@@ -103,7 +103,7 @@ pub async fn set_parent(
         if reg.entry(pk).is_none() {
             return Err(ResourceError::KindInvalid);
         }
-        // Existence+tenancy des deux bouts (registre).
+        // Existence+tenancy of both ends (registry).
         let child_ok = reg
             .entry(child_kind)
             .ok_or(ResourceError::KindInvalid)?
@@ -124,12 +124,12 @@ pub async fn set_parent(
         if !parent_ok {
             return Err(ResourceError::ResourceUnknown);
         }
-        // Validité déclarée par kind (spec du parent, wildcard = Some(&[])).
+        // Validity declared per kind (parent spec, wildcard = Some(&[])).
         if !reg.allows_containment(pk, child_kind) {
             return Err(ResourceError::TargetInvalid);
         }
-        // Anti-cycle : le parent ne doit pas vivre dans le sous-arbre de
-        // l'enfant (un folder ne peut pas être son propre descendant).
+        // Anti-cycle: the parent must not live in the child's subtree
+        // (a folder cannot be its own descendant).
         if chain_has(db, org_id, pk, pi, child_kind, child_id)
             .await
             .map_err(|_| ResourceError::Db)?
@@ -183,7 +183,7 @@ pub async fn set_parent(
     }
 }
 
-/// `true` si l'ancêtre de (root_kind, root_id) est (kind, id).
+/// `true` if the ancestor of (root_kind, root_id) is (kind, id).
 async fn chain_has(
     db: &DatabaseConnection,
     org_id: i64,
@@ -204,14 +204,14 @@ async fn chain_has(
     }
 }
 
-/// Convention « racine détachée » : la ligne existe avec parent vide
-/// (`("", "")`) — on n'utilise jamais `""` comme kind réel. Garde les
-/// lignes stables (sort_key conservé) et distingue « jamais placé »
-/// (pas de ligne) de « détaché » (ligne à parent vide).
+/// "Detached root" convention: the row exists with an empty parent
+/// (`("", "")`) — `""` is never used as a real kind. Keeps rows stable
+/// (sort_key preserved) and tells "never placed" (no row) apart from
+/// "detached" (row with an empty parent).
 pub const DETACHED_PARENT_KIND: &str = "";
 
-/// Détache explicitement (PUT parent=null) — le sous-arbre reste sous la
-/// ressource, rien n'est supprimé.
+/// Explicit detach (PUT parent=null) — the subtree stays under the
+/// resource, nothing is deleted.
 pub async fn detach(
     db: &DatabaseConnection,
     org_id: i64,
@@ -233,7 +233,7 @@ pub async fn detach(
     Ok(true)
 }
 
-/// Helper de vue arbre : name/emoji d'un folder (pour l'affichage).
+/// Tree view helper: name/emoji of a folder (for display).
 pub async fn folder_names(
     db: &DatabaseConnection,
     org_id: i64,

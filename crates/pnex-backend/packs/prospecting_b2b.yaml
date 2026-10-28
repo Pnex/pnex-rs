@@ -3,40 +3,40 @@
 # country; country packs add their registers), extended
 # with its commercial status and coverage; no "company" or "account" type
 # next to it (D304), so the graph stays one.
-# `filiale_de` (group structure, D331) moved to `entreprises` 1.1.0 in
+# `subsidiary_of` (group structure, D331) moved to `companies` 1.1.0 in
 # 1.1.0: it is not specific to selling.
-# `ca_dernier` is the latest known revenue and `ca_exercice` its fiscal
+# `last_revenue` is the latest known revenue and `revenue_year` its fiscal
 # year: the core has no per-year scalar property (D178 temporal = O2
 # series or events), past years stay in the object history.
 # `persona` is the role in the buying committee, not a job title (the
 # title stays on `employs.position`). Several people may follow one account,
-# each with the role the org gives it (`suit_le_compte.role`, free text).
+# each with the role the org gives it (`follows_account.role`, free text).
 # Coverage and white space are computed at read time (D330), never stored:
 # the commercial group sums the users and lists the nodes without a
-# contact or a client status. Statuses carry a colour (D339) for the map,
+# contact or a customer status. Statuses carry a colour (D339) for the map,
 # the hierarchy and the graph.
 # Target score (D336): the pack ships the scoring function and its flow,
-# never a criterion. Criteria are objects of the org (`critere_ciblage`:
+# never a criterion. Criteria are objects of the org (`targeting_criterion`:
 # property, operator, value, points), so the profile of an ideal customer
 # stays the org's data; the score is explained line by line in
 # `score_detail`. Organizations only: sites are system objects a flow does
 # not write, the explorer filters them on their own headcount.
 # Commercial signals (D335): something that moved on an account, kept with
 # where it came from and the words quoted. `kind` says how it was detected
-# (closed list), `theme` what it is about (the org's own list). A signal
-# from a model is always `a_valider`; a human retains or dismisses it. The
+# (closed list), `topic` what it is about (the org's own list). A signal
+# from a model is always `to_validate`; a human retains or dismisses it. The
 # daily digest flow prepares one text of the new signals: add the org's
 # notification node on its first port, then deploy.
 # Watched pages (D335, news, careers, competitors' offers): a crawl of the
-# page with a `record` into `page_suivie` keeps its text and flags it when
+# page with a `record` into `watched_page` keeps its text and flags it when
 # the text changed; a flow asks the org's LLM which topic of the org's list
-# the page announces and writes a `page_modifiee` signal (to validate)
+# the page announces and writes a `page_changed` signal (to validate)
 # about the account, quoting the sentence.
 # Page templates (D340) are filled from the account they are opened on
 # (placeholders of `page_render`): account plan, competitor sheet, meeting
 # preparation. A snapshot of the day, then free text.
 # Personal data (D341, crm.md D442–D447): the persona of a person is
-# `personnelle`; `opposition_le` records an objection (prospecting flows
+# `personnelle`; `opposed_on` records an objection (prospecting flows
 # skip the person); the legal basis shown on a person and the retention
 # period of the erasure queue are settings of the org.
 # Meetings: a `meeting` with an account, its participants (ours and
@@ -47,22 +47,29 @@
 # the team's practice, never a score of a person. A meeting read from a
 # mail invitation (crm pack) is keyed by the invitation's iCalendar UID
 # (`invitation_uid`): an update moves it, a cancellation marks it.
-key: prospection_b2b
+# List contacts (D337): a file of trade-show or association participants
+# (columns list, name, job_title, company, city, postal_code, email)
+# becomes list contacts, not persons of the graph: one becomes a person
+# only when someone works the lead. Matching a contact to its company
+# (`registry_id`, `matching`, `candidates`, `contact_of`) is done by a
+# country layer (`prospecting_b2b_fr` for France); nothing here is French.
+# Since 2.0.0 every identifier is English (breaking).
+key: prospecting_b2b
 name: B2B account mapping
 names: {fr: "Cartographie commerciale"}
-version: "1.7.0"
-requires: [entreprises, presence_web]
+version: "2.0.0"
+requires: [companies, web_presence]
 description: "Accounts as a dated network: group and subsidiaries, sites with their commercial status, contacts by persona, who recommended whom. Questions: which subsidiaries of this group have no contact yet? Who follows this account? Which sites are customers?"
 descriptions: {fr: "Les comptes vus comme un réseau daté : groupe et filiales, sites avec leur statut commercial, contacts par persona, qui a recommandé qui. Questions : quelles filiales de ce groupe n'ont encore aucun contact ? Qui suit ce compte ? Quels sites sont clients ?"}
 settings:
-  - key: base_legale
+  - key: legal_basis
     name: Legal basis
     names: {fr: "Base légale"}
     description: Legal basis of the processing of the contacts' personal data, shown on a person (D341).
     descriptions: {fr: "Base légale du traitement des données personnelles des contacts, affichée sur une personne (D341)."}
     kind: text
-    default: interet_legitime_prospection_b2b
-  - key: retention_mois
+    default: legitimate_interest_b2b_prospecting
+  - key: retention_months
     name: Retention (months)
     names: {fr: "Durée de conservation (mois)"}
     description: A person with no change, link or capture for this many months is proposed for erasure (D341).
@@ -74,46 +81,46 @@ settings:
 extends:
   - type: organization
     properties:
-      - key: statut_compte
+      - key: account_status
         name: Account status
         names: {fr: "Statut du compte"}
         kind: enum
-        values: [client, prospect, cible, ancien_client, concurrent, partenaire, exclu]
-        labels: {client: {fr: "Client", en: "Customer"}, prospect: {fr: "Prospect", en: "Prospect"}, cible: {fr: "Cible", en: "Target"}, ancien_client: {fr: "Ancien client", en: "Former customer"}, concurrent: {fr: "Concurrent", en: "Competitor"}, partenaire: {fr: "Partenaire", en: "Partner"}, exclu: {fr: "Exclu", en: "Excluded"}}
-        colors: { client: green, prospect: amber, cible: blue, ancien_client: gray, concurrent: red, partenaire: violet, exclu: gray }
+        values: [customer, prospect, target, former_customer, competitor, partner, excluded]
+        labels: {customer: {fr: "Client", en: "Customer"}, prospect: {fr: "Prospect", en: "Prospect"}, target: {fr: "Cible", en: "Target"}, former_customer: {fr: "Ancien client", en: "Former customer"}, competitor: {fr: "Concurrent", en: "Competitor"}, partner: {fr: "Partenaire", en: "Partner"}, excluded: {fr: "Exclu", en: "Excluded"}}
+        colors: { customer: green, prospect: amber, target: blue, former_customer: gray, competitor: red, partner: violet, excluded: gray }
         indexed: true
-      - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
-      - { key: potentiel_utilisateurs, name: Potential users, names: {fr: "Utilisateurs potentiels"}, kind: number, min: 0 }
-      - { key: ca_dernier, name: Latest revenue, names: {fr: "Dernier chiffre d'affaires"}, kind: money }
-      - { key: ca_exercice, name: Revenue fiscal year, names: {fr: "Exercice du chiffre d'affaires"}, kind: number, min: 1900, max: 2100 }
-      - { key: score_cible, name: Target score, names: {fr: "Score de ciblage"}, kind: number, indexed: true }
+      - { key: current_users, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
+      - { key: potential_users, name: Potential users, names: {fr: "Utilisateurs potentiels"}, kind: number, min: 0 }
+      - { key: last_revenue, name: Latest revenue, names: {fr: "Dernier chiffre d'affaires"}, kind: money }
+      - { key: revenue_year, name: Revenue fiscal year, names: {fr: "Exercice du chiffre d'affaires"}, kind: number, min: 1900, max: 2100 }
+      - { key: target_score, name: Target score, names: {fr: "Score de ciblage"}, kind: number, indexed: true }
       - { key: score_detail, name: Score detail, names: {fr: "Détail du score"}, kind: text, max_len: 4000 }
-      - { key: score_le, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
+      - { key: scored_on, name: Scored on, names: {fr: "Score calculé le"}, kind: date }
   - type: map_pin
     properties:
-      - key: statut_site
-        name: Site status
-        names: {fr: "Statut du site"}
+      - key: establishment_status
+        name: Establishment status
+        names: {fr: "Statut de l'établissement"}
         kind: enum
-        values: [client, prospect, non_couvert]
-        labels: {client: {fr: "Client", en: "Customer"}, prospect: {fr: "Prospect", en: "Prospect"}, non_couvert: {fr: "Non couvert", en: "Not covered"}}
-        colors: { client: green, prospect: amber, non_couvert: gray }
+        values: [customer, prospect, not_covered]
+        labels: {customer: {fr: "Client", en: "Customer"}, prospect: {fr: "Prospect", en: "Prospect"}, not_covered: {fr: "Non couvert", en: "Not covered"}}
+        colors: { customer: green, prospect: amber, not_covered: gray }
         indexed: true
-      - { key: utilisateurs_actuels, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
+      - { key: current_users, name: Current users, names: {fr: "Utilisateurs actuels"}, kind: number, min: 0 }
   - type: person
     properties:
       - key: persona
         name: Persona
         names: {fr: "Persona"}
         kind: enum
-        values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
-        labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
+        values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
+        labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
         indexed: true
         classification: personnelle
-      - { key: revoir_le, name: Review on, names: {fr: "À revoir le"}, kind: date }
-      - { key: opposition_le, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
+      - { key: review_on, name: Review on, names: {fr: "À revoir le"}, kind: date }
+      - { key: opposed_on, name: Objected on, names: {fr: "Opposition le"}, kind: date, indexed: true }
 link_types:
-  - key: recommande
+  - key: recommended
     name: recommends
     names: {fr: "recommande"}
     inverse_name: is recommended by
@@ -122,9 +129,9 @@ link_types:
     to_types: [person, organization]
     attributes:
       - { key: date, name: Date, names: {fr: "Date"}, kind: date }
-      - { key: contexte, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
+      - { key: context, name: Context, names: {fr: "Contexte"}, kind: text, max_len: 1000 }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
-  - key: suit_le_compte
+  - key: follows_account
     name: follows the account
     names: {fr: "suit le compte"}
     inverse_name: is followed by
@@ -133,14 +140,14 @@ link_types:
     to_types: [organization]
     attributes:
       - { key: role, name: Role, names: {fr: "Rôle"}, kind: text, max_len: 255 }
-  - key: signal_sur
+  - key: signal_about
     name: is about
     names: {fr: "porte sur"}
     inverse_name: has as signal
     inverse_names: {fr: "a pour signal"}
-    from_types: [signal_commercial]
+    from_types: [sales_signal]
     to_types: [organization, map_pin, person]
-  - key: page_sur
+  - key: page_about
     name: is a page about
     names: {fr: "est une page sur"}
     inverse_name: has as page
@@ -184,7 +191,7 @@ link_types:
     to_types: [coaching_criterion]
     attributes:
       - { key: comment, name: Comment, names: {fr: "Commentaire"}, kind: text, max_len: 1000 }
-  - key: utilise_solution
+  - key: uses_solution
     name: uses the solution of
     names: {fr: "utilise la solution de"}
     inverse_name: is the solution of
@@ -192,22 +199,30 @@ link_types:
     from_types: [organization, map_pin]
     to_types: [organization]
     attributes:
-      - { key: depuis, name: Since, names: {fr: "Depuis"}, kind: date }
+      - { key: since, name: Since, names: {fr: "Depuis"}, kind: date }
       - { key: source, name: Source, names: {fr: "Source"}, kind: text, max_len: 1000 }
+  - key: contact_of
+    name: is a contact at
+    names: {fr: "est un contact chez"}
+    inverse_name: has as list contact
+    inverse_names: {fr: "a pour contact de liste"}
+    from_types: [list_contact]
+    to_types: [organization]
+    one_target: true
 hierarchies:
-  - key: groupe_commercial
+  - key: sales_group
     name: Commercial group
     names: {fr: "Groupe commercial"}
     steps:
-      - { link: filiale_de, inverse: true }
+      - { link: subsidiary_of, inverse: true }
       - { link: owns }
-      - { link: etablissement_de, inverse: true }
-    # Coverage (D330): users summed, a node with a contact or a client
+      - { link: establishment_of, inverse: true }
+    # Coverage (D330): users summed, a node with a contact or a customer
     # status is covered, the others are the account's white space.
-    sums: [utilisateurs_actuels, potentiel_utilisateurs]
+    sums: [current_users, potential_users]
     coverage:
       links: [employs]
-      values: { statut_site: [client], statut_compte: [client] }
+      values: { establishment_status: [customer], account_status: [customer] }
   # Coaching: from a playbook criterion, the meetings that covered it and
   # their accounts; the band counts them by status.
   - key: coaching
@@ -217,16 +232,16 @@ hierarchies:
       - { link: covered, inverse: true }
       - { link: meeting_with }
 types:
-  - key: page_suivie
+  - key: watched_page
     name: Watched page
     names: {fr: "Page suivie"}
     icon: newspaper
     properties:
       - { key: url, name: URL, names: {fr: "URL"}, kind: text, max_len: 2048, required: true, unique: true }
-      - { key: texte, name: Text, names: {fr: "Texte"}, kind: text, max_len: 20000 }
-      - { key: modifiee, name: Changed, names: {fr: "Modifiée"}, kind: bool, indexed: true }
-      - { key: compte, name: Account (id), names: {fr: "Compte (id)"}, kind: text, max_len: 36 }
-      - { key: derniere_vue, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
+      - { key: text, name: Text, names: {fr: "Texte"}, kind: text, max_len: 20000 }
+      - { key: changed, name: Changed, names: {fr: "Modifiée"}, kind: bool, indexed: true }
+      - { key: account, name: Account (id), names: {fr: "Compte (id)"}, kind: text, max_len: 36 }
+      - { key: last_seen, name: Last seen, names: {fr: "Vue la dernière fois"}, kind: date_time }
   - key: meeting
     name: Meeting
     names: {fr: "Rendez-vous"}
@@ -255,75 +270,123 @@ types:
         name: Persona
         names: {fr: "Persona"}
         kind: enum
-        values: [decideur, champion, sponsor, prescripteur, acheteur, utilisateur, technique, autre]
-        labels: {decideur: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, prescripteur: {fr: "Prescripteur", en: "Influencer"}, acheteur: {fr: "Acheteur", en: "Buyer"}, utilisateur: {fr: "Utilisateur", en: "User"}, technique: {fr: "Technique", en: "Technical"}, autre: {fr: "Autre", en: "Other"}}
+        values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
+        labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
       - { key: active, name: Active, names: {fr: "Actif"}, kind: bool }
-  - key: signal_commercial
+  - key: sales_signal
     name: Commercial signal
     names: {fr: "Signal commercial"}
     icon: flag
     properties:
-      - { key: cle, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 255, required: true, unique: true }
       - key: kind
         name: Detected by
         names: {fr: "Détecté par"}
         kind: enum
-        values: [nouvel_etablissement, fermeture_etablissement, changement_dirigeant, annonce_legale, page_modifiee, changement_poste, autre]
-        labels: {nouvel_etablissement: {fr: "Nouvel établissement", en: "New site"}, fermeture_etablissement: {fr: "Fermeture d'établissement", en: "Site closed"}, changement_dirigeant: {fr: "Changement de dirigeant", en: "New executive"}, annonce_legale: {fr: "Annonce légale", en: "Legal notice"}, page_modifiee: {fr: "Page modifiée", en: "Page changed"}, changement_poste: {fr: "Changement de poste", en: "Job change"}, autre: {fr: "Autre", en: "Other"}}
+        values: [new_establishment, establishment_closure, executive_change, legal_notice, page_changed, job_change, other]
+        labels: {new_establishment: {fr: "Nouvel établissement", en: "New site"}, establishment_closure: {fr: "Fermeture d'établissement", en: "Site closed"}, executive_change: {fr: "Changement de dirigeant", en: "New executive"}, legal_notice: {fr: "Annonce légale", en: "Legal notice"}, page_changed: {fr: "Page modifiée", en: "Page changed"}, job_change: {fr: "Changement de poste", en: "Job change"}, other: {fr: "Autre", en: "Other"}}
         required: true
         indexed: true
-      - { key: theme, name: Theme, names: {fr: "Thème"}, kind: text, max_len: 64, indexed: true }
-      - { key: resume, name: Summary, names: {fr: "Résumé"}, kind: text, max_len: 1000 }
-      - { key: extrait, name: Quoted excerpt, names: {fr: "Extrait cité"}, kind: text, max_len: 4000 }
+      - { key: topic, name: Theme, names: {fr: "Thème"}, kind: text, max_len: 64, indexed: true }
+      - { key: summary, name: Summary, names: {fr: "Résumé"}, kind: text, max_len: 1000 }
+      - { key: excerpt, name: Quoted excerpt, names: {fr: "Extrait cité"}, kind: text, max_len: 4000 }
       - { key: date, name: Date, names: {fr: "Date"}, kind: date, indexed: true }
       - { key: source_url, name: Source, names: {fr: "Source"}, kind: url }
-      - key: etat
+      - key: state
         name: State
         names: {fr: "État"}
         kind: enum
-        values: [a_valider, retenu, ecarte]
-        labels: {a_valider: {fr: "À valider", en: "To validate"}, retenu: {fr: "Retenu", en: "Kept"}, ecarte: {fr: "Écarté", en: "Dismissed"}}
-        colors: { a_valider: amber, retenu: green, ecarte: gray }
+        values: [to_validate, retained, dismissed]
+        labels: {to_validate: {fr: "À valider", en: "To validate"}, retained: {fr: "Retenu", en: "Kept"}, dismissed: {fr: "Écarté", en: "Dismissed"}}
+        colors: { to_validate: amber, retained: green, dismissed: gray }
         indexed: true
-      - { key: notifie_le, name: Notified on, names: {fr: "Notifié le"}, kind: date }
-  - key: critere_ciblage
+      - { key: notified_on, name: Notified on, names: {fr: "Notifié le"}, kind: date }
+  - key: targeting_criterion
     name: Targeting criterion
     names: {fr: "Critère de ciblage"}
     icon: tag
     properties:
-      - key: propriete
+      - key: property
         name: Property
         names: {fr: "Propriété"}
         kind: text
         max_len: 64
         required: true
-      - key: operateur
+      - key: operator
         name: Operator
         names: {fr: "Opérateur"}
         kind: enum
-        values: [egal, parmi, commence_par, au_moins, au_plus, renseigne]
-        labels: {egal: {fr: "Égal à", en: "Equals"}, parmi: {fr: "Parmi", en: "One of"}, commence_par: {fr: "Commence par", en: "Starts with"}, au_moins: {fr: "Au moins", en: "At least"}, au_plus: {fr: "Au plus", en: "At most"}, renseigne: {fr: "Renseigné", en: "Filled in"}}
+        values: [equals, one_of, starts_with, at_least, at_most, filled]
+        labels: {equals: {fr: "Égal à", en: "Equals"}, one_of: {fr: "Parmi", en: "One of"}, starts_with: {fr: "Commence par", en: "Starts with"}, at_least: {fr: "Au moins", en: "At least"}, at_most: {fr: "Au plus", en: "At most"}, filled: {fr: "Renseigné", en: "Filled in"}}
         required: true
-      - { key: valeur, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 1000 }
+      - { key: value, name: Value, names: {fr: "Valeur"}, kind: text, max_len: 1000 }
       - { key: points, name: Points, names: {fr: "Points"}, kind: number, required: true }
-      - { key: actif, name: Active, names: {fr: "Actif"}, kind: bool }
+      - { key: active, name: Active, names: {fr: "Actif"}, kind: bool }
+  - key: list_contact
+    name: List contact
+    names: {fr: "Contact de liste"}
+    icon: user
+    properties:
+      - { key: ref, name: Key, names: {fr: "Clé"}, kind: text, max_len: 600, required: true, unique: true }
+      - { key: list, name: List, names: {fr: "Liste"}, kind: text, max_len: 255, indexed: true }
+      - { key: job_title, name: Position, names: {fr: "Poste"}, kind: text, max_len: 255 }
+      - { key: company, name: Company as written, names: {fr: "Société (telle qu'écrite)"}, kind: text, max_len: 255 }
+      - { key: city, name: City, names: {fr: "Ville"}, kind: text, max_len: 255 }
+      - { key: postal_code, name: Postcode, names: {fr: "Code postal"}, kind: text, max_len: 10 }
+      - { key: email, name: E-mail, names: {fr: "E-mail"}, kind: text, max_len: 254 }
+      - key: persona
+        name: Persona
+        names: {fr: "Persona"}
+        kind: enum
+        values: [decision_maker, champion, sponsor, influencer, buyer, user, technical, other]
+        labels: {decision_maker: {fr: "Décideur", en: "Decision maker"}, champion: {fr: "Champion", en: "Champion"}, sponsor: {fr: "Sponsor", en: "Sponsor"}, influencer: {fr: "Prescripteur", en: "Influencer"}, buyer: {fr: "Acheteur", en: "Buyer"}, user: {fr: "Utilisateur", en: "User"}, technical: {fr: "Technique", en: "Technical"}, other: {fr: "Autre", en: "Other"}}
+      - key: matching
+        name: Company found
+        names: {fr: "Société retrouvée"}
+        kind: enum
+        values: [found, to_review, not_found]
+        labels: {found: {fr: "Trouvée", en: "Found"}, to_review: {fr: "À revoir", en: "To review"}, not_found: {fr: "Introuvable", en: "Not found"}}
+        colors: { found: green, to_review: amber, not_found: gray }
+        indexed: true
+      - { key: registry_id, name: Registry ID, names: {fr: "Identifiant au registre"}, kind: text, max_len: 64 }
+      - { key: candidates, name: Candidates, names: {fr: "Candidats"}, kind: text, max_len: 2000 }
+imports:
+  - name: Trade show or association list (file)
+    source: file
+    mapping:
+      key: trade_show_list
+      name: Trade show or association list
+      names: {fr: "Liste de salon ou d'association"}
+      objects:
+        - as: contact
+          type: list_contact
+          key: ref
+          title: name
+          properties:
+            ref: { concat: [list, name, company], sep: "|" }
+            list: list
+            job_title: job_title
+            company: company
+            city: city
+            postal_code: postal_code
+            email: { from: email, convert: [email] }
 functions:
-  - name: pb_criteres
+  - name: pb_criteria
     language: starlark
     description: Keeps the org's active targeting criteria on the message for the scoring that follows.
     code: |
       # The criteria (an array query) travel with the message: the next
       # query sends one message per organization, each carrying them.
       def handle(inputs, msg):
-          return {"payload": {}, "criteres": msg["payload"]}
+          return {"payload": {}, "criteria": msg["payload"]}
   - name: pb_score
     language: starlark
     description: "Target score of an organization: the points of each matching criterion, explained line by line (D336)."
     code: |
       # Target score (D336): generic, it holds no criterion. Each criterion
-      # of msg.criteres ({title, properties: {propriete, operateur, valeur,
+      # of msg.criteria ({title, properties: {property, operator, value,
       # points}}) that the organization meets adds its points (negative
-      # points exclude). Lists in `valeur` are comma-separated.
+      # points exclude). Lists in `value` are comma-separated.
       def number(v):
           if type(v) == "dict":
               v = v.get("amount")
@@ -350,24 +413,24 @@ functions:
           return str(v)
 
       def meets(c, v):
-          op = c.get("operateur", "")
-          want = c.get("valeur", "") or ""
+          op = c.get("operator", "")
+          want = c.get("value", "") or ""
           items = [w.strip() for w in want.split(",") if w.strip()]
-          if op == "renseigne":
+          if op == "filled":
               return text(v) != ""
-          if op == "egal":
+          if op == "equals":
               return text(v) == want.strip()
-          if op == "parmi":
+          if op == "one_of":
               return text(v) in items
-          if op == "commence_par":
+          if op == "starts_with":
               return any([text(v).startswith(w) for w in items])
           n = number(v)
           w = number(want)
           if n == None or w == None:
               return False
-          if op == "au_moins":
+          if op == "at_least":
               return n >= w
-          if op == "au_plus":
+          if op == "at_most":
               return n <= w
           return False
 
@@ -375,20 +438,20 @@ functions:
           p = msg["payload"]
           total = 0
           lines = []
-          for c in msg.get("criteres", []):
+          for c in msg.get("criteria", []):
               props = c.get("properties", {})
-              if props.get("actif") == False:
+              if props.get("active") == False:
                   continue
-              if meets(props, p.get(props.get("propriete", ""))):
+              if meets(props, p.get(props.get("property", ""))):
                   pts = int(number(props.get("points", 0)) or 0)
                   total += pts
                   sign = "+" if pts >= 0 else ""
-                  lines.append(c.get("title", props.get("propriete", "")) + " : " + sign + str(pts))
+                  lines.append(c.get("title", props.get("property", "")) + " : " + sign + str(pts))
           return {
               "payload": {
-                  "score_cible": total,
+                  "target_score": total,
                   "score_detail": "\n".join(lines),
-                  "score_le": msg.get("today", ""),
+                  "scored_on": msg.get("today", ""),
               },
               "object_id": msg["object"]["id"],
           }
@@ -397,8 +460,8 @@ functions:
     description: One text of the new commercial signals, for the org's notification node.
     code: |
       # Daily digest (D335): one line per new signal, newest first.
-      # @output digest any "The digest (payload.texte), when there is a new signal"
-      # @output marquer any "Then mark them notified"
+      # @output digest any "The digest (payload.text), when there is a new signal"
+      # @output mark any "Then mark them notified"
       def handle(inputs, msg):
           rows = msg["payload"]
           if len(rows) == 0:
@@ -407,20 +470,20 @@ functions:
           lines = []
           for r in rows:
               p = r["properties"]
-              lines.append("- " + p.get("date", "") + " " + r["title"] + " : " + p.get("resume", ""))
+              lines.append("- " + p.get("date", "") + " " + r["title"] + " : " + p.get("summary", ""))
           return [
-              {"payload": {"trigger": True, "nombre": len(rows), "texte": "\n".join(lines)}},
+              {"payload": {"trigger": True, "count": len(rows), "text": "\n".join(lines)}},
               {"payload": {}},
           ]
-  - name: ps_preparer
+  - name: ps_prepare
     language: starlark
     description: A changed watched page, its text for the model and the page kept aside.
     code: |
       def handle(inputs, msg):
           p = msg["payload"]
-          return {"payload": {"texte": p.get("texte", "")},
+          return {"payload": {"text": p.get("text", "")},
                   "page": {"id": msg["object"]["id"], "url": p.get("url", ""),
-                           "titre": msg["object"]["title"], "compte": p.get("compte", "")}}
+                           "title": msg["object"]["title"], "account": p.get("account", "")}}
   - name: ps_signal
     language: starlark
     description: "The model's answer about a watched page: a signal when it names a topic of the list, and the page cleared."
@@ -428,81 +491,81 @@ functions:
       # The org's topics (D335): edit this list to the org's own, the
       # prompt of the LLM node names the same keys.
       # @output signal any "A signal about the account (to validate)"
-      # @output lu any "The page, marked read"
-      THEMES = ["ouverture_site", "investissement", "recrutement", "nouvelle_ligne", "rachat",
-                "retraites", "qualite", "multi_sites", "ecole", "nouvelle_offre", "prix"]
+      # @output read any "The page, marked read"
+      TOPICS = ["new_site", "investment", "hiring", "new_line", "takeover",
+                "retirements", "quality", "multi_site", "school", "new_offer", "prices"]
 
       def handle(inputs, msg):
           page = msg.get("page", {})
           lines = [l.strip() for l in msg["payload"].get("text", "").strip().split("\n") if l.strip()]
-          theme = lines[0].strip("`*. ").lower() if lines else "aucun"
-          read = {"payload": {"modifiee": False}, "object_id": page.get("id")}
-          if theme not in THEMES or not page.get("compte"):
+          topic = lines[0].strip("`*. ").lower() if lines else "none"
+          read = {"payload": {"changed": False}, "object_id": page.get("id")}
+          if topic not in TOPICS or not page.get("account"):
               return [None, read]
           quote = lines[1][:4000] if len(lines) > 1 else ""
           day = msg.get("today", "")
           signal = {
               "payload": {
-                  "cle": "page:" + page.get("url", "") + ":" + day,
-                  "kind": "page_modifiee",
-                  "theme": theme,
-                  "resume": page.get("titre", ""),
-                  "extrait": quote,
+                  "ref": "page:" + page.get("url", "") + ":" + day,
+                  "kind": "page_changed",
+                  "topic": topic,
+                  "summary": page.get("title", ""),
+                  "excerpt": quote,
                   "date": day,
                   "source_url": page.get("url", ""),
-                  "etat": "a_valider",
+                  "state": "to_validate",
               },
-              "title": theme.replace("_", " ") + " · " + page.get("titre", ""),
+              "title": topic.replace("_", " ") + " · " + page.get("title", ""),
           }
           return [signal, read]
-  - name: ps_lien
+  - name: ps_link
     language: starlark
     description: Link payload from the signal just written to the account of the page.
     code: |
       def handle(inputs, msg):
-          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["page"]["compte"]}}
-  - name: pb_notifie
+          return {"payload": {"source_id": msg["object"]["id"], "target_id": msg["page"]["account"]}}
+  - name: pb_mark_notified
     language: starlark
     description: Marks a signal notified today.
     code: |
       def handle(inputs, msg):
-          return {"payload": {"notifie_le": msg.get("today", "")}, "object_id": msg["object"]["id"]}
+          return {"payload": {"notified_on": msg.get("today", "")}, "object_id": msg["object"]["id"]}
 flows:
   - name: "Prospection · watched pages to signals"
-    note: "Every hour, up to 50 watched pages whose text changed are read by the organization's LLM: a page announcing a topic of the list (new site, investment, hiring, ramp-up, takeover, retirements, quality problem, multi-site, in-house school, new offer, prices) becomes a commercial signal about the account, to validate, quoting the sentence. Edit the topics in the function ps_signal and in the prompt together. Watch a page with a site crawl whose record writes type page_suivie (url, texte, changed → modifiee, link_to → compte). Needs an AI provider."
+    note: "Every hour, up to 50 watched pages whose text changed are read by the organization's LLM: a page announcing a topic of the list (new site, investment, hiring, ramp-up, takeover, retirements, quality problem, multi-site, in-house school, new offer, prices) becomes a commercial signal about the account, to validate, quoting the sentence. Edit the topics in the function ps_signal and in the prompt together. Watch a page with a site crawl whose record writes type watched_page (url, text, changed → changed, link_to → account). Needs an AI provider."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 * * * *" }, outputs: [{ port: 0, targets: [changed] }] }
         - id: changed
           kind: ontology_query
           config:
-            object_type: page_suivie
-            filters: [{ key: modifiee, op: eq, value: true }]
+            object_type: watched_page
+            filters: [{ key: changed, op: eq, value: true }]
             limit: 50
           outputs: [{ port: 0, targets: [prep] }]
-        - { id: prep, kind: pnex_function, config: { function_name: ps_preparer, language: starlark }, outputs: [{ port: 0, targets: [read] }] }
+        - { id: prep, kind: pnex_function, config: { function_name: ps_prepare, language: starlark }, outputs: [{ port: 0, targets: [read] }] }
         - id: read
           kind: llm_text
           config:
-            data_field: texte
+            data_field: text
             max_chars: 600
-            prompt: "This is the text of a company web page (news, careers, offers). If it announces one of these topics, answer on the first line with the topic key only, then on the second line quote word for word the sentence that says it. Otherwise answer only: aucun. Topics: ouverture_site (a new plant, site or establishment), investissement (an investment), recrutement (a hiring wave), nouvelle_ligne (a new production line or a ramp-up), rachat (a takeover or a merger), retraites (retirements, generational change), qualite (a quality problem or a recall), multi_sites (a multi-site rollout), ecole (an in-house school or academy), nouvelle_offre (a new product or service), prix (prices or plans)."
+            prompt: "This is the text of a company web page (news, careers, offers). If it announces one of these topics, answer on the first line with the topic key only, then on the second line quote word for word the sentence that says it. Otherwise answer only: none. Topics: new_site (a new plant, site or establishment), investment (an investment), hiring (a hiring wave), new_line (a new production line or a ramp-up), takeover (a takeover or a merger), retirements (retirements, generational change), quality (a quality problem or a recall), multi_site (a multi-site rollout), school (an in-house school or academy), new_offer (a new product or service), prices (prices or plans)."
           outputs: [{ port: 0, targets: [decide] }]
         - { id: decide, kind: pnex_function, config: { function_name: ps_signal, language: starlark }, outputs: [{ port: 0, targets: [signal] }, { port: 1, targets: [done] }] }
-        - { id: signal, kind: object_upsert, config: { object_type: signal_commercial, key: cle, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
-        - { id: about, kind: pnex_function, config: { function_name: ps_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
-        - { id: linked, kind: link_upsert, config: { link_type: signal_sur } }
-        - { id: done, kind: object_upsert, config: { object_type: page_suivie, key: id } }
+        - { id: signal, kind: object_upsert, config: { object_type: sales_signal, key: ref, skip_existing: true }, outputs: [{ port: 0, targets: [about] }] }
+        - { id: about, kind: pnex_function, config: { function_name: ps_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: linked, kind: link_upsert, config: { link_type: signal_about } }
+        - { id: done, kind: object_upsert, config: { object_type: watched_page, key: id } }
   - name: "Prospection · signals digest"
-    note: "Each morning the commercial signals not yet notified make one digest (payload.texte, payload.nombre), then are marked notified. Add your Notification node on the digest port (template with a « texte » variable, trigger = payload.trigger), then deploy."
+    note: "Each morning the commercial signals not yet notified make one digest (payload.text, payload.count), then are marked notified. Add your Notification node on the digest port (template with a « text » variable, trigger = payload.trigger), then deploy."
     graph:
       nodes:
         - { id: tick, kind: inject, config: { cron: "0 7 * * *" }, outputs: [{ port: 0, targets: [new] }] }
         - id: new
           kind: ontology_query
           config:
-            object_type: signal_commercial
-            filters: [{ key: notifie_le, op: missing }]
+            object_type: sales_signal
+            filters: [{ key: notified_on, op: missing }]
             limit: 200
             output: array
           outputs: [{ port: 0, targets: [digest] }]
@@ -510,12 +573,12 @@ flows:
         - id: each
           kind: ontology_query
           config:
-            object_type: signal_commercial
-            filters: [{ key: notifie_le, op: missing }]
+            object_type: sales_signal
+            filters: [{ key: notified_on, op: missing }]
             limit: 200
           outputs: [{ port: 0, targets: [mark] }]
-        - { id: mark, kind: pnex_function, config: { function_name: pb_notifie, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
-        - { id: write, kind: object_upsert, config: { object_type: signal_commercial, key: id } }
+        - { id: mark, kind: pnex_function, config: { function_name: pb_mark_notified, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
+        - { id: write, kind: object_upsert, config: { object_type: sales_signal, key: id } }
   - name: "Prospection · target score"
     note: "Every 15 minutes, up to 500 organizations not scored today get their target score from the org's active targeting criteria (objects « Targeting criterion »: property, operator, value, points). Add criteria first, then deploy. A large list is covered over the day."
     graph:
@@ -524,28 +587,28 @@ flows:
         - id: crit
           kind: ontology_query
           config:
-            object_type: critere_ciblage
+            object_type: targeting_criterion
             limit: 200
             output: array
           outputs: [{ port: 0, targets: [keep] }]
-        - { id: keep, kind: pnex_function, config: { function_name: pb_criteres, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
+        - { id: keep, kind: pnex_function, config: { function_name: pb_criteria, language: starlark }, outputs: [{ port: 0, targets: [orgs] }] }
         - id: orgs
           kind: ontology_query
           config:
             object_type: organization
-            filters: [{ key: score_le, op: ne, value: "$today" }]
+            filters: [{ key: scored_on, op: ne, value: "$today" }]
             limit: 500
           outputs: [{ port: 0, targets: [score] }]
         - { id: score, kind: pnex_function, config: { function_name: pb_score, language: starlark }, outputs: [{ port: 0, targets: [write] }] }
         - { id: write, kind: object_upsert, config: { object_type: organization, key: id } }
 page_templates:
-  - key: plan_de_compte
+  - key: account_plan
     name: Account plan
     names: {fr: "Plan de compte"}
     description: The account as of today, its group, coverage, white space, contacts, signals and competitors, then the next actions.
     descriptions: {fr: "Le compte au jour dit : groupe, couverture, espace blanc, contacts, signaux et concurrents, puis les prochaines actions."}
     subject: organization
-    link: page_sur
+    link: page_about
     body: |
       # Account plan — {{title}}
 
@@ -553,21 +616,21 @@ page_templates:
 
       ## The account
 
-      - Status: {{prop:statut_compte}} · targeting score: {{prop:score_cible}}
-      - Users: {{prop:utilisateurs_actuels}} out of a potential {{prop:potentiel_utilisateurs}}
-      - Activity: {{prop:code_activite}} · headcount: {{prop:effectif_min}} to {{prop:effectif_max}} · last revenue: {{prop:ca_dernier}}
+      - Status: {{prop:account_status}} · targeting score: {{prop:target_score}}
+      - Users: {{prop:current_users}} out of a potential {{prop:potential_users}}
+      - Activity: {{prop:activity_code}} · headcount: {{prop:headcount_min}} to {{prop:headcount_max}} · last revenue: {{prop:last_revenue}}
 
       ## Group
 
-      {{tree:groupe_commercial}}
+      {{tree:sales_group}}
 
       ## Coverage
 
-      {{coverage:groupe_commercial}}
+      {{coverage:sales_group}}
 
       ## White space
 
-      {{white_space:groupe_commercial}}
+      {{white_space:sales_group}}
 
       ## Contacts
 
@@ -575,19 +638,19 @@ page_templates:
 
       ## Referrals
 
-      {{links:recommande:in}}
+      {{links:recommended:in}}
 
       ## Who follows the account
 
-      {{links:suit_le_compte:in}}
+      {{links:follows_account:in}}
 
       ## Signals
 
-      {{links:signal_sur:in}}
+      {{links:signal_about:in}}
 
       ## Solutions in place
 
-      {{links:utilise_solution}}
+      {{links:uses_solution}}
 
       ## Next actions
 
@@ -600,21 +663,21 @@ page_templates:
 
         ## Le compte
 
-        - Statut : {{prop:statut_compte}} · score de ciblage : {{prop:score_cible}}
-        - Utilisateurs : {{prop:utilisateurs_actuels}} sur un potentiel de {{prop:potentiel_utilisateurs}}
-        - Activité : {{prop:code_activite}} · effectif : {{prop:effectif_min}} à {{prop:effectif_max}} · dernier CA : {{prop:ca_dernier}}
+        - Statut : {{prop:account_status}} · score de ciblage : {{prop:target_score}}
+        - Utilisateurs : {{prop:current_users}} sur un potentiel de {{prop:potential_users}}
+        - Activité : {{prop:activity_code}} · effectif : {{prop:headcount_min}} à {{prop:headcount_max}} · dernier CA : {{prop:last_revenue}}
 
         ## Groupe
 
-        {{tree:groupe_commercial}}
+        {{tree:sales_group}}
 
         ## Couverture
 
-        {{coverage:groupe_commercial}}
+        {{coverage:sales_group}}
 
         ## Espace blanc
 
-        {{white_space:groupe_commercial}}
+        {{white_space:sales_group}}
 
         ## Contacts
 
@@ -622,30 +685,30 @@ page_templates:
 
         ## Recommandations
 
-        {{links:recommande:in}}
+        {{links:recommended:in}}
 
         ## Qui suit le compte
 
-        {{links:suit_le_compte:in}}
+        {{links:follows_account:in}}
 
         ## Signaux
 
-        {{links:signal_sur:in}}
+        {{links:signal_about:in}}
 
         ## Solutions en place
 
-        {{links:utilise_solution}}
+        {{links:uses_solution}}
 
         ## Prochaines actions
 
         - À compléter
-  - key: fiche_concurrent
+  - key: competitor_sheet
     name: Competitor sheet
     names: {fr: "Fiche concurrent"}
     description: A competitor, the accounts known to use it, what moved on it, and how to answer it.
     descriptions: {fr: "Un concurrent, les comptes connus qui l'utilisent, ce qui a bougé chez lui et comment lui répondre."}
     subject: organization
-    link: page_sur
+    link: page_about
     body: |
       # Competitor sheet — {{title}}
 
@@ -657,11 +720,11 @@ page_templates:
 
       ## Known accounts using it
 
-      {{links:utilise_solution:in}}
+      {{links:uses_solution:in}}
 
       ## Signals and changed pages
 
-      {{links:signal_sur:in}}
+      {{links:signal_about:in}}
 
       ## How to answer it
 
@@ -678,11 +741,11 @@ page_templates:
 
         ## Comptes connus qui l'utilisent
 
-        {{links:utilise_solution:in}}
+        {{links:uses_solution:in}}
 
         ## Signaux et pages modifiées
 
-        {{links:signal_sur:in}}
+        {{links:signal_about:in}}
 
         ## Arguments de défense
 
@@ -693,7 +756,7 @@ page_templates:
     description: Before meeting an account, everything known about it on one page, and the questions by persona.
     descriptions: {fr: "Avant de rencontrer un compte, tout ce qu'on en sait sur une page, et les questions par persona."}
     subject: organization
-    link: page_sur
+    link: page_about
     body: |
       # Meeting preparation — {{title}}
 
@@ -701,11 +764,11 @@ page_templates:
 
       ## The account at a glance
 
-      Status {{prop:statut_compte}} · score {{prop:score_cible}} · last revenue {{prop:ca_dernier}} · headcount {{prop:effectif_min}} to {{prop:effectif_max}}.
+      Status {{prop:account_status}} · score {{prop:target_score}} · last revenue {{prop:last_revenue}} · headcount {{prop:headcount_min}} to {{prop:headcount_max}}.
 
       ## Group and coverage
 
-      {{coverage:groupe_commercial}}
+      {{coverage:sales_group}}
 
       ## Known contacts
 
@@ -713,15 +776,15 @@ page_templates:
 
       ## Who can introduce us
 
-      {{links:recommande:in}}
+      {{links:recommended:in}}
 
       ## Recent signals
 
-      {{links:signal_sur:in}}
+      {{links:signal_about:in}}
 
       ## Competition in place
 
-      {{links:utilise_solution}}
+      {{links:uses_solution}}
 
       ## Goal of the meeting
 
@@ -741,11 +804,11 @@ page_templates:
 
         ## Le compte en bref
 
-        Statut {{prop:statut_compte}} · score {{prop:score_cible}} · dernier CA {{prop:ca_dernier}} · effectif {{prop:effectif_min}} à {{prop:effectif_max}}.
+        Statut {{prop:account_status}} · score {{prop:target_score}} · dernier CA {{prop:last_revenue}} · effectif {{prop:headcount_min}} à {{prop:headcount_max}}.
 
         ## Groupe et couverture
 
-        {{coverage:groupe_commercial}}
+        {{coverage:sales_group}}
 
         ## Interlocuteurs connus
 
@@ -753,15 +816,15 @@ page_templates:
 
         ## Qui peut nous introduire
 
-        {{links:recommande:in}}
+        {{links:recommended:in}}
 
         ## Signaux récents
 
-        {{links:signal_sur:in}}
+        {{links:signal_about:in}}
 
         ## Concurrence en place
 
-        {{links:utilise_solution}}
+        {{links:uses_solution}}
 
         ## Objectif du rendez-vous
 
@@ -779,7 +842,7 @@ page_templates:
     description: Who was there, with which account, the recording, the playbook criteria covered, then the summary, objections and next steps.
     descriptions: {fr: "Qui était là, avec quel compte, l'enregistrement, les critères du playbook abordés, puis le résumé, les objections et la suite."}
     subject: meeting
-    link: page_sur
+    link: page_about
     body: |
       # Meeting debrief — {{title}}
 

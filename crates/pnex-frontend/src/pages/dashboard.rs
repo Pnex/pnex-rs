@@ -1,13 +1,13 @@
-//! Tableau de bord — deux strates de données :
-//! - agrégats **user** de `/api/v1/user-info` (Phase 3) : comptage devices
-//!   sur les orgs du user, orgs, tier ;
-//! - summary **org** de `/api/v1/dashboard/summary` (2026-08-19) : liveness
-//!   des devices (TTL de silence), stats builds, dernières mesures
-//!   OpenObserve — les cartes « Appareils en ligne » et « Réussite des
-//!   builds » et les deux sections en bas. Polling 15 s (la valeur reste
-//!   affichée pendant le re-fetch), listes plafonnées à ~10 côté serveur
-//!   (compteur « affichés / total » si tronquées), télémétrie dégradée
-//!   silencieuse (encart, jamais de toast en erreur répétée).
+//! Dashboard — two data layers:
+//! - **user** aggregates from `/api/v1/user-info` (Phase 3): device count
+//!   across the user's orgs, orgs, tier;
+//! - **org** summary from `/api/v1/dashboard/summary` (2026-08-19): device
+//!   liveness (silence TTL), build stats, latest OpenObserve
+//!   measurements — the "Devices online" and "Build success"
+//!   cards and the two bottom sections. 15 s polling (the value stays
+//!   displayed during the re-fetch), lists capped at ~10 server side
+//!   ("shown / total" counter if truncated), degraded telemetry
+//!   silent (notice, never a toast on repeated errors).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -19,21 +19,21 @@ use crate::components::refresh_rate::{use_auto_refresh, RefreshRateControl};
 use crate::components::ui::{State, StateMark, PANEL};
 use crate::state::{org, session, toasts};
 
-/// Cadence de rafraîchissement du summary (liveness bouge au TTL de
-/// silence ~10 s ; 15 s suffit pour un dashboard).
+/// Summary refresh rate (liveness moves with the silence TTL
+/// ~10 s; 15 s is enough for a dashboard).
 const POLL_SECS: u64 = 15;
 
 #[component]
 pub fn Dashboard() -> Element {
     // All hooks run before the session early return: the hook order must
     // stay stable across renders.
-    // Summary org-scope : re-run quand l'org change ou au compteur reload
-    // (bouton + polling). Erreurs avalées → None (dégradé silencieux).
+    // Org-scoped summary: re-run when the org changes or on the reload counter
+    // (button + polling). Errors swallowed → None (silent degradation).
     let reload = use_signal(|| 0u32);
     let summary = use_resource(move || async move {
         let _ = reload();
-        // Lecture du signal org : re-run au changement d'org ; pas d'org
-        // (encore) sélectionnée → rien à charger.
+        // Reading the org signal: re-run on org change; no org
+        // selected (yet) → nothing to load.
         org::current()?;
         api::dashboard::summary().await.ok()
     });
@@ -61,8 +61,8 @@ pub fn Dashboard() -> Element {
     let tier = active_org
         .and_then(|m| m.subscription_tier.as_ref())
         .filter(|_| user.deployment_mode == pnex_core::DeploymentMode::Saas);
-    // Ressource : Option<Option<T>> (pending | dégradé) ; None tant que
-    // pending ou en erreur (dégradé silencieux).
+    // Resource: Option<Option<T>> (pending | degraded); None while
+    // pending or on error (silent degradation).
     let s = match summary.read().as_ref() {
         Some(inner) => inner.clone(),
         None => None,
@@ -97,8 +97,8 @@ pub fn Dashboard() -> Element {
         .map(|x| format!("{:.0}%", x.builds.success_rate * 100.0));
     let liveness_list = s.as_ref().map(|x| x.liveness.devices.as_slice());
     let liveness_total = s.as_ref().map(|x| x.liveness.total);
-    // Compteur « affichés / total » quand la liste est tronquée (cap ~10
-    // côté backend).
+    // "shown / total" counter when the list is truncated (cap ~10
+    // backend side).
     let liveness_more = match (liveness_list, liveness_total) {
         (Some(list), Some(total)) if total > list.len() as u64 => {
             Some(format!("{} / {}", list.len(), total))

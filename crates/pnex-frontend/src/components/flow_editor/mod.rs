@@ -1,10 +1,10 @@
-//! Éditeur de flows drag & drop (Phase 5 du chantier ETL, D18).
+//! Drag & drop flow editor (Phase 5 of the ETL work, D18).
 //!
-//! L'éditeur ne parle qu'à l'API Loco — jamais au runtime (garde-fou PRD,
-//! docs/architecture/flow-engine.md). Toutes les mutations du graphe passent
-//! par les réducteurs purs de `state.rs`, la géométrie est testée dans
-//! `geometry.rs`, le rendu/gestes dans `canvas.rs`, la config des nœuds
-//! dans `inspector.rs`, l'historique dans `versions.rs`.
+//! The editor only talks to the Loco API — never to the runtime (PRD guard,
+//! docs/architecture/flow-engine.md). All graph mutations go
+//! through the pure reducers of `state.rs`, the geometry is tested in
+//! `geometry.rs`, rendering/gestures in `canvas.rs`, node config
+//! in `inspector.rs`, history in `versions.rs`.
 
 pub(crate) mod canvas;
 pub(crate) mod debug;
@@ -35,8 +35,8 @@ use crate::components::gerbe::Gerbe;
 use crate::components::ui::{BTN_DANGER_SOLID, BTN_PRIMARY_SM, BTN_SECONDARY, BTN_SECONDARY_SM};
 use cx::{EditorCx, Interaction, RuntimeAction};
 
-/// Éditeur monté par la page `/flows` — orchestration : chargement, save,
-/// conflit 409, deploy, chip runtime, drawer versions.
+/// Editor mounted by the `/flows` page — orchestration: loading, save,
+/// 409 conflict, deploy, runtime chip, versions drawer.
 #[component]
 pub fn FlowEditor(
     flow_id: i64,
@@ -50,7 +50,7 @@ pub fn FlowEditor(
         api::flows::detail(flow_id).await
     });
 
-    // --- État éditeur (les signaux vivent dans le paquet `cx`) ---
+    // --- Editor state (the signals live in the `cx` bundle) ---
     let mut graph = use_signal(FlowGraph::default);
     let mut saved_graph = use_signal(FlowGraph::default);
     let mut saved_version = use_signal(|| 0i64);
@@ -79,7 +79,7 @@ pub fn FlowEditor(
         });
     });
 
-    // Garde du chargement initial (jamais de `.set()` pendant le render).
+    // Initial load guard (never a `.set()` during render).
     let mut loaded = use_signal(|| false);
     use_effect(move || {
         let resource = detail.value();
@@ -92,8 +92,8 @@ pub fn FlowEditor(
         }
         let mut fresh = flow.graph.clone();
         geometry::ensure_positions(&mut fresh);
-        // Suivi auto dès le chargement : un split en mode auto régénère ses
-        // clés (donc ses ports) depuis son amont sans attendre une édition.
+        // Auto tracking from load: a split in auto mode regenerates its
+        // keys (hence its ports) from its upstream without waiting for an edit.
         state::sync_split_keys_auto(&mut fresh);
         graph.set(fresh.clone());
         saved_graph.set(fresh);
@@ -117,16 +117,16 @@ pub fn FlowEditor(
         expanded_display,
     };
 
-    // Dirty dérivé — jamais de signal dédié à tenir à jour.
+    // Derived dirty — never a dedicated signal to keep up to date.
     let dirty = graph() != saved_graph();
 
-    // ─── Staleness pin/device (Phase 6) ───
-    // Un graphe structurellement valide peut ne plus rien remonter : le pin
-    // a basculé in↔out (set_mode), le pin a disparu du pinout, le device a
-    // été supprimé, désactivé, ou est simplement hors ligne. Chaque état a
-    // son message distinct — un device en attente de reconnexion (restart
-    // serveur, wifi…) ne doit jamais s'afficher « supprimé ou inactif ».
-    // Violations client-only (jamais persistées) → nœud + câble en rouge.
+    // ─── Pin/device staleness (Phase 6) ───
+    // A structurally valid graph may no longer return anything: the pin
+    // switched in↔out (set_mode), the pin disappeared from the pinout, the device
+    // was deleted, disabled, or is simply offline. Each state has
+    // its own message — a device waiting to reconnect (server restart,
+    // wifi…) must never show as "deleted or inactive".
+    // Client-only violations (never persisted) → node + wire in red.
     // Re-fetched when the read config changes (not on drag: the signature
     // leaves positions out) and on the presence tick below.
     let mut stale_signature = use_signal(String::new);
@@ -144,18 +144,18 @@ pub fn FlowEditor(
     }
     use_effect(move || {
         let tick = presence_tick();
-        let g = graph.cloned(); // lecture suivie : re-déclenche au changement
-                                // (node_id, device_slug, pin, is_write) — l'usage qualifie la
-                                // vérification (une pin écrite n'a pas besoin de souscription).
+        let g = graph.cloned(); // tracked read: re-triggers on change
+                                // (node_id, device_slug, pin, is_write) — the usage qualifies the
+                                // check (a written pin needs no subscription).
         let mut reads: Vec<(String, String, String, bool)> = Vec::new();
         let mut signature = String::new();
         for n in &g.nodes {
             if let pnex_core::FlowNodeKind::DeviceRead { config } = &n.kind {
-                // Seuls les couples complets sont jugés : un read en cours de
-                // saisie (device ou pin vide) n'est pas une violation de
-                // staleness — `device_bad_read` au save le couvre (sinon le
-                // bandeau crie « device «  » introuvable » au simple clic sur
-                // « Ajouter une lecture »).
+                // Only complete pairs are judged: a read being
+                // typed (empty device or pin) is not a staleness
+                // violation — `device_bad_read` on save covers it (otherwise the
+                // banner shouts 'device "" not found' on a mere click on
+                // "Add a read").
                 for pin in config
                     .pins
                     .iter()
@@ -177,7 +177,7 @@ pub fn FlowEditor(
         }
         signature.push_str(&format!("tick:{tick}"));
         if signature == *stale_signature.cloned() {
-            return; // config inchangée (drag/pan) : rien à re-scruter
+            return; // unchanged config (drag/pan): nothing to re-scan
         }
         stale_signature.set(signature);
         spawn(async move {
@@ -201,20 +201,20 @@ pub fn FlowEditor(
                     found.push(FlowViolation::with_args(Some(node_id), code, message, args));
                 }
             }
-            // ── 1. État de chaque device — une requête exacte par slug ──
-            // Le filtre `device_id` est exact et sans filtre `active` :
-            // insensible au troncage pagination, et un device actif mais
-            // hors ligne reste dans la réponse (`active` est un flag DB,
-            // pas un état de connexion).
+            // ── 1. State of each device — one exact query per slug ──
+            // The `device_id` filter is exact and has no `active` filter:
+            // immune to pagination truncation, and an active but
+            // offline device stays in the response (`active` is a DB flag,
+            // not a connection state).
             enum DeviceState {
-                /// L'API devices/pinout est injoignable — on ne sait RIEN du
-                /// device, on ne doit pas dire « introuvable ».
+                /// The devices/pinout API is unreachable — we know NOTHING about the
+                /// device, we must not say "not found".
                 ApiError(String),
-                /// Absent du registre (supprimé, ou jamais existé).
+                /// Missing from the registry (deleted, or never existed).
                 Deleted,
-                /// Présent mais désactivé (`active = false`).
+                /// Present but disabled (`active = false`).
                 Inactive,
-                /// Présent et actif — l'état de connexion vient du pinout.
+                /// Present and active — the connection state comes from the pinout.
                 Active { pk: i64 },
             }
             let mut states: std::collections::HashMap<String, DeviceState> =
@@ -242,7 +242,7 @@ pub fn FlowEditor(
                 };
                 states.insert(slug, state);
             }
-            // ── 2. Pinout des devices actifs (instances + overlay + connexion) ──
+            // ── 2. Pinout of active devices (instances + overlay + connection) ──
             let mut pinouts: std::collections::HashMap<String, Result<api::pins::Pinout, String>> =
                 std::collections::HashMap::new();
             for slug in reads
@@ -251,10 +251,10 @@ pub fn FlowEditor(
                 .collect::<std::collections::HashSet<_>>()
             {
                 if let Some(DeviceState::Active { pk }) = states.get(&slug) {
-                    // Même source que l'inspecteur (`/pinout` : instances +
-                    // overlay) — `/pins` (instances seules) déclarerait
-                    // « absent » un pin que l'éditeur propose via l'overlay
-                    // (défaut carte d'un device jamais configuré) : faux rouge.
+                    // Same source as the inspector (`/pinout`: instances +
+                    // overlay) — `/pins` (instances only) would declare
+                    // "missing" a pin the editor offers via the overlay
+                    // (board default of a never-configured device): false red.
                     let result = api::pins::pinout(*pk).await.map_err(|e| e.message);
                     pinouts.insert(slug, result);
                 }
@@ -282,7 +282,7 @@ pub fn FlowEditor(
             } else {
                 Default::default()
             };
-            // ── 3. Une violation par read, dédupliquée (nœud, code, message) ──
+            // ── 3. One violation per read, deduplicated (node, code, message) ──
             let mut found: Vec<FlowViolation> = Vec::new();
             let mut seen = std::collections::HashSet::new();
             for (node_id, device_slug, pin_label, is_write) in reads {
@@ -315,7 +315,7 @@ pub fn FlowEditor(
                         serde_json::json!({ "device": device_slug }),
                     ),
                     DeviceState::Active { .. } => match pinouts.get(&device_slug) {
-                        None => {} // slug actif non scruté : impossible ici
+                        None => {} // active slug not scanned: impossible here
                         Some(Err(err)) => push(
                             &mut found,
                             &mut seen,
@@ -349,7 +349,7 @@ pub fn FlowEditor(
                                     "pin missing from device",
                                     serde_json::json!({ "pin": pin_label, "device": device_slug }),
                                 ),
-                                // ── Usage écriture (device-write) ──
+                                // ── Write usage (device-write) ──
                                 Some(pin)
                                     if is_write
                                         && !pin
@@ -367,7 +367,7 @@ pub fn FlowEditor(
                                         serde_json::json!({ "pin": pin_label }),
                                     )
                                 }
-                                // ── Usage lecture ──
+                                // ── Read usage ──
                                 Some(pin)
                                     if !is_write && pin.mode.as_deref() == Some("digital_out") =>
                                 {
@@ -380,20 +380,20 @@ pub fn FlowEditor(
                                         serde_json::json!({ "pin": pin_label }),
                                     )
                                 }
-                                // Autres modes sortie lus (pas de souscription
-                                // attendue, même doctrine que digital_out).
+                                // Other output modes read (no subscription
+                                // expected, same doctrine as digital_out).
                                 Some(pin)
                                     if pin
                                         .mode
                                         .as_deref()
                                         .unwrap_or_default()
                                         .ends_with("_out") => {}
-                                // Device en ligne, pin en entrée, mais aucune
-                                // souscription : le firmware générique ne
-                                // publie rien — le flow lira du vide (payload
-                                // `{}`) sans jamais le savoir sinon. (Jamais
-                                // pour l'écriture : une sortie n'a pas besoin
-                                // de souscription.)
+                                // Device online, pin as input, but no
+                                // subscription: the generic firmware
+                                // publishes nothing — the flow will read empty (payload
+                                // `{}`) without ever knowing otherwise. (Never
+                                // for writing: an output needs no
+                                // subscription.)
                                 Some(pin) if !is_write && pin.subscribed_ms.is_none() => push(
                                     &mut found,
                                     &mut seen,
@@ -415,14 +415,14 @@ pub fn FlowEditor(
     // --- Save (validate → PATCH) ---
     let mut saving = use_signal(|| false);
     let mut conflict = use_signal(|| None::<String>);
-    // Proposition de deploy après save d'un flow déjà déployé : la version
-    // en exécution reste l'ancienne (une update ne recharge jamais le
-    // moteur) — petit encart « Déployer vN ? » plutôt qu'un auto-deploy
-    // qui purgerait le feed debug à chaque itération (choix utilisateur).
+    // Deploy offer after saving an already deployed flow: the running
+    // version stays the old one (an update never reloads the
+    // engine) — small "Deploy vN?" box rather than an auto-deploy
+    // that would purge the debug feed on every iteration (user choice).
     let mut propose_deploy = use_signal(|| None::<i64>);
-    // Enregistrer (bouton, nom inchangé) et renommer (titre de la coquille)
-    // partagent le même PATCH — le graphe voyage avec : renommer vaut
-    // sauvegarde de l'état courant.
+    // Save (button, unchanged name) and rename (shell title)
+    // share the same PATCH — the graph travels with it: renaming means
+    // saving the current state.
     let save = Callback::new(move |name: Option<String>| {
         if saving() {
             return;
@@ -450,9 +450,9 @@ pub fn FlowEditor(
                     violations.set(Vec::new());
                     loaded_from.set(None);
                     toasts::success("toast-flow-saved");
-                    // Flow déjà déployé : la version en exécution reste
-                    // l'ancienne — proposer le deploy (l'édition ultérieure
-                    // masque l'encart, la condition de rendu porte sur dirty).
+                    // Flow already deployed: the running version stays
+                    // the old one — offer the deploy (a later edit
+                    // hides the box, the render condition depends on dirty).
                     if flow.status == pnex_core::FlowStatus::Deployed {
                         propose_deploy.set(Some(flow.latest_version_number));
                     }
@@ -474,7 +474,7 @@ pub fn FlowEditor(
         });
     });
 
-    // --- Résolution du conflit 409 ---
+    // --- 409 conflict resolution ---
     let mut conflict_reload = move |_: ()| {
         conflict.set(None);
         spawn(async move {
@@ -499,7 +499,7 @@ pub fn FlowEditor(
                 return;
             };
             let params = UpdateFlow {
-                // Version fraîche du serveur : écrasement assumé.
+                // Fresh server version: deliberate overwrite.
                 expected_version_number: server.latest_version_number,
                 graph: graph.peek().clone(),
                 name: None,
@@ -542,16 +542,16 @@ pub fn FlowEditor(
                     // Our own deploy: never reported as a remote change.
                     seen_deployed.set(Some(deployed.flow.deployed_version_number));
                     toasts::success("toast-flow-deployed");
-                    // Références notify périmées (D50) : toast info dédié —
-                    // le deploy passe, mais les canaux/modèles manquants ou
-                    // désactivés n'enverront rien (nœud dégradé, warn).
+                    // Stale notify references (D50): dedicated info toast —
+                    // the deploy goes through, but missing or disabled
+                    // channels/templates will send nothing (degraded node, warn).
                     let stale = deployed.stale_notify_nodes.len();
                     if stale > 0 {
                         toasts::info(t!("flows-deploy-stale-notify", count: stale).to_string());
                     }
-                    // Onglets d'autres flows isolés à la projection (graphe
-                    // illisible) : le deploy passe, mais ces flows ne tournent
-                    // plus — à reconstruire ou supprimer.
+                    // Tabs of other flows isolated at projection (unreadable
+                    // graph): the deploy goes through, but those flows no longer
+                    // run — to rebuild or delete.
                     let skipped = deployed.skipped_tabs.len();
                     if skipped > 0 {
                         toasts::info(t!("flows-deploy-skipped-tabs", count: skipped).to_string());
@@ -560,8 +560,8 @@ pub fn FlowEditor(
                     reload_meta.with_mut(|r| *r += 1);
                     propose_deploy.set(None);
                 }
-                // Pré-flight rejeté (400 engine_load) : le message moteur
-                // **réel** est affiché — plus jamais un « HTTP 400 » nu.
+                // Pre-flight rejected (400 engine_load): the **real** engine
+                // message is shown — never again a bare "HTTP 400".
                 // `ToastMessage::Api` resolves violations + code at render.
                 Err(err) => toasts::error(err),
             }
@@ -569,18 +569,18 @@ pub fn FlowEditor(
         });
     };
 
-    // --- Contrôles runtime (Stop / Start / Restart) ---
-    // Un seul signal d'occupation : stop/start/restart touchent tous le même
-    // runtime, aucune action concurrente.
+    // --- Runtime controls (Stop / Start / Restart) ---
+    // A single busy signal: stop/start/restart all touch the same
+    // runtime, no concurrent action.
     let mut runtime_busy = use_signal(|| false);
-    // --- Drawer versions ---
+    // --- Versions drawer ---
     let mut versions_open = use_signal(|| false);
-    // Drawer de debug (même garde dev/debug que le bouton).
+    // Debug drawer (same dev/debug guard as the button).
     let mut debug_open = use_signal(|| false);
-    // Câble à couper (from, port, to) — confirmation à la demande.
+    // Wire to cut (from, port, to) — confirmation on demand.
     let mut pending_wire = use_signal(|| None::<(String, usize, String, String)>);
 
-    // --- Chip runtime (poll 5 s, pattern devices.rs) ---
+    // --- Runtime chip (5 s poll, devices.rs pattern) ---
     let mut reload_runtime = use_signal(|| 0u32);
     let mut runtime_polling = use_signal(|| false);
     let runtime = use_resource(move || async move {
@@ -608,7 +608,7 @@ pub fn FlowEditor(
                     });
                     on_changed.call(());
                     reload_meta.with_mut(|r| *r += 1);
-                    // Le chip reflète la nouvelle santé au prochain poll.
+                    // The chip reflects the new health on the next poll.
                     reload_runtime.with_mut(|r| *r += 1);
                 }
                 Err(err) => toasts::error(err),
@@ -668,9 +668,9 @@ pub fn FlowEditor(
         });
     }
 
-    // Outils de debug actifs ? Porté par le chip runtime (pas d'endpoint
-    // dédié) — mode run : boutons non rendus, pas de poll. Signal (pas un
-    // booléen dérivé) : la resource de feed doit le **suivre**.
+    // Debug tools enabled? Carried by the runtime chip (no dedicated
+    // endpoint) — run mode: buttons not rendered, no poll. Signal (not a
+    // derived boolean): the feed resource must **track** it.
     let mut debug_tools = use_signal(|| false);
     use_effect(move || {
         let active = match &*runtime.value().read() {
@@ -682,7 +682,7 @@ pub fn FlowEditor(
         }
     });
 
-    // --- Feed debug (badges Display) — poll 5 s tant que debug_tools ---
+    // --- Debug feed (Display badges) — 5 s poll while debug_tools ---
     let mut reload_debug = use_signal(|| 0u32);
     let mut debug_polling = use_signal(|| false);
     let debug_feed = use_resource(move || async move {
@@ -716,13 +716,13 @@ pub fn FlowEditor(
             reload_status.with_mut(|r| *r += 1);
         });
     }
-    // Pliage : dernière valeur par nœud Display, purgées si le moteur est
-    // arrêté (les valeurs d'un moteur stoppé ne sont plus des vérités) —
-    // et le modal pretty ouvert ferme avec elles.
+    // Folding: last value per Display node, purged if the engine is
+    // stopped (the values of a stopped engine are no longer true) —
+    // and the open pretty modal closes with them.
     use_effect(move || {
         let running = match &*runtime.value().read() {
             Some(Ok(status)) => status.running,
-            // Statut inconnu : on ne purge pas par prudence.
+            // Unknown status: no purge, out of caution.
             _ => true,
         };
         let mut fresh: std::collections::HashMap<String, debug::DisplayBadge> =
@@ -779,18 +779,18 @@ pub fn FlowEditor(
         }
     });
 
-    // Statut DB pour le conditionnement des contrôles runtime (Stop/Restart
-    // sur `deployed`, Start sur `stopped`).
+    // DB status gating the runtime controls (Stop/Restart
+    // on `deployed`, Start on `stopped`).
     let flow_status = match &*detail.value().read() {
         Some(Ok(flow)) => flow.status.as_str(),
         _ => "",
     };
 
-    // ─── Statut unifié (point + libellé) — fusion du statut DB et de la
-    // santé runtime (l'ancien chip « Moteur actif · v12 »). Priorité :
-    // erreur moteur > arrêté > périmé (« Déployé · à redéployer ») > déployé
-    // > non déployé > détail pas chargé. L'infobulle garde pid · vN + la
-    // dernière erreur moteur, verbatim.
+    // ─── Unified status (dot + label) — merge of the DB status and the
+    // runtime health (the old "Engine active · v12" chip). Priority:
+    // engine error > stopped > stale ("Deployed · to redeploy") > deployed
+    // > not deployed > detail not loaded. The tooltip keeps pid · vN + the
+    // last engine error, verbatim.
     let editor_status: EditorStatus = {
         let detail_value = detail.value();
         let runtime_value = runtime.value();
@@ -852,16 +852,16 @@ pub fn FlowEditor(
         }
     };
 
-    // Nom + réf de l'en-tête (None tant que le détail n'est pas chargé).
+    // Header name + ref (None until the detail is loaded).
     let (flow_name, flow_subtitle) = match &*detail.value().read() {
         Some(Ok(flow)) => (flow.name.clone(), Some(format!("#{}", flow.id))),
         _ => (String::new(), None),
     };
 
-    // Slot inspecteur : monté seulement si un nœud est sélectionné
-    // (principe 4 — le panneau n'existe pas à l'état vide). Titre = nom du
-    // nœud sinon libellé du kind ; remount par `key` pour que les champs
-    // repartent de la config du nœud.
+    // Inspector slot: mounted only if a node is selected
+    // (principle 4 — the panel does not exist in the empty state). Title = node
+    // name else kind label; remount by `key` so the fields
+    // start again from the node config.
     let inspector_slot: Option<Element> = cx.selected_node.cloned().map(|node_id| {
         let graph_read = cx.graph.read();
         let node = graph_read.nodes.iter().find(|n| n.id == node_id);
@@ -930,16 +930,16 @@ pub fn FlowEditor(
         }
     });
 
-    // Bandeau : violations de validation + staleness pin/device (Phase 6).
+    // Banner: validation violations + pin/device staleness (Phase 6).
     let banner: Vec<FlowViolation> = violations
         .cloned()
         .into_iter()
         .chain(stale.cloned())
         .collect();
 
-    // ─── Vue pretty d'une sonde Display (clic sur le badge live) ───
-    // Titre résolu ici (pas de `let` dans rsx) : nom du nœud, sinon id
-    // canvas (règle du badge).
+    // ─── Pretty view of a Display probe (click on the live badge) ───
+    // Title resolved here (no `let` in rsx): node name, else canvas
+    // id (badge rule).
     let display_modal = expanded_display().map(|(node_id_open, pretty)| {
         let name = cx
             .graph
@@ -994,9 +994,9 @@ pub fn FlowEditor(
                             {t!("flows-deploy")}
                         }
                     }
-                    // Contrôles runtime : Stop/Restart sur un flow déployé,
-                    // Start sur un flow arrêté — conditionnés au statut DB
-                    // (la santé process est l'affaire du chip).
+                    // Runtime controls: Stop/Restart on a deployed flow,
+                    // Start on a stopped flow — gated on the DB status
+                    // (process health is the chip's business).
                     if flow_status == "deployed" {
                         button {
                             class: "px-3 py-1.5 text-sm text-rose-700 bg-rose-50 border border-rose-300 rounded-lg hover:bg-rose-100 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed",
@@ -1022,9 +1022,9 @@ pub fn FlowEditor(
                         }
                     }
                 }
-                // Le chip runtime historique (« Moteur actif · v12 ») est
-                // absorbé par le statut unifié de la coquille (point + libellé
-                // + infobulle pid · vN — erreur au survol).
+                // The historical runtime chip ("Engine active · v12") is
+                // absorbed by the shell's unified status (dot + label
+                // + pid · vN tooltip — error on hover).
                 if debug_tools() {
                     button {
                         class: if debug_open() {
@@ -1055,7 +1055,7 @@ pub fn FlowEditor(
                 }
             },
             banner: rsx! {
-                // ─── Bandeau de violations (locales, serveur) + staleness ───
+                // ─── Violations banner (local, server) + staleness ───
                 if !banner.is_empty() {
                     div { class: "bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm text-red-700",
                         span { class: "font-semibold mr-2", {t!("flows-violations-banner-title")} }
@@ -1101,10 +1101,10 @@ pub fn FlowEditor(
                     }
                 }
 
-                // ─── Encart « Déployer la version enregistrée ? » ───
-                // Proposé après un save d'un flow déjà déployé ; masqué si
-                // l'utilisateur édite à nouveau (la version proposée ne serait
-                // plus celle du canvas) ou après un deploy réussi.
+                // ─── "Deploy the saved version?" box ───
+                // Offered after saving an already deployed flow; hidden if
+                // the user edits again (the offered version would no longer
+                // be the canvas one) or after a successful deploy.
                 {
                     match propose_deploy() {
                         Some(version) if !dirty => rsx! {
@@ -1155,21 +1155,21 @@ pub fn FlowEditor(
             empty_hint: if cx.graph.cloned().nodes.is_empty() { Some(t!("eshell-empty-hint").to_string()) } else { None },
         }
 
-        // ─── Drawer debug (monté seulement si ouvert : le poll meurt avec) ───
+        // ─── Debug drawer (mounted only if open: the poll dies with it) ───
         if debug_open() {
             debug::DebugDrawer { flow_id, on_close: move |_| debug_open.set(false) }
         }
 
-        // ─── Drawer versions ───
+        // ─── Versions drawer ───
         if versions_open() {
             versions::VersionsDrawer {
                 flow_id,
                 can_write,
                 on_close: move |_| versions_open.set(false),
                 on_loaded: move |version: FlowVersionDetail| {
-                    // Chargement d'une version dans l'éditeur : si c'est
-                    // la dernière, pas de dirty ; sinon save créera
-                    // v(n+1) avec ce graphe (restauration par édition).
+                    // Loading a version into the editor: if it is
+                    // the latest, not dirty; otherwise save will create
+                    // v(n+1) with this graph (restore by editing).
                     let mut fresh = version.graph;
                     geometry::ensure_positions(&mut fresh);
                     graph.set(fresh.clone());
@@ -1237,7 +1237,7 @@ pub fn FlowEditor(
             }
         }
 
-        // ─── Vue pretty d'une sonde Display (clic sur le badge live) ───
+        // ─── Pretty view of a Display probe (click on the live badge) ───
         if let Some((name, pretty)) = display_modal {
             Modal {
                 title: t!("flows-display-value-title", name : name),

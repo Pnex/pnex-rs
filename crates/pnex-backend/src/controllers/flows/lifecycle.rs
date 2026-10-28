@@ -34,22 +34,22 @@ pub(crate) async fn lock_org_deploys(ctx: &AppContext, org_id: i64) -> Result<Te
     })
 }
 
-// ─────────────────────────── Stop automatique (dépendance pin ↔ flows) ───────────────────────────
+// ─────────────────────────── Automatic stop (pin ↔ flows dependency) ───────────────────────────
 
-/// Dépendances pin ↔ flows (Phase 6 + device read/write 2026-09-19) : un
-/// changement de mode d'un pin (in↔out) invalide les usages device des flows
-/// déployés — la série O2 n'est plus alimentée, un nœud device-write pousse
-/// sur un pin qui n'est plus une sortie. Pour chaque flow **déployé** de
-/// l'org dont un nœud `device-read`/`device-write` ou une carte régulation
-/// (pin capteur) touche ce (device_id, pin) : dé-déploiement immédiat
-/// (status → draft, `deployed_version_id` → NULL — la version publiée reste
-/// enregistrée, un redéploiement manuel est possible une fois la
-/// configuration cohérente) puis reprojection unique de l'artefact.
+/// Pin ↔ flows dependencies (Phase 6 + device read/write 2026-09-19): a
+/// pin mode change (in↔out) invalidates the device usages of the deployed
+/// flows — the O2 series is no longer fed, a device-write node pushes
+/// to a pin that is no longer an output. For each **deployed** flow of
+/// the org with a `device-read`/`device-write` node or a regulation card
+/// (sensor pin) touching this (device_id, pin): immediate undeploy
+/// (status → draft, `deployed_version_id` → NULL — the published version stays
+/// saved, a manual redeploy is possible once the
+/// configuration is consistent) then a single reprojection of the artifact.
 ///
-/// Retourne les impacts `(flow_id, nom)` pour l'UI ; appelée par le
-/// contrôleur pins (`set_mode`) **avant** le push device (la base est la
-/// source de vérité, le stop doit refléter la base même si le device est
-/// hors ligne).
+/// Returns the `(flow_id, name)` impacts for the UI; called by the
+/// pins controller (`set_mode`) **before** the device push (the database is the
+/// source of truth, the stop must reflect the database even if the device is
+/// offline).
 pub(crate) async fn stop_flows_reading_pin(
     ctx: &AppContext,
     org_id: i64,
@@ -71,16 +71,16 @@ async fn stop_flows_reading_pin_locked(
     let deployed = deployed_flows_with_versions(&ctx.db, org_id).await?;
 
     let mut impacts: Vec<(i64, String)> = Vec::new();
-    // Clé d'ack du rechargement : méta du **premier** flow dé-déployé (le
-    // runtime émettra `flow_stopped` sur lui — piège de la meta vide, même
-    // école que stop/delete).
+    // Reload ack key: meta of the **first** undeployed flow (the
+    // runtime will emit `flow_stopped` for it — empty meta trap, same
+    // school as stop/delete).
     let mut ack_meta: Option<FlowArtifactMeta> = None;
     for (flow, version) in deployed {
         let Ok(graph) = serde_json::from_value::<FlowGraph>(version.graph) else {
             continue;
         };
-        // Read (device-read + pins capteur des cartes régulation) ET write
-        // (device-write) : un flip de mode casse l'un comme l'autre.
+        // Read (device-read + sensor pins of regulation cards) AND write
+        // (device-write): a mode flip breaks both.
         let touches = pnex_core::device_pin_refs_of(&graph, device_id)
             .iter()
             .any(|r| {
@@ -104,25 +104,25 @@ async fn stop_flows_reading_pin_locked(
             flow_id = stopped.id,
             device_id,
             pin = pin_label,
-            "flow dé-déployé automatiquement : le pin vient de changer de mode (in↔out)"
+            "flow automatically undeployed: the pin just changed mode (in↔out)"
         );
         impacts.push((stopped.id, stopped.name));
     }
 
-    // Un seul rechargement du runtime même si plusieurs flows ont été
-    // arrêtés — l'artefact est reprojeté sans eux (et les cartes de
-    // régulation qui lisaient ce pin sont castées `[]` : les ESP remettent
-    // leurs sorties en safe — on arrête de réguler, on n'écrit jamais un pin).
+    // A single runtime reload even if several flows were
+    // stopped — the artifact is reprojected without them (and the regulation
+    // cards that read this pin are cast `[]`: the ESPs put
+    // their outputs back to safe — we stop regulating, we never write a pin).
     if !impacts.is_empty() {
         reproject_and_cast_extra(ctx, org_id, &[], ack_meta).await?;
     }
     Ok(impacts)
 }
 
-/// Dry-run du scan de `stop_flows_reading_pin` : les flows déployés de l'org
-/// dont le graphe touche (device_id, pin) — sans mutation. Alimente la garde
-/// 409 « arrêtez les flows avant de changer la config » (le front liste les
-/// flows et propose l'arrêt confirmé).
+/// Dry-run of the `stop_flows_reading_pin` scan: the org's deployed flows
+/// whose graph touches (device_id, pin) — without mutation. Feeds the
+/// 409 guard "stop the flows before changing the config" (the front lists the
+/// flows and offers the confirmed stop).
 pub(crate) async fn flows_impacted_by_pin(
     ctx: &AppContext,
     org_id: i64,
@@ -623,9 +623,9 @@ pub(crate) async fn pin_write_owners_by_device(
 
 // ─────────────────────────── POST /flows/{id}/deploy | /rollback ───────────────────────────
 
-/// `POST /flows/{id}/deploy` — publie une version (`version_number` absent =
-/// dernière) : reprojection de l'ensemble des flows déployés → SIGUSR1 →
-/// `deployed_version_id` mis à jour.
+/// `POST /flows/{id}/deploy` — publishes a version (`version_number` absent =
+/// latest): reprojection of all the deployed flows → SIGUSR1 →
+/// `deployed_version_id` updated.
 #[utoipa::path(
     post,
     path = "/api/v1/flows/{id}/deploy",
@@ -655,8 +655,8 @@ pub(super) async fn deploy(
     res
 }
 
-/// `POST /flows/{id}/rollback` — alias explicite du deploy d'une version
-/// antérieure (même mécanique, intention produit distincte).
+/// `POST /flows/{id}/rollback` — explicit alias of the deploy of an earlier
+/// version (same mechanics, distinct product intent).
 #[utoipa::path(
     post,
     path = "/api/v1/flows/{id}/rollback",
@@ -700,7 +700,7 @@ async fn deploy_version(
     };
     let version_number = match body.and_then(|Json(p)| p.version_number) {
         Some(n) => n,
-        // Version absente → dernière version déployée par défaut.
+        // Version absent → last deployed version by default.
         None => {
             let Some(latest) = latest_version(&ctx.db, flow.id).await? else {
                 return Err(Error::NotFound);
@@ -776,11 +776,11 @@ async fn deploy_version(
         }
     }
 
-    // Candidat projeté **sans écrire la DB** : la version candidate remplace
-    // celle du flow dans l'artefact complet. Pré-flight (`--check`) puis
-    // rechargement acquitté — un tab invalide ne peut plus ni casser le
-    // runtime ni rester marqué `deployed` (l'ancien ordre DB-d'abord laissait
-    // une version fautive reprojetée à chaque boot).
+    // Candidate projected **without writing the DB**: the candidate version replaces
+    // the flow's one in the full artifact. Pre-flight (`--check`) then
+    // acknowledged reload — an invalid tab can no longer break the
+    // runtime nor stay marked `deployed` (the old DB-first order left
+    // a faulty version reprojected at every boot).
     let (artifact, meta, stale_notify, fn_violations, skipped_tabs) = reproject_candidate(
         &ctx.db,
         flow.org_id,
@@ -788,8 +788,8 @@ async fn deploy_version(
         None,
     )
     .await?;
-    // Refs de fonctions non résolues dans le candidat : bloquant au deploy
-    // (même forme de 400 que engine_load, l'éditeur localise le nœud).
+    // Unresolved function refs in the candidate: blocking at deploy
+    // (same 400 shape as engine_load, the editor locates the node).
     if !fn_violations.is_empty() {
         return Ok(crate::controllers::violations_error(
             pnex_core::err_codes::FLOW_INVALID,
@@ -806,8 +806,8 @@ async fn deploy_version(
         return Ok(deploy_error_response(e));
     }
 
-    // Succès : la DB est marquée **après** acquittement (la version ne peut
-    // plus être « déployée » sans tourner).
+    // Success: the DB is marked **after** acknowledgement (the version can
+    // no longer be "deployed" without running).
     let mut active: flows::ActiveModel = flow.clone().into();
     active.deployed_version_id = Set(Some(version.id));
     active.status = Set(pnex_core::FLOW_STATUS_DEPLOYED.to_string());
@@ -823,13 +823,13 @@ async fn deploy_version(
     // for the runtime: same fragment as the acknowledged candidate).
     crate::services::flow_cluster::org_changed(&ctx.db, flow.org_id).await;
 
-    // Sync/cast des régulations APRÈS le marquage DB (il lit l'état déployé).
-    // Jamais de 503 cast — même doctrine que reproject_and_cast_extra.
-    // Pas de reprojection ici : le candidat acquitté est déjà l'artefact
-    // exact que reproject_and_signal produirait.
+    // Regulation sync/cast AFTER the DB marking (it reads the deployed state).
+    // Never a cast 503 — same doctrine as reproject_and_cast_extra.
+    // No reprojection here: the acknowledged candidate is already the exact
+    // artifact reproject_and_signal would produce.
     if let Err(e) = crate::services::regulator::sync_and_cast_with(&ctx.db, flow.org_id, &[]).await
     {
-        tracing::error!("sync des régulations échoué (deploy poursuivi) : {e}");
+        tracing::error!("regulation sync failed (deploy continued): {e}");
     }
 
     let latest_number = latest_version(&ctx.db, flow.id)
@@ -838,7 +838,7 @@ async fn deploy_version(
         .unwrap_or(0);
     let graph: FlowGraph =
         serde_json::from_value(version.graph).map_err(|_| Error::InternalServerError)?;
-    tracing::info!(flow_id = flow.id, version = version_number, "flow déployé");
+    tracing::info!(flow_id = flow.id, version = version_number, "flow deployed");
     // Additive fields: stale notify references (non-blocking editor toast)
     // and tabs of OTHER flows isolated from the projection.
     let dto = FlowDeployResult {
@@ -859,12 +859,12 @@ async fn deploy_version(
 
 // ─────────────────────────── POST /flows/{id}/stop | start | restart ───────────────────────────
 
-/// `POST /flows/{id}/stop` — retire le tab du flow de l'artefact
-/// (reprojection sans lui) et attend l'ack `flow_stopped` avant de marquer
-/// la DB `stopped`. `deployed_version_id` est **conservé** (reprise sans
-/// rebuild via Start/Deploy). Garde-fous : 403 `can_write`, 404 hors-org,
-/// 409 si pas `deployed` ; 503 `flow-runtime` si le moteur n'acquitte pas
-/// (DB intacte — le flow tourne encore).
+/// `POST /flows/{id}/stop` — removes the flow's tab from the artifact
+/// (reprojection without it) and waits for the `flow_stopped` ack before marking
+/// the DB `stopped`. `deployed_version_id` is **kept** (resume without
+/// rebuild via Start/Deploy). Safeguards: 403 `can_write`, 404 out of org,
+/// 409 if not `deployed`; 503 `flow-runtime` if the engine does not acknowledge
+/// (DB intact — the flow is still running).
 #[utoipa::path(
     post,
     path = "/api/v1/flows/{id}/stop",
@@ -912,10 +912,10 @@ pub(super) async fn stop(
     .into_response())
 }
 
-/// Chemin d'arrêt partagé (stop + restart) : reprojection **excluant** le
-/// flow, meta du flow stoppé comme clé d'ack (piège de la meta vide —
-/// l'ack `flow_stopped` est keyé sur CE flow), puis marquage DB après
-/// acquittement seulement.
+/// Shared stop path (stop + restart): reprojection **excluding** the
+/// flow, meta of the stopped flow as ack key (empty meta trap —
+/// the `flow_stopped` ack is keyed on THIS flow), then DB marking after
+/// acknowledgement only.
 async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
     if flow.deployed_version_id.is_none() {
         return Err(conflict(
@@ -931,14 +931,14 @@ async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
     if !fn_violations.is_empty() {
         tracing::warn!(
             count = fn_violations.len(),
-            "stop flow #{} : références de fonctions non résolues (nœuds dégradés no-op, retrait poursuivi)",
+            "stop flow #{}: unresolved function references (no-op degraded nodes, removal continued)",
             flow.id
         );
     }
     if !skipped_tabs.is_empty() {
         tracing::warn!(
             tabs = skipped_tabs.len(),
-            "stop flow #{} : onglets au graphe illisible isolés (retrait poursuivi)",
+            "stop flow #{}: tabs with an unreadable graph isolated (removal continued)",
             flow.id
         );
     }
@@ -956,8 +956,8 @@ async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
     .await
     .map_err(flow_runtime_503)?;
 
-    // Succès : DB marquée **après** ack — un stop non acquitté laisse le
-    // flow déployé et en marche.
+    // Success: DB marked **after** ack — an unacknowledged stop leaves the
+    // flow deployed and running.
     let mut active: flows::ActiveModel = flow.into();
     active.status = Set(pnex_core::FLOW_STATUS_STOPPED.to_string());
     active
@@ -968,10 +968,10 @@ async fn stop_deployed(ctx: &AppContext, flow: flows::Model) -> Result<()> {
     Ok(())
 }
 
-/// `POST /flows/{id}/start` — reprend l'exécution d'un flow `stopped` en
-/// re-déployant **sa version déployée** (pas la dernière sauvegardée :
-/// Deploy, lui, monte la version fraîche). Garde-fous : 403 `can_write`,
-/// 404 hors-org, 409 si pas `stopped` ou jamais déployé.
+/// `POST /flows/{id}/start` — resumes the execution of a `stopped` flow by
+/// redeploying **its deployed version** (not the last saved one:
+/// Deploy mounts the fresh version). Safeguards: 403 `can_write`,
+/// 404 out of org, 409 if not `stopped` or never deployed.
 #[utoipa::path(
     post,
     path = "/api/v1/flows/{id}/start",
@@ -1016,9 +1016,9 @@ pub(super) async fn start(
     res
 }
 
-/// Chemin de reprise partagé (start + restart) : délègue à `deploy_version`
-/// sur la version **déployée** (l'override de `reproject_candidate` inclut
-/// le tab même hors statut `deployed` ; la DB repasse `deployed` après ack).
+/// Shared resume path (start + restart): delegates to `deploy_version`
+/// on the **deployed** version (the `reproject_candidate` override includes
+/// the tab even outside the `deployed` status; the DB goes back to `deployed` after ack).
 async fn start_stopped(ctx: AppContext, org: OrgContext, flow: flows::Model) -> Result<Response> {
     let Some(deployed_id) = flow.deployed_version_id else {
         return Err(conflict(
@@ -1044,10 +1044,10 @@ async fn start_stopped(ctx: AppContext, org: OrgContext, flow: flows::Model) -> 
     .await
 }
 
-/// `POST /flows/{id}/restart` — stop puis start chaînés (deux cycles de
-/// rechargement : le reload est un diff par hash, un tab identique ne
-/// swappe pas). Depuis `stopped`, Restart ≡ Start. Garde-fous : 403
-/// `can_write`, 404 hors-org, 409 si jamais déployé.
+/// `POST /flows/{id}/restart` — stop then start chained (two reload
+/// cycles: the reload is a diff by hash, an identical tab does not
+/// swap). From `stopped`, Restart ≡ Start. Safeguards: 403
+/// `can_write`, 404 out of org, 409 if never deployed.
 #[utoipa::path(
     post,
     path = "/api/v1/flows/{id}/restart",
@@ -1098,10 +1098,10 @@ pub(super) async fn restart(
 
 // ─────────────────────────── GET /flows/{id}/runtime ───────────────────────────
 
-/// `GET /flows/{id}/runtime` — santé du moteur (pid, vivant, rechargements)
-/// croisée avec **la version déployée de CE flow, lue en DB**
-/// (`flows.deployed_version_id`, posée uniquement quand le moteur a
-/// acquitté un deploy). 404 si le flow n'est pas de l'org.
+/// `GET /flows/{id}/runtime` — engine health (pid, alive, reloads)
+/// crossed with **THIS flow's deployed version, read from the DB**
+/// (`flows.deployed_version_id`, set only when the engine has
+/// acknowledged a deploy). 404 if the flow is not the org's.
 #[utoipa::path(
     get,
     path = "/api/v1/flows/{id}/runtime",
@@ -1125,19 +1125,19 @@ pub(super) async fn runtime(
         return Err(Error::NotFound);
     };
     let settings = FlowSettings::from_config(&ctx.config);
-    // Santé process × santé de l'engine de CE flow (événements `flow_*` du
-    // runtime), au prisme du flow demandé.
+    // Process health × health of THIS flow's engine (`flow_*` events of the
+    // runtime), through the lens of the requested flow.
     let mut status =
         crate::services::flow_cluster::runtime_status(&ctx.db, &ctx.config, flow.org_id, id).await;
     // The runtime process serves every flow of the org: alive does not mean
     // THIS flow runs once it is stopped (O60, green "Deployed" next to Start).
     status.running &= flow.status == pnex_core::FLOW_STATUS_DEPLOYED;
-    // Point de vue du flow : sa version déployée (DB) — jamais une version
-    // « globale » du moteur qui appartiendrait à un autre flow.
+    // The flow's point of view: its deployed version (DB) — never a "global"
+    // version of the engine that would belong to another flow.
     status.deployed_flow_id = Some(id);
     status.deployed_version_number = deployed_number_of(&ctx.db, flow.deployed_version_id).await?;
-    // Porte l'activation des outils de debug (mode dev/debug uniquement) :
-    // l'éditeur masque le panneau sans second endpoint.
+    // Carries the activation of the debug tools (dev/debug mode only):
+    // the editor hides the panel without a second endpoint.
     status.debug_tools = settings.debug_tools;
     // Multi-user awareness: the editor polls this endpoint and compares
     // these with what it loaded (version saved / status changed elsewhere).
@@ -1186,10 +1186,10 @@ pub(super) async fn node_status(
     .into_response())
 }
 
-/// `GET /flows/{id}/debug` — feed du panneau (100 dernières entrées du flow).
-/// Lecture seule (même niveau que `runtime`), 200 avec feed vide si le
-/// moteur est arrêté (un 503 rendrait le drawer inutilisable). Garde-fou :
-/// 403 hors mode dev/debug (`settings.flow.debug_tools`).
+/// `GET /flows/{id}/debug` — panel feed (last 100 entries of the flow).
+/// Read-only (same level as `runtime`), 200 with an empty feed if the
+/// engine is stopped (a 503 would make the drawer unusable). Safeguard:
+/// 403 outside dev/debug mode (`settings.flow.debug_tools`).
 #[utoipa::path(
     get,
     path = "/api/v1/flows/{id}/debug",

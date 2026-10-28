@@ -1,8 +1,8 @@
-//! Picker de fonctions du registre pour l'inspecteur de flows — liste de
-//! l'org (`api::functions::list`), au choix : fetch du détail (inputs/
-//! outputs de la version courante) puis callback parent (patch de la config
-//! du nœud : snapshot épinglé, ports du canevas générés depuis les
-//! déclarations).
+//! Registry function picker for the flow inspector — the org's
+//! list (`api::functions::list`), on choice: fetch the detail (inputs/
+//! outputs of the current version) then parent callback (patch of the
+//! node config: pinned snapshot, canvas ports generated from the
+//! declarations).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -11,9 +11,9 @@ use crate::api;
 use crate::components::ui::FIELD_LABEL;
 use crate::state::toasts;
 
-/// Sélection transmise au parent — tout ce qu'il faut pour patcher la config
-/// du nœud `PnexFunction` (snapshot de la version **courante** au moment du
-/// choix).
+/// Selection passed to the parent — everything needed to patch the config
+/// of the `PnexFunction` node (snapshot of the **current** version at the
+/// time of the choice).
 #[derive(Clone)]
 pub(crate) struct FunctionPick {
     pub(crate) id: i64,
@@ -44,7 +44,7 @@ pub(crate) fn FunctionPicker(
         async move { api::functions::list().await }
     });
 
-    // Labels i18n résolus hors rsx (piège FnMut des closures rsx).
+    // i18n labels resolved outside rsx (FnMut trap of rsx closures).
     let placeholder = t!("flows-inspector-function-pick-placeholder");
 
     let mut pick = move |summary: pnex_core::FunctionSummary| {

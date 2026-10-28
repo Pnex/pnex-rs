@@ -1,8 +1,8 @@
-//! Tests de la bibliothèque de widgets (D41) : CRUD mutable, unicité
-//! (org_id, name), validation de config (400 violations), isolation org
-//! (404 masqué), rôles (viewer lecture seule).
+//! Widget library tests (D41): mutable CRUD, (org_id, name)
+//! uniqueness, config validation (400 violations), org isolation
+//! (masked 404), roles (read-only viewer).
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -81,7 +81,7 @@ async fn cycle_crud_unicite_et_validation() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // ── Création.
+        // ── Creation.
         let created = server
             .post("/api/v1/viz/widgets")
             .add_header("Content-Type", "application/json")
@@ -99,7 +99,7 @@ async fn cycle_crud_unicite_et_validation() {
         assert_eq!(created["config"]["type"], "gauge");
         let id = created["id"].as_str().unwrap().to_string();
 
-        // ── Unicité (org_id, name) → 400 lisible.
+        // ── (org_id, name) uniqueness → readable 400.
         let dup = server
             .post("/api/v1/viz/widgets")
             .add_header("Content-Type", "application/json")
@@ -117,7 +117,7 @@ async fn cycle_crud_unicite_et_validation() {
             "unique"
         );
 
-        // ── kind ≠ config.type → 400 champ.
+        // ── kind ≠ config.type → field 400.
         let mismatch = server
             .post("/api/v1/viz/widgets")
             .add_header("Content-Type", "application/json")
@@ -135,7 +135,7 @@ async fn cycle_crud_unicite_et_validation() {
             "invalid"
         );
 
-        // ── Config invalide (source absente) → 400 violations.
+        // ── Invalid config (missing source) → 400 violations.
         let mut bad = gauge_config();
         bad["source"] = serde_json::json!([]);
         let invalid = server
@@ -150,7 +150,7 @@ async fn cycle_crud_unicite_et_validation() {
         assert_eq!(body["error"], "widget-invalid", "{body}");
         assert!(body["errors"]["violations"].is_array(), "{body}");
 
-        // ── PATCH : renommage + config (mutable, pas de versioning).
+        // ── PATCH: rename + config (mutable, no versioning).
         let mut cfg2 = gauge_config();
         cfg2["options"]["max"] = serde_json::json!(80.0);
         let updated = server
@@ -218,7 +218,7 @@ async fn cycle_crud_unicite_et_validation() {
         assert_eq!(body["error"], "request-invalid", "{body}");
         assert!(body["description"].as_str().is_some_and(|d| !d.is_empty()));
 
-        // ── Filtre kind dans la liste D14.
+        // ── Kind filter in the D14 list.
         let list = server
             .get("/api/v1/viz/widgets?kind=gauge")
             .add_header("Authorization", bearer(&env.alice))
@@ -234,7 +234,7 @@ async fn cycle_crud_unicite_et_validation() {
             .json::<serde_json::Value>();
         assert_eq!(list["count"], 0);
 
-        // ── DELETE : 204 puis 404.
+        // ── DELETE: 204 then 404.
         let deleted = server
             .delete(&format!("/api/v1/viz/widgets/{id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -272,7 +272,7 @@ async fn isolation_org_et_viewer() {
             .json::<serde_json::Value>();
         let id = created["id"].as_str().unwrap().to_string();
 
-        // ── Bob sur son org : la liste est vide, le détail est 404 masqué.
+        // ── Bob on his org: the list is empty, the detail is a masked 404.
         let list = server
             .get("/api/v1/viz/widgets")
             .add_header("Authorization", bearer(&env.bob))
@@ -293,7 +293,7 @@ async fn isolation_org_et_viewer() {
             .await;
         assert_eq!(cross_delete.status_code(), 404);
 
-        // ── Viewer de l'org : lit la bibliothèque, ne la modifie pas.
+        // ── Org viewer: reads the library, doesn't modify it.
         server
             .post(&format!("/api/v1/orgs/{org_a}/members"))
             .add_header("Content-Type", "application/json")

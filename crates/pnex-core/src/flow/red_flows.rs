@@ -6,21 +6,21 @@ use super::*;
 use crate::functions::{build_js_wrapper, FunctionLanguage, FunctionResolver};
 use crate::proto::SafeState;
 
-/// Projette le graphe typé PNEX vers les entrées Node-RED du `flows.json`
-/// (un tab + ses nœuds) consommées par le runtime EdgeLinkd headless.
-/// L'artefact complet = concaténation des projections de tous les flows
-/// déployés. Les métadonnées de version sont embarquées sur le tab et sur
-/// les nœuds custom (clés inconnues préservées par le désérialiseur).
+/// Projects the typed PNEX graph to the Node-RED entries of `flows.json`
+/// (one tab + its nodes) consumed by the headless EdgeLinkd runtime.
+/// The full artifact = concatenation of the projections of all deployed
+/// flows. Version metadata is embedded on the tab and on
+/// the custom nodes (unknown keys preserved by the deserializer).
 pub fn to_red_flows_json(g: &FlowGraph, meta: &FlowArtifactMeta) -> serde_json::Value {
     to_red_flows_json_with(g, meta, &FunctionResolver::new())
 }
 
-/// Projection avec résolveur de fonctions : les nœuds `PnexFunction` sont
-/// inline avec le CODE de la version épinglée (wrapper JS généré pour le
-/// nœud builtin `function` du vendor, code brut pour `pnex-starlark`).
-/// Référence manquante → entrée `comment` (no-op runtime) — le backend
-/// bloque en amont avec `function_unresolved` quand la ref n'est pas
-/// résoluble (la fonction reste totale, jamais de panic).
+/// Projection with a function resolver: the `PnexFunction` nodes are
+/// inlined with the CODE of the pinned version (generated JS wrapper for the
+/// vendor builtin `function` node, raw code for `pnex-starlark`).
+/// Missing reference → `comment` entry (runtime no-op) — the backend
+/// blocks upstream with `function_unresolved` when the ref cannot be
+/// resolved (the function stays total, never a panic).
 pub fn to_red_flows_json_with(
     g: &FlowGraph,
     meta: &FlowArtifactMeta,
@@ -43,8 +43,8 @@ pub fn to_red_flows_json_with(
         let mut e = match &n.kind {
             FlowNodeKind::Inject { config } => inject_entry(config),
             FlowNodeKind::DeviceRead { config } => {
-                // Un port par pin + le port final « nom du device » : pad les
-                // wires au nombre de ports (école fonction multi-sorties).
+                // One port per pin + the final "device name" port: pad the
+                // wires to the port count (multi-output function school).
                 padded_ports = Some(config.pins.len() + 1);
                 serde_json::json!({
                     "type": "pnex-device-read",
@@ -54,8 +54,8 @@ pub fn to_red_flows_json_with(
                     "pnex_flow_id": meta.flow_id,
                     "pnex_version": meta.version_number,
                     "pnex_org_id": meta.org_id,
-                    // Identifiant O2 réel (pas un schéma déduit de l'id DB) :
-                    // consommé par le nœud runtime pour ses lectures.
+                    // Real O2 identifier (not a schema derived from the DB id):
+                    // consumed by the runtime node for its reads.
                     "pnex_o2_org": meta.o2_org,
                 })
             }
@@ -477,16 +477,16 @@ pub fn to_red_flows_json_with(
             }
             FlowNodeKind::PnexNotify { config } => serde_json::json!({
                 "type": "pnex-notify",
-                // Références brutes : le snapshot (canaux + template
-                // résolus) est estampé au deploy par le backend
-                // (`pnex_notify_channels` / `pnex_notify_template`), pas ici.
+                // Raw references: the snapshot (resolved channels + template)
+                // is stamped at deploy by the backend
+                // (`pnex_notify_channels` / `pnex_notify_template`), not here.
                 "channel_ids": config.channel_ids,
                 "template_id": config.template_id,
                 "strict": config.strict,
                 "vars": config.vars,
-                // Vars stampées au pick — trace de câblage côté deploy
-                // (drift template_changed) ; le runtime, lui, lit les vars
-                // du snapshot `pnex_notify_template`.
+                // Vars stamped at pick time — wiring trace on the deploy side
+                // (template_changed drift); the runtime itself reads the vars
+                // of the `pnex_notify_template` snapshot.
                 "template_vars": config.template_vars,
                 "anti_spam": config.anti_spam,
                 "attach_field": config.attach_field,
@@ -526,8 +526,8 @@ pub fn to_red_flows_json_with(
                 let out_count = snap
                     .map(|s| FunctionLanguage::output_count(&s.outputs))
                     .unwrap_or(1);
-                // Multi-sorties partiellement câblé : le vendor indexe le
-                // retour par port — pad les wires au nombre de ports.
+                // Partially wired multi-output: the vendor indexes the
+                // return value by port — pad the wires to the port count.
                 padded_ports = Some(out_count);
                 match snap {
                     Some(s) => match s.language {
@@ -554,13 +554,13 @@ pub fn to_red_flows_json_with(
                             "pnex_function_version": config.version_number,
                         }),
                     },
-                    // Snapshot absent (fonction/version supprimée malgré le
-                    // delete-guard) : le backend bloque le deploy en amont ;
-                    // ici on émet un no-op pour rester total (jamais de panic).
+                    // Snapshot missing (function/version deleted despite the
+                    // delete-guard): the backend blocks the deploy upstream;
+                    // here we emit a no-op to stay total (never a panic).
                     None => serde_json::json!({
                         "type": "comment",
                         "name": format!(
-                            "fonction introuvable : #{} v{}",
+                            "function not found: #{} v{}",
                             config.function_id, config.version_number
                         ),
                     }),
@@ -575,17 +575,17 @@ pub fn to_red_flows_json_with(
             }),
             FlowNodeKind::Display { .. } => serde_json::json!({
                 "type": "pnex-display",
-                // Identité estampillée par la projection : l'id canvas brut
-                // ("n3") est la clé de rattachement panneau/badge, et la
-                // traçabilité estampille le nœud comme les autres customs.
+                // Identity stamped by the projection: the raw canvas id
+                // ("n3") is the panel/badge attachment key, and
+                // traceability stamps the node like the other customs.
                 "pnex_node_id": n.id,
                 "pnex_flow_id": meta.flow_id,
                 "pnex_version": meta.version_number,
                 "pnex_org_id": meta.org_id,
             }),
             FlowNodeKind::JsonSplit { config } => {
-                // Un port par clé déclarée (legacy zéro clé = 1 port) : pad
-                // les wires au nombre de ports (école multi-sorties).
+                // One port per declared key (legacy zero keys = 1 port): pad
+                // the wires to the port count (multi-output school).
                 padded_ports = Some(config.keys.len().max(1));
                 serde_json::json!({
                     "type": "function",
@@ -611,16 +611,16 @@ pub fn to_red_flows_json_with(
             FlowNodeKind::RegPid { config } => reg_pid_entry("pnex-reg-pid", n, meta, config),
         };
 
-        // Ids uniques dans l'artefact multi-flows : l'éditeur génère des ids
-        // courts par flow ("n1"…) et deux flows déployés peuvent entrer en
-        // collision (deux "n1" → le runtime ne retrouve plus ses nœuds et
-        // refuse l'artefact entier). Le préfixe par tab rend l'id globalement
-        // unique ; `pnex_node_id` garde l'id canvas brut (rattachement du
-        // panneau debug) et l'attribution runtime le dé-préfixe.
+        // Unique ids in the multi-flow artifact: the editor generates short
+        // ids per flow ("n1"…) and two deployed flows can
+        // collide (two "n1" → the runtime no longer finds its nodes and
+        // rejects the whole artifact). The per-tab prefix makes the id globally
+        // unique; `pnex_node_id` keeps the raw canvas id (debug panel
+        // attachment) and runtime attribution un-prefixes it.
         let node_id = format!("{tab_id}_{}", n.id);
         let wires = prefixed_wires(&wires, &tab_id);
         {
-            let obj = e.as_object_mut().expect("entrée flows.json");
+            let obj = e.as_object_mut().expect("flows.json entry");
             obj.insert("id".into(), serde_json::Value::String(node_id));
             obj.insert("z".into(), serde_json::Value::String(tab_id.clone()));
             if let Some(name) = &n.name {
@@ -632,11 +632,11 @@ pub fn to_red_flows_json_with(
             }
             obj.insert("wires".into(), wires);
         }
-        // Fonction multi-sorties partiellement câblée : complète le tableau
-        // `wires` au nombre de ports déclarés (le vendor indexe le retour
-        // par port — un tableau court ferait perdre les ports de queue).
+        // Partially wired multi-output function: completes the `wires`
+        // array to the declared port count (the vendor indexes the return value
+        // by port — a short array would lose the trailing ports).
         if let Some(min_ports) = padded_ports {
-            let obj = e.as_object_mut().expect("entrée flows.json");
+            let obj = e.as_object_mut().expect("flows.json entry");
             let current = obj
                 .get("wires")
                 .cloned()
@@ -656,7 +656,7 @@ pub fn to_red_flows_json_with(
 /// `PnexFunction`, or a picked template var for a `PnexNotify`), the
 /// projection retargets the wire to a generated **tagger** node that stamps
 /// `msg.topic` with the anchor name and forwards to the target node — the
-/// wrapper/exécuteur then feeds `inputs.<name>` from the arriving payload
+/// wrapper/executor then feeds `inputs.<name>` from the arriving payload
 /// (topic match, see `build_inputs`; the notify node fills the matching
 /// template var the same way). Wires without a matching annotation
 /// keep the direct wiring (legacy `payload.<name>` resolution).
@@ -730,8 +730,8 @@ fn routed_wires(
                 "type": "function",
                 "func": crate::functions::build_input_tag_func(pin),
                 "outputs": 1,
-                // Le tagger redresse vers le nœud fonction (id d'artefact
-                // préfixé, cf. préfixage des ids de nœuds plus bas).
+                // The tagger points back to the function node (prefixed artifact
+                // id, see the node id prefixing below).
                 "wires": [[format!("{tab_id}_{target_id}")]],
                 "pnex_node_id": target_id,
                 "pnex_flow_id": meta.flow_id,
@@ -744,9 +744,9 @@ fn routed_wires(
     (wires, taggers)
 }
 
-/// Préfixe chaque id cible d'un tableau `wires` Node-RED avec l'id du tab
-/// (miroir du préfixage des `id` de nœuds — les deux doivent rester
-/// cohérents).
+/// Prefixes each target id of a Node-RED `wires` array with the tab id
+/// (mirror of the node `id` prefixing — both must stay
+/// consistent).
 fn prefixed_wires(wires: &serde_json::Value, tab_id: &str) -> serde_json::Value {
     match wires {
         serde_json::Value::Array(ports) => serde_json::Value::Array(
@@ -772,8 +772,8 @@ fn prefixed_wires(wires: &serde_json::Value, tab_id: &str) -> serde_json::Value 
     }
 }
 
-/// Complète un tableau `wires` Node-RED jusqu'à `min_ports` entrées avec
-/// des ports vides (`[]`) — nœud multi-sorties partiellement câblé.
+/// Pads a Node-RED `wires` array up to `min_ports` entries with
+/// empty ports (`[]`) — partially wired multi-output node.
 fn pad_wires(v: serde_json::Value, min_ports: usize) -> serde_json::Value {
     match v {
         serde_json::Value::Array(mut ports) => {
@@ -786,7 +786,7 @@ fn pad_wires(v: serde_json::Value, min_ports: usize) -> serde_json::Value {
     }
 }
 
-/// Construit le tableau `wires` Node-RED : `wires[port] = [ids cibles]`.
+/// Builds the Node-RED `wires` array: `wires[port] = [target ids]`.
 fn wires_of(n: &FlowNode) -> serde_json::Value {
     let max_port = n
         .outputs
@@ -810,23 +810,23 @@ fn inject_entry(c: &InjectConfig) -> serde_json::Value {
         "props": [{"p": "payload"}],
     });
     let obj = e.as_object_mut().expect("inject entry");
-    // EdgeLinkd hérite les props legacy (`props[].v` = valeur chaîne) : la clé
-    // `payload` doit toujours exister — une chaîne vide suffit au mode `date`.
+    // EdgeLinkd inherits the legacy props (`props[].v` = string value): the
+    // `payload` key must always exist — an empty string is enough for `date` mode.
     match c.payload {
         serde_json::Value::Null => {
             obj.insert("payloadType".into(), serde_json::json!("date"));
             obj.insert("payload".into(), serde_json::json!(""));
         }
         ref p => {
-            // EdgeLinkd évalue `props[].v` comme chaîne : le payload JSON est
-            // encodé en chaîne (vt "json") pour être re-parsé à l'exécution.
+            // EdgeLinkd evaluates `props[].v` as a string: the JSON payload is
+            // encoded as a string (vt "json") to be re-parsed at execution.
             obj.insert("payloadType".into(), serde_json::json!("json"));
             obj.insert("payload".into(), serde_json::json!(p.to_string()));
         }
     }
     if let Some(t) = &c.topic {
-        // La prop `topic` n'est émise que si un topic existe : sans `v`, le
-        // désérialiseur EdgeLinkd rejetterait la valeur nulle.
+        // The `topic` prop is only emitted if a topic exists: without `v`, the
+        // EdgeLinkd deserializer would reject the null value.
         if let Some(props) = obj.get_mut("props").and_then(|p| p.as_array_mut()) {
             props.push(serde_json::json!({"p": "topic", "vt": "str", "v": t}));
         }
@@ -845,10 +845,10 @@ fn inject_entry(c: &InjectConfig) -> serde_json::Value {
     e
 }
 
-/// Champs communs d'une entrée de carte de régulation projetée : type custom
-/// (`pnex-reg-*`), liaison (device + labels de pins), paramètres temporels,
-/// estampillage de traçabilité (`pnex_node_id` = id canvas brut, clé du
-/// `ControlSpec` fil).
+/// Common fields of a projected control card entry: custom type
+/// (`pnex-reg-*`), binding (device + pin labels), time parameters,
+/// traceability stamping (`pnex_node_id` = raw canvas id, key of the
+/// wire `ControlSpec`).
 #[allow(clippy::too_many_arguments)]
 fn reg_common_entry(
     type_name: &str,
@@ -878,8 +878,8 @@ fn reg_common_entry(
     })
 }
 
-/// Entrée projetée d'une carte tout-ou-rien (chauffage/clim — le type encode
-/// le sens) : le deadband et les anti court-cycles complètent la base.
+/// Projected entry of an on/off card (heating/cooling — the type encodes
+/// the direction): the deadband and the anti short-cycling complete the base.
 fn reg_tt_entry(
     type_name: &str,
     n: &FlowNode,
@@ -898,14 +898,14 @@ fn reg_tt_entry(
         c.data_timeout_secs,
         c.safe_state,
     );
-    let obj = e.as_object_mut().expect("entrée flows.json");
+    let obj = e.as_object_mut().expect("flows.json entry");
     obj.insert("deadband".into(), serde_json::json!(c.deadband));
     obj.insert("min_on_secs".into(), serde_json::json!(c.min_on_secs));
     obj.insert("min_off_secs".into(), serde_json::json!(c.min_off_secs));
     e
 }
 
-/// Entrée projetée d'une carte PID : gains + cycle relais complètent la base.
+/// Projected entry of a PID card: gains + relay cycle complete the base.
 fn reg_pid_entry(
     type_name: &str,
     n: &FlowNode,
@@ -924,7 +924,7 @@ fn reg_pid_entry(
         c.data_timeout_secs,
         c.safe_state,
     );
-    let obj = e.as_object_mut().expect("entrée flows.json");
+    let obj = e.as_object_mut().expect("flows.json entry");
     obj.insert("kp".into(), serde_json::json!(c.kp));
     obj.insert("ki".into(), serde_json::json!(c.ki));
     obj.insert("kd".into(), serde_json::json!(c.kd));

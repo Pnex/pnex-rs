@@ -3,9 +3,9 @@
 //! turn with the tool loop (flow created as a draft, NEVER deployed),
 //! forbidden tools refused, provider errors.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
-//! Le LLM est un **mock HTTP local** (`spawn_mock_llm`) : script de
-//! réponses + enregistrement des requêtes (pattern `spawn_mock_o2`).
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
+//! The LLM is a **local HTTP mock** (`spawn_mock_llm`): scripted replies +
+//! request recording (`spawn_mock_o2` pattern).
 
 mod common;
 
@@ -273,7 +273,7 @@ async fn send_in(
 
 // ─────────────────────────── Tests ───────────────────────────
 
-/// (1) Kill-switch OFF → status enabled:false, chat 403, aucune requête au mock LLM.
+/// (1) Kill-switch OFF → status enabled:false, chat 403, no request to the mock LLM.
 #[tokio::test]
 #[serial]
 async fn kill_switch_coupe_tout() {
@@ -294,7 +294,7 @@ async fn kill_switch_coupe_tout() {
         assert_eq!(resp.status_code(), 403, "{}", resp.text());
         assert!(
             mock_requests().is_empty(),
-            "aucune requête ne doit atteindre le mock LLM"
+            "no request must reach the mock LLM"
         );
     })
     .await;
@@ -595,8 +595,8 @@ fn graph_adc_metric() -> serde_json::Value {
     })
 }
 
-/// (5) Tour complet : tool_use create_flow → flow en DRAFT v1, AUCUN
-/// deploy, le 2e appel LLM porte le tool_result.
+/// (5) Full turn: tool_use create_flow → flow in DRAFT v1, NO
+/// deploy, the 2nd LLM call carries the tool_result.
 #[tokio::test]
 #[serial]
 async fn tour_complet_cree_un_flow_sans_deployer() {
@@ -625,7 +625,7 @@ async fn tour_complet_cree_un_flow_sans_deployer() {
         assert_eq!(body["tool_trace"][0]["name"], "create_flow");
         assert!(
             body["tool_trace"][0]["flow_id"].as_i64().is_some(),
-            "trace porte le flow_id (deep link)"
+            "trace carries the flow_id (deep link)"
         );
 
         let flows_list = server
@@ -639,7 +639,7 @@ async fn tour_complet_cree_un_flow_sans_deployer() {
         assert_eq!(flows_list["results"][0]["latest_version_number"], 1);
 
         let reqs = mock_requests();
-        assert_eq!(reqs.len(), 2, "2 appels LLM attendus, reçu {}", reqs.len());
+        assert_eq!(reqs.len(), 2, "2 LLM calls expected, got {}", reqs.len());
         let roles: Vec<&str> = reqs[1]["messages"]
             .as_array()
             .expect("messages")
@@ -648,13 +648,13 @@ async fn tour_complet_cree_un_flow_sans_deployer() {
             .collect();
         assert!(
             roles.contains(&"tool"),
-            "le 2e appel doit contenir le tool_result: {roles:?}"
+            "the 2nd call must contain the tool_result: {roles:?}"
         );
     })
     .await;
 }
 
-/// (6) L'agent demande un outil interdit → ok:false, flow jamais déployé.
+/// (6) The agent asks for a forbidden tool → ok:false, flow never deployed.
 #[tokio::test]
 #[serial]
 async fn l_agent_ne_peut_pas_deployer() {
@@ -662,7 +662,7 @@ async fn l_agent_ne_peut_pas_deployer() {
         let org = personal_org(&server, &env.alice).await;
         reset_mock();
 
-        // Un flow existe d'abord (créé via l'API humaine).
+        // A flow exists first (created through the human API).
         let created = server
             .post("/api/v1/flows")
             .add_header("Authorization", bearer(&env.alice))
@@ -694,7 +694,7 @@ async fn l_agent_ne_peut_pas_deployer() {
             .unwrap_or_default();
         assert!(summary.contains("unknown tool"), "{summary}");
 
-        // Le flow reste DRAFT (jamais déployé).
+        // The flow stays DRAFT (never deployed).
         let detail = server
             .get(&format!("/api/v1/flows/{flow_id}"))
             .add_header("Authorization", bearer(&env.alice))
@@ -813,7 +813,7 @@ async fn update_flow_only_on_a_stopped_flow() {
     .await;
 }
 
-/// (7) Fournisseur 401 → 502 avec message actionnable.
+/// (7) Provider 401 → 502 with an actionable message.
 #[tokio::test]
 #[serial]
 async fn echec_auth_repond_actionnable() {
@@ -898,7 +898,7 @@ async fn borne_iterations_force_la_reponse_finale() {
         assert_eq!(trace[0]["summary"], "valid expression", "{body}");
         assert!(
             !body["answer"].as_str().unwrap_or_default().is_empty(),
-            "une réponse textuelle finale est forcée: {body}"
+            "a final text answer is forced: {body}"
         );
     })
     .await;

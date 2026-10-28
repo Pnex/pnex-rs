@@ -1,10 +1,10 @@
-//! Panneau « Pins » des devices génériques (Brick 0, brick0.md §7).
+//! "Pins" panel of generic devices (Brick 0, brick0.md §7).
 //!
-//! Grille des pins depuis `GET /devices/{id}/pins` (polling 15 s — pattern
-//! dashboard), selects mode/safe-state + toggles write + cadences de
-//! lecture : chaque action est un POST /commands **manuel** (D17 — bouton,
-//! jamais d'automatisme serveur), validée par chip-caps côté backend avant
-//! push (400 + raison relayée en toast).
+//! Pin grid from `GET /devices/{id}/pins` (15 s polling — dashboard
+//! pattern), mode/safe-state selects + write toggles + read
+//! cadences: each action is a **manual** POST /commands (D17 — button,
+//! never server automation), validated by chip-caps on the backend before
+//! push (400 + reason relayed in a toast).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -16,8 +16,8 @@ use crate::state::toasts;
 use crate::util::sleep;
 use std::time::Duration;
 
-/// Un pin affiché : données GET /pins + sélections locales (effectives).
-/// Pub(crate) : réutilisée comme panneau de configuration par l'éditeur SVG
+/// A displayed pin: GET /pins data + local (effective) selections.
+/// Pub(crate): reused as configuration panel by the SVG editor
 /// (board_pinout_editor).
 #[component]
 pub(crate) fn PinCard(
@@ -27,21 +27,21 @@ pub(crate) fn PinCard(
     can_write: bool,
     on_changed: Callback<()>,
 ) -> Element {
-    // Valeurs effectives : le select AFFICHE sa sélection (piège des
-    // selects contrôlés — leçon visualisation 2026-08-19).
+    // Effective values: the select SHOWS its selection (controlled
+    // selects trap — visualisation lesson 2026-08-19).
     let mode_init = pin.mode.clone();
     let safe_init = pin.safe_state.clone();
     let mut mode_sel = use_signal(move || mode_init);
     let mut safe_sel = use_signal(move || safe_init);
-    // Cadence effective (persistée en base, re-poussée au device après
-    // chaque reconnexion) — le select affiche l'état réel, pas « manuel ».
+    // Effective cadence (persisted in the database, re-pushed to the device after
+    // each reconnection) — the select shows the real state, not "manual".
     let interval_init = pin.interval_ms.unwrap_or(0).to_string();
     let mut interval_sel = use_signal(move || interval_init);
     let mut busy = use_signal(|| false);
 
-    // Garde « config device ↔ flows déployés » : la commande set_mode
-    // refusée 409 stocke la liste des flows, le modal propose l'arrêt
-    // confirmé puis ré-envoie avec `confirm_stop_flows: true`.
+    // "device config ↔ deployed flows" guard: the set_mode command
+    // refused with 409 stores the list of flows, the modal offers the confirmed
+    // stop then re-sends with `confirm_stop_flows: true`.
     let mut conflict_flows = use_signal(Vec::<String>::new);
     let mut pending_cmd = use_signal(|| None::<api::pins::Command>);
 
@@ -97,7 +97,7 @@ pub(crate) fn PinCard(
         None => "—".into(),
     };
 
-    // Toggle digital_out : libellé = action suivante (HIGH ↔ LOW).
+    // digital_out toggle: label = next action (HIGH ↔ LOW).
     let (toggle_label, toggle_class) = match pin.last_value {
         Some(serde_json::Value::Bool(true)) => {
             (t!("pins-write-low"), "bg-red-600 hover:bg-red-700")
@@ -105,10 +105,10 @@ pub(crate) fn PinCard(
         _ => (t!("pins-write-high"), "bg-green-600 hover:bg-green-700"),
     };
 
-    // Envoi d'une commande (busy + toast erreur relayée + refresh parent).
+    // Sends a command (busy + relayed error toast + parent refresh).
     let mut send = move |cmd: api::pins::Command| {
         if cmd.op == "set_mode" {
-            // Mémorisé pour le re-envoi confirmé du modal (confirm flag).
+            // Remembered for the modal's confirmed re-send (confirm flag).
             pending_cmd.set(Some(cmd.clone()));
         }
         busy.set(true);
@@ -118,8 +118,8 @@ pub(crate) fn PinCard(
             busy.set(false);
             match outcome {
                 Ok(api::pins::CommandOutcome::Sent(body)) => {
-                    // Un set_mode peut avoir arrêté des flows déployés lisant
-                    // ce pin (Phase 6) — l'utilisateur est prévenu explicitement.
+                    // A set_mode may have stopped deployed flows reading
+                    // this pin (Phase 6) — the user is told explicitly.
                     if let Some(impacts) = body["flow_impacts"].as_array() {
                         let names: Vec<String> = impacts
                             .iter()
@@ -131,7 +131,7 @@ pub(crate) fn PinCard(
                             );
                         }
                     }
-                    // L'état remonte par StateReport → visible au prochain poll.
+                    // The state comes back via StateReport → visible at the next poll.
                     sleep(Duration::from_millis(300)).await;
                     on_changed.call(());
                 }
@@ -145,9 +145,9 @@ pub(crate) fn PinCard(
 
     rsx! {
         div { class: if connected { "rounded-lg border border-gray-200 p-4 space-y-3" } else { "rounded-lg border border-gray-200 p-4 space-y-3 opacity-90" },
-            // Lecture seule explicite quand le device est offline : les
-            // contrôles sont déjà désactivés (`disabled: busy() || !connected`),
-            // le bandeau dit pourquoi.
+            // Explicit read-only when the device is offline: the
+            // controls are already disabled (`disabled: busy() || !connected`),
+            // the banner says why.
             if !connected {
                 div { class: "flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800",
                     span { class: "mt-0.5 shrink-0", {"ℹ"} }
@@ -162,7 +162,7 @@ pub(crate) fn PinCard(
                 span { class: "{role_class}", {role_label(&pin.role)} }
             }
 
-            // Dernière valeur (mémoire de session — « — » si offline).
+            // Last value (session memory — "—" if offline).
             div { class: "flex items-center justify-between text-sm",
                 span { class: "text-gray-500", {t!("pins-last-value")} }
                 span { class: "font-mono font-semibold text-gray-900", {last_label} }
@@ -219,7 +219,7 @@ pub(crate) fn PinCard(
                 }
             }
 
-            // Appliquer mode + safe-state (set_mode manuel).
+            // Apply mode + safe-state (manual set_mode).
             if is_configurable && can_write {
                 button {
                     class: "w-full px-3 py-1.5 text-xs font-medium text-signal-700 border border-signal-200 rounded-lg hover:bg-signal-50 transition-colors",
@@ -248,9 +248,9 @@ pub(crate) fn PinCard(
                 }
             }
 
-            // Actions par rôle.
+            // Actions per role.
             div { class: "flex flex-wrap items-center gap-2",
-                // digital_out : toggle HIGH/LOW (write manuel, D17).
+                // digital_out: toggle HIGH/LOW (manual write, D17).
                 if is_output && can_write {
                     {
                         let next_high = !matches!(pin.last_value, Some(serde_json::Value::Bool(true)));
@@ -273,7 +273,7 @@ pub(crate) fn PinCard(
                         }
                     }
                 }
-                // pwm_out : duty 0-100 (write manuel).
+                // pwm_out: duty 0-100 (manual write).
                 if is_pwm && can_write {
                     {
                         let duty_init = match pin.last_value {
@@ -300,7 +300,7 @@ pub(crate) fn PinCard(
                         {t!("pins-reserved-by-flow", flow : reserved_names)}
                     }
                 }
-                // Input (digital_in/analog_in) : cadence de lecture.
+                // Input (digital_in/analog_in): read cadence.
                 if !is_output && can_write {
                     // Visible label, not aria-label only (O49).
                     label { class: "inline-flex items-center gap-1.5 text-xs text-slate",
@@ -355,9 +355,9 @@ pub(crate) fn PinCard(
                     }
                 }
             }
-            // Garde « arrêter les flows puis appliquer » : liste des flows
-            // déployés touchés + confirmation explicite (jamais d'arrêt
-            // silencieux).
+            // "stop the flows then apply" guard: list of the affected deployed
+            // flows + explicit confirmation (never a silent
+            // stop).
             if !conflict_flows.cloned().is_empty() {
                 Modal {
                     title: t!("pins-flows-conflict-title").to_string(),
@@ -467,7 +467,7 @@ fn DutyControl(
     }
 }
 
-/// Libellé du rôle dérivé (sensor/actuator — B0.6, pas de colonne role).
+/// Label of the derived role (sensor/actuator — B0.6, no role column).
 fn role_label(role: &str) -> String {
     if role == "actuator" {
         t!("pins-role-actuator")
@@ -487,7 +487,7 @@ fn mode_label(mode: &str) -> String {
     }
 }
 
-/// Panneau complet : polling 15 s (pattern dashboard), carte par pin.
+/// Full panel: 15 s polling (dashboard pattern), one card per pin.
 #[component]
 pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
     const POLL_SECS: u64 = 15;
@@ -498,7 +498,7 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
         api::pins::pins(device_pk).await
     });
 
-    // Polling auto-entretenu tant que le panneau est monté.
+    // Self-sustained polling while the panel is mounted.
     let mut polling = use_signal(|| false);
     if !polling() {
         polling.set(true);
@@ -510,19 +510,19 @@ pub fn PinsPanel(device_pk: i64, can_write: bool) -> Element {
     }
 
     let data = match pins.value().read().as_ref() {
-        // pending → rien ; erreur → dégradation silencieuse (le device
-        // n'est peut-être pas générique : le panneau n'est rendu que là).
+        // pending → nothing; error → silent degradation (the device
+        // may not be generic: the panel is only rendered there).
         Some(Err(_)) | None => None,
         Some(Ok(response)) => Some(response.clone()),
     };
     let connected = data.as_ref().is_some_and(|d| d.connected);
     let list = data.map(|d| d.pins).unwrap_or_default();
     let on_changed = Callback::new(move |_: ()| reload.with_mut(|r| *r += 1));
-    // Alerte « rien ne publiera » : device connecté avec des pins en entrée
-    // mais aucune souscription (interval) — le firmware générique ne publie
-    // que les pins souscrits, les flows qui lisent ces pins liront du vide
-    // (payload `{}`) sans autre symptôme. Les pins en sortie sont exclus :
-    // pas de souscription attendue.
+    // "nothing will publish" alert: device connected with input pins
+    // but no subscription (interval) — the generic firmware only publishes
+    // subscribed pins, flows reading these pins will read nothing
+    // (payload `{}`) without any other symptom. Output pins are excluded:
+    // no subscription expected.
     let input_pins = list.iter().filter(|p| !p.mode.ends_with("_out")).count();
     let subscribed_inputs = list
         .iter()

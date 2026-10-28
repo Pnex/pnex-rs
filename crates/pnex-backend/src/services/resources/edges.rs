@@ -1,8 +1,8 @@
-//! Edges de la couche d'organisation (D42) — liens croisés many-to-many,
-//! chaque arête porte son `placement` (opaque pour le moteur, structuré par
-//! relation). Absorbe `viz_links` (D39 → D42) : la validité
-//! `relation × source × cible` est déclarée **par le kind source** (spec),
-//! l'existence+tenancy des deux bouts passe par le **registre**.
+//! Edges of the organisation layer (D42) — many-to-many cross links,
+//! each edge carries its `placement` (opaque to the engine, structured per
+//! relation). Absorbs `viz_links` (D39 → D42): the
+//! `relation × source × target` validity is declared **by the source kind**
+//! (spec), existence+tenancy of both ends goes through the **registry**.
 
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, QueryOrder,
@@ -14,13 +14,13 @@ use crate::models::_entities::resource_edges;
 use crate::services::resources::registry;
 use crate::services::resources::ResourceError;
 
-/// Cap de taille du placement (JSON sérialisé) — une coordonnée/hotspot,
-/// pas un document.
+/// Size cap of the placement (serialized JSON) — a coordinate/hotspot,
+/// not a document.
 const PLACEMENT_MAX_BYTES: usize = 4096;
 
-/// Validation moteur : `placement` = objet JSON borné. La structure fine
-/// (hotspot, coords, overrides) est affaire de la relation/du kind — le
-/// moteur reste générique.
+/// Engine validation: `placement` = bounded JSON object. The fine structure
+/// (hotspot, coords, overrides) is up to the relation/kind — the engine
+/// stays generic.
 pub fn validate_placement(placement: &Value) -> Result<(), ResourceError> {
     if !placement.is_object() {
         return Err(ResourceError::PlacementInvalid);
@@ -47,8 +47,8 @@ pub async fn find_edge(
         .await
 }
 
-/// Arêtes filtrées (tous critères optionnels) — listes API + hydratation
-/// batch des POI (école `links_for_sources`).
+/// Filtered edges (all criteria optional) — API lists + batch hydration
+/// of POIs (`links_for_sources` pattern).
 pub async fn list_edges(
     db: &DatabaseConnection,
     org_id: i64,
@@ -76,9 +76,9 @@ pub async fn list_edges(
     q.all(db).await
 }
 
-/// Crée une arête : validité déclarée par le kind **source**, existence +
-/// tenancy des deux bouts par le registre, doublon → 409. Signature bas
-/// niveau assumée (API moteur générique — `#[allow]` documenté).
+/// Creates an edge: validity declared by the **source** kind, existence +
+/// tenancy of both ends via the registry, duplicate → 409. Deliberately
+/// low-level signature (generic engine API — documented `#[allow]`).
 #[allow(clippy::too_many_arguments)]
 pub async fn create_edge(
     db: &DatabaseConnection,
@@ -93,7 +93,7 @@ pub async fn create_edge(
     let reg = registry::for_org(db, org_id)
         .await
         .map_err(|_| ResourceError::Db)?;
-    // La validité est UNE question posée au registre — jamais de match ici.
+    // Validity is ONE question asked of the registry — never a match here.
     if !reg.allows_relation(relation, source_kind, target_kind) {
         return Err(ResourceError::RelationInvalid);
     }
@@ -114,7 +114,7 @@ pub async fn create_edge(
         validate_placement(p)?;
     }
 
-    // Doublon (index unique) → 409 propre plutôt qu'un Db opaque.
+    // Duplicate (unique index) → clean 409 rather than an opaque Db error.
     let dup = list_edges(
         db,
         org_id,
@@ -141,7 +141,7 @@ pub async fn create_edge(
     am.insert(db).await.map_err(|_| ResourceError::Db)
 }
 
-/// PATCH placement d'une arête existante.
+/// PATCH the placement of an existing edge.
 pub async fn update_placement(
     db: &DatabaseConnection,
     org_id: i64,

@@ -1,22 +1,22 @@
-//! Dashboards du studio SCADA (D24/D40/D41) — CRUD versionné, scoping
-//! org (D2), pluriel (`/api/v1/dashboards`) pour ne pas confondre avec
-//! `/api/v1/dashboard` (singulier = résumé télémétrie existant).
+//! SCADA studio dashboards (D24/D40/D41) — versioned CRUD, org
+//! scoping (D2), plural (`/api/v1/dashboards`) so as not to be confused with
+//! `/api/v1/dashboard` (singular = existing telemetry summary).
 //!
-//! Contrat versioning (école `flows.rs`, adapté D24) :
-//! - `PATCH /{id}` = **save** : insère une version (append-only) **et**
-//!   suit le pointeur `current_version_number` — save = live, pas de
-//!   publish séparé en V1 ;
-//! - concurrence optimiste : `expected_version_number` vise la version
-//!   **courante** (le pointeur), un save/restauration concurrent est
-//!   rejeté **409** (écart assumé vs la convention 400 du repo) ;
-//! - `POST /{id}/versions/{n}/restore` = re-positionne le pointeur
-//!   (école media) — n'insère rien ;
-//! - zéro runtime à acquitter : le « deploy » d'un dashboard est un
-//!   swap de pointeur en base, les viewers le lisent au prochain polling.
+//! Versioning contract (`flows.rs` school, adapted D24):
+//! - `PATCH /{id}` = **save**: inserts a version (append-only) **and**
+//!   moves the `current_version_number` pointer — save = live, no
+//!   separate publish in V1;
+//! - optimistic concurrency: `expected_version_number` targets the
+//!   **current** version (the pointer), a concurrent save/restore is
+//!   rejected **409** (deliberate deviation from the repo's 400 convention);
+//! - `POST /{id}/versions/{n}/restore` = repositions the pointer
+//!   (media school) — inserts nothing;
+//! - no runtime to acknowledge: a dashboard "deploy" is a
+//!   pointer swap in the database, viewers read it at the next poll.
 //!
-//! Erreurs : 400 champ-par-champ `{"<champ>": ...}` ; violations de
-//! layout en 400 `{"violations": [...]}` ; 409 via `Error::CustomError`
-//! (patron `orgs.rs::conflict`).
+//! Errors: 400 field by field `{"<field>": ...}`; layout
+//! violations as 400 `{"violations": [...]}`; 409 via `Error::CustomError`
+//! (`orgs.rs::conflict` pattern).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -41,7 +41,7 @@ use pnex_core::{DashboardLayout, VizDashboard, VizDashboardSummary, VizDashboard
 // the frontend can resolve `err-<kebab>` at render time; the English text is
 // the verbatim fallback for unregistered codes.
 
-/// Dashboard de l'org courante, sinon None (→ 404 masqué cross-org).
+/// Dashboard of the current org, otherwise None (→ cross-org 404 masked).
 async fn find_dashboard(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -54,7 +54,7 @@ async fn find_dashboard(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Layout d'une version donnée (None si la version n'existe pas).
+/// Layout of a given version (None if the version does not exist).
 async fn layout_of(
     db: &DatabaseConnection,
     dashboard_id: Uuid,
@@ -202,8 +202,8 @@ struct ListDashboardsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/dashboards` — dashboards de l'org, paginés (D14),
-/// filtre `search` (nom).
+/// `GET /api/v1/dashboards` — the org's dashboards, paginated (D14),
+/// `search` filter (name).
 #[utoipa::path(
     get,
     path = "/api/v1/dashboards",
@@ -280,7 +280,7 @@ async fn list(
 
 // ─────────────────────────── POST /dashboards ───────────────────────────
 
-/// `POST /api/v1/dashboards` — crée le dashboard **et sa version 1**.
+/// `POST /api/v1/dashboards` — creates the dashboard **and its version 1**.
 #[utoipa::path(
     post,
     path = "/api/v1/dashboards",
@@ -321,8 +321,8 @@ async fn create(
 
 // ─────────────────────────── GET /dashboards/{id} ───────────────────────────
 
-/// `GET /api/v1/dashboards/{id}` — détail + layout de la version
-/// **courante** (celle que les viewers rendent).
+/// `GET /api/v1/dashboards/{id}` — detail + layout of the **current**
+/// version (the one viewers render).
 #[utoipa::path(
     get,
     path = "/api/v1/dashboards/{id}",
@@ -350,8 +350,8 @@ async fn detail(
 
 // ─────────────────────────── PATCH /dashboards/{id} ───────────────────────────
 
-/// `PATCH /api/v1/dashboards/{id}` = save — nouvelle version + pointeur
-/// (save = live). 409 si `expected_version_number` ≠ version courante.
+/// `PATCH /api/v1/dashboards/{id}` = save — new version + pointer
+/// (save = live). 409 if `expected_version_number` ≠ current version.
 #[utoipa::path(
     patch,
     path = "/api/v1/dashboards/{id}",
@@ -389,8 +389,8 @@ async fn update(
     .await
     {
         Ok(_) => {
-            // Re-lecture : le pointeur a suivi la nouvelle version, le
-            // détail renvoyé est donc déjà à jour.
+            // Re-read: the pointer followed the new version, so the
+            // returned detail is already up to date.
             let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
                 return Err(Error::NotFound);
             };
@@ -402,7 +402,7 @@ async fn update(
 
 // ─────────────────────────── DELETE /dashboards/{id} ───────────────────────────
 
-/// `DELETE /api/v1/dashboards/{id}` — 204 ; les versions suivent (FK
+/// `DELETE /api/v1/dashboards/{id}` — 204; versions follow (FK
 /// CASCADE).
 #[utoipa::path(
     delete,
@@ -426,7 +426,7 @@ async fn delete(
     let Some(dashboard) = find_dashboard(&ctx.db, &org, id).await? else {
         return Err(Error::NotFound);
     };
-    // D42 : purge symétrique de la couche d'organisation avant le delete.
+    // D42: symmetric purge of the organization layer before the delete.
     crate::services::resources::purge_for(
         &ctx.db,
         org.org.id,
@@ -465,8 +465,8 @@ struct VersionsQuery {
     offset: Option<String>,
 }
 
-/// `GET /api/v1/dashboards/{id}/versions` — historique append-only
-/// (drapeau `current` = version pointée).
+/// `GET /api/v1/dashboards/{id}/versions` — append-only history
+/// (`current` flag = pointed version).
 #[utoipa::path(
     get,
     path = "/api/v1/dashboards/{id}/versions",
@@ -530,8 +530,8 @@ async fn versions(
 
 // ─────────────────────── GET /dashboards/{id}/versions/{n} ───────────────────────
 
-/// `GET /api/v1/dashboards/{id}/versions/{n}` — layout d'une version
-/// (aperçu du drawer historique).
+/// `GET /api/v1/dashboards/{id}/versions/{n}` — layout of a version
+/// (history drawer preview).
 #[utoipa::path(
     get,
     path = "/api/v1/dashboards/{id}/versions/{version_number}",
@@ -578,9 +578,9 @@ async fn version_detail(
 
 // ─────────────────────── POST /dashboards/{id}/versions/{n}/restore ───────────────────────
 
-/// `POST /api/v1/dashboards/{id}/versions/{n}/restore` — re-positionne
-/// le pointeur courant (école media) : les viewers retombent sur cette
-/// version au prochain polling, aucune version n'est créée.
+/// `POST /api/v1/dashboards/{id}/versions/{n}/restore` — repositions
+/// the current pointer (media school): viewers fall back to this
+/// version at the next poll, no version is created.
 #[utoipa::path(
     post,
     path = "/api/v1/dashboards/{id}/versions/{version_number}/restore",

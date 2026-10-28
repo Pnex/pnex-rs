@@ -1,5 +1,5 @@
-//! Client API du référentiel des hosts serveur PNeX (`pnex_core::edge`) —
-//! wizard device.
+//! API client for the PNeX server hosts registry (`pnex_core::edge`) —
+//! device wizard.
 
 use crate::api::client;
 use crate::api::error::ApiError;
@@ -10,7 +10,7 @@ pub async fn list() -> Result<Vec<PnexHost>, ApiError> {
     client::request_all("/api/v1/edge/hosts").await
 }
 
-/// `POST /api/v1/edge/hosts` — upsert (200 ou 201, même traitement).
+/// `POST /api/v1/edge/hosts` — upsert (200 or 201, same handling).
 pub async fn create(input: PnexHostInput) -> Result<PnexHost, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -20,7 +20,7 @@ pub async fn create(input: PnexHostInput) -> Result<PnexHost, ApiError> {
     .await
 }
 
-/// `PUT /api/v1/edge/hosts/{id}` — édition in-place (id conservé) :
+/// `PUT /api/v1/edge/hosts/{id}` — in-place edit (id kept):
 /// host rename (always wss since D70). 409 `edge-host-taken` when the target
 /// host is already used by another entry of the org.
 pub async fn update(id: i64, input: PnexHostInput) -> Result<PnexHost, ApiError> {
@@ -37,8 +37,8 @@ pub async fn update(id: i64, input: PnexHostInput) -> Result<PnexHost, ApiError>
 /// `field-invalid`) returning the servers identifying as `pnex-server`.
 /// Owner, admin or member (viewer → 403).
 pub async fn lan_scan(prefix: Option<&str>) -> Result<pnex_core::LanScanResult, ApiError> {
-    // Un préfixe « a.b.c. » (chiffres + points) est URL-safe tel quel ;
-    // tout le reste est rejeté par la garde serveur.
+    // An "a.b.c." prefix (digits + dots) is URL-safe as is;
+    // everything else is rejected by the server guard.
     let suffix = prefix
         .map(|p| format!("?prefix={}", p.trim()))
         .unwrap_or_default();
@@ -50,8 +50,8 @@ pub async fn lan_scan(prefix: Option<&str>) -> Result<pnex_core::LanScanResult, 
     .await
 }
 
-/// `DELETE /api/v1/edge/hosts/{id}` — 204 sans corps (`request_opt` : un
-/// `request` classique lèverait « réponse vide »).
+/// `DELETE /api/v1/edge/hosts/{id}` — 204 with no body (`request_opt`: a
+/// plain `request` would raise "empty response").
 pub async fn delete(id: i64) -> Result<(), ApiError> {
     client::request_opt::<()>(
         reqwest::Method::DELETE,

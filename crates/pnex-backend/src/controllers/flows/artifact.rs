@@ -1,6 +1,6 @@
 use super::*;
 
-/// Numéro de version d'une ligne `flow_versions` (→ `deployed_version_id`).
+/// Version number of a `flow_versions` row (→ `deployed_version_id`).
 pub(super) async fn deployed_number_of(
     db: &DatabaseConnection,
     deployed_version_id: Option<i64>,
@@ -37,20 +37,20 @@ pub(crate) async fn reproject_and_signal_with_ack(
 ) -> Result<()> {
     let (artifact, _, _, fn_violations, skipped_tabs) =
         reproject_candidate(&ctx.db, org_id, None, None).await?;
-    // Refs de fonctions non résolues (fonction/version supprimée malgré le
-    // delete-guard) : les nœuds concernés partent en entrées `comment`
-    // no-op — on warn et on poursuit (chemin self-healing/retrait : jamais
-    // de blocage d'un stop par un objet d'un AUTRE flow).
+    // Unresolved function refs (function/version deleted despite the
+    // delete-guard): the affected nodes become no-op `comment`
+    // entries — we warn and go on (self-healing/removal path: never
+    // block a stop because of an object of ANOTHER flow).
     if !fn_violations.is_empty() {
         tracing::warn!(
             count = fn_violations.len(),
-            "reprojection : références de fonctions non résolues (nœuds dégradés no-op)"
+            "reprojection: unresolved function references (no-op degraded nodes)"
         );
     }
     if !skipped_tabs.is_empty() {
         tracing::warn!(
             tabs = skipped_tabs.len(),
-            "reprojection : onglets au graphe illisible isolés (non bloquant)"
+            "reprojection: tabs with an unreadable graph isolated (non-blocking)"
         );
     }
     let res = crate::services::flow_cluster::apply_org(
@@ -125,11 +125,11 @@ pub(crate) async fn project_org(db: &DatabaseConnection, org_id: i64) -> Result<
     Ok(artifact)
 }
 
-/// Méta d'artefact du flow d'intérêt pour un **retrait** (stop, delete,
-/// pin→mode) : la clé d'ack `flow_stopped` doit être le flow retiré —
-/// construite ici depuis sa version déployée AVANT toute suppression (la
-/// cascade efface `flow_versions` et le sync ne peut plus la deviner).
-/// `None` = pas de version déployée (pas de rechargement à acquitter).
+/// Artifact meta of the flow of interest for a **removal** (stop, delete,
+/// pin→mode): the `flow_stopped` ack key must be the removed flow —
+/// built here from its deployed version BEFORE any deletion (the
+/// cascade erases `flow_versions` and the sync can no longer guess it).
+/// `None` = no deployed version (no reload to acknowledge).
 pub(super) async fn deployed_meta(
     db: &DatabaseConnection,
     flow: &flows::Model,
@@ -150,24 +150,24 @@ pub(super) async fn deployed_meta(
     }))
 }
 
-/// Reprojection de l'artefact complet avec **override optionnel** : la
-/// version candidate d'un flow (éventuellement encore `draft` **ou
-/// `stopped`** — Start) remplace/ajoute sa ligne dans l'artefact, et avec
-/// **exclusion optionnelle** : un flow retiré du lot (Stop) — la DB n'est
-/// pas écrite (le marquage n'intervient qu'après un deploy acquitté).
-/// Retourne (artefact, méta du flow d'intérêt : l'override, sinon le
-/// premier flow déployé).
+/// Reprojection of the full artifact with an **optional override**: the
+/// candidate version of a flow (possibly still `draft` **or
+/// `stopped`** — Start) replaces/adds its line in the artifact, and with an
+/// **optional exclusion**: a flow removed from the batch (Stop) — the DB is
+/// not written (the marking only happens after an acknowledged deploy).
+/// Returns (artifact, meta of the flow of interest: the override, otherwise the
+/// first deployed flow).
 ///
-/// L'org O2 est résolue en lecture seule (`provisioned_credentials`), avec
-/// cache par org du lot.
+/// The O2 org is resolved read-only (`provisioned_credentials`), with a
+/// per-org cache over the batch.
 ///
-/// **Snapshot notify (D50)** : les nœuds `pnex-notify` ne portent que des
-/// références (`channel_ids`/`template_id`) — chaque projection est ici
-/// complétée par le snapshot résolu (`pnex_notify_channels` **enabled
-/// only** / `pnex_notify_template`), rendant le nœud autonome au send.
-/// Les références périmées (canal absent/désactivé, template absent) sont
-/// retournées en `StaleNotifyNode` (toast de deploy, **jamais bloquant** :
-/// le nœud dégradé warn + passthrough).
+/// **Notify snapshot (D50)**: `pnex-notify` nodes only carry
+/// references (`channel_ids`/`template_id`) — each projection is completed
+/// here with the resolved snapshot (`pnex_notify_channels` **enabled
+/// only** / `pnex_notify_template`), making the node self-contained at send.
+/// Stale references (missing/disabled channel, missing template) are
+/// returned as `StaleNotifyNode` (deploy toast, **never blocking**:
+/// the degraded node warns + passes through).
 pub(crate) async fn reproject_candidate(
     db: &DatabaseConnection,
     org_id: i64,
@@ -178,9 +178,9 @@ pub(crate) async fn reproject_candidate(
     FlowArtifactMeta,
     Vec<pnex_core::StaleNotifyNode>,
     Vec<pnex_core::FlowViolation>,
-    // Onglets déjà déployés au graphe illisible (kind de nœud supprimé,
-    // schéma daté…) : isolés hors de l'artefact, deploy **non bloqué** —
-    // jamais un 500 qui refuse tout deploy tant que le tab pourrit en DB.
+    // Already deployed tabs with an unreadable graph (removed node kind,
+    // outdated schema…): isolated out of the artifact, deploy **not blocked** —
+    // never a 500 that refuses every deploy while the tab rots in the DB.
     Vec<SkippedTab>,
 )> {
     // One org only (D106): the unit a worker runs — never the instance.
@@ -197,7 +197,7 @@ pub(crate) async fn reproject_candidate(
             continue; // Stop : le tab quitte l'artefact (ack flow_stopped)
         }
         if override_ids.contains(&f.id) {
-            continue; // remplacé par la version candidate (ajoutée plus bas)
+            continue; // replaced by the candidate version (added below)
         }
         pairs.push((f, version));
     }
@@ -208,12 +208,12 @@ pub(crate) async fn reproject_candidate(
     let mut entries: Vec<serde_json::Value> = Vec::new();
     let mut meta: Option<FlowArtifactMeta> = None;
     let mut skipped_tabs: Vec<SkippedTab> = Vec::new();
-    // ── Résolution batch des fonctions (nœuds PnexFunction) ─────────────
+    // ── Batch resolution of functions (PnexFunction nodes) ─────────────
     let (fn_resolver, mut fn_violations) =
         crate::services::functions::resolve_for_projection(db, &pairs).await?;
-    // Le flow candidat (override) : un graphe illisible sur LUI est
-    // bloquant (le deploy partirait sans lui, acquitté à tort).
-    // (`override_ids` = son id, calculé avant le move de `override_flow`.)
+    // The candidate flow (override): an unreadable graph on IT is
+    // blocking (the deploy would go out without it, wrongly acknowledged).
+    // (`override_ids` = its id, computed before `override_flow` is moved.)
     let mut o2_org_cache: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
     for (f, version) in &pairs {
         let graph: FlowGraph = match serde_json::from_value(version.graph.clone()) {
@@ -224,8 +224,8 @@ pub(crate) async fn reproject_candidate(
                     f.id, version.version_number
                 );
                 if override_ids.first() == Some(&f.id) {
-                    // Candidat du deploy : 400 violations (même forme que
-                    // engine_load), le toast de l'éditeur le localise.
+                    // Deploy candidate: 400 violations (same shape as
+                    // engine_load), the editor's toast locates it.
                     fn_violations.push(pnex_core::FlowViolation::with_args(
                         None,
                         "graph_unreadable",
@@ -237,7 +237,7 @@ pub(crate) async fn reproject_candidate(
                         }),
                     ));
                 } else {
-                    // Tab d'un AUTRE flow : isolé, le deploy poursuit.
+                    // Tab of ANOTHER flow: isolated, the deploy goes on.
                     tracing::error!("reprojection : {message}");
                     skipped_tabs.push(SkippedTab {
                         flow_id: f.id,
@@ -253,7 +253,7 @@ pub(crate) async fn reproject_candidate(
         if override_ids.first() == Some(&f.id) {
             fn_violations.extend(vision_model_violations(db, f.org_id, &graph).await?);
         }
-        // Résolution par org (une seule requête par org du lot).
+        // Per-org resolution (a single query per org of the batch).
         let o2_org = match o2_org_cache.get(&f.org_id) {
             Some(cached) => cached.clone(),
             None => {
@@ -282,7 +282,7 @@ pub(crate) async fn reproject_candidate(
         }
     }
 
-    // ── Snapshot notify (D50) : résolution batch sur tout le lot ────────
+    // ── Notify snapshot (D50): batch resolution over the whole batch ────────
     let stale = resolve_notify_snapshots(db, &mut entries).await?;
     stamp_taxonomies(db, &mut entries).await?;
     stamp_pack_settings(db, &mut entries).await?;
@@ -407,10 +407,10 @@ async fn vision_model_violations(
     Ok(out)
 }
 
-/// Résout les références des nœuds `pnex-notify` de l'artefact et estampe
-/// le snapshot dans chaque entrée. Deux requêtes batch (canaux, templates),
-/// filtrage par org **en code** (école du cache O2). Retourne les références
-/// périmées pour le toast de deploy.
+/// Resolves the references of the artifact's `pnex-notify` nodes and stamps
+/// the snapshot into each entry. Two batch queries (channels, templates),
+/// org filtering **in code** (O2 cache school). Returns the stale references
+/// for the deploy toast.
 async fn resolve_notify_snapshots(
     db: &DatabaseConnection,
     entries: &mut [serde_json::Value],
@@ -457,7 +457,7 @@ async fn resolve_notify_snapshots(
         return Ok(vec![]);
     }
 
-    // Union des références de tout le lot → 2 requêtes batch.
+    // Union of the references of the whole batch → 2 batch queries.
     let all_channels: Vec<Uuid> = notify_nodes
         .iter()
         .flat_map(|(_, r)| r.channel_ids.iter().copied())
@@ -476,9 +476,9 @@ async fn resolve_notify_snapshots(
 
     let mut stale = Vec::new();
     for (idx, r) in &notify_nodes {
-        // Canaux de CETTE org, trouvés **et** enabled seulement — un canal
-        // désactivé/supprimé est simplement absent du snapshot (le nœud
-        // dégrade, le toast explique).
+        // Channels of THIS org, found **and** enabled only — a
+        // disabled/deleted channel is simply absent from the snapshot (the node
+        // degrades, the toast explains).
         let mut stamped = Vec::new();
         for cid in &r.channel_ids {
             match channel_rows
@@ -519,11 +519,11 @@ async fn resolve_notify_snapshots(
                 reason: "template_missing".into(),
             });
         }
-        // Vars de template (colonne mergée « détectées + déclarées ») :
-        // stampées dans le snapshot — le runtime y lit son mode accumulation
-        // (une var par ancre nommée). Drift vs le stamp du pick
-        // (`template_vars` du nœud) → staleness non bloquante
-        // « template_changed » (école channel_disabled/template_missing).
+        // Template vars (merged "detected + declared" column):
+        // stamped into the snapshot — the runtime reads its accumulation mode
+        // there (one var per named anchor). Drift vs the pick's stamp
+        // (the node's `template_vars`) → non-blocking staleness
+        // "template_changed" (channel_disabled/template_missing school).
         let row_vars: Vec<String> = template
             .and_then(|t| {
                 serde_json::from_value::<Vec<pnex_core::TemplateVar>>(t.vars.clone()).ok()
@@ -552,7 +552,7 @@ async fn resolve_notify_snapshots(
             .map(|t| serde_json::json!({ "subject": t.subject, "body": t.body, "vars": row_vars }));
         let obj = entries[*idx]
             .as_object_mut()
-            .expect("entrée flows.json objet");
+            .expect("flows.json entry is an object");
         obj.insert("pnex_notify_channels".into(), serde_json::json!(stamped));
         obj.insert(
             "pnex_notify_template".into(),
@@ -602,16 +602,16 @@ pub(super) fn flow_runtime_503(e: flow_supervisor::DeployError) -> loco_rs::Erro
     )
 }
 
-/// Point d'entrée unique de tout changement du set déployé (deploy,
-/// delete, stop_flows_reading_pin) : **d'abord** le sync/cast des cartes de
-/// régulation (matérialisation `regulator_configs` + push `ControlConfig`,
-/// indépendant du runtime — jamais de 503), **ensuite** la reprojection de
-/// l'artefact (503 conservé pour le runtime ETL uniquement). Ordre garanti :
-/// un moteur coupé laisse la base et les devices cohérents.
-/// Variante avec devices régulés **additionnels** à caster et clé d'ack du
-/// retrait (delete, pin→mode — cf. [`reproject_and_signal_with_ack`]) : le
-/// delete cascade les lignes de projection avant le sync, qui ne peut donc
-/// plus deviner quels devices attendent un clear.
+/// Single entry point of every change of the deployed set (deploy,
+/// delete, stop_flows_reading_pin): **first** the sync/cast of the
+/// regulation cards (`regulator_configs` materialization + `ControlConfig` push,
+/// independent of the runtime — never a 503), **then** the reprojection of
+/// the artifact (503 kept for the ETL runtime only). Guaranteed order:
+/// a stopped engine leaves the database and the devices consistent.
+/// Variant with **additional** regulated devices to cast and the removal's
+/// ack key (delete, pin→mode — see [`reproject_and_signal_with_ack`]): the
+/// delete cascades the projection rows before the sync, which therefore can
+/// no longer guess which devices expect a clear.
 pub(super) async fn reproject_and_cast_extra(
     ctx: &AppContext,
     org_id: i64,
@@ -621,8 +621,8 @@ pub(super) async fn reproject_and_cast_extra(
     if let Err(e) =
         crate::services::regulator::sync_and_cast_with(&ctx.db, org_id, extra_devices).await
     {
-        // Best-effort : un échec de cast ne bloque jamais la projection ETL.
-        tracing::error!("sync des régulations échoué (projection poursuivie) : {e}");
+        // Best-effort: a cast failure never blocks the ETL projection.
+        tracing::error!("regulation sync failed (projection continued): {e}");
     }
     reproject_and_signal_with_ack(ctx, org_id, ack_meta).await
 }
@@ -696,7 +696,7 @@ mod tests {
             "DELETE FROM organizations WHERE id IN ({own}, {other}); \
              INSERT INTO organizations (id, name) VALUES ({own}, 'set-own'), ({other}, 'set-other'); \
              INSERT INTO packs (org_id, key, version, settings) \
-             VALUES ({own}, 'presence_web', '1', '{{\"seuil_confirme\": 90}}')"
+             VALUES ({own}, 'web_presence', '1', '{{\"confirm_threshold\": 90}}')"
         ))
         .await
         .expect("orgs");
@@ -707,8 +707,8 @@ mod tests {
             entry("pnex-js", own),
         ];
         stamp_pack_settings(&db, &mut entries).await.expect("stamp");
-        assert_eq!(entries[0]["settings"]["presence_web.seuil_confirme"], 90);
-        assert!(entries[0]["settings"]["presence_web.seuil_propose"].is_number());
+        assert_eq!(entries[0]["settings"]["web_presence.confirm_threshold"], 90);
+        assert!(entries[0]["settings"]["web_presence.propose_threshold"].is_number());
         assert_eq!(entries[1]["settings"], serde_json::json!({}));
         assert!(entries[2].get("settings").is_none());
         db.execute_unprepared(&format!(

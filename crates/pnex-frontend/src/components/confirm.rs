@@ -1,5 +1,5 @@
-//! Modale de confirmation (i18n côté appelant) — remplace les `confirm()`
-//! navigateur de l'UI React d'origine.
+//! Confirmation modal (i18n on the caller side) — replaces the browser
+//! `confirm()` calls of the original React UI.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

@@ -1,9 +1,9 @@
-//! Isolation multi-tenant au niveau HTTP : deux utilisateurs (tokens mock
-//! signés par un faux Rauthy) ne doivent jamais voir ni modifier les
-//! organisations l'un de l'autre ; les règles de rôle s'appliquent.
+//! Multi-tenant isolation at the HTTP level: two users (mock tokens
+//! signed by a fake Rauthy) must never see or modify each other's
+//! organisations; role rules apply.
 //!
-//! Nécessite PostgreSQL (DATABASE_URL / default pnex_test) — la base de test
-//! est créée/supprimée par le framework loco.
+//! Requires PostgreSQL (DATABASE_URL / default pnex_test) — the test database
+//! is created/dropped by the loco framework.
 
 mod common;
 
@@ -17,16 +17,16 @@ struct Env {
     bob: String,
 }
 
-/// Boot l'app sur une base de test avec un faux Rauthy, exécute le callback.
+/// Boots the app on a test database with a fake Rauthy, runs the callback.
 async fn with_app<F, Fut>(f: F)
 where
     F: FnOnce(axum_test::TestServer, Env) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     let base = common::spawn_mock_rauthy().await;
-    // Rend visibles les warnings de l'extracteur (rejet JWT, provisioning).
+    // Makes the extractor's warnings visible (JWT rejection, provisioning).
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
-    // settings.rauthy.base_url lit RAUTHY_URL — fixé avant le boot.
+    // settings.rauthy.base_url reads RAUTHY_URL — set before the boot.
     unsafe { std::env::set_var("RAUTHY_URL", &base) };
     let config: RequestConfig = RequestConfigBuilder::new().build();
     let env = Env {
@@ -47,8 +47,8 @@ where
     loco_rs::testing::request::request_with_config::<App, _, _>(
         config,
         move |server, ctx| async move {
-            // La base de test est vierge : on y met le tier Free (le seed
-            // complet est une tâche, hors périmètre ici).
+            // The test database is blank: we put the Free tier in it (the full
+            // seed is a task, out of scope here).
             use pnex_backend::models::_entities::subscription_tiers as tiers;
             use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
             if tiers::Entity::find()
@@ -106,17 +106,17 @@ async fn jit_provisioning_cree_user_profil_et_org_owner() {
         assert_eq!(res.status_code(), 200);
         let body: serde_json::Value = res.json();
         let orgs = body["orgs"].as_array().expect("orgs");
-        assert_eq!(orgs.len(), 1, "org personnelle créée : {orgs:?}");
+        assert_eq!(orgs.len(), 1, "personal org created: {orgs:?}");
         assert_eq!(orgs[0]["role"], "owner");
         assert_eq!(
             orgs[0]["subscription_tier"]["name"], "Free",
-            "org personnelle sur le tier Free"
+            "personal org on the Free tier"
         );
-        let profile = body["profile"].as_object().expect("profil créé");
+        let profile = body["profile"].as_object().expect("profile created");
         assert_eq!(profile["language"], "en");
         assert_eq!(profile["timezone"], "UTC");
 
-        // Idempotent : deuxième appel = même user, pas de doublon d'org.
+        // Idempotent: second call = same user, no duplicate org.
         let res2 = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&env.alice))
@@ -132,7 +132,7 @@ async fn jit_provisioning_cree_user_profil_et_org_owner() {
 #[serial]
 async fn sub_change_avec_meme_email_relie_le_meme_user() {
     with_app(|server, env| async move {
-        // alice se provisionne avec un premier sub.
+        // alice provisions herself with a first sub.
         let sub_a = "00000000-0000-0000-0000-0000000000aa";
         let token_a = common::valid_token(&env.base, sub_a, "alice", "relink@example.com");
         let first: serde_json::Value = server
@@ -142,26 +142,22 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
             .json();
         assert_eq!(first["username"], "alice");
 
-        // Le même email revient avec un sub inconnu (IdP migré — ex.
-        // réimporté, migration d'IdP) : la ligne users doit être RE-LIÉE,
-        // pas dupliquée (email unique) — même id, mêmes orgs.
+        // The same email comes back with an unknown sub (migrated IdP — e.g.
+        // reimported, IdP migration): the users row must be RE-LINKED,
+        // not duplicated (unique email) — same id, same orgs.
         let sub_b = "00000000-0000-0000-0000-0000000000ab";
         let token_b = common::valid_token(&env.base, sub_b, "alice", "relink@example.com");
         let second = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&token_b))
             .await;
-        assert_eq!(
-            second.status_code(),
-            200,
-            "re-liaison par email, pas de 500"
-        );
+        assert_eq!(second.status_code(), 200, "re-link by email, no 500");
         let second: serde_json::Value = second.json();
-        assert_eq!(second["id"], first["id"], "même utilisateur re-lie");
+        assert_eq!(second["id"], first["id"], "same user re-linked");
         assert_eq!(
             second["orgs"].as_array().unwrap().len(),
             first["orgs"].as_array().unwrap().len(),
-            "aucune org personnelle dupliquée"
+            "no duplicated personal org"
         );
     })
     .await;
@@ -171,8 +167,8 @@ async fn sub_change_avec_meme_email_relie_le_meme_user() {
 #[serial]
 async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
     with_app(|server, env| async move {
-        // register : page UI d'inscription Rauthy (pas un endpoint OIDC,
-        // activation par mail — pas de params OAuth2).
+        // register: Rauthy sign-up UI page (not an OIDC endpoint,
+        // activation by mail — no OAuth2 params).
         let res = server
             .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=register")
             .await;
@@ -215,9 +211,9 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
         );
         assert!(!other.contains("prompt="), "{other}");
 
-        // logout : formulaire HTML auto-soumis en POST vers l'end-session
-        // Rauthy (navigation top-level — la page logout SPA de Rauthy ne
-        // rend jamais la main à l'app, voir le doc-comment du handler).
+        // logout: auto-submitted HTML form POSTing to the Rauthy end-session
+        // (top-level navigation — Rauthy's SPA logout page never hands
+        // control back to the app, see the handler's doc-comment).
         let res = server
             .get("/api/v1/oauth2/logout?id_token=jwt.jwt.jwt")
             .await;
@@ -241,8 +237,8 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
             "{html}"
         );
 
-        // reset : page compte Rauthy (le changement de mot de passe vit dans
-        // l'IdP — équivalent du kc_action=UPDATE_PASSWORD Keycloak).
+        // reset: Rauthy account page (the password change lives in the
+        // IdP — equivalent of Keycloak's kc_action=UPDATE_PASSWORD).
         let res = server
             .get("/api/v1/oauth2/sso?code_challenge=abc&code_challenge_method=S256&action=reset")
             .await;
@@ -261,11 +257,11 @@ async fn sso_register_et_reset_pointent_vers_les_pages_rauthy() {
 #[serial]
 async fn token_lean_rauthy_username_reprend_l_email() {
     with_app(|server, env| async move {
-        // Géométrie réelle d'un access token Rauthy (D19) : sans
-        // preferred_username (le claim vit dans l'id_token). La réponse
-        // user-info ne doit JAMAIS sérialiser `username: null` — le contrat
-        // partagé UserInfo attend un string (le front plante sinon :
-        // « réponse illisible : invalid type: null »).
+        // Actual shape of a Rauthy access token (D19): without
+        // preferred_username (the claim lives in the id_token). The user-info
+        // response must NEVER serialise `username: null` — the shared
+        // UserInfo contract expects a string (otherwise the front crashes:
+        // "unreadable response: invalid type: null").
         let token = common::lean_token(
             &env.base,
             "00000000-0000-0000-0000-00000000000c",
@@ -285,7 +281,7 @@ async fn token_lean_rauthy_username_reprend_l_email() {
 #[serial]
 async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
     with_app(|server, env| async move {
-        // Provisionne alice puis bob.
+        // Provisions alice then bob.
         for token in [&env.alice, &env.bob] {
             let res = server
                 .get("/api/v1/user-info")
@@ -294,7 +290,7 @@ async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
             assert_eq!(res.status_code(), 200);
         }
 
-        // Org perso d'alice.
+        // Alice's personal org.
         let alice_orgs: serde_json::Value = server
             .get("/api/v1/orgs")
             .add_header("Authorization", bearer(&env.alice))
@@ -304,26 +300,26 @@ async fn un_tenant_ne_voit_pas_les_orgs_de_l_autre() {
             .as_i64()
             .expect("id org alice");
 
-        // Bob ne voit pas l'org d'alice, ni en lecture ni en écriture.
+        // Bob doesn't see alice's org, neither for reading nor for writing.
         let res = server
             .get(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .await;
-        assert_eq!(res.status_code(), 404, "org d'alice invisible pour bob");
+        assert_eq!(res.status_code(), 404, "alice's org invisible to bob");
         let res = server
             .patch(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
             .json(&serde_json::json!({ "name": "Hack" }))
             .await;
-        assert_eq!(res.status_code(), 404, "org d'alice non modifiable par bob");
+        assert_eq!(res.status_code(), 404, "alice's org not modifiable by bob");
         let res = server
             .delete(&format!("/api/v1/orgs/{alice_org_id}"))
             .add_header("Authorization", bearer(&env.bob))
             .await;
         assert_eq!(res.status_code(), 404);
 
-        // Bob ne peut pas non plus s'ajouter dans l'org d'alice.
+        // Bob can't add himself to alice's org either.
         let res = server
             .post(&format!("/api/v1/orgs/{alice_org_id}/members"))
             .add_header("Content-Type", "application/json")
@@ -346,7 +342,7 @@ async fn roles_viewer_owner_et_garde_fous() {
                 .await;
         }
 
-        // Alice crée une org partagée et y ajoute bob viewer.
+        // Alice creates a shared org and adds bob as viewer.
         let created: serde_json::Value = server
             .post("/api/v1/orgs")
             .add_header("Content-Type", "application/json")
@@ -366,11 +362,11 @@ async fn roles_viewer_owner_et_garde_fous() {
             .json(&serde_json::json!({ "email": "bob@example.com", "role": "viewer" }))
             .await
             .json();
-        assert_eq!(added["role"], "viewer", "rôle lowercase en entrée/sortie");
+        assert_eq!(added["role"], "viewer", "lowercase role on input/output");
 
-        // O1 : orgs de bob listées par id croissant (org personnelle JIT
-        // d'abord) — ordre déterministe pour le fallback d'org du front,
-        // qui sinon peut atterrir sur une org viewer.
+        // O1: bob's orgs listed by increasing id (JIT personal org
+        // first) — deterministic order for the front's org fallback,
+        // which could otherwise land on a viewer org.
         let bob_info: serde_json::Value = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&env.bob))
@@ -379,18 +375,18 @@ async fn roles_viewer_owner_et_garde_fous() {
         let bob_orgs = bob_info["orgs"].as_array().expect("orgs bob");
         assert!(
             bob_orgs.len() >= 2,
-            "bob a son org personnelle + Atelier Co : {bob_orgs:?}"
+            "bob has his personal org + Atelier Co: {bob_orgs:?}"
         );
         let bob_org_ids: Vec<i64> = bob_orgs.iter().filter_map(|o| o["id"].as_i64()).collect();
         let mut sorted_ids = bob_org_ids.clone();
         sorted_ids.sort();
-        assert_eq!(bob_org_ids, sorted_ids, "orgs triées par id croissant");
+        assert_eq!(bob_org_ids, sorted_ids, "orgs sorted by increasing id");
         assert_eq!(
             bob_orgs[0]["role"], "owner",
-            "l'org personnelle (non viewer) sort en premier"
+            "the personal org (non viewer) comes first"
         );
 
-        // Bob (viewer) lit, mais ne peut pas écrire.
+        // Bob (viewer) reads, but can't write.
         let res = server
             .get(&format!("/api/v1/orgs/{org_id}"))
             .add_header("Authorization", bearer(&env.bob))
@@ -406,16 +402,16 @@ async fn roles_viewer_owner_et_garde_fous() {
             .add_header("Authorization", bearer(&env.bob))
             .json(&serde_json::json!({ "name": "Hack Co" }))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer ne renomme pas");
+        assert_eq!(res.status_code(), 403, "viewer does not rename");
         let res = server
             .post(&format!("/api/v1/orgs/{org_id}/members"))
             .add_header("Content-Type", "application/json")
             .add_header("Authorization", bearer(&env.bob))
             .json(&serde_json::json!({ "email": "alice@example.com" }))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer n'ajoute pas de membre");
+        assert_eq!(res.status_code(), 403, "viewer does not add a member");
 
-        // Alice ne peut pas quitter son rôle de dernier owner.
+        // Alice can't leave her role as the last owner.
         let alice_user_id: i64 = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&env.alice))
@@ -429,7 +425,7 @@ async fn roles_viewer_owner_et_garde_fous() {
             .await;
         assert_eq!(res.status_code(), 409, "dernier owner inamovible");
 
-        // Bob viewer tente de se promouvoir : refusé (owner requis).
+        // Bob the viewer tries to promote himself: refused (owner required).
         let bob_user_id: i64 = server
             .get("/api/v1/user-info")
             .add_header("Authorization", bearer(&env.bob))
@@ -443,7 +439,7 @@ async fn roles_viewer_owner_et_garde_fous() {
             .add_header("Authorization", bearer(&env.bob))
             .json(&serde_json::json!({ "role": "owner" }))
             .await;
-        assert_eq!(res.status_code(), 403, "viewer ne se promeut pas");
+        assert_eq!(res.status_code(), 403, "viewer does not promote themselves");
 
         // D241: the role change answers the lowercase role (was "Member").
         let res = server

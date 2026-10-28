@@ -1,9 +1,9 @@
-//! API annotations sur médias (D55–D60) — client des contrôleurs
+//! Media annotations API (D55–D60) — client of the controllers
 //! `/api/v1/annotation-layers` + read model `/api/v1/media/{id}/annotations`
-//! (contrat `docs/contracts/annotation-layers.http`). Types depuis
-//! `pnex-core` (source de vérité partagée, wasm32) ; `update` porte la
-//! concurrence optimiste (`expected_version_number`, 409 si périmé — école
-//! `api/tours.rs`).
+//! (contract `docs/contracts/annotation-layers.http`). Types from
+//! `pnex-core` (shared source of truth, wasm32); `update` carries the
+//! optimistic concurrency (`expected_version_number`, 409 if stale — same
+//! approach as `api/tours.rs`).
 
 use pnex_core::{
     AnnotationLayerDetail, AnnotationLayerSummary, AnnotationLayerVersionDetail,
@@ -14,13 +14,13 @@ use pnex_core::{
 use crate::api::client;
 use crate::api::error::ApiError;
 
-/// Filtres de `GET /api/v1/annotation-layers` + pagination (D14).
+/// Filters of `GET /api/v1/annotation-layers` + pagination (D14).
 #[derive(Default)]
 pub struct LayerFilters {
     pub search: Option<String>,
-    /// Filtre exact par média associé (pivot UX : les ensembles d'un média).
+    /// Exact filter by associated media (UX pivot: the sets of a media).
     pub media: Option<String>,
-    /// Filtre exact par tour associé (000028 : les ensembles d'un tour).
+    /// Exact filter by associated tour (000028: the sets of a tour).
     pub tour: Option<String>,
     /// D218 label filter (`name` or `name:value`).
     pub label: Option<String>,
@@ -57,9 +57,9 @@ impl LayerFilters {
     }
 }
 
-/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — read model viewers :
-/// items fusionnés des couches publiées (union, ordre déterministe) avec
-/// cibles résolues (`device_pk`/`dead`). Context (D147): `tour` = that
+/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — viewers read model:
+/// items merged from the published layers (union, deterministic order) with
+/// resolved targets (`device_pk`/`dead`). Context (D147): `tour` = that
 /// tour's sets only; `None` = the sets of the standalone media only.
 pub async fn media_annotations(
     asset_id: &str,
@@ -85,7 +85,7 @@ pub async fn list(filters: &LayerFilters) -> Result<Vec<AnnotationLayerSummary>,
     client::request_all(&format!("/api/v1/annotation-layers{}", filters.to_query())).await
 }
 
-/// `POST /api/v1/annotation-layers` — création (couche + v1 doc vide).
+/// `POST /api/v1/annotation-layers` — creation (layer + empty v1 doc).
 pub async fn create(params: CreateAnnotationLayer) -> Result<AnnotationLayerDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -94,8 +94,8 @@ pub async fn create(params: CreateAnnotationLayer) -> Result<AnnotationLayerDeta
     )
     .await
 }
-/// `GET /api/v1/annotation-layers/{id}[?version=n]` — détail (doc de la
-/// dernière version, ou de la version demandée).
+/// `GET /api/v1/annotation-layers/{id}[?version=n]` — detail (doc of the
+/// latest version, or of the requested version).
 pub async fn detail(id: &str, version: Option<i64>) -> Result<AnnotationLayerDetail, ApiError> {
     let vq = version.map(|v| format!("?version={v}")).unwrap_or_default();
     client::request(
@@ -109,9 +109,9 @@ pub async fn detail(id: &str, version: Option<i64>) -> Result<AnnotationLayerDet
     .await
 }
 
-/// `PATCH /api/v1/annotation-layers/{id}` — enregistre une **nouvelle
-/// version** (append-only) ; 409 si `expected_version_number` est périmé,
-/// 400 `{"violations": […]}` si le document est invalide.
+/// `PATCH /api/v1/annotation-layers/{id}` — saves a **new version**
+/// (append-only); 409 if `expected_version_number` is stale,
+/// 400 `{"violations": […]}` if the document is invalid.
 pub async fn update(
     id: &str,
     params: UpdateAnnotationLayer,
@@ -173,8 +173,8 @@ pub async fn version(
     )
     .await
 }
-/// `POST /api/v1/annotation-layers/{id}/publish` — publie une version
-/// (absente = dernière). Retourne le détail mis à jour.
+/// `POST /api/v1/annotation-layers/{id}/publish` — publishes a version
+/// (missing = latest). Returns the updated detail.
 pub async fn publish(
     id: &str,
     version_number: Option<i64>,
@@ -190,8 +190,8 @@ pub async fn publish(
     .await
 }
 
-/// `POST /api/v1/annotation-layers/{id}/unpublish` — pointeur → NULL : les
-/// items disparaissent de tous les viewers.
+/// `POST /api/v1/annotation-layers/{id}/unpublish` — pointer → NULL: the
+/// items disappear from every viewer.
 pub async fn unpublish(id: &str) -> Result<AnnotationLayerDetail, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -204,9 +204,9 @@ pub async fn unpublish(id: &str) -> Result<AnnotationLayerDetail, ApiError> {
     .await
 }
 
-/// Échec d'un save, trié pour l'UI (école `api/tours.rs::classify_save_error`)
-/// : conflit de concurrence (409, modal « recharger / écraser »), document
-/// invalide (400 violations, bandeau), ou autre (toast verbatim).
+/// Save failure, sorted for the UI (same approach as
+/// `api/tours.rs::classify_save_error`): concurrency conflict (409, "reload /
+/// overwrite" modal), invalid document (400 violations, banner), or other (verbatim toast).
 #[derive(Debug, Clone, PartialEq)]
 pub enum SaveError {
     Conflict { description: String },
@@ -214,8 +214,8 @@ pub enum SaveError {
     Other(String),
 }
 
-/// Classe une `ApiError` issue de `update()` — uniquement un 409 ou un 400
-/// à champ `violations` a une sémantique exploitable.
+/// Classifies an `ApiError` from `update()` — only a 409 or a 400 with a
+/// `violations` field has usable semantics.
 pub fn classify_save_error(err: &ApiError) -> SaveError {
     if err.status == Some(409) {
         return SaveError::Conflict {
@@ -255,7 +255,7 @@ mod tests {
             SaveError::Invalid(violations) => {
                 assert_eq!(violations[0].code, "unknown_link_target");
             }
-            other => panic!("attendu Invalid, eu {other:?}"),
+            other => panic!("expected Invalid, got {other:?}"),
         }
 
         let other = ApiError::http(403, r#"{"error":"forbidden"}"#);

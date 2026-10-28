@@ -1,26 +1,26 @@
-//! Cartes de régulation mixtes (control-cards) — sync/cast serveur.
+//! Mixed regulation cards (control-cards) — server sync/cast.
 //!
-//! La carte décrite dans un flow **déployé** matérialise un desired-state :
-//! ce service le recalcule depuis la base (re-projection complète, même
-//! doctrine que l'artefact `flows.json`), le persiste dans
-//! `regulator_configs`, puis le cast au device connecté
-//! (`ServerMsg::ControlConfig`, remplacement complet). Device hors ligne →
-//! rien : le cast est **différé à l'announce** (re-push desired-state,
-//! même leçon que les cadences Subscribe 2026-09-03).
+//! The card described in a **deployed** flow materialises a desired-state:
+//! this service recomputes it from the database (full re-projection, same
+//! doctrine as the `flows.json` artifact), persists it in
+//! `regulator_configs`, then casts it to the connected device
+//! (`ServerMsg::ControlConfig`, full replacement). Device offline →
+//! nothing: the cast is **deferred to the announce** (desired-state re-push,
+//! same lesson as the Subscribe cadences 2026-09-03).
 //!
-//! Garde-fous (D13/D17) :
-//! - le serveur **ne régule jamais** — il caste une config, jamais une
-//!   écriture de pin ;
-//! - les pins sont **résolus à chaque cast** depuis les instances/overlay
-//!   (les labels d'authoring sont stockés en base, jamais les gpio) — un
-//!   pin repassé `digital_in` rend la carte insoluble → skip + warn ;
-//! - jamais de `SetMode` automatique : le mode du pin doit déjà être
-//!   correct (admission/UI Pins), sinon la carte est sautée ;
-//! - une seule régulation par (device, sortie) : plus petit `flow_id`
-//!   gagne, les suivantes sont sautées + warn (validate_graph ne voit
-//!   qu'un graphe, l'unicité cross-flows ne peut se garantir qu'ici) ;
-//! - le sync est **indépendant du runtime de flows** : jamais de 503, un
-//!   échec est loggé et ne bloque pas la projection.
+//! Safeguards (D13/D17):
+//! - the server **never regulates** — it casts a config, never a
+//!   pin write;
+//! - pins are **resolved at each cast** from the instances/overlay
+//!   (authoring labels are stored in the database, never the gpios) — a
+//!   pin switched back to `digital_in` makes the card unresolvable → skip + warn;
+//! - never an automatic `SetMode`: the pin's mode must already be
+//!   correct (admission/Pins UI), otherwise the card is skipped;
+//! - a single regulation per (device, output): the smallest `flow_id`
+//!   wins, the following ones are skipped + warn (validate_graph only sees
+//!   one graph, cross-flow uniqueness can only be guaranteed here);
+//! - the sync is **independent of the flow runtime**: never a 503, a
+//!   failure is logged and does not block the projection.
 
 use std::collections::HashMap;
 
@@ -33,8 +33,8 @@ use crate::models::_entities::{
 };
 use pnex_core::{caps, ControlSpec, Mode, ModeOpts, RegConfig, ServerMsg};
 
-/// Plafond de régulations castées à un device (miroir du firmware — buffer
-/// fil 1024 o, 4 configs max).
+/// Cap on regulations cast to a device (mirrors the firmware — wire
+/// buffer 1024 B, 4 configs max).
 pub(crate) const MAX_CONFIGS_PER_DEVICE: usize = 4;
 
 // ─────────────────────────────── Sync & cast ───────────────────────────────
@@ -129,8 +129,8 @@ pub(crate) async fn sync_and_cast_with(
         }
     }
 
-    // 2. Résolution par carte : slug device → pk, labels → gpio (modes
-    // contrôlés), dédoublonnage par sortie, plafond par device.
+    // 2. Per-card resolution: device slug → pk, labels → gpio (modes
+    // checked), dedup per output, cap per device.
     let mut resolved: Vec<RegulatorRow> = Vec::new();
     let mut used_outputs: HashMap<(i64, String), i64> = HashMap::new(); // (device_pk, actuator_key) → flow_id
     let mut per_device: HashMap<i64, usize> = HashMap::new();
@@ -145,18 +145,18 @@ pub(crate) async fn sync_and_cast_with(
                 flow_id,
                 node_id,
                 device = slug,
-                "carte de régulation sautée : device inconnu dans l'org"
+                "regulation card skipped: device unknown in the org"
             );
             continue;
         };
 
-        // Unicité (device, sortie) cross-flows — plus petit flow_id gagne
-        // (les cartes arrivent triées par flow_id asc).
+        // Cross-flow (device, output) uniqueness — smallest flow_id wins
+        // (cards arrive sorted by flow_id asc).
         let key = config.actuator_key();
         if used_outputs.contains_key(&(device.id, key.clone())) {
             tracing::warn!(
                 flow_id, node_id, device = slug,
-                "carte sautée : cette sortie est déjà régulée par un autre flow (plus petit flow_id gagne)"
+                "card skipped: this output is already regulated by another flow (smallest flow_id wins)"
             );
             continue;
         }
@@ -166,7 +166,7 @@ pub(crate) async fn sync_and_cast_with(
                 flow_id,
                 node_id,
                 device = slug,
-                "carte sautée : plafond de {MAX_CONFIGS_PER_DEVICE} régulations par device atteint"
+                "card skipped: cap of {MAX_CONFIGS_PER_DEVICE} regulations per device reached"
             );
             continue;
         }
@@ -199,8 +199,8 @@ pub(crate) async fn sync_and_cast_with(
         .await
         .map_err(|e| ModelError::Any(format!("sync regulator : purge : {e}").into()))?;
     if !resolved.is_empty() {
-        // Timestamps posés explicitement : `insert_many` ne passe pas par
-        // le hook `before_save` du wrapper.
+        // Timestamps set explicitly: `insert_many` does not go through
+        // the wrapper's `before_save` hook.
         let now: sea_orm::prelude::DateTimeWithTimeZone = chrono::Utc::now().into();
         let rows: Vec<regulator_configs::ActiveModel> = resolved
             .iter()
@@ -219,14 +219,14 @@ pub(crate) async fn sync_and_cast_with(
         regulator_configs::Entity::insert_many(rows)
             .exec(&txn)
             .await
-            .map_err(|e| ModelError::Any(format!("sync regulator : écriture : {e}").into()))?;
+            .map_err(|e| ModelError::Any(format!("sync regulator: write: {e}").into()))?;
     }
     txn.commit()
         .await
         .map_err(|e| ModelError::Any(format!("sync regulator : commit : {e}").into()))?;
 
-    // 4. Cast aux devices touchés (avant ∪ après ∪ extras) et connectés ;
-    // hors ligne → rien : le cast est différé à l'announce.
+    // 4. Cast to the affected devices (before ∪ after ∪ extras) that are connected;
+    // offline → nothing: the cast is deferred to the announce.
     let mut touched = previous_devices;
     touched.extend(extra_devices.iter().copied());
     touched.extend(resolved.iter().map(|r| r.device_registry_id));
@@ -247,8 +247,8 @@ pub(crate) async fn sync_and_cast_with(
                 )
                 .await;
                 if !pushed {
-                    // Course perdue : le device vient de se déconnecter —
-                    // le cast sera rejoué à l'announce.
+                    // Lost race: the device just disconnected —
+                    // the cast will be replayed at the announce.
                     tracing::debug!(
                         device_registry_id = device_id,
                         "cast perdu (device offline)"
@@ -258,7 +258,7 @@ pub(crate) async fn sync_and_cast_with(
             Err(e) => {
                 tracing::warn!(
                     device_registry_id = device_id,
-                    "cast régulations impossible : {e}"
+                    "regulation cast failed: {e}"
                 );
             }
         }
@@ -266,10 +266,10 @@ pub(crate) async fn sync_and_cast_with(
     Ok(())
 }
 
-/// Régulations d'un device, **résolues à la volée** (labels → gpio, modes
-/// contrôlés au point unique `caps::validate`) — utilisée par le cast
-/// immédiat et par le re-cast à l'announce. Ordre déterministe (flow_id,
-/// node_id) : le firmware applique les 4 slots dans cet ordre.
+/// A device's regulations, **resolved on the fly** (labels → gpio, modes
+/// checked at the single point `caps::validate`) — used by the immediate
+/// cast and by the re-cast at announce. Deterministic order (flow_id,
+/// node_id): the firmware applies the 4 slots in that order.
 pub(crate) async fn configs_for_device(
     db: &DatabaseConnection,
     device_registry_id: i64,
@@ -280,12 +280,12 @@ pub(crate) async fn configs_for_device(
         .order_by_asc(regulator_configs::Column::NodeId)
         .all(db)
         .await
-        .map_err(|e| ModelError::Any(format!("régulations illisibles : {e}").into()))?;
+        .map_err(|e| ModelError::Any(format!("unreadable regulations: {e}").into()))?;
 
     let Some(device) = device_registries::Entity::find_by_id(device_registry_id)
         .one(db)
         .await
-        .map_err(|e| ModelError::Any(format!("device introuvable : {e}").into()))?
+        .map_err(|e| ModelError::Any(format!("device not found: {e}").into()))?
     else {
         return Ok(Vec::new());
     };
@@ -296,7 +296,7 @@ pub(crate) async fn configs_for_device(
         let Ok(config) = serde_json::from_value::<RegConfig>(row.config.clone()) else {
             tracing::warn!(
                 device_registry_id, node_id = %row.node_id,
-                "config de régulation illisible — ignorée (redéployer le flow)"
+                "unreadable regulation config — ignored (redeploy the flow)"
             );
             continue;
         };
@@ -305,7 +305,7 @@ pub(crate) async fn configs_for_device(
             Err(reason) => {
                 tracing::warn!(
                     device_registry_id, node_id = %row.node_id, device = %device.device_id,
-                    "carte de régulation insoluble : {reason}"
+                    "unresolvable regulation card: {reason}"
                 );
             }
         }
@@ -314,9 +314,9 @@ pub(crate) async fn configs_for_device(
     Ok(specs)
 }
 
-// ─────────────────────────────── Résolution ───────────────────────────────
+// ─────────────────────────────── Resolution ───────────────────────────────
 
-/// Ligne matérialisée (avant cast).
+/// Materialised row (before cast).
 struct RegulatorRow {
     org_id: i64,
     device_registry_id: i64,
@@ -326,10 +326,10 @@ struct RegulatorRow {
     config: serde_json::Value,
 }
 
-/// Label → (gpio, mode) pour un device : instances persistées **puis**
-/// overlay en complément (parité du pinout de l'éditeur). L'instance gagne
-/// (elle porte le mode admis) ; un pin overlay-only vaut `digital_in`/`adc_in`
-/// (jamais une sortie : une sortie doit être admise).
+/// Label → (gpio, mode) for a device: persisted instances **then**
+/// overlay as a complement (parity with the editor's pinout). The instance wins
+/// (it carries the admitted mode); an overlay-only pin counts as `digital_in`/`adc_in`
+/// (never an output: an output must be admitted).
 async fn resolve_pins(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -366,9 +366,9 @@ async fn resolve_pins(
     (pins, soc)
 }
 
-/// Carte d'authoring → `ControlSpec` fil, pins résolus et validés au point
-/// unique (`caps::validate`). Erreur = raison lisible du skip (jamais de
-/// `SetMode` automatique, jamais de pin au hasard).
+/// Authoring card → wire `ControlSpec`, pins resolved and validated at the single
+/// point (`caps::validate`). Error = readable skip reason (never an
+/// automatic `SetMode`, never a random pin).
 fn build_spec(
     pins: &HashMap<String, (u16, Mode)>,
     soc: pnex_core::Soc,
@@ -377,29 +377,29 @@ fn build_spec(
 ) -> Result<ControlSpec, String> {
     let sensor = pins
         .get(config.sensor_pin().trim().to_ascii_lowercase().as_str())
-        .ok_or_else(|| format!("pin capteur « {} » introuvable", config.sensor_pin()))?;
+        .ok_or_else(|| format!("sensor pin \"{}\" not found", config.sensor_pin()))?;
     let actuator = pins
         .get(config.actuator_pin().trim().to_ascii_lowercase().as_str())
-        .ok_or_else(|| format!("pin actionneur « {} » introuvable", config.actuator_pin()))?;
+        .ok_or_else(|| format!("actuator pin \"{}\" not found", config.actuator_pin()))?;
     if sensor.0 == actuator.0 {
-        return Err("le pin capteur et le pin actionneur se résolvent au même gpio".into());
+        return Err("the sensor pin and the actuator pin resolve to the same gpio".into());
     }
     if !matches!(sensor.1, Mode::DigitalIn | Mode::AdcIn) {
         return Err(format!(
-            "le pin capteur « {} » n'est pas une entrée (mode actuel : {:?})",
+            "the sensor pin « {} » is not an input (current mode: {:?})",
             config.sensor_pin(),
             sensor.1
         ));
     }
     if actuator.1 != Mode::DigitalOut {
         return Err(format!(
-            "le pin actionneur « {} » n'est pas une sortie admise digital_out (mode actuel : {:?})",
+            "actuator pin \"{}\" is not an allowed digital_out output (current mode: {:?})",
             config.actuator_pin(),
             actuator.1
         ));
     }
-    // Point unique de validation silicium (admission + push) — le safe_state
-    // de la carte est la contrainte de repos de la sortie.
+    // Single silicon validation point (admission + push) — the card's
+    // safe_state is the output's rest constraint.
     let safe = config.safe_state();
     caps::validate(
         soc,
@@ -437,8 +437,8 @@ fn build_spec(
     })
 }
 
-/// Mode colonne (`analog_in` convention base) → Mode fil — même convention
-/// que `ws_device::str_to_mode`.
+/// Column mode (`analog_in` database convention) → wire Mode — same convention
+/// as `ws_device::str_to_mode`.
 fn str_to_mode(s: &str) -> Mode {
     match s {
         "digital_out" => Mode::DigitalOut,

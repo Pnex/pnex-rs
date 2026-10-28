@@ -1,6 +1,6 @@
 #!/bin/sh
-# esptool de fixture (tests Phase 6) — merge-bin : concatène dans le
-# fichier passé après -o tous les autres arguments qui sont des fichiers.
+# Fixture esptool (Phase 6 tests) — merge-bin: concatenates into the file
+# given after -o all the other arguments that are files.
 out=""
 prev=""
 for a in "$@"; do

@@ -1,10 +1,10 @@
-//! Page publique `/share/:token` — consultation d'un tour **publié** sans
-//! login. Route **hors layout Shell** (la Shell porte la garde de session —
-//! précédent `AuthCallback`). Le fetch public passe par `api::tours::
-//! public_detail` (chemin `/api/v1/public/` exempté d'auth côté client).
+//! Public `/share/:token` page — viewing a **published** tour without
+//! login. Route **outside the Shell layout** (the Shell carries the session
+//! guard — `AuthCallback` precedent). The public fetch goes through `api::tours::
+//! public_detail` (`/api/v1/public/` path exempt from auth on the client side).
 //!
-//! ⚠ dioxus #2784 : les props de route ne sont pas réactives — le token est
-//! lu **une fois** (cloné dans les closures/resource).
+//! ⚠ dioxus #2784: route props are not reactive — the token is
+//! read **once** (cloned into the closures/resource).
 
 use std::collections::HashMap;
 
@@ -17,7 +17,7 @@ use crate::components::tour_viewer::{AssetInfo, TourViewer, ViewerSource};
 
 #[component]
 pub fn ShareTour(token: String) -> Element {
-    // Lu une fois : props de route ≠ signaux (dioxus #2784).
+    // Read once: route props ≠ signals (dioxus #2784).
     let token = use_signal(|| token);
 
     let fetch = use_resource(move || {
@@ -27,7 +27,7 @@ pub fn ShareTour(token: String) -> Element {
 
     rsx! {
         div { class: "min-h-screen bg-gray-100 flex flex-col",
-            // En-tête minimal (pas de nav authentifiée ici).
+            // Minimal header (no authenticated nav here).
             header { class: "bg-white border border-line px-6 py-4 flex items-center gap-3",
                 span { class: "text-base font-semibold text-gray-900", {t!("share-title")} }
                 match &*fetch.value().read() {
@@ -43,23 +43,23 @@ pub fn ShareTour(token: String) -> Element {
             main { class: "flex-1 p-4",
                 match &*fetch.value().read() {
                     Some(Ok(tour)) => rsx! {
-                        // Carte des assets : version + mime servis par le doc
-                        // public (cache immutable côté octets).
+                        // Asset map: version + mime served by the public
+                        // doc (immutable cache on the bytes side).
                         TourViewer {
                             doc: tour.doc.clone(),
                             assets: asset_infos(tour),
                             source: ViewerSource::Public {
                                 token: token.cloned(),
                             },
-                            // Page publique en lecture seule : le drag d'une
-                            // flèche reste visuel (rien à persister).
+                            // Read-only public page: dragging an
+                            // arrow stays visual (nothing to persist).
                             on_hotspot_move: move |_: (String, f64, f64)| {},
                             on_scene_change: move |_: String| {},
                             host_id: crate::components::tour_viewer::HOST_ID.to_string(),
                             editable: false,
                             compact: false,
-                            // D58 : annotations EXCLUES du share public V1 —
-                            // elles peuvent révéler des données device.
+                            // D58: annotations EXCLUDED from the public share V1 —
+                            // they may reveal device data.
                             annotations_enabled: false,
                             show_side_panel: true,
                         }

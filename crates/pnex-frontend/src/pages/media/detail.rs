@@ -27,7 +27,7 @@ pub(super) fn MediaDetail(
     let mut uploading = use_signal(|| false);
     // Version delete target (number) — detail ConfirmDialog.
     let mut delete_target = use_signal(|| None::<i64>);
-    // « Compare » dialog of two document versions (D311).
+    // "Compare" dialog of two document versions (D311).
     let mut comparing = use_signal(|| false);
     // Server HD job running for this asset (Take 360 V2) — drives the
     // "patience" overlay on the preview.
@@ -346,6 +346,7 @@ pub(super) fn MediaDetail(
                                                         return;
                                                     };
                                                     let asset_id = asset_id_for_add.clone();
+                                                    let read_error = t!("media-file-read-error");
                                                     spawn(async move {
                                                         uploading.set(true);
                                                         match file.read_bytes().await {
@@ -370,7 +371,7 @@ pub(super) fn MediaDetail(
                                                                     Err(err) => toasts::error(err),
                                                                 }
                                                             }
-                                                            Err(err) => toasts::error(format!("lecture du fichier : {err:?}")),
+                                                            Err(err) => toasts::error(format!("{read_error}: {err:?}")),
                                                         }
                                                         uploading.set(false);
                                                     });

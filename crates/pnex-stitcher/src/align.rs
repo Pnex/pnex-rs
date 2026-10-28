@@ -1,90 +1,90 @@
-//! Raffinement de pose par les images (pipeline Quality).
+//! Image-based pose refinement (Quality pipeline).
 //!
-//! Les poses capteur dérivent : quelques degrés de dérive cumulée sur un
-//! anneau, et la HFOV réelle du webview n'est connue qu'à la marge. Comme
-//! toutes les implémentations de référence (bundle adjustment rotation-only
-//! d'OpenPano, `BundleAdjuster` d'OpenCV), on corrige les poses **par la
-//! preuve image**, initialisées par les poses capteur (déjà bonnes à ~1-2°).
+//! Sensor poses drift: a few degrees of cumulative drift over a
+//! ring, and the real HFOV of the webview is only known approximately. Like
+//! all the reference implementations (OpenPano's rotation-only bundle
+//! adjustment, OpenCV's `BundleAdjuster`), we correct the poses **by image
+//! evidence**, initialised by the sensor poses (already good to ~1-2°).
 //!
-//! Principe :
-//! 1. chaque frame est rendue seule en équirect **gris** basse résolution ;
-//! 2. pour chaque paire au recouvrement géométrique suffisant, recherche du
-//!    décalage translation (dλ, dφ) minimisant l'écart NCC zéro-moyenne sur
-//!    2 dalles de latitude (insensible aux gains → pas de couplage avec la
-//!    compensation d'exposition), sous-pixel par fit parabolique ;
-//! 3. solve global Gauss-Newton : résidus `(δb − δa) − m(a,b)` pondérés par
-//!    `ncc²`, prior Tikhonov vers la pose capteur (la jauge — système plein
-//!    rang sans contrainte explicite) ;
-//! 4. corrections appliquées aux poses + re-dérivation de `inv`/bande lat
-//!    ([`PreparedFrame::refresh_pose`] — sinon le pré-filtre par ligne exclut
-//!    les frames corrigées).
+//! Principle:
+//! 1. each frame is rendered alone as a low-resolution **grey** equirect;
+//! 2. for each pair with enough geometric overlap, search for the
+//!    translation offset (dλ, dφ) minimising the zero-mean NCC gap over
+//!    2 latitude slabs (insensitive to gains → no coupling with the
+//!    exposure compensation), sub-pixel by parabolic fit;
+//! 3. global Gauss-Newton solve: residuals `(δb − δa) − m(a,b)` weighted by
+//!    `ncc²`, Tikhonov prior towards the sensor pose (the gauge — full-rank
+//!    system without explicit constraint);
+//! 4. corrections applied to the poses + re-derivation of `inv`/lat band
+//!    ([`PreparedFrame::refresh_pose`] — otherwise the per-row pre-filter excludes
+//!    the corrected frames).
 //!
-//! ROLL gelé : ancré par la gravité du rotation vector, il est déjà bon ; un
-//! roll résiduel ne se manifeste qu'en rotation locale (baisse le pic NCC,
-//! ce qui en fait un détecteur passif). Séquentiel, zéro rayon, zéro dép.
+//! ROLL frozen: anchored by the rotation vector's gravity, it is already good; a
+//! residual roll only shows up as local rotation (lowers the NCC peak,
+//! which makes it a passive detector). Sequential, zero rayon, zero deps.
 
 use crate::project::{interior_weight, project_uvc, PreparedFrame};
 use crate::render::{lat_of, lon_of, sample_bilinear};
 use crate::QualityParams;
 
-/// Type de paire : seuils NCC distincts (une paire inter-anneaux corrèle un
-/// contenu étiré ×1/cos φ d'un côté → pic NCC structurellement plus bas).
+/// Pair type: distinct NCC thresholds (an inter-ring pair correlates
+/// content stretched ×1/cos φ on one side → structurally lower NCC peak).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairKind {
-    /// Même tranche de pitch (voisins d'anneau).
+    /// Same pitch slice (ring neighbours).
     Intra,
-    /// Pitches différents (anneau à plat vs anneau incliné).
+    /// Different pitches (flat ring vs tilted ring).
     Inter,
 }
 
-/// Mesure de décalage d'une paire sur une dalle de latitude (en degrés).
+/// Offset measurement of a pair on one latitude slab (in degrees).
 #[derive(Debug, Clone, Copy)]
 pub struct SlabMeasure {
-    /// Décalage en longitude à appliquer à `b` pour coïncider avec `a`.
+    /// Longitude offset to apply to `b` to coincide with `a`.
     pub dlon_deg: f32,
-    /// Décalage en latitude (même convention).
+    /// Latitude offset (same convention).
     pub dlat_deg: f32,
-    /// Pic NCC de la dalle (confiance).
+    /// NCC peak of the slab (confidence).
     pub ncc: f32,
-    /// Lignes de la dalle (poids par aire).
+    /// Rows of the slab (area weight).
     pub rows: u32,
 }
 
-/// Résultat du raffinement : corrections par frame (degrés, ordre d'entrée),
-/// mesures acceptées avec leurs résidus après solve, et l'état de convergence.
+/// Refinement result: corrections per frame (degrees, input order),
+/// accepted measurements with their post-solve residuals, and the convergence state.
 #[derive(Debug, Clone, Default)]
 pub struct AlignReport {
-    /// `[dψ, dθ, dρ]` appliqués par frame (degrés — roll toujours 0 sur le
-    /// chemin NCC, gelé par conception).
+    /// `[dψ, dθ, dρ]` applied per frame (degrees — roll always 0 on the
+    /// NCC path, frozen by design).
     pub corrections_deg: Vec<[f32; 3]>,
-    /// Paires acceptées : (a, b, kind, dalles) — dalles vides sur le chemin
-    /// modèle (la mesure est une rotation, pas un décalage par dalle).
+    /// Accepted pairs: (a, b, kind, slabs) — empty slabs on the model
+    /// path (the measurement is a rotation, not a per-slab offset).
     pub accepted: Vec<(usize, usize, PairKind, Vec<SlabMeasure>)>,
-    /// Candidats rejetés (recouvrement pauvre ou scène sans texture).
+    /// Rejected candidates (poor overlap or textureless scene).
     pub rejected: usize,
-    /// `false` si le solve a divergé (corrections annulées → poses capteur).
+    /// `false` if the solve diverged (corrections cancelled → sensor poses).
     pub converged: bool,
-    /// Chemin modèle : `true` si le repli NCC a été pris (paires trop
-    /// rares) — journalisation serveur.
+    /// Model path: `true` if the NCC fallback was taken (too few
+    /// pairs) — server logging.
     pub fallback: bool,
-    /// Hfov calibré par les images quand l'auto-calibration a tourné —
-    /// diagnostic + journalisation.
+    /// Hfov calibrated by the images when auto-calibration ran —
+    /// diagnostic + logging.
     pub calibrated_hfov: Option<f32>,
 }
 
-/// Strip équirect gris basse résolution d'une frame seule, avec masque de
-/// couverture et plage de lignes couvertes.
+/// Low-resolution grey equirect strip of a single frame, with coverage
+/// mask and range of covered rows.
 struct GrayStrip {
     w: u32,
     h: u32,
-    /// Lignes couvertes (incluse, exclue).
+    /// Covered rows (inclusive, exclusive).
     rows: (usize, usize),
     px: Vec<f32>,
     valid: Vec<bool>,
 }
 
-/// Rend la frame seule en équirect gris à `work_width` (2:1), bande couverte
-/// seulement (le pré-filtre lat limite les lignes projetées).
+/// Renders the frame alone as a grey equirect at `work_width` (2:1), covered band
+/// only (the lat pre-filter limits the projected rows).
 fn render_gray_strip(f: &PreparedFrame, work_width: u32) -> GrayStrip {
     let w = work_width;
     let h = (work_width / 2).max(1);
@@ -116,10 +116,10 @@ fn render_gray_strip(f: &PreparedFrame, work_width: u32) -> GrayStrip {
         }
     }
 
-    // Blanchiment : high-pass (px − flou boîte r≈4 px, séparable, horizontal
-    // circulaire, vertical clampé). La NCC ne corrèle plus que la texture
-    // fine : les basses fréquences restent corrélées à grand décalage et
-    // créent des pics parasites au bord de fenêtre.
+    // Whitening: high-pass (px − box blur r≈4 px, separable, circular
+    // horizontal, clamped vertical). The NCC then only correlates fine
+    // texture: low frequencies stay correlated at large offsets and
+    // create spurious peaks at the window edge.
     let r = 4usize;
     let mut tmp = vec![0.0f32; px.len()];
     for j in 0..(h as usize) {
@@ -160,9 +160,9 @@ fn render_gray_strip(f: &PreparedFrame, work_width: u32) -> GrayStrip {
         }
     }
 
-    // Érosion du masque valide (rayon r+1) : les halos de bord du
-    // blanchiment (saut de DC à la frontière du lens) corrélaient avec le
-    // contenu et biaisaient le pic NCC de ~1 px. On exclut la bordure.
+    // Erosion of the valid mask (radius r+1): the whitening's edge halos
+    // (DC jump at the lens boundary) correlated with the
+    // content and biased the NCC peak by ~1 px. We exclude the border.
     let er = r + 1;
     let mut eroded = valid.clone();
     for j in 0..(h as usize) {
@@ -196,10 +196,10 @@ fn render_gray_strip(f: &PreparedFrame, work_width: u32) -> GrayStrip {
     }
 }
 
-/// Paires candidates : recouvrement de bandes lat ≥ 5° ET écart azimutal des
-/// axes ≤ (hfov_a + hfov_b)/2. Le wrap circulaire est géré (paire de
-/// fermeture, voisinage de ±180°). Aucune structure « ring » : dérivation
-/// purement géométrique.
+/// Candidate pairs: lat band overlap ≥ 5° AND azimuthal gap of the
+/// axes ≤ (hfov_a + hfov_b)/2. The circular wrap is handled (closing
+/// pair, neighbourhood of ±180°). No "ring" structure: purely
+/// geometric derivation.
 #[must_use]
 pub fn build_pairs(frames: &[PreparedFrame]) -> Vec<(usize, usize, PairKind)> {
     let mut pairs = Vec::new();
@@ -214,7 +214,7 @@ pub fn build_pairs(frames: &[PreparedFrame]) -> Vec<(usize, usize, PairKind)> {
             if dlon > 90.0 {
                 continue;
             }
-            // Fenêtre azimutale via les focales (hfov par frame).
+            // Azimuthal window via the focal lengths (hfov per frame).
             let hfov_a = 2.0 * (fa.width as f32 * 0.5 / fa.f_px).atan().to_degrees();
             let hfov_b = 2.0 * (fb.width as f32 * 0.5 / fb.f_px).atan().to_degrees();
             if dlon > (hfov_a + hfov_b) * 0.5 {
@@ -231,7 +231,7 @@ pub fn build_pairs(frames: &[PreparedFrame]) -> Vec<(usize, usize, PairKind)> {
     pairs
 }
 
-/// wrap en (−180, 180].
+/// wrap into (−180, 180].
 fn wrap180(deg: f32) -> f32 {
     let d = deg.rem_euclid(360.0);
     if d > 180.0 {
@@ -241,8 +241,8 @@ fn wrap180(deg: f32) -> f32 {
     }
 }
 
-/// Mesure une paire : recherche du décalage NCC maximal par dalle, fit
-/// parabolique, validation (seuil par type + bassin). `None` = rejetée.
+/// Measures a pair: search for the maximal NCC offset per slab, parabolic
+/// fit, validation (threshold per type + basin). `None` = rejected.
 fn measure_pair(
     a: &GrayStrip,
     b: &GrayStrip,
@@ -256,12 +256,12 @@ fn measure_pair(
     let (w, h) = (a.w as i64, a.h as i64);
     let dpp_x = 360.0 / a.w as f32;
     let dpp_y = 180.0 / a.h as f32;
-    // Fenêtre de recherche en pixels (wrap horizontal borné à ±w/2).
+    // Search window in pixels (horizontal wrap bounded to ±w/2).
     let wx = ((qp.align_search_deg / dpp_x).ceil() as i64).min(w / 2);
     let wy = ((qp.align_search_deg / dpp_y).ceil() as i64).min(h / 2);
 
-    // Dalles de latitude : 2 moitiés du recouvrement (l'écart de mesure
-    // entre dalles est le signal de roll — logué par l'appelant).
+    // Latitude slabs: 2 halves of the overlap (the measurement gap
+    // between slabs is the roll signal — logged by the caller).
     let slab_cut = (rows.0 + rows.1) / 2;
     let slabs = [rows.0..slab_cut, slab_cut..rows.1];
 
@@ -273,12 +273,12 @@ fn measure_pair(
         let Some(m) = measure_slab(a, b, slab.clone(), wx, wy) else {
             continue;
         };
-        // Validation : seuil NCC par type de paire + test de bassin (une
-        // scène sans texture donne un plateau — pic non significatif) +
-        // rejet des saturations en bord de fenêtre (pic écrêté = mesure
-        // non fiable, la vraie solution est hors de la fenêtre).
-        // Validation : seuil NCC par type de paire + rejet des saturations
-        // en bord de fenêtre (pic écrêté = vraie solution hors fenêtre).
+        // Validation: NCC threshold per pair type + basin test (a
+        // textureless scene gives a plateau — non-significant peak) +
+        // rejection of saturations at the window edge (clipped peak = unreliable
+        // measurement, the real solution is outside the window).
+        // Validation: NCC threshold per pair type + rejection of saturations
+        // at the window edge (clipped peak = real solution outside the window).
         let threshold = match kind {
             PairKind::Intra => qp.align_min_ncc_intra,
             PairKind::Inter => qp.align_min_ncc_inter,
@@ -298,9 +298,9 @@ fn measure_pair(
     if out.is_empty() {
         return None;
     }
-    // Fusion pondérée des dalles en UNE mesure par paire : sous roll, les
-    // deux dalles se déplacent en sens opposés — leur moyenne pondérée
-    // annule le couplage roll et dilue une dalle contaminée.
+    // Weighted fusion of the slabs into ONE measurement per pair: under roll, the
+    // two slabs move in opposite directions — their weighted mean
+    // cancels the roll coupling and dilutes a contaminated slab.
     let (mut ws, mut wl, mut mlon, mut mlat, mut mncc) = (0.0f32, 0u32, 0.0f32, 0.0f32, 0.0f32);
     for m in &out {
         let w = m.ncc * m.ncc * m.rows.max(1) as f32;
@@ -319,11 +319,11 @@ fn measure_pair(
     }])
 }
 
-/// NCC entre `a` et `b` décalée de (sx, sy) sur la dalle de lignes `rows`.
-/// Comparaison symétrique `a[x+sx, y+sy] ↔ b[x, y]` : le décalage mesuré est
-/// le déplacement du contenu de `a` par rapport à `b` (wrap horizontal,
-/// bornes verticales). Convention (verrouillée par le test jitter) :
-/// `mλ = sx·dpp`, `mφ = sy·dpp`, résidu de solve `r = (δa − δb) − m`.
+/// NCC between `a` and `b` shifted by (sx, sy) over the row slab `rows`.
+/// Symmetric comparison `a[x+sx, y+sy] ↔ b[x, y]`: the measured offset is
+/// the displacement of `a`'s content relative to `b` (horizontal wrap,
+/// vertical bounds). Convention (locked by the jitter test):
+/// `mλ = sx·dpp`, `mφ = sy·dpp`, solve residual `r = (δa − δb) − m`.
 fn ncc_at(a: &GrayStrip, b: &GrayStrip, rows: std::ops::Range<usize>, sx: i64, sy: i64) -> f32 {
     let w = a.w as i64;
     let (mut sa, mut sb, mut saa, mut sbb, mut sab, mut n) =
@@ -362,7 +362,7 @@ fn ncc_at(a: &GrayStrip, b: &GrayStrip, rows: std::ops::Range<usize>, sx: i64, s
     (cov / (vara * varb).sqrt()) as f32
 }
 
-/// Recherche exhaustive du NCC maximal sur la fenêtre + fit parabolique.
+/// Exhaustive search of the maximal NCC over the window + parabolic fit.
 fn measure_slab(
     a: &GrayStrip,
     b: &GrayStrip,
@@ -384,7 +384,7 @@ fn measure_slab(
     if best.0 <= 0.0 {
         return None;
     }
-    // Fit parabolique autour du pic (précision sub-pixel ≈ 0,05-0,1 px).
+    // Parabolic fit around the peak (sub-pixel precision ≈ 0.05-0.1 px).
     let (n0, sx, sy) = best;
     let dx = parabola(
         grid.get(&(sx - 1, sy)).copied().unwrap_or(n0),
@@ -408,7 +408,7 @@ fn measure_slab(
     })
 }
 
-/// Déplacement sub-pixel du sommet d'une parabole par 3 points équidistants.
+/// Sub-pixel displacement of a parabola's vertex from 3 equidistant points.
 fn parabola(nm1: f32, n0: f32, np1: f32) -> f32 {
     let denom = nm1 - 2.0 * n0 + np1;
     if denom.abs() < 1e-9 {
@@ -417,10 +417,10 @@ fn parabola(nm1: f32, n0: f32, np1: f32) -> f32 {
     0.5 * (nm1 - np1) / denom
 }
 
-/// Test de bassin : le NCC doit chuter nettement quand on s'écarte du pic —
-/// sinon le pic est un plateau (scène sans texture, ciel uni) et la mesure
-/// n'est pas fiable. L'écart d'évaluation suit la résolution (≥ 2 px et
-/// ≥ 2°) pour rester au-delà d'une période de la plus fine octave.
+/// Basin test: the NCC must drop clearly when moving away from the peak —
+/// otherwise the peak is a plateau (textureless scene, plain sky) and the measurement
+/// is not reliable. The evaluation gap follows the resolution (≥ 2 px and
+/// ≥ 2°) to stay beyond one period of the finest octave.
 fn basin_ok(
     a: &GrayStrip,
     b: &GrayStrip,
@@ -435,8 +435,8 @@ fn basin_ok(
         (m.dlon_deg / dpp_x).round() as i64,
         (m.dlat_deg / dpp_y).round() as i64,
     );
-    // Écart d'évaluation : ≥ 2 px ET ≥ 2° (au-delà d'une demi-période de la
-    // plus fine texture résolue, la corrélation doit s'effondrer).
+    // Evaluation gap: ≥ 2 px AND ≥ 2° (beyond a half-period of the
+    // finest resolved texture, the correlation must collapse).
     let (ox, oy) = (
         ((2.0 / dpp_x).ceil() as i64).max(2),
         ((2.0 / dpp_y).ceil() as i64).max(2),
@@ -456,10 +456,10 @@ fn basin_ok(
     all_below
 }
 
-/// Raffine les poses par les images : mesures par paires + solve
-/// Gauss-Newton avec prior Tikhonov. Les corrections sont appliquées aux
-/// frames (`refresh_pose` inclus). En cas de divergence, tout est annulé
-/// (poses capteur intactes) et `report.converged = false`.
+/// Refines the poses from the images: per-pair measurements + Gauss-Newton
+/// solve with Tikhonov prior. The corrections are applied to the
+/// frames (`refresh_pose` included). On divergence, everything is cancelled
+/// (sensor poses intact) and `report.converged = false`.
 pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignReport {
     let n = frames.len();
     let mut report = AlignReport {
@@ -475,13 +475,13 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
         .collect();
 
     let pairs = build_pairs(frames);
-    let work_w = qp.align_work_width.max(64) | 1; // impair pour un centre net
+    let work_w = qp.align_work_width.max(64) | 1; // odd for a sharp centre
     let reg = qp.align_lambda_reg.max(1e-9) as f64;
 
-    // Suivi du meilleur état : le problème est linéaire mais les mesures
-    // portent du bruit (pics NCC quantifiés, bords de lentilles valides).
-    // Itérer sans garde fait dériver le solve ; on ne retient donc que
-    // l'état de résidu total pondéré minimal (rollback automatique).
+    // Best-state tracking: the problem is linear but the measurements
+    // carry noise (quantised NCC peaks, valid lens edges).
+    // Iterating without a guard makes the solve drift; so we only keep
+    // the state with minimal total weighted residual (automatic rollback).
     let mut best_t = f64::INFINITY;
     let mut best_poses = initial.clone();
     let mut best_corr = vec![[0.0f32; 3]; n];
@@ -501,7 +501,7 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
             }
         }
 
-        // Résidu total pondéré de l'état courant.
+        // Total weighted residual of the current state.
         let t_now: f64 = measurements
             .iter()
             .flat_map(|(_, _, _, slabs)| slabs.iter())
@@ -523,20 +523,20 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
         }
 
         if measurements.is_empty() {
-            // Aucune preuve image exploitable : échec matériel à la 1re
-            // itération seulement (poses capteur conservées).
+            // No usable image evidence: hard failure at the 1st
+            // iteration only (sensor poses kept).
             if t_initial.is_infinite() {
                 hard_fail = true;
             }
             break;
         }
 
-        // Solve + passe IRLS/Huber (down-weighting des mesures aberrantes :
-        // un pic NCC parasite ne doit pas tirer une frame de plusieurs
-        // degrés). Convention verrouillée par la sonde unitaire : le strip
-        // rendu avec la pose enregistrée (vraie + Δ) montre la scène
-        // décalée de −Δ, la NCC mesure m = Δ_a − Δ_b, le résidu
-        // r = (δb − δa) − m calibre le solve sur δ = −Δ.
+        // Solve + IRLS/Huber pass (down-weighting of outlier measurements:
+        // a spurious NCC peak must not pull a frame by several
+        // degrees). Convention locked by the unit probe: the strip
+        // rendered with the recorded pose (true + Δ) shows the scene
+        // shifted by −Δ, the NCC measures m = Δ_a − Δ_b, the residual
+        // r = (δb − δa) − m calibrates the solve on δ = −Δ.
         let Some(delta) = solve_step(&measurements, None, n, reg) else {
             if t_initial.is_infinite() {
                 hard_fail = true;
@@ -550,8 +550,8 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
             break;
         };
 
-        // Garde-fou : un pas absurde (= divergence) → on s'arrête là ; le
-        // rollback final ramènera au meilleur état.
+        // Safeguard: an absurd step (= divergence) → we stop there; the
+        // final rollback will bring back the best state.
         let max_step = delta.iter().fold(0.0f64, |m, &d| m.max(d.abs()));
         if max_step > 8.0 {
             if t_initial.is_infinite() {
@@ -560,8 +560,8 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
             break;
         }
 
-        // Les mesures et le solve sont en DEGRÉS (pas de conversion radian
-        // ici — un to_deg() amplifierait le pas ×57,3).
+        // Measurements and solve are in DEGREES (no radian conversion
+        // here — a to_deg() would amplify the step ×57.3).
         for (k, f) in frames.iter_mut().enumerate() {
             let (dy, dp) = (delta[2 * k] as f32, delta[2 * k + 1] as f32);
             f.yaw_deg += dy;
@@ -576,15 +576,15 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
         }
     }
 
-    // Rollback au meilleur état mesuré (les corrections n'ont pas forcément
-    // progressé à chaque itération).
+    // Rollback to the best measured state (the corrections did not necessarily
+    // progress at each iteration).
     for (k, f) in frames.iter_mut().enumerate() {
         [f.yaw_deg, f.pitch_deg, f.roll_deg] = best_poses[k];
         f.refresh_pose();
     }
     report.corrections_deg = best_corr;
 
-    // Mesure finale : résidus par paire acceptée (à l'état retenu).
+    // Final measurement: residuals per accepted pair (at the retained state).
     let strips: Vec<GrayStrip> = frames
         .iter()
         .map(|f| render_gray_strip(f, work_w))
@@ -599,37 +599,37 @@ pub fn refine_poses(frames: &mut [PreparedFrame], qp: &QualityParams) -> AlignRe
     }
     report.accepted = accepted;
     report.rejected = rejected;
-    // Convergé = pas d'échec matériel du solve (mesures vides, Cholesky
-    // impossible ou pas absurde dès la 1re itération). Sinon le meilleur
-    // état est retenu, même si le gain est modeste.
+    // Converged = no hard failure of the solve (empty measurements, Cholesky
+    // impossible or absurd step from the 1st iteration). Otherwise the best
+    // state is retained, even if the gain is modest.
     report.converged = !hard_fail;
     report
 }
 
-/// Largeur de travail des strips pour la mesure des tuiles de warp (la
-/// précision sub-pixel visée : 0,1 px ≈ 0,035° ≈ 0,4 px de sortie 4096).
+/// Working width of the strips for measuring the warp tiles (the
+/// targeted sub-pixel precision: 0.1 px ≈ 0.035° ≈ 0.4 px of 4096 output).
 const WARP_WORK_WIDTH: u32 = 1024;
-/// Tranches de latitude du recouvrement mesurées par paire.
+/// Latitude slices of the overlap measured per pair.
 const WARP_TILES: usize = 5;
-/// Confiance minimale d'une tuile acceptée (le recouvrement est étroit).
+/// Minimum confidence of an accepted tile (the overlap is narrow).
 const WARP_MIN_NCC: f32 = 0.55;
-/// Amplitude max d'une correction de warp (degrés) — au-delà, la tuile est
-/// suspecte (mesure parasite) et l'amplitude appliquée clampée.
+/// Max amplitude of a warp correction (degrees) — beyond that, the tile is
+/// suspect (spurious measurement) and the applied amplitude is clamped.
 const WARP_MAX_DEG: f32 = 0.25;
 
-/// Estime et applique le **warp local** de chaque frame (mesh basse
-/// fréquence, δ échantillonnage par cellules de 7,5°) : colle les
-/// recouvrements au niveau LOCAL là où l'align global (3 DOF par frame)
-/// laisse un résidu ~0,1° — la cause des patches chromatiques et halos
-/// gris aux coutures sur zones chargées (constat réel 2026-09-11, stable
-/// à LEVELS/SEAM/GAINCH identiques).
+/// Estimates and applies the **local warp** of each frame (low-frequency
+/// mesh, sampling δ per 7.5° cell): sticks the
+/// overlaps together at the LOCAL level where the global align (3 DOF per frame)
+/// leaves a ~0.1° residual — the cause of the chromatic patches and grey
+/// halos at the seams on busy areas (real finding 2026-09-11, stable
+/// at identical LEVELS/SEAM/GAINCH).
 ///
-/// Mesure : NCC translation sub-pixel par tranches de latitude du
-/// recouvrement (la machine `measure_slab` de l'align), sur strips gris
-/// blanchis à 1024 px. Jauge : correction symétrique ±m/2 par paire
-/// (content_a += +m/2, content_b += −m/2 — convention verrouillée par la
-/// sonde `sonde_convention_yaw` : m = Δa − Δb), δ appliqué = −contenu,
-/// donc δa = −m/2, δb = +m/2. Lissage 2× boîte 3×3 + clamp ±0,15°.
+/// Measurement: sub-pixel NCC translation per latitude slice of the
+/// overlap (the align's `measure_slab` machinery), on grey strips
+/// whitened at 1024 px. Gauge: symmetric correction ±m/2 per pair
+/// (content_a += +m/2, content_b += −m/2 — convention locked by the
+/// probe `sonde_convention_yaw`: m = Δa − Δb), applied δ = −content,
+/// so δa = −m/2, δb = +m/2. Smoothing 2× 3×3 box + clamp ±0.15°.
 pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
     let n = frames.len();
     if n < 2 {
@@ -642,13 +642,13 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
     let wx = (4.5 / dpp).ceil() as i64;
     let wy = (4.5 / dpp).ceil() as i64;
 
-    // Accumulateurs : somme pondérée (δlon, δlat) + poids par cellule et
-    // par frame (grille 24×16, cf. project::WARP_CELLS_*).
+    // Accumulators: weighted sum (δlon, δlat) + weight per cell and
+    // per frame (24×16 grid, see project::WARP_CELLS_*).
     let cells = crate::project::WARP_CELLS_LON * crate::project::WARP_CELLS_LAT;
     let mut sums = vec![(0.0f32, 0.0f32); cells * n];
     let mut wts = vec![0.0f32; cells * n];
 
-    // Index de cellule : même mapping que WarpField::delta.
+    // Cell index: same mapping as WarpField::delta.
     let cell_of = |f: &PreparedFrame, lon: f32, lat: f32| -> Option<usize> {
         let mut rel = lon - f.yaw_deg;
         rel -= 360.0 * (rel / 360.0).round();
@@ -667,7 +667,7 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
         if rows.1 <= rows.0 + WARP_TILES {
             continue;
         }
-        // Milieu du recouvrement en longitude : moitié du pas capteur.
+        // Middle of the overlap in longitude: half of the sensor step.
         let mut rel = frames[b].yaw_deg - frames[a].yaw_deg;
         rel -= 360.0 * (rel / 360.0).round();
         let lon_c = frames[a].yaw_deg + rel * 0.5;
@@ -677,7 +677,7 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
             let Some(m) = measure_slab(sa, sb, slab.clone(), wx, wy) else {
                 continue;
             };
-            // Guards : tuile peu fiable ou correction délirante → rejet.
+            // Guards: unreliable tile or crazy correction → rejection.
             if m.ncc < WARP_MIN_NCC || m.dlon_deg.abs() > 2.0 || m.dlat_deg.abs() > 2.0 {
                 continue;
             }
@@ -689,7 +689,7 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
             let Some(ib) = cell_of(&frames[b], lon_c, lat_c) else {
                 continue;
             };
-            // δa = −m/2 (contenu a += +m/2), δb = +m/2 — cf. doc.
+            // δa = −m/2 (content a += +m/2), δb = +m/2 — see doc.
             let ia = a * cells + ia;
             let ib = b * cells + ib;
             sums[ia].0 += -m.dlon_deg * 0.5;
@@ -705,8 +705,8 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
         return;
     }
 
-    // Lissage 2× boîte 3×3 (wrap lon, clamp lat) sur sommes et poids —
-    // puis division ; cellules sans poids → δ = 0.
+    // Smoothing 2× 3×3 box (wrap lon, clamp lat) on sums and weights —
+    // then division; cells without weight → δ = 0.
     let smooth = |grid: &mut [f32]| {
         for _ in 0..2 {
             let cur = grid.to_vec();
@@ -761,15 +761,15 @@ pub fn estimate_local_warp(frames: &mut [PreparedFrame]) {
         }
     }
     println!(
-        "warp local : {tiles_used} tuiles mesurées, {} champs appliqués",
+        "local warp: {tiles_used} tiles measured, {} fields applied",
         frames.iter().filter(|f| f.warp.is_some()).count()
     );
 }
 
-/// Construit et résout les équations normales du raffinement de pose
-/// (résidu r = (δb − δa) − m pondéré `ncc²·aire`, prior Tikhonov = jauge,
-/// Huber optionnel à la seconde passe IRLS). `delta0` = solution courante
-/// pour le calcul des poids Huber.
+/// Builds and solves the normal equations of the pose refinement
+/// (residual r = (δb − δa) − m weighted by `ncc²·area`, Tikhonov prior = gauge,
+/// optional Huber at the second IRLS pass). `delta0` = current solution
+/// for computing the Huber weights.
 fn solve_step(
     measurements: &[(usize, usize, PairKind, Vec<SlabMeasure>)],
     delta0: Option<&[f64]>,
@@ -782,7 +782,7 @@ fn solve_step(
     for &(a, b, _, ref slabs) in measurements {
         for s in slabs {
             let w0 = (s.ncc * s.ncc).max(1e-6) as f64 * s.rows.max(1) as f64;
-            // Résidu prédit sous la solution courante (passe IRLS).
+            // Predicted residual under the current solution (IRLS pass).
             let (pred_lon, pred_lat) = match delta0 {
                 Some(d) => (
                     (d[2 * b] - d[2 * a]) as f32,
@@ -791,7 +791,7 @@ fn solve_step(
                 None => (0.0, 0.0),
             };
             for (comp, m) in [(0, s.dlon_deg - pred_lon), (1, s.dlat_deg - pred_lat)] {
-                // Huber : poids plein sous 1,5°, linéaire au-delà.
+                // Huber: full weight below 1.5°, linear beyond.
                 let h = (1.5 / m.abs().max(1e-6)).min(1.0) as f64;
                 let w = w0 * h;
                 let ia = 2 * a + comp;
@@ -805,17 +805,17 @@ fn solve_step(
             }
         }
     }
-    // Prior Tikhonov = la jauge : √λ·δ_k = 0. Plein rang garanti, la
-    // moyenne nulle des corrections émerge du prior symétrique.
+    // Tikhonov prior = the gauge: √λ·δ_k = 0. Full rank guaranteed, the
+    // zero mean of the corrections emerges from the symmetric prior.
     for i in 0..nparams {
         jtj[i * nparams + i] += reg;
     }
     cholesky_solve(&mut jtj, &mut jtr, nparams)
 }
 
-/// Résout Ax = b par factorisation de Cholesky (A symétrique définie
-/// positive — le régulariseur Tikhonov le garantit). Détruit `a` et `b`.
-/// ~30 lignes de f64 dense, aucune dépendance.
+/// Solves Ax = b by Cholesky factorisation (A symmetric positive
+/// definite — the Tikhonov regulariser guarantees it). Destroys `a` and `b`.
+/// ~30 lines of dense f64, no dependency.
 fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
     for i in 0..n {
         for j in 0..=i {
@@ -833,7 +833,7 @@ fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
             }
         }
     }
-    // Avant-substitution L y = b.
+    // Forward substitution L y = b.
     for i in 0..n {
         let mut sum = b[i];
         for k in 0..i {
@@ -841,7 +841,7 @@ fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
         }
         b[i] = sum / a[i * n + i];
     }
-    // Arrière-substitution Lᵀ x = y.
+    // Back-substitution Lᵀ x = y.
     let mut x = vec![0.0f64; n];
     for i in (0..n).rev() {
         let mut sum = b[i];
@@ -853,20 +853,20 @@ fn cholesky_solve(a: &mut [f64], b: &mut [f64], n: usize) -> Option<Vec<f64>> {
     Some(x)
 }
 
-/// Raffine les poses par **rotations relatives mesurées aux images**
-/// (feature `pose-model`, serveur) : SuperPoint+LightGlue donnent des
-/// correspondances par paire, `rotation::horn_ransac` les convertit en
-/// rotation relative (modèle rotation pure), et un Gauss-Newton sur les
-/// corrections euler 3 DOF (yaw/pitch/roll — le roll n'est plus gelé)
-/// aligne le graphe de poses sur ces mesures. Prior capteur par axe :
-/// yaw faible (magnétomètre intérieur = principale source d'erreur),
-/// pitch/roll plus forts (gravité fiable). Jauge : le prior + le graphe
-/// connexe (fermeture d'anneau incluse via `build_pairs`).
+/// Refines the poses by **relative rotations measured on the images**
+/// (feature `pose-model`, server): SuperPoint+LightGlue give
+/// per-pair correspondences, `rotation::horn_ransac` converts them into a
+/// relative rotation (pure-rotation model), and a Gauss-Newton on the
+/// 3 DOF euler corrections (yaw/pitch/roll — roll is no longer frozen)
+/// aligns the pose graph on these measurements. Sensor prior per axis:
+/// weak yaw (indoor magnetometer = main source of error),
+/// stronger pitch/roll (reliable gravity). Gauge: the prior + the connected
+/// graph (ring closure included via `build_pairs`).
 ///
-/// Résidu de paire : `log(R_predᵀ·R_meas)` (géodésique SO(3), degrés),
-/// pondéré √inliers avec Huber ; Jacobien NUMÉRIQUE (central diff) — le
-/// coût (6n évals de résidus par itération) est négligeable devant
-/// l'inférence.
+/// Pair residual: `log(R_predᵀ·R_meas)` (SO(3) geodesic, degrees),
+/// weighted √inliers with Huber; NUMERICAL Jacobian (central diff) — the
+/// cost (6n residual evaluations per iteration) is negligible compared to
+/// inference.
 #[cfg(feature = "pose-model")]
 pub fn refine_poses_model(
     frames: &mut [PreparedFrame],
@@ -888,8 +888,8 @@ pub fn refine_poses_model(
         .map(|f| [f.yaw_deg as f64, f.pitch_deg as f64, f.roll_deg as f64])
         .collect();
 
-    // 1) Features par frame (SuperPoint). Toute erreur d'inférence = échec
-    //    matériel (`converged = false` → repli NCC côté appelant).
+    // 1) Features per frame (SuperPoint). Any inference error = hard
+    //    failure (`converged = false` → NCC fallback on the caller side).
     let feats: Vec<crate::pose_model::Features> = match frames
         .iter()
         .map(|f| model.extract(&f.rgb, f.width, f.height, qp.model_work_px))
@@ -899,8 +899,8 @@ pub fn refine_poses_model(
         Err(_) => return report,
     };
 
-    // 2) Paires candidates (géométrie capteur, wrap géré) → mesures de
-    //    rotation par RANSAC sur les correspondances LightGlue.
+    // 2) Candidate pairs (sensor geometry, wrap handled) → rotation
+    //    measurements by RANSAC on the LightGlue correspondences.
     let pairs = build_pairs(frames);
     struct PairRot {
         a: usize,
@@ -930,15 +930,15 @@ pub fn refine_poses_model(
         return report;
     }
 
-    // 2bis) AUTO-CALIBRATION DE FOCLE — le hfov du track caméra dépend du
-    // mode capteur que le webview a négocié pour la résolution demandée :
-    // non dérivable a priori (constat 2026-09-11 : 43,7° déclaré vs ~39°
-    // réel, au MÊME ratio w/h que la veille qui valait ~52° à 720p). Le
-    // biais gonfle les rotations mesurées par features de +12 % et
-    // l'aligneur ne peut pas satisfaire toutes les paires → ghosting.
-    // Les correspondances sont en pixels (focale-indépendantes) : on
-    // cherche l'échelle de f_px qui annule le biais médian (angle de la
-    // rotation relative mesurée − angle capteur) sur les paires fortes.
+    // 2bis) FOCAL LENGTH AUTO-CALIBRATION — the camera track's hfov depends on the
+    // sensor mode the webview negotiated for the requested resolution:
+    // not derivable a priori (finding 2026-09-11: 43.7° declared vs ~39°
+    // real, at the SAME w/h ratio as the day before which was ~52° at 720p). The
+    // bias inflates the feature-measured rotations by +12 % and
+    // the aligner cannot satisfy all pairs → ghosting.
+    // The correspondences are in pixels (focal-independent): we
+    // look for the f_px scale that cancels the median bias (angle of the
+    // measured relative rotation − sensor angle) on the strong pairs.
     let strong = (qp.model_min_inliers as usize).max(30);
     let sensor_angle = |a: usize, b: usize| -> f32 {
         let ma = crate::geom::euler_to_mat(
@@ -1003,7 +1003,7 @@ pub fn refine_poses_model(
     .map(|s| (s, bias_at(s).unwrap_or(f32::INFINITY)))
     .min_by(|x, y| x.1.abs().total_cmp(&y.1.abs()))
     .unwrap_or((1.0, 0.0));
-    // Toutes les évaluations None (< 5 paires fortes) : focale inchangée.
+    // All evaluations None (< 5 strong pairs): focal length unchanged.
     let (best_scale, best_bias) = if best_bias.is_infinite() {
         (1.0, 0.0)
     } else {
@@ -1016,17 +1016,15 @@ pub fn refine_poses_model(
         f.refresh_pose();
     }
     report.calibrated_hfov = Some(hfov_cal);
-    println!(
-        "calibration focale : ×{best_scale:.3} (biais {best_bias:+.2}°) → hfov {hfov_cal:.1}°"
-    );
+    println!("focal calibration: ×{best_scale:.3} (bias {best_bias:+.2}°) → hfov {hfov_cal:.1}°");
 
-    // 2ter) Mesures de rotation à la focale calibrée : Horn/RANSAC par
-    //    paire — correspondances réutilisées, pas de re-extraction.
+    // 2ter) Rotation measurements at the calibrated focal length: Horn/RANSAC per
+    //    pair — correspondences reused, no re-extraction.
     let mut accepted: Vec<PairRot> = Vec::new();
     for &(a, b, kind, ref matches) in &pair_matches {
         let (fa, fb) = (&feats[a], &feats[b]);
-        // Rayons caméra : focale/centre transposés à l'image de travail
-        // (l'aspect est conservé par le resize → un seul facteur par frame).
+        // Camera rays: focal length/centre transposed to the working image
+        // (the aspect is kept by the resize → a single factor per frame).
         let ray = |f: &PreparedFrame, ft: &crate::pose_model::Features, p: [f32; 2]| {
             let s = ft.w as f32 / f.width as f32;
             let fpx = f.f_px * s;
@@ -1045,7 +1043,7 @@ pub fn refine_poses_model(
             .iter()
             .map(|m| ray(&frames[b], fb, fb.kpts_px[m.ib]))
             .collect();
-        // Tolérance en radians ≈ model_max_err_px sur la focale moyenne.
+        // Tolerance in radians ≈ model_max_err_px over the mean focal length.
         let s_a = feats[a].w as f32 / frames[a].width as f32;
         let s_b = feats[b].w as f32 / frames[b].width as f32;
         let f8 = 0.5 * (frames[a].f_px * s_a + frames[b].f_px * s_b);
@@ -1068,12 +1066,12 @@ pub fn refine_poses_model(
         });
     }
     if accepted.is_empty() {
-        return report; // converged = false → repli NCC
+        return report; // converged = false → NCC fallback
     }
 
-    // 3) Solve global : Gauss-Newton sur corrections euler 3 DOF par frame
-    //    (résidus géodésiques SO(3) pondérés √inliers×Huber, prior capteur
-    //    par axe — la jauge).
+    // 3) Global solve: Gauss-Newton on 3 DOF euler corrections per frame
+    //    (SO(3) geodesic residuals weighted √inliers×Huber, sensor prior
+    //    per axis — the gauge).
     let pair_refs: Vec<RotationPair> = accepted
         .iter()
         .map(|pr| (pr.a, pr.b, pr.rel, pr.inliers as u32))
@@ -1089,7 +1087,7 @@ pub fn refine_poses_model(
         };
     };
 
-    // Application + rapport.
+    // Application + report.
     for (k, f) in frames.iter_mut().enumerate() {
         let (dy, dp, dr) = (
             (final_poses[k][0] - sensor[k][0]) as f32,
@@ -1111,15 +1109,15 @@ pub fn refine_poses_model(
     report
 }
 
-/// Mesure de paire pour le solve rotation : (a, b, rotation mesurée
-/// caméra-a → caméra-b, inliers RANSAC).
+/// Pair measurement for the rotation solve: (a, b, measured rotation
+/// camera-a → camera-b, RANSAC inliers).
 pub type RotationPair = (usize, usize, crate::geom::Mat3, u32);
 
-/// Gauss-Newton rotation 3 DOF par frame : résidus géodésiques
-/// `log(predᵀ·rel)` (degrés) pondérés √inliers×Huber(0,5°), prior capteur
-/// par axe (la jauge), Jacobien numérique central, damping LM léger.
-/// Garde-fous : pas > 30° ou correction totale > 25° = divergence.
-/// Retourne les poses finales (degrés) ou `None` si divergence.
+/// 3 DOF per-frame rotation Gauss-Newton: geodesic residuals
+/// `log(predᵀ·rel)` (degrees) weighted √inliers×Huber(0.5°), sensor prior
+/// per axis (the gauge), central numerical Jacobian, light LM damping.
+/// Safeguards: step > 30° or total correction > 25° = divergence.
+/// Returns the final poses (degrees) or `None` on divergence.
 #[must_use]
 #[cfg(feature = "pose-model")]
 pub fn solve_rotation_gn(
@@ -1145,11 +1143,11 @@ pub fn solve_rotation_gn(
                 to_deg(e[1]) as f64,
                 to_deg(e[2]) as f64,
             );
-            // Huber IRLS à 0,5° : poids = √h sur le résidu (coût h·|e|² =
-            // δ·|e| linéaire au-delà de δ — une paire aberrante ne tire pas
-            // tout le graphe). PIÈGE (constat solve synthétique 2026-09-10) :
-            // pondérer par h (et non √h) rend le coût h²·|e|² = δ² CONSTANT
-            // dans la queue — gradient structurellement nul, solve immobile.
+            // Huber IRLS at 0.5°: weight = √h on the residual (cost h·|e|² =
+            // δ·|e| linear beyond δ — an outlier pair does not pull
+            // the whole graph). TRAP (synthetic solve finding 2026-09-10):
+            // weighting by h (and not √h) makes the cost h²·|e|² = δ² CONSTANT
+            // in the tail — structurally zero gradient, motionless solve.
             let nrm = (ex * ex + ey * ey + ez * ez).sqrt();
             let h = (0.5 / nrm.max(1e-9)).min(1.0);
             let w = (inliers as f64).sqrt() * h.sqrt();
@@ -1157,7 +1155,7 @@ pub fn solve_rotation_gn(
             r.push(ey * w);
             r.push(ez * w);
         }
-        // Priors capteur (√λ·(pose − capteur)) — la jauge.
+        // Sensor priors (√λ·(pose − sensor)) — the gauge.
         for (k, p) in poses.iter().enumerate() {
             let (ly, lp) = (
                 qp.model_lambda_yaw.sqrt(),
@@ -1176,10 +1174,10 @@ pub fn solve_rotation_gn(
     for _ in 0..16 {
         let r0 = cur(&poses);
         let np = 3 * n;
-        let h = 0.02_f64; // degrés — précision ≪ le bruit de mesure
+        let h = 0.02_f64; // degrees — precision ≪ measurement noise
         let mut jtj = vec![0.0f64; np * np];
         let mut jtr = vec![0.0f64; np];
-        // Jacobien numérique central : colonne p = (r(+h) − r(−h)) / 2h.
+        // Central numerical Jacobian: column p = (r(+h) − r(−h)) / 2h.
         let mut cols: Vec<Vec<f64>> = Vec::with_capacity(np);
         for p in 0..np {
             let mut plus = poses.clone();
@@ -1195,7 +1193,7 @@ pub fn solve_rotation_gn(
                 .collect();
             cols.push(col);
         }
-        // Équations normales sur −r : (JᵀJ)·δ = −Jᵀ·r.
+        // Normal equations on −r: (JᵀJ)·δ = −Jᵀ·r.
         for (jp, col) in cols.iter().enumerate() {
             for (ip, col2) in cols.iter().enumerate() {
                 let dot: f64 = col.iter().zip(col2).map(|(a, b)| a * b).sum();
@@ -1203,8 +1201,8 @@ pub fn solve_rotation_gn(
             }
             let g: f64 = col.iter().zip(&r0).map(|(a, b)| a * b).sum();
             jtr[jp] = -g;
-            // Damping LM (le prior peut laisser des colonnes quasi nulles
-            // pour une frame sans paire acceptée — Cholesky doit tenir).
+            // LM damping (the prior may leave near-zero columns
+            // for a frame with no accepted pair — Cholesky must hold).
             jtj[jp * np + jp] += 1e-6;
         }
         let Some(mut delta) = solve_step_model(&mut jtj, &mut jtr, np) else {
@@ -1216,9 +1214,9 @@ pub fn solve_rotation_gn(
             converged = false;
             break;
         }
-        // Région de confiance : le GN pur dépasse sur ce problème (pas de
-        // ~2,5× la correction, oscillations — constat test synthétique
-        // 2026-09-10) ; le plafond de pas converge proprement en ~4 pas.
+        // Trust region: pure GN overshoots on this problem (steps of
+        // ~2.5× the correction, oscillations — synthetic test finding
+        // 2026-09-10); the step cap converges cleanly in ~4 steps.
         if max_step > 1.0 {
             let scale = 1.0 / max_step;
             for d in delta.iter_mut() {
@@ -1243,7 +1241,7 @@ pub fn solve_rotation_gn(
         }
     }
 
-    // Garde-fou global : une correction totale absurde = divergence.
+    // Global safeguard: an absurd total correction = divergence.
     let max_corr = poses.iter().zip(sensor).fold(0.0f64, |m, (p, s)| {
         m.max((p[0] - s[0]).abs())
             .max((p[1] - s[1]).abs())
@@ -1259,13 +1257,13 @@ pub fn solve_rotation_gn(
     }
 }
 
-/// Somme des carrés d'un vecteur de résidus.
+/// Sum of squares of a residual vector.
 #[cfg(feature = "pose-model")]
 fn norm2(r: &[f64]) -> f64 {
     r.iter().map(|x| x * x).sum()
 }
 
-/// Cholesky (réutilise le solveur existant) pour le pas Gauss-Newton.
+/// Cholesky (reuses the existing solver) for the Gauss-Newton step.
 #[cfg(feature = "pose-model")]
 fn solve_step_model(jtj: &mut [f64], jtr: &mut [f64], n: usize) -> Option<Vec<f64>> {
     cholesky_solve(jtj, jtr, n)
@@ -1275,7 +1273,7 @@ fn solve_step_model(jtj: &mut [f64], jtr: &mut [f64], n: usize) -> Option<Vec<f6
 mod tests {
     use super::*;
 
-    /// wrap180 : bornes du cercle.
+    /// wrap180: circle bounds.
     #[test]
     fn wrap180_bornes() {
         assert!((wrap180(0.0)).abs() < 1e-6);
@@ -1284,18 +1282,18 @@ mod tests {
         assert!((wrap180(360.0)).abs() < 1e-6);
     }
 
-    /// Parabole : sommet sur un triplet symétrique et asymétrique.
+    /// Parabola: vertex on a symmetric and an asymmetric triplet.
     #[test]
     fn parabola_sommet() {
         assert!((parabola(0.0, 1.0, 0.0)).abs() < 1e-6);
-        // Triplet descendant à droite : sommet décalé à gauche de 1/6.
+        // Triplet descending to the right: vertex shifted left by 1/6.
         assert!((parabola(0.5, 1.0, 0.0) - (-1.0 / 6.0)).abs() < 1e-6);
         assert!((parabola(0.0, 1.0, 0.5) - (1.0 / 6.0)).abs() < 1e-6);
     }
 
-    /// Sonde : mesure NCC sur un décalage de pose CONNU (b capturé à 22,5°,
-    /// enregistré à 24,5° → Δ_b = +2°, Δ_a = 0). Verrouille la convention
-    /// signe/échelle de `measure_pair` indépendamment du pipeline complet.
+    /// Probe: NCC measurement on a KNOWN pose offset (b captured at 22.5°,
+    /// recorded at 24.5° → Δ_b = +2°, Δ_a = 0). Locks the sign/scale
+    /// convention of `measure_pair` independently of the full pipeline.
     #[test]
     fn sonde_convention_yaw() {
         use crate::geom::euler_to_mat;
@@ -1315,7 +1313,7 @@ mod tests {
             }
             (128.0 + 55.0 * v.clamp(-0.92, 0.92)) as u8
         }
-        // Contenu généré à `true_yaw`, pose enregistrée `rec_yaw`.
+        // Content generated at `true_yaw`, recorded pose `rec_yaw`.
         fn frame_at(true_yaw: f32, rec_yaw: f32, pitch: f32) -> PreparedFrame {
             let (w, h, hfov) = (512u32, 910u32, 39.4_f32);
             let f_px = f_px_from_hfov(hfov, w);
@@ -1367,28 +1365,28 @@ mod tests {
         let ms = measure_pair(&sa, &sb, PairKind::Intra, &qp).expect("mesure");
         for m in &ms {
             println!(
-                "sonde Δ_b=+2°: dlon={:+.3} dlat={:+.3} ncc={:.3}",
+                "probe Δ_b=+2°: dlon={:+.3} dlat={:+.3} ncc={:.3}",
                 m.dlon_deg, m.dlat_deg, m.ncc
             );
         }
-        // Observation : dlon ≈ −2 (m = Δ_a − Δ_b = 0 − 2).
+        // Observation: dlon ≈ −2 (m = Δ_a − Δ_b = 0 − 2).
         assert!(
             ms.iter().all(|m| (m.dlon_deg + 2.0).abs() <= 0.8),
-            "convention dlon cassée : {:?}",
+            "dlon convention broken: {:?}",
             ms.iter().map(|m| m.dlon_deg).collect::<Vec<_>>()
         );
     }
 
-    /// Solve rotation synthétique : des poses « vraies » (capteur + dérive
-    /// connue) génèrent les rotations relatives mesurées ; le solve,
-    /// initialisé au capteur, doit retrouver les poses vraies. Verrouille
-    /// la convention rel = M_b·M_aᵀ, le rôle du prior (jauge) et la
-    /// convergence du GN.
+    /// Synthetic rotation solve: "true" poses (sensor + known
+    /// drift) generate the measured relative rotations; the solve,
+    /// initialised at the sensor, must recover the true poses. Locks
+    /// the convention rel = M_b·M_aᵀ, the role of the prior (gauge) and the
+    /// GN convergence.
     #[test]
     #[cfg(feature = "pose-model")]
     fn solve_rotation_synthetic() {
-        // Anneau 8 frames, pas 45°, dérive ±2° par frame (t Scarborough :
-        // motif pseudo-aléatoire déterministe).
+        // 8-frame ring, 45° step, drift ±2° per frame (t Scarborough:
+        // deterministic pseudo-random pattern).
         let n = 8;
         let sensor: Vec<[f64; 3]> = (0..n).map(|k| [k as f64 * 45.0, 0.0, 0.0]).collect();
         let mut true_poses = sensor.clone();
@@ -1400,9 +1398,9 @@ mod tests {
                 0.5 * (((k * 11 + 2) % 3) as f64 - 1.0),
             ]);
         }
-        // Dérive centrée par axe : la composante de jauge (rotation globale
-        // moyenne) est invisible des paires relatives — elle reste ancrée au
-        // capteur par le prior, on la retire du motif attendu.
+        // Per-axis centred drift: the gauge component (mean global
+        // rotation) is invisible to the relative pairs — it stays anchored to the
+        // sensor by the prior, we remove it from the expected pattern.
         for axis in 0..3 {
             let mean = drift.iter().map(|d| d[axis]).sum::<f64>() / n as f64;
             for d in drift.iter_mut() {
@@ -1412,7 +1410,7 @@ mod tests {
         for (k, p) in true_poses.iter_mut().enumerate() {
             *p = [p[0] + drift[k][0], p[1] + drift[k][1], p[2] + drift[k][2]];
         }
-        // Paires voisines + fermeture, rel = M_b·M_aᵀ(true) + inliers.
+        // Neighbour pairs + closure, rel = M_b·M_aᵀ(true) + inliers.
         let mat = |p: [f64; 3]| crate::geom::euler_to_mat(p[0] as f32, p[1] as f32, p[2] as f32);
         let pairs: Vec<RotationPair> = (0..n)
             .map(|k| {
@@ -1425,9 +1423,9 @@ mod tests {
 
         let qp = QualityParams::default();
         let solved = solve_rotation_gn(&pairs, &sensor, &qp).expect("convergence");
-        // Métrique LIBRE DE JAUGE : les paires relatives ne voient pas la
-        // rotation globale (ancrée par le prior) — on compare donc les
-        // rotations relatives du solve aux vraies, pas les poses absolues.
+        // GAUGE-FREE metric: the relative pairs do not see the
+        // global rotation (anchored by the prior) — so we compare the
+        // solve's relative rotations to the true ones, not the absolute poses.
         let mat = |p: &[f64; 3]| crate::geom::euler_to_mat(p[0] as f32, p[1] as f32, p[2] as f32);
         let mut max_rel_err = 0.0f64;
         for k in 0..n {
@@ -1440,11 +1438,11 @@ mod tests {
         }
         assert!(
             max_rel_err < 0.05,
-            "erreur de reprise (relatives) = {max_rel_err:.3}\u{b0}"
+            "relative recovery error = {max_rel_err:.3}\u{b0}"
         );
     }
 
-    /// Jauge : sans le graphe (0 paire), le solve doit rester au capteur.
+    /// Gauge: without the graph (0 pairs), the solve must stay at the sensor.
     #[test]
     #[cfg(feature = "pose-model")]
     fn solve_sans_paires_reste_au_capteur() {
@@ -1458,10 +1456,10 @@ mod tests {
         }
     }
 
-    /// SONDE du warp local : b a un résidu local connu (+0,2° de contenu,
-    /// Δ_b = −0,2°) que l'align global ne corrige pas. Verrouille le sens
-    /// des δ appliqués (δa = −m/2, δb = +m/2) et l'efficacité (re-mesure
-    /// NCC ≈ 0 après application, strips rendus VIA le warp).
+    /// Local warp PROBE: b has a known local residual (+0.2° of content,
+    /// Δ_b = −0.2°) that the global align does not correct. Locks the direction
+    /// of the applied δ (δa = −m/2, δb = +m/2) and the effectiveness (NCC
+    /// re-measurement ≈ 0 after application, strips rendered VIA the warp).
     #[test]
     fn sonde_warp_local() {
         use crate::geom::euler_to_mat;
@@ -1526,20 +1524,20 @@ mod tests {
             ..QualityParams::default()
         };
         let mut frames = vec![frame_at(0.0, 0.0, 15.0), frame_at(20.5, 22.5, 15.0)];
-        // pré-condition : le résidu est bien là
+        // precondition: the residual is indeed there
         let pre = measure_pair(
             &render_gray_strip(&frames[0], qp.align_work_width),
             &render_gray_strip(&frames[1], qp.align_work_width),
             PairKind::Intra,
             &qp,
         )
-        .expect("mesure pré");
+        .expect("pre measurement");
         let m_pre = pre[0].dlon_deg;
-        println!("warp sonde : m_pré = {m_pre:+.3}°");
-        // La texture synthétique périodique biaisé la NCC aux petits Δ
-        // (cf. sonde_convention_yaw : ±0,55°) — injection à Δ = −2° où la
-        // mesure est fiable.
-        assert!(m_pre.abs() > 1.2, "résidu injecté absent : {m_pre}");
+        println!("warp probe: m_pre = {m_pre:+.3}°");
+        // The periodic synthetic texture biases the NCC at small Δ
+        // (see sonde_convention_yaw: ±0.55°) — injection at Δ = −2° where the
+        // measurement is reliable.
+        assert!(m_pre.abs() > 1.2, "injected residual missing: {m_pre}");
 
         estimate_local_warp(&mut frames);
         let (wa, wb) = (&frames[0].warp, &frames[1].warp);
@@ -1549,8 +1547,8 @@ mod tests {
         let Some(wb) = wb else {
             panic!("champ b absent")
         };
-        // Pic de chaque champ (la position exacte des cellules dépend des
-        // tuiles survivantes) — jauge : antisymétrie δa ≈ −δb.
+        // Peak of each field (the exact position of the cells depends on the
+        // surviving tiles) — gauge: antisymmetry δa ≈ −δb.
         let peak = |w: &crate::project::WarpField| {
             w.cells
                 .iter()
@@ -1559,16 +1557,16 @@ mod tests {
                 .unwrap()
         };
         let (d_a, d_b) = (peak(wa), peak(wb));
-        println!("warp sonde : δa={d_a:?} δb={d_b:?}");
-        // Antisymétrie de jauge (±m/2) et amplitude sous le clamp.
+        println!("warp probe: δa={d_a:?} δb={d_b:?}");
+        // Gauge antisymmetry (±m/2) and amplitude under the clamp.
         assert!(
             d_a.0.abs() <= WARP_MAX_DEG + 0.01
                 && d_b.0.abs() <= WARP_MAX_DEG + 0.01
                 && d_a.0 * d_b.0 < 0.0
                 && (d_a.0 + d_b.0).abs() < 0.1,
-            "jauge du warp cassée : {d_a:?} {d_b:?}"
+            "warp gauge broken: {d_a:?} {d_b:?}"
         );
-        // Efficacité : re-mesure sur strips rendus via le warp ≈ 0.
+        // Effectiveness: re-measurement on strips rendered via the warp ≈ 0.
         let post = measure_pair(
             &render_gray_strip(&frames[0], qp.align_work_width),
             &render_gray_strip(&frames[1], qp.align_work_width),
@@ -1577,10 +1575,10 @@ mod tests {
         )
         .expect("mesure post");
         let m_post = post[0].dlon_deg;
-        println!("warp sonde : m_post = {m_post:+.3}°");
-        // Direction : le warp RÉDUIT le résidu (le clamp ±0,15° et la
-        // couverture locale des tuiles bornent l'ampleur de la réduction ;
-        // la validation d'ampleur est faite sur capture réelle).
+        println!("warp probe: m_post = {m_post:+.3}°");
+        // Direction: the warp REDUCES the residual (the ±0.15° clamp and the
+        // local tile coverage bound the extent of the reduction;
+        // the extent is validated on a real capture).
         assert!(
             m_post.abs() < m_pre.abs() - 0.02,
             "warp local inefficace : {m_pre} → {m_post}"

@@ -1,24 +1,24 @@
-//! La ferme d'engines : **un `Engine` edgelinkd par flow déployé** — 1 tab
-//! de l'artefact = 1 engine dans le même process.
+//! The engine farm: **one edgelinkd `Engine` per deployed flow** — 1 tab
+//! of the artifact = 1 engine in the same process.
 //!
-//! Pourquoi une ferme : le vendor charge son tableau en tout-ou-rien
-//! (`Flow::new(..)?` court-circuite la boucle de chargement) et
-//! `redeploy_flows` **vide ses maps avant** de recharger — un tab invalide
-//! rejetait tout l'artefact → exit(1) → crash-loop du superviseur, tous les
-//! flows down. La ferme isole : un tab invalide ne fait échouer que son
-//! engine (`flow_error` sur stdout), les autres continuent ; le reload d'un
-//! tab n'arrête pas les autres (plus de pause d'ingestion globale).
+//! Why a farm: the vendor loads its array all-or-nothing
+//! (`Flow::new(..)?` short-circuits the loading loop) and
+//! `redeploy_flows` **empties its maps before** reloading — one invalid tab
+//! rejected the whole artifact → exit(1) → supervisor crash-loop, all
+//! flows down. The farm isolates: an invalid tab only fails its own
+//! engine (`flow_error` on stdout), the others keep running; reloading a
+//! tab does not stop the others (no more global ingestion pause).
 //!
-//! Contrat stdout ajouté : `flow_started {flow, rev}`, `flow_error {flow,
-//! error}` — l'acquittement du deploy passe par ces événements par flow
-//! (le superviseur backend y souscrit ; runtime.json reste la santé process
-//! uniquement). `--check` réutilise `build_engine` sans `start()` pour le
-//! pré-flight du deploy.
+//! Added stdout contract: `flow_started {flow, rev}`, `flow_error {flow,
+//! error}` — the deploy acknowledgement goes through these per-flow events
+//! (the backend supervisor subscribes to them; runtime.json stays process
+//! health only). `--check` reuses `build_engine` without `start()` for the
+//! deploy pre-flight.
 //!
-//! Delta sémantique (accepté, cf. flow-engine.md §5) : context « global »,
-//! link call et registre http-response deviennent **intra-flow** — chaque
-//! engine est autonome (ContextManager, registres, canaux, CancellationToken
-//! propres), zéro état global mutable dans le vendor.
+//! Semantic delta (accepted, see flow-engine.md §5): "global" context,
+//! link call and the http-response registry become **intra-flow** — each
+//! engine is self-contained (own ContextManager, registries, channels,
+//! CancellationToken), zero mutable global state in the vendor.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -27,67 +27,67 @@ use edgelink_core::runtime::engine::Engine;
 use edgelink_core::runtime::registry::RegistryHandle;
 use serde_json::Value;
 
-/// Un tab de l'artefact isolé avec ses nœuds — l'unité de déploiement.
+/// A tab of the artifact isolated with its nodes — the unit of deployment.
 pub struct TabInput {
-    /// `pnex_flow_id` du tab (fallback : préfixe `pnexflow{id}`) — clé de la
-    /// ferme. Les tabs sans identifiant résolvable sont ignorés (warn).
+    /// `pnex_flow_id` of the tab (fallback: `pnexflow{id}` prefix) — farm
+    /// key. Tabs without a resolvable identifier are ignored (warn).
     pub flow_id: i64,
     pub tab_id: String,
-    /// Tableau Node-RED du tab (tab en tête, puis entrées `z`).
+    /// Node-RED array of the tab (tab first, then `z` entries).
     pub array: Value,
-    /// SHA-256 hex du tableau canonique — l'unité de diff du reload.
+    /// SHA-256 hex of the canonical array — the reload diff unit.
     pub hash: String,
 }
 
-/// Issue d'un cycle boot/reload pour un flow.
+/// Outcome of a boot/reload cycle for a flow.
 pub enum FlowOutcome {
-    /// Engine chargé + démarré — ou inchangé (confirmation idempotente, elle
-    /// résout un acquittement deploy en attente sans toucher l'engine).
+    /// Engine loaded + started — or unchanged (idempotent confirmation, it
+    /// resolves a pending deploy acknowledgement without touching the engine).
     Started {
         flow_id: i64,
         tab_id: String,
         rev: String,
     },
-    /// Build (ou démarrage) en échec. Si un last-good tournait, il continue
-    /// (ingestion préservée) — le chip backend montrera « error ».
+    /// Build (or start) failed. If a last-good was running, it keeps going
+    /// (ingestion preserved) — the backend chip will show "error".
     Failed {
         flow_id: i64,
         tab_id: String,
         error: String,
     },
-    /// Tab disparu de l'artefact : engine arrêté et retiré.
+    /// Tab gone from the artifact: engine stopped and removed.
     Stopped { flow_id: i64, tab_id: String },
 }
 
-/// Rapport d'un cycle de reload. Les issues **par flow** sont émises à la
-/// volée via le callback passé à [`EngineFarm::reload`] (un tab lent ne doit
-/// pas retarder l'acquittement deploy des autres) — le rapport ne porte plus
-/// que les agrégats.
+/// Report of a reload cycle. **Per-flow** outcomes are emitted on the
+/// fly via the callback passed to [`EngineFarm::reload`] (a slow tab must
+/// not delay the deploy acknowledgement of the others) — the report only
+/// carries the aggregates.
 pub struct ReloadReport {
-    /// Nombre de changements appliqués (swaps + retraits).
+    /// Number of changes applied (swaps + removals).
     pub changed: u32,
-    /// Flows retirés (pompes debug à aborter côté main).
+    /// Removed flows (debug pumps to abort in main).
     pub removed: Vec<i64>,
 }
 
-/// Un engine + les métadonnées nécessaires au runtime (debug, diff de
-/// reload). Mutations sérialisées par la boucle signaux ; `lifecycle`
-/// protège `start`/`stop` (le vendor utilise `try_write` — un accès concurrent
-/// retournerait « already started »/« not started »).
+/// An engine + the metadata the runtime needs (debug, reload
+/// diff). Mutations serialised by the signal loop; `lifecycle`
+/// protects `start`/`stop` (the vendor uses `try_write` — a concurrent access
+/// would return "already started"/"not started").
 pub struct FlowEngine {
     pub flow_id: i64,
     pub tab_id: String,
     pub engine: Engine,
     pub tab_hash: String,
-    /// hex(`ElementId` nœud) → id éditeur, pour estampiller le debug.
+    /// hex(node `ElementId`) → editor id, to stamp the debug.
     pub node_by_hex: HashMap<String, String>,
     pub lifecycle: Arc<tokio::sync::Mutex<()>>,
 }
 
-/// La ferme : `engines` = flows vivants (running ou last-good), `failed` =
-/// dernier échec de build par flow (hash fautif + erreur). Un tab inchangé
-/// n'est pas retenté à chaque SIGUSR1 : retry = tab modifié ou redémarrage
-/// du process.
+/// The farm: `engines` = live flows (running or last-good), `failed` =
+/// last build failure per flow (faulty hash + error). An unchanged tab
+/// is not retried on every SIGUSR1: retry = modified tab or process
+/// restart.
 pub struct EngineFarm {
     reg: RegistryHandle,
     engines: HashMap<i64, FlowEngine>,
@@ -103,10 +103,10 @@ impl EngineFarm {
         }
     }
 
-    /// Boot : construit + démarre chaque engine indépendamment — l'échec
-    /// d'un tab n'affecte pas les suivants. Chaque issue est émise **dès
-    /// qu'elle survient** via `on_outcome` (stdout → acquittement deploy) :
-    /// un tab lent au boot ne doit pas retarder les annonces des suivants.
+    /// Boot: builds + starts each engine independently — one tab's
+    /// failure does not affect the following ones. Each outcome is emitted **as
+    /// soon as it happens** via `on_outcome` (stdout → deploy acknowledgement):
+    /// a tab slow at boot must not delay the announcements of the following ones.
     pub async fn boot(&mut self, tabs: Vec<TabInput>, on_outcome: &mut dyn FnMut(FlowOutcome)) {
         for tab in tabs {
             match self.build_and_start(&tab).await {
@@ -131,12 +131,12 @@ impl EngineFarm {
         }
     }
 
-    /// Cycle de reload : diff par `tab_hash`, swap limité au flow concerné,
-    /// last-good préservé en cas d'échec de build. Les issues sont émises
-    /// **à la volée** via `on_outcome` — le `flow_started` d'un tab dont le
-    /// build+start vient de réussir part **avant** les arrêts de retraits
-    /// (potentiellement lents) qui suivent : l'acquittement deploy ne peut
-    /// plus perdre la course contre un cycle au complet.
+    /// Reload cycle: diff by `tab_hash`, swap limited to the flow concerned,
+    /// last-good preserved on build failure. Outcomes are emitted
+    /// **on the fly** via `on_outcome` — the `flow_started` of a tab whose
+    /// build+start just succeeded goes out **before** the removal stops
+    /// (potentially slow) that follow: the deploy acknowledgement can no
+    /// longer lose the race against a full cycle.
     pub async fn reload(
         &mut self,
         tabs: Vec<TabInput>,
@@ -151,8 +151,8 @@ impl EngineFarm {
         for tab in tabs {
             let (fid, hash) = (tab.flow_id, tab.hash.clone());
 
-            // 1) Inchangé (running ou last-good avec hash courant) :
-            //    confirmation idempotente, l'engine n'est pas touché.
+            // 1) Unchanged (running or last-good with current hash):
+            //    idempotent confirmation, the engine is not touched.
             if self.engines.get(&fid).is_some_and(|fe| fe.tab_hash == hash) {
                 on_outcome(FlowOutcome::Started {
                     flow_id: fid,
@@ -161,8 +161,8 @@ impl EngineFarm {
                 });
                 continue;
             }
-            // 2) Déjà en échec pour CE hash : pas de retry sur tab inchangé
-            //    (retry = tab modifié ou redémarrage du process).
+            // 2) Already failed for THIS hash: no retry on an unchanged tab
+            //    (retry = modified tab or process restart).
             if let Some((h, err)) = self.failed.get(&fid) {
                 if *h == hash {
                     on_outcome(FlowOutcome::Failed {
@@ -174,18 +174,18 @@ impl EngineFarm {
                 }
             }
 
-            // 3) Build du nouvel engine AVANT de toucher l'ancien
-            //    (last-good préservé en cas d'échec de build).
+            // 3) Build the new engine BEFORE touching the old one
+            //    (last-good preserved on build failure).
             match build_engine(&self.reg, &tab) {
                 Ok(engine) => {
-                    // Stop l'ancien AVANT le start du nouveau : deux engines
-                    // simultanés sur le même graphe doubleraient les injects
-                    // (timers propres à chaque engine). Coupure limitée à ce
-                    // flow (même sémantique que l'ancien redeploy_flows).
+                    // Stop the old one BEFORE starting the new one: two engines
+                    // at once on the same graph would double the injects
+                    // (each engine has its own timers). Outage limited to this
+                    // flow (same semantics as the old redeploy_flows).
                     if let Some(old) = self.engines.remove(&fid) {
                         let _guard = old.lifecycle.lock().await;
                         if let Err(e) = old.engine.stop().await {
-                            log::warn!("flow {fid} : arrêt du last-good : {e}");
+                            log::warn!("flow {fid}: stopping the last-good: {e}");
                         }
                     }
                     match engine.start().await {
@@ -212,9 +212,9 @@ impl EngineFarm {
                             });
                         }
                         Err(e) => {
-                            // Construit mais pas démarrable : flow down jusqu'au
-                            // prochain reload modifié (cas rare — build OK).
-                            let msg = format!("démarrage : {e}");
+                            // Built but not startable: flow down until the
+                            // next modified reload (rare case — build OK).
+                            let msg = format!("start: {e}");
                             self.failed.insert(fid, (hash.clone(), msg.clone()));
                             on_outcome(FlowOutcome::Failed {
                                 flow_id: fid,
@@ -225,22 +225,22 @@ impl EngineFarm {
                     }
                 }
                 Err(e) => {
-                    // Échec de build : le last-good (s'il existe) continue de
-                    // tourner avec l'ancien graphe — ingestion préservée.
+                    // Build failure: the last-good (if any) keeps
+                    // running with the old graph — ingestion preserved.
                     self.failed.insert(fid, (hash.clone(), e.clone()));
                     on_outcome(FlowOutcome::Failed {
                         flow_id: fid,
                         tab_id: tab.tab_id,
                         error: e,
                     });
-                    // changed inchangé : rien n'a été appliqué pour ce flow.
+                    // changed unchanged: nothing was applied for this flow.
                 }
             }
         }
 
-        // Retraits : flows absents du nouvel artefact. Chaque arrêt émet son
-        // `flow_stopped` dès qu'il est fait — un arrêt lent (node en pleine
-        // lecture réseau bornée) n'immobilise pas les annonces des suivants.
+        // Removals: flows missing from the new artifact. Each stop emits its
+        // `flow_stopped` as soon as it is done — a slow stop (node in the middle
+        // of a bounded network read) does not hold up the following announcements.
         let stale: Vec<i64> = self
             .engines
             .keys()
@@ -252,14 +252,14 @@ impl EngineFarm {
             if let Some(old) = self.engines.remove(&fid) {
                 let _guard = old.lifecycle.lock().await;
                 if let Err(e) = old.engine.stop().await {
-                    log::warn!("flow {fid} : arrêt au retrait : {e}");
+                    log::warn!("flow {fid}: stop on removal: {e}");
                 }
                 on_outcome(FlowOutcome::Stopped {
                     flow_id: fid,
                     tab_id: old.tab_id,
                 });
             } else if self.failed.remove(&fid).is_some() {
-                // En échec sans engine : rien à arrêter, juste sortir de l'état.
+                // Failed without engine: nothing to stop, just leave the state.
                 on_outcome(FlowOutcome::Stopped {
                     flow_id: fid,
                     tab_id: String::new(),
@@ -270,12 +270,12 @@ impl EngineFarm {
         report
     }
 
-    /// Itération sur les engines vivants (pompes debug à (re)lancer).
+    /// Iteration over the live engines (debug pumps to (re)start).
     pub fn engines(&self) -> impl Iterator<Item = &FlowEngine> {
         self.engines.values()
     }
 
-    /// Arrêt propre de tous les engines (ordre stable par flow_id).
+    /// Clean stop of all engines (stable order by flow_id).
     pub async fn stop_all(&self) {
         let mut ids: Vec<i64> = self.engines.keys().copied().collect();
         ids.sort_unstable();
@@ -283,7 +283,7 @@ impl EngineFarm {
             if let Some(fe) = self.engines.get(&fid) {
                 let _guard = fe.lifecycle.lock().await;
                 if let Err(e) = fe.engine.stop().await {
-                    log::warn!("flow {fid} : arrêt : {e}");
+                    log::warn!("flow {fid}: stop: {e}");
                 }
             }
         }
@@ -291,10 +291,7 @@ impl EngineFarm {
 
     async fn build_and_start(&self, tab: &TabInput) -> Result<FlowEngine, String> {
         let engine = build_engine(&self.reg, tab)?;
-        engine
-            .start()
-            .await
-            .map_err(|e| format!("démarrage : {e}"))?;
+        engine.start().await.map_err(|e| format!("start: {e}"))?;
         Ok(FlowEngine {
             flow_id: tab.flow_id,
             tab_id: tab.tab_id.clone(),
@@ -306,9 +303,9 @@ impl EngineFarm {
     }
 }
 
-/// Lit + parse l'artefact en tabs (échecs **fichier** : lecture, JSON,
-/// racine non-tableau). Retourne aussi l'empreinte SHA-256 du fichier brut —
-/// le `flow_rev` du runtime.json (santé process, jamais une version).
+/// Reads + parses the artifact into tabs (**file** failures: read, JSON,
+/// non-array root). Also returns the SHA-256 fingerprint of the raw file —
+/// the `flow_rev` of runtime.json (process health, never a version).
 pub async fn read_tabs(flows_path: &str) -> Result<(Vec<TabInput>, String), String> {
     let raw = tokio::fs::read_to_string(flows_path)
         .await
@@ -319,49 +316,49 @@ pub async fn read_tabs(flows_path: &str) -> Result<(Vec<TabInput>, String), Stri
     Ok((tabs, rev))
 }
 
-/// Regroupe l'artefact en tabs — réplique le classement du désérialiseur
-/// vendor (`deser.rs`) : `type == "tab"` → tab ; entrées avec `z` → nœuds/
-/// groupes du tab ; `comment` ignorés ; entrées sans `z` (subflow templates,
-/// global config nodes) → **warn + ignorées** (jamais produites par la
-/// projection PNEX — un subflow instance orphelin fera échouer son tab, ce
-/// qui est l'isolation voulue). Les tabs sans `pnex_flow_id` résolvable sont
-/// ignorés (warn) — la projection les estampille toujours.
+/// Groups the artifact into tabs — replicates the classification of the vendor
+/// deserialiser (`deser.rs`): `type == "tab"` → tab; entries with `z` → nodes/
+/// groups of the tab; `comment` ignored; entries without `z` (subflow templates,
+/// global config nodes) → **warn + ignored** (never produced by the PNEX
+/// projection — an orphan subflow instance will fail its tab, which
+/// is the intended isolation). Tabs without a resolvable `pnex_flow_id` are
+/// ignored (warn) — the projection always stamps them.
 pub fn parse_tabs(root: &Value) -> Result<Vec<TabInput>, String> {
     let entries = root
         .as_array()
-        .ok_or_else(|| "l'artefact doit être un tableau".to_string())?;
+        .ok_or_else(|| "the artifact must be an array".to_string())?;
 
-    // Tabs dans l'ordre du fichier + buffers d'entrées par z (un tab peut
-    // apparaître APRÈS ses nœuds — bufferisation inconditionnelle par z).
+    // Tabs in file order + entry buffers per z (a tab may
+    // appear AFTER its nodes — unconditional buffering per z).
     let mut order: Vec<String> = Vec::new();
     let mut tab_entries: HashMap<String, Value> = HashMap::new();
     let mut by_z: HashMap<String, Vec<Value>> = HashMap::new();
     for e in entries {
         let Some(obj) = e.as_object() else {
-            return Err("chaque entrée doit être un objet".to_string());
+            return Err("each entry must be an object".to_string());
         };
         let id = obj.get("id").and_then(|v| v.as_str());
         let type_ = obj.get("type").and_then(|v| v.as_str());
         match (id, type_) {
             (Some(id), Some("tab")) => {
                 if tab_entries.contains_key(id) {
-                    return Err(format!("tab dupliqué : {id}"));
+                    return Err(format!("duplicate tab: {id}"));
                 }
                 order.push(id.to_string());
                 tab_entries.insert(id.to_string(), e.clone());
             }
-            (Some(_), Some("comment")) => {} // ignoré par le moteur aussi
+            (Some(_), Some("comment")) => {} // ignored by the engine too
             (Some(_), Some("subflow")) => {
-                log::warn!("subflow template ignoré (non supporté en ferme) : {id:?}");
+                log::warn!("subflow template ignored (not supported in the farm): {id:?}");
             }
             (Some(_), Some(t)) if t.starts_with("subflow:") => {
-                log::warn!("nœud subflow ignoré : template absent en ferme");
+                log::warn!("subflow node ignored: template missing in the farm");
             }
             (Some(_), _) => match obj.get("z").and_then(|v| v.as_str()) {
                 Some(z) => by_z.entry(z.to_string()).or_default().push(e.clone()),
-                None => log::warn!("global config node ignoré : {id:?}"),
+                None => log::warn!("global config node ignored: {id:?}"),
             },
-            // Entrées sans id ou sans type : le moteur les saute aussi.
+            // Entries without id or type: the engine skips them too.
             (None, _) => {}
         }
     }
@@ -376,7 +373,7 @@ pub fn parse_tabs(root: &Value) -> Result<Vec<TabInput>, String> {
             .and_then(|v| v.as_i64())
             .or_else(|| id.strip_prefix("pnexflow").and_then(|s| s.parse().ok()));
         let Some(flow_id) = flow_id else {
-            log::warn!("tab sans pnex_flow_id résolvable, ignoré : {id}");
+            log::warn!("tab without resolvable pnex_flow_id, ignored: {id}");
             continue;
         };
         let mut array = vec![tab_entry.clone()];
@@ -385,7 +382,7 @@ pub fn parse_tabs(root: &Value) -> Result<Vec<TabInput>, String> {
         }
         let hash = sha256_hex(
             serde_json::to_string(&array)
-                .expect("sérialisable")
+                .expect("serialisable")
                 .as_bytes(),
         );
         tabs.push(TabInput {
@@ -398,8 +395,8 @@ pub fn parse_tabs(root: &Value) -> Result<Vec<TabInput>, String> {
     Ok(tabs)
 }
 
-/// Construit l'engine d'un tab **sans le démarrer** — partagé par la ferme
-/// (boot/reload) et le mode `--check` (pré-flight du deploy).
+/// Builds a tab's engine **without starting it** — shared by the farm
+/// (boot/reload) and the `--check` mode (deploy pre-flight).
 pub(crate) fn build_engine(reg: &RegistryHandle, tab: &TabInput) -> Result<Engine, String> {
     Engine::with_json(reg, tab.array.clone(), None).map_err(|e| e.to_string())
 }
@@ -433,12 +430,12 @@ mod tests {
         assert_eq!(tabs.len(), 2);
         assert_eq!(tabs[0].flow_id, 1);
         assert_eq!(tabs[0].tab_id, "pnexflow1");
-        // tab en tête + son nœud.
+        // tab first + its node.
         let arr = tabs[0].array.as_array().unwrap();
         assert_eq!(arr.len(), 2);
         assert_eq!(arr[0]["type"], "tab");
         assert_eq!(arr[1]["id"], "pnexflow1_n1");
-        // hash déterministe.
+        // deterministic hash.
         assert_eq!(tabs[0].hash, tabs[0].hash);
         assert_ne!(tabs[0].hash, tabs[1].hash);
     }

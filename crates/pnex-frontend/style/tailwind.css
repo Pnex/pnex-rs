@@ -1,11 +1,11 @@
-/* Source Tailwind v4 du front PNEX.
+/* Tailwind v4 source of the PNEX front.
  *
- * `source(none)` désactive la détection automatique (basée sur le cwd) ;
- * `@source "../src"` scanne explicitement les sources Rust (classes dans les
- * rsx!). Les chemins @source sont relatifs à CE fichier.
+ * `source(none)` disables automatic detection (based on the cwd);
+ * `@source "../src"` explicitly scans the Rust sources (classes in the
+ * rsx!). @source paths are relative to THIS file.
  *
- * Généré vers ../assets/tailwind.css par `bun run css:build` (Taskfile),
- * consommé par la macro asset!() — ne jamais éditer le fichier généré.
+ * Generated to ../assets/tailwind.css by `bun run css:build` (Taskfile),
+ * consumed by the asset!() macro — never edit the generated file.
  */
 @import "tailwindcss" source(none);
 @import "./fonts.css";
@@ -106,7 +106,7 @@
   }
 }
 
-/* Port des keyframes de l'ancienne UI (index.css React). */
+/* Port of the keyframes of the old UI (React index.css). */
 @keyframes slide-in {
   from {
     transform: translateX(100%);
@@ -366,7 +366,7 @@
 }
 
 /* The loading mark (components/gerbe.rs): a miniature of the login
- * « gerbe » — beams converging on a focus, segments flowing into it. Linear
+ * "sheaf" — beams converging on a focus, segments flowing into it. Linear
  * and fast (0.9 s): data arriving, never a decoration. */
 .pnex-gerbe path {
   stroke: currentColor;
@@ -493,7 +493,7 @@
   }
 }
 
-/* Cellules de table partagées (portées de l'UI React). */
+/* Shared table cells (ported from the React UI). */
 @layer components {
   /* Compact padding below md (phone), desktop values from md up. */
   .th {
@@ -504,11 +504,11 @@
   }
 }
 
-/* Défilement discret de la sidebar (desktop + drawer mobile) : la
- * scrollbar navigateur par défaut pose une piste claire pleine hauteur qui
- * tranche avec le bg-gray-900 — on la remplace par un fin pouce gris sans
- * piste, dans les tokens du thème. Les pseudo-éléments ::-webkit-* ne
- * passent pas par @apply : CSS brut, vars du thème uniquement. */
+/* Discreet scrolling of the sidebar (desktop + mobile drawer): the
+ * default browser scrollbar draws a light full-height track that clashes
+ * with the bg-gray-900 — we replace it with a thin grey thumb without a
+ * track, in the theme tokens. The ::-webkit-* pseudo-elements do not
+ * go through @apply: raw CSS, theme vars only. */
 @layer components {
   .sidebar-scroll {
     scrollbar-width: thin;
@@ -529,10 +529,10 @@
   }
 }
 
-/* Rendu markdown de l'assistant IA — le HTML est généré au runtime par
- * components/markdown.rs (pulldown-cmark → dangerous_inner_html) : les
- * classes utilitaires n'existent pas dans le HTML, on stylise par
- * éléments descendants. Scopé sous .ai-md pour ne pas fuiter ailleurs. */
+/* Markdown rendering of the AI assistant — the HTML is generated at runtime
+ * by components/markdown.rs (pulldown-cmark → dangerous_inner_html): the
+ * utility classes do not exist in the HTML, we style by descendant
+ * elements. Scoped under .ai-md so it does not leak elsewhere. */
 @layer components {
   .ai-md {
     @apply leading-relaxed;

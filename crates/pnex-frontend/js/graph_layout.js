@@ -257,7 +257,7 @@ const STEP = 16;
 
 // The link type a node is most often the source of among the relations
 // (a tie goes alphabetically), by id: certifier and certified company are
-// both organizations, yet one `porte`, the other `habilite_pour`.
+// both organizations, yet one `holds`, the other `accredited_for`.
 function roles(edges) {
   const out = {};
   for (const e of edges) {

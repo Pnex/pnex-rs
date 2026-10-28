@@ -1,6 +1,6 @@
 [package]
 name = "pnex-coolprop-sys"
-description = "Liaisons FFI brutes à l'API C de CoolProp v8.0.0 (CoolPropLib.h)"
+description = "Raw FFI bindings to the CoolProp v8.0.0 C API (CoolPropLib.h)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

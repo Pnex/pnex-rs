@@ -1,9 +1,9 @@
-//! Livraison des notifications websocket (D53, amendé 2026-09-14 : pas de
-//! centre de notif dans le front — le bus WS est un canal configurable
-//! consommé par des clients externes).
+//! Websocket notification delivery (D53, amended 2026-09-14: no
+//! notification centre in the front — the WS bus is a configurable channel
+//! consumed by external clients).
 //!
-//! - broker en-process : `NOTIFY_SESSIONS` (mpsc par session, école
-//!   `DEVICE_SESSIONS` de `ws_device` — pas de broadcast) ;
+//! - in-process broker: `NOTIFY_SESSIONS` (mpsc per session, modelled on
+//!   `DEVICE_SESSIONS` of `ws_device` — no broadcast);
 //! - [`deliver_in_app`] is the single websocket path (publish + journal):
 //!   the internal endpoint (`/internal/notify/deliver`, flow node sends)
 //!   and the Test button loop through it;
@@ -34,13 +34,13 @@ use uuid::Uuid;
 
 use crate::services::settings::NotifySettings;
 
-/// Sessions WS ouvertes dans CE process : org_id → (session → downlink).
-/// Les frames sont publiées à toutes les sessions de l'org ; les sessions
-/// fermées (receiver drop) sont élaguées au passage.
+/// WS sessions open in THIS process: org_id → (session → downlink).
+/// Frames are published to all of the org's sessions; closed sessions
+/// (receiver dropped) are pruned along the way.
 type SessionMap = HashMap<i64, HashMap<Uuid, mpsc::UnboundedSender<String>>>;
 static NOTIFY_SESSIONS: LazyLock<Mutex<SessionMap>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// Enregistre une session (posé AVANT le spawn du loop).
+/// Registers a session (set BEFORE the loop is spawned).
 pub(crate) fn register_session(org_id: i64, session: Uuid, tx: mpsc::UnboundedSender<String>) {
     NOTIFY_SESSIONS
         .lock()
@@ -51,7 +51,7 @@ pub(crate) fn register_session(org_id: i64, session: Uuid, tx: mpsc::UnboundedSe
     announce_presence();
 }
 
-/// Retire une session (RAII `SessionGuard` — tous chemins de sortie).
+/// Removes a session (RAII `SessionGuard` — every exit path).
 pub(crate) fn unregister_session(org_id: i64, session: Uuid) {
     NOTIFY_SESSIONS
         .lock()
@@ -62,8 +62,8 @@ pub(crate) fn unregister_session(org_id: i64, session: Uuid) {
     announce_presence();
 }
 
-/// Retire le device des registres à la sortie, tous chemins compris
-/// (école `DeviceSessionGuard` de ws_device).
+/// Removes the device from the registries on exit, every path included
+/// (modelled on ws_device's `DeviceSessionGuard`).
 pub(crate) struct SessionGuard {
     org_id: i64,
     session: Uuid,
@@ -363,9 +363,9 @@ pub fn deliver_in_app(
     delivered
 }
 
-/// Config runtime d'un canal websocket — composée serveur (URL de deliver
-/// + token interne), injectée au nœud flow par env (`apply_runtime_env`)
-///   et utilisée en loopback par le bouton Test. Jamais en DB ni flows.json.
+/// Runtime config of a websocket channel — composed server-side (deliver URL
+/// + internal token), injected into the flow node via env (`apply_runtime_env`)
+///   and used in loopback by the Test button. Never in the DB nor flows.json.
 pub fn in_app_runtime_config(
     settings: &NotifySettings,
     org_id: i64,

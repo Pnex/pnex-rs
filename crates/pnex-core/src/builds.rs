@@ -1,15 +1,15 @@
 //! Firmware builds domain DTOs (Phase 6), scoped by org (D2).
 //!
 //! Contract notes (recorded in `docs/contracts/build.http`):
-//! - plus de champs `backend`/`job_name`/`argo_wf_job_name` (pas de k8s/Argo
-//!   en Rust : queue PostgreSQL + worker in-process) — la réponse de
-//!   création expose `build_id` + `status` ;
+//! - no more `backend`/`job_name`/`argo_wf_job_name` fields (no k8s/Argo
+//!   in Rust: PostgreSQL queue + in-process worker) — the creation
+//!   response exposes `build_id` + `status`;
 //! - `build_phase` in canonical lowercase: `queued` (waiting for a worker)
 //!   | `running` | `succeeded` | `failed`;
 //! - paginated list (D14).
 //!
-//! Champs dates en chaînes RFC 3339 (sérialisation SeaORM), pas de chrono
-//! dans le core (wasm32).
+//! Date fields as RFC 3339 strings (SeaORM serialization), no chrono
+//! in the core (wasm32).
 
 use serde::{Deserialize, Serialize};
 
@@ -226,7 +226,7 @@ mod tests {
         }
     }
 
-    /// Réponse de création : sans backend/job_name (adaptation Rust).
+    /// Creation response: without backend/job_name (Rust adaptation).
     #[test]
     fn create_response_sans_champs_k8s() {
         let res = CreateBuildResponse {

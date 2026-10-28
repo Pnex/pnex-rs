@@ -1,12 +1,12 @@
-//! Acceptance nœud `pnex-coolprop` : un flow
-//! `inject(json) → pnex-coolprop → debug` calcule les propriétés
-//! thermophysiques in-process — aucune base, aucune env requise.
+//! `pnex-coolprop` node acceptance: a flow
+//! `inject(json) → pnex-coolprop → debug` computes the thermophysical
+//! properties in-process — no database, no env required.
 
 mod common;
 
 use std::time::Duration;
 
-/// Flows JSON projeté (miroir de `to_red_flows_json`).
+/// Projected JSON flows (mirror of `to_red_flows_json`).
 fn coolprop_flows() -> String {
     serde_json::json!([
         {
@@ -59,14 +59,14 @@ fn inject_coolprop_debug_renvoie_les_proprietes() {
     );
     let msg = line["msg"].as_str().unwrap();
     assert!(msg.contains("phase"), "{msg}");
-    // Vapeur d'eau à 400 K / 1 bar : Dmolar ≈ P/(RT) ≈ 30,5 mol/m³.
-    // (gaz parfait ≈ 0.996 de compressibilité — garde-fou anti-garbage).
+    // Water vapour at 400 K / 1 bar: Dmolar ≈ P/(RT) ≈ 30.5 mol/m³.
+    // (ideal gas ≈ 0.996 compressibility — anti-garbage safeguard).
     let dmolar: f64 = msg
         .split("\"Dmolar\": ")
         .nth(1)
         .and_then(|s| s.split(',').next())
         .and_then(|s| s.trim().trim_end_matches('}').parse().ok())
-        .expect("Dmolar numérique dans le debug");
+        .expect("numeric Dmolar in the debug");
     assert!(
         (25.0..35.0).contains(&dmolar),
         "Dmolar hors plage physique : {dmolar}"

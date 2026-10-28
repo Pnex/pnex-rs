@@ -1,74 +1,74 @@
-//! Projection rectiligne d'une frame source et pré-filtrage par bande de
-//! latitude : pour chaque ligne de sortie, seules les frames dont la bande
-//! de couverture contient la latitude sont considérées (un anneau de
-//! capture partage le même pitch — le pré-filtre évite de projeter chaque
-//! rayon dans les 16 caméras pour rien).
+//! Rectilinear projection of a source frame and pre-filtering by latitude
+//! band: for each output row, only the frames whose coverage band
+//! contains the latitude are considered (a capture ring
+//! shares the same pitch — the pre-filter avoids projecting each
+//! ray into the 16 cameras for nothing).
 //!
-//! Repère : cf. [`crate::geom`].
+//! Frame of reference: see [`crate::geom`].
 
 use crate::geom::Mat3;
 
-/// Frame préparée : matrice monde→caméra, dimensions, focale, buffer RGB.
+/// Prepared frame: world→camera matrix, dimensions, focal length, RGB buffer.
 pub struct PreparedFrame {
-    /// Pose au déclenchement (degrés) — conservée pour appliquer une
-    /// correction d'alignement puis re-dériver [`Self::refresh_pose`].
+    /// Pose at the trigger (degrees) — kept to apply an
+    /// alignment correction then re-derive [`Self::refresh_pose`].
     pub yaw_deg: f32,
     pub pitch_deg: f32,
     pub roll_deg: f32,
-    /// Monde→caméra (rangées droite, bas, avant).
+    /// World→camera (rows right, down, forward).
     pub inv: Mat3,
     pub width: u32,
     pub height: u32,
-    /// Focale en pixels : `f = (w/2)/tan(hfov/2)` (hypothèse rectiligne).
+    /// Focal length in pixels: `f = (w/2)/tan(hfov/2)` (rectilinear assumption).
     pub f_px: f32,
-    /// Bande de latitude couverte par la frame (degrés), marge de roll
-    /// incluse — clé du pré-filtre par ligne de sortie.
+    /// Latitude band covered by the frame (degrees), roll margin
+    /// included — key of the per-output-row pre-filter.
     pub lat_min: f32,
     pub lat_max: f32,
-    /// Distance de fondu aux bords (px).
+    /// Feather distance at the edges (px).
     pub feather_px: f32,
-    /// Gain d'exposition multiplicatif par canal RGB (compensation
-    /// inter-frames) ; `[1.0; 3]` = neutre. Le pipeline Legacy réplique un
-    /// gain scalaire sur les 3 canaux.
+    /// Multiplicative exposure gain per RGB channel (inter-frame
+    /// compensation); `[1.0; 3]` = neutral. The Legacy pipeline replicates a
+    /// scalar gain over the 3 channels.
     pub gain: [f32; 3],
-    /// Gain **local** basse fréquence (grille 120×60 cellules de 3°,
-    /// ordonnée par rangées depuis lat −90) : aplani les gradients
-    /// d'illumination intra-scène (fenêtre vs mur) que les gains scalaires
-    /// par frame ne peuvent pas absorber — la cause des jointures en
-    /// rectangles visibles. Tout à 1.0 = neutre (Legacy). Équivalent Rust
-    /// des « block gains » du GainCompensator OpenCV.
+    /// Low-frequency **local** gain (120×60 grid of 3° cells,
+    /// ordered by rows from lat −90): flattens the intra-scene illumination
+    /// gradients (window vs wall) that per-frame scalar gains
+    /// cannot absorb — the cause of visible rectangular
+    /// joins. All at 1.0 = neutral (Legacy). Rust equivalent
+    /// of the OpenCV GainCompensator "block gains".
     pub local_gain: Vec<f32>,
-    /// Warp local (mesh) : δ échantillonnage par cellule — `None` =
-    /// géométrie pure de la pose (Legacy, tests). Rempli par
-    /// `align::estimate_local_warp` (pipeline Quality).
+    /// Local warp (mesh): sampling δ per cell — `None` =
+    /// pure pose geometry (Legacy, tests). Filled by
+    /// `align::estimate_local_warp` (Quality pipeline).
     pub warp: Option<WarpField>,
     pub rgb: Vec<u8>,
 }
 
-/// Taille des dimensions de la grille de gain local (cellules de 3°).
+/// Dimensions of the local gain grid (3° cells).
 pub const LOCAL_GRID_W: usize = 120;
 pub const LOCAL_GRID_H: usize = 60;
 
-/// Champ de warp LOCAL d'une frame : δlon/δlat (degrés) sur une grille de
-/// contrôle couvrant lon ∈ [yaw−90, yaw+90] × lat ∈ [pitch−60, pitch+60]
-/// (cellules de 7,5°). Porté par [`PreparedFrame::warp`] ; appliqué comme
-/// perturbation du rayon AVANT projection ([`sample_ray`]) — le contenu de
-/// la frame apparaît alors décalé de −δ (cf. `align::estimate_local_warp`
-/// pour le sens et la jauge).
+/// LOCAL warp field of a frame: δlon/δlat (degrees) on a control grid
+/// covering lon ∈ [yaw−90, yaw+90] × lat ∈ [pitch−60, pitch+60]
+/// (7.5° cells). Carried by [`PreparedFrame::warp`]; applied as a
+/// ray perturbation BEFORE projection ([`sample_ray`]) — the frame's
+/// content then appears shifted by −δ (see `align::estimate_local_warp`
+/// for the direction and the gauge).
 #[derive(Clone, Debug, Default)]
 pub struct WarpField {
-    /// (δlon, δlat) par cellule, rangées depuis lat+60, colonnes depuis
+    /// (δlon, δlat) per cell, rows from lat+60, columns from
     /// lon yaw−90.
     pub cells: Vec<(f32, f32)>,
 }
 
-/// Cellules de la grille de warp (7,5° sur chaque axe).
+/// Warp grid cells (7.5° on each axis).
 pub const WARP_CELLS_LON: usize = 24;
 pub const WARP_CELLS_LAT: usize = 16;
 
 impl WarpField {
-    /// Interpolation bilinéaire du champ au point (lon, lat) monde.
-    /// Grille absente ou taille incohérente → (0, 0).
+    /// Bilinear interpolation of the field at world point (lon, lat).
+    /// Missing grid or inconsistent size → (0, 0).
     #[must_use]
     pub fn delta(&self, frame_yaw: f32, frame_pitch: f32, lon: f32, lat: f32) -> (f32, f32) {
         if self.cells.len() != WARP_CELLS_LON * WARP_CELLS_LAT {
@@ -98,7 +98,7 @@ impl WarpField {
     }
 }
 
-/// Index de cellule de la grille locale pour (lon, lat) en degrés.
+/// Local grid cell index for (lon, lat) in degrees.
 #[must_use]
 pub fn local_gain_cell(lon: f32, lat: f32) -> usize {
     let ci = (((lon + 180.0) / 3.0).floor().clamp(0.0, 119.0)) as usize;
@@ -135,10 +135,10 @@ impl PreparedFrame {
 }
 
 impl PreparedFrame {
-    /// Re-dérive `inv` et la bande de latitude depuis la pose (yaw, pitch,
-    /// roll). À appeler après toute correction de pose : le pré-filtre par
-    /// ligne (`lat_min/lat_max`) et le warp (`inv`) doivent suivre, sinon
-    /// les frames corrigées sont exclues à tort du rendu.
+    /// Re-derives `inv` and the latitude band from the pose (yaw, pitch,
+    /// roll). Call after any pose correction: the per-row pre-filter
+    /// (`lat_min/lat_max`) and the warp (`inv`) must follow, otherwise
+    /// the corrected frames are wrongly excluded from the render.
     pub fn refresh_pose(&mut self) {
         self.inv = crate::geom::euler_to_mat(self.yaw_deg, self.pitch_deg, self.roll_deg);
         let (lat_min, lat_max) = lat_band(self.height, self.f_px, self.pitch_deg);
@@ -147,11 +147,11 @@ impl PreparedFrame {
     }
 }
 
-/// Rayon monde échantillonné pour la frame `f` au point (lon, lat) :
-/// applique le warp local de la frame (δ bilinéaire, cf. [`WarpField`]) —
-/// sampler en (lon+δlon, lat+δlat) fait apparaître le contenu décalé de
-/// −δ. Point d'entrée UNIQUE des boucles de rendu (render, multiband,
-/// seams, gains) : la géométrie reste cohérente d'un étage à l'autre.
+/// World ray sampled for frame `f` at point (lon, lat):
+/// applies the frame's local warp (bilinear δ, see [`WarpField`]) —
+/// sampling at (lon+δlon, lat+δlat) makes the content appear shifted by
+/// −δ. SINGLE entry point of the render loops (render, multiband,
+/// seams, gains): the geometry stays consistent from one stage to the next.
 #[must_use]
 pub fn sample_ray(f: &PreparedFrame, lon: f32, lat: f32) -> [f32; 3] {
     let (dlon, dlat) = match &f.warp {
@@ -161,21 +161,21 @@ pub fn sample_ray(f: &PreparedFrame, lon: f32, lat: f32) -> [f32; 3] {
     crate::render::ray_of(lon + dlon, lat + dlat)
 }
 
-/// Focale en pixels pour une HFOV (degrés) et une largeur donnée.
+/// Focal length in pixels for a given HFOV (degrees) and width.
 #[must_use]
 pub fn f_px_from_hfov(hfov_deg: f32, width: u32) -> f32 {
     let half = (width as f32) * 0.5;
     half / to_rad_tan(hfov_deg * 0.5)
 }
 
-/// tan(d°) — petit wrapper pour la lisibilité des formules de focale.
+/// tan(d°) — small wrapper for the readability of focal length formulas.
 fn to_rad_tan(deg: f32) -> f32 {
     deg.to_radians().tan()
 }
 
-/// Bande de latitude couverte par une frame (degrés, marge incluse).
-/// La vfov est déduite de l'aspect ; on ajoute une marge de 6° pour les
-/// poses avec roll/du flou de pose au déclenchement.
+/// Latitude band covered by a frame (degrees, margin included).
+/// The vfov is derived from the aspect; we add a 6° margin for
+/// poses with roll/pose blur at the trigger.
 #[must_use]
 pub fn lat_band(height: u32, f_px: f32, pitch_deg: f32) -> (f32, f32) {
     let half_vfov = (height as f32 * 0.5 / f_px).atan().to_degrees();
@@ -186,9 +186,9 @@ pub fn lat_band(height: u32, f_px: f32, pitch_deg: f32) -> (f32, f32) {
     )
 }
 
-/// Projette un rayon monde dans la frame : `Some((u, v, c))` où `c = cos`
-/// de l'angle rayon↔axe optique (centralité, dans (0,1] pour un point
-/// visé), `None` hors du capteur. `ray` doit être unitaire.
+/// Projects a world ray into the frame: `Some((u, v, c))` where `c = cos`
+/// of the ray↔optical axis angle (centrality, in (0,1] for a targeted
+/// point), `None` outside the sensor. `ray` must be unit.
 #[must_use]
 pub fn project_uvc(frame: &PreparedFrame, ray: [f32; 3]) -> Option<(f32, f32, f32)> {
     let [a, b, c] = frame.inv.mul_vec(ray);
@@ -197,27 +197,27 @@ pub fn project_uvc(frame: &PreparedFrame, ray: [f32; 3]) -> Option<(f32, f32, f3
     }
     let u = frame.width as f32 * 0.5 + frame.f_px * a / c;
     let v = frame.height as f32 * 0.5 + frame.f_px * b / c;
-    // Tolérance d'un demi-pixel hors-bord : le sampling bilinéaire reste
-    // défini et les poids de fondu s'annulent au bord.
+    // Half-pixel off-edge tolerance: bilinear sampling stays
+    // defined and the feather weights vanish at the edge.
     if u < -0.5 || v < -0.5 || u > frame.width as f32 - 0.5 || v > frame.height as f32 - 0.5 {
         return None;
     }
-    // c = axe·rayon (les deux unitaires) = cos de l'angle à l'axe.
+    // c = axis·ray (both unit) = cos of the angle to the axis.
     Some((u, v, c))
 }
 
-/// Projette un rayon monde dans la frame ; `None` hors du capteur.
-/// `ray` doit être unitaire. (Conserve l'API historique (u, v).)
+/// Projects a world ray into the frame; `None` outside the sensor.
+/// `ray` must be unit. (Keeps the historical (u, v) API.)
 #[must_use]
 pub fn project(frame: &PreparedFrame, ray: [f32; 3]) -> Option<(f32, f32)> {
     project_uvc(frame, ray).map(|(u, v, _)| (u, v))
 }
 
-/// Poids de sélection : distance normalisée au bord le plus proche, dans
-/// `[0, 1]` (1 au centre de la frame, 0 sur le pourtour). Élevée à une
-/// puissance côté rendu, elle fait « gagner » la frame qui voit le pixel le
-/// plus au centre → sélection nette au lieu d'un moyennage fantôme, avec un
-/// fondu étroit uniquement là où deux frames se valent (la couture).
+/// Selection weight: normalised distance to the nearest edge, in
+/// `[0, 1]` (1 at the frame centre, 0 on the rim). Raised to a
+/// power on the render side, it makes the frame that sees the pixel the most
+/// centrally "win" → sharp selection instead of a ghosting average, with a
+/// narrow feather only where two frames are equal (the seam).
 #[must_use]
 pub fn interior_weight(frame: &PreparedFrame, u: f32, v: f32) -> f32 {
     let dist = u
@@ -256,9 +256,9 @@ mod tests {
         }
     }
 
-    /// refresh_pose : modifier la pose puis re-dériver doit déplacer la
-    /// bande de latitude et reconstruire `inv` à l'identique d'un montage
-    /// direct.
+    /// refresh_pose: changing the pose then re-deriving must move the
+    /// latitude band and rebuild `inv` identically to a direct
+    /// construction.
     #[test]
     fn refresh_pose_redrive() {
         let mut fr = frame_yields(1000, 750, 90.0);
@@ -295,25 +295,25 @@ mod tests {
         assert!((west - east).abs() < 0.01, "seam {west} vs {east}");
     }
 
-    /// Focale : hfov complet → les bords gauche/droit à ±w/2 du centre.
+    /// Focal length: full hfov → the left/right edges at ±w/2 from the centre.
     #[test]
     fn focale_hfov() {
         let f = f_px_from_hfov(90.0, 1000);
         assert!((f - 500.0).abs() < 1e-3); // tan(45°) = 1
         let fr = frame_yields(1000, 750, 90.0);
-        // Rayon d'axe → centre exact.
+        // Axis ray → exact centre.
         let (u, v) = project(&fr, [1.0, 0.0, 0.0]).unwrap();
         assert!((u - 500.0).abs() < 1e-3 && (v - 375.0).abs() < 1e-3);
-        // Rayon à 44° du côté droit (lon −44° cf. repère) — PAS à 45° pile :
-        // le bord exact tombe sur u = w, exclu par la tolérance demi-pixel.
+        // Ray at 44° on the right side (lon −44° see frame) — NOT exactly 45°:
+        // the exact edge falls on u = w, excluded by the half-pixel tolerance.
         let (lon, lat) = (-44.0_f32.to_radians(), 0.0_f32);
         let ray = [lat.cos() * lon.cos(), lat.cos() * lon.sin(), lat.sin()];
         let (u, _) = project(&fr, ray).unwrap();
         let attendu = 500.0 + 500.0 * 44.0_f32.to_radians().tan();
-        assert!((u - attendu).abs() < 1.0, "u = {u}, attendu {attendu}");
+        assert!((u - attendu).abs() < 1.0, "u = {u}, expected {attendu}");
     }
 
-    /// Centralité : rayon d'axe → c ≈ 1 ; rayon oblique → c plus petit.
+    /// Centrality: axis ray → c ≈ 1; oblique ray → smaller c.
     #[test]
     fn centralite() {
         let fr = frame_yields(1000, 750, 90.0);
@@ -325,7 +325,7 @@ mod tests {
         assert!(c1 < c0 && c1 > 0.5, "c oblique = {c1}");
     }
 
-    /// interior_weight : ~1 au centre, 0 au bord.
+    /// interior_weight: ~1 at the centre, 0 at the edge.
     #[test]
     fn poids_interieur() {
         let fr = frame_yields(800, 600, 65.0);
@@ -334,12 +334,12 @@ mod tests {
         assert!(interior_weight(&fr, 400.0, 600.0) < 1e-6);
     }
 
-    /// Hors-champ : derrière la caméra ou au-delà du capteur → None.
+    /// Out of view: behind the camera or beyond the sensor → None.
     #[test]
     fn hors_champ() {
         let fr = frame_yields(1000, 750, 60.0);
         assert!(project(&fr, [-1.0, 0.0, 0.0]).is_none());
-        // lon 90° est loin hors du hfov 60 → None
+        // lon 90° is far outside the hfov 60 → None
         assert!(project(&fr, [0.0, 1.0, 0.0]).is_none());
     }
 }

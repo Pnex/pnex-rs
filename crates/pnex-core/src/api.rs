@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn user_info_minimal_deserialize() {
-        // Forme minimale renvoyée par le backend (profile/orgs absents ou vides).
+        // Minimal form returned by the backend (profile/orgs absent or empty).
         let json = r#"{
             "id": 1,
             "username": "alice",

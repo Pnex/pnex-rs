@@ -1,16 +1,16 @@
-//! Modèle typé des flows ETL PNEX (décision D18) — source de vérité unique
-//! consommée par le backend Loco (validation + projection), par le runtime
-//! EdgeLinkd (contrats aux frontières des nœuds custom) et, plus tard, par
-//! l'éditeur Dioxus (palette).
+//! Typed model of the PNEX ETL flows (decision D18) — single source of truth
+//! consumed by the Loco backend (validation + projection), by the EdgeLinkd
+//! runtime (contracts at the custom node boundaries) and, later, by
+//! the Dioxus editor (palette).
 //!
-//! Contraintes (mêmes règles que le reste du crate) :
-//! - pur serde, **aucune dépendance native** — compile natif et `wasm32` ;
-//! - `i64` pour tout identifiant qui retourne en base ;
-//! - f64/chaînes RFC 3339 pour le temps (pas de chrono).
+//! Constraints (same rules as the rest of the crate):
+//! - pure serde, **no native dependency** — compiles native and `wasm32`;
+//! - `i64` for every identifier that goes back to the database;
+//! - f64/RFC 3339 strings for time (no chrono).
 //!
-//! Garde-fou PRD : **pas de type-check à l'échelle du graphe** — la validation
-//! couvre la structure du graphe et les contrats aux frontières des nœuds
-//! custom uniquement. Every node is a typed kind: raw Node-RED builtins are
+//! PRD safeguard: **no graph-wide type-check** — validation
+//! covers the graph structure and the contracts at the custom node
+//! boundaries only. Every node is a typed kind: raw Node-RED builtins are
 //! not reachable from a user flow.
 //!
 //! # Module layout

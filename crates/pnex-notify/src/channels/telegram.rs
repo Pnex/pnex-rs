@@ -1,11 +1,11 @@
-//! Canal `telegram` — Bot API `sendMessage` : POST JSON `{chat_id, text}`
-//! vers `https://api.telegram.org/bot{token}/sendMessage`.
+//! `telegram` channel — Bot API `sendMessage`: JSON POST `{chat_id, text}`
+//! to `https://api.telegram.org/bot{token}/sendMessage`.
 //!
-//! D54 : le bot token est un champ secret write-only (jamais loggé). Le
-//! texte est borné à 4096 chars par l'API — garde fail-loud `TooLarge`
-//! (D63, pas de troncature silencieuse). L'URL d'API est codée en dur ;
-//! [`send_to`] factorise le chemin HTTP pour être éprouvé contre un
-//! récepteur local (aucune config de test dans field_spec).
+//! D54: the bot token is a write-only secret field (never logged). The
+//! text is bounded to 4096 chars by the API — fail-loud `TooLarge` guard
+//! (D63, no silent truncation). The API URL is hard-coded;
+//! [`send_to`] factors out the HTTP path so it can be tested against a
+//! local receiver (no test config in field_spec).
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -16,11 +16,11 @@ use crate::{Channel, Message};
 
 pub struct TelegramChannel;
 
-/// Borne Telegram Bot API pour `text` (chars, pas octets).
+/// Telegram Bot API bound for `text` (chars, not bytes).
 const MAX_CHARS: usize = 4096;
 
-/// chat_id Telegram : `@nomdecanal` (sans espace) ou id numérique (négatif
-/// pour les groupes/canaux).
+/// Telegram chat_id: `@channelname` (no space) or numeric id (negative
+/// for groups/channels).
 fn chat_id_valide(chat_id: &str) -> bool {
     if let Some(name) = chat_id.strip_prefix('@') {
         return !name.is_empty() && !name.contains(char::is_whitespace);
@@ -72,7 +72,7 @@ impl Channel for TelegramChannel {
                 "notify-field-chat-id",
                 pnex_core::FieldType::Text,
                 true,
-                Some("-1001234567890 ou @moncanal"),
+                Some("-1001234567890 or @mychannel"),
                 None,
                 &[],
             ),

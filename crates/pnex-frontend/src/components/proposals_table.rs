@@ -1,6 +1,6 @@
 //! Proposals table (proposals.md D374): what a machine proposed, about
 //! which objects, with which values, from where; accept or reject. Used by
-//! the « À valider » page and, filtered, on an object's page.
+//! the "To review" page and, filtered, on an object's page.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;

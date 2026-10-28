@@ -1,5 +1,5 @@
-//! Tests de la route interne `/internal/flow/device-write` (nœud
-//! `pnex-device-write`) — école `notify.rs`.
+//! Tests for the internal route `/internal/flow/device-write` (node
+//! `pnex-device-write`) — modelled on `notify.rs`.
 
 use loco_rs::testing::request::{RequestConfig, RequestConfigBuilder};
 use loco_rs::TestServer;
@@ -100,7 +100,7 @@ async fn deploy_ai_nodes(ctx: &loco_rs::app::AppContext, org: i64) {
     am.update(&ctx.db).await.unwrap();
 }
 
-/// Fail-closed : sans token configuré, toute écriture est refusée 401.
+/// Fail-closed: without a configured token, every write is refused 401.
 #[tokio::test]
 #[serial]
 async fn interne_sans_token_refuse() {
@@ -119,9 +119,9 @@ async fn interne_sans_token_refuse() {
     .await;
 }
 
-/// Token configuré (env) mais faux → 401 ; device inconnu avec bon token
-/// → 404. La valeur du token passe par `PNEX_FLOW_RUNTIME_TOKEN` (même
-/// résolution que la route).
+/// Token configured (env) but wrong → 401; unknown device with the right
+/// token → 404. The token value goes through `PNEX_FLOW_RUNTIME_TOKEN` (same
+/// resolution as the route).
 #[tokio::test]
 #[serial]
 async fn interne_mauvais_token_et_device_inconnu() {

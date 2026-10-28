@@ -1,9 +1,9 @@
-//! Diagramme thermodynamique (widget `thermo_chart`) — projection pure
-//! (log/lin par axe, polylines SI → viewBox SVG) + composant partagé
-//! live/éditeur. Doctrine D29/D30 : SVG fait main, zéro lib, géométrie
-//! pure testée ; la couche statique (dôme + iso-lignes) est re-rendue via
-//! `use_resource` (clé = options thermo), la couche dynamique (points du
-//! cycle) est re-résolue à chaque tick de polling.
+//! Thermodynamic diagram (`thermo_chart` widget) — pure projection
+//! (log/lin per axis, SI polylines → SVG viewBox) + component shared by
+//! live/editor. D29/D30 doctrine: hand-made SVG, zero lib, pure tested
+//! geometry; the static layer (dome + iso-lines) is re-rendered via
+//! `use_resource` (key = thermo options), the dynamic layer (cycle
+//! points) is re-resolved on every polling tick.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -13,18 +13,18 @@ use crate::api;
 use crate::components::gerbe::Gerbe;
 use pnex_core::{TelemetryPoint, ThermoChartOptions, ThermoPressureUnit, Widget};
 
-/// Projection linéaire d'une valeur sur la plage [min, max] → [0, 1].
+/// Linear projection of a value over the range [min, max] → [0, 1].
 fn lin_project(v: f64, min: f64, max: f64) -> f64 {
     ((v - min) / (max - min).max(1e-12)).clamp(0.0, 1.0)
 }
 
-/// Projection log10 d'une valeur (axe p-h en y). Précondition v > 0.
+/// log10 projection of a value (p-h axis in y). Precondition v > 0.
 fn log_project(v: f64, min: f64, max: f64) -> f64 {
     let (lo, hi) = (min.max(1e-12).log10(), max.max(1e-12).log10());
     ((v.max(1e-12).log10() - lo) / (hi - lo).max(1e-12)).clamp(0.0, 1.0)
 }
 
-/// Projette un point SI en coordonnées viewBox.
+/// Projects an SI point into viewBox coordinates.
 fn project(
     x: f64,
     y: f64,
@@ -47,7 +47,7 @@ fn project(
     (pad + u * (w - 2.0 * pad), h - pad - v * (h - 2.0 * pad))
 }
 
-/// Polylines SI → attribut `points` SVG (une chaîne par polyline).
+/// SI polylines → SVG `points` attribute (one string per polyline).
 fn polyline_attr(
     points: &[[f64; 2]],
     xm: &api::thermo::AxisMeta,
@@ -74,7 +74,7 @@ fn last_value_of(
     values.get(series_key)?.as_ref()?.last().map(|p| p.value)
 }
 
-/// Clé du rendu statique (options → chaîne stable pour le garde-fou).
+/// Static rendering key (options → stable string for the guard).
 fn diagram_key(t: &ThermoChartOptions) -> String {
     format!(
         "{}|{}|{}|{:?}",
@@ -85,7 +85,7 @@ fn diagram_key(t: &ThermoChartOptions) -> String {
     )
 }
 
-/// Couleurs littérales (scanner Tailwind + attributs SVG).
+/// Literal colors (Tailwind scanner + SVG attributes).
 const CURVE: &str = "var(--color-slate-400, #94a3b8)";
 const DOME: &str = "var(--color-slate-600, #475569)";
 const CYCLE: &str = "#dc2626";
@@ -108,7 +108,7 @@ pub fn ThermoChart(
     let h = 300.0f64;
     let pad = 40.0f64;
 
-    // ── Couche statique : dôme + iso-lignes (garde sur la clé d'options) ──
+    // ── Static layer: dome + iso-lines (guarded on the options key) ──
     let mut diagram_sig = use_signal(|| Option::<api::thermo::DiagramResult>::None);
     let mut diagram_requested = use_signal(String::new);
     {
@@ -131,7 +131,7 @@ pub fn ThermoChart(
         }
     }
 
-    // ── Couche dynamique : points du cycle (résolus à chaque tick) ──
+    // ── Dynamic layer: cycle points (resolved on every tick) ──
     let mut cycle_sig = use_signal(|| Option::<Vec<api::thermo::CyclePoint>>::None);
     let mut cycle_requested = use_signal(String::new);
     {
@@ -164,21 +164,21 @@ pub fn ThermoChart(
     let xm = dia.x.clone();
     let ym = dia.y.clone();
 
-    // Points du cycle projetés (cercles + labels), polyline fermée.
+    // Projected cycle points (circles + labels), closed polyline.
     let cycle_pts = cycle_sig().clone().unwrap_or_default();
     let mut projected: Vec<(f64, f64, f64, f64, String)> = Vec::new();
     for p in &cycle_pts {
         let (x, y) = project(p.coords[0], p.coords[1], &xm, &ym, w, h, pad);
-        // Décalage du label calculé côté Rust (pas d'arithmétique f64/int
-        // dans le rsx).
+        // Label offset computed on the Rust side (no f64/int arithmetic
+        // in the rsx).
         projected.push((x, y, x + 6.0, y - 6.0, p.label.clone()));
     }
     let inner_w = w - 2.0 * pad;
     let inner_h = h - 2.0 * pad;
-    // Labels d'axes précalculés (pas d'arithmétique dans le rsx) :
-    // conversion bar sur l'axe pression du p-h (absolu, ÷1e5) + arrondi.
-    // Posés DANS le cadre — les labels ancrés hors viewBox étaient
-    // tronqués en rendu (retour 2026-09-18).
+    // Precomputed axis labels (no arithmetic in the rsx):
+    // bar conversion on the pressure axis of the p-h (absolute, ÷1e5) + rounding.
+    // Placed INSIDE the frame — labels anchored outside the viewBox were
+    // clipped when rendered (feedback 2026-09-18).
     let y_div = if thermo.pressure_unit == ThermoPressureUnit::Bar && thermo.diagram == "ph" {
         1.0e5
     } else {
@@ -250,7 +250,7 @@ pub fn ThermoChart(
                         }
                     }
                 }
-                // Labels d'axes (dans le cadre : jamais tronqués).
+                // Axis labels (inside the frame: never clipped).
                 text {
                     x: "{lbl_x_in}",
                     y: "{lbl_y_below}",
@@ -285,8 +285,8 @@ pub fn ThermoChart(
     }
 }
 
-/// Format d'un label d'axe : diviseur d'unité (Pa → bar, absolu) +
-/// arrondi — `None` = auto (décimales selon l'ordre de grandeur affiché).
+/// Axis label format: unit divisor (Pa → bar, absolute) +
+/// rounding — `None` = auto (decimals by the displayed order of magnitude).
 fn fmt_axis(v: f64, decimals: Option<u8>, div: f64) -> String {
     let v = v / div;
     let d = match decimals {
@@ -307,8 +307,8 @@ fn fmt_axis(v: f64, decimals: Option<u8>, div: f64) -> String {
     format!("{v:.d$}")
 }
 
-/// Construit la requête cycle-points depuis les options et les valeurs
-/// live : `None` si aucune paire complète (pas de requête inutile).
+/// Builds the cycle-points request from the options and the live
+/// values: `None` if no complete pair (no needless request).
 type CycleRequest = (String, String, Vec<serde_json::Value>, Option<f64>);
 
 fn build_cycle_request(
@@ -359,25 +359,25 @@ mod tests {
 
     #[test]
     fn projections_lineaire_et_log() {
-        // Lin : 0.5 du range → 0.5.
+        // Lin: 0.5 of the range → 0.5.
         assert!((lin_project(5.0, 0.0, 10.0) - 0.5).abs() < 1e-12);
-        // Log : 100 dans [10, 1000] → 0.5 (1 décade de chaque côté).
+        // Log: 100 in [10, 1000] → 0.5 (1 decade on each side).
         assert!((log_project(100.0, 10.0, 1000.0) - 0.5).abs() < 1e-12);
-        // Bornage : hors plage → clampé.
+        // Bounds: out of range → clamped.
         assert_eq!(lin_project(-5.0, 0.0, 10.0), 0.0);
         assert_eq!(log_project(0.0, 10.0, 1000.0), 0.0);
     }
 
     #[test]
     fn format_axe_bar_et_arrondi() {
-        // Auto : décimales selon l'ordre de grandeur affiché.
+        // Auto: decimals by the displayed order of magnitude.
         assert_eq!(fmt_axis(452_000.0, None, 1.0), "452000");
         assert_eq!(fmt_axis(16.4173, None, 1.0), "16.42");
         assert_eq!(fmt_axis(0.0147, None, 1.0), "0.015");
         // bar absolu : Pa ÷ 1e5, arrondi choisi.
         assert_eq!(fmt_axis(452_000.0, Some(2), 1.0e5), "4.52");
         assert_eq!(fmt_axis(101_325.0, Some(3), 1.0e5), "1.013");
-        // Arrondi borné (entrée corrompue).
+        // Bounded rounding (corrupt input).
         assert_eq!(fmt_axis(2.0, Some(255), 1.0), "2.000000");
     }
 
@@ -398,7 +398,7 @@ mod tests {
             ]),
         );
         assert_eq!(last_value_of(&values, "temperature|dev-1"), Some(20.0));
-        // Série dégradée (None) → None.
+        // Degraded series (None) → None.
         values.insert("temperature|dev-1".to_string(), None);
         assert_eq!(last_value_of(&values, "temperature|dev-1"), None);
     }

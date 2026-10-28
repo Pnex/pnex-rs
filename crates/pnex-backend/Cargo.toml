@@ -10,17 +10,16 @@ default-run = "pnex-server"
 [dependencies]
 pnex-core = { workspace = true, features = ["naming", "prompb", "frame-crypto", "egress", "doc-extract", "openapi"] }
 pnex-notify = { workspace = true }
-# CoolProp in-process : validation des mélanges à la sauvegarde + (phase 3)
-# moteur de diagrammes. Autorisé hors mode B : la règle « backend ne lie
-# jamais » porte sur edgelinkd et les crates de nœuds, pas sur la lib de
-# calcul.
+# In-process CoolProp: mixture validation on save + (phase 3) diagram
+# engine. Allowed outside mode B: the "backend never links" rule covers
+# edgelinkd and the node crates, not the computation lib.
 pnex-coolprop = { workspace = true }
-# Contrat app ↔ serveur (version de contrat + ServerInfo) — source partagée.
+# App ↔ server contract (contract version + ServerInfo) — shared source.
 pnex-api-contract = { workspace = true, features = ["openapi"] }
 utoipa = { workspace = true }
 pnex-firmware-builder = { workspace = true }
-# Stitching serveur des prises 360° (Take 360 V2) — pipeline Quality dans
-# le worker `stitch_panorama` (pure Rust, séquentiel ; aucune dep native).
+# Server-side stitching of 360° takes (Take 360 V2) — Quality pipeline in
+# the `stitch_panorama` worker (pure Rust, sequential; no native dep).
 pnex-stitcher = { path = "../pnex-stitcher", features = ["pose-model"] }
 pnex-migration = { path = "migration" }
 loco-rs = { version = "1.0", default-features = false, features = [
@@ -40,7 +39,7 @@ tokio = { version = "1.45", default-features = false, features = [
   "io-util",
   # CameraHub live fan-out (broadcast)
   "sync",
-  # Superviseur du runtime de flows (D18) : spawn + pipes
+  # Flow runtime supervisor (D18): spawn + pipes
   "process",
 ] }
 async-trait = { version = "0.1" }
@@ -76,7 +75,7 @@ pnex-decide = { workspace = true }
 # Ingestion metrics OpenObserve : Prometheus remote-write (protobuf+snappy)
 prost = "0.13"
 snap = "1"
-# Pliage d'accents pour la normalisation des noms de mesures (D16)
+# Accent folding for measurement name normalization (D16)
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 regex = { version = "1.11" }
@@ -86,7 +85,7 @@ scraper = "0.25"
 ego-tree = "0.10"
 # Device token and Noise pre-shared key generation.
 rand = "0.10"
-# Superviseur du runtime de flows (D18) : SIGUSR1 + test de vie du pid
+# Flow runtime supervisor (D18): SIGUSR1 + pid liveness check
 libc = "0.2"
 # Media capture chain (D160), shared with the edge agent (lot 6b).
 pnex-media-capture = { workspace = true }
@@ -105,21 +104,21 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 # Pages (pages.md #21): Yjs CRDT server side, MIT.
 yrs = "0.28"
-# Empreinte sha256 des artefacts firmware (intégrité, table firmware_artifacts)
+# sha256 fingerprint of firmware artifacts (integrity, firmware_artifacts table)
 sha2 = "0.10"
 # Browser agent signatures (WebCrypto ECDSA P-256, D266); already in the tree via rustls-webpki.
 ring = "0.17"
-# Backend S3 des artefacts firmware (D5 v2, tier industriel) — dépendance
-# directe plutôt que la feature loco `storage-aws-s3` : sa config Storage
-# n'expose pas l'adressage path-style, requis pour RustFS & co
-# (PNEX_S3_PATH_STYLE). Même version 0.58 que loco → un seul opendal-core
-# dans l'arbre.
+# S3 backend for firmware artifacts (D5 v2, industrial tier) — direct
+# dependency rather than the loco `storage-aws-s3` feature: its Storage config
+# does not expose path-style addressing, required for RustFS & co
+# (PNEX_S3_PATH_STYLE). Same 0.58 version as loco → a single opendal-core
+# in the tree.
 opendal = { version = "0.58", default-features = false, features = [
   "services-s3",
   "reqwest-rustls-tls",
   "layers-retry",
 ] }
-# Parsing query-string multi-valeurs (filtre `capabilities` répétable)
+# Multi-value query-string parsing (repeatable `capabilities` filter)
 form_urlencoded = "1"
 # In-process replay of MCP tool calls on the app router (D245); MIT,
 # already in the tree through axum.
@@ -138,8 +137,8 @@ uuid = { workspace = true, features = ["v5"] }
 serde-saphyr = "1.3"
 # CDP client of the server browser (site-recipes.md D325); MIT.
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-# v10 : choix d'un backend crypto obligatoire. rust_crypto (défaut loco) :
-# mettre aussi aws_lc_rs créerait une union de 2 backends -> panic runtime
+# v10: a crypto backend must be chosen. rust_crypto (loco default):
+# also enabling aws_lc_rs would create a union of 2 backends -> runtime panic
 # ("exactly one of the 'rust_crypto' and 'aws_lc_rs' features")
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 thiserror = "2"

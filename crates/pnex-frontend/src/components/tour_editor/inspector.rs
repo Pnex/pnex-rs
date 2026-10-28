@@ -1,10 +1,10 @@
-//! Inspecteur de l'éditeur de tour — un formulaire par sélection (scène,
-//! étage, lien). Remonté par `key` à chaque changement de sélection : les
-//! champs repartent de la valeur du document (école flow_editor).
+//! Tour editor inspector — one form per selection (scene,
+//! floor, link). Remounted by `key` at each selection change: the
+//! fields start again from the document value (flow_editor style).
 //!
-//! Idiome closures : elles ne capturent que `cx` (Copy, école
-//! `patch_selected`) — l'id de l'élément édité est dérivé de la sélection au
-//! moment du geste, jamais capturé (sinon FnOnce → refusé par les Callback).
+//! Closure idiom: they only capture `cx` (Copy, `patch_selected`
+//! style) — the id of the edited element is derived from the selection at
+//! gesture time, never captured (otherwise FnOnce → rejected by Callbacks).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -15,8 +15,8 @@ use crate::api::media::MediaKind;
 use crate::components::ui::{BTN_DANGER, BTN_SECONDARY_SM};
 use crate::components::ui::{FIELD_LABEL, INPUT};
 
-/// Patch la scène sélectionnée **via le réducteur** (l'id est dérivé de la
-/// sélection au geste — closures FnMut-safe, école `patch_selected`).
+/// Patches the selected scene **via the reducer** (the id is derived from the
+/// selection at the gesture — FnMut-safe closures, `patch_selected` style).
 fn patch_scene(cx: &TourEditorCx, f: impl FnOnce(&mut TourDoc, &str) + 'static) {
     let Some(Select::Scene(id)) = cx.selected.cloned() else {
         return;
@@ -24,7 +24,7 @@ fn patch_scene(cx: &TourEditorCx, f: impl FnOnce(&mut TourDoc, &str) + 'static) 
     cx.update_doc(move |doc| f(doc, &id));
 }
 
-/// Patch l'étage sélectionné via le réducteur.
+/// Patches the selected floor via the reducer.
 fn patch_floor(cx: &TourEditorCx, f: impl FnOnce(&mut TourDoc, &str) + 'static) {
     let Some(Select::Floor(id)) = cx.selected.cloned() else {
         return;
@@ -32,8 +32,8 @@ fn patch_floor(cx: &TourEditorCx, f: impl FnOnce(&mut TourDoc, &str) + 'static) 
     cx.update_doc(move |doc| f(doc, &id));
 }
 
-/// Corps de l'inspecteur — monté seulement sur sélection (principe 4) ;
-/// le panneau, l'en-tête et la fermeture sont l'affaire de la coquille.
+/// Inspector body — mounted only on selection (principle 4);
+/// the panel, header and close are the shell's business.
 #[component]
 pub(crate) fn InspectorBody(cx: TourEditorCx, can_write: bool) -> Element {
     let doc = cx.doc.cloned();
@@ -81,7 +81,7 @@ pub(crate) fn InspectorBody(cx: TourEditorCx, can_write: bool) -> Element {
     }
 }
 
-/// Scène : asset panorama, libellé, vue initiale, départ, suppression.
+/// Scene: panorama asset, label, initial view, start, deletion.
 #[component]
 fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> Element {
     let mut picker_open = use_signal(|| false);
@@ -93,7 +93,7 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
 
     rsx! {
         div { class: "space-y-3",
-            // Asset panorama référencé.
+            // Referenced panorama asset.
             div {
                 span { class: "text-xs font-medium text-gray-500 mb-1 block",
                     {t!("studio-scene-media")}
@@ -187,8 +187,8 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
                 }
             }
 
-            // Liens de la scène : hotspots sortants (paire aller-retour
-            // créée d'office — auto-link, inspecteur ou mode lien).
+            // Scene links: outgoing hotspots (round-trip pair
+            // created automatically — auto-link, inspector or link mode).
             SceneLinks { cx, can_write, scene_id: scene.id.clone() }
 
             if can_write {
@@ -231,15 +231,15 @@ fn SceneForm(cx: TourEditorCx, can_write: bool, scene: pnex_core::TourScene) -> 
     }
 }
 
-/// Liens d'une scène : liste des hotspots sortants (kind dérivé, libellé
-/// cible, suppression) + ajout vers une scène choisie — la création passe
-/// par `state::connect_scenes` (paire aller-retour, angles auto). Même
-/// style Tailwind que le reste de l'inspecteur (chips violettes = stair).
+/// Links of a scene: list of outgoing hotspots (derived kind, target
+/// label, deletion) + add towards a chosen scene — creation goes
+/// through `state::connect_scenes` (round-trip pair, auto angles). Same
+/// Tailwind style as the rest of the inspector (violet chips = stair).
 #[component]
 fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
     let doc = cx.doc.cloned();
 
-    // Sortants : (id de lien, stair ?, libellé cible).
+    // Outgoing: (link id, stair?, target label).
     let mut rows: Vec<(String, bool, String)> = Vec::new();
     for link in &doc.links {
         if link.from != scene_id {
@@ -258,7 +258,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
             },
         ));
     }
-    // Cibles possibles : les autres scènes, étiquetées de leur étage.
+    // Possible targets: the other scenes, labelled with their floor.
     let mut candidates: Vec<(String, String)> = Vec::new();
     for s in &doc.scenes {
         if s.id == scene_id {
@@ -349,7 +349,7 @@ fn SceneLinks(cx: TourEditorCx, can_write: bool, scene_id: String) -> Element {
     }
 }
 
-/// Étage : nom, niveau, plan (choix + dimensions + échelle), suppression.
+/// Floor: name, level, plan (choice + dimensions + scale), deletion.
 #[component]
 fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> Element {
     let mut picker_open = use_signal(|| false);
@@ -427,7 +427,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
                 }
             }
 
-            // Plan d'étage : asset + dimensions + échelle.
+            // Floor plan: asset + dimensions + scale.
             {
                 let plan = floor.plan.clone();
                 rsx! {
@@ -569,7 +569,7 @@ fn FloorForm(cx: TourEditorCx, can_write: bool, floor: pnex_core::TourFloor) -> 
     }
 }
 
-/// Lien : libellé + kind dérivé (lecture seule) + suppression.
+/// Link: label + derived kind (read-only) + deletion.
 #[component]
 fn LinkForm(cx: TourEditorCx, can_write: bool, link: pnex_core::TourLink) -> Element {
     let mut label = use_signal(|| link.label.clone().unwrap_or_default());

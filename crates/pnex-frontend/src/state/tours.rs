@@ -1,5 +1,5 @@
-//! Deep-link éditeur de studio : un composant (assistant, dashboard…) pose
-//! l'id du tour à ouvrir ; `pages/studio.rs` le consomme via use_effect
+//! Studio editor deep-link: a component (assistant, dashboard…) sets
+//! the id of the tour to open; `pages/studio.rs` consumes it via use_effect
 //! (one-shot signal, consumed once).
 
 use dioxus::prelude::*;

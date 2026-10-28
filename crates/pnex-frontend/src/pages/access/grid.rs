@@ -1,6 +1,6 @@
 //! Permission grid of a role (iam.md §9): the services of the registry in
 //! rows, one chip per verb; a click cycles a permission through
-//! « not given » → « allowed » → « denied ».
+//! "not given" → "allowed" → "denied".
 
 use std::collections::BTreeMap;
 

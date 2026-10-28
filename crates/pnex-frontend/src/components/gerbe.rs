@@ -1,5 +1,5 @@
 //! The one loading mark (design-system.md D224): a miniature of the login
-//! page's « gerbe de faisceaux » — a fan of beams converging on a focus,
+//! page's "beam sheaf" — a fan of beams converging on a focus,
 //! short segments flowing up into it. Plain SVG + CSS (`.pnex-gerbe` in
 //! style/tailwind.css): no WebGL, any number of instances, the motion
 //! stops under `prefers-reduced-motion`.

@@ -1,9 +1,9 @@
-// Viewers WebGL de la bibliothèque média (D21) — pattern tron-gerbe.js :
-// IIFE exposant `window.pnexViewers`, bundle esbuild
-// (`bun run js:viewers` → assets/viewers.js, gitignoré + stub js:ensure).
+// WebGL viewers of the media library (D21) — tron-gerbe.js pattern:
+// IIFE exposing `window.pnexViewers`, esbuild bundle
+// (`bun run js:viewers` → assets/viewers.js, gitignored + js:ensure stub).
 //
-// Glue défensive : WebGL/libs absentes ou erreurs → false (badge « aperçu
-// indisponible » côté page — jamais de panique UI, école tron-gerbe.js).
+// Defensive glue: missing WebGL/libs or errors → false ("preview
+// unavailable" badge on the page — never a UI panic, tron-gerbe.js school).
 
 /* eslint-disable */
 'use strict';
@@ -12,8 +12,8 @@ var pannellumLib = null;
 try {
   pannellumLib = require('pannellum');
   require('pannellum/build/pannellum.css');
-  // Flèches PNeX des hotspots de tour (fusionnées dans assets/viewers.css
-  // par esbuild — inline natif + <link> web, école tailwind.css).
+  // PNeX arrows of the tour hotspots (merged into assets/viewers.css
+  // by esbuild — native inline + web <link>, tailwind.css school).
   require('./hotspots.css');
 } catch (e) {
   console.warn('[pnex-viewers] pannellum indisponible', e);
@@ -51,9 +51,9 @@ function hasWebGL(wantWebGL2) {
       ? canvas.getContext('webgl2')
       : canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (gl) {
-      // Sonde jetable : sans loseContext, chaque appel fuite un contexte
-      // (limite navigateur ~16/page) et les mounts finissent par échouer
-      // de façon aléatoire — symptôme « ça marche parfois ».
+      // Throwaway probe: without loseContext, each call leaks a context
+      // (browser limit ~16/page) and mounts end up failing at random —
+      // the "it works sometimes" symptom.
       var lose = gl.getExtension('WEBGL_lose_context');
       if (lose) lose.loseContext();
     }
@@ -87,7 +87,7 @@ function mountPanorama(hostId, url) {
     host._pnexViewer = viewer;
     return true;
   } catch (e) {
-    warn('panorama mount échoué', e);
+    warn('panorama mount failed', e);
     return false;
   }
 }
@@ -779,14 +779,14 @@ function unmountHost(hostId) {
     try {
       host._pnexViewer.destroy();
     } catch (e) {
-      warn('panorama unmount échoué', e);
+      warn('panorama unmount failed', e);
     }
     host._pnexViewer = null;
   }
-  // destroy() de pannellum libère déjà son contexte WebGL, mais seulement
-  // s'il est atteint — on force la libération sur le canvas restant (un
-  // contexte non libéré compte dans la limite ~16/page et finit par faire
-  // échouer les créations suivantes, de façon aléatoire).
+  // pannellum's destroy() already frees its WebGL context, but only if it
+  // is reached — we force the release on the remaining canvas (an
+  // unreleased context counts toward the ~16/page limit and ends up
+  // making later creations fail, at random).
   var canvas = host.querySelector('canvas');
   if (canvas) {
     try {
@@ -796,15 +796,15 @@ function unmountHost(hostId) {
         if (lose) lose.loseContext();
       }
     } catch (e) {
-      // canvas déjà détaché / contexte perdu : rien à faire
+      // canvas already detached / context lost: nothing to do
     }
   }
   if (host._pnexRaf) {
     cancelAnimationFrame(host._pnexRaf);
     host._pnexRaf = null;
   }
-  // Drag tour + annotations : état par hôte à réinitialiser (le host
-  // survit au innerHTML).
+  // Tour drag + annotations: per-host state to reset (the host
+  // survives innerHTML).
   host._pnexDrag = null;
   host._pnexHotspotCfg = {};
   host._pnexHotspotList = [];
@@ -832,12 +832,12 @@ window.pnexViewers = {
 };
 
 // ─────────────────────────────────────────────────────────────────
-// Tour (Studio) — pannellum unique partagé avec `panorama` (S12
-// studio.md : pas de bundle séparé). Une seule scène montée à la fois
-// (S13) : `switch` = destroy + re-mount. Les hotspots sont posés côté
-// glue (closure JS synchrone) : le clic pose le global
-// `window.__pnexTourLastNav` (chaîne JSON {seq, scene_id, floor_id})
-// que Rust poll — pas de closure traversante (marche web + webview).
+// Tour (Studio) — single pannellum shared with `panorama` (S12
+// studio.md: no separate bundle). A single scene mounted at a time
+// (S13): `switch` = destroy + re-mount. Hotspots are placed on the
+// glue side (synchronous JS closure): the click sets the global
+// `window.__pnexTourLastNav` (JSON string {seq, scene_id, floor_id})
+// that Rust polls — no crossing closure (works on web + webview).
 var tourNavSeq = 0;
 var tourMoveSeq = 0;
 
@@ -862,9 +862,9 @@ function mountTour(hostId, sceneJson) {
     var cfgById = {};
     (scene.hotspots || []).forEach(function (h) {
       if (!isFinite(h.yaw) || !isFinite(h.pitch)) return;
-      // Flèche PNeX : bleu = walk (même étage), violet = stair — flèche
-      // vers le bas (descendre) ou vers le haut (monter) selon le pitch
-      // auto calculé côté Rust (±30° si les niveaux diffèrent).
+      // PNeX arrow: blue = walk (same floor), purple = stair — arrow
+      // pointing down (descend) or up (climb) depending on the pitch
+      // auto-computed on the Rust side (±30° if levels differ).
       var css = 'pnex-hotspot pnex-hotspot-walk';
       if (h.kind === 'stair') {
         css = h.pitch < 0
@@ -906,23 +906,23 @@ function mountTour(hostId, sceneJson) {
     });
     host._pnexViewer = viewer;
     host._pnexHotspotCfg = cfgById;
-    // Pannellum ne recopie PAS config.id sur le div → mapping config ↔ div
-    // par ORDRE de création (identique à l'ordre DOM des .pnex-hotspot).
+    // Pannellum does NOT copy config.id onto the div → config ↔ div mapping
+    // by creation ORDER (same as the DOM order of .pnex-hotspot).
     host._pnexHotspotList = hotSpots.slice();
     bindTourDrag(hostId);
     return true;
   } catch (e) {
-    warn('tour mount échoué', e);
+    warn('tour mount failed', e);
     return false;
   }
 }
 
-// ── Drag d'une flèche : repositionner le hotspot (yaw/pitch) ──
-// Mousedown en PHASE CAPTURE sur le host : stopPropagation empêche la
-// rotation caméra de pannellum pendant qu'on saisit une flèche ; le delta
-// pixels → degrés utilise le hfov courant (≈ hfov / largeur canvas).
-// Sans mouvement = clic normal (navigation) ; avec mouvement = publish
-// `__pnexTourHotspotMove` (chaîne JSON, même école que la nav).
+// ── Dragging an arrow: reposition the hotspot (yaw/pitch) ──
+// Mousedown in CAPTURE PHASE on the host: stopPropagation blocks
+// pannellum's camera rotation while an arrow is grabbed; the pixel →
+// degree delta uses the current hfov (≈ hfov / canvas width).
+// No movement = normal click (navigation); with movement = publish
+// `__pnexTourHotspotMove` (JSON string, same school as nav).
 
 function applyHotspotPos(host, d) {
   var viewer = host && host._pnexViewer;
@@ -930,8 +930,8 @@ function applyHotspotPos(host, d) {
   try {
     viewer.removeHotSpot(d.id);
     viewer.addHotSpot(d.cfg);
-    // removeHotSpot + addHotSpot ré-appende le div EN FIN de DOM : on
-    // reflète le nouvel ordre dans la liste miroir.
+    // removeHotSpot + addHotSpot re-appends the div AT THE END of the DOM:
+    // mirror the new order in the mirror list.
     var list = host._pnexHotspotList;
     if (list) {
       var i = list.indexOf(d.cfg);
@@ -941,13 +941,13 @@ function applyHotspotPos(host, d) {
       }
     }
   } catch (e) {
-    warn('hotspot move échoué', e);
+    warn('hotspot move failed', e);
   }
 }
 
 function bindTourDrag(hostId) {
   var host = hostOf(hostId);
-  // Le host survit aux switches (innerHTML seulement) : une seule liaison.
+  // The host survives switches (innerHTML only): a single binding.
   if (!host || host._pnexDragBound) return;
   host._pnexDragBound = true;
 
@@ -957,8 +957,8 @@ function bindTourDrag(hostId) {
     if (!host._pnexTourEditable || e.button !== 0) return;
     var el = e.target && e.target.closest ? e.target.closest('.pnex-hotspot') : null;
     if (!el) return;
-    // Pannellum ne pose pas config.id sur le div : on résout la config par
-    // l'ORDRE du div parmi les .pnex-hotspot (miroir maintenu à jour).
+    // Pannellum does not set config.id on the div: resolve the config by
+    // the div's ORDER among .pnex-hotspot (mirror kept up to date).
     var divs = host.querySelectorAll('.pnex-hotspot');
     var idx = Array.prototype.indexOf.call(divs, el);
     var cfg = host._pnexHotspotList ? host._pnexHotspotList[idx] : null;
@@ -1006,7 +1006,7 @@ function bindTourDrag(hostId) {
     var d = host._pnexDrag;
     if (!d) return;
     host._pnexDrag = null;
-    if (!d.moved) return; // clic simple : le clickHandlerFunc navigue
+    if (!d.moved) return; // simple click: clickHandlerFunc navigates
     e.stopPropagation();
     d.cfg.yaw = d.yaw;
     d.cfg.pitch = d.pitch;
@@ -1021,7 +1021,7 @@ function bindTourDrag(hostId) {
     });
   });
 
-  // Un drag ne doit pas naviguer : on avale le click qui suit le mouseup.
+  // A drag must not navigate: swallow the click that follows mouseup.
   host.addEventListener('click', function (e) {
     if (!host._pnexSuppressClick) return;
     if (e.target && e.target.closest && e.target.closest('.pnex-hotspot')) {
@@ -1033,7 +1033,7 @@ function bindTourDrag(hostId) {
 }
 
 function switchTour(hostId, sceneJson) {
-  // S13 : destroy + re-mount — une seule texture en mémoire.
+  // S13: destroy + re-mount — a single texture in memory.
   return mountTour(hostId, sceneJson);
 }
 
@@ -1048,16 +1048,16 @@ function takeTourNav() {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// Annotations sur médias (D55–D60) — overlay non intrusif. Classes
-// STRICTEMENT disjointes de .pnex-hotspot : le drag nav résout ses
-// hotspots par miroir index (_pnexHotspotList) — un marqueur annot
-// qui porterait .pnex-hotspot serait capturé et désalignerait la
-// liste. Événements → Rust : globals CHAÎNE JSON brute + seq monotone
-// (école __pnexTourLastNav — jamais l'objet parsé, bug take_nav
-// 2026-09-12) : __pnexAnnotClick (clic), __pnexAnnotMove (drag
-// d'ajustement, mode éditeur), __pnexAnnotPlace (clic de pose, mode
-// éditeur). Pose/retrait post-mount UNIQUEMENT (removeHotSpot/
-// addHotSpot — jamais de re-mount : flicker + rechargement texture).
+// Annotations on media (D55–D60) — non-intrusive overlay. Classes
+// STRICTLY disjoint from .pnex-hotspot: the nav drag resolves its
+// hotspots by index mirror (_pnexHotspotList) — an annot marker
+// carrying .pnex-hotspot would be captured and misalign the
+// list. Events → Rust: raw JSON STRING globals + monotonic seq
+// (__pnexTourLastNav school — never the parsed object, take_nav bug
+// 2026-09-12): __pnexAnnotClick (click), __pnexAnnotMove (adjustment
+// drag, editor mode), __pnexAnnotPlace (placement click, editor
+// mode). Placement/removal post-mount ONLY (removeHotSpot/
+// addHotSpot — never a re-mount: flicker + texture reload).
 var annotSeq = 0;
 var annotMoveSeq = 0;
 var annotPlaceSeq = 0;
@@ -1068,8 +1068,8 @@ function applyAnnotPos(host, d) {
   try {
     viewer.removeHotSpot(d.id);
     viewer.addHotSpot(d.cfg);
-    // remove+add ré-appende le div EN FIN de DOM : refléter le nouvel
-    // ordre dans le miroir (résolution div → cfg par index).
+    // remove+add re-appends the div AT THE END of the DOM: mirror the new
+    // order in the mirror (div → cfg resolution by index).
     var list = host._pnexAnnotList;
     if (list) {
       var i = list.indexOf(d.cfg);
@@ -1079,7 +1079,7 @@ function applyAnnotPos(host, d) {
       }
     }
   } catch (e) {
-    warn('annot move échoué', e);
+    warn('annot move failed', e);
   }
 }
 
@@ -1130,11 +1130,11 @@ function setAnnotations(hostId, itemsJson, editable) {
       viewer.addHotSpot(cfg);
       host._pnexAnnotCfg[id] = cfg;
     } catch (e) {
-      warn('annot add échoué', e);
+      warn('annot add failed', e);
     }
   });
   host._pnexAnnotList = list;
-  // Retrait des marqueurs absents du lot (changement de scène, toggle).
+  // Remove markers missing from the batch (scene change, toggle).
   Object.keys(host._pnexAnnotCfg).forEach(function (id) {
     if (!keep[id]) {
       try {
@@ -1147,8 +1147,8 @@ function setAnnotations(hostId, itemsJson, editable) {
   return true;
 }
 
-// ── Drag d'un marqueur (mode éditeur) : delta px → deg hfov/w, école
-// bindTourDrag. Lecture seule : _pnexAnnotEditable false → inert. ──
+// ── Dragging a marker (editor mode): delta px → deg hfov/w, bindTourDrag
+// school. Read-only: _pnexAnnotEditable false → inert. ──
 
 function bindAnnotDrag(hostId) {
   var host = hostOf(hostId);
@@ -1206,7 +1206,7 @@ function bindAnnotDrag(hostId) {
     var d = host._pnexAnnotDrag;
     if (!d) return;
     host._pnexAnnotDrag = null;
-    if (!d.moved) return; // clic simple : le clickHandlerFunc publie
+    if (!d.moved) return; // simple click: clickHandlerFunc publishes
     e.stopPropagation();
     d.cfg.yaw = d.yaw;
     d.cfg.pitch = d.pitch;
@@ -1221,8 +1221,8 @@ function bindAnnotDrag(hostId) {
     });
   });
 
-  // Un drag ne doit pas déclencher le clickHandlerFunc : on avale le
-  // click qui suit le mouseup (phase capture, école bindTourDrag).
+  // A drag must not trigger clickHandlerFunc: swallow the
+  // click that follows mouseup (capture phase, bindTourDrag school).
   host.addEventListener('click', function (e) {
     if (!host._pnexAnnotSuppressClick) return;
     if (e.target && e.target.closest && e.target.closest('.pnex-annot')) {
@@ -1233,10 +1233,10 @@ function bindAnnotDrag(hostId) {
   }, true);
 }
 
-// ── Mode pose (éditeur) : clic sur le pano hors marqueur → coords
-// sphère. mouseEventToCoords = [pitch, yaw] (pannellum 2.5.7,
-// synchrone) ; guard < 4 px depuis mousedown pour ne pas confondre
-// avec un drag caméra. ──
+// ── Placement mode (editor): click on the pano off a marker → sphere
+// coords. mouseEventToCoords = [pitch, yaw] (pannellum 2.5.7,
+// synchronous); guard < 4 px since mousedown so it is not mistaken
+// for a camera drag. ──
 
 // Arrow-drag gate for the tour viewer: true only in the tour editor
 // (Studio preview) — read-only viewers keep markers fixed. Read by the
@@ -1285,8 +1285,8 @@ function setAnnotPlaceMode(hostId, on) {
 
 window.pnexViewers.tour = {
   mount: mountTour,
-  // « switch » est un mot réservé JS : `tour.switch(...)` (injection natif)
-  // est une erreur de syntaxe — nom typé `switchScene`.
+  // "switch" is a JS reserved word: `tour.switch(...)` (native injection)
+  // is a syntax error — typed name `switchScene`.
   switchScene: switchTour,
   nav: takeTourNav,
   setAnnotations: setAnnotations,

@@ -1,6 +1,6 @@
-//! Icônes — SVG inline au style lucide (ISC), `stroke: currentColor` pour
-//! hériter de la couleur du texte. Jeu posé d'un bloc (certaines icônes
-//! attendent leurs consommateurs — pages suivantes).
+//! Icons — inline SVG in the lucide style (ISC), `stroke: currentColor` to
+//! inherit the text color. Set added in one go (some icons are waiting for
+//! their consumers — upcoming pages).
 
 #![allow(dead_code)]
 
@@ -68,8 +68,8 @@ icon!(
     "m3.3 7 8.7 5 8.7-5",
     "M12 22V12"
 );
-// Collecteurs Edges (nav « Edges ») : routeur (groupe) et globe (collecteur
-// navigateur).
+// Edge collectors ("Edges" nav): router (group) and globe (browser
+// collector).
 icon!(
     Router,
     "M4 14h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2z",
@@ -86,7 +86,7 @@ icon!(
     "M2 12h20",
     "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"
 );
-// Groupe « Data » (nav) — lucide database (cylindre).
+// "Data" group (nav) — lucide database (cylinder).
 icon!(
     Database,
     "M3 5a9 3 0 0 0 18 0a9 3 0 0 0 -18 0",
@@ -110,7 +110,7 @@ icon!(
     "M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8"
 );
 
-// Média (D21)
+// Media (D21)
 icon!(
     Image,
     "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
@@ -153,7 +153,7 @@ icon!(
     "M8 21h8",
     "M12 17v4"
 );
-// Serveur auto-hébergé (section « self-hosted » de la page de login)
+// Self-hosted server ("self-hosted" section of the login page)
 icon!(
     Server,
     "M4 2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
@@ -197,7 +197,7 @@ icon!(
     "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z",
     "M12 3v18"
 );
-// Dossiers de l'arborescence D42 (/tree).
+// Folders of the D42 tree (/tree).
 icon!(
     Folder,
     "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"
@@ -225,7 +225,7 @@ icon!(
     "m21 21-4.3-4.3",
     "M8 11h6"
 );
-// Renommage inline (coquille d'éditeur) — lucide pencil.
+// Inline rename (editor shell) — lucide pencil.
 icon!(
     Pencil,
     "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
@@ -276,7 +276,7 @@ icon!(
     "M18 20a1 1 0 1 0 0 2 1 1 0 0 0 0-2"
 );
 
-// Statuts
+// Statuses
 icon!(
     CheckCircle,
     "M22 11.08V12a10 10 0 1 1-5.93-9.14",
@@ -306,7 +306,7 @@ icon!(
     "M12 20h.01"
 );
 icon!(LineChart, "M3 3v18h18", "m19 9-5 5-4-4-3 3");
-// Quick charts (nav « Visualisation ») — lucide trending-up.
+// Quick charts ("Visualisation" nav) — lucide trending-up.
 icon!(TrendingUp, "m22 7-8.5 8.5-5-5L2 17", "M16 7h6v6");
 icon!(
     Workflow,
@@ -314,7 +314,7 @@ icon!(
     "M7 11v4a2 2 0 0 0 2 2h4",
     "M5 3H9A2 2 0 0 1 11 5V9A2 2 0 0 1 9 11H5A2 2 0 0 1 3 9V5A2 2 0 0 1 5 3Z"
 );
-// Flux (nav « Flow ») — entrée « Flows » du groupe (Workflow = bouton groupe).
+// Flows ("Flow" nav) — "Flows" entry of the group (Workflow = group button).
 icon!(Activity, "M22 12h-4l-3 9L9 3l-3 9H2");
 // Notifications (D49–D54) — lucide bell.
 icon!(
@@ -322,7 +322,7 @@ icon!(
     "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9",
     "M10.3 21a1.94 1.94 0 0 0 3.4 0"
 );
-// Canaux de notification (icônes kind, page Notifications).
+// Notification channels (kind icons, Notifications page).
 icon!(
     BellRing,
     "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9",
@@ -341,7 +341,7 @@ icon!(
     "M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z",
     "m22 6-10 7L2 6"
 );
-// Mélanges de fluides (lucide layers — superposition des composants).
+// Fluid mixtures (lucide layers — stacking of the components).
 icon!(
     Layers,
     "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z",
@@ -349,7 +349,7 @@ icon!(
     "m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"
 );
 
-// Studio SCADA (outils de l'éditeur)
+// SCADA Studio (editor tools)
 icon!(ArrowLeft, "m12 19-7-7 7-7", "M19 12H5");
 icon!(
     MousePointer,
@@ -392,7 +392,7 @@ icon!(
     "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
 );
 
-// Coquille d'éditeur (rail de la sidebar + palette de types) — paths lucide.
+// Editor shell (sidebar rail + type palette) — lucide paths.
 icon!(
     PanelLeftClose,
     "M3 3h18a0 0 0 0 1 0 0v18a0 0 0 0 1 0 0H3a0 0 0 0 1 0 0V3a0 0 0 0 1 0 0z",

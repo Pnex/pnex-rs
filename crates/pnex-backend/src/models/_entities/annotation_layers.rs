@@ -18,10 +18,10 @@ pub struct Model {
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
     pub published_version_id: Option<Uuid>,
-    /// Pivot UX : le média associé de l'ensemble (NULL légal).
+    /// UX pivot: the set's associated media (NULL allowed).
     pub media_asset_id: Option<Uuid>,
-    /// Ensemble rattaché à un tour — XOR media_asset_id à la
-    /// création ; NULL si le tour est supprimé.
+    /// Set attached to a tour — XOR media_asset_id at
+    /// creation; NULL if the tour is deleted.
     pub tour_id: Option<Uuid>,
 }
 

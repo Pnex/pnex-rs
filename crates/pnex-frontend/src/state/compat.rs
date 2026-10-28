@@ -1,8 +1,8 @@
-//! Porte de compatibilité app ↔ serveur : bloque l'app sur un écran dédié si
-//! le serveur ne parle pas le même contrat d'API (`pnex_api_contract`),
-//! n'est pas joignable, ou n'est pas un serveur PNEX. L'écran bloquant vit
-//! dans `pages/gate.rs` ; `main.rs` branche `GATE` entre `SERVER_READY` et le
-//! routeur.
+//! App ↔ server compatibility gate: blocks the app on a dedicated screen if
+//! the server does not speak the same API contract (`pnex_api_contract`),
+//! is unreachable, or is not a PNEX server. The blocking screen lives
+//! in `pages/gate.rs`; `main.rs` wires `GATE` between `SERVER_READY` and the
+//! router.
 
 use std::time::Duration;
 
@@ -11,31 +11,31 @@ use pnex_api_contract::{compatible, ServerInfo, CONTRACT};
 
 use crate::api::meta::{self, MetaError};
 
-/// État de la porte — rendu par `GateScreen`.
+/// Gate state — rendered by `GateScreen`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum GateState {
-    /// Vérification en cours — ou sans objet : premier lancement natif sans
-    /// URL serveur résolue (l'écran `ServerUrl` prime, la vérification reste
-    /// dans cet état).
+    /// Check in progress — or not applicable: first native launch without
+    /// a resolved server URL (the `ServerUrl` screen prevails, the check stays
+    /// in this state).
     Checking,
-    /// Serveur conforme et même contrat → routeur.
+    /// Compliant server and same contract → router.
     Ok,
-    /// Serveur PNEX répondant mais contrat différent (avant ou après le
-    /// nôtre).
+    /// PNEX server answering but a different contract (older or newer than
+    /// ours).
     Incompatible {
         server: Box<ServerInfo>,
         app_contract: u32,
     },
-    /// Pas de réponse, statut inattendu (404 d'un backend trop ancien) ou
-    /// identité de service non-PNEX.
+    /// No answer, unexpected status (404 from a backend too old) or
+    /// non-PNEX service identity.
     Unreachable { error: MetaError },
 }
 
 pub static GATE: GlobalSignal<GateState> = GlobalSignal::new(|| GateState::Checking);
 
-/// Vérifie le serveur courant. No-op tant qu'aucune base n'est résolue
-/// (`api_base()` vide au premier lancement natif : l'écran de configuration
-/// prime et la vérification n'a pas de cible).
+/// Checks the current server. No-op while no base is resolved
+/// (`api_base()` empty at the first native launch: the configuration screen
+/// prevails and the check has no target).
 pub async fn check() {
     if crate::api::config::api_base().is_empty() {
         return;
@@ -52,8 +52,8 @@ pub async fn check() {
     GATE.with_mut(|g| *g = state);
 }
 
-/// Repasse en vérification avant un changement de serveur (évite le flash de
-/// l'écran bloquant périmé pendant la re-vérification).
+/// Goes back to checking before a server change (avoids the flash of the
+/// stale blocking screen during the re-check).
 pub fn reset() {
     GATE.with_mut(|g| *g = GateState::Checking);
 }

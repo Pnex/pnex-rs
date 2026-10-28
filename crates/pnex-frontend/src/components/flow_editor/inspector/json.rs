@@ -1,11 +1,11 @@
 use super::helpers::*;
 use super::*;
 
-/// Formulaire du nœud `json-split` : les clés déclarées = **ports de sortie
-/// nommés** (une clé = un port, la valeur de `payload[key]` sort sur son
-/// port). Le fil suit sa clé (rename/remove via `rewire_split_keys`) ;
-/// « importer les clés » pré-remplit depuis un Value amont statique-objet
-/// (one-shot, pas d'auto-sync). Zero keys = single-port mode (one message per key).
+/// Form of the `json-split` node: the declared keys = **named output
+/// ports** (one key = one port, the value of `payload[key]` goes out on its
+/// port). The wire follows its key (rename/remove via `rewire_split_keys`);
+/// "import keys" prefills from a static-object upstream Value
+/// (one-shot, no auto-sync). Zero keys = single-port mode (one message per key).
 #[component]
 pub(super) fn JsonSplitForm(
     mut cx: EditorCx,
@@ -14,9 +14,9 @@ pub(super) fn JsonSplitForm(
 ) -> Element {
     let mut keys = use_signal(move || initial.keys.clone());
 
-    // Amont « clés connues » → clés importables (pré-calcul hors rsx) :
-    // Value statique-objet (clés du payload) ou Merge (ses entrées nommées
-    // = les clés de l'objet accumulé — pattern merge → split).
+    // "Known keys" upstream → importable keys (precomputed outside rsx):
+    // static-object Value (payload keys) or Merge (its named inputs
+    // = the keys of the accumulated object — merge → split pattern).
     let node_id = cx.selected_node.peek().clone();
     let import_keys: Option<Vec<String>> = node_id.and_then(|id| {
         let graph = cx.graph.cloned();
@@ -60,9 +60,9 @@ pub(super) fn JsonSplitForm(
                     checked: auto,
                     disabled: !can_write,
                     onchange: move |_| {
-                        // Bascule auto↔manuel : le funnel update_graph
-                        // relance la synchro — repasser en auto régénère les
-                        // clés à la volée.
+                        // auto↔manual toggle: the update_graph funnel
+                        // reruns the sync — switching back to auto regenerates the
+                        // keys on the fly.
                         patch_selected(
                             &mut cx,
                             |node| {
@@ -80,7 +80,7 @@ pub(super) fn JsonSplitForm(
                     {t!("flows-json-split-keys-label")}
                 }
                 if auto {
-                    // Ports suivis automatiquement : liste en lecture seule.
+                    // Automatically tracked ports: read-only list.
                     for k in key_rows.iter() {
                         div { class: "text-xs font-mono text-gray-600 pl-4", "• {k}" }
                     }
@@ -89,9 +89,9 @@ pub(super) fn JsonSplitForm(
                     }
                 }
                 if !auto {
-                    // Renommer une clé ne re-câble rien : le port i
-                    // = keys[i], l'index ne bouge pas (seules les
-                    // suppressions/import décalent les ports).
+                    // Renaming a key rewires nothing: port i
+                    // = keys[i], the index does not move (only
+                    // removals/import shift the ports).
                     for (index, key) in key_rows.iter().enumerate() {
                         JsonNameRow {
                             key: "{index}",
@@ -161,9 +161,9 @@ pub(super) fn JsonSplitForm(
                             {t!("flows-json-split-add-key")}
                         }
                     }
-                    // Nom auto : key1, key2… unique parmi les clés —
-                    // une clé vide n'est jamais un port utilisable,
-                    // elle n'a pas de raison d'exister.
+                    // Auto name: key1, key2… unique among the keys —
+                    // an empty key is never a usable port,
+                    // it has no reason to exist.
                     if importable {
                         button {
                             class: "text-xs text-signal-600 hover:text-signal-700 ml-2",
@@ -194,11 +194,11 @@ pub(super) fn JsonSplitForm(
     }
 }
 
-/// Formulaire du nœud `json-merge` (« Merge to JSON ») : la clé sous
-/// laquelle un payload sans `msg.topic` est rangé, et les **entrées
-/// nommées** (une ligne = une variable rangée sous son nom dans l'objet
-/// accumulé). Rename = l'annotation suit ; remove = prune (le fil casse
-/// si plus aucune ligne ne le partage).
+/// Form of the `json-merge` node ("Merge to JSON"): the key under
+/// which a payload without `msg.topic` is stored, and the **named
+/// inputs** (one row = one variable stored under its name in the
+/// accumulated object). Rename = the annotation follows; remove = prune (the wire
+/// breaks if no row shares it any more).
 #[component]
 pub(super) fn JsonMergeForm(
     mut cx: EditorCx,
@@ -293,9 +293,9 @@ pub(super) fn JsonMergeForm(
                     button {
                         class: "text-xs text-signal-600 hover:text-signal-700",
                         onclick: move |_| {
-                            // Nom auto : value1, value2… unique parmi les
-                            // entrées — une ligne vide n'est pas câblable,
-                            // elle n'a pas de raison d'exister.
+                            // Auto name: value1, value2… unique among the
+                            // inputs — an empty row is not wireable,
+                            // it has no reason to exist.
                             let mut new = inputs.read().clone();
                             let mut i = new.len() + 1;
                             let mut name = format!("value{i}");
@@ -323,9 +323,9 @@ pub(super) fn JsonMergeForm(
     }
 }
 
-/// Une ligne nom réutilisable (clé de split / entrée de merge) — composant
-/// dédié (pas de `let` dans le for rsx, piège dioxus).
-/// `on_change((index, value))` remonte la saisie.
+/// A reusable name row (split key / merge input) — dedicated
+/// component (no `let` in the rsx for, dioxus pitfall).
+/// `on_change((index, value))` reports the input.
 #[component]
 fn JsonNameRow(
     index: usize,

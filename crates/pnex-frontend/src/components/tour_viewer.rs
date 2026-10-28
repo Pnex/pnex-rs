@@ -1,8 +1,8 @@
-//! Viewer de tour en lecture seule : une seule scène montée à la fois
-//! (S13), navigation par hotspots (polling `take_nav`) + sélecteur
-//! d'étages + mini-plan. Utilisé par l'aperçu de l'éditeur (octets via
-//! chemins authentifiés) et par la page publique `/share/:token` (octets
-//! via l'endpoint public, sans auth).
+//! Read-only tour viewer: a single scene mounted at a time
+//! (S13), navigation by hotspots (`take_nav` polling) + floor
+//! selector + mini-plan. Used by the editor preview (bytes via
+//! authenticated paths) and by the public `/share/:token` page (bytes
+//! via the public endpoint, no auth).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -15,30 +15,30 @@ use crate::components::surface::annotation::{
 };
 use crate::tour_viewer::{AnnotMarkerView, TourHotspotView, TourNav, TourSceneView};
 
-/// Source des octets d'assets (path builder).
+/// Source of the asset bytes (path builder).
 #[derive(Clone, PartialEq)]
 pub enum ViewerSource {
-    /// In-app : `/api/v1/media/{id}/content` (version courante,
-    /// authentifié — même chemin que la page Média).
+    /// In-app: `/api/v1/media/{id}/content` (current version,
+    /// authenticated — same path as the Media page).
     Auth,
     /// Public : `/api/v1/public/tours/{token}/assets/{id}?v=n`.
     Public { token: String },
 }
 
-/// Infos par asset référencé (version + mime connus côté public ;
-/// `None` côté in-app — le contenu courant est servi).
+/// Info per referenced asset (version + mime known on the public side;
+/// `None` in-app — the current content is served).
 #[derive(Clone, Default, PartialEq)]
 pub struct AssetInfo {
     pub version: Option<i64>,
     pub content_type: Option<String>,
 }
 
-/// Host div **par défaut** du viewer pannellum — une instance donnée doit
-/// avoir un host unique (pont JS par id DOM) : les nouveaux appelaires
-/// passent leur propre `host_id` (ex. aperçu POI).
+/// **Default** host div of the pannellum viewer — a given instance must
+/// have a unique host (JS bridge by DOM id): new callers
+/// pass their own `host_id` (e.g. POI preview).
 pub const HOST_ID: &str = "pnex-tour-viewer-host";
 
-/// Bouton d'étage : (étage, actif, première scène de l'étage — cible).
+/// Floor button: (floor, active, first scene of the floor — target).
 type FloorButton = (pnex_core::TourFloor, bool, Option<(String, String)>);
 
 #[component]
@@ -46,24 +46,24 @@ pub fn TourViewer(
     doc: TourDoc,
     assets: HashMap<String, AssetInfo>,
     source: ViewerSource,
-    /// Drag d'un hotspot en preview : (link_id, yaw, pitch) — l'éditeur
-    /// patche son doc ; la page share pose un no-op.
+    /// Dragging a hotspot in preview: (link_id, yaw, pitch) — the editor
+    /// patches its doc; the share page passes a no-op.
     on_hotspot_move: Callback<(String, f64, f64)>,
-    /// Id DOM du host pannellum — unique par instance (pont JS par id).
+    /// DOM id of the pannellum host — unique per instance (JS bridge by id).
     host_id: String,
     /// Compact mode (POI preview): fills the parent (`flex-1 min-h-0`,
     /// full-frame panel over the map) instead of `h-[70vh]` — the pannellum
     /// host stays absolutely positioned (height:100% trap unchanged).
     compact: bool,
-    /// Overlay d'annotations (D58) : fetch du read model + marqueurs. La
-    /// page share publique pose `false` (les annotations peuvent révéler
-    /// des données device).
+    /// Annotations overlay (D58): read model fetch + markers. The
+    /// public share page passes `false` (annotations may reveal
+    /// device data).
     annotations_enabled: bool,
-    /// Changement de scène courante (id) — l'éditeur d'annotations suit le
-    /// média affiché ; les autres appelaires posent un no-op.
+    /// Current scene change (id) — the annotation editor follows the
+    /// displayed media; other callers pass a no-op.
     on_scene_change: Callback<String>,
-    /// Panneau latéral (étages/mini-plan/scènes) — masqué sur la page
-    /// annotations pour un média simple (pas de chrome de tour à montrer).
+    /// Side panel (floors/mini-plan/scenes) — hidden on the annotations
+    /// page for a single media (no tour chrome to show).
     show_side_panel: bool,
     /// Read context of the annotations (D147): `Some(tour id)` = this tour's
     /// sets only; `None` = the standalone media's sets (single-media doc).
@@ -74,7 +74,7 @@ pub fn TourViewer(
     /// keep markers fixed. Pushed to the JS host guard at event time.
     editable: bool,
 ) -> Element {
-    // Scène courante : départ explicite, sinon première scène.
+    // Current scene: explicit start, else the first scene.
     let mut current = use_signal(|| {
         doc.start_scene
             .clone()
@@ -91,37 +91,37 @@ pub fn TourViewer(
     });
     let mut nav_seq = use_signal(|| 0u64);
     let mut move_seq = use_signal(|| 0u64);
-    // Garde du poll (une seule boucle par viewer) — l'écriture se fait dans
-    // un effet, jamais au rendu.
+    // Poll guard (a single loop per viewer) — the write happens in
+    // an effect, never during render.
     let mut poll_started = use_signal(|| false);
     let mut mounted = use_signal(|| false);
-    // Garde d'opération en cours (mount) + dernière (scène, url) appliquée —
-    // sérialisation des opérations viewer, cf. commentaire dans l'effet.
+    // In-progress operation guard (mount) + last applied (scene, url) —
+    // serialisation of viewer operations, see the comment in the effect.
     let mut mounting = use_signal(|| false);
     let mut applied = use_signal(|| None::<(String, String)>);
     let mut load_failed = use_signal(|| false);
 
-    // ─── Annotations (D58) : toggle, items du read model, popover ───
-    // Toggle « Annotations » (on par défaut) ; la boucle de poll du viewer
-    // est étendue à `take_annot_click` (seq monotone) ; l'application des
-    // marqueurs est un **effet séparé** du mount (la clé de dé-dup du mount
-    // reste (scène, url) — JAMAIS les annotations, sinon re-mount à chaque
-    // édition).
+    // ─── Annotations (D58): toggle, read model items, popover ───
+    // "Annotations" toggle (on by default); the viewer's poll loop
+    // is extended to `take_annot_click` (monotonic seq); applying the
+    // markers is an **effect separate** from the mount (the mount's dedup key
+    // stays (scene, url) — NEVER the annotations, otherwise a remount on every
+    // edit).
     // Viewer's display choice (None = automatic: cards when the media
     // carries control / reading items, dots otherwise — D147).
     let mut annot_mode = use_signal(|| None::<AnnotMode>);
     let mut annot_has_cards = use_signal(|| false);
     let mut annot_seq = use_signal(|| 0u64);
     let mut annot_selected = use_signal(|| None::<ResolvedAnnotationItem>);
-    // Dernier lot de marqueurs appliqué (scène, url, json) — dé-dup des
-    // double invocations d'effects ; la scène + url viennent de `applied`
-    // (le mount/switch doit être TERMINÉ avant de poser les marqueurs).
+    // Last applied marker batch (scene, url, json) — dedup of
+    // double effect invocations; the scene + url come from `applied`
+    // (the mount/switch must be FINISHED before setting the markers).
     let mut applied_annot = use_signal(|| None::<(String, String, String)>);
 
-    // URL blob/data-URI du panorama de la scène courante (fetch côté Rust) —
-    // la resource relit un **Memo** (asset de la scène courante) : une capture
-    // en valeur ne redémarre jamais la resource (piège dioxus #2784, cf.
-    // app.rs) → le panorama ne changeait jamais de scène.
+    // Blob/data-URI URL of the current scene's panorama (fetched on the Rust side) —
+    // the resource re-reads a **Memo** (asset of the current scene): a capture
+    // by value never restarts the resource (dioxus trap #2784, see
+    // app.rs) → the panorama never changed scene.
     let doc_for_memo = doc.clone();
     let scene_asset = use_memo(move || {
         let doc = doc_for_memo.clone();
@@ -150,10 +150,10 @@ pub fn TourViewer(
         }
     });
 
-    // Read model annotations de l'asset affiché — la resource relit le
-    // Memo `scene_asset` DANS la closure (piège dioxus #2784) : suit les
-    // changements de scène. Erreurs avalées → overlay vide (S7).
-    // Désactivé par le prop (page share : annotations_enabled = false).
+    // Annotations read model of the displayed asset — the resource re-reads the
+    // `scene_asset` Memo INSIDE the closure (dioxus trap #2784): follows
+    // scene changes. Errors swallowed → empty overlay (S7).
+    // Disabled by the prop (share page: annotations_enabled = false).
     let annotations = use_resource(move || {
         let asset_id = scene_asset.read().clone();
         let enabled = annotations_enabled;
@@ -169,9 +169,9 @@ pub fn TourViewer(
         }
     });
 
-    // Plan de l'étage actif pour la mini-map (blob authentifié, même chaîne
-    // que le panorama) — Memo lu DANS la closure de la resource (piège
-    // dioxus #2784) : suit les changements d'étage.
+    // Plan of the active floor for the mini-map (authenticated blob, same chain
+    // as the panorama) — Memo read INSIDE the resource closure (dioxus
+    // trap #2784): follows floor changes.
     let doc_for_plan = doc.clone();
     let active_plan = use_memo(move || {
         let doc = doc_for_plan.clone();
@@ -199,9 +199,9 @@ pub fn TourViewer(
         }
     });
 
-    // Montage / switch quand l'URL est prête (une seule texture en mémoire).
-    // Le doc est cloné par invocation (closure FnMut — jamais de move du
-    // prop capturé).
+    // Mount / switch when the URL is ready (a single texture in memory).
+    // The doc is cloned per invocation (FnMut closure — never a move of the
+    // captured prop).
     let doc_for_effect = doc.clone();
     let host_for_effect = host_id.clone();
     use_effect(move || {
@@ -218,8 +218,8 @@ pub fn TourViewer(
         else {
             return;
         };
-        // Hotspots : liens sortants de la scène dont la cible existe
-        // (référence morte → hotspot simplement absent, jamais de panic).
+        // Hotspots: outgoing links of the scene whose target exists
+        // (dead reference → hotspot simply missing, never a panic).
         let hotspots: Vec<TourHotspotView> = doc
             .links
             .iter()
@@ -246,20 +246,20 @@ pub fn TourViewer(
             hfov: scene.initial_fov,
             hotspots,
         };
-        // Dé-dup : la même (scène, url) déjà appliquée ne re-déclenche pas
-        // d'opération (la double invocation des effects de dioxus + les
-        // re-rendus sans changement réel sinon enchaînent destroy/re-création
-        // pour rien — et une opération pendant que pannellum charge encore sa
-        // texture laisse le viewer vide).
+        // Dedup: the same (scene, url) already applied does not re-trigger
+        // an operation (dioxus's double effect invocation + re-renders
+        // without a real change would otherwise chain destroy/re-create
+        // for nothing — and an operation while pannellum is still loading its
+        // texture leaves the viewer empty).
         let applied_key = (scene.id.clone(), url_value.clone());
         if applied.cloned().as_ref() == Some(&applied_key) {
             return;
         }
         if !mounted() {
-            // Un seul mount à la fois (garde `mounting`) ; `mounted` n'est
-            // posé qu'après le succès — un changement de scène pendant les
-            // retries du mount est ré-appliqué par l'effet quand `mounting`
-            // retombe (l'effet lit les deux signaux), pas de switch concurrent.
+            // One mount at a time (`mounting` guard); `mounted` is only
+            // set after success — a scene change during the mount
+            // retries is re-applied by the effect when `mounting`
+            // drops (the effect reads both signals), no concurrent switch.
             if mounting() {
                 return;
             }
@@ -276,9 +276,9 @@ pub fn TourViewer(
                 }
             });
         } else {
-            // Switch avec retry (comme le mount) ; échec total = badge —
-            // plus de viewer vide sans retour, et un nav suivant retente
-            // (load_failed = !ok s'efface au prochain succès).
+            // Switch with retry (like the mount); total failure = badge —
+            // no more empty viewer without feedback, and a following nav retries
+            // (load_failed = !ok clears on the next success).
             let host = host_for_effect.clone();
             let view = view.clone();
             spawn(async move {
@@ -291,12 +291,12 @@ pub fn TourViewer(
         }
     });
 
-    // Polling des événements viewer (nav hotspot + drag de flèche) : une
-    // boucle unique, démarrée une fois par effet — l'ancien pattern
-    // « signal écrit au rendu pour se relancer » est mort en dioxus 0.7
-    // (écriture au rendu jetée → boucle tuée au premier tick, constat
-    // 2026-09-12 : les clics de hotspots ne faisaient plus rien). La tâche
-    // est scopée au composant : tuée à la fermeture de la modal.
+    // Polling of viewer events (hotspot nav + arrow drag): a
+    // single loop, started once per effect — the old pattern
+    // "signal written during render to restart itself" died in dioxus 0.7
+    // (write during render dropped → loop killed on the first tick, observed
+    // 2026-09-12: hotspot clicks no longer did anything). The task
+    // is scoped to the component: killed when the modal closes.
     use_effect(move || {
         if poll_started() {
             return;
@@ -312,19 +312,19 @@ pub fn TourViewer(
                 }) = crate::tour_viewer::take_nav(nav_seq.cloned()).await
                 {
                     nav_seq.set(seq);
-                    // Changement de scène : la popover d'un item de l'ancienne
-                    // scène n'a plus de sens.
+                    // Scene change: the popover of an item of the old
+                    // scene no longer makes sense.
                     annot_selected.set(None);
                     current.set(scene_id);
                     active_floor.set(floor_id);
                 }
-                // Drag d'une flèche : remonter (link_id, yaw, pitch) au parent.
+                // Arrow drag: pass (link_id, yaw, pitch) up to the parent.
                 if let Some(mv) = crate::tour_viewer::take_hotspot_move(move_seq.cloned()).await {
                     move_seq.set(mv.seq);
                     on_hotspot_move.call((mv.link_id, mv.yaw, mv.pitch));
                 }
-                // Clic d'un marqueur d'annotation (D58) : ouvrir la popover
-                // avec l'item résolu (lookup par id dans le lot courant).
+                // Click on an annotation marker (D58): open the popover
+                // with the resolved item (lookup by id in the current batch).
                 if annotations_enabled {
                     if let Some(click) =
                         crate::tour_viewer::take_annot_click(annot_seq.cloned()).await
@@ -351,7 +351,7 @@ pub fn TourViewer(
         });
     });
 
-    // Démontage du viewer (école MediaPreview use_drop).
+    // Viewer unmount (MediaPreview use_drop pattern).
     let host_for_drop = host_id.clone();
     use_drop(move || {
         crate::tour_viewer::unmount(&host_for_drop);
@@ -368,11 +368,11 @@ pub fn TourViewer(
         });
     });
 
-    // Notifier la scène courante (scène INITIALE incluse — sans ça
-    // l'éditeur d'annotations ignore le média de départ et la pose
-    // échoue silencieusement jusqu'à la première navigation, constat
-    // 2026-09-16). Source unique : remplace les appels dispersés dans
-    // les handlers de nav/boutons.
+    // Notify the current scene (INITIAL scene included — without it
+    // the annotation editor ignores the starting media and placement
+    // fails silently until the first navigation, observed
+    // 2026-09-16). Single source: replaces the scattered calls in
+    // the nav/button handlers.
     use_effect(move || {
         let scene_id = current.cloned();
         if scene_id.is_empty() {
@@ -381,10 +381,10 @@ pub fn TourViewer(
         on_scene_change.call(scene_id);
     });
 
-    // Application des marqueurs (D58) : effet **séparé** du mount — il
-    // n'agit qu'après la fin du mount/switch (`applied` == clé courante),
-    // dé-dup par (scène, url, json). `set_annotations` = remove/add de
-    // hotspots post-mount, jamais de re-mount.
+    // Applying the markers (D58): effect **separate** from the mount — it
+    // acts only after the mount/switch has finished (`applied` == current key),
+    // dedup by (scene, url, json). `set_annotations` = remove/add of
+    // hotspots post-mount, never a remount.
     let annot_enabled_for_effect = annotations_enabled;
     let host_for_annot = host_id.clone();
     use_effect(move || {
@@ -461,7 +461,7 @@ pub fn TourViewer(
         });
     });
 
-    // ─── Précalculs (pas de `let` dans le corps rsx) ───
+    // ─── Precomputations (no `let` in the rsx body) ───
     let current_id = current.cloned();
     let active_floor_id = active_floor.cloned();
     let floor_scenes: Vec<pnex_core::TourScene> = doc
@@ -480,7 +480,7 @@ pub fn TourViewer(
         Some(plan) => (plan.width.unwrap_or(2000.0), plan.height.unwrap_or(1000.0)),
         None => (2000.0, 1000.0),
     };
-    // (étage, actif, première scène de l'étage — cible du bouton).
+    // (floor, active, first scene of the floor — button target).
     let floor_buttons: Vec<FloorButton> = floors
         .iter()
         .map(|floor| {
@@ -492,7 +492,7 @@ pub fn TourViewer(
             (floor.clone(), *floor.id == active_floor_id, first)
         })
         .collect();
-    // Mini-plan : (id, cx, cy, courante) en viewBox 200×100.
+    // Mini-plan: (id, cx, cy, current) in a 200×100 viewBox.
     let mini_dots: Vec<(String, f64, f64, bool)> = floor_scenes
         .iter()
         .map(|s| {
@@ -504,15 +504,15 @@ pub fn TourViewer(
             )
         })
         .collect();
-    // (scène, courante) pour la liste cliquable.
+    // (scene, current) for the clickable list.
     let scene_buttons: Vec<(pnex_core::TourScene, bool)> = floor_scenes
         .iter()
         .map(|s| (s.clone(), s.id == current_id))
         .collect();
-    // Image du plan derrière les dots (None tant que le blob n'est pas prêt).
+    // Plan image behind the dots (None until the blob is ready).
     let mini_plan_url = plan_url.value().read().clone().flatten();
-    // Annotations : toggle rendu si ≥ 1 item sur le média affiché ; item
-    // sélectionné pour la popover.
+    // Annotations: toggle rendered if ≥ 1 item on the displayed media; item
+    // selected for the popover.
     let has_items = annotations
         .value()
         .read()
@@ -560,9 +560,9 @@ pub fn TourViewer(
                                 button {
                                     key: "{floor.id}",
                                     class: if target.is_none() { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-gray-50 text-gray-500 border border-transparent cursor-not-allowed" } else if is_active { "w-full text-left px-2 py-1.5 text-sm rounded-lg bg-signal-50 text-signal-700 border border-signal-200" } else { "w-full text-left px-2 py-1.5 text-sm rounded-lg hover:bg-gray-50 text-gray-700 border border-transparent" },
-                                    // Un étage sans scène n'a rien à montrer : no-op
-                                    // silencieux = confusion (constat 2026-09-16) —
-                                    // visuellement désactivé.
+                                    // A floor without scenes has nothing to show: a silent
+                                    // no-op = confusion (observed 2026-09-16) —
+                                    // visually disabled.
                                     disabled: target.is_none(),
                                     onclick: move |_| {
                                         if let Some((scene_id, floor_id)) = target.clone() {
@@ -575,8 +575,8 @@ pub fn TourViewer(
                             }
                         }
                     }
-                    // Mini-plan : image du plan + positions des scènes (les dots
-                    // partagent le mapping x/plan_w*200, y/plan_h*100 du viewBox).
+                    // Mini-plan: plan image + scene positions (the dots
+                    // share the viewBox's x/plan_w*200, y/plan_h*100 mapping).
                     if !mini_dots.is_empty() {
                         div { class: "bg-white border border-gray-200 rounded-lg p-1",
                             svg { view_box: "0 0 200 100", class: "w-full",
@@ -604,7 +604,7 @@ pub fn TourViewer(
                             }
                         }
                     }
-                    // Liste des scènes cliquables de l'étage.
+                    // List of the floor's clickable scenes.
                     ul { class: "divide-y divide-gray-100",
                         for (scene, is_current) in scene_buttons.clone() {
                             li { key: "list-{scene.id}",
@@ -658,8 +658,8 @@ pub fn TourViewer(
                         }
                     }
                 }
-                // Popover live (D58) : item cliqué, hors canvas (panneau
-                // dioxus), jamais bloquante.
+                // Live popover (D58): clicked item, outside the canvas (dioxus
+                // panel), never blocking.
                 if let Some(item) = annot_selected_now {
                     div { key: "annot-pop-{item.id}",
                         AnnotationPopover {

@@ -11,8 +11,8 @@ use super::view::{
 use crate::components::icons;
 use crate::components::modal::Modal;
 
-/// Vue de pins depuis le catalogue `GET /boards` (DTO wizard) — même
-/// géométrie que `pin_views`, sans état device (rien de configuré/réservé).
+/// Pin view from the `GET /boards` catalogue (wizard DTO) — same
+/// geometry as `pin_views`, without device state (nothing configured/reserved).
 fn preview_views(board: &api::boards::Board) -> Vec<PinView> {
     let bw = board_w(layout_per_side(&board.layout), board_ratio(&board.layout));
     let mut views = Vec::with_capacity(board.pins.len());
@@ -61,10 +61,10 @@ fn preview_views(board: &api::boards::Board) -> Vec<PinView> {
     views
 }
 
-/// Popup « Voir le pinout » du wizard : board pleine taille avec labels,
-/// badges (strapping / input-only) et légende — rendue depuis le catalogue
-/// (`GET /boards`), sans état device (rien de configuré/réservé). La
-/// sélection d'un pin est purement visuelle (aucun panneau de config).
+/// The wizard's "View pinout" popup: full-size board with labels,
+/// badges (strapping / input-only) and legend — rendered from the catalogue
+/// (`GET /boards`), without device state (nothing configured/reserved). Pin
+/// selection is purely visual (no config panel).
 #[component]
 pub fn BoardPreviewModal(board: api::boards::Board, on_close: Callback<()>) -> Element {
     let views = preview_views(&board);
@@ -114,8 +114,8 @@ pub fn BoardPreviewModal(board: api::boards::Board, on_close: Callback<()>) -> E
     }
 }
 
-// (La miniature dans les chips a été remplacée par `BoardPreviewModal` :
-// pleine taille, zoomable au scroll de la modale, tous les pins labellisés.)
+// (The thumbnail in the chips was replaced by `BoardPreviewModal`:
+// full size, zoomable by scrolling the modal, every pin labelled.)
 
 /// Zoom steps of the pinout drawing, in percent of the fitted width.
 pub(super) const ZOOM_LEVELS: [u32; 4] = [100, 150, 200, 300];

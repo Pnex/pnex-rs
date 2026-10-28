@@ -1,10 +1,10 @@
-//! Popover live d'une annotation (D58) — partagée TourViewer / page média :
-//! label, kind, couche d'origine, cible résolue ou « cible introuvable »
-//! (référence morte tolérée — grisée, jamais 500, école S7), valeur live en
-//! **poll 15 s** (D31 : pas de WS navigateur, école `pins_panel`) annulée à
-//! la fermeture (tâche scopée au composant). Vit **hors canvas** (panneau
-//! dioxus) : conteneur `pointer-events-none`, carte `auto` — jamais
-//! d'overlay bloquant (constat device 2026-09-10).
+//! Live popover of an annotation (D58) — shared by TourViewer / media page:
+//! label, kind, source layer, resolved target or "target not found"
+//! (dead reference tolerated — greyed out, never a 500, S7 pattern), live
+//! value via a **15 s poll** (D31: no browser WS, `pins_panel` pattern)
+//! cancelled on close (task scoped to the component). Lives **outside the
+//! canvas** (dioxus panel): `pointer-events-none` container, `auto` card —
+//! never a blocking overlay (observed on device 2026-09-10).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -13,19 +13,19 @@ use pnex_core::{AnnotationTarget, ResolvedAnnotationItem};
 use crate::components::gerbe::Gerbe;
 use crate::components::icons;
 
-/// Carte ancrée en bas du conteneur parent (`relative`) — le parent gère
-/// l'ouverture (signal d'item sélectionné) et le `key` par item.
+/// Card anchored at the bottom of the parent container (`relative`) — the
+/// parent handles opening (selected-item signal) and the per-item `key`.
 #[component]
 pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -> Element {
-    // Valeur live : (connected, valeur de pin formatée) — None tant que le
-    // premier poll n'est pas revenu.
+    // Live value: (connected, formatted pin value) — None until the
+    // first poll has returned.
     let mut live = use_signal(|| None::<(bool, Option<String>)>);
-    // Garde du poll (une seule boucle par instance — double invocation des
-    // effects de dioxus).
+    // Poll guard (a single loop per instance — dioxus effects are
+    // invoked twice).
     let mut poll_started = use_signal(|| false);
 
-    // Cible résolue : poll uniquement si le device est vivant (device_pk
-    // posé — None si mort, école read model).
+    // Resolved target: poll only if the device is alive (device_pk
+    // set — None if dead, read model pattern).
     let resolved = item.resolved.clone();
     let device_pk = resolved.as_ref().and_then(|r| r.device_pk);
     let gpio = match &item.target {
@@ -41,8 +41,8 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
         let pk = device_pk.unwrap();
         spawn(async move {
             loop {
-                // Poll annulé à la fermeture : la tâche est scopée au
-                // composant (tuée au démontage, école poll TourViewer).
+                // Poll cancelled on close: the task is scoped to the
+                // component (killed on unmount, TourViewer poll pattern).
                 if let Ok(resp) = crate::api::pins::pins(pk).await {
                     let value = gpio.and_then(|g| {
                         resp.pins
@@ -57,7 +57,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
         });
     });
 
-    // ─── Précalculs (pas de `let` dans le corps rsx) ───
+    // ─── Precomputations (no `let` in the rsx body) ───
     let kind_key = kind_label_key(&item.kind);
     let surface = crate::components::surface::annotation::is_surface_item(&item);
     let surface_items = vec![item.clone()];
@@ -66,7 +66,7 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
     let live_now = live.cloned();
 
     rsx! {
-        // Conteneur non bloquant : la vue reste navigable dessous.
+        // Non-blocking container: the view stays navigable underneath.
         div { class: "absolute inset-x-0 bottom-0 z-20 pointer-events-none p-3",
             div { class: "pointer-events-auto bg-white rounded-xl shadow-xl border border-gray-200 p-4 max-w-md mx-auto",
                 div { class: "flex items-start justify-between gap-3",
@@ -100,14 +100,14 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
                         crate::components::surface::annotation::AnnotationSurface { items: surface_items }
                     }
                 }
-                // Cible : résolue ou morte (grisée — référence tolérée, S7).
+                // Target: resolved or dead (greyed out — tolerated reference, S7).
                 div {
                     hidden: surface,
                     class: if is_dead { "mt-3 text-xs rounded-lg px-3 py-2 bg-gray-50 text-gray-500 border border-gray-100" } else { "mt-3 text-xs rounded-lg px-3 py-2 bg-signal-50 text-signal-800 border border-signal-100" },
                     {target_block}
                 }
 
-                // Valeur live (device vivant ; kind note → pas de section).
+                // Live value (device alive; note kind → no section).
                 if device_pk.is_some() && item.kind != "note" {
                     div { class: "mt-2 flex items-center gap-2 text-xs text-gray-600 px-3",
                         span { class: "font-medium text-gray-500", {t!("annot-popover-value")} }
@@ -140,8 +140,8 @@ pub fn AnnotationPopover(item: ResolvedAnnotationItem, on_close: Callback<()>) -
     }
 }
 
-/// Couleur du point de kind (cohérente avec `.pnex-annot-{kind}`) — aussi
-/// consommée par les marqueurs plats de la page média.
+/// Colour of the kind dot (consistent with `.pnex-annot-{kind}`) — also
+/// used by the flat markers of the media page.
 /// Fluent key of an item kind (device, pin, status, control, reading, note).
 pub fn kind_label_key(kind: &str) -> &'static str {
     match kind {
@@ -165,8 +165,8 @@ pub fn annot_dot_color(kind: &str) -> &'static str {
     }
 }
 
-/// Bloc cible : note → texte ; device/pin/status → slug (+ gpio pour une
-/// pin) ; morte → « cible introuvable » (grisée).
+/// Target block: note → text; device/pin/status → slug (+ gpio for a
+/// pin); dead → "target not found" (greyed out).
 fn target_text(item: &ResolvedAnnotationItem, is_dead: bool) -> String {
     if is_dead {
         return t!("annot-popover-dead").to_string();
@@ -189,7 +189,7 @@ fn target_text(item: &ResolvedAnnotationItem, is_dead: bool) -> String {
     }
 }
 
-/// Valeur de pin live formatée pour l'affichage (JSON → texte plat).
+/// Live pin value formatted for display (JSON → plain text).
 fn format_value(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Null => "null".to_string(),

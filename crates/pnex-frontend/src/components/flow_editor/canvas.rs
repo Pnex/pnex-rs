@@ -1,9 +1,9 @@
-//! Rendu SVG + gestes du canevas de l'éditeur de flows.
+//! SVG rendering + gestures of the flow editor canvas.
 //!
-//! Palette (ajout de nœuds) et Canvas (SVG sans `view_box` : unité
-//! utilisateur = 1 px CSS, cf. `geometry.rs`). Les handlers `move`/`up`
-//! vivent sur le root SVG — fiable quand le pointeur quitte le nœud — et un
-//! `pointerleave` annule tout geste dont le `pointerup` se serait perdu.
+//! Palette (adding nodes) and Canvas (SVG without `view_box`: user
+//! unit = 1 CSS px, see `geometry.rs`). The `move`/`up` handlers
+//! live on the SVG root — reliable when the pointer leaves the node — and a
+//! `pointerleave` cancels any gesture whose `pointerup` got lost.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -28,8 +28,8 @@ pub(crate) use palette::*;
 /// annotation.
 type WireSeg = (String, usize, String, (f64, f64), (f64, f64), String);
 
-/// Le canevas : grille, câbles (double path hit+visible), nœuds, câble
-/// temporaire de câblage. SANS `view_box` — 1 unité = 1 px CSS.
+/// The canvas: grid, wires (double hit+visible path), nodes, temporary
+/// wiring wire. WITHOUT `view_box` — 1 unit = 1 CSS px.
 #[component]
 pub(crate) fn Canvas(
     mut cx: EditorCx,
@@ -52,8 +52,8 @@ pub(crate) fn Canvas(
         }
     });
 
-    // Nœuds en violation (validation sauvegarde + staleness pin/device) —
-    // un câble est rouge dès qu'une de ses extrémités l'est.
+    // Nodes in violation (save validation + pin/device staleness) —
+    // a wire is red as soon as one of its ends is.
     let violation_nodes: std::collections::HashSet<String> = cx
         .violations
         .read()
@@ -153,9 +153,9 @@ pub(crate) fn Canvas(
         .map(|(source_id, port, ..)| super::wire_types::output_type(&graph, source_id, *port))
         .collect();
 
-    // Câble temporaire pendant le câblage — origine = ancre de sortie
-    // (câblage direct) ou d'entrée (inverse). Pré-calcul hors rsx (pas de
-    // `let` dans le rsx).
+    // Temporary wire during wiring — origin = output anchor
+    // (direct wiring) or input anchor (reverse). Precomputed outside rsx (no
+    // `let` in rsx).
     let temp_wire: Option<((f64, f64), (f64, f64))> = match &interaction {
         Interaction::Wiring {
             from_id,
@@ -193,12 +193,12 @@ pub(crate) fn Canvas(
                 onpointermove: move |event| canvas_pointer_move(event, cx),
                 onpointerup: move |_event| canvas_pointer_up(cx),
                 onpointerleave: move |_| {
-                    // Geste orphelin (pointup hors canvas) : annulation.
+                    // Orphan gesture (pointerup outside the canvas): cancel.
                     end_gesture(cx);
                 },
                 onwheel: move |event| canvas_wheel(event, cx),
                 onkeydown: move |event| {
-                    // Échap : désélection (l'inspecteur se replie avec).
+                    // Escape: deselect (the inspector collapses with it).
                     if event.key() == Key::Escape {
                         cx.selected_node.set(None);
                         return;
@@ -227,8 +227,8 @@ pub(crate) fn Canvas(
                         }
                     }
                 }
-                // Câbles — d'abord la couche de hit (transparente, large),
-                // puis la couche visible.
+                // Wires — first the hit layer (transparent, wide),
+                // then the visible layer.
                 rect {
                     x: "0",
                     y: "0",
@@ -239,10 +239,10 @@ pub(crate) fn Canvas(
                 g { transform: "translate({pan.0} {pan.1}) scale({zoom})",
                     for (wire_index, (source_id, port, target_id, a, b, pin)) in wires.clone().into_iter().enumerate() {
                         path {
-                            // Index dans la clé : des annotations dupliquées
-                            // (renommage en doublon, graphe transitoirement
-                            // invalide — la validation le signale) ne doivent
-                            // jamais paniquer le rendu (« keyed siblings »).
+                            // Index in the key: duplicated annotations
+                            // (rename into a duplicate, graph transiently
+                            // invalid — validation flags it) must
+                            // never panic the render ("keyed siblings").
                             key: "hit-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
                             d: geometry::wire_path(a, b),
                             fill: "none",
@@ -260,9 +260,9 @@ pub(crate) fn Canvas(
                             key: "wire-{wire_index}-{source_id}-{port}-{target_id}-{pin}",
                             d: geometry::wire_path(a, b),
                             fill: "none",
-                            // Câble rouge quand une extrémité porte une
-                            // violation (graphe invalide ou staleness
-                            // pin/device — le lien cassé saute aux yeux).
+                            // Red wire when one end carries a
+                            // violation (invalid graph or pin/device
+                            // staleness — the broken link stands out).
                             stroke: if violation_nodes.contains(&source_id) || violation_nodes.contains(&target_id) { geometry::VIOLATION_STROKE } else { kind.color() },
                             "stroke-width": "2",
                             "pointer-events": "none",
@@ -288,9 +288,9 @@ pub(crate) fn Canvas(
                             }
                         }
                     }
-                    // Câble temporaire pendant le câblage — né sur l'ancre
-                    // de sortie (câblage direct) ou d'entrée (inverse).
-                    // Pré-calcul hors rsx (pas de `let` dans le rsx).
+                    // Temporary wire during wiring — born on the output
+                    // anchor (direct wiring) or the input anchor (reverse).
+                    // Precomputed outside rsx (no `let` in rsx).
                     if let Some((origin, cursor)) = temp_wire {
                         path {
                             d: geometry::wire_path(origin, cursor),
@@ -347,8 +347,8 @@ fn fit_to_nodes(mut cx: EditorCx) -> bool {
     true
 }
 
-/// Un nœud du graphe : rectangle coloré, libellé, ports. Le `pointerdown`
-/// sélectionne et amorce le drag ; le port de sortie amorce le câblage.
+/// A graph node: coloured rectangle, label, ports. `pointerdown`
+/// selects and starts the drag; the output port starts wiring.
 #[component]
 fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     let Some(pos) = node.position else {
@@ -445,11 +445,11 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         pnex_core::FlowNodeKind::HttpFetch { .. } => {
             (geometry::HTTP_FETCH_FILL, geometry::HTTP_FETCH_STROKE)
         }
-        // Fonctions du registre : palette du calc (même famille « calcul »).
+        // Registry functions: calc palette (same "compute" family).
         pnex_core::FlowNodeKind::PnexFunction { .. } => {
             (geometry::CALC_FILL, geometry::CALC_STROKE)
         }
-        // JSON split/merge : cyan/teal (famille transformation de données).
+        // JSON split/merge: cyan/teal (data transformation family).
         pnex_core::FlowNodeKind::JsonSplit { .. } => {
             (geometry::JSON_SPLIT_FILL, geometry::JSON_SPLIT_STROKE)
         }
@@ -516,12 +516,12 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
         stroke
     };
 
-    // Libellé affiché : nom du nœud, sinon libellé du kind.
+    // Displayed label: node name, else the kind label.
     let title = node.name.clone().unwrap_or_else(|| kind_label.clone());
-    // Sous-titre : résumé de config (donnée brute, pas d'i18n).
+    // Subtitle: config summary (raw data, no i18n).
     let subtitle = node_subtitle(&node);
-    // Badge live de la sonde : dernière valeur publiée (source pnex-display
-    // uniquement), vidée au stop moteur / save / deploy par le parent.
+    // Live probe badge: last published value (pnex-display source
+    // only), cleared on engine stop / save / deploy by the parent.
     // Debug nodes too: their last message, visible in every mode.
     let display_badge = match &node.kind {
         pnex_core::FlowNodeKind::Display { .. }
@@ -575,23 +575,23 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 "var(--color-cyan-700, #0e7490)",
             ),
         };
-    // Ports de sortie précalculés (pas de `let` dans rsx) : un par pin +
-    // « tout » pour device-read, un seul pour tous les autres kinds. Labels
-    // affichés à droite des ancres (port « tout » inclus). Hauteur dyna-
-    // mique : le nœud grandit avec le nombre de ports (pas PORT_PITCH).
+    // Precomputed output ports (no `let` in rsx): one per pin +
+    // "all" for device-read, a single one for every other kind. Labels
+    // shown to the right of the anchors ("all" port included). Dynamic
+    // height: the node grows with the number of ports (not PORT_PITCH).
     let out_count = state::output_count_of(&node);
     let accepts_input = geometry::accepts_input(&node);
     let node_h = geometry::node_height_for(&node);
-    // Libellés de ports affichés dès qu'il y a plusieurs ports, et toujours
-    // pour une fonction (une sortie nommée unique doit montrer son nom ;
-    // une fonction sans @output garde son port unique non libellé).
+    // Port labels shown as soon as there are several ports, and always
+    // for a function (a single named output must show its name;
+    // a function without @output keeps its single unlabelled port).
     let show_port_labels = out_count > 1
         || matches!(&node.kind, pnex_core::FlowNodeKind::PnexFunction { .. })
         || matches!(&node.kind, pnex_core::FlowNodeKind::JsonSplit { config } if !config.keys.is_empty());
     let port_rows: Vec<(usize, f64, String, String)> = match &node.kind {
         pnex_core::FlowNodeKind::DeviceRead { config } => {
-            // y RELATIF au nœud : les cercles sont rendus dans le <g> translaté
-            // (port_out_at donne l'absolu — pour la couche wires seulement).
+            // y RELATIVE to the node: circles are rendered inside the translated <g>
+            // (port_out_at gives the absolute — for the wires layer only).
             let rel_y = |port: usize| node_h * (port + 1) as f64 / (out_count + 1) as f64;
             let mut rows: Vec<(usize, f64, String, String)> = config
                 .pins
@@ -798,12 +798,12 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
     } else {
         subtitle
     };
-    // Capturé par chaque closure (le composant capture `node` une seule fois).
+    // Captured by every closure (the component captures `node` only once).
     let node_id = node.id.clone();
-    // Un clone par closure qui s'en saisit (E0382 — pas de Copy sur String).
+    // One clone per closure that takes it (E0382 — no Copy on String).
     let node_id_in_anchor = node_id.clone();
-    // Badge live : pré-calculs pour les closures rsx (pas de `let` dans rsx,
-    // et une seule closure peut prendre possession de la vue pretty).
+    // Live badge: precomputations for the rsx closures (no `let` in rsx,
+    // and only one closure can take ownership of the pretty view).
     // The frame wraps the text (monospace 9 ≈ 5.4 px/char), centred under the
     // node; past two node widths the text is cut, the full one in a tooltip.
     let badge_full = display_badge.as_ref().map(|b| b.label.clone());
@@ -855,8 +855,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                 "stroke-width": "2",
                 style: "cursor: grab",
             }
-            // Titre + sous-titre centrés verticalement (20/36 px aux 48 px
-            // historiques — inchangés pour un nœud mono-port).
+            // Title + subtitle vertically centred (20/36 px at the historical
+            // 48 px — unchanged for a single-port node).
             text {
                 x: "{text_cx}",
                 y: "{node_h / 2.0 - 4.0}",
@@ -901,8 +901,8 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
             }
             for (anchor_y, pin_for_closure, pin_label, row_node_id) in in_anchor_rows.clone() {
                 g {
-                    // Halo invisible : cible de grab ≥ 20 px graphe (le point
-                    // visible fait 8 px — trop fin au doigt comme à la souris).
+                    // Invisible halo: grab target ≥ 20 graph px (the visible
+                    // dot is 8 px — too thin for a finger as for a mouse).
                     circle {
                         cx: "0",
                         cy: "{anchor_y}",
@@ -935,7 +935,7 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                     }
                 }
             }
-            // Ports de sortie (amorcent le câblage avec leur index).
+            // Output ports (start wiring with their index).
             for (port_index, port_y, port_label, port_node_id) in port_rows.clone() {
                 g {
                     circle {
@@ -982,16 +982,16 @@ fn CanvasNode(mut cx: EditorCx, node: FlowNode) -> Element {
                     }
                 }
             }
-            // Badge live de la sonde (pastille sous le nœud) : raccourci
-            // tronqué ; objet/tableau JSON → pastille cliquable, la vue
-            // pretty s'ouvre en modal (le texte SVG ne plie pas au
-            // multi-ligne).
+            // Live probe badge (pill under the node): truncated
+            // shorthand; JSON object/array → clickable pill, the pretty
+            // view opens in a modal (SVG text does not wrap to
+            // multi-line).
             if let Some(label) = badge_label {
                 g {
                     onpointerdown: move |event| {
-                        // Le clic d'ouverture ne doit pas amorcer un pan/drag
-                        // du fond (badge scalaire : rien à ouvrir, transparent
-                        // aux gestes comme avant).
+                        // The opening click must not start a pan/drag
+                        // of the background (scalar badge: nothing to open, transparent
+                        // to gestures as before).
                         if badge_clickable {
                             event.stop_propagation();
                         }
@@ -1064,7 +1064,7 @@ fn vision_subtitle(config: &pnex_core::vision::VisionDetectConfig) -> String {
     }
 }
 
-/// Résumé de config affiché sous le libellé (donnée, pas d'i18n).
+/// Config summary shown under the label (data, no i18n).
 fn node_subtitle(node: &FlowNode) -> String {
     match &node.kind {
         pnex_core::FlowNodeKind::Inject { config } => {

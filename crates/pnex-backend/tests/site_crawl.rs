@@ -171,8 +171,8 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
             "spec": {"kind": "crawl_site", "params": {
                 "url": format!("{origin}/formations/x?y=1"),
                 "match": [{"kind": "regex", "value": "RNCP\\s?\\d{5}"}, {"kind": "word", "value": "eligible"}],
-                "record": {"type": "page_observee", "properties": {"url": "url", "title": "titre", "state": "etat", "relevant": "pertinente"},
-                           "proof_link": "prouve_par"}
+                "record": {"type": "observed_page", "properties": {"url": "url", "title": "heading", "state": "state", "relevant": "relevant"},
+                           "proof_link": "proven_by"}
             }}
         }))).await;
         assert_eq!(st, 201, "{m}");
@@ -200,7 +200,7 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
         // The record wrote the page as an object.
         let object = relevant["object_id"].as_str().expect("recorded object");
         let (_, o) = call(&server, "GET", &format!("/api/v1/ontology/objects/{object}"), &alice, org, None).await;
-        assert_eq!((o["properties"]["etat"].clone(), o["properties"]["pertinente"].clone()), (json!("relevant"), json!(true)), "{o}");
+        assert_eq!((o["properties"]["state"].clone(), o["properties"]["relevant"].clone()), (json!("relevant"), json!(true)), "{o}");
 
         // A page gone from two complete crawls is `gone`.
         *alt.lock().unwrap() = true;
@@ -224,11 +224,11 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
 
         // A finding seen in the page before its proof (D437).
         let (st, finding) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org,
-            Some(json!({"type_key": "ecart", "title": "WEB-01 · test", "properties": {"etat": "a_valider"}}))).await;
+            Some(json!({"type_key": "finding", "title": "WEB-01 · test", "properties": {"state": "to_validate"}}))).await;
         assert_eq!(st, 201, "{finding}");
         let finding = finding["id"].as_str().unwrap().to_string();
         let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &alice, org,
-            Some(json!({"link_type": "constate_dans", "source_id": finding, "target_id": object}))).await;
+            Some(json!({"link_type": "observed_in", "source_id": finding, "target_id": object}))).await;
         assert_eq!(st, 201, "{l}");
         let (_, none) = call(&server, "GET", &format!("/api/v1/ontology/objects/{finding}/evidence"), &alice, org, None).await;
         assert_eq!(none["count"], 0, "no proof yet: {none}");
@@ -275,14 +275,14 @@ async fn server_crawl_registry_and_a_sealed_proof_chain() {
         let (_, pages) = call(&server, "GET", &format!("/api/v1/extension/missions/{mission}/pages?state=captured"), &alice, org, None).await;
         assert_eq!(pages["count"], 1, "{pages}");
         let (_, links) = call(&server, "GET", &format!("/api/v1/ontology/objects/{object}/links"), &alice, org, None).await;
-        let proven = links["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "prouve_par").count();
+        let proven = links["results"].as_array().unwrap().iter().filter(|l| l["link_type"] == "proven_by").count();
         assert_eq!(proven, 3, "{links}");
         assert!(!html_media.is_empty());
         // The finding got the parts of that proof, sealed (D437).
         let (_, ev) = call(&server, "GET", &format!("/api/v1/ontology/objects/{finding}/evidence"), &alice, org, None).await;
         assert_eq!(ev["count"], 3, "{ev}");
         let items = ev["results"].as_array().unwrap();
-        assert!(items.iter().all(|i| i["via"] == json!(["constate_dans"]) && i["proof"]["seq"] == 1), "{ev}");
+        assert!(items.iter().all(|i| i["via"] == json!(["observed_in"]) && i["proof"]["seq"] == 1), "{ev}");
         assert!(items.iter().all(|i| i["sha256"].as_str().is_some_and(|h| h.len() == 64)), "{ev}");
         let mut parts: Vec<&str> = items.iter().map(|i| i["part"].as_str().unwrap()).collect();
         parts.sort();
@@ -321,7 +321,7 @@ async fn flow_node_crawls_the_site_of_its_message() {
         let app = site(Arc::new(Mutex::new(false)));
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let (st, website) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(json!({
-            "type_key": "site_web", "title": "of.example", "properties": {"domaine": "127.0.0.1", "url_racine": format!("http://{addr}/")}
+            "type_key": "website", "title": "of.example", "properties": {"domain": "127.0.0.1", "root_url": format!("http://{addr}/")}
         }))).await;
         assert_eq!(st, 201, "{website}");
 
@@ -339,7 +339,7 @@ async fn flow_node_crawls_the_site_of_its_message() {
             version_number: Set(1),
             graph: Set(json!({"nodes": [{"id": "crawl", "kind": "site_crawl", "config": {
                 "max_pages": 20, "proofs": false,
-                "record": {"type": "page_observee", "properties": {"url": "url", "title": "titre"}, "link_type": "page_de"}
+                "record": {"type": "observed_page", "properties": {"url": "url", "title": "heading"}, "link_type": "page_of"}
             }}]})),
             ..Default::default()
         }
@@ -371,7 +371,7 @@ async fn flow_node_crawls_the_site_of_its_message() {
         assert_eq!((r["summary"]["pages"].clone(), r["summary"]["relevant"].clone()), (json!(3), json!(1)), "{r}");
         // The page object hangs off the website (record link to link_to).
         let linked = ctx.db.execute_unprepared(&format!(
-            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'page_de' AND valid_to IS NULL")).await.unwrap();
+            "SELECT 1 FROM resource_edges WHERE org_id = {org} AND relation = 'page_of' AND valid_to IS NULL")).await.unwrap();
         assert_eq!(linked.rows_affected(), 1);
         // One disabled mission for the flows; a second pass reuses it.
         let (st, r2) = crawl(ask.clone()).await;

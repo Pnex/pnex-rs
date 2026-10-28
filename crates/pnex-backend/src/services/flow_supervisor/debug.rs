@@ -4,14 +4,14 @@ use super::*;
 
 // ───────────────────────── Feed debug (panneau) ─────────────────────────
 
-/// Anneau du panneau de debug : dernières sorties `debug` du runtime,
-/// attribuées par flow (le runtime émet `flow`/`node_red` — une entrée sans
-/// attribution est **jetée** : les orgs partagent un seul `flows.json`,
-/// jamais de bucket « inconnu »).
+/// Debug panel ring: latest `debug` outputs of the runtime,
+/// attributed per flow (the runtime emits `flow`/`node_red` — an entry without
+/// attribution is **dropped**: orgs share a single `flows.json`,
+/// never an "unknown" bucket).
 static DEBUG_FEED: OnceLock<std::sync::Mutex<DebugFeed>> = OnceLock::new();
 
-/// Caps bornés : un flow bavard ne peut ni exploser la mémoire ni évincer
-/// indéfiniment les autres flows.
+/// Bounded caps: a chatty flow can neither blow up memory nor evict
+/// the other flows indefinitely.
 pub(super) const DEBUG_CAP_PER_FLOW: usize = 200;
 const DEBUG_MAX_FLOWS: usize = 64;
 const DEBUG_TTL_SECS: i64 = 300;
@@ -23,11 +23,11 @@ struct DebugFeed {
         std::collections::VecDeque<(std::time::Instant, pnex_core::FlowDebugEntry)>,
     >,
     next_seq: u64,
-    /// Dernier accès par flow (évcition LRU au-delà de `DEBUG_MAX_FLOWS`).
+    /// Last access per flow (LRU eviction beyond `DEBUG_MAX_FLOWS`).
     last_touch: std::collections::HashMap<i64, std::time::Instant>,
 }
 
-/// `DebugFeed` n'est lu que sous son mutex — horloge mono-thread efficace.
+/// `DebugFeed` is only read under its mutex — effectively a single-thread clock.
 fn now_secs() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -35,13 +35,13 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
-/// Timestamp RFC 3339 sans dépendance chrono (le formatter de `time` n'est
-/// pas une dep du backend) : secondes depuis l'epoch → ISO-8601 UTC.
+/// RFC 3339 timestamp without a chrono dependency (the `time` formatter is
+/// not a backend dep): seconds since epoch → ISO-8601 UTC.
 pub(super) fn rfc3339_now() -> String {
     let secs = now_secs();
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);
-    // Algorithme de conversion date civile (Howard Hinnant) — époque 1970-01-01.
+    // Civil date conversion algorithm (Howard Hinnant) — epoch 1970-01-01.
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -193,8 +193,8 @@ pub fn node_statuses(flow_id: i64) -> Vec<pnex_core::FlowDebugEntry> {
     out
 }
 
-/// Ingère une ligne stdout `{"event":"debug",...}` du runtime : exige
-/// l'attribution `flow` (sinon jetée) et estampille à la réception.
+/// Ingests a runtime stdout line `{"event":"debug",...}`: requires
+/// the `flow` attribution (dropped otherwise) and stamps it on receipt.
 pub fn push_debug(raw: &serde_json::Value) {
     if raw.get("event").and_then(|e| e.as_str()) != Some("debug") {
         return;
@@ -203,7 +203,7 @@ pub fn push_debug(raw: &serde_json::Value) {
         return;
     };
     let entry = pnex_core::FlowDebugEntry {
-        seq: 0, // assigné sous lock
+        seq: 0, // assigned under lock
         ts: rfc3339_now(),
         flow_id,
         node_id: raw
@@ -252,7 +252,7 @@ pub fn push_debug(raw: &serde_json::Value) {
         q.pop_front();
     }
     feed.last_touch.insert(flow_id, now);
-    // Éviction LRU des flows (au-delà du cap, le flow le plus ancien sort).
+    // LRU eviction of flows (beyond the cap, the oldest flow goes).
     while feed.per_flow.len() > DEBUG_MAX_FLOWS {
         let Some(victim) = feed
             .last_touch
@@ -267,8 +267,8 @@ pub fn push_debug(raw: &serde_json::Value) {
     }
 }
 
-/// Snapshot du feed d'un flow (les plus anciennes d'abord), entrées TTL
-/// dépassées purgées.
+/// Snapshot of a flow's feed (oldest first), entries past their TTL
+/// purged.
 pub fn debug_entries(flow_id: i64, limit: usize) -> Vec<pnex_core::FlowDebugEntry> {
     let mut feed = feed().lock().expect("lock debug feed");
     let now = std::time::Instant::now();
@@ -283,8 +283,8 @@ pub fn debug_entries(flow_id: i64, limit: usize) -> Vec<pnex_core::FlowDebugEntr
     }
 }
 
-/// Purge du feed d'un flow (au succès d'un deploy — les entrées d'une
-/// version antérieure ne doivent pas survivre à l'artefact frais).
+/// Purge of a flow's feed (on deploy success — entries from an
+/// earlier version must not outlive the fresh artifact).
 pub fn clear_debug_feed(flow_id: i64) {
     let mut feed = feed().lock().expect("lock feed");
     feed.per_flow.remove(&flow_id);
@@ -298,7 +298,7 @@ pub fn clear_debug_feed(flow_id: i64) {
         .retain(|(fid, _), _| *fid != flow_id);
 }
 
-/// ligne a été consommée par le feed/santé/acks (reste rejouée en tracing).
+/// line was consumed by the feed/health/acks (still replayed in tracing).
 pub(crate) fn handle_runtime_line(line: &str, pending: &PendingAcks) -> bool {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
         return false;

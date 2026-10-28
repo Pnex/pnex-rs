@@ -616,7 +616,7 @@ const RECURRENCE_UNITS: [&str; 4] = ["day", "week", "month", "year"];
 /// Dates shown under a recurrence being edited.
 const RECURRENCE_PREVIEW: usize = 5;
 
-/// « Every 3 months from 2026-01-15 (floating) ».
+/// "Every 3 months from 2026-01-15 (floating)".
 pub fn recurrence_label(v: &Value) -> String {
     use pnex_core::ontology::recurrence::Recurrence;
     let Some(r) = Recurrence::parse(v) else {

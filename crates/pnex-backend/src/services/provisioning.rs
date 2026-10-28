@@ -1,11 +1,11 @@
-//! Provisioning Brick 0 — admission à l'`Announce` (policy `Validated`, B0.3).
+//! Brick 0 provisioning — admission on `Announce` (`Validated` policy, B0.3).
 //!
-//! Dérive la carte de pins de l'overlay (`mcu_boards.details` →
-//! `BoardOverlay`), valide chaque pin contre les chip-caps
-//! (`pnex_core::caps::validate` — point unique), persiste les
-//! `device_capability_instances` et renvoie les `PinSpec` du
-//! `ProvisionAck`. Point d'extension unique pour les policies
-//! `Profiled`/`Locked` (P5).
+//! Derives the pin map from the overlay (`mcu_boards.details` →
+//! `BoardOverlay`), validates each pin against the chip-caps
+//! (`pnex_core::caps::validate` — single point), persists the
+//! `device_capability_instances` and returns the `PinSpec`s of the
+//! `ProvisionAck`. Single extension point for the
+//! `Profiled`/`Locked` policies (P5).
 
 use loco_rs::prelude::*;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
@@ -15,7 +15,7 @@ use crate::models::_entities::{
     device_capability_instances, device_registries, mcu_boards, predefined_devices,
 };
 use pnex_core::{Mode, ModeOpts, PinDecl, PinSpec};
-/// Erreur d'admission — message en clair pour `Reject{reason}` / 400 REST.
+/// Admission error — plain message for `Reject{reason}` / REST 400.
 pub(crate) struct AdmissionError(pub String);
 
 impl From<AdmissionError> for Error {
@@ -44,9 +44,9 @@ fn mode_str(m: Mode) -> &'static str {
     }
 }
 
-/// Board du device : la variante **figée à l'enregistrement**
-/// (`device_registries.board_id`) d'abord, défaut du
-/// modèle en secours (row supprimée = résilience, jamais d'erreur).
+/// The device's board: the variant **frozen at registration**
+/// (`device_registries.board_id`) first, the model's default
+/// as fallback (deleted row = resilience, never an error).
 pub(crate) async fn device_board(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -64,21 +64,21 @@ pub(crate) async fn device_board(
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| AdmissionError("predefined device introuvable".into()))?;
+        .ok_or_else(|| AdmissionError("predefined device not found".into()))?;
     let board = mcu_boards::Entity::find_by_id(pd.board_id)
         .one(db)
         .await
         .map_err(|_| Error::InternalServerError)?
-        .ok_or_else(|| AdmissionError("board du device introuvable".into()))?;
+        .ok_or_else(|| AdmissionError("device board not found".into()))?;
     Ok(board)
 }
 
-/// Id de la board figée du device (`device_registries.board_id`).
+/// Id of the device's frozen board (`device_registries.board_id`).
 pub(crate) fn board_id_of(device: &device_registries::Model) -> Option<i64> {
     device.board_id
 }
 
-/// Parse l'état périphériques du device (jsonb, défaut = tout désactivé).
+/// Parses the device's peripheral state (jsonb, default = all disabled).
 pub(crate) fn device_peripherals(
     device: &device_registries::Model,
 ) -> pnex_core::DevicePeripherals {
@@ -120,9 +120,9 @@ pub(crate) fn screen_for_build(
     Some(pnex_firmware_builder::ScreenSpec { kind, pins: vec![] })
 }
 
-/// Détails board du device (device → variante figée ou défaut modèle →
-/// `mcu_boards.details`, profil de board). `Ok(None)` si détails
-/// absents ou illisibles (warn) — jamais d'erreur : l'appelant décide
+/// The device's board details (device → frozen variant or model default →
+/// `mcu_boards.details`, board profile). `Ok(None)` if the details are
+/// missing or unreadable (warn) — never an error: the caller decides
 /// (admission, pinout, editor).
 pub(crate) async fn load_board_details(
     db: &DatabaseConnection,
@@ -138,19 +138,19 @@ pub(crate) async fn load_board_details(
             tracing::warn!(
                 board = %board.name,
                 error = %e,
-                "détails board illisibles (v1/v2) — traités comme pas de profil"
+                "unreadable board details (v1/v2) — treated as no profile"
             );
             Ok(None)
         }
     }
 }
 
-/// Charge et parse l'overlay **d'admission** du device (mcu_boards.details →
-/// BoardOverlay) avec le SoC du board : pins du
-/// profil filtrées chip-caps (`admission_pins`) **et** périphériques
-/// activés (`reserved_gpios`) — un pin écran activé n'obtient JAMAIS
-/// d'instance. Erreur explicite si le device n'est pas générique (pas de
-/// profil) — le message sert au Reject d'admission.
+/// Loads and parses the device's **admission** overlay (mcu_boards.details →
+/// BoardOverlay) with the board's SoC: the profile's pins
+/// filtered by chip-caps (`admission_pins`) **and** enabled
+/// peripherals (`reserved_gpios`) — an enabled screen pin NEVER gets
+/// an instance. Explicit error if the device is not generic (no
+/// profile) — the message feeds the admission Reject.
 pub(crate) async fn load_overlay(
     db: &DatabaseConnection,
     device: &device_registries::Model,
@@ -158,7 +158,7 @@ pub(crate) async fn load_overlay(
     let board = device_board(db, device).await?;
     let soc = pnex_core::Soc::from_board_soc(&board.soc).ok_or_else(|| {
         Error::string(&format!(
-            "soc « {} » du board {} non géré par les chip-caps",
+            "soc « {} » of board {} not handled by the chip-caps",
             board.soc, board.name
         ))
     })?;
@@ -197,18 +197,18 @@ pub(crate) async fn device_soc(
             .and_then(pnex_core::Soc::from_board_soc)
             .ok_or_else(|| {
                 Error::string(&format!(
-                    "soc « {} » du board {} non géré par les chip-caps et aucun soc observé — connectez le device une fois pour l'enregistrer",
+                    "soc « {} » of board {} not handled by the chip-caps and no observed soc — connect the device once to record it",
                     board.soc, board.name
                 ))
             }),
     }
 }
 
-/// SoC **observé** : persiste le chip annoncé (si reconnu) sur le device
-/// au premier announce — best-effort, l'admission n'en dépend pas.
+/// **Observed** SoC: persists the announced chip (if recognised) on the device
+/// at the first announce — best-effort, admission does not depend on it.
 pub(crate) async fn persist_observed_soc(db: &DatabaseConnection, device_id: i64, chip: &str) {
     let Some(soc_str) = pnex_core::Soc::from_board_soc(chip) else {
-        return; // chip inconnu : rien à enregistrer (l'admission a warn)
+        return; // unknown chip: nothing to record (admission has warned)
     };
     let device = device_registries::Entity::find_by_id(device_id)
         .one(db)
@@ -282,9 +282,9 @@ async fn admit_overlay(
         if pnex_core::caps::is_console_pin(soc, pin.gpio) {
             continue;
         }
-        // Mode par défaut dérivé des chip-caps (v1 ET v2) : DigitalIn si
-        // légal, sinon AdcIn (convention A0 esp8266 — gpio 17). Préserve le
-        // comportement historique : A0 → analog_in, xiao D0–D3 → digital_in.
+        // Default mode derived from the chip-caps (v1 AND v2): DigitalIn if
+        // legal, otherwise AdcIn (esp8266 A0 convention — gpio 17). Keeps the
+        // historical behaviour: A0 → analog_in, xiao D0–D3 → digital_in.
         let default_mode =
             if pnex_core::caps::validate(soc, pin.gpio, Mode::DigitalIn, &ModeOpts::default())
                 .is_ok()
@@ -309,7 +309,7 @@ async fn admit_overlay(
             }
             None => (default_mode, ModeOpts::default()),
         };
-        // Un pin déjà configuré garde son mode/config (survit aux re-announce).
+        // An already configured pin keeps its mode/config (survives re-announces).
         let row = existing.get(&(pin.gpio as i32));
         let mode = row
             .map(|r| str_to_mode_local(&r.mode))
@@ -335,11 +335,11 @@ async fn admit_overlay(
                 let mut am: device_capability_instances::ActiveModel = r.clone().into();
                 am.label = Set(pin.label.clone());
                 am.mode = Set(mode_str(mode).to_string());
-                // ⚠ config conservée TELLE QUELLE (pullup, safe_state ET
-                // interval_ms) : le round-trip par `ModeOpts` — sans champ
-                // interval_ms — réécrivait la config à CHAQUE re-announce et
-                // effaçait la cadence persistée (« Read every 1 s » perdu au
-                // premier reconnect — leçon 2026-09-03).
+                // ⚠ config kept AS IS (pullup, safe_state AND
+                // interval_ms): the round-trip through `ModeOpts` — with no
+                // interval_ms field — rewrote the config on EVERY re-announce and
+                // erased the persisted cadence (« Read every 1 s » lost on the
+                // first reconnect — lesson 2026-09-03).
                 am.constraints_snapshot =
                     Set(Some(serde_json::to_value(validated).unwrap_or_default()));
                 am.enabled = Set(true);
@@ -367,8 +367,8 @@ async fn admit_overlay(
             label: pin.label.clone(),
             mode,
             safe_state: Some(validated.safe_state),
-            // Round-trip du pullup persisté (avant : réinitialisé au device
-            // à chaque re-announce, PinSpec ne portait pas opts).
+            // Round-trip of the persisted pullup (before: reset on the device
+            // at every re-announce, PinSpec did not carry opts).
             opts: Some(ModeOpts {
                 pullup: cfg.pullup,
                 safe_state: Some(validated.safe_state),
@@ -438,8 +438,8 @@ async fn admit_sketch(
             ))
         })?;
         let row = existing.get(&(decl.gpio as i32));
-        // interval_ms conservé en vif dans le jsonb (ne JAMAIS réécrire la
-        // config entière — leçon 2026-09-03 : cadence effacée sinon).
+        // interval_ms kept live in the jsonb (NEVER rewrite the whole
+        // config — lesson 2026-09-03: cadence erased otherwise).
         let interval_ms = row
             .and_then(|r| r.config.as_ref())
             .and_then(|c| c.get("interval_ms"))
@@ -451,9 +451,9 @@ async fn admit_sketch(
         }
         match row {
             Some(r) => {
-                // Sketch = source : mode/label/opts réappliqués (un
-                // changement de sketch s'applique au re-announce) ; seul
-                // interval_ms survit de la config précédente.
+                // Sketch = source: mode/label/opts re-applied (a
+                // sketch change applies on re-announce); only
+                // interval_ms survives from the previous config.
                 let mut am: device_capability_instances::ActiveModel = r.clone().into();
                 am.label = Set(label.clone());
                 am.mode = Set(mode_str(mode).to_string());
@@ -492,8 +492,8 @@ async fn admit_sketch(
             }),
         });
     }
-    // Prune : le sketch est la source — un gpio non déclaré n'existe plus
-    // (sa cadence disparaît avec lui ; l'UI /pins ne l'affichera plus).
+    // Prune: the sketch is the source — an undeclared gpio no longer exists
+    // (its cadence goes with it; the /pins UI will no longer show it).
     for r in existing.values() {
         if !kept_gpios.contains(&r.gpio) {
             device_capability_instances::Entity::delete_by_id(r.id)

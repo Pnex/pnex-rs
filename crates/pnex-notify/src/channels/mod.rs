@@ -1,9 +1,9 @@
-//! Canaux livrés — [`websocket`](self::websocket) (bus interne),
-//! [`webhook`](self::webhook) (POST générique), [`ntfy`](self::ntfy)
+//! Shipped channels — [`websocket`](self::websocket) (internal bus),
+//! [`webhook`](self::webhook) (generic POST), [`ntfy`](self::ntfy)
 //! (push), [`telegram`](self::telegram) / [`slack`](self::slack) /
-//! [`discord`](self::discord) (chat), [`smtp`](self::smtp) (e-mail).
-//! Nouveau kind = 1 module + 1 impl [`Channel`](crate::Channel) + 1
-//! entrée dans [`registry::CHANNELS`](crate::registry).
+//! [`discord`](self::discord) (chat), [`smtp`](self::smtp) (email).
+//! New kind = 1 module + 1 impl [`Channel`](crate::Channel) + 1
+//! entry in [`registry::CHANNELS`](crate::registry).
 
 pub mod discord;
 pub mod ntfy;
@@ -17,8 +17,8 @@ use crate::error::NotifyError;
 
 use std::sync::LazyLock;
 
-/// Client HTTP partagé — timeout 10 s par tentative (D53 : le retry
-/// multiplie les tentatives, jamais leur durée).
+/// Shared HTTP client — 10 s timeout per attempt (D53: retry
+/// multiplies the attempts, never their duration).
 pub(crate) static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
     // Egress guard (R8): webhook URLs are user-chosen; internal addresses
     // are refused at resolution, every redirect re-checked.
@@ -39,7 +39,7 @@ pub(crate) static INTERNAL_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| 
         .expect("reqwest client (rustls)")
 });
 
-/// Champ chaîne non vide d'une config de canal.
+/// Non-empty string field of a channel config.
 pub(crate) fn str_field<'a>(config: &'a serde_json::Value, key: &str) -> Option<&'a str> {
     config
         .get(key)
@@ -47,7 +47,7 @@ pub(crate) fn str_field<'a>(config: &'a serde_json::Value, key: &str) -> Option<
         .filter(|s| !s.is_empty())
 }
 
-/// Champ de `field_spec` — helper commun aux impls de canaux.
+/// `field_spec` field — helper shared by the channel impls.
 pub(crate) fn field(
     id: &str,
     label_i18n: &str,
@@ -68,8 +68,8 @@ pub(crate) fn field(
     }
 }
 
-/// Compose le texte des canaux « chat » (telegram/slack/discord) — le
-/// sujet en première ligne (D62), corps brut ensuite.
+/// Composes the text of "chat" channels (telegram/slack/discord) — the
+/// subject on the first line (D62), raw body after.
 pub(crate) fn compose_text(subject: Option<&str>, body: &str) -> String {
     match subject {
         Some(s) if !s.is_empty() => format!("{s}\n{body}"),
@@ -77,8 +77,8 @@ pub(crate) fn compose_text(subject: Option<&str>, body: &str) -> String {
     }
 }
 
-/// Garde de taille fail-loud (D63) — jamais de troncature silencieuse en
-/// alerting : le message dépasse la borne du canal ⇒ `TooLarge`.
+/// Fail-loud size guard (D63) — never a silent truncation in
+/// alerting: the message exceeds the channel bound ⇒ `TooLarge`.
 pub(crate) fn size_guard(text: &str, max: usize) -> Result<(), NotifyError> {
     let n = text.chars().count();
     (n <= max).then_some(()).ok_or(NotifyError::TooLarge(n))

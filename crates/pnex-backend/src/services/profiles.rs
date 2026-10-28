@@ -64,7 +64,7 @@ pub async fn opposed(
 /// Records the person's objection (D341): the person and every profile
 /// address it uses enter the list, which outlives the person, with a
 /// fingerprint of its name at each of its accounts (crm.md D447); the
-/// date lands on the person (`opposition_le`) for the prospecting flows.
+/// date lands on the person (`opposed_on`) for the prospecting flows.
 pub async fn oppose(
     db: &DatabaseConnection,
     org_id: i64,
@@ -75,8 +75,8 @@ pub async fn oppose(
     oppose_by(db, org_id, Some(user_id), person_id).await
 }
 
-/// Property of `prospection_b2b` holding the objection date.
-const OPPOSED_ON: &str = "opposition_le";
+/// Property of `prospecting_b2b` holding the objection date.
+const OPPOSED_ON: &str = "opposed_on";
 
 async fn oppose_by(
     db: &DatabaseConnection,
@@ -393,7 +393,7 @@ pub async fn prune_expired(ctx: &AppContext) -> Result<u64, ExtensionError> {
 }
 
 /// Pack and setting of the retention period (crm.md D444).
-const RETENTION_SETTING: &str = "prospection_b2b.retention_mois";
+const RETENTION_SETTING: &str = "prospecting_b2b.retention_months";
 /// Default period when the setting cannot be read.
 const RETENTION_MONTHS: i64 = 36;
 /// People proposed per org and per run.

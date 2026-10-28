@@ -158,12 +158,12 @@ test('clusters: one disc per role, by the link a node mostly starts', () => {
     { id: 'c2', type: 'organization' }, { id: 'rs', type: 'title' }, { id: 'lone', type: 'organization' },
   ];
   const rel = (a, b, link) => ({ a, b, kind: 'relation', link, label: link.replace('_', ' ') });
-  const edges = [rel('cert', 'rs', 'porte'), rel('c1', 'rs', 'habilite_pour'), rel('c2', 'rs', 'habilite_pour')];
+  const edges = [rel('cert', 'rs', 'holds'), rel('c1', 'rs', 'accredited_for'), rel('c2', 'rs', 'accredited_for')];
   const { clusters } = clusterLayout(nodes, edges);
   const by = Object.fromEntries(clusters.map((c) => [c.key, [c.type, c.via, c.count]]));
   expect(by).toEqual({
-    'organization habilite_pour': ['organization', 'habilite pour', 2],
-    'organization porte': ['organization', 'porte', 1],
+    'organization accredited_for': ['organization', 'accredited for', 2],
+    'organization holds': ['organization', 'holds', 1],
     organization: ['organization', null, 1],
     title: ['title', null, 1],
   });

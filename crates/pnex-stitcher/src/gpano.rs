@@ -1,20 +1,20 @@
-//! Injection des métadonnées GPano (XMP) dans un JPEG : segment APP1
-//! inséré après SOI et l'APP0 JFIF éventuel.
+//! Injection of GPano (XMP) metadata into a JPEG: APP1 segment
+//! inserted after SOI and the optional JFIF APP0.
 //!
-//! Buts :
-//! - le sniff backend (`services/media_sniff.rs`) classe le fichier en
-//!   `panorama` (il cherche `GPano:` + `equirectangular` dans les 128
-//!   premiers Ko — notre segment est en tête) ;
-//! - les visionneuses 360 externes reconnaissent la projection.
+//! Goals:
+//! - the backend sniff (`services/media_sniff.rs`) classifies the file as
+//!   `panorama` (it looks for `GPano:` + `equirectangular` in the first 128
+//!   KB — our segment is at the head);
+//! - external 360 viewers recognise the projection.
 //!
-//! Best-effort : toute structure JPEG inattendue → JPEG retourné tel quel.
+//! Best-effort: any unexpected JPEG structure → JPEG returned as is.
 
-/// Injecte les métadonnées GPano (equirectangulaire, zone couverte = image
-/// entière) dans un JPEG encodé. Idempotent à l'usage (un nouvel APP1 par
-/// appel — l'appelant n'injecte qu'une fois).
+/// Injects GPano metadata (equirectangular, covered area = whole
+/// image) into an encoded JPEG. Idempotent in practice (one new APP1 per
+/// call — the caller injects only once).
 #[must_use]
 pub fn write_gpano_xmp(jpeg: &[u8], width: u32, height: u32) -> Vec<u8> {
-    // Structure minimale attendue : SOI (FFD8) [+ APP0 JFIF (FFE0)] …
+    // Minimal expected structure: SOI (FFD8) [+ JFIF APP0 (FFE0)] …
     if jpeg.len() < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8 {
         return jpeg.to_vec();
     }
@@ -28,7 +28,7 @@ pub fn write_gpano_xmp(jpeg: &[u8], width: u32, height: u32) -> Vec<u8> {
     }
 
     let payload = xmp_packet(width, height);
-    // APP1 : marqueur (2) + longueur (2, incluse) + header (29 avec NUL).
+    // APP1: marker (2) + length (2, included) + header (29 with NUL).
     let header = b"http://ns.adobe.com/xap/1.0/\0";
     let seg_len = 2 + header.len() + payload.len();
     if seg_len > u16::MAX as usize {
@@ -46,8 +46,8 @@ pub fn write_gpano_xmp(jpeg: &[u8], width: u32, height: u32) -> Vec<u8> {
     out
 }
 
-/// Packet XMP RDF/XML avec les attributs GPano (equirect, zone couverte =
-/// image entière — les pôles sont pré-remplis dans les pixels).
+/// XMP RDF/XML packet with the GPano attributes (equirect, covered area =
+/// whole image — the poles are pre-filled in the pixels).
 fn xmp_packet(width: u32, height: u32) -> String {
     format!(
         r#"<?xpacket begin="&#xFEFF;" id="W5M0MpCehiHzreSzNTczkc9d"?>

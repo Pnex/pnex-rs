@@ -1,9 +1,9 @@
-//! Drawer de debug — feed des sorties du flow déployé (nœuds `debug`
-//! builtin + sonde `pnex-display`), pollé 2 s tant qu'il est monté (le
-//! parent ne le monte que si ouvert ; démonté = plus de requêtes).
+//! Debug drawer — feed of the deployed flow's outputs (builtin `debug`
+//! nodes + `pnex-display` probe), polled every 2 s while mounted (the
+//! parent mounts it only when open; unmounted = no more requests).
 //!
-//! Garde-fou UX : monté seulement si les outils de debug sont actifs (mode
-//! dev/debug) — le chip runtime porte `debug_tools`.
+//! UX guard: mounted only if debug tools are enabled (dev/debug
+//! mode) — the runtime chip carries `debug_tools`.
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -11,14 +11,14 @@ use dioxus_i18n::t;
 use crate::api;
 use crate::components::gerbe::Gerbe;
 
-/// Drawer latéral du feed debug (nœuds `debug` builtin + sonde
-/// `pnex-display`), pollé 2 s tant qu'il est monté. Les badges Display du
-/// canvas, eux, sont pliés par le parent (cadence chip, 5 s).
+/// Side drawer of the debug feed (builtin `debug` nodes + `pnex-display`
+/// probe), polled every 2 s while mounted. The canvas Display badges,
+/// for their part, are folded by the parent (chip cadence, 5 s).
 #[component]
 pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
-    // Entrées dépliées (objet/tableau JSON) — clé = seq, stable dans la
-    // fenêtre de 5 min : le re-poll 2 s ne replie pas ce que l'utilisateur
-    // a ouvert.
+    // Expanded entries (JSON object/array) — key = seq, stable within the
+    // 5 min window: the 2 s re-poll does not collapse what the user
+    // opened.
     let mut expanded = use_signal(std::collections::HashSet::<u64>::new);
     let mut reload = use_signal(|| 0u32);
     let entries = use_resource(move || async move {
@@ -26,7 +26,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
         api::flows::debug(flow_id).await
     });
 
-    // Auto-entretien : re-poll toutes les 2 s tant que monté.
+    // Self-sustaining: re-poll every 2 s while mounted.
     let mut polling = use_signal(|| false);
     use_effect(move || {
         if polling() {
@@ -44,7 +44,7 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
 
     rsx! {
         div { class: "fixed inset-0 z-40",
-            // Clic hors drawer → fermeture.
+            // Click outside the drawer → close.
             div { class: "absolute inset-0", onclick: close }
             aside { class: "pnex-drawer-in-right absolute inset-y-0 right-0 w-96 max-w-full bg-white shadow-xl border-l border-gray-200 flex flex-col",
                 div { class: "flex items-center justify-between px-4 py-3 border-b border-gray-200",
@@ -138,11 +138,11 @@ pub(crate) fn DebugDrawer(flow_id: i64, on_close: Callback<()>) -> Element {
     }
 }
 
-/// Heure locale affichable `HH:MM:SS` depuis le RFC 3339 (UTC) du backend —
-/// conversion vers le fuseau du navigateur : un découpage brutal de la
-/// chaîne affichait l'heure UTC (décalée de 2 h en CEST — retour du
-/// 05/09 : 21:53:54 affiché 19:53:54). Forme inattendue : rendue telle
-/// quelle (jamais de panic).
+/// Displayable local time `HH:MM:SS` from the backend's RFC 3339 (UTC) —
+/// converted to the browser's time zone: a crude slicing of the
+/// string showed UTC time (2 h off in CEST — feedback of
+/// 05/09: 21:53:54 shown as 19:53:54). Unexpected shape: rendered as
+/// is (never a panic).
 /// Node status carried by a `pnex-status` debug entry, if any.
 fn node_status(source: &str, msg: &serde_json::Value) -> Option<pnex_core::vision::NodeStatus> {
     serde_json::from_value(msg.clone())
@@ -160,9 +160,9 @@ fn heure_label(ts: &str) -> String {
         .unwrap_or_else(|_| ts.to_string())
 }
 
-/// Badge live d'un nœud Display : raccourci tronqué (pastille canvas) +
-/// vue pretty (modal) si objet/tableau JSON — None = scalaire (pas de
-/// dépliage).
+/// Live badge of a Display node: truncated shorthand (canvas pill) +
+/// pretty view (modal) if JSON object/array — None = scalar (no
+/// expanding).
 #[derive(Clone, PartialEq)]
 pub(crate) struct DisplayBadge {
     pub(crate) label: String,
@@ -254,9 +254,9 @@ fn status_stat_text(key: &str) -> String {
     }
 }
 
-/// Vue pretty **dépliable** de la valeur capturée : objet/tableau JSON —
-/// direct (sonde `pnex-display`) ou via re-parse d'une chaîne (debug
-/// builtin) — None si scalaire (verbatim, pas de dépliage).
+/// **Expandable** pretty view of the captured value: JSON object/array —
+/// direct (`pnex-display` probe) or by re-parsing a string (builtin
+/// debug) — None if scalar (verbatim, no expanding).
 pub(crate) fn display_value_pretty(msg: &serde_json::Value) -> Option<String> {
     match msg {
         serde_json::Value::String(s) => match serde_json::from_str::<serde_json::Value>(s) {
@@ -272,9 +272,9 @@ pub(crate) fn display_value_pretty(msg: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// Ligne compacte unique (entrée repliée du drawer) : contenu verbatim des
-/// chaînes, JSON compact pour objet/tableau, tronqué ~120 caractères (sûr
-/// pour Unicode).
+/// Single compact line (collapsed drawer entry): verbatim content of
+/// strings, compact JSON for object/array, truncated to ~120 characters
+/// (Unicode-safe).
 pub(crate) fn display_value_compact(msg: &serde_json::Value) -> String {
     const MAX: usize = 120;
     let raw = match msg {
@@ -292,9 +292,9 @@ pub(crate) fn display_value_compact(msg: &serde_json::Value) -> String {
     }
 }
 
-/// Formate la valeur capturée : chaîne du debug builtin → tentative de
-/// re-parse JSON (pretty si objet/tableau) ; objet/tableau → pretty ; scalaire
-/// → verbatim. (Entrées non dépliables du drawer.)
+/// Formats the captured value: builtin debug string → JSON re-parse
+/// attempt (pretty if object/array); object/array → pretty; scalar
+/// → verbatim. (Non-expandable drawer entries.)
 fn format_msg(msg: &serde_json::Value) -> String {
     match display_value_pretty(msg) {
         Some(pretty) => pretty,
@@ -305,8 +305,8 @@ fn format_msg(msg: &serde_json::Value) -> String {
     }
 }
 
-/// Raccourci d'affichage du badge sous un nœud Display : scalaire verbatim,
-/// objet/tableau en JSON compact tronqué (~24 caractères, sûrs pour Unicode).
+/// Display shorthand of the badge under a Display node: scalar verbatim,
+/// object/array as truncated compact JSON (~24 characters, Unicode-safe).
 pub(crate) fn display_value_label(msg: &serde_json::Value) -> String {
     const MAX: usize = 24;
     let raw = match msg {
@@ -356,17 +356,17 @@ mod tests {
 
     #[test]
     fn heure_convertie_en_locale() {
-        // La valeur attendue dépend du fuseau de la machine : on la compare
-        // à la même conversion chrono (source de vérité identique). Un
-        // retour au découpage brutal UTC ferait échouer ce test sur toute
-        // machine hors UTC.
+        // The expected value depends on the machine's time zone: we compare
+        // it to the same chrono conversion (identical source of truth). A
+        // return to the crude UTC slicing would fail this test on any
+        // non-UTC machine.
         let expected = chrono::DateTime::parse_from_rfc3339("2026-09-05T12:34:56Z")
             .unwrap()
             .with_timezone(&chrono::Local)
             .format("%H:%M:%S")
             .to_string();
         assert_eq!(heure_label("2026-09-05T12:34:56Z"), expected);
-        // Forme inattendue : rendue telle quelle (jamais de panic).
+        // Unexpected shape: rendered as is (never a panic).
         assert_eq!(heure_label("bizarre"), "bizarre");
     }
 
@@ -384,15 +384,15 @@ mod tests {
 
     #[test]
     fn msg_stringifie_repare_et_scalaire_verbatim() {
-        // Chaîne JSON (debug builtin) → pretty.
+        // JSON string (builtin debug) → pretty.
         let pretty = format_msg(&serde_json::Value::String("{\"k\":1}".into()));
         assert!(pretty.contains('\n'), "{pretty}");
-        // Chaîne non JSON → verbatim.
+        // Non-JSON string → verbatim.
         assert_eq!(
             format_msg(&serde_json::Value::String("bonjour".into())),
             "bonjour"
         );
-        // Objet brut (pnex-display) → pretty.
+        // Raw object (pnex-display) → pretty.
         let pretty = format_msg(&serde_json::json!({"a": [1, 2]}));
         assert!(pretty.contains('\n'), "{pretty}");
         // Scalaire → verbatim.
@@ -401,16 +401,16 @@ mod tests {
 
     #[test]
     fn pretty_si_objet_tableau_compact_pour_le_replie() {
-        // Objet direct (sonde pnex-display) → vue pretty dépliable.
+        // Direct object (pnex-display probe) → expandable pretty view.
         let pretty = display_value_pretty(&serde_json::json!({"a": [1, 2]})).unwrap();
         assert!(pretty.contains('\n'), "{pretty}");
-        // Chaîne contenant du JSON (debug builtin) → réparée aussi.
+        // String containing JSON (builtin debug) → repaired too.
         assert!(display_value_pretty(&serde_json::Value::String("{\"k\":1}".into())).is_some());
-        // Chaîne non JSON et scalaires → pas de dépliage.
+        // Non-JSON string and scalars → no expanding.
         assert!(display_value_pretty(&serde_json::Value::String("bonjour".into())).is_none());
         assert!(display_value_pretty(&serde_json::json!(21.5)).is_none());
         assert!(display_value_pretty(&serde_json::json!(true)).is_none());
-        // Replié : JSON compact, tronqué à ~120 caractères.
+        // Collapsed: compact JSON, truncated to ~120 characters.
         assert_eq!(
             display_value_compact(&serde_json::json!({"a": 1})),
             r#"{"a":1}"#

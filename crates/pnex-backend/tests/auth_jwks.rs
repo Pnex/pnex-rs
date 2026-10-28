@@ -1,5 +1,5 @@
-//! Validation JWT/JWKS : couvre les durcissements Phase 3 (iss, aud, exp,
-//! RS256, kid inconnu) contre un mock JWKS — pas de Rauthy requis.
+//! JWT/JWKS validation: covers the Phase 3 hardening (iss, aud, exp,
+//! RS256, unknown kid) against a mock JWKS — no Rauthy required.
 
 mod common;
 
@@ -39,7 +39,7 @@ async fn mauvais_issuer_rejete() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
     let token = mint_token(&TokenSpec {
-        // Token signé par la bonne clé mais émis par un autre IdP.
+        // Token signed by the right key but issued by another IdP.
         issuer: "http://evil.example/auth/v1/".into(),
         ..Default::default()
     });
@@ -83,8 +83,8 @@ async fn token_expire_rejete() {
 async fn token_non_rs256_rejete() {
     let base = spawn_mock_rauthy().await;
     let v = verifier(&base).await;
-    // Header HS256 avec le kid du mock : l'algorithme est refusé avant même
-    // la vérification de signature.
+    // HS256 header with the mock's kid: the algorithm is refused even
+    // before signature verification.
     let mut header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256);
     header.kid = Some(common::KID.into());
     let claims = serde_json::json!({
@@ -120,7 +120,7 @@ async fn kid_inconnu_rejete_apres_rafraichissement() {
         &header,
         &claims,
         &jsonwebtoken::EncodingKey::from_rsa_pem(include_bytes!("fixtures/jwks_test_key.pem"))
-            .expect("clé"),
+            .expect("key"),
     )
     .expect("token kid inconnu");
     assert!(matches!(

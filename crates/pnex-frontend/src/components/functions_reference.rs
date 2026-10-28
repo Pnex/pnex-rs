@@ -1,5 +1,5 @@
 //! Searchable reference modal for the two function languages — opens from
-//! the editor toolbar ("Insérer un snippet" = insert mode: clicking a row
+//! the editor toolbar ("Insert a snippet" = insert mode: clicking a row
 //! inserts its snippet at the caret). Content reflects what the runtimes
 //! ACTUALLY expose: Starlark = Standard dialect + `json` module only (no
 //! math), JS = QuickJS globals + the console shim.
@@ -160,7 +160,7 @@ pub fn doc_links(lang: FunctionLanguage) -> Vec<(&'static str, &'static str, &'s
     }
 }
 
-/// Right drawer reference modal (mockup "Référence"): client-side search,
+/// Right drawer reference modal (mockup "Reference"): client-side search,
 /// groups, "not available" section, doc links, and a `+` insert button per
 /// row. Single language — always the edited function's own (the selector
 /// would be redundant: the language is fixed at creation).

@@ -1,9 +1,9 @@
-# Garde-fou « une version pnex = un firmware qui compile » : le firmware
-# est convergé dans le monorepo (firmware/), ce workflow compile les projets
-# predefined devices à chaque changement — les secrets de build (${sysenv.*}
-# de platformio.ini) restent vides, comme le pré-build du Dockerfile
-# pio-builder (l'image mergée finale est produite par le worker avec la
-# config device).
+# Safeguard "one pnex version = one firmware that compiles": the firmware
+# is merged into the monorepo (firmware/), this workflow compiles the
+# predefined devices projects on every change — the build secrets (${sysenv.*}
+# of platformio.ini) stay empty, like the pre-build of the
+# pio-builder Dockerfile (the final merged image is produced by the worker with the
+# device config).
 
 name: Firmware
 
@@ -50,29 +50,29 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: firmware/uv.lock
-      # Cache des toolchains/platforms PlatformIO (téléchargées sinon à
-      # chaque run : ~100 Mo).
+      # Cache of PlatformIO toolchains/platforms (otherwise downloaded on
+      # every run: ~100 MB).
       - uses: actions/cache@v5
         with:
           path: ~/.platformio
           key: pio-${{ runner.os }}-${{ hashFiles('firmware/*/platformio.ini') }}
-      # Brick 0 : le .bin générique (config device compilée dans le .bin,
-      # secrets vides en CI — même régime que le pre-build du Dockerfile).
+      # Brick 0: the generic .bin (device config compiled into the .bin,
+      # empty secrets in CI — same regime as the Dockerfile pre-build).
       - name: Compile generic_esp8266
         working-directory: firmware
         run: PNEX_PIO_BOARD=nodemcuv2 uv run pio run -d generic_esp8266
-      # Variante ESP32-C3 (Seeed XIAO ESP32C3) : même protocole, pio
-      # télécharge platform espressif32 + toolchain riscv au premier run.
+      # ESP32-C3 variant (Seeed XIAO ESP32C3): same protocol, pio
+      # downloads platform espressif32 + riscv toolchain on the first run.
       - name: Compile generic_esp32c3
         working-directory: firmware
         run: PNEX_PIO_BOARD=seeed_xiao_esp32c3 uv run pio run -d generic_esp32c3
-      # Golden vectors Rust = C++ (D20 §6) : la référence pnex_core::control
-      # est rejouée côté C++ sur l'hôte (Unity) — le miroir ne peut pas
-      # dévier sans casser la CI.
+      # Golden vectors Rust = C++ (D20 §6): the pnex_core::control reference
+      # is replayed on the C++ side on the host (Unity) — the mirror cannot
+      # drift without breaking CI.
       - name: Test pnex-core-cpp (golden vectors)
         working-directory: firmware
         run: uv run pio test -d core-cpp-tests -e native
-      # Package publiable : library.json valide + exemples embarqués.
+      # Publishable package: valid library.json + bundled examples.
       - name: Pack lib PneX (validation manifeste)
         working-directory: firmware
         run: uv run pio pkg pack lib/pnex -o "$RUNNER_TEMP/pnex.tar.gz"

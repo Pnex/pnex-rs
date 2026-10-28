@@ -1,5 +1,5 @@
-//! Invariants de schéma — garde-fous de régression sur les choix structurants.
-//! Nécessite PostgreSQL (compose.yaml) : DATABASE_URL vers une DB de test.
+//! Schema invariants — regression guards on structural choices.
+//! Requires PostgreSQL (compose.yaml): DATABASE_URL to a test DB.
 
 use pnex_migration::Migrator;
 use sea_orm_migration::{sea_orm, MigratorTrait};
@@ -21,8 +21,8 @@ async fn nullable_of(db: &sea_orm::DatabaseConnection, table: &str, col: &str) -
     row.try_get("", "is_nullable").unwrap()
 }
 
-/// Action ON DELETE de la FK portée par `table.col`, via PG
-/// (`confdeltype` : c=cascade, n=set null, a=no action).
+/// ON DELETE action of the FK carried by `table.col`, via PG
+/// (`confdeltype`: c=cascade, n=set null, a=no action).
 async fn fk_del_type(db: &sea_orm::DatabaseConnection, table: &str, col: &str) -> String {
     let row = sea_orm::ConnectionTrait::query_one_raw(
         db,
@@ -50,26 +50,26 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     let db = sea_orm::Database::connect(url).await.unwrap();
     Migrator::up(&db, None).await.unwrap();
 
-    // Scoping org obligatoire (D2) : les données d'une org lui appartiennent.
+    // Mandatory org scoping (D2): an org's data belongs to it.
     for t in [
         "device_registries",
-        // D35 : hiérarchie sites supprimée — le POI est le tenant direct.
+        // D35: sites hierarchy removed — the POI is the direct tenant.
         "map_pins",
         "build_records",
         "fluid_mixtures",
         "flows",
-        // D38 : la dernière position GPS d'un device suit l'org.
+        // D38: a device's last GPS position follows the org.
         "device_positions",
-        // D21 : un asset média et ses versions appartiennent à l'org
-        // (org_id dénormalisé sur les versions pour le scoping direct).
+        // D21: a media asset and its versions belong to the org
+        // (org_id denormalized on versions for direct scoping).
         "media_assets",
         "media_versions",
-        // Référentiels edge (2026-09-15) : credentials WiFi + hosts serveur
-        // PNeX appartiennent à l'org.
+        // Edge references (2026-09-15): WiFi credentials + PNeX server hosts
+        // belong to the org.
         "wifi_credentials",
         "pnex_hosts",
-        // Registre « Fonctions » (2026-09-15) : fonctions utilisateur
-        // versionnées ; org_id dénormalisé sur les versions (école media).
+        // "Functions" registry (2026-09-15): versioned user functions;
+        // org_id denormalized on versions (media school).
         "functions",
         "function_versions",
         // P2.13: media streams, their segments and ASR profiles are org data.
@@ -86,43 +86,43 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
             "NO",
-            "{t}.org_id doit être NOT NULL"
+            "{t}.org_id must be NOT NULL"
         );
     }
 
-    // Catalogue ETL partagé sans copies : org_id NULL = ligne fournie par
-    // l'app (directive « pas de copies par org/utilisateur »).
+    // Shared ETL catalogue without copies: org_id NULL = row provided by
+    // the app (directive "no per-org/per-user copies").
     for t in ["unit_conversions", "formulas"] {
         assert_eq!(
             nullable_of(&db, t, "org_id").await,
             "YES",
-            "{t}.org_id doit être nullable"
+            "{t}.org_id must be nullable"
         );
-        // Référence nullable loco (`("organizations?", "org_id")`) :
-        // colonne nullable + ON DELETE SET NULL ('n' dans pg_constraint).
+        // loco nullable reference (`("organizations?", "org_id")`):
+        // nullable column + ON DELETE SET NULL ('n' in pg_constraint).
         assert_eq!(
             fk_del_type(&db, t, "org_id").await,
             "n",
-            "{t}.org_id doit être SET NULL on delete"
+            "{t}.org_id must be SET NULL on delete"
         );
     }
 
-    // Références obligatoires : CASCADE ('c').
+    // Mandatory references: CASCADE ('c').
     for (t, col) in [
         ("device_registries", "org_id"),
         ("build_records", "org_id"),
-        // Phase 5 : état live (D9) et correspondance OpenObserve (D2) suivent
-        // la disparition du device / de l'org.
+        // Phase 5: live state (D9) and OpenObserve mapping (D2) follow
+        // the removal of the device / of the org.
         ("device_states", "device_registry_id"),
         ("openobserve_orgs", "org_id"),
-        // D18 : un flow et ses versions suivent la org ; l'historique
-        // append-only suit le flow.
+        // D18: a flow and its versions follow the org; the append-only
+        // history follows the flow.
         ("flows", "org_id"),
         ("flow_versions", "flow_id"),
-        // D21 : versions média suivent l'org et l'asset.
+        // D21: media versions follow the org and the asset.
         ("media_versions", "org_id"),
         ("media_versions", "asset_id"),
-        // Fonctions versionnées : versions suivent la fonction et l'org.
+        // Versioned functions: versions follow the function and the org.
         ("functions", "org_id"),
         ("function_versions", "function_id"),
         ("function_versions", "org_id"),
@@ -144,30 +144,30 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
         assert_eq!(
             fk_del_type(&db, t, col).await,
             "c",
-            "{t}.{col} doit être CASCADE on delete"
+            "{t}.{col} must be CASCADE on delete"
         );
     }
 
-    // D18 — flows : références nullable en SET NULL ('n').
+    // D18 — flows: nullable references as SET NULL ('n').
     for (t, col) in [
-        // Attachement produit au device : le flow survit à la disparition
-        // du device, simplement dé-lié.
+        // Product attachment to the device: the flow survives the removal
+        // of the device, simply unlinked.
         ("flows", "device_registry_id"),
-        // FK circulaire flows → flow_versions : une version n'est jamais
-        // supprimée (append-only), mais SET NULL si tel était le cas.
+        // Circular FK flows → flow_versions: a version is never
+        // deleted (append-only), but SET NULL if it were.
         ("flows", "deployed_version_id"),
-        // FK circulaire functions → function_versions (version courante).
+        // Circular FK functions → function_versions (current version).
         ("functions", "current_version_id"),
     ] {
         assert_eq!(
             nullable_of(&db, t, col).await,
             "YES",
-            "{t}.{col} doit être nullable"
+            "{t}.{col} must be nullable"
         );
         assert_eq!(
             fk_del_type(&db, t, col).await,
             "n",
-            "{t}.{col} doit être SET NULL on delete"
+            "{t}.{col} must be SET NULL on delete"
         );
     }
 
@@ -187,20 +187,20 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     let n_idx: i32 = idx.try_get("", "n").unwrap();
     assert_eq!(
         n_idx, 1,
-        "l'index unique uniq_flow_versions_flow_number doit exister"
+        "the unique index uniq_flow_versions_flow_number must exist"
     );
 
-    // D21 — média : FK circulaire current_version_id en SET NULL ('n'),
+    // D21 — media: circular FK current_version_id as SET NULL ('n'),
     // versioning (asset_id, version_number) unique.
     assert_eq!(
         nullable_of(&db, "media_assets", "current_version_id").await,
         "YES",
-        "media_assets.current_version_id doit être nullable"
+        "media_assets.current_version_id must be nullable"
     );
     assert_eq!(
         fk_del_type(&db, "media_assets", "current_version_id").await,
         "n",
-        "media_assets.current_version_id doit être SET NULL on delete"
+        "media_assets.current_version_id must be SET NULL on delete"
     );
     let idx = sea_orm::ConnectionTrait::query_one_raw(
         &db,
@@ -217,11 +217,11 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     let n_idx: i32 = idx.try_get("", "n").unwrap();
     assert_eq!(
         n_idx, 1,
-        "l'index unique uniq_media_versions_asset_number doit exister"
+        "the unique index uniq_media_versions_asset_number must exist"
     );
 
-    // Fonctions versionnées (2026-09-15) : (function_id, version_number)
-    // unique + FK circulaire current_version_id nullable.
+    // Versioned functions (2026-09-15): (function_id, version_number)
+    // unique + nullable circular FK current_version_id.
     let idx = sea_orm::ConnectionTrait::query_one_raw(
         &db,
         sea_orm::Statement::from_string(
@@ -237,26 +237,26 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     let n_idx: i32 = idx.try_get("", "n").unwrap();
     assert_eq!(
         n_idx, 1,
-        "l'index unique uniq_function_versions_function_number doit exister"
+        "the unique index uniq_function_versions_function_number must exist"
     );
 
-    // Bail de vie (D9) : 1:1 avec le registre, last_seen toujours renseigné.
+    // Liveness lease (D9): 1:1 with the registry, last_seen always set.
     assert_eq!(
         nullable_of(&db, "device_states", "last_seen_at").await,
         "NO",
-        "device_states.last_seen_at doit être NOT NULL"
+        "device_states.last_seen_at must be NOT NULL"
     );
 
-    // L'abonnement porté par l'org (D11) : SET NULL quand le tier disparaît.
+    // The subscription carried by the org (D11): SET NULL when the tier disappears.
     assert_eq!(
         fk_del_type(&db, "organizations", "subscription_tier_id").await,
         "n",
-        "organizations.subscription_tier_id doit être SET NULL on delete"
+        "organizations.subscription_tier_id must be SET NULL on delete"
     );
 
-    // Catalogue de fluides supprimé (directive) : le service externe FastAPI
-    // (CoolProp/RefProp) est la source de vérité ; la base ne garde que les
-    // mélanges custom par org. Tables périmées interdites de retour.
+    // Fluid catalogue removed (directive): the external FastAPI service
+    // (CoolProp/RefProp) is the source of truth; the database only keeps
+    // custom mixtures per org. Stale tables must not come back.
     let row = sea_orm::ConnectionTrait::query_one_raw(
         &db,
         sea_orm::Statement::from_string(
@@ -270,10 +270,7 @@ async fn scoping_org_et_catalogue_global_sans_copies() {
     .unwrap()
     .unwrap();
     let n: i32 = row.try_get("", "n").unwrap();
-    assert_eq!(
-        n, 0,
-        "tables de copie et catalogue fluides doivent rester supprimées"
-    );
+    assert_eq!(n, 0, "copy tables and fluid catalogue must stay removed");
 }
 
 /// Baseline round trip: `down()` drops every table and enum type (the

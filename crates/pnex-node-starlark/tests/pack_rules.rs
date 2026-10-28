@@ -1,14 +1,14 @@
 //! The Starlark rules shipped by the `quali_watch` pack (partner-watch.md
-//! D314, D316) and the target score of `prospection_b2b`
+//! D314, D316) and the target score of `prospecting_b2b`
 //! (account-mapping.md D336) run as the flow runtime runs them.
 
 use pnex_node_starlark::executor::execute;
 use serde_json::json;
 
 const PACK: &str = include_str!("../../pnex-backend/packs/quali_watch.yaml");
-const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospection_b2b.yaml");
-const PRESENCE: &str = include_str!("../../pnex-backend/packs/presence_web.yaml");
-const PROSPECTION_FR: &str = include_str!("../../pnex-backend/packs/prospection_fr.yaml");
+const PROSPECTION: &str = include_str!("../../pnex-backend/packs/prospecting_b2b.yaml");
+const PRESENCE: &str = include_str!("../../pnex-backend/packs/web_presence.yaml");
+const PROSPECTION_FR: &str = include_str!("../../pnex-backend/packs/prospecting_b2b_fr.yaml");
 const CRM: &str = include_str!("../../pnex-backend/packs/crm.yaml");
 
 /// The `code: |` block of the `quali_watch` function `name`.
@@ -61,38 +61,38 @@ fn every_pack_starlark_function_compiles() {
 #[test]
 fn next_reminder_moves_the_procedure_and_waits_for_a_human_at_r3() {
     let msg = json!({
-        "payload": {"niveau": "r2", "prochaine_echeance": "2026-12-20", "contact_email": "conformite@of.fr"},
+        "payload": {"level": "r2", "next_due": "2026-12-20", "contact_email": "conformite@of.fr"},
         "object": {"id": "p1", "title": "OF Formation", "version": 3},
         "today": "2026-12-25", "now": "2026-12-25T06:00:00+00:00"
     });
-    let out = execute(&code_of("qw_relance_suivante"), &msg, 2000).unwrap();
+    let out = execute(&code_of("qw_next_reminder"), &msg, 2000).unwrap();
     let r = out.return_json.expect("two messages");
-    assert_eq!(r[0]["payload"]["niveau"], "r3");
-    assert_eq!(r[0]["payload"]["prochaine_echeance"], "2027-01-09");
-    assert_eq!(r[0]["payload"]["etat"], "en_attente_validation");
+    assert_eq!(r[0]["payload"]["level"], "r3");
+    assert_eq!(r[0]["payload"]["next_due"], "2027-01-09");
+    assert_eq!(r[0]["payload"]["state"], "awaiting_validation");
     assert_eq!(
         (r[0]["object_id"].clone(), r[0]["expected_version"].clone()),
         (json!("p1"), json!(3))
     );
-    assert_eq!(r[1]["payload"]["cle"], "p1:r3");
-    assert_eq!(r[1]["payload"]["etat"], "a_valider");
-    assert_eq!(r[1]["payload"]["destinataire"], "conformite@of.fr");
+    assert_eq!(r[1]["payload"]["ref"], "p1:r3");
+    assert_eq!(r[1]["payload"]["state"], "to_validate");
+    assert_eq!(r[1]["payload"]["recipient"], "conformite@of.fr");
     // r1 → r2 is automatic; r4 is the last reminder.
-    let first = json!({"payload": {"niveau": "r1"}, "object": {"id": "p", "title": "T", "version": 1}, "today": "2028-02-20", "now": "x"});
-    let r = execute(&code_of("qw_relance_suivante"), &first, 2000)
+    let first = json!({"payload": {"level": "r1"}, "object": {"id": "p", "title": "T", "version": 1}, "today": "2028-02-20", "now": "x"});
+    let r = execute(&code_of("qw_next_reminder"), &first, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
         (
-            r[0]["payload"]["prochaine_echeance"].clone(),
-            r[1]["payload"]["etat"].clone()
+            r[0]["payload"]["next_due"].clone(),
+            r[1]["payload"]["state"].clone()
         ),
-        (json!("2028-03-06"), json!("envoyee"))
+        (json!("2028-03-06"), json!("sent"))
     );
     let last =
-        json!({"payload": {"niveau": "r4"}, "object": {"id": "p", "title": "T", "version": 1}});
-    assert!(execute(&code_of("qw_relance_suivante"), &last, 2000)
+        json!({"payload": {"level": "r4"}, "object": {"id": "p", "title": "T", "version": 1}});
+    assert!(execute(&code_of("qw_next_reminder"), &last, 2000)
         .unwrap()
         .return_json
         .is_none());
@@ -101,23 +101,20 @@ fn next_reminder_moves_the_procedure_and_waits_for_a_human_at_r3() {
 #[test]
 fn adm_01_finding_and_link_payload() {
     let msg = json!({
-        "payload": {"siren": "123456789", "date_cessation": "2026-09-30"},
+        "payload": {"siren": "123456789", "ceased_on": "2026-09-30"},
         "object": {"id": "o1", "title": "OF Fermé", "version": 2},
         "now": "2026-10-19T05:00:00+00:00"
     });
-    let r = execute(&code_of("qw_regle_adm_01"), &msg, 2000)
+    let r = execute(&code_of("qw_rule_adm_01"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["payload"]["cle"], "ADM-01:123456789");
-    assert_eq!(r["payload"]["etat"], "propose");
-    assert_eq!(
-        r["payload"]["constate"],
-        "Unité légale cessée le 2026-09-30"
-    );
+    assert_eq!(r["payload"]["ref"], "ADM-01:123456789");
+    assert_eq!(r["payload"]["state"], "proposed");
+    assert_eq!(r["payload"]["observed"], "Legal unit ceased on 2026-09-30");
     assert_eq!(r["organization_id"], "o1");
     let linked = json!({"object": {"id": "e1"}, "organization_id": "o1"});
-    let l = execute(&code_of("qw_lien"), &linked, 2000)
+    let l = execute(&code_of("qw_link"), &linked, 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -126,51 +123,51 @@ fn adm_01_finding_and_link_payload() {
 
 #[test]
 fn target_score_adds_the_points_of_the_criteria_met() {
-    let crit = |title: &str, prop: &str, op: &str, value: &str, points: i64| json!({"title": title, "properties": {"propriete": prop, "operateur": op, "valeur": value, "points": points}});
+    let crit = |title: &str, prop: &str, op: &str, value: &str, points: i64| json!({"title": title, "properties": {"property": prop, "operator": op, "value": value, "points": points}});
     let criteria = json!([
-        crit("Industrie visée", "code_activite", "commence_par", "25, 30.3, 21", 30),
-        crit("ETI et plus", "effectif_min", "au_moins", "1000", 20),
-        crit("CA > 10 M€", "ca_dernier", "au_moins", "10000000", 15),
-        crit("Déjà client", "statut_compte", "egal", "client", -100),
-        crit("Pays", "pays", "parmi", "FR,BE", 5),
-        {"title": "Inactif", "properties": {"propriete": "pays", "operateur": "renseigne", "points": 99, "actif": false}},
+        crit("Industrie visée", "activity_code", "starts_with", "25, 30.3, 21", 30),
+        crit("ETI et plus", "headcount_min", "at_least", "1000", 20),
+        crit("CA > 10 M€", "last_revenue", "at_least", "10000000", 15),
+        crit("Déjà client", "account_status", "equals", "customer", -100),
+        crit("Pays", "country", "one_of", "FR,BE", 5),
+        {"title": "Inactif", "properties": {"property": "country", "operator": "filled", "points": 99, "active": false}},
     ]);
     let msg = json!({
-        "payload": {"code_activite": "25.62", "effectif_min": 1000, "pays": "FR",
-                    "ca_dernier": {"amount": 343838577.0, "currency": "EUR", "estimated": false},
-                    "statut_compte": "cible"},
+        "payload": {"activity_code": "25.62", "headcount_min": 1000, "country": "FR",
+                    "last_revenue": {"amount": 343838577.0, "currency": "EUR", "estimated": false},
+                    "account_status": "target"},
         "object": {"id": "o1", "title": "MECACHROME FRANCE", "version": 4},
-        "criteres": criteria,
+        "criteria": criteria,
         "today": "2026-10-22"
     });
     let r = execute(&code_in(PROSPECTION, "pb_score"), &msg, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["payload"]["score_cible"], 70);
-    assert_eq!(r["payload"]["score_le"], "2026-10-22");
+    assert_eq!(r["payload"]["target_score"], 70);
+    assert_eq!(r["payload"]["scored_on"], "2026-10-22");
     assert_eq!(r["object_id"], "o1");
     let detail = r["payload"]["score_detail"].as_str().unwrap();
     assert_eq!(detail.lines().count(), 4, "{detail}");
     assert!(detail.contains("ETI et plus : +20"), "{detail}");
     // A client loses its points; a missing property meets nothing.
     let mut client = msg.clone();
-    client["payload"] = json!({"statut_compte": "client", "pays": "BE"});
+    client["payload"] = json!({"account_status": "customer", "country": "BE"});
     let r = execute(&code_in(PROSPECTION, "pb_score"), &client, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(r["payload"]["score_cible"], -95);
+    assert_eq!(r["payload"]["target_score"], -95);
     // The criteria travel with the message.
     let keep = execute(
-        &code_in(PROSPECTION, "pb_criteres"),
+        &code_in(PROSPECTION, "pb_criteria"),
         &json!({"payload": [1, 2]}),
         2000,
     )
     .unwrap()
     .return_json
     .unwrap();
-    assert_eq!(keep["criteres"], json!([1, 2]));
+    assert_eq!(keep["criteria"], json!([1, 2]));
 }
 
 #[test]
@@ -182,38 +179,38 @@ fn website_search_prepares_a_query_and_an_email_candidate() {
             .unwrap()
     };
     let msg = json!({
-        "payload": {"siren": "123456789", "contact_conformite_email": "Qualite@ACME-Formation.fr", "autre": "x@gmail.com"},
+        "payload": {"siren": "123456789", "compliance_contact_email": "Qualite@ACME-Formation.fr", "other": "x@gmail.com"},
         "object": {"id": "o1", "title": "ACME Formation", "version": 2},
         "today": "2026-10-22"
     });
-    let r = run("pw_preparer", msg);
+    let r = run("pw_prepare", msg);
     assert_eq!(r[0]["payload"], "ACME Formation");
     assert_eq!(r[0]["org"]["siren"], "123456789");
     assert_eq!(
         (
             r[1]["object_id"].clone(),
-            r[1]["payload"]["site_recherche_le"].clone()
+            r[1]["payload"]["website_searched_on"].clone()
         ),
         (json!("o1"), json!("2026-10-22"))
     );
     assert_eq!(r[2]["payload"]["url"], "https://acme-formation.fr/");
-    assert_eq!(r[2]["candidat"]["source"], "email");
+    assert_eq!(r[2]["candidate"]["source"], "email");
     // A webmail names no website.
     let r = run(
-        "pw_preparer",
+        "pw_prepare",
         json!({"payload": {"mail": "jean@orange.fr"}, "object": {"id": "o", "title": "T", "version": 1}}),
     );
     assert!(r[2].is_null(), "{r}");
 
     let r = run(
-        "pw_resultats",
+        "pw_results",
         json!({"payload": {"query": "ACME", "provider": "serper",
         "results": [{"url": "https://acme.fr/", "rank": 1}, {"url": "https://b.fr/", "rank": 2}]}}),
     );
     assert_eq!(
         (
             r[0]["payload"]["url"].clone(),
-            r[1]["candidat"]["rang"].clone()
+            r[1]["candidate"]["rank"].clone()
         ),
         (json!("https://acme.fr/"), json!(2))
     );
@@ -227,7 +224,7 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
             "payload": {"url": "https://www.acme.fr/", "final_url": "https://www.acme.fr/accueil",
                         "title": "Accueil", "text": "", "legal_text": text},
             "org": {"id": "o1", "title": "ACME Formation", "siren": "123456789", "nda": "84691234569"},
-            "candidat": {"source": source, "requete": "ACME", "rang": 2, "fournisseur": "serper"}
+            "candidate": {"source": source, "query": "ACME", "rank": 2, "provider": "serper"}
         });
         execute(&code_in(PRESENCE, "pw_score"), &msg, 2000)
             .unwrap()
@@ -235,43 +232,43 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     };
     let r = score(
         "ACME Formation SAS, SIREN 123 456 789, NDA 84 69 12345 69",
-        "recherche",
+        "search",
     )
     .unwrap();
     assert_eq!(
         r[0]["payload"],
-        json!({"url_racine": "https://www.acme.fr/", "domaine": "acme.fr"})
+        json!({"root_url": "https://www.acme.fr/", "domain": "acme.fr"})
     );
     // Port 0: accepted by the org rule (D377); port 1 (proposed) empty.
     assert!(r[1].is_null(), "{r}");
     assert_eq!(
         r[0]["accept"],
-        "presence_web.seuil_confirme >= 80 (score 100)"
+        "web_presence.confirm_threshold >= 80 (score 100)"
     );
-    assert_eq!(r[0]["lien"]["score"], 100);
+    assert_eq!(r[0]["link"]["score"], 100);
     assert_eq!(r[0]["confidence"], 100);
     assert_eq!(
         (
-            r[0]["lien"]["preuve_siren"].clone(),
-            r[0]["lien"]["rang"].clone()
+            r[0]["link"]["siren_proof"].clone(),
+            r[0]["link"]["rank"].clone()
         ),
         (json!(true), json!(2))
     );
     // The name and the org's own e-mail domain: for a human to check.
     let r = score("ACME Formation, organisme à Lyon", "email").unwrap();
     assert!(r[0].is_null(), "{r}");
-    assert_eq!(r[1]["lien"]["score"], json!(40));
+    assert_eq!(r[1]["link"]["score"], json!(40));
     assert!(r[1].get("accept").is_none(), "a human decides: {r}");
     // The name alone: nothing written.
-    assert!(score("ACME Formation", "recherche").is_none());
+    assert!(score("ACME Formation", "search").is_none());
     // D368: the org lowered the confirming score to 40.
     let msg = json!({
         "payload": {"url": "https://acme.fr/", "title": "", "text": "", "legal_text": "ACME Formation, Lyon"},
         "org": {"id": "o1", "title": "ACME Formation"},
-        "candidat": {"source": "email"}
+        "candidate": {"source": "email"}
     });
     let mut settings = serde_json::Map::new();
-    settings.insert("presence_web.seuil_confirme".into(), json!(40));
+    settings.insert("web_presence.confirm_threshold".into(), json!(40));
     let r = pnex_node_starlark::executor::execute_with(
         &code_in(PRESENCE, "pw_score"),
         &msg,
@@ -281,10 +278,10 @@ fn website_score_confirms_on_the_siren_and_proposes_on_the_name() {
     .unwrap()
     .return_json
     .unwrap();
-    assert!(r[1].is_null() && r[0]["lien"]["score"] == 40, "{r}");
+    assert!(r[1].is_null() && r[0]["link"]["score"] == 40, "{r}");
     assert_eq!(
         r[0]["accept"],
-        "presence_web.seuil_confirme >= 40 (score 40)"
+        "web_presence.confirm_threshold >= 40 (score 40)"
     );
 }
 
@@ -293,9 +290,9 @@ fn model_opinion_becomes_evidence_and_moves_the_confidence() {
     let opinion = |text: &str| {
         let msg = json!({
             "payload": {"text": text, "model": "m1"},
-            "proposition": {"source_id": "o1", "target_id": "s1", "attributes": {}, "confidence": 70}
+            "proposal": {"source_id": "o1", "target_id": "s1", "attributes": {}, "confidence": 70}
         });
-        execute(&code_in(PRESENCE, "pw_avis"), &msg, 2000)
+        execute(&code_in(PRESENCE, "pw_opinion"), &msg, 2000)
             .unwrap()
             .return_json
             .unwrap()
@@ -306,7 +303,7 @@ fn model_opinion_becomes_evidence_and_moves_the_confidence() {
         "never above the proposal band"
     );
     assert_eq!(
-        r["payload"]["evidence"]["avis_llm"],
+        r["payload"]["evidence"]["llm_opinion"],
         "OUI\nLes mentions citent le SIREN."
     );
     assert_eq!(opinion("non, un annuaire")["payload"]["confidence"], 50);
@@ -317,7 +314,7 @@ fn model_opinion_becomes_evidence_and_moves_the_confidence() {
 fn signals_digest_lists_the_new_ones_newest_first() {
     let row = |title: &str, date: &str| {
         json!({"id": title, "title": title, "version": 1,
-        "properties": {"date": date, "resume": "Modifications diverses"}})
+        "properties": {"date": date, "summary": "Modifications diverses"}})
     };
     let msg =
         json!({"payload": [row("ACME · Modif", "2026-10-01"), row("BETA · Vente", "2026-10-20")]});
@@ -328,11 +325,11 @@ fn signals_digest_lists_the_new_ones_newest_first() {
     assert_eq!(
         (
             r[0]["payload"]["trigger"].clone(),
-            r[0]["payload"]["nombre"].clone()
+            r[0]["payload"]["count"].clone()
         ),
         (json!(true), json!(2))
     );
-    let text = r[0]["payload"]["texte"].as_str().unwrap();
+    let text = r[0]["payload"]["text"].as_str().unwrap();
     assert!(text.starts_with("- 2026-10-20 BETA · Vente"), "{text}");
     assert_eq!(text.lines().count(), 2);
     assert!(execute(
@@ -354,9 +351,9 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
             .unwrap()
     };
     let r = run(
-        "pl_preparer",
+        "pl_prepare",
         json!({
-        "payload": {"societe": "Mecachrome", "ville": "Amboise", "code_postal": "37530"},
+        "payload": {"company": "Mecachrome", "city": "Amboise", "postal_code": "37530"},
         "object": {"id": "c1", "title": "Jeanne Martin", "version": 1}}),
     );
     assert_eq!(
@@ -367,7 +364,7 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
     let found = json!({"payload": {"siren": "429853351",
         "candidates": [{"siren": "429853351", "name": "MECACHROME FRANCE", "city": "AMBOISE", "score": 95}]},
         "contact": {"id": "c1"}});
-    let r = run("pl_trouve", found.clone());
+    let r = run("pl_found", found.clone());
     assert_eq!(
         (r[0]["payload"]["siren"].clone(), r[0]["title"].clone()),
         (json!("429853351"), json!("MECACHROME FRANCE"))
@@ -375,21 +372,21 @@ fn list_contacts_ask_their_company_and_keep_the_candidates() {
     assert_eq!(
         (
             r[1]["object_id"].clone(),
-            r[1]["payload"]["rapprochement"].clone()
+            r[1]["payload"]["matching"].clone()
         ),
-        (json!("c1"), json!("trouve"))
+        (json!("c1"), json!("found"))
     );
-    let r = run("pl_revoir", found);
-    assert_eq!(r["payload"]["rapprochement"], "a_revoir");
+    let r = run("pl_review", found);
+    assert_eq!(r["payload"]["matching"], "to_review");
     assert_eq!(
-        r["payload"]["candidats"],
+        r["payload"]["candidates"],
         "MECACHROME FRANCE (429853351, AMBOISE, 95)"
     );
     let r = run(
-        "pl_revoir",
+        "pl_review",
         json!({"payload": {"candidates": []}, "contact": {"id": "c2"}}),
     );
-    assert_eq!(r["payload"]["rapprochement"], "introuvable");
+    assert_eq!(r["payload"]["matching"], "not_found");
 }
 
 #[test]
@@ -401,46 +398,46 @@ fn a_changed_page_becomes_a_signal_only_on_a_listed_topic() {
             .unwrap()
     };
     let prep = run(
-        "ps_preparer",
+        "ps_prepare",
         json!({
-        "payload": {"url": "https://acme.fr/actus", "texte": "ACME ouvre une usine à Lyon.", "compte": "org-1"},
+        "payload": {"url": "https://acme.fr/actus", "text": "ACME ouvre une usine à Lyon.", "account": "org-1"},
         "object": {"id": "p1", "title": "Actualités", "version": 2}}),
     );
-    assert_eq!(prep["payload"]["texte"], "ACME ouvre une usine à Lyon.");
+    assert_eq!(prep["payload"]["text"], "ACME ouvre une usine à Lyon.");
     let page = prep["page"].clone();
     let r = run(
         "ps_signal",
-        json!({"payload": {"text": "ouverture_site\n« ACME ouvre une usine à Lyon. »"},
+        json!({"payload": {"text": "new_site\n« ACME ouvre une usine à Lyon. »"},
         "page": page, "today": "2026-10-22"}),
     );
-    assert_eq!(r[0]["payload"]["theme"], "ouverture_site");
+    assert_eq!(r[0]["payload"]["topic"], "new_site");
     assert_eq!(
-        r[0]["payload"]["cle"],
+        r[0]["payload"]["ref"],
         "page:https://acme.fr/actus:2026-10-22"
     );
-    assert_eq!(r[0]["payload"]["etat"], "a_valider");
+    assert_eq!(r[0]["payload"]["state"], "to_validate");
     assert_eq!(
-        r[0]["payload"]["extrait"],
+        r[0]["payload"]["excerpt"],
         "« ACME ouvre une usine à Lyon. »"
     );
     assert_eq!(
         (
             r[1]["object_id"].clone(),
-            r[1]["payload"]["modifiee"].clone()
+            r[1]["payload"]["changed"].clone()
         ),
         (json!("p1"), json!(false))
     );
     // Nothing announced, or a topic off the list: only marked read.
-    for answer in ["aucun", "météo", ""] {
+    for answer in ["none", "météo", ""] {
         let r = run(
             "ps_signal",
             json!({"payload": {"text": answer}, "page": page}),
         );
         assert!(r[0].is_null(), "{answer}: {r}");
-        assert_eq!(r[1]["payload"]["modifiee"], false);
+        assert_eq!(r[1]["payload"]["changed"], false);
     }
     let link = run(
-        "ps_lien",
+        "ps_link",
         json!({"payload": {}, "object": {"id": "s1"}, "page": page}),
     );
     assert_eq!(
@@ -470,12 +467,12 @@ fn joined(
 }
 
 fn rules_of(out: &serde_json::Value) -> Vec<String> {
-    let mut r: Vec<String> = out["ecarts"]
+    let mut r: Vec<String> = out["findings"]
         .as_array()
         .unwrap()
         .iter()
         .map(|e| {
-            e["props"]["cle"]
+            e["props"]["ref"]
                 .as_str()
                 .unwrap()
                 .split(':')
@@ -495,23 +492,23 @@ fn network_rules_read_registry_facts() {
         "RS0101",
         json!({"code": "RS0101"}),
         json!({
-            "porte": [joined("w", "CERTIF EXEMPLE", json!({"siren": "200000008"}), json!({}))],
-            "habilite_pour": [
-                joined("ceased", "OF CESSE", json!({"siren": "111111111", "etat_administratif": "cesse", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux"})),
-                joined("eval", "OF EVAL", json!({"siren": "222222222", "qualiopi": false, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "evaluation"})),
-                joined("old", "OF ANCIEN", json!({"siren": "333333333"}), json!({"perimetre": "les_deux", "etat_fc": "inactif", "date_fin": "2026-01-31", "source": "page_fc"})),
-                joined("ok", "OF EXEMPLE", json!({"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "les_deux", "etat_fc": "actif"})),
+            "holds": [joined("w", "CERTIF EXEMPLE", json!({"siren": "200000008"}), json!({}))],
+            "accredited_for": [
+                joined("ceased", "OF CESSE", json!({"siren": "111111111", "administrative_state": "ceased", "qualiopi": true, "qualiopi_updated": "2026-04-11"}), json!({"declared_fc": true, "scope": "both"})),
+                joined("eval", "OF EVAL", json!({"siren": "222222222", "qualiopi": false, "qualiopi_updated": "2026-04-11"}), json!({"declared_fc": true, "scope": "assessment"})),
+                joined("old", "OF ANCIEN", json!({"siren": "333333333"}), json!({"scope": "both", "fc_state": "inactive", "ends_on": "2026-01-31", "source": "page_fc"})),
+                joined("ok", "OF EXEMPLE", json!({"siren": "100000009", "qualiopi": true, "qualiopi_updated": "2026-04-11"}), json!({"declared_fc": true, "scope": "both", "fc_state": "active"})),
             // Accredited to prepare: its offers from another establishment
             // (SIRET) are matched by SIREN and are not CPF-01.
-            joined("aud", "OF AUTRE SITE", json!({"siren": "520388901", "qualiopi": true, "qualiopi_maj": "2026-04-11"}), json!({"declaree_fc": true, "perimetre": "preparation", "etat_fc": "actif"}))
+            joined("aud", "OF AUTRE SITE", json!({"siren": "520388901", "qualiopi": true, "qualiopi_updated": "2026-04-11"}), json!({"declared_fc": true, "scope": "preparation", "fc_state": "active"}))
             ],
-            "porte_sur": [
-                joined("o1", "OF HORS RESEAU · SEO", json!({"siret": "88024436300011", "id_action": "S_SEO", "vue_le": "2026-10-23"}), json!({})),
-                joined("o2", "OF EVAL · SEO", json!({"siret": "22222222200010", "id_action": "E_SEO", "vue_le": "2026-10-23"}), json!({})),
-                joined("o3", "OF ANCIEN · SEO", json!({"siret": "33333333300010", "id_action": "A_SEO", "vue_le": "2026-10-23"}), json!({})),
-                joined("o4", "OF EXEMPLE · SEO", json!({"siret": "10000000900024", "id_action": "P_SEO", "vue_le": "2026-10-23"}), json!({})),
-                joined("o5", "CERTIF EXEMPLE · SEO", json!({"siret": "20000000800010", "id_action": "W_SEO", "vue_le": "2026-10-23"}), json!({})),
-            joined("o6", "OF AUTRE SITE · SEO", json!({"siret": "52038890100065", "id_action": "AUD_SEO", "vue_le": "2026-10-23"}), json!({}))
+            "offer_for": [
+                joined("o1", "OF HORS RESEAU · SEO", json!({"siret": "88024436300011", "id_action": "S_SEO", "seen_on": "2026-10-23"}), json!({})),
+                joined("o2", "OF EVAL · SEO", json!({"siret": "22222222200010", "id_action": "E_SEO", "seen_on": "2026-10-23"}), json!({})),
+                joined("o3", "OF ANCIEN · SEO", json!({"siret": "33333333300010", "id_action": "A_SEO", "seen_on": "2026-10-23"}), json!({})),
+                joined("o4", "OF EXEMPLE · SEO", json!({"siret": "10000000900024", "id_action": "P_SEO", "seen_on": "2026-10-23"}), json!({})),
+                joined("o5", "CERTIF EXEMPLE · SEO", json!({"siret": "20000000800010", "id_action": "W_SEO", "seen_on": "2026-10-23"}), json!({})),
+            joined("o6", "OF AUTRE SITE · SEO", json!({"siret": "52038890100065", "id_action": "AUD_SEO", "seen_on": "2026-10-23"}), json!({}))
             ]
         }),
     );
@@ -520,10 +517,10 @@ fn network_rules_read_registry_facts() {
         "c2",
         "RS1",
         json!({"code": "RS1"}),
-        json!({"porte_sur": [joined("o9", "X", json!({"siret": "99999999900010"}), json!({}))]}),
+        json!({"offer_for": [joined("o9", "X", json!({"siret": "99999999900010"}), json!({}))]}),
     );
     let msg = json!({"payload": [cert, other], "now": "2026-10-24T05:30:00+00:00", "today": "2026-10-24"});
-    let out = execute(&code_of("qw_regles_reseau"), &msg, 5000)
+    let out = execute(&code_of("qw_network_rules"), &msg, 5000)
         .unwrap()
         .return_json
         .unwrap();
@@ -532,26 +529,26 @@ fn network_rules_read_registry_facts() {
         vec!["ADM-01", "ADM-02", "CPF-01", "CPF-02", "CPF-03", "REG-01", "REG-02"],
         "{out}"
     );
-    let e = out["ecarts"].as_array().unwrap();
+    let e = out["findings"].as_array().unwrap();
     let cpf1 = e
         .iter()
-        .find(|x| x["props"]["cle"].as_str().unwrap().starts_with("CPF-01"))
+        .find(|x| x["props"]["ref"].as_str().unwrap().starts_with("CPF-01"))
         .unwrap();
     assert_eq!(
-        cpf1["props"]["cle"], "CPF-01:880244363:RS0101:S_SEO",
+        cpf1["props"]["ref"], "CPF-01:880244363:RS0101:S_SEO",
         "the certifier's own offer is not one"
     );
     assert_eq!(
         (
-            cpf1["props"]["etat"].clone(),
-            cpf1["props"]["gravite"].clone()
+            cpf1["props"]["state"].clone(),
+            cpf1["props"]["severity"].clone()
         ),
-        (json!("propose"), json!("critique"))
+        (json!("proposed"), json!("critical"))
     );
-    assert_eq!(cpf1["liens"]["constate_dans"], "o1");
+    assert_eq!(cpf1["link_targets"]["observed_in"], "o1");
     assert!(
         e.iter()
-            .all(|x| !x["props"]["cle"].as_str().unwrap().contains("100000009")),
+            .all(|x| !x["props"]["ref"].as_str().unwrap().contains("100000009")),
         "OF EXEMPLE is clean: {out}"
     );
 }
@@ -560,15 +557,15 @@ fn network_rules_read_registry_facts() {
 /// certification, its site and accreditation joined.
 fn partner_msg() -> serde_json::Value {
     json!({
-        "payload": {"siren": "100000009", "qualiopi": true, "qualiopi_maj": "2026-04-11", "qualiopi_bilans": false},
+        "payload": {"siren": "100000009", "qualiopi": true, "qualiopi_updated": "2026-04-11", "qualiopi_assessments": false},
         "object": {"id": "ls", "type": "organization", "title": "OF EXEMPLE", "version": 3},
         "links": {
-            "a_pour_site": [{"direction": "out", "attributes": {}, "other": {"id": "site1", "title": "of-exemple.example", "properties": {"url_racine": "https://www.of-exemple.example/", "domaine": "of-exemple.example"}}}],
-            "habilite_pour": [{"direction": "out", "attributes": {"etat_fc": "actif", "perimetre": "les_deux"}, "other": {"id": "c1", "title": "RS0101", "properties": {"code": "RS0101"}}}]
+            "has_website": [{"direction": "out", "attributes": {}, "other": {"id": "site1", "title": "of-exemple.example", "properties": {"root_url": "https://www.of-exemple.example/", "domain": "of-exemple.example"}}}],
+            "accredited_for": [{"direction": "out", "attributes": {"fc_state": "active", "scope": "both"}, "other": {"id": "c1", "title": "RS0101", "properties": {"code": "RS0101"}}}]
         },
-        "reseau": {
-            "RS0101": {"id": "c1", "intitule": "Piloter le référencement d'un site", "statut": "actif", "certificateurs": ["CERTIF EXEMPLE"]},
-            "RS9999": {"id": "c9", "intitule": "Piloter un projet", "statut": "actif", "certificateurs": ["CERTIF EXEMPLE"]}
+        "network": {
+            "RS0101": {"id": "c1", "official_title": "Piloter le référencement d'un site", "status": "active", "certifiers": ["CERTIF EXEMPLE"]},
+            "RS9999": {"id": "c9", "official_title": "Piloter un projet", "status": "active", "certifiers": ["CERTIF EXEMPLE"]}
         },
         "today": "2026-10-26", "now": "2026-10-26T02:00:00+00:00"
     })
@@ -576,7 +573,7 @@ fn partner_msg() -> serde_json::Value {
 
 #[test]
 fn crawl_targets_carry_codes_titles_and_the_partner() {
-    let out = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+    let out = execute(&code_of("qw_targets"), &partner_msg(), 2000)
         .unwrap()
         .return_json
         .unwrap();
@@ -590,14 +587,14 @@ fn crawl_targets_carry_codes_titles_and_the_partner() {
         "{rules}"
     );
     assert_eq!(
-        out["partenaire"]["habilitations"]["RS0101"]["etat_fc"],
-        "actif"
+        out["partner"]["accreditations"]["RS0101"]["fc_state"],
+        "active"
     );
-    assert!(out["partenaire"]["habilitations"].get("RS9999").is_none());
+    assert!(out["partner"]["accreditations"].get("RS9999").is_none());
     // No website: no target.
     let mut bare = partner_msg();
-    bare["links"]["a_pour_site"] = json!([]);
-    assert!(execute(&code_of("qw_cibles"), &bare, 2000)
+    bare["links"]["has_website"] = json!([]);
+    assert!(execute(&code_of("qw_targets"), &bare, 2000)
         .unwrap()
         .return_json
         .is_none());
@@ -605,37 +602,41 @@ fn crawl_targets_carry_codes_titles_and_the_partner() {
 
 #[test]
 fn website_rules_quote_the_page() {
-    let target = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+    let target = execute(&code_of("qw_targets"), &partner_msg(), 2000)
         .unwrap()
         .return_json
         .unwrap();
     let mut msg = partner_msg();
-    msg["partenaire"] = target["partenaire"].clone();
+    msg["partner"] = target["partner"].clone();
     let page = |text: &str| {
         let mut m = msg.clone();
         m["payload"] = json!({"url": "https://www.of-exemple.example/seo", "title": "SEO", "text": text, "page_id": "p1", "object_id": "po1", "changed": true});
-        execute(&code_of("qw_regles_web"), &m, 5000)
+        execute(&code_of("qw_web_rules"), &m, 5000)
             .unwrap()
             .return_json
             .unwrap()
     };
     // A clean page: code, exact title, certifier, CPF while accredited.
-    let clean = page("Formation Piloter le référencement d'un site (RS0101), certificateur CERTIF EXEMPLE. Éligible au CPF.");
+    let clean = page(
+        "Formation Piloter le référencement d'un site (RS0101), certificateur CERTIF EXEMPLE. Éligible au CPF.",
+    );
     assert_eq!(rules_of(&clean), Vec::<String>::new(), "{clean}");
     // RS9999 (not accredited) offered with the CPF; a free gift; Qualiopi
     // on skills assessments not certified; RS0101 under a wrong title and
     // without its certifier.
-    let bad = page("Préparez le RS 9999 Piloter un projet, éligible au CPF ! Tablette offerte pour toute inscription. \
-        Organisme certifié Qualiopi pour vos bilans de compétences. Formation SEO RS0101 en 2 jours.");
+    let bad = page(
+        "Préparez le RS 9999 Piloter un projet, éligible au CPF ! Tablette offerte pour toute inscription. \
+        Organisme certifié Qualiopi pour vos bilans de compétences. Formation SEO RS0101 en 2 jours.",
+    );
     assert_eq!(
         rules_of(&bad),
         vec!["WEB-01", "WEB-03", "WEB-03", "WEB-04", "WEB-05", "WEB-06", "WEB-08"],
         "{bad}"
     );
-    let e = bad["ecarts"].as_array().unwrap();
+    let e = bad["findings"].as_array().unwrap();
     for x in e {
-        assert_eq!(x["props"]["etat"], "a_valider");
-        let quote = x["props"]["extrait"].as_str().unwrap();
+        assert_eq!(x["props"]["state"], "to_validate");
+        let quote = x["props"]["excerpt"].as_str().unwrap();
         assert!(
             !quote.is_empty() && msg_text_holds(&bad, quote),
             "word for word: {quote}"
@@ -643,28 +644,30 @@ fn website_rules_quote_the_page() {
     }
     let web08 = e
         .iter()
-        .find(|x| x["props"]["cle"].as_str().unwrap().starts_with("WEB-08"))
+        .find(|x| x["props"]["ref"].as_str().unwrap().starts_with("WEB-08"))
         .unwrap();
-    assert_eq!(web08["props"]["cle"], "WEB-08:100000009:RS9999:p1");
+    assert_eq!(web08["props"]["ref"], "WEB-08:100000009:RS9999:p1");
     assert_eq!(
         (
-            web08["liens"]["sur"].clone(),
-            web08["liens"]["constate_dans"].clone()
+            web08["link_targets"]["finding_on"].clone(),
+            web08["link_targets"]["observed_in"].clone()
         ),
         (json!("c9"), json!("po1"))
     );
     // The title without its code (WEB-02).
-    let no_code = page("Notre parcours Piloter le référencement d'un site, par CERTIF EXEMPLE.");
+    let no_code = page(
+        "Notre parcours Piloter le référencement d'un site, par CERTIF EXEMPLE.",
+    );
     assert_eq!(rules_of(&no_code), vec!["WEB-02"], "{no_code}");
     // The site summary: nothing relevant (COL-01), a finding to propose.
     let mut m = msg.clone();
     m["payload"] = json!({"url": "https://www.of-exemple.example", "pages": 40, "relevant": 0, "truncated": false, "mission_id": "m1"});
-    let col = execute(&code_of("qw_regles_web"), &m, 2000)
+    let col = execute(&code_of("qw_web_rules"), &m, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(rules_of(&col), vec!["COL-01"]);
-    assert_eq!(col["ecarts"][0]["props"]["etat"], "propose");
+    assert_eq!(col["findings"][0]["props"]["state"], "proposed");
 }
 
 /// WEB-06 needs an explicit Qualiopi category claim, quoted word for word,
@@ -672,17 +675,17 @@ fn website_rules_quote_the_page() {
 /// unless the whole-site setting is on.
 #[test]
 fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
-    let target = execute(&code_of("qw_cibles"), &partner_msg(), 2000)
+    let target = execute(&code_of("qw_targets"), &partner_msg(), 2000)
         .unwrap()
         .return_json
         .unwrap();
     let mut msg = partner_msg();
-    msg["partenaire"] = target["partenaire"].clone();
+    msg["partner"] = target["partner"].clone();
     let run = |text: &str, settings: serde_json::Value| {
         let mut m = msg.clone();
         m["payload"] = json!({"url": "https://www.of-exemple.example/seo", "title": "SEO", "text": text, "page_id": "p1", "object_id": "po1", "changed": true});
         pnex_node_starlark::executor::execute_with(
-            &code_of("qw_regles_web"),
+            &code_of("qw_web_rules"),
             &m,
             5000,
             settings.as_object().unwrap(),
@@ -701,7 +704,7 @@ fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
         "RS0101 Piloter le référencement d'un site (CERTIF EXEMPLE) : \
          organisme certifié Qualiopi, une pédagogie centrée sur l’apprentissage par la pratique.",
     ] {
-        assert_eq!(page(text), json!({"ecarts": []}), "{text}");
+        assert_eq!(page(text), json!({"findings": []}), "{text}");
     }
     // An explicit claim: quoted where the claim is, not where Qualiopi is.
     let claim = format!(
@@ -711,7 +714,7 @@ fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
     );
     let out = page(&claim);
     assert_eq!(rules_of(&out), vec!["WEB-06"], "{out}");
-    let quote = out["ecarts"][0]["props"]["extrait"].as_str().unwrap();
+    let quote = out["findings"][0]["props"]["excerpt"].as_str().unwrap();
     assert!(
         quote.contains("en contrat d’apprentissage")
             && !quote.contains("Qualiopi")
@@ -721,9 +724,9 @@ fn website_rules_need_an_explicit_claim_and_the_clients_certifications() {
     // A page citing none of the client's certifications: nothing by default,
     // the whole site under the setting.
     let other = "Organisme certifié Qualiopi pour vos bilans de compétences. Éligible au CPF, formation gratuite.";
-    assert_eq!(page(other), json!({"ecarts": []}));
+    assert_eq!(page(other), json!({"findings": []}));
     assert_eq!(
-        rules_of(&run(other, json!({"quali_watch.site_entier": true}))),
+        rules_of(&run(other, json!({"quali_watch.whole_site": true}))),
         vec!["WEB-05", "WEB-06"]
     );
 }
@@ -737,28 +740,28 @@ fn msg_text_holds(_out: &serde_json::Value, quote: &str) -> bool {
 
 #[test]
 fn a_finding_becomes_a_write_then_its_links() {
-    let e = json!({"payload": {"props": {"cle": "WEB-08:1:RS1:p", "etat": "a_valider"}, "title": "WEB-08 · X", "liens": {"concerne": "o", "sur": "c", "constate_dans": ""}},
+    let e = json!({"payload": {"props": {"ref": "WEB-08:1:RS1:p", "state": "to_validate"}, "title": "WEB-08 · X", "link_targets": {"concerns": "o", "finding_on": "c", "observed_in": ""}},
                    "object": {"id": "stale"}, "links": {"big": []}});
-    let w = execute(&code_of("qw_ecart"), &e, 2000)
+    let w = execute(&code_of("qw_finding"), &e, 2000)
         .unwrap()
         .return_json
         .unwrap();
     assert_eq!(
         (
-            w["payload"]["cle"].clone(),
+            w["payload"]["ref"].clone(),
             w["title"].clone(),
             w["object"].clone()
         ),
         (json!("WEB-08:1:RS1:p"), json!("WEB-08 · X"), json!(null))
     );
-    let written = json!({"object": {"id": "e1"}, "liens": w["liens"].clone()});
-    let l = execute(&code_of("qw_liens"), &written, 2000)
+    let written = json!({"object": {"id": "e1"}, "link_targets": w["link_targets"].clone()});
+    let l = execute(&code_of("qw_links"), &written, 2000)
         .unwrap()
         .return_json
         .unwrap();
-    assert_eq!(l["concerne"], json!({"source_id": "e1", "target_id": "o"}));
-    assert_eq!(l["sur"]["target_id"], "c");
-    assert!(l.get("constate_dans").is_none());
+    assert_eq!(l["concerns"], json!({"source_id": "e1", "target_id": "o"}));
+    assert_eq!(l["finding_on"]["target_id"], "c");
+    assert!(l.get("observed_in").is_none());
 }
 
 /// `crm` (crm.md D450): one activity per step of the plan, due on the
@@ -801,7 +804,7 @@ fn a_plan_never_starts_when_every_person_objected() {
             "links": {
                 "involved_in": [{"direction": "in", "attributes": {"role": "decision_maker"},
                               "other": {"id": "p1", "type": "person", "title": "A",
-                                        "properties": if opposed { json!({"opposition_le": "2026-10-01"}) } else { json!({}) }}}],
+                                        "properties": if opposed { json!({"opposed_on": "2026-10-01"}) } else { json!({}) }}}],
                 "opportunity_with": [{"direction": "out", "other": {"id": "a", "type": "organization", "title": "Acme", "properties": {}}}]
             }
         })

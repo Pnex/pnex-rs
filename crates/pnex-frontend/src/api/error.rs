@@ -57,8 +57,8 @@ impl ApiError {
         }
     }
 
-    /// Erreur HTTP : message extrait du corps + statut et corps décodé
-    /// conservés pour les appelants qui doivent réagir au code (409…).
+    /// HTTP error: message extracted from the body + status and decoded body
+    /// kept for callers that must react to the code (409…).
     pub fn http(status: u16, body_text: &str) -> Self {
         let body = serde_json::from_str::<serde_json::Value>(body_text).ok();
         let code = body
@@ -140,7 +140,7 @@ pub fn extract_message(status: u16, body: &str) -> String {
     if let Some(description) = description {
         return description;
     }
-    // Chaîne JSON nue (« "message" »).
+    // Bare JSON string ("\"message\"").
     if let Some(text) = as_str(&value) {
         return text;
     }
@@ -224,7 +224,7 @@ mod tests {
                 .and_then(|b| b.get("error").and_then(|v| v.as_str())),
             Some("conflict")
         );
-        // Corps non JSON : message de repli, pas de corps décodé.
+        // Non-JSON body: fallback message, no decoded body.
         let err = ApiError::http(502, "bad gateway");
         assert_eq!(err.status, Some(502));
         assert_eq!(err.message, "HTTP 502");
@@ -250,7 +250,7 @@ mod tests {
             r#"{"error":"invalid_grant","error_description":"Code expired"}"#,
         );
         assert_eq!(err.code.as_deref(), Some("invalid_grant"));
-        // Erreur locale sans corps : pas de code.
+        // Local error without a body: no code.
         assert_eq!(ApiError::new("boom").code, None);
     }
 

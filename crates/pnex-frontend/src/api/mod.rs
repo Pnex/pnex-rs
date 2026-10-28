@@ -1,9 +1,9 @@
-//! Client API du front — URLs relatives (same-origin), Bearer + X-Org-Id,
-//! refresh 401 single-flight, messages d'erreur relayés tels quels.
+//! Front API client — relative URLs (same-origin), Bearer + X-Org-Id,
+//! single-flight 401 refresh, error messages relayed as is.
 
 pub mod agents;
 pub mod ai;
-/// Annotations sur médias (D55–D60) — couches versionnées + read model.
+/// Annotations on media (D55–D60) — versioned layers + read model.
 pub mod annotation_layers;
 pub mod apps;
 pub mod auth;
@@ -19,13 +19,13 @@ pub mod controls;
 pub mod dashboard;
 pub mod dashboards;
 pub mod fluid_mixtures;
-/// Référentiel des hosts serveur PNeX (wizard device).
+/// Registry of PNeX server hosts (device wizard).
 pub mod hosts;
 /// Access management (iam.md §8).
 pub mod iam;
 pub mod meta;
-// Consommé uniquement par le pipeline capture360 (cfg android) — mort sur
-// les autres cibles, école capture360/mod.rs (allow(dead_code) documenté).
+// Used only by the capture360 pipeline (cfg android) — dead on the
+// other targets, capture360/mod.rs pattern (documented allow(dead_code)).
 pub mod devices;
 // Pages (pages.md #21)
 pub mod docs;
@@ -39,7 +39,7 @@ pub mod extension;
 /// Custom firmware IDE (custom-firmware.md D87–D94).
 pub mod firmware;
 pub mod flows;
-/// Registre « Fonctions » (groupe « Automation ») — fonctions versionnées.
+/// "Functions" registry ("Automation" group) — versioned functions.
 pub mod functions;
 pub mod geo;
 pub mod lab;
@@ -56,7 +56,7 @@ pub mod orgs;
 pub mod ota;
 pub mod pins;
 pub mod proposals;
-/// Couche d'organisation transverse (D42).
+/// Cross-cutting organisation layer (D42).
 pub mod resources;
 /// Global search typeahead (D69).
 pub mod search;
@@ -79,5 +79,5 @@ pub mod user;
 pub mod viz;
 pub mod voice_id;
 pub mod web_search;
-/// Référentiel WiFi (wizard device).
+/// WiFi registry (device wizard).
 pub mod wifi;

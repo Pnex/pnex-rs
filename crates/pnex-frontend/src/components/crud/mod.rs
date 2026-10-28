@@ -1,12 +1,12 @@
-//! Socle CRUD standardisé (listes) — le motif « liste d'une ressource »
-//! écrit **une seule fois** et composé partout : layout (header, retour,
-//! action « ajouter », slot filtres), zones d'état (loading / empty /
-//! error), table générique, barre de filtres, formulaire modal.
+//! Standardised CRUD foundation (lists) — the "list of a resource" pattern
+//! written **only once** and composed everywhere: layout (header, back,
+//! "add" action, filter slot), state zones (loading / empty /
+//! error), generic table, filter bar, modal form.
 //!
-//! Créer une nouvelle page liste = composer `ListLayout` + `FilterBar` +
-//! `ListStates` + `DataTable` + `Pager` — sans jamais réécrire le
-//! header/retour/ajouter/filtres ni les états. Doctrine complète et
-//! checklist de migration : voir `README.md` du module.
+//! Creating a new list page = composing `ListLayout` + `FilterBar` +
+//! `ListStates` + `DataTable` + `Pager` — without ever rewriting the
+//! header/back/add/filters or the states. Full doctrine and
+//! migration checklist: see the module's `README.md`.
 
 pub mod filters;
 pub mod form;

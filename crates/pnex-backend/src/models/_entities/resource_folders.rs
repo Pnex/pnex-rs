@@ -1,8 +1,8 @@
-//! `SeaORM` Entity — couche d'organisation transverse (D42).
+//! `SeaORM` Entity — cross-cutting organization layer (D42).
 //!
-//! Kind `folder` : conteneur d'organisation pur (nom + emoji), pas de
-//! payload métier. Contient tous les kinds via `resource_containment` ;
-//! labelable (héritage au read pour tout son sous-arbre).
+//! Kind `folder`: pure organization container (name + emoji), no
+//! business payload. Contains every kind via `resource_containment`;
+//! labelable (inherited at read for its whole subtree).
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -15,7 +15,7 @@ pub struct Model {
     pub org_id: i64,
     pub name: String,
     pub emoji: Option<String>,
-    /// Sans FK (école `viz_widget_library.created_by`) — traçabilité simple.
+    /// No FK (`viz_widget_library.created_by` pattern) — simple traceability.
     pub created_by: Option<i64>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

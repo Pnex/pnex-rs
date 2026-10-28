@@ -1,16 +1,16 @@
-//! Coutures routées par le contenu (pipeline Quality).
+//! Content-routed seams (Quality pipeline).
 //!
-//! Le blend « sélection » du pipeline Legacy coupe implicitement au
-//! bissecteur des centralités : une couture fixe, aveugle au contenu, qui
-//! tranche les objets en parallaxe. Ici on **route** la coupe : par paire
-//! au recouvrement suffisant, une programmation dynamique par ligne cherche
-//! le chemin de coût minimal — coût pixel = différence de couleur entre les
-//! deux frames (gainées) — avec lissage implicite `|Δs| ≤ 1` par ligne
-//! (famille graph-cut/Dijkstra d'OpenCV et stitchEm, en DP séquentiel).
+//! The "selection" blend of the Legacy pipeline implicitly cuts at the
+//! bisector of the centralities: a fixed seam, blind to content, that
+//! slices objects in parallax. Here we **route** the cut: per pair
+//! with enough overlap, a per-row dynamic programming search finds
+//! the minimal-cost path — pixel cost = colour difference between the
+//! two (gained) frames — with implicit smoothing `|Δs| ≤ 1` per row
+//! (graph-cut/Dijkstra family of OpenCV and stitchEm, as sequential DP).
 //!
-//! Sortie : [`OwnerMap`], la carte « chaque pixel appartient à UNE frame »
-//! que consomme [`crate::multiband::blend`] (masque binaire par frame).
-//! Pixels hors bande / trous → [`NO_OWNER`].
+//! Output: [`OwnerMap`], the "each pixel belongs to ONE frame" map
+//! consumed by [`crate::multiband::blend`] (binary mask per frame).
+//! Out-of-band pixels / holes → [`NO_OWNER`].
 
 use std::collections::HashMap;
 
@@ -19,21 +19,21 @@ use crate::project::{interior_weight, project_uvc, PreparedFrame};
 use crate::render::{lat_of, lon_of, sample_bilinear};
 use crate::QualityParams;
 
-/// Valeur « personne ne couvre ce pixel » dans [`OwnerMap::owner`].
+/// "Nobody covers this pixel" value in [`OwnerMap::owner`].
 pub const NO_OWNER: u16 = u16::MAX;
 
-/// Carte de propriété : pour chaque pixel de l'équirect de sortie, la frame
-/// qui le fournit (index d'entrée) ou [`NO_OWNER`].
+/// Ownership map: for each pixel of the output equirect, the frame
+/// that provides it (input index) or [`NO_OWNER`].
 #[derive(Debug, Clone)]
 pub struct OwnerMap {
     pub width: u32,
     pub height: u32,
-    /// `width·height` index de frame, rangée-major.
+    /// `width·height` frame indices, row-major.
     pub owner: Vec<u16>,
 }
 
 impl OwnerMap {
-    /// Nombre de pixels couverts par ligne (métrique de couverture de bande).
+    /// Number of covered pixels per row (band coverage metric).
     #[must_use]
     pub fn covered_per_row(&self) -> Vec<u32> {
         self.owner
@@ -43,10 +43,10 @@ impl OwnerMap {
     }
 }
 
-/// Coupe trouvée pour une ligne d'une paire : intervalle de double
-/// couverture `[x0, x1)` (colonnes vues par les deux frames) et colonne de
-/// coupe `s` (à `a` pour `col < s`, à `b` sinon). Colonnes absolues à la
-/// résolution de travail des coutures.
+/// Cut found for one row of a pair: double-coverage interval
+/// `[x0, x1)` (columns seen by both frames) and cut column
+/// `s` (to `a` for `col < s`, to `b` otherwise). Absolute columns at the
+/// seams' working resolution.
 #[derive(Debug, Clone, Copy)]
 struct SeamRow {
     x0: u32,
@@ -54,10 +54,10 @@ struct SeamRow {
     seam: u32,
 }
 
-/// Tables de couture par paire (clé `(a, b)` avec a < b).
+/// Seam tables per pair (key `(a, b)` with a < b).
 type SeamTables = HashMap<(usize, usize), Vec<Option<SeamRow>>>;
 
-/// Calcule les coutures par paire puis résout la carte de propriété.
+/// Computes the per-pair seams then resolves the ownership map.
 #[must_use]
 pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) -> OwnerMap {
     let w = out_width;
@@ -78,10 +78,10 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
     };
     let tables = compute_seam_tables(frames, seam_w);
 
-    // Passe unique sur l'équirect : couverture simple → propriétaire évident ;
-    // double couverture → coupe par la table de couture de la paire (les deux
-    // frames au poids intérieur maximal) ; fallback = poids max (comportement
-    // Legacy) hors des régions à double couverture tabulées.
+    // Single pass over the equirect: single coverage → obvious owner;
+    // double coverage → cut by the pair's seam table (the two
+    // frames with the highest interior weight); fallback = max weight (Legacy
+    // behaviour) outside the tabulated double-coverage regions.
     let row_len = w as usize;
     for j in 0..h {
         let lat = lat_of(j, h);
@@ -97,7 +97,7 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
         let seam_j = ((j as u64 * seam_w as u64) / w as u64) as usize;
         let scale = w as f32 / seam_w as f32;
         for i in 0..w {
-            // Projette dans les frames éligibles, garde les 2 meilleurs poids.
+            // Project into the eligible frames, keep the 2 best weights.
             let (mut b1, mut w1, mut b2, mut w2) = (usize::MAX, 0.0f32, usize::MAX, 0.0f32);
             for &k in &eligible {
                 let f = &frames[k];
@@ -128,7 +128,7 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
                 owner[o] = b1 as u16;
                 continue;
             }
-            // Double couverture : la paire (a<b) a-t-elle une coupe ici ?
+            // Double coverage: does the pair (a<b) have a cut here?
             let (a, b) = (b1.min(b2), b1.max(b2));
             if let Some(table) = tables.get(&(a, b)) {
                 if let Some(Some(sr)) = table.get(seam_j) {
@@ -143,7 +143,7 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
                     }
                 }
             }
-            owner[o] = b1 as u16; // fallback : poids intérieur maximal
+            owner[o] = b1 as u16; // fallback: maximal interior weight
         }
     }
 
@@ -154,14 +154,14 @@ pub fn find_seams(frames: &[PreparedFrame], out_width: u32, qp: &QualityParams) 
     }
 }
 
-/// Couture DP par paire à la résolution `seam_w`.
+/// Per-pair DP seam at resolution `seam_w`.
 fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
     let mut tables = SeamTables::new();
     let seam_h = (seam_w / 2).max(1);
     for (a, b, _kind) in build_pairs(frames) {
         let (fa, fb) = (&frames[a], &frames[b]);
-        // Fenêtre azimutale de la paire : du milieu des axes ± (demi-somme
-        // hfov + marge). Colonnes absolues (wrap géré par rem_euclid).
+        // Azimuthal window of the pair: from the middle of the axes ± (half-sum
+        // hfov + margin). Absolute columns (wrap handled by rem_euclid).
         let mid = 0.5 * (fa.yaw_deg + fb.yaw_deg - wrap_signed(fa.yaw_deg - fb.yaw_deg));
         let hfov_a = 2.0 * (fa.width as f32 * 0.5 / fa.f_px).atan().to_degrees();
         let hfov_b = 2.0 * (fb.width as f32 * 0.5 / fb.f_px).atan().to_degrees();
@@ -170,7 +170,7 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
         let span_cols = ((half_span / dpp).ceil() as i64).min(seam_w as i64 / 2);
         let mid_col = (((mid + 180.0).rem_euclid(360.0) / 360.0) * seam_w as f32) as i64;
 
-        // Lignes de recouvrement de bandes, à la résolution des coutures.
+        // Band overlap rows, at the seams' resolution.
         let j0 = (((90.0 - fa.lat_max.min(fb.lat_max)) / 180.0 * seam_h as f32).floor() as i64)
             .clamp(0, seam_h as i64 - 1);
         let j1 = (((90.0 - fa.lat_min.max(fb.lat_min)) / 180.0 * seam_h as f32).ceil() as i64)
@@ -179,16 +179,16 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
             continue;
         }
 
-        // Coût par pixel et DP : `|Δs| ≤ 1` par ligne (two-pass min-plus).
+        // Per-pixel cost and DP: `|Δs| ≤ 1` per row (two-pass min-plus).
         let cols = (span_cols * 2) as usize;
         let rows = (j1 - j0) as usize;
         let inf = f32::INFINITY;
         let mut dp_prev = vec![inf; cols];
         let mut dp_cur = vec![0.0f32; cols];
-        // Choix parent : 0 = x−1, 1 = x, 2 = x+1 (par rapport à la ligne
-        // précédente), stocké par ligne pour le backtracking.
+        // Parent choice: 0 = x−1, 1 = x, 2 = x+1 (relative to the previous
+        // row), stored per row for backtracking.
         let mut choice = vec![0u8; rows * cols];
-        // Intervalle de double couverture par ligne (colonnes absolues).
+        // Double-coverage interval per row (absolute columns).
         let mut runs: Vec<Option<(u32, u32)>> = vec![None; rows];
 
         for (r, j) in (j0..j1).enumerate() {
@@ -241,7 +241,7 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
             std::mem::swap(&mut dp_prev, &mut dp_cur);
         }
 
-        // Backtrack depuis le minimum de la dernière ligne.
+        // Backtrack from the minimum of the last row.
         let mut path = vec![None; rows];
         if let Some(mut c) = dp_prev
             .iter()
@@ -254,8 +254,8 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
                 path[r] = Some(c);
                 if r > 0 {
                     let off = match choice[r * cols + c] {
-                        0 => 1,                    // parent venait de x−1
-                        2 => cols.wrapping_sub(1), // parent venait de x+1
+                        0 => 1,                    // parent came from x−1
+                        2 => cols.wrapping_sub(1), // parent came from x+1
                         _ => 0,
                     };
                     c = (c + off) % cols;
@@ -263,7 +263,7 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
             }
         }
 
-        // Table par ligne : intervalle de double couverture + colonne de coupe.
+        // Per-row table: double-coverage interval + cut column.
         let mut table: Vec<Option<SeamRow>> = vec![None; seam_h as usize];
         for (r, j) in (j0..j1).enumerate() {
             let (Some(sc), Some((x0, x1))) = (path[r], runs[r]) else {
@@ -281,7 +281,7 @@ fn compute_seam_tables(frames: &[PreparedFrame], seam_w: u32) -> SeamTables {
     tables
 }
 
-/// wrap en [−180, 180].
+/// wrap into [−180, 180].
 fn wrap_signed(deg: f32) -> f32 {
     let d = deg.rem_euclid(360.0);
     if d > 180.0 {
@@ -295,7 +295,7 @@ fn wrap_signed(deg: f32) -> f32 {
 mod tests {
     use super::*;
 
-    /// wrap_signed : bornes du cercle.
+    /// wrap_signed: circle bounds.
     #[test]
     fn wrap_signed_bornes() {
         assert!((wrap_signed(190.0) - (-170.0)).abs() < 1e-6);

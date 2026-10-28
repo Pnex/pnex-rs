@@ -1046,10 +1046,10 @@ struct PathQuery {
     to: Option<String>,
     /// Link type keys the path may follow, comma-separated (at most 20);
     /// all when absent. An introduction path follows the links between
-    /// people: `knows,recommande,employs,dirige,member_of`.
+    /// people: `knows,recommended,employs,manages,member_of`.
     links: Option<String>,
     /// Instead of `from`: every object at the source of an open link of
-    /// these types, comma-separated (`suit_le_compte` = the team that
+    /// these types, comma-separated (`follows_account` = the team that
     /// follows accounts); the shortest path from any of them wins (D338).
     from_links: Option<String>,
 }

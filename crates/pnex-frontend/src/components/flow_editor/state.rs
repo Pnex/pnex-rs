@@ -1,5 +1,5 @@
-//! État et réducteurs purs de l'éditeur de flows — toutes les mutations du
-//! graphe passent par ces fonctions pures (testées), jamais in-line dans le
+//! State and pure reducers of the flow editor — every graph mutation
+//! goes through these pure (tested) functions, never inline in the
 //! RSX.
 
 use pnex_core::{
@@ -10,7 +10,7 @@ use pnex_core::{
     VideoRecordConfig,
 };
 
-/// Entrée de palette : kind + libellés i18n + couleur d'icône.
+/// Palette entry: kind + i18n labels + icon colour.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PaletteKind {
     Inject,
@@ -63,13 +63,13 @@ pub enum PaletteKind {
     Debug,
 }
 
-/// Crée un nœud neuf d'un kind de palette, avec sa config par défaut :
-/// inject se déclenche **en continu** (`repeat_secs` 30 s — peaufiner un flow
-/// demande un trafic permanent, le feed debug ne vit sinon que 5 min ;
-/// violation `no_trigger` évitée d'office), device/calc/metric des configs **typées
-/// mais incomplètes** (violations
+/// Creates a fresh node of a palette kind, with its default config:
+/// inject fires **continuously** (`repeat_secs` 30 s — polishing a flow
+/// needs constant traffic, otherwise the debug feed only lives 5 min;
+/// `no_trigger` violation avoided upfront), device/calc/metric with **typed
+/// but incomplete** configs (violations
 /// `device_no_reads`/`calc_bad_expression`/`metric_name_missing`
-/// jusqu'à la saisie — le bandeau guide l'utilisateur), red un type vide.
+/// until filled in — the banner guides the user), red an empty type.
 pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
     FlowNode {
         id: id.to_string(),
@@ -113,8 +113,8 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::Metric => FlowNodeKind::Metric {
                 config: MetricConfig::default(),
             },
-            // Config typée mais volontairement incomplète : les violations
-            // `coolprop_*` du bandeau guident la saisie (école device/calc).
+            // Typed but deliberately incomplete config: the banner's
+            // `coolprop_*` violations guide the input (device/calc pattern).
             PaletteKind::CoolProp => FlowNodeKind::CoolProp {
                 config: CoolPropConfig {
                     fluid_spec: "Water".into(),
@@ -139,9 +139,9 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::Display => FlowNodeKind::Display {
                 config: DisplayConfig,
             },
-            // Cartes de régulation mixtes : config typée mais volontairement
-            // incomplète (device/pins vides, deadband 0) — les violations
-            // `reg_*` du bandeau guident la saisie.
+            // Mixed control cards: typed but deliberately incomplete
+            // config (empty device/pins, deadband 0) — the banner's
+            // `reg_*` violations guide the input.
             PaletteKind::RegTtHeat => FlowNodeKind::RegTtHeat {
                 config: RegTtConfig::default(),
             },
@@ -151,28 +151,28 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
             PaletteKind::RegPid => FlowNodeKind::RegPid {
                 config: RegPidConfig::default(),
             },
-            // Config typée mais volontairement incomplète : les violations
-            // `notify_no_*` du bandeau guident la saisie (école device/calc).
+            // Typed but deliberately incomplete config: the banner's
+            // `notify_no_*` violations guide the input (device/calc pattern).
             PaletteKind::PnexNotify => FlowNodeKind::PnexNotify {
                 config: NotifyNodeConfig::default(),
             },
-            // Config typée mais volontairement incomplète : la violation
-            // `http_fetch_url_missing` du bandeau guide la saisie (école
-            // device/calc/notify).
+            // Typed but deliberately incomplete config: the banner's
+            // `http_fetch_url_missing` violation guides the input
+            // (device/calc/notify pattern).
             PaletteKind::HttpFetch => FlowNodeKind::HttpFetch {
                 config: HttpFetchNodeConfig::default(),
             },
-            // Config typée mais volontairement incomplète : la violation
-            // `fn_not_selected` du bandeau guide la saisie (école device/calc).
+            // Typed but deliberately incomplete config: the banner's
+            // `fn_not_selected` violation guides the input (device/calc pattern).
             PaletteKind::Function => FlowNodeKind::PnexFunction {
                 config: FunctionNodeConfig::default(),
             },
-            // Découpe structurelle : aucune config, le nœud est utile d'office.
+            // Structural split: no config, the node is useful right away.
             PaletteKind::JsonSplit => FlowNodeKind::JsonSplit {
                 config: JsonSplitConfig::default(),
             },
-            // Clé par défaut posée : le nœud est utile d'office (la saisie
-            // n'est requise que pour un payload scalaire sans topic).
+            // Default key set: the node is useful right away (input
+            // is only required for a scalar payload without topic).
             PaletteKind::JsonMerge => FlowNodeKind::JsonMerge {
                 config: JsonMergeConfig {
                     default_key: "value".into(),
@@ -316,11 +316,11 @@ pub fn make_node(id: &str, kind: PaletteKind, pos: Position) -> FlowNode {
     }
 }
 
-/// Nombre de ports de sortie **canvas** d'un nœud : `device-read` expose un
-/// port par pin + le port « nom du device » (payload = slug), la fonction un
-/// port par sortie déclarée (min 1, parité runtime). (Le moteur n'a qu'une
-/// entrée par nœud : les ancres d'entrée device-write/fonction sont
-/// cosmétiques, hors de ce compteur.)
+/// Number of **canvas** output ports of a node: `device-read` exposes one
+/// port per pin + the "device name" port (payload = slug), a function one
+/// port per declared output (min 1, runtime parity). (The engine has only one
+/// input per node: the device-write/function input anchors are
+/// cosmetic, outside this count.)
 /// After a save, adopts the vault references the server gave to the
 /// secret values typed in `current` (secrets.md S5): the editor no longer
 /// holds the plaintext, and the graph matches the saved one again. Only
@@ -703,8 +703,8 @@ pub fn claim_input_row(
     };
     let free: Vec<usize> = (0..labels.len())
         .filter(|i| {
-            // Une ligne sans nom n'est jamais réclamable (le nom EST la clé
-            // de routage — l'inspecteur ne crée plus de lignes vides).
+            // A row without a name is never claimable (the name IS the
+            // routing key — the inspector no longer creates empty rows).
             !labels[*i].trim().is_empty() && !owned_by_other(&labels[*i])
         })
         .collect();
@@ -757,8 +757,8 @@ fn rewire_by_label(graph: &mut FlowGraph, id: &str, old_labels: &[String], new_l
     node.outputs = new_outputs;
 }
 
-/// Prochain id libre : `n{max(suffixes numériques)+1}` — jamais de collision
-/// même après plusieurs ajouts/suppressions.
+/// Next free id: `n{max(numeric suffixes)+1}` — never a collision
+/// even after several additions/deletions.
 pub fn next_node_id(graph: &FlowGraph) -> String {
     let mut max = 0u32;
     for node in &graph.nodes {
@@ -779,12 +779,12 @@ fn wiring_mut(outputs: &mut Vec<FlowWiring>, port: usize) -> &mut FlowWiring {
                 port,
                 targets: vec![],
             });
-            outputs.last_mut().expect("wiring poussé")
+            outputs.last_mut().expect("wiring pushed")
         }
     }
 }
 
-/// Déplace un nœud (drag) — no-op si l'id est inconnu.
+/// Moves a node (drag) — no-op if the id is unknown.
 pub fn move_node(graph: &mut FlowGraph, id: &str, pos: Position) {
     if let Some(node) = graph.nodes.iter_mut().find(|n| n.id == id) {
         node.position = Some(pos);
@@ -846,7 +846,7 @@ pub fn set_input_target(
             return;
         }
     }
-    // Json-merge : seule une entrée déclarée est une ancre valide.
+    // Json-merge: only a declared input is a valid anchor.
     if let FlowNodeKind::JsonMerge { config } = &target.kind {
         if !config.inputs.contains(&pin) {
             return;

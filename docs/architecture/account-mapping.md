@@ -4,7 +4,7 @@
 |---|---|
 | Statut | **Proposition — 2026-10-21** ; CC1 en cours (pack, voir §10) |
 | Déclencheur | Besoin de prospection B2B : développer les comptes existants (filiales, sites, décideurs), cibler de nouvelles entreprises, repérer les événements déclencheurs, garder une trace de qui a recommandé qui |
-| Repose sur | `ontology.md` (D176–D191), `partner-watch.md` (D300–D316 : imports, clé naturelle, pack `entreprises_fr`, vue Hiérarchie, crawl, preuves, nœuds ontologie), `extension-collector.md` (D254–D284), `cases-money.md` et `cases-graph-sigma.md` (graphe, chemins K51), `iam.md` (D298 classification) |
+| Repose sur | `ontology.md` (D176–D191), `partner-watch.md` (D300–D316 : imports, clé naturelle, pack `companies_fr`, vue Hiérarchie, crawl, preuves, nœuds ontologie), `extension-collector.md` (D254–D284), `cases-money.md` et `cases-graph-sigma.md` (graphe, chemins K51), `iam.md` (D298 classification) |
 | Numérotation | **D329…D343**, lots **CC0…CC6** |
 | Cas de référence | un compte client à quelques sites dans un groupe plus large ; un grand groupe international avec filiales étrangères |
 
@@ -30,18 +30,18 @@ Un playbook B2B industriel typique a servi de banc d'essai. Ce qui s'y trouve et
 | Profil de client idéal (secteurs, tranche d'effectif, CA, effectif **par site**) | critères de score de l'org (D336), au niveau société **et** site | oui : critères déclaratifs |
 | Personas visés (décideur économique, champion, sponsor, utilisateur clé) | `persona` = rôle dans le comité d'achat ; l'intitulé de poste reste sur `employs.position` | oui : vocabulaire usuel des grilles de qualification |
 | Signaux déclencheurs (montée en cadence, gros contrat, départs en retraite, problèmes qualité, déploiement multi-sites, école interne) | **thèmes** de signal définis par l'org, pas une liste du pack (D335) | oui : la liste fermée est un réglage |
-| Rôles de l'équipe (prospection, closing, grands comptes, événementiel) | `suit_le_compte.role`, texte libre ; plusieurs suiveurs par compte | oui |
+| Rôles de l'équipe (prospection, closing, grands comptes, événementiel) | `follows_account.role`, texte libre ; plusieurs suiveurs par compte | oui |
 | Salons et groupements professionnels | liste d'exposants ou de participants importée avant l'événement (D337) ; groupement = `organization` + `member_of`, utilisable par le chemin d'introduction (D338) | oui |
-| Concurrence identifiée sur un compte | `utilise_solution` | oui |
+| Concurrence identifiée sur un compte | `uses_solution` | oui |
 | Pipeline, cadence de relance, scripts, objections, devis | outil de vente | **hors périmètre** (pas de CRM) |
-| Passation vers l'outil de vente | un signal `retenu` ou un plan de compte part par les sorties existantes (webhook HMAC, e-mail, export PDF) | oui, sans connecteur |
+| Passation vers l'outil de vente | un signal `retained` ou un plan de compte part par les sorties existantes (webhook HMAC, e-mail, export PDF) | oui, sans connecteur |
 
 ## 3. Ce qui existe et ce qui manque
 
 | Besoin | Existant | Manque |
 |---|---|---|
-| Société, établissements, dirigeants | pack `entreprises_fr` : `organization` (SIREN unique, NAF, effectif), établissement = `map_pin` (SIRET), lien `dirige` daté, synchro API Recherche d'entreprises | chiffre d'affaires, LEI, pays |
-| Groupe, filiales | vue Hiérarchie `groupe` (D305) sur `owns`, `etablissement_de`, `dirige` ; multi-parents, à une date | **liens mère-fille** : l'API Recherche d'entreprises ne donne ni participations ni filiales étrangères |
+| Société, établissements, dirigeants | pack `companies_fr` : `organization` (SIREN unique, NAF, effectif), établissement = `map_pin` (SIRET), lien `manages` daté, synchro API Recherche d'entreprises | chiffre d'affaires, LEI, pays |
+| Groupe, filiales | vue Hiérarchie `group` (D305) sur `owns`, `establishment_of`, `manages` ; multi-parents, à une date | **liens mère-fille** : l'API Recherche d'entreprises ne donne ni participations ni filiales étrangères |
 | Contacts | `person`, `employs` (poste), `identifier` (compte, e-mail…), `knows` (sans attribut) | persona, recommandation datée, compte suivi par qui |
 | Statut commercial | rien | client / prospect / cible / ancien client / concurrent, utilisateurs actuels vs potentiel |
 | Carte | `map_pin`, page Sites, carte MapLibre | coloration par statut |
@@ -53,26 +53,26 @@ Un playbook B2B industriel typique a servi de banc d'essai. Ce qui s'y trouve et
 
 ## 4. Décisions
 
-### D329 — Pack `prospection_b2b` : étendre, ne pas créer
+### D329 — Pack `prospecting_b2b` : étendre, ne pas créer
 
-Pack générique (`requires: [entreprises, presence_web]` : le socle mondial D343 ; à l'origine `entreprises_fr`), sans valeur propre à un vendeur.
+Pack générique (`requires: [companies, web_presence]` : le socle mondial D343 ; à l'origine `companies_fr`), sans valeur propre à un vendeur.
 
 - `organization` étendue (D306) :
-  - `statut_compte` (enum : `client`, `prospect`, `cible`, `ancien_client`, `concurrent`, `partenaire`, `exclu`),
-  - `utilisateurs_actuels`, `potentiel_utilisateurs` (nombres),
-  - `lei` (texte, unique), `pays` (ISO 3166-1),
-  - `ca_dernier` (montant, propriété temporelle D178 : une valeur par exercice), `score_cible` (nombre, calculé, D336).
-- `map_pin` étendu : `statut_site` (`client`, `prospect`, `non_couvert`), `utilisateurs_actuels`.
-- `map_pin` gagne aussi `effectif_tranche` côté `entreprises_fr` (1.1.0) : le registre le publie par SIRET, ce qui permet de cibler un **site** et pas seulement une société.
-- `person` étendue : `persona` = rôle dans le comité d'achat (enum : `decideur`, `champion`, `sponsor`, `prescripteur`, `acheteur`, `utilisateur`, `technique`, `autre`) — l'intitulé de poste reste sur `employs.position` ; `revoir_le` (date, D334).
+  - `account_status` (enum : `customer`, `prospect`, `target`, `former_customer`, `competitor`, `partner`, `excluded`),
+  - `current_users`, `potential_users` (nombres),
+  - `lei` (texte, unique), `country` (ISO 3166-1),
+  - `last_revenue` (montant, propriété temporelle D178 : une valeur par exercice), `target_score` (nombre, calculé, D336).
+- `map_pin` étendu : `establishment_status` (`customer`, `prospect`, `not_covered`), `current_users`.
+- `map_pin` gagne aussi `headcount_band` côté `companies_fr` (1.1.0) : le registre le publie par SIRET, ce qui permet de cibler un **site** et pas seulement une société.
+- `person` étendue : `persona` = rôle dans le comité d'achat (enum : `decision_maker`, `champion`, `sponsor`, `influencer`, `buyer`, `user`, `technical`, `other`) — l'intitulé de poste reste sur `employs.position` ; `review_on` (date, D334).
 - Nouveaux liens :
-  - `recommande` (person → person | organization) : date, contexte, source. C'est le « qui a recommandé qui » ;
-  - `suit_le_compte` (person interne → organization) : `role` (texte libre, rôle que l'org donne à ce suiveur) ; plusieurs suiveurs par compte, tous destinataires des signaux ;
-  - `filiale_de` (organization → organization, une cible à une date) : `nature` (`consolidation_directe`, `consolidation_ultime`, `declaree`, `wikidata`, `saisie`), source, consulté le (D331) ;
-  - `utilise_solution` (organization | map_pin → organization concurrente) : depuis, source.
-- Hiérarchie `groupe_commercial` : `filiale_de` inverse, puis `owns`, puis `etablissement_de` inverse. La hiérarchie `groupe` d'`entreprises_fr` reste inchangée.
+  - `recommended` (person → person | organization) : date, contexte, source. C'est le « qui a recommandé qui » ;
+  - `follows_account` (person interne → organization) : `role` (texte libre, rôle que l'org donne à ce suiveur) ; plusieurs suiveurs par compte, tous destinataires des signaux ;
+  - `subsidiary_of` (organization → organization, une cible à une date) : `nature` (`direct_consolidation`, `ultimate_consolidation`, `declared`, `wikidata`, `manual_entry`), source, consulté le (D331) ;
+  - `uses_solution` (organization | map_pin → organization concurrente) : depuis, source.
+- Hiérarchie `sales_group` : `subsidiary_of` inverse, puis `owns`, puis `establishment_of` inverse. La hiérarchie `group` d'`companies_fr` reste inchangée.
 
-Pourquoi `filiale_de` plutôt que `owns` : les sources ouvertes donnent une relation de **contrôle ou de consolidation**, sans pourcentage. Mettre un `owns` sans part mentirait sur ce qu'on sait. `owns` reste réservé aux participations connues.
+Pourquoi `subsidiary_of` plutôt que `owns` : les sources ouvertes donnent une relation de **contrôle ou de consolidation**, sans pourcentage. Mettre un `owns` sans part mentirait sur ce qu'on sait. `owns` reste réservé aux participations connues.
 
 ### D330 — La couverture d'un compte est calculée à la lecture
 
@@ -82,16 +82,16 @@ Sur la vue Hiérarchie (D305) et la carte, chaque nœud porte un **résumé calc
 - nombre de contacts par persona ;
 - nombre de signaux ouverts.
 
-Rien n'est stocké en agrégat : c'est un calcul borné, fait à la lecture comme la hiérarchie (profondeur ≤ 6, 500 nœuds), à une date T. La vue « **espace blanc** » liste les filiales et établissements d'un groupe sans aucun `employs` ni `statut_site = client` : c'est la liste de prospection du compte.
+Rien n'est stocké en agrégat : c'est un calcul borné, fait à la lecture comme la hiérarchie (profondeur ≤ 6, 500 nœuds), à une date T. La vue « **espace blanc** » liste les filiales et établissements d'un groupe sans aucun `employs` ni `establishment_status = customer` : c'est la liste de prospection du compte.
 
 ### D331 — Liens de groupe depuis GLEIF et Wikidata
 
 Deux mappings d'import API (D301, D303), livrés dans le pack, en mode `incremental` :
 
-- **GLEIF** (registre public des LEI, gratuit) : rapprochement SIREN → LEI, puis relations société mère directe et ultime → `filiale_de` avec la nature `consolidation_directe` ou `consolidation_ultime`. Couvre les filiales étrangères des grands groupes. Une mère étrangère sans SIREN devient une `organization` de clé `lei`.
-- **Wikidata** : propriétés SIREN, société mère et filiale → `filiale_de` de nature `wikidata`, toujours à l'état **« à valider »** (D316), parce que la donnée est communautaire.
+- **GLEIF** (registre public des LEI, gratuit) : rapprochement SIREN → LEI, puis relations société mère directe et ultime → `subsidiary_of` avec la nature `direct_consolidation` ou `ultimate_consolidation`. Couvre les filiales étrangères des grands groupes. Une mère étrangère sans SIREN devient une `organization` de clé `lei`.
+- **Wikidata** : propriétés SIREN, société mère et filiale → `subsidiary_of` de nature `wikidata`, toujours à l'état **« à valider »** (D316), parce que la donnée est communautaire.
 - Conflit entre sources : on ne fusionne pas. Chaque lien garde sa provenance (D184), la fiche montre les deux et l'humain ferme celui qui est faux.
-- PME sans LEI ni fiche Wikidata : saisie manuelle (`nature = saisie`) ou import d'un fichier.
+- PME sans LEI ni fiche Wikidata : saisie manuelle (`nature = manual_entry`) ou import d'un fichier.
 
 ### D332 — Rapprochement d'un nom de société vers un SIREN
 
@@ -118,45 +118,45 @@ Nouveau nœud `org_resolve` : entrée nom + ville (ou code postal) ; il interrog
 ### D334 — Changement de poste : registre, recapture humaine et rappel
 
 PNEX ne surveille pas un profil de réseau social. Le changement de poste est connu de trois façons :
-1. **Registre** : un lien `dirige` fermé ou ouvert lors de la synchro `snapshot` (mandataires sociaux seulement) crée un signal `changement_dirigeant`.
+1. **Registre** : un lien `manages` fermé ou ouvert lors de la synchro `snapshot` (mandataires sociaux seulement) crée un signal `executive_change`.
 2. **Recapture** : quand une capture D333 donne une autre société, le flow propose de fermer l'ancien `employs` (`valid_to`) et d'ouvrir le nouveau. L'historique reste visible.
-3. **Rappel** : `revoir_le` sur une personne (défaut : 6 mois après la dernière capture, pour les personas `decideur` et `prescripteur`) crée une tâche pour le commercial qui suit le compte. C'est lui qui revérifie, à la main.
+3. **Rappel** : `review_on` sur une personne (défaut : 6 mois après la dernière capture, pour les personas `decision_maker` et `influencer`) crée une tâche pour le commercial qui suit le compte. C'est lui qui revérifie, à la main.
 
-### D335 — Objet `signal_commercial` et règles de détection
+### D335 — Objet `sales_signal` et règles de détection
 
-Type du pack : `kind` = **comment** le signal a été détecté (`nouvel_etablissement`, `fermeture_etablissement`, `changement_dirigeant`, `annonce_legale`, `page_modifiee`, `changement_poste`, `autre`, liste fermée du pack), `theme` = **ce dont** il parle (liste de l'org, voir plus bas), `resume`, `etat` (`a_valider`, `retenu`, `ecarte`), lien `concerne` → organization | map_pin | person, provenance et extrait cité (D316).
+Type du pack : `kind` = **comment** le signal a été détecté (`new_establishment`, `establishment_closure`, `executive_change`, `legal_notice`, `page_changed`, `job_change`, `other`, liste fermée du pack), `topic` = **ce dont** il parle (liste de l'org, voir plus bas), `summary`, `state` (`to_validate`, `retained`, `dismissed`), lien `concerns` → organization | map_pin | person, provenance et extrait cité (D316).
 
 Règles livrées en flows du pack (non déployés à l'installation, D123) :
-- **nouvel établissement** : un SIRET apparu lors d'une synchro d'un compte suivi (`statut_compte` ∈ client, prospect, cible). C'est le signal « nouvelle usine » ;
+- **nouvel établissement** : un SIRET apparu lors d'une synchro d'un compte suivi (`account_status` ∈ client, prospect, cible). C'est le signal « nouvelle usine » ;
 - **annonces légales BODACC** (le mapping prévu en V2 par D304 est avancé ici) : création, modification, procédure collective, sur les SIREN suivis ;
 - **pages actualités et carrières** des comptes cibles : crawl D307 + `text_decide` sur la **liste fermée de thèmes de l'org** (réglage du pack, chaque thème = clé + description pour le LLM ; exemples livrés : ouverture de site, investissement, recrutement massif, nouvelle ligne de production, départs en retraite, problème qualité, déploiement multi-sites, école interne). L'org ajoute, retire, renomme ; le flow ne connaît que la liste ;
 - **pages des concurrents** : diff D311 sur les pages offres et tarifs.
 
-Notification au `suit_le_compte` du compte concerné (canal de l'org, D313 pour le destinataire). Un signal issu d'un LLM est toujours `a_valider` (D316).
+Notification au `follows_account` du compte concerné (canal de l'org, D313 pour le destinataire). Un signal issu d'un LLM est toujours `to_validate` (D316).
 
 ### D336 — Score de ciblage : une fonction du pack, pas un modèle
 
-Fonction Starlark du pack (D316), versionnée et générique : elle ne contient **aucun critère**. Les critères sont une liste déclarative de l'org (propriété, condition, points ; ex. NAF commençant par une liste de préfixes, tranche d'effectif ≥ un seuil, `ca_dernier` ≥ un montant, distance au site client le plus proche, signaux retenus sur 12 mois par thème). Le score se calcule pour une `organization` et pour un `map_pin` (effectif du site). Pas de ML : le score s'explique ligne par ligne sur la fiche (critère → points).
+Fonction Starlark du pack (D316), versionnée et générique : elle ne contient **aucun critère**. Les critères sont une liste déclarative de l'org (propriété, condition, points ; ex. NAF commençant par une liste de préfixes, tranche d'effectif ≥ un seuil, `last_revenue` ≥ un montant, distance au site client le plus proche, signaux retenus sur 12 mois par thème). Le score se calcule pour une `organization` et pour un `map_pin` (effectif du site). Pas de ML : le score s'explique ligne par ligne sur la fiche (critère → points).
 
 ### D337 — Listes de ciblage et listes de salon
 
-- **Ciblage** : un import API par recherche enregistrée (URL Recherche d'entreprises avec ses filtres : NAF, effectif, département), mode `incremental`. Les nouveaux SIREN entrent en `statut_compte = cible`, jamais en écrasant un statut existant.
+- **Ciblage** : un import API par recherche enregistrée (URL Recherche d'entreprises avec ses filtres : NAF, effectif, département), mode `incremental`. Les nouveaux SIREN entrent en `account_status = target`, jamais en écrasant un statut existant.
 - **Avant un salon** : la liste des exposants (fichier ou page) passe par `org_resolve` puis par le score : la liste de cibles à voir sur place sort de l'explorateur, triée.
 - **Salon ou groupement** : mapping Excel livré dans le pack (participant, poste, société). Chaque ligne crée une `person` + `employs` ; la société passe par `org_resolve` (D332). La liste est rattachée à un objet `evenement` (type `place` + date, ou dossier) pour garder « rencontré au salon X ». Le tri par persona et par score se fait dans l'explorateur.
 
 ### D338 — Chemin d'introduction
 
-Variante de K51 (chemins entre deux objets) restreinte aux liens `knows`, `recommande`, `employs`, `dirige`, `member_of`, profondeur ≤ 4. Point de départ : les personnes internes et les contacts des comptes `client`. Question type : « par qui puis-je être présenté au directeur industriel d'un site du groupe ? ». Le résultat se dessine dans le graphe Sigma.js avec le chemin surligné.
+Variante de K51 (chemins entre deux objets) restreinte aux liens `knows`, `recommended`, `employs`, `manages`, `member_of`, profondeur ≤ 4. Point de départ : les personnes internes et les contacts des comptes `customer`. Question type : « par qui puis-je être présenté au directeur industriel d'un site du groupe ? ». Le résultat se dessine dans le graphe Sigma.js avec le chemin surligné.
 
 ### D339 — Coloration par propriété (noyau, générique)
 
-La carte, la vue Hiérarchie et le graphe acceptent une **règle de style par valeur de propriété** (couleur, icône, opacité), déclarée dans un pack et surchargeable par l'org. C'est un besoin générique (statut de site, criticité GMAO…). Ici : `statut_site` et `statut_compte`.
+La carte, la vue Hiérarchie et le graphe acceptent une **règle de style par valeur de propriété** (couleur, icône, opacité), déclarée dans un pack et surchargeable par l'org. C'est un besoin générique (statut de site, criticité GMAO…). Ici : `establishment_status` et `account_status`.
 
 ### D340 — Modèles de pages : plan de compte, fiche concurrent
 
 Deux `page_templates` du pack, remplis par références d'objets (D187) :
 - **plan de compte** : groupe, couverture (D330), espace blanc, décideurs par persona, recommandations, signaux retenus, prochaines actions (texte libre) ;
-- **fiche concurrent** : offre, références connues (`utilise_solution`), dernières modifications de leurs pages (D311), arguments de défense (texte libre).
+- **fiche concurrent** : offre, références connues (`uses_solution`), dernières modifications de leurs pages (D311), arguments de défense (texte libre).
 
 Export PDF par `page_pdf`.
 
@@ -171,18 +171,18 @@ Préalable au lot CC3 (pas de capture de profil avant) :
 
 ### D342 — L'assistant et le MCP sans outil nouveau
 
-Pas d'outil d'assistant propre au pack : `query_ontology`, `get_object`, la hiérarchie et les chemins suffisent ; le pack livre seulement des **exemples de questions** dans sa description. Le serveur MCP expose déjà ces opérations. L'assistant peut proposer un signal ou un rattachement (état « à valider »). Il ne peut ni lancer une capture (D333), ni modifier un `statut_compte`.
+Pas d'outil d'assistant propre au pack : `query_ontology`, `get_object`, la hiérarchie et les chemins suffisent ; le pack livre seulement des **exemples de questions** dans sa description. Le serveur MCP expose déjà ces opérations. L'assistant peut proposer un signal ou un rattachement (état « à valider »). Il ne peut ni lancer une capture (D333), ni modifier un `account_status`.
 
 ### D343 — Un socle mondial, un pack par pays (décision du 2026-10-21)
 
 Le concept vaut pour tout pays ; seuls les identifiants, les codes locaux et les registres changent.
 
-- **Pack `entreprises`** (mondial, `requires: [investigation]`) : `pays` (ISO 3166-1), `lei`, `code_activite` (classe **NACE rév. 2**, base européenne des codes nationaux), `effectif_min` / `effectif_max` (nombres, pas les tranches d'un pays), état, dates ; sur `map_pin` : siège, état, enseigne, effectif ; clé au registre des dirigeants ; liens `etablissement_de`, `dirige` ; hiérarchie `groupe`.
-- **Un pack par pays** (`requires: [entreprises]`) : sa clé (SIREN/SIRET pour la France), ses codes locaux (NAF, tranche INSEE), son import de registre, qui **remplit aussi les champs communs** (NAF sans sa lettre → NACE ; tranche → effectif min/max ; `pays = FR`).
-- **`prospection_b2b` dépend du socle**, pas d'un pays. Les critères de score portent sur les champs communs.
+- **Pack `companies`** (mondial, `requires: [investigation]`) : `country` (ISO 3166-1), `lei`, `activity_code` (classe **NACE rév. 2**, base européenne des codes nationaux), `headcount_min` / `headcount_max` (nombres, pas les tranches d'un pays), état, dates ; sur `map_pin` : siège, état, enseigne, effectif ; clé au registre des dirigeants ; liens `establishment_of`, `manages` ; hiérarchie `group`.
+- **Un pack par pays** (`requires: [companies]`) : sa clé (SIREN/SIRET pour la France), ses codes locaux (NAF, tranche INSEE), son import de registre, qui **remplit aussi les champs communs** (NAF sans sa lettre → NACE ; tranche → effectif min/max ; `country = FR`).
+- **`prospecting_b2b` dépend du socle**, pas d'un pays. Les critères de score portent sur les champs communs.
 - **Pays sans pack** : GLEIF et Wikidata (D331), saisie, import de fichier.
-- **Ordre** : France d'abord (`entreprises_fr` 2.0.0) ; ensuite, à confirmer au spike CC0, Royaume-Uni (registre gratuit avec dirigeants et bénéficiaires), Norvège, Danemark, Belgique. Un agrégateur mondial sous licence à partage à l'identique n'est jamais la source par défaut.
-- **Mise à jour sans casse** : une clé (propriété ou type de lien) passe d'un pack pays au socle quand la version livrée du pack pays dépend du socle (`hands_over`). Une org en `entreprises_fr` 1.0.0 passe en 2.0.0 sans perte.
+- **Ordre** : France d'abord (`companies_fr` 2.0.0) ; ensuite, à confirmer au spike CC0, Royaume-Uni (registre gratuit avec dirigeants et bénéficiaires), Norvège, Danemark, Belgique. Un agrégateur mondial sous licence à partage à l'identique n'est jamais la source par défaut.
+- **Mise à jour sans casse** : une clé (propriété ou type de lien) passe d'un pack pays au socle quand la version livrée du pack pays dépend du socle (`hands_over`). Une org en `companies_fr` 1.0.0 passe en 2.0.0 sans perte.
 
 ## 5. Lots
 
@@ -210,7 +210,7 @@ CC1 et CC2 ne touchent aucune donnée personnelle hors dirigeants (déjà couver
 
 - Carte et hiérarchie d'un compte de référence construites en moins d'une heure, sources citées sur chaque lien.
 - Part des établissements d'un compte client ayant au moins un contact identifié.
-- Nombre de signaux `retenu` par mois, et part des signaux `ecarte` (qualité des règles).
+- Nombre de signaux `retained` par mois, et part des signaux `dismissed` (qualité des règles).
 - Zéro capture de profil non déclenchée par un humain (contrôle dans le journal des missions).
 
 ## 8. Questions ouvertes
@@ -226,13 +226,13 @@ CC1 et CC2 ne touchent aucune donnée personnelle hors dirigeants (déjà couver
 
 | # | Décision | Choix |
 |---|---|---|
-| D329 | Pack `prospection_b2b` | étend `organization`, `map_pin` (+ effectif par site), `person` (persona = rôle d'achat) ; liens `recommande`, `suit_le_compte`, `filiale_de`, `utilise_solution` ; hiérarchie `groupe_commercial` |
+| D329 | Pack `prospecting_b2b` | étend `organization`, `map_pin` (+ effectif par site), `person` (persona = rôle d'achat) ; liens `recommended`, `follows_account`, `subsidiary_of`, `uses_solution` ; hiérarchie `sales_group` |
 | D330 | Couverture | calculée à la lecture sur la hiérarchie, vue espace blanc |
 | D331 | Liens de groupe | GLEIF (consolidation) + Wikidata (à valider), provenance par source, pas de fusion |
 | D332 | Rapprochement | nœud `org_resolve`, candidats scorés, n'écrit rien |
 | D333 | Profil | `collect_page` mode `once`, déclenché par un humain, session de l'utilisateur, plafond compilé, extraction à valider |
-| D334 | Changement de poste | registre + recapture humaine + rappel `revoir_le`, jamais de surveillance automatique |
-| D335 | Signaux | type `signal_commercial` (détection × thème de l'org), flows du pack, notification aux suiveurs, LLM à valider |
+| D334 | Changement de poste | registre + recapture humaine + rappel `review_on`, jamais de surveillance automatique |
+| D335 | Signaux | type `sales_signal` (détection × thème de l'org), flows du pack, notification aux suiveurs, LLM à valider |
 | D336 | Score | fonction Starlark sans critère en dur, critères déclaratifs de l'org, société et site |
 | D337 | Listes | recherche enregistrée en import API ; salon en Excel + `org_resolve` |
 | D338 | Introduction | K51 restreint aux liens humains, profondeur ≤ 4 |
@@ -240,39 +240,39 @@ CC1 et CC2 ne touchent aucune donnée personnelle hors dirigeants (déjà couver
 | D340 | Pages | plan de compte, fiche concurrent |
 | D341 | Données personnelles | D298 codée, opposition, rétention 36 mois, effacement en coquille |
 | D342 | Assistant | aucun outil nouveau, pas de capture ni de changement de statut |
-| D343 | Monde | socle `entreprises` (NACE, effectif chiffré, LEI, pays) + un pack par pays, France d'abord ; passation des clés à la mise à jour |
+| D343 | Monde | socle `companies` (NACE, effectif chiffré, LEI, pays) + un pack par pays, France d'abord ; passation des clés à la mise à jour |
 
 ## 10. État d'implémentation
 
-### CC1 — pack `prospection_b2b` (2026-10-21, non commité)
+### CC1 — pack `prospecting_b2b` (2026-10-21, non commité)
 
 Livré : `crates/pnex-backend/packs/prospection_b2b.yaml` (D329), inscrit
 dans la liste des packs livrés ; les gardes existantes de validité des
 packs le couvrent.
 
 Choix faits en route :
-- **`ca_dernier` n'est pas temporel** : au noyau, une propriété temporelle
+- **`last_revenue` n'est pas temporel** : au noyau, une propriété temporelle
   (D178) est une série O2 ou un flux d'événements, pas une valeur par
-  exercice. Le pack porte `ca_dernier` (`money`) + `ca_exercice` (année).
+  exercice. Le pack porte `last_revenue` (`money`) + `revenue_year` (année).
   L'historique par exercice reste visible dans l'historique des versions de
   l'objet. À revoir si CC0 montre qu'une source donne plusieurs exercices.
-- **`filiale_de` sans `one_target`** : D331 garde côte à côte une mère
+- **`subsidiary_of` sans `one_target`** : D331 garde côte à côte une mère
   directe et une mère ultime (GLEIF) et des sources en conflit
   (GLEIF / Wikidata) sans les fusionner ; une cible unique contredirait
   cette règle. La hiérarchie montre alors le nœud sous ses deux parents
   (`also_under`, D305).
 
 Relecture de généricité (2026-10-21) : `persona` devient le rôle dans
-le comité d'achat (+ `champion`, `sponsor`), `suit_le_compte` porte un
-`role` libre, `entreprises_fr` 1.1.0 importe la tranche d'effectif de
+le comité d'achat (+ `champion`, `sponsor`), `follows_account` porte un
+`role` libre, `companies_fr` 1.1.0 importe la tranche d'effectif de
 chaque établissement. Constat CC0 en passant : l'API Recherche
 d'entreprises renvoie `finances` (CA et résultat net par exercice) quand
-la société publie ses comptes ; le mapping de `ca_dernier` en dépend.
+la société publie ses comptes ; le mapping de `last_revenue` en dépend.
 
 Socle mondial (D343, 2026-10-21) : `packs/entreprises.yaml` créé ;
-`entreprises_fr` 2.0.0 ne garde que SIREN, SIRET, NAF, tranche INSEE,
-NDA, Qualiopi et l'import, qui remplit `pays`, `code_activite` et
-l'effectif min/max ; `prospection_b2b` dépend du socle (`lei` et `pays` y
+`companies_fr` 2.0.0 ne garde que SIREN, SIRET, NAF, tranche INSEE,
+NDA, Qualiopi et l'import, qui remplit `country`, `activity_code` et
+l'effectif min/max ; `prospecting_b2b` dépend du socle (`lei` et `country` y
 sont passés). Passation des clés à la mise à jour couverte par un test
 (`country_pack_hands_shared_keys_to_the_worldwide_pack`). Limite : les
 codes NAF d'avant la rév. 2 donnent une classe NACE fausse (rare au
@@ -306,21 +306,21 @@ Appels réels sur Safran (562082909) et Mecachrome France (429853351) :
 
 ### CC2 — liens de groupe et rapprochement (2026-10-22, non commité)
 
-- **`filiale_de` passe dans `entreprises` 1.1.0** (la structure de groupe
-  n'est pas propre à la vente), avec un attribut `etat` (`a_valider`,
-  `confirme`) ; `prospection_b2b` 1.1.0 ne la déclare plus (passation par
+- **`subsidiary_of` passe dans `companies` 1.1.0** (la structure de groupe
+  n'est pas propre à la vente), avec un attribut `state` (`to_validate`,
+  `confirmed`) ; `prospecting_b2b` 1.1.0 ne la déclare plus (passation par
   `hands_over`).
-- **`entreprises_fr` 2.1.0** livre trois imports API par objet :
+- **`companies_fr` 2.1.0** livre trois imports API par objet :
   - *Identifiants d'entité juridique (GLEIF)* : par SIREN, pose le LEI et
     relie aux mères directe et ultime **déjà connues** par leur LEI
-    (`consolidation_directe` / `consolidation_ultime`, `confirme`) ; mère
+    (`direct_consolidation` / `ultimate_consolidation`, `confirmed`) ; mère
     directe = ultime → un seul lien ;
   - *Sociétés mères (GLEIF)* : par LEI (`filter[owns]`), crée les mères
     nommées (françaises par SIREN, étrangères par LEI + pays) ; le tour
     suivant du premier import pose le lien ;
   - *Mères et filiales (Wikidata)* : par SIREN (SPARQL, P1616 + P749/P355
     dans les deux sens), seules les sociétés qui ont un SIREN, lien
-    `wikidata` toujours `a_valider`.
+    `wikidata` toujours `to_validate`.
 - **Moteur d'import** (générique) :
   - `per_object` sans `param` : la valeur remplace `{value}` dans l'URL
     (chemin, texte SPARQL) ; seules les valeurs `[A-Za-z0-9._-]` y entrent ;
@@ -351,9 +351,9 @@ Limites :
 
 ### CC5, première partie — listes de ciblage et score (2026-10-22, non commité)
 
-- **Pack `prospection_fr` 1.0.0** (`requires: [entreprises_fr, prospection_b2b]`) :
-  le croisement pays × prospection (D343) ; ni `entreprises_fr` ni
-  `prospection_b2b` n'a à connaître l'autre. Il porte l'import **Liste de
+- **Pack `prospecting_b2b_fr` 1.0.0** (`requires: [companies_fr, prospecting_b2b]`) :
+  le croisement pays × prospection (D343) ; ni `companies_fr` ni
+  `prospecting_b2b` n'a à connaître l'autre. Il porte l'import **Liste de
   ciblage** (D337) : une recherche de l'API Recherche d'entreprises
   paginée (`page_param: page`, 25 par page, 400 pages = le plafond de
   10 000 de l'API). URL livrée = exemple (section C, ≥ 100 salariés,
@@ -364,27 +364,27 @@ Limites :
 - **Moteur d'import** :
   - `defaults` sur une entrée d'objet : constantes écrites seulement quand
     l'import **crée** l'objet. C'est ce qui fait entrer un nouveau SIREN en
-    `statut_compte = cible` sans jamais toucher le statut d'un compte connu ;
+    `account_status = target` sans jamais toucher le statut d'un compte connu ;
   - segment de chemin `@last` : la plus grande clé d'un objet ou le dernier
     élément d'un tableau (`finances.@last.ca` = CA du dernier exercice
     publié).
-- **Score de ciblage (D336)** dans `prospection_b2b` 1.1.0 :
-  - type `critere_ciblage` (propriété, opérateur `egal` / `parmi` /
-    `commence_par` / `au_moins` / `au_plus` / `renseigne`, valeur, points,
+- **Score de ciblage (D336)** dans `prospecting_b2b` 1.1.0 :
+  - type `targeting_criterion` (propriété, opérateur `equals` / `one_of` /
+    `starts_with` / `at_least` / `at_most` / `filled`, valeur, points,
     actif) : les critères sont des **objets de l'org**, le pack n'en livre
     aucun ;
   - fonctions Starlark `pb_criteres` et `pb_score` ; `organization` gagne
-    `score_detail` (une ligne par critère rempli) et `score_le` ;
+    `score_detail` (une ligne par critère rempli) et `scored_on` ;
   - modèle de flow « Prospection · target score », non déployé à
     l'installation : toutes les 15 minutes, jusqu'à 500 organisations non
-    notées du jour (`score_le ne $today`) ;
+    notées du jour (`scored_on ne $today`) ;
   - test : `pnex-node-starlark/tests/pack_rules.rs`.
 - Limites :
   - pas de score par site : `map_pin` est un type système qu'un flow
     n'écrit pas ; on filtre les sites sur leur effectif dans l'explorateur ;
   - 600 écritures par minute et par org (garde des nœuds ontologie) :
     4 300 comptes demandent environ 2 h de tours de 15 minutes ;
-  - `ca_exercice` n'est pas rempli par la liste (l'année reste une clé de
+  - `revenue_year` n'est pas rempli par la liste (l'année reste une clé de
     l'API) ;
   - listes de salon (fichier + `org_resolve`) : pas encore faites.
 
@@ -399,16 +399,16 @@ Limites :
   - **Graphe** de l'objet : `Neighborhood.colors` (contour du nœud) ;
   - **Carte** : `color` sur les points isolés de `/pois/cluster` (anneau et
     bord de l'étiquette dans `map.js`). Les grappes restent neutres.
-  `prospection_b2b` colore `statut_compte` et `statut_site`. La surcharge
+  `prospecting_b2b` colore `account_status` et `establishment_status`. La surcharge
   par l'org n'est pas faite : elle modifierait une propriété qui
   appartient au pack.
 - **D330, couverture lue à la volée** : une hiérarchie de pack peut
   déclarer `sums` (propriétés nombre additionnées) et `coverage` (liens qui
   couvrent, valeurs qui couvrent). `HierarchyView` rend `counts` (nœuds
   distincts par valeur colorée), `totals`, `white_space` (nombre) et
-  `white_space` sur chaque nœud non couvert, racine exclue. `groupe_commercial` :
+  `white_space` sur chaque nœud non couvert, racine exclue. `sales_group` :
   utilisateurs actuels et potentiels, couvert par `employs` ou un statut
-  `client`. Bandeau au-dessus de l'arbre, case « Espace blanc seulement ».
+  `customer`. Bandeau au-dessus de l'arbre, case « Espace blanc seulement ».
   Mot ajouté au lexique (garde : « zone blanche » refusé).
 - Restent de D330 : contacts par persona et signaux ouverts (le type
   signal arrive avec CC4).
@@ -421,9 +421,9 @@ Limites :
 - `GET /api/v1/ontology/path` prend `links` (types de liens séparés par des
   virgules, 20 au plus). Le filtre s'applique **dans** la marche récursive,
   avant le plafond de 5 000 liens : un graphe chargé de liens de registre
-  (`dirige`, `etablissement_de`) ne coupe pas un chemin entre personnes.
-- `pnex_core::ontology::api::INTRODUCTION_LINKS` = `knows`, `recommande`,
-  `employs`, `dirige`, `member_of` ; profondeur 4 (MAX_HOPS).
+  (`manages`, `establishment_of`) ne coupe pas un chemin entre personnes.
+- `pnex_core::ontology::api::INTRODUCTION_LINKS` = `knows`, `recommended`,
+  `employs`, `manages`, `member_of` ; profondeur 4 (MAX_HOPS).
 - UI : case « Chemin d'introduction » dans « Comment est-il relié à… » de
   l'inspecteur de dossier. Le chemin trouvé est surligné dans le graphe
   Sigma comme avant.
@@ -433,34 +433,34 @@ Limites :
   les sources des liens ouverts de ces types (500 au plus), le plus court
   chemin l'emporte. La marche part de la cible, une seule fois. UI : « Qui
   peut me présenter ? En partant de » sur la page d'un objet (choix du type
-  de lien, par exemple `suit_le_compte`). Testé dans le même test.
+  de lien, par exemple `follows_account`). Testé dans le même test.
 
 ### CC4, première partie — signaux et BODACC (2026-10-22, non commité)
 
-- **`signal_commercial`** dans `prospection_b2b` :
-  - propriétés : `cle` unique, `kind` (liste fermée D335), `theme`
-    (texte, la liste de l'org), `resume`, `extrait`, `date`, `source_url`,
-    `etat` (`a_valider` / `retenu` / `ecarte`, coloré) et `notifie_le` ;
-  - lien **`signal_sur`** (→ organisation, site, personne). Le nom
-    `concerne` était déjà pris par `quali_watch`, avec une seule cible et
-    un départ `ecart`.
-- **Import « Annonces légales (BODACC) »** dans `prospection_fr` :
+- **`sales_signal`** dans `prospecting_b2b` :
+  - propriétés : `ref` unique, `kind` (liste fermée D335), `topic`
+    (texte, la liste de l'org), `summary`, `excerpt`, `date`, `source_url`,
+    `state` (`to_validate` / `retained` / `dismissed`, coloré) et `notified_on` ;
+  - lien **`signal_about`** (→ organisation, site, personne). Le nom
+    `concerns` était déjà pris par `quali_watch`, avec une seule cible et
+    un départ `finding`.
+- **Import « Annonces légales (BODACC) »** dans `prospecting_b2b_fr` :
   - API opendatasoft de la DILA, par SIREN, `familleavis != dpc` (les
     dépôts de comptes sont du bruit) ;
   - seulement les comptes suivis : nouveau filtre générique
-    `per_object.only` (propriété ∈ valeurs), ici `statut_compte` ∈ client,
+    `per_object.only` (propriété ∈ valeurs), ici `account_status` ∈ client,
     prospect, cible ;
-  - `kind` : *Créations* → `nouvel_etablissement`, *Radiations* →
-    `fermeture_etablissement`, le reste → `annonce_legale` ;
-  - `extrait` décodé selon la famille : `modificationsgenerales`,
+  - `kind` : *Créations* → `new_establishment`, *Radiations* →
+    `establishment_closure`, le reste → `legal_notice` ;
+  - `excerpt` décodé selon la famille : `modificationsgenerales`,
     `jugement` ou `acte`. Ces champs sont du JSON dans une chaîne, d'où la
     nouvelle conversion générique `json` (puis `field:`) ;
-  - `etat` = `a_valider` posé par `defaults` (à la création seulement) :
+  - `state` = `to_validate` posé par `defaults` (à la création seulement) :
     une décision humaine n'est jamais écrasée ;
   - testé contre une imitation : `legal_announcements_become_signals`.
 - **Flow « Prospection · signals digest »** (brouillon) : chaque matin,
   `pb_digest` fait un texte des signaux non notifiés, puis `pb_notifie`
-  pose `notifie_le`. Le nœud Notification est à ajouter par l'org (canal
+  pose `notified_on`. Le nœud Notification est à ajouter par l'org (canal
   et modèle sont les siens, comme les relances de `quali_watch`).
 - Ligne au lexique « Signal commercial » ; la garde refuse « alerte
   commerciale ».
@@ -468,31 +468,37 @@ Limites :
   - signal « nouvel établissement » tiré d'un SIRET apparu lors d'une
     synchro ;
   - fait depuis : voir « Pages suivies » ci-dessous ;
-  - envoi à chaque suiveur (`suit_le_compte`) : le résumé part sur les
+  - envoi à chaque suiveur (`follows_account`) : le résumé part sur les
     canaux choisis par l'org.
 
 ### CC4, suite — listes de salon et pages suivies (2026-10-22)
 
-- **Listes de salon** (`prospection_fr` 1.1.0) :
-  - type `contact_liste` (clé `liste|nom|societe`, `rapprochement`
-    `trouve` / `a_revoir` / `introuvable` coloré, `siren_trouve`,
-    `candidats`) et lien `contact_de` (→ organisation, une cible) ;
+- **Listes de salon** (`prospecting_b2b_fr` 1.1.0) :
+  - **2026-10-27 (2.0.0)** : le type `list_contact`, le lien `contact_of` et
+    l'import de listes passent dans `prospecting_b2b` (générique, colonnes
+    `list`, `name`, `job_title`, `company`, `city`, `postal_code`, `email`) ;
+    `registry_id` remplace le SIREN retrouvé ; `prospecting_b2b_fr`
+    (ex-`prospection_fr`, convention `<pack générique>_<pays>`) ne garde que
+    la résolution SIREN, la liste de ciblage du registre et BODACC.
+  - type `list_contact` (clé `list|name|company`, `matching`
+    `found` / `to_review` / `not_found` coloré, `registry_id`,
+    `candidates`) et lien `contact_of` (→ organisation, une cible) ;
   - import fichier « Trade show or association list (file) » ;
   - flow « Prospection · list contacts to companies » : `org_resolve` ;
-    trouvé → organisation par SIREN + lien `contact_de` **proposé** ;
+    trouvé → organisation par SIREN + lien `contact_of` **proposé** ;
     ambigu ou introuvable → le contact est marqué.
-- **Pages suivies** (`prospection_b2b`) :
+- **Pages suivies** (`prospecting_b2b`) :
   - le crawl écrit dans l'enregistrement d'une page trois nouveaux champs :
     `text` (20 000 caractères au plus), `changed` (posé à vrai seulement
     quand le texte a changé depuis une visite précédente : la première
     visite est la référence) et `link_to` ;
-  - type `page_suivie` (`url` unique, `texte`, `modifiee`, `compte`) ;
+  - type `watched_page` (`url` unique, `text`, `changed`, `account`) ;
   - flow « Prospection · watched pages to signals » : toutes les heures,
-    les pages `modifiee` → `llm_text` (thèmes de l'org) → `ps_signal` →
-    `signal_commercial` `page_modifiee` à valider + `signal_sur`, puis
-    `modifiee` remis à faux ;
+    les pages `changed` → `llm_text` (thèmes de l'org) → `ps_signal` →
+    `sales_signal` `page_changed` à valider + `signal_about`, puis
+    `changed` remis à faux ;
   - les pages d'un concurrent (D311) passent par le même chemin : une page
-    suivie dont le `compte` est le concurrent.
+    suivie dont le `account` est le concurrent.
 - Tests : `pack_rules` (fonctions Starlark des deux packs) ; la chaîne
   crawl → signal n'a pas de test de bout en bout (LLM réel).
 
@@ -513,15 +519,15 @@ Limites :
   exposée au MCP comme `docs_create`) : crée la page, instantané du jour,
   puis la relie à l'objet. Le droit d'écrire le type est vérifié au
   moment de poser le lien.
-- **Pack `prospection_b2b`** : lien `page_sur` (`doc` → `organization`) et
-  trois modèles sur `organization`, `plan_de_compte`, `fiche_concurrent`
+- **Pack `prospecting_b2b`** : lien `page_about` (`doc` → `organization`) et
+  trois modèles sur `organization`, `account_plan`, `competitor_sheet`
   et `meeting_prep` (fiche de préparation de rendez-vous, utilisée par
   le bloc réunions). La validation des packs vérifie que le lien d'un
   modèle admet `doc` → son type.
 - **UI** : bouton « Nouvelle page » sur la page d'un objet, quand un
   modèle existe pour son type ; la page créée s'ouvre dans l'éditeur.
 - Test : `group_coverage_and_status_colours`, partie D340 (texte rendu
-  dans l'instantané, lien `page_sur`, 400 pour un modèle d'un autre
+  dans l'instantané, lien `page_about`, 400 pour un modèle d'un autre
   type) ; test unitaire du rendu.
 - Limite : instantané, pas une vue vivante. Pour rafraîchir, on recrée
   la page.
@@ -530,14 +536,14 @@ Limites :
 
 - **Préparation** : modèle `meeting_prep` (voir D340 ci-dessus), ouvert
   depuis l'organisation.
-- **Objets** (pack `prospection_b2b`) :
+- **Objets** (pack `prospecting_b2b`) :
   - `meeting` (date, objet `purpose`, statut `status` : `planned` / `held` / `cancelled` coloré,
     lieu, suite) ;
   - `coaching_criterion` (la liste de l'org : description, persona visé,
     actif) ;
   - liens `meeting_with` (→ organisation ou site), `takes_part_in` (personne →,
     côté `side` : `internal` | `customer`), `recording_of` (média →), `covered`
-    (→ critère, commentaire) ; `page_sur` admet `meeting`.
+    (→ critère, commentaire) ; `page_about` admet `meeting`.
 - **Enregistrement et résumé** : rien de nouveau dans les médias. On
   dépose le fichier, puis transcription, locuteurs et voix connues comme
   avant. Seul ajout générique : l'étape `summarize` accepte `focus`

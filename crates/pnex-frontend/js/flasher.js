@@ -1,20 +1,20 @@
-// Glue esptool-js pour le flash firmware depuis le navigateur (Web Serial —
-// Chromium uniquement). Ce module est le SEUL point d'interop JS du front :
-// bundlé par esbuild en IIFE (`bun run js:build` → assets/flasher.js) et
-// chargé comme script classique par App (main.rs). Il expose deux globales
-// consommées par src/flash.rs (wasm-bindgen) :
+// esptool-js glue for flashing firmware from the browser (Web Serial —
+// Chromium only). This module is the ONLY JS interop point of the front:
+// bundled by esbuild as an IIFE (`bun run js:build` → assets/flasher.js) and
+// loaded as a classic script by App (main.rs). It exposes two globals
+// consumed by src/flash.rs (wasm-bindgen):
 //
 //   window.pnexFlashSupported() -> boolean
 //   window.pnexFlash(entries: [{data: Uint8Array, address: number}],
 //                    onEvent: (json: string) => void) -> Promise
 //
-// onEvent reçoit des chaînes JSON {type:"stage"|"chip"|"progress"|"done"|"error", ...}
-// parsées côté Rust avec serde_json (pas de dépendance serde-wasm-bindgen).
+// onEvent receives JSON strings {type:"stage"|"chip"|"progress"|"done"|"error", ...}
+// parsed on the Rust side with serde_json (no serde-wasm-bindgen dependency).
 //
-// L'image servie par /api/v1/download/firmware/{id} est TOUJOURS une image
-// mergée flashable @0x0 (cf. pnex-firmware-builder/src/merge.rs : esp8266
-// image unique @0x0 ; esp32 bootloader+partitions+app mergées) → un seul
-// writeFlash à l'adresse 0. Paramètres alignés sur le merge serveur
+// The image served by /api/v1/download/firmware/{id} is ALWAYS a merged
+// image flashable @0x0 (see pnex-firmware-builder/src/merge.rs: esp8266
+// single image @0x0; esp32 bootloader+partitions+app merged) → a single
+// writeFlash at address 0. Parameters aligned with the server merge
 // (--flash-mode dio --flash-freq 40m --flash-size 4MB).
 
 import { ESPLoader, Transport } from "esptool-js";
@@ -81,12 +81,12 @@ const isBaudSwitchFailure = (err) =>
 window.pnexFlashSupported = () => "serial" in navigator;
 
 window.pnexFlash = async (entries, onEvent) => {
-  // entries = [{ data: Uint8Array, address: number }, ...] — un seul
-  // writeFlash multi-entrées : firmware mergé @0x0 (+ secteur PNEXCFG1
-  // @0x200000 pour le firmware générique, Brick 0 B0.1).
-  // requestPort() exige un geste utilisateur : cet appel doit partir du
-  // handler du clic, sans attente réseau intermédiaire (les octets firmware
-  // sont téléchargés à l'ouverture du modal, pas au clic).
+  // entries = [{ data: Uint8Array, address: number }, ...] — a single
+  // multi-entry writeFlash: merged firmware @0x0 (+ PNEXCFG1 sector
+  // @0x200000 for the generic firmware, Brick 0 B0.1).
+  // requestPort() requires a user gesture: this call must start from the
+  // click handler, with no network wait in between (the firmware bytes
+  // are downloaded when the modal opens, not on click).
   const port = await navigator.serial.requestPort();
   let transport = new Transport(port, true);
 
@@ -141,9 +141,9 @@ window.pnexFlash = async (entries, onEvent) => {
 
     emit(onEvent, { type: "done" });
   } catch (err) {
-    // Annulation du sélecteur de port (NotFoundError), port occupé, sync
-    // échouée… : remontées comme événement "error" (message lisible côté
-    // Rust) ET rejet de la promesse — Rust lit l'un ou l'autre.
+    // Port picker cancelled (NotFoundError), port busy, sync failed…:
+    // reported as an "error" event (readable message on the Rust side)
+    // AND a promise rejection — Rust reads either one.
     const message = err && err.message ? String(err.message) : String(err);
     emit(onEvent, { type: "error", message });
     throw err;

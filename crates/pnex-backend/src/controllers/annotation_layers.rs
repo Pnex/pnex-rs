@@ -1,12 +1,12 @@
-//! Annotations sur médias (D55–D60) — CRUD versionné des couches
-//! (`/api/v1/annotation-layers`, école `controllers/tours.rs`) + read model
-//! viewers `GET /api/v1/media/{asset_id}/annotations` : items fusionnés des
-//! couches publiées ancrées sur l'asset (D55), résolution device en batch
-//! (D57, école `link_target_labels`), 404 si asset inconnu. Share public
-//! exclu V1 (D58) : le read model est auth-scoped.
+//! Media annotations (D55–D60) — versioned CRUD of the layers
+//! (`/api/v1/annotation-layers`, `controllers/tours.rs` school) + viewers
+//! read model `GET /api/v1/media/{asset_id}/annotations`: merged items of the
+//! published layers anchored on the asset (D55), batch device resolution
+//! (D57, `link_target_labels` school), 404 if the asset is unknown. Public share
+//! excluded in V1 (D58): the read model is auth-scoped.
 //!
-//! Deux `Routes` (même prefix que `media.rs` : chemin `/{id}/annotations`
-//! disjoint — aucune collision axum).
+//! Two `Routes` (same prefix as `media.rs`: path `/{id}/annotations`
+//! disjoint — no axum collision).
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -36,7 +36,7 @@ fn field_status(field: &str, msg: &str) -> Response {
     super::field_error(field, msg)
 }
 
-/// Couche de l'org courante, sinon None (404 masqué cross-org).
+/// Layer of the current org, otherwise None (cross-org 404 masked).
 async fn find_layer(
     db: &DatabaseConnection,
     org: &OrgContext,
@@ -49,7 +49,7 @@ async fn find_layer(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Dernière version d'une couche (numéro le plus élevé).
+/// Latest version of a layer (highest number).
 async fn latest_version(
     db: &DatabaseConnection,
     layer_id: Uuid,
@@ -62,7 +62,7 @@ async fn latest_version(
         .map_err(|_| Error::InternalServerError)
 }
 
-/// Numéro de la version publiée (résolu depuis la FK circulaire).
+/// Number of the published version (resolved from the circular FK).
 async fn published_number_of(
     db: &DatabaseConnection,
     published_version_id: Option<Uuid>,
@@ -189,7 +189,7 @@ fn doc_violation(subject: &str, code: &str, message: String) -> Response {
     )
 }
 
-/// Extracteur du slug device d'une cible (None pour note).
+/// Extractor of a target's device slug (None for a note).
 fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
     match target {
         pnex_core::AnnotationTarget::Device { device_id } => Some(device_id),
@@ -203,8 +203,8 @@ fn device_slug(target: &pnex_core::AnnotationTarget) -> Option<&String> {
 
 // ─────────────────────────── POST /annotation-layers ───────────────────────────
 
-/// `POST /api/v1/annotation-layers` — crée la couche et sa version 1
-/// (une transaction, document vide). Non publiée.
+/// `POST /api/v1/annotation-layers` — creates the layer and its version 1
+/// (one transaction, empty document). Not published.
 #[utoipa::path(
     post,
     path = "/api/v1/annotation-layers",
@@ -300,8 +300,8 @@ struct ListLayersQuery {
     label: Option<String>,
 }
 
-/// `GET /api/v1/annotation-layers` — couches de l'org, paginées (D14),
-/// filtre search (nom) ; hydratation latest + publié en vrac (pas de N+1).
+/// `GET /api/v1/annotation-layers` — the org's layers, paginated (D14),
+/// search filter (name); bulk hydration of latest + published (no N+1).
 #[utoipa::path(
     get,
     path = "/api/v1/annotation-layers",
@@ -371,7 +371,7 @@ async fn list(
         .await
         .map_err(|_| Error::InternalServerError)?;
 
-    // Hydratation en vrac (pas de N+1) : latest + numéro publié par couche.
+    // Bulk hydration (no N+1): latest + published number per layer.
     let ids: Vec<Uuid> = page_rows.iter().map(|l| l.id).collect();
     let latest: std::collections::HashMap<Uuid, i64> = if ids.is_empty() {
         Default::default()
@@ -442,7 +442,7 @@ struct DetailQuery {
     version: Option<i64>,
 }
 
-/// `GET /api/v1/annotation-layers/{id}[?version=n]` — détail + document.
+/// `GET /api/v1/annotation-layers/{id}[?version=n]` — detail + document.
 #[utoipa::path(
     get,
     path = "/api/v1/annotation-layers/{id}",
@@ -506,8 +506,8 @@ async fn detail(
 
 // ─────────────────────────── PATCH /annotation-layers/{id} ───────────────────────────
 
-/// `PATCH /{id}` — nouvelle version append-only. 409 si
-/// `expected_version_number` ≠ version courante.
+/// `PATCH /{id}` — new append-only version. 409 if
+/// `expected_version_number` ≠ current version.
 #[utoipa::path(
     patch,
     path = "/api/v1/annotation-layers/{id}",
@@ -555,8 +555,8 @@ async fn update(
 
 // ─────────────────────────── DELETE /annotation-layers/{id} ───────────────────────────
 
-/// `DELETE /{id}` — 204 ; versions en cascade. Aucun octet à purger (D21).
-/// Pas de purge D42 : KIND_ANNOTATION_LAYER = porte ouverte D60(5).
+/// `DELETE /{id}` — 204; versions cascade. No bytes to purge (D21).
+/// No D42 purge: KIND_ANNOTATION_LAYER = open door D60(5).
 #[utoipa::path(
     delete,
     path = "/api/v1/annotation-layers/{id}",
@@ -596,7 +596,7 @@ async fn delete(
         .map_err(|_| Error::InternalServerError)?;
     tracing::info!(
         layer_id = layer.id.to_string().as_str(),
-        "couche d'annotations supprimée"
+        "annotation layer deleted"
     );
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -612,8 +612,8 @@ struct VersionsQuery {
     offset: Option<String>,
 }
 
-/// `GET /{id}/versions` — historique append-only, paginé (D14), du plus
-/// récent au plus ancien.
+/// `GET /{id}/versions` — append-only history, paginated (D14), from the most
+/// recent to the oldest.
 #[utoipa::path(
     get,
     path = "/api/v1/annotation-layers/{id}/versions",
@@ -674,8 +674,8 @@ async fn versions(
 
 // ─────────────────────────── GET /{id}/versions/{n} ───────────────────────────
 
-/// `GET /{id}/versions/{n}` — document d'une version précise (audit /
-/// rechargement éditeur — « restaurer » = la charger puis save).
+/// `GET /{id}/versions/{n}` — document of a given version (audit /
+/// editor reload — "restore" = load it then save).
 #[utoipa::path(
     get,
     path = "/api/v1/annotation-layers/{id}/versions/{version_number}",
@@ -723,8 +723,8 @@ async fn version_detail(
 
 // ─────────────────────────── POST /{id}/publish | /unpublish ───────────────────────────
 
-/// `POST /{id}/publish` — publie une version (version_number absent =
-/// dernière) : simple pointeur (le doc publié sert le read model).
+/// `POST /{id}/publish` — publishes a version (version_number absent =
+/// latest): a mere pointer (the published doc serves the read model).
 #[utoipa::path(
     post,
     path = "/api/v1/annotation-layers/{id}/publish",
@@ -776,7 +776,7 @@ async fn publish(
     tracing::info!(
         layer_id = layer.id.to_string().as_str(),
         version = version_number,
-        "couche d'annotations publiée"
+        "annotation layer published"
     );
     let doc: pnex_core::AnnotationDoc =
         serde_json::from_value(version.doc).map_err(|_| Error::InternalServerError)?;
@@ -794,8 +794,8 @@ async fn publish(
     .into_response())
 }
 
-/// `POST /{id}/unpublish` — pointeur → NULL ; les items disparaissent de
-/// tous les viewers, aucun octet déplacé.
+/// `POST /{id}/unpublish` — pointer → NULL; the items disappear from
+/// all viewers, no bytes moved.
 #[utoipa::path(
     post,
     path = "/api/v1/annotation-layers/{id}/unpublish",
@@ -826,7 +826,7 @@ async fn unpublish(
         .map_err(|_| Error::InternalServerError)?;
     tracing::info!(
         layer_id = layer.id.to_string().as_str(),
-        "couche d'annotations dépubliée"
+        "annotation layer unpublished"
     );
     let latest = latest_version(&ctx.db, layer.id).await?;
     let latest_number = latest.as_ref().map(|v| v.version_number).unwrap_or(0);
@@ -839,12 +839,12 @@ async fn unpublish(
 
 // ─────────────────────────── Read model viewers ───────────────────────────
 
-/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — items fusionnés des couches
-/// publiées ancrées sur l'asset, in the read context (see `ReadScope`) (union, ordre déterministe : couches par id
-/// asc, items dans l'ordre du doc), résolution device en batch (D57) —
-/// référence morte tolérée (dead: true, jamais 500, école S7). 404 si asset
-/// inconnu dans l'org (masqué). Auth-scoped : lecture membre (share public
-/// exclu V1, D58).
+/// `GET /api/v1/media/{asset_id}/annotations[?tour=]` — merged items of the published
+/// layers anchored on the asset, in the read context (see `ReadScope`) (union, deterministic
+/// order: layers by id asc, items in doc order), batch device resolution (D57) —
+/// dead reference tolerated (dead: true, never 500, S7 school). 404 if the asset
+/// is unknown in the org (masked). Auth-scoped: member read (public share
+/// excluded in V1, D58).
 /// Context of a read: a standalone media shows only the sets attached to
 /// that media; a tour (`?tour=`) shows only that tour's sets — the two never
 /// mix (D147).
@@ -885,7 +885,7 @@ async fn media_annotations(
         return Err(Error::NotFound);
     };
     let asset_str = asset.id.to_string();
-    // Couches publiées de l'org, ordre id asc = déterministe — restricted to
+    // Published layers of the org, id asc order = deterministic — restricted to
     // the read context (the tour's sets, or the sets of this media).
     // Standalone media: the sets of this media + free sets (attached to
     // nothing); never a tour's sets.
@@ -941,7 +941,7 @@ async fn media_annotations(
         };
         let Ok(doc) = serde_json::from_value::<pnex_core::AnnotationDoc>(published.doc.clone())
         else {
-            continue; // doc illisible : toléré (jamais 500)
+            continue; // unreadable doc: tolerated (never 500)
         };
         for item in doc
             .items
@@ -963,7 +963,7 @@ async fn media_annotations(
         }
     }
 
-    // Résolution device en batch (école link_target_labels, anti N+1).
+    // Batch device resolution (link_target_labels school, anti N+1).
     let mut slugs: Vec<String> = items
         .iter()
         .filter_map(|i| device_slug(&i.target).cloned())
@@ -1019,8 +1019,8 @@ pub fn routes() -> Routes {
         .add("/{id}/unpublish", post(unpublish))
 }
 
-/// Read model viewers — même prefix que `media.rs`, chemin `/{id}/annotations`
-/// disjoint (aucune collision axum).
+/// Viewers read model — same prefix as `media.rs`, path `/{id}/annotations`
+/// disjoint (no axum collision).
 pub fn media_routes() -> Routes {
     Routes::new()
         .prefix("/api/v1/media")

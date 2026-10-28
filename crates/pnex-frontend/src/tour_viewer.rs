@@ -1,18 +1,18 @@
-//! Pont vers le viewer de tour — `assets/viewers.js` expose
-//! `window.pnexViewers.tour = {mount, switch, nav, unmount}` (pannellum
-//! unique, décision S12). École `media_viewer.rs` : retry 100 ms × 50,
-//! échec → `false` (badge « aperçu indisponible », jamais de panique) ;
-//! wasm = `js_sys::Reflect`, natif = `document::eval` (glue **synchrone** :
-//! le mount pannellum ne renvoie pas de promesse).
+//! Bridge to the tour viewer — `assets/viewers.js` exposes
+//! `window.pnexViewers.tour = {mount, switch, nav, unmount}` (single
+//! pannellum, decision S12). `media_viewer.rs` school: retry 100 ms × 50,
+//! failure → `false` ("preview unavailable" badge, never a panic);
+//! wasm = `js_sys::Reflect`, native = `document::eval` (**synchronous** glue:
+//! the pannellum mount returns no promise).
 //!
-//! Navigation par hotspots : la closure JS pose un global **chaîne JSON**
-//! `window.__pnexTourLastNav` (`{seq, scene_id, floor_id}`) — Rust **poll**
-//! via [`take_nav`] (pattern global-chaîne-JSON de tron/map) ; le seq
-//! monotone évite de rejouer une navigation déjà consommée.
+//! Hotspot navigation: the JS closure sets a **JSON string** global
+//! `window.__pnexTourLastNav` (`{seq, scene_id, floor_id}`) — Rust **polls**
+//! via [`take_nav`] (global-JSON-string pattern of tron/map); the monotonic
+//! seq avoids replaying an already consumed navigation.
 
 use serde::{Deserialize, Serialize};
 
-/// Hotspot d'une scène posée dans le viewer (position sphère + cible).
+/// Hotspot of a scene placed in the viewer (sphere position + target).
 #[derive(Debug, Clone, Serialize)]
 pub struct TourHotspotView {
     pub yaw: f64,
@@ -20,14 +20,14 @@ pub struct TourHotspotView {
     pub target_scene: String,
     pub target_floor: String,
     pub label: String,
-    /// `walk` | `stair` (dérivé) — choisit la flèche PNeX côté glue JS.
+    /// `walk` | `stair` (derived) — picks the PNeX arrow in the JS glue.
     pub kind: String,
-    /// Id du lien du doc — cible du drag de repositionnement.
+    /// Id of the doc link — target of the repositioning drag.
     pub link_id: String,
 }
 
-/// Scène montable : URL blob/data-URI **déjà résolue** (le fetch d'octets
-/// reste côté Rust — la glue JS est synchrone), vue initiale + hotspots.
+/// Mountable scene: blob/data-URI URL **already resolved** (the byte fetch
+/// stays in Rust — the JS glue is synchronous), initial view + hotspots.
 #[derive(Debug, Clone, Serialize)]
 pub struct TourSceneView {
     pub scene_id: String,
@@ -39,7 +39,7 @@ pub struct TourSceneView {
     pub hotspots: Vec<TourHotspotView>,
 }
 
-/// Navigation remontée par un clic hotspot.
+/// Navigation reported by a hotspot click.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct TourNav {
     pub seq: u64,
@@ -47,7 +47,7 @@ pub struct TourNav {
     pub floor_id: String,
 }
 
-/// Repositionnement d'un hotspot (drag en preview) remonté au doc.
+/// Repositioning of a hotspot (drag in preview) reported to the doc.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct HotspotMove {
     pub seq: u64,
@@ -58,28 +58,28 @@ pub struct HotspotMove {
 
 // ───────────────────────── Annotations (D55–D60) ─────────────────────────
 
-/// Marqueur d'annotation d'une scène posé dans le viewer (D58) — hotspot
-/// pannellum `pnex-annot pnex-annot-{kind}`, classes **strictement
-/// disjointes** de `.pnex-hotspot` (le drag nav résout par miroir index).
+/// Annotation marker of a scene placed in the viewer (D58) — pannellum
+/// hotspot `pnex-annot pnex-annot-{kind}`, classes **strictly
+/// disjoint** from `.pnex-hotspot` (the nav drag resolves by index mirror).
 #[derive(Debug, Clone, Serialize)]
 pub struct AnnotMarkerView {
-    /// Id d'item du doc (la glue préfixe `annot-` pour le DOM).
+    /// Item id of the doc (the glue prefixes `annot-` for the DOM).
     pub id: String,
     pub yaw: f64,
     pub pitch: f64,
-    /// `device|pin|status|note` — choisit la couleur du marqueur.
+    /// `device|pin|status|note` — picks the marker colour.
     pub kind: String,
     pub label: String,
 }
 
-/// Clic d'un marqueur d'annotation (global `__pnexAnnotClick`).
+/// Click on an annotation marker (global `__pnexAnnotClick`).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct AnnotClick {
     pub seq: u64,
     pub item_id: String,
 }
 
-/// Pose d'un marqueur (clic sur le pano hors marqueur, mode éditeur —
+/// Placement of a marker (click on the pano off a marker, editor mode —
 /// global `__pnexAnnotPlace`). Panorama: `yaw`/`pitch`
 /// (`mouseEventToCoords`); splat: the picked world point `x`/`y`/`z`.
 /// Plain optional fields (no flatten/untagged: arbitrary_precision).
@@ -98,7 +98,7 @@ pub struct AnnotPlace {
     pub z: Option<f64>,
 }
 
-/// Drag d'ajustement d'un marqueur (mode éditeur — global
+/// Adjustment drag of a marker (editor mode — global
 /// `__pnexAnnotMove`), same coordinates as [`AnnotPlace`].
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct AnnotMove {
@@ -238,8 +238,8 @@ pub async fn follow_cards(host_id: &str, overlay_id: &str, on: bool) -> bool {
     .await
 }
 
-/// Monte la scène dans le div `host_id`. Retry 100 ms × 50 (le bundle peut
-/// finir de charger après le premier rendu) ; `true` si monté.
+/// Mounts the scene in the `host_id` div. Retry 100 ms × 50 (the bundle may
+/// finish loading after the first render); `true` if mounted.
 pub async fn mount(host_id: &str, scene: &TourSceneView) -> bool {
     for _ in 0..50 {
         if try_scene_once("mount", host_id, scene).await {
@@ -250,10 +250,10 @@ pub async fn mount(host_id: &str, scene: &TourSceneView) -> bool {
     false
 }
 
-/// Change de scène : destroy + re-mount (S13 — une seule texture en mémoire).
-/// Même retry que le mount : un échec transitoire (contexte WebGL pas encore
-/// libéré par le GC, bundle en cours) sinon laisse un viewer vide sans
-/// retour — le composant affiche le badge `load_failed` si tout échoue.
+/// Switches scene: destroy + re-mount (S13 — a single texture in memory).
+/// Same retry as the mount: a transient failure (WebGL context not yet
+/// freed by the GC, bundle loading) would otherwise leave an empty viewer
+/// with no feedback — the component shows the `load_failed` badge if all fails.
 pub async fn switch_scene(host_id: &str, scene: &TourSceneView) -> bool {
     for _ in 0..50 {
         if try_scene_once("switchScene", host_id, scene).await {
@@ -264,31 +264,31 @@ pub async fn switch_scene(host_id: &str, scene: &TourSceneView) -> bool {
     false
 }
 
-/// Démonte le viewer du hôte — fire-and-forget.
+/// Unmounts the host's viewer — fire-and-forget.
 pub fn unmount(host_id: &str) {
     unmount_impl(host_id);
 }
 
-/// Lit la dernière navigation hotspot : `Some` si `seq` > `prev_seq` —
-/// l'appelant mémorise le seq consommé.
+/// Reads the last hotspot navigation: `Some` if `seq` > `prev_seq` —
+/// the caller remembers the consumed seq.
 pub async fn take_nav(prev_seq: u64) -> Option<TourNav> {
     let raw = read_nav_global().await?;
     let nav: TourNav = serde_json::from_str(&raw).ok()?;
     (nav.seq > prev_seq).then_some(nav)
 }
 
-/// Lit le dernier drag de hotspot : même contrat seq que [`take_nav`].
+/// Reads the last hotspot drag: same seq contract as [`take_nav`].
 pub async fn take_hotspot_move(prev_seq: u64) -> Option<HotspotMove> {
     let raw = read_move_global().await?;
     let mv: HotspotMove = serde_json::from_str(&raw).ok()?;
     (mv.seq > prev_seq).then_some(mv)
 }
 
-/// Pose/remplace les marqueurs d'annotations de la scène montée
-/// (**post-mount** — `setAnnotations`, remove/add de hotspots, JAMAIS de
-/// re-mount du viewer : flicker + rechargement texture, D58). Retry
-/// 100 ms × 50 comme le mount (viewer pas encore prêt au premier tick).
-/// `editable` active le drag d'ajustement (mode éditeur uniquement).
+/// Sets/replaces the annotation markers of the mounted scene
+/// (**post-mount** — `setAnnotations`, remove/add of hotspots, NEVER a
+/// re-mount of the viewer: flicker + texture reload, D58). Retry
+/// 100 ms × 50 like the mount (viewer not ready yet on the first tick).
+/// `editable` enables the adjustment drag (editor mode only).
 pub async fn set_annotations(host_id: &str, markers: &[AnnotMarkerView], editable: bool) -> bool {
     let json = serde_json::to_string(markers).unwrap_or_default();
     call_with_retry(
@@ -316,21 +316,21 @@ pub async fn set_tour_editable(host_id: &str, on: bool) -> bool {
     false
 }
 
-/// Lit le dernier clic de marqueur : contrat seq de [`take_nav`].
+/// Reads the last marker click: seq contract of [`take_nav`].
 pub async fn take_annot_click(prev_seq: u64) -> Option<AnnotClick> {
     let raw = read_annot_global("__pnexAnnotClick").await?;
     let click: AnnotClick = serde_json::from_str(&raw).ok()?;
     (click.seq > prev_seq).then_some(click)
 }
 
-/// Lit la dernière pose de marqueur : contrat seq de [`take_nav`].
+/// Reads the last marker placement: seq contract of [`take_nav`].
 pub async fn take_annot_place(prev_seq: u64) -> Option<AnnotPlace> {
     let raw = read_annot_global("__pnexAnnotPlace").await?;
     let place: AnnotPlace = serde_json::from_str(&raw).ok()?;
     (place.seq > prev_seq).then_some(place)
 }
 
-/// Lit le dernier drag de marqueur : contrat seq de [`take_nav`].
+/// Reads the last marker drag: seq contract of [`take_nav`].
 pub async fn take_annot_move(prev_seq: u64) -> Option<AnnotMove> {
     let raw = read_annot_global("__pnexAnnotMove").await?;
     let mv: AnnotMove = serde_json::from_str(&raw).ok()?;
@@ -359,7 +359,7 @@ async fn try_scene_once(method: &str, host_id: &str, scene: &TourSceneView) -> b
     .unwrap_or(false)
 }
 
-/// Résout `window.<objet>` (globales posées par viewers.js).
+/// Resolves `window.<object>` (globals set by viewers.js).
 #[cfg(target_arch = "wasm32")]
 fn global_method(object: &str, method: &str) -> Option<wasm_bindgen::JsValue> {
     js_sys::Reflect::get(&js_sys::global(), &wasm_bindgen::JsValue::from_str(object))
@@ -371,11 +371,11 @@ fn global_method(object: &str, method: &str) -> Option<wasm_bindgen::JsValue> {
 
 #[cfg(target_arch = "wasm32")]
 async fn read_nav_global() -> Option<String> {
-    // Lecture du GLOBAL BRUT (chaîne JSON) — le contrat documenté en tête
-    // de fichier. Passer par `tour.nav()` renvoie l'objet JS déjà parsé
-    // (JSON.parse côté glue) sur lequel `as_string()` échoue → None à
-    // chaque tick : la nav hotspot n'a jamais marché sur le web (constat
-    // 2026-09-12). Symétrique de `read_move_global`.
+    // Read of the RAW GLOBAL (JSON string) — the contract documented at the
+    // top of the file. Going through `tour.nav()` returns the already parsed
+    // JS object (JSON.parse in the glue) on which `as_string()` fails → None
+    // on every tick: hotspot nav never worked on the web (finding
+    // 2026-09-12). Symmetric of `read_move_global`.
     js_sys::Reflect::get(
         &js_sys::global(),
         &wasm_bindgen::JsValue::from_str("__pnexTourLastNav"),
@@ -386,7 +386,7 @@ async fn read_nav_global() -> Option<String> {
 
 #[cfg(target_arch = "wasm32")]
 async fn read_move_global() -> Option<String> {
-    // Global chaîne JSON `__pnexTourHotspotMove` posé par la glue JS.
+    // JSON string global `__pnexTourHotspotMove` set by the JS glue.
     read_annot_global("__pnexTourHotspotMove").await
 }
 
@@ -431,8 +431,8 @@ async fn try_set_tour_editable_once(host_id: &str, on: bool) -> bool {
     .unwrap_or(false)
 }
 
-/// Lecture du GLOBAL BRUT (chaîne JSON) d'un événement annotation —
-/// symétrique de `read_nav_global` (jamais l'objet parsé, bug take_nav
+/// Read of the RAW GLOBAL (JSON string) of an annotation event —
+/// symmetric of `read_nav_global` (never the parsed object, take_nav bug
 /// 2026-09-12).
 #[cfg(target_arch = "wasm32")]
 async fn read_annot_global(name: &str) -> Option<String> {
@@ -464,12 +464,12 @@ async fn sleep_ms(ms: u32) {
 #[cfg(target_arch = "wasm32")]
 fn log_device(_message: &str) {}
 
-// ─────────────────────────── natif (webview) ───────────────────────────
+// ─────────────────────────── native (webview) ───────────────────────────
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn try_scene_once(method: &str, host_id: &str, scene: &TourSceneView) -> bool {
     let json = serde_json::to_string(scene).unwrap_or_default();
-    // Échappement pour l'injection en littéral JS simple-quote.
+    // Escaping for injection as a single-quoted JS literal.
     let host_q = host_id.replace('\'', "");
     let json_q = json.replace('\\', "\\\\").replace('\'', "\\'");
     eval_bool(format!(
@@ -478,7 +478,7 @@ async fn try_scene_once(method: &str, host_id: &str, scene: &TourSceneView) -> b
     .await
 }
 
-/// Eval JS → bool (webview native — école tron.rs / media_viewer.rs).
+/// JS eval → bool (native webview — tron.rs / media_viewer.rs school).
 #[cfg(not(target_arch = "wasm32"))]
 async fn eval_bool(js: String) -> bool {
     dioxus::document::eval(&js)
@@ -530,7 +530,7 @@ async fn try_set_tour_editable_once(host_id: &str, on: bool) -> bool {
     .await
 }
 
-/// Lecture du global brut (chaîne JSON) d'un événement annotation.
+/// Read of the raw global (JSON string) of an annotation event.
 #[cfg(not(target_arch = "wasm32"))]
 async fn read_annot_global(name: &str) -> Option<String> {
     let name_q = name.replace('\'', "");

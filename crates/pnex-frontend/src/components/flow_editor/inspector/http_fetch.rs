@@ -4,7 +4,7 @@ use crate::components::secret_field::{can_manage_secrets, SecretSlotField};
 use crate::components::ui::FIELD_LABEL;
 use pnex_core::SecretSlot;
 
-/// Mutation ciblée de la config `http_fetch` du nœud sélectionné.
+/// Targeted mutation of the selected node's `http_fetch` config.
 fn patch_http_fetch(cx: &mut EditorCx, f: impl FnOnce(&mut HttpFetchNodeConfig) + 'static) {
     patch_selected(cx, move |node: &mut FlowNode| {
         if let FlowNodeKind::HttpFetch { config } = &mut node.kind {
@@ -13,10 +13,10 @@ fn patch_http_fetch(cx: &mut EditorCx, f: impl FnOnce(&mut HttpFetchNodeConfig) 
     });
 }
 
-/// Formulaire du nœud `pnex-http-fetch` (C1a) — requête HTTP « type curl ».
-/// Écoles : CoolPropForm (signal local par champ texte), champ `name` de
-/// l'Inspector (sous-champs auth/proxy pilotés par le graphe), NotifyVarRow
-/// (lignes headers répétables, composant dédié — pas de `let` dans le for).
+/// Form of the `pnex-http-fetch` node (C1a) — "curl-like" HTTP request.
+/// Patterns: CoolPropForm (local signal per text field), the Inspector's
+/// `name` field (auth/proxy sub-fields driven by the graph), NotifyVarRow
+/// (repeatable header rows, dedicated component — no `let` in the for).
 #[component]
 pub(super) fn HttpFetchForm(
     mut cx: EditorCx,
@@ -26,8 +26,8 @@ pub(super) fn HttpFetchForm(
     let mut url = use_signal(move || initial.url.clone());
     let mut timeout_raw = use_signal(move || initial.timeout_secs.to_string());
     let mut body_raw = use_signal(move || initial.body.clone().unwrap_or_default());
-    // Headers : signal unique `Vec<(name, value)>`, synchronisé au graphe à
-    // chaque mutation (add/change/remove).
+    // Headers: a single `Vec<(name, value)>` signal, synced to the graph on
+    // every mutation (add/change/remove).
     let mut headers = use_signal(move || {
         let rows: Vec<(String, String)> = initial
             .headers
@@ -37,9 +37,9 @@ pub(super) fn HttpFetchForm(
         rows
     });
 
-    // Valeurs d'affichage des sous-champs auth/proxy : dérivées des props à
-    // chaque rendu (le graphe est la source de vérité — pas de signal local
-    // qui se périmerait au changement de mode).
+    // Display values of the auth/proxy sub-fields: derived from the props on
+    // every render (the graph is the source of truth — no local signal
+    // that would go stale on mode change).
     // Secret fields are vault slots (secrets.md S5): typed values become
     // the node's dedicated secret on save, picks are references.
     let (auth_username, auth_name, auth_secret) = match &initial.auth {
@@ -500,8 +500,8 @@ pub(super) fn HttpFetchForm(
     }
 }
 
-/// Une ligne header nom/valeur — composant dédié (pas de `let` dans le for
-/// rsx, piège dioxus). `on_change((index, name, value))` remonte la saisie.
+/// A name/value header row — dedicated component (no `let` in the rsx
+/// for, dioxus pitfall). `on_change((index, name, value))` reports the input.
 #[component]
 fn HttpFetchHeaderRow(
     index: usize,

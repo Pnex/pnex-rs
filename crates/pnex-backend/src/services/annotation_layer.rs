@@ -1,15 +1,15 @@
-//! Écriture des couches d'annotations (D55–D60) — point d'entrée **unique**
-//! des versions de couches : le contrôleur HTTP
-//! (`controllers/annotation_layers.rs`) passe par ici, jamais d'écriture
-//! directe (école `services/tour.rs`).
+//! Writing of annotation layers (D55–D60) — **single** entry point
+//! for layer versions: the HTTP controller
+//! (`controllers/annotation_layers.rs`) goes through here, never a direct
+//! write (`services/tour.rs` pattern).
 //!
-//! Sémantique : append-only (save = nouvelle version), concurrence optimiste
-//! (`expected_version_number` ≠ latest → 409). La validation est en deux
-//! étages : structurelle pure (`pnex_core::validate_annotation_doc`) puis
-//! **en base** — chaque asset référencé doit exister dans l'org avec le kind
-//! requis par sa géométrie (`panorama` pour `Equirect`, `photo`/`floorplan`
-//! pour `Flat` — n'importe quelle image plate s'affiche) et chaque device
-//! ciblé (slug) doit exister dans `device_registries` de l'org.
+//! Semantics: append-only (save = new version), optimistic concurrency
+//! (`expected_version_number` ≠ latest → 409). Validation has two
+//! stages: pure structural (`pnex_core::validate_annotation_doc`) then
+//! **in the DB** — each referenced asset must exist in the org with the kind
+//! required by its geometry (`panorama` for `Equirect`, `photo`/`floorplan`
+//! for `Flat` — any flat image is displayed) and each targeted device
+//! (slug) must exist in the org's `device_registries`.
 
 use pnex_core::{
     validate_annotation_doc, AnnotationDoc, AnnotationGeometry, AnnotationTarget,
@@ -27,42 +27,42 @@ use crate::models::_entities::{
     tours,
 };
 
-/// Erreurs d'écriture d'une couche — le contrôleur les mappe en HTTP
-/// (400 champ/violations, 409 conflit, 500).
+/// Write errors of a layer — the controller maps them to HTTP
+/// (400 field/violations, 409 conflict, 500).
 #[derive(Debug)]
 pub enum AnnotationLayerWriteError {
-    /// Nom vide après trim.
+    /// Empty name after trim.
     NameRequired,
-    /// Nom > 200 caractères.
+    /// Name > 200 characters.
     NameTooLong,
     /// `validate_annotation_doc` non satisfait (structurel).
     Doc(Vec<AnnotationViolation>),
-    /// Asset référencé inexistant dans l'org (ou id non-UUID).
+    /// Referenced asset missing from the org (or non-UUID id).
     UnknownAsset { id: String },
-    /// Asset référencé avec un kind hors liste (`expected` : kinds admis).
+    /// Referenced asset with a kind outside the list (`expected`: allowed kinds).
     BadAssetKind {
         id: String,
         expected: &'static [&'static str],
     },
-    /// Device ciblé (slug) inexistant dans l'org.
+    /// Targeted device (slug) missing from the org.
     UnknownDevice { device_id: String },
     /// A `control` item references a control absent from the org.
     UnknownControl { id: uuid::Uuid },
-    /// Item ancré sur un média autre que celui déclaré par l'ensemble
-    /// (pivot UX : un ensemble = un média ; un ensemble-tour : un média
-    /// de scène du tour).
+    /// Item anchored on a media other than the one declared by the set
+    /// (UX pivot: one set = one media; a tour set: a scene media
+    /// of the tour).
     AnchorMismatch { id: String },
-    /// Association ambiguë : média ET tour déclarés (XOR attendu).
+    /// Ambiguous association: media AND tour declared (XOR expected).
     MediaAndTour,
-    /// Tour associé inexistant dans l'org.
+    /// Associated tour missing from the org.
     UnknownTour { id: String },
     /// Concurrence optimiste perdue.
     Conflict { expected: i64, current: i64 },
-    /// Échec base de données.
+    /// Database failure.
     Db,
 }
 
-/// Validation commune (nom + document structurel) avant toute écriture.
+/// Common validation (name + structural document) before any write.
 fn validate_layer_write(name: &str, doc: &AnnotationDoc) -> Result<(), AnnotationLayerWriteError> {
     let name = name.trim();
     if name.is_empty() {
@@ -83,9 +83,9 @@ fn kinds_for(geometry: &AnnotationGeometry) -> &'static [&'static str] {
     pnex_core::geometry_media_kinds(geometry)
 }
 
-/// Validation **en base** : chaque `media_asset_id` référencé doit exister
-/// dans l'org avec le kind requis par sa géométrie — requête unique en vrac
-/// (pas de N+1, école `validate_doc_assets`).
+/// **In-DB** validation: each referenced `media_asset_id` must exist
+/// in the org with the kind required by its geometry — single bulk query
+/// (no N+1, `validate_doc_assets` pattern).
 async fn validate_doc_assets(
     db: &DatabaseConnection,
     org_id: i64,
@@ -136,10 +136,10 @@ async fn validate_doc_assets(
     Ok(())
 }
 
-/// Validation **en base** des cibles devices (D57 : device identifié par
-/// slug, existence dans l'org) — batch, école `validate_doc_assets`.
-/// La pin n'est pas résolue ici (identité machine : existence du device
-/// suffit ; une pin inexistante s'affichera vide, toléré école S7).
+/// **In-DB** validation of the device targets (D57: device identified by
+/// slug, existence in the org) — batch, `validate_doc_assets` pattern.
+/// The pin is not resolved here (machine identity: the device's existence
+/// is enough; a missing pin will display empty, tolerated per S7).
 async fn validate_doc_devices(
     db: &DatabaseConnection,
     org_id: i64,
@@ -192,8 +192,8 @@ async fn validate_doc_devices(
     Ok(())
 }
 
-/// Numéro de la dernière version d'une couche (0 si aucune — ne doit pas
-/// arriver : la création pose toujours v1).
+/// Number of the latest version of a layer (0 if none — should not
+/// happen: creation always sets v1).
 /// D131: provisions the controls declared by the `control` items (nil id +
 /// kind), keeps the links to existing controls of the org, and returns the
 /// document with every control item bound — the version stored. A link to
@@ -263,8 +263,8 @@ pub async fn latest_version_number<C: sea_orm::ConnectionTrait>(
         .unwrap_or(0))
 }
 
-/// Crée une couche **et sa version 1** (une transaction) — document vide.
-/// Aucun effet de publication.
+/// Creates a layer **and its version 1** (one transaction) — empty document.
+/// No publication effect.
 #[allow(clippy::too_many_arguments)] // mirrors the API payload fields one-to-one
 pub async fn create_annotation_layer(
     db: &DatabaseConnection,
@@ -277,12 +277,12 @@ pub async fn create_annotation_layer(
     note: Option<String>,
 ) -> Result<(annotation_layers::Model, i64), AnnotationLayerWriteError> {
     validate_layer_write(name, &AnnotationDoc::default())?;
-    // XOR : un ensemble est rattaché à un média OU à un tour,
-    // jamais aux deux.
+    // XOR: a set is attached to a media OR to a tour,
+    // never to both.
     if media_asset_id.is_some() && tour_id.is_some() {
         return Err(AnnotationLayerWriteError::MediaAndTour);
     }
-    // Le média déclaré doit exister dans l'org (batch école validate_doc_assets).
+    // The declared media must exist in the org (batch, validate_doc_assets pattern).
     if let Some(media) = media_asset_id {
         let exists = media_assets::Entity::find()
             .filter(media_assets::Column::OrgId.eq(org_id))
@@ -297,7 +297,7 @@ pub async fn create_annotation_layer(
             });
         }
     }
-    // Le tour déclaré doit exister dans l'org (école media).
+    // The declared tour must exist in the org (media pattern).
     if let Some(tour) = tour_id {
         let exists = tours::Entity::find()
             .filter(tours::Column::OrgId.eq(org_id))
@@ -348,14 +348,14 @@ pub async fn create_annotation_layer(
     tracing::info!(
         layer_id = layer.id.to_string().as_str(),
         org_id,
-        "couche d'annotations créée (v1)"
+        "annotation layer created (v1)"
     );
     Ok((layer, 1))
 }
 
-/// Enregistre une **nouvelle version** (append-only) avec concurrence
-/// optimiste : `expected_version_number` doit être la version courante
-/// (la dernière — école `append_tour_version`).
+/// Saves a **new version** (append-only) with optimistic
+/// concurrency: `expected_version_number` must be the current version
+/// (the latest — `append_tour_version` pattern).
 /// Returns the stored document (control items bound, D131).
 #[allow(clippy::too_many_arguments)]
 pub async fn append_annotation_layer_version(
@@ -371,10 +371,10 @@ pub async fn append_annotation_layer_version(
     validate_layer_write(name_for_validation, doc)?;
     validate_doc_assets(db, layer.org_id, doc).await?;
     validate_doc_devices(db, layer.org_id, doc).await?;
-    // Pivot UX : un ensemble est ancré sur SON média (D55 renforcé au
-    // niveau couche) — tout item ailleurs est refusé. Un ensemble-tour
-    // : l'ancre doit être un média de scène du tour (version
-    // courante — l'édition se fait sur latest).
+    // UX pivot: a set is anchored on ITS media (D55 reinforced at the
+    // layer level) — any item elsewhere is refused. A tour set:
+    // the anchor must be a scene media of the tour (current
+    // version — editing happens on latest).
     if let Some(media) = layer.media_asset_id {
         for item in &doc.items {
             match Uuid::parse_str(&item.media_asset_id) {
@@ -468,7 +468,7 @@ pub async fn append_annotation_layer_version(
     tracing::info!(
         layer_id = layer.id.to_string().as_str(),
         version = new_version.version_number,
-        "couche d'annotations enregistrée (nouvelle version)"
+        "annotation layer saved (new version)"
     );
     Ok((layer, new_version.version_number, doc.clone()))
 }

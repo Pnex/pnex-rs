@@ -1,8 +1,8 @@
-//! Client API des dashboards SCADA (D24/D40/D41) — miroir de
+//! API client for SCADA dashboards (D24/D40/D41) — mirror of
 //! `controllers/dashboards.rs` + `controllers/viz_widgets.rs`.
-//! Types partagés `pnex_core::viz` (la validation `validate_layout`
-//! tourne côté navigateur avant save). Le 409 (save périmé) est
-//! distingué via `ApiError.status`, école `api/flows.rs`.
+//! Shared types `pnex_core::viz` (`validate_layout` validation
+//! runs in the browser before save). The 409 (stale save) is
+//! told apart via `ApiError.status`, `api/flows.rs` style.
 
 use pnex_core::{
     CreateDashboard, CreateVizWidget, Paginated, SeriesBatchRequest, SeriesBatchResponse,
@@ -59,7 +59,7 @@ fn urlencode(s: &str) -> String {
     out
 }
 
-/// `GET /api/v1/dashboards` — enveloppe D14.
+/// `GET /api/v1/dashboards` — D14 envelope.
 pub async fn list(filters: &DashboardFilters) -> Result<Paginated<VizDashboardSummary>, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -69,7 +69,7 @@ pub async fn list(filters: &DashboardFilters) -> Result<Paginated<VizDashboardSu
     .await
 }
 
-/// `POST /api/v1/dashboards` — crée le dashboard + sa version 1.
+/// `POST /api/v1/dashboards` — creates the dashboard + its version 1.
 pub async fn create(params: CreateDashboard) -> Result<VizDashboard, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -79,7 +79,7 @@ pub async fn create(params: CreateDashboard) -> Result<VizDashboard, ApiError> {
     .await
 }
 
-/// `GET /api/v1/dashboards/{id}` — détail (layout de la version live).
+/// `GET /api/v1/dashboards/{id}` — detail (layout of the live version).
 pub async fn detail(id: &str) -> Result<VizDashboard, ApiError> {
     client::request(
         reqwest::Method::GET,
@@ -89,9 +89,9 @@ pub async fn detail(id: &str) -> Result<VizDashboard, ApiError> {
     .await
 }
 
-/// `PATCH /api/v1/dashboards/{id}` = save — nouvelle version + pointeur
-/// (save = live) ; 409 si `expected_version_number` est périmé, 400
-/// `{"violations": […]}` si le layout est invalide.
+/// `PATCH /api/v1/dashboards/{id}` = save — new version + pointer
+/// (save = live); 409 if `expected_version_number` is stale, 400
+/// `{"violations": […]}` if the layout is invalid.
 pub async fn update(id: &str, params: UpdateDashboard) -> Result<VizDashboard, ApiError> {
     client::request(
         reqwest::Method::PATCH,
@@ -117,7 +117,7 @@ pub async fn versions(id: &str) -> Result<Vec<VizDashboardVersion>, ApiError> {
     client::request_all(&format!("/api/v1/dashboards/{id}/versions")).await
 }
 
-/// `GET /api/v1/dashboards/{id}/versions/{n}` — layout d'une version.
+/// `GET /api/v1/dashboards/{id}/versions/{n}` — layout of a version.
 pub async fn version_detail(
     id: &str,
     version_number: i64,
@@ -130,8 +130,8 @@ pub async fn version_detail(
     .await
 }
 
-/// `POST /api/v1/dashboards/{id}/versions/{n}/restore` — re-positionne
-/// la version live (aucune version créée).
+/// `POST /api/v1/dashboards/{id}/versions/{n}/restore` — re-points
+/// the live version (no version created).
 pub async fn restore(id: &str, version_number: i64) -> Result<VizDashboard, ApiError> {
     client::request::<VizDashboard>(
         reqwest::Method::POST,
@@ -141,7 +141,7 @@ pub async fn restore(id: &str, version_number: i64) -> Result<VizDashboard, ApiE
     .await
 }
 
-// ─────────────────────────── Bibliothèque (D41) ───────────────────────────
+// ─────────────────────────── Library (D41) ───────────────────────────
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WidgetLibraryFilters {
@@ -171,7 +171,7 @@ pub async fn widgets(filters: &WidgetLibraryFilters) -> Result<Vec<VizWidget>, A
     client::request_all(&format!("/api/v1/viz/widgets{}", filters.to_query())).await
 }
 
-/// `POST /api/v1/viz/widgets` — ajoute un template à la bibliothèque.
+/// `POST /api/v1/viz/widgets` — adds a template to the library.
 pub async fn create_widget(params: CreateVizWidget) -> Result<VizWidget, ApiError> {
     client::request(
         reqwest::Method::POST,
@@ -181,8 +181,8 @@ pub async fn create_widget(params: CreateVizWidget) -> Result<VizWidget, ApiErro
     .await
 }
 
-/// `DELETE /api/v1/viz/widgets/{id}` — les dashboards gardent leur
-/// snapshot (aucune cascade métier).
+/// `DELETE /api/v1/viz/widgets/{id}` — dashboards keep their
+/// snapshot (no business cascade).
 pub async fn delete_widget(id: &str) -> Result<(), ApiError> {
     client::request_opt::<serde_json::Value>(
         reqwest::Method::DELETE,
@@ -193,11 +193,11 @@ pub async fn delete_widget(id: &str) -> Result<(), ApiError> {
     .map(|_| ())
 }
 
-// ─────────────────────────── Télémétrie batch (D31) ───────────────────────────
+// ─────────────────────────── Batch telemetry (D31) ───────────────────────────
 
-/// `POST /api/v1/telemetry/series/query` — toutes les sources d'un
-/// dashboard en un appel (un timer 15 s au lieu de N, D31) ; dégradation
-/// **par item** (`available: false`), jamais d'échec global.
+/// `POST /api/v1/telemetry/series/query` — every source of a
+/// dashboard in one call (one 15 s timer instead of N, D31); degrades
+/// **per item** (`available: false`), never a global failure.
 pub async fn series_batch(body: SeriesBatchRequest) -> Result<SeriesBatchResponse, ApiError> {
     client::request(
         reqwest::Method::POST,

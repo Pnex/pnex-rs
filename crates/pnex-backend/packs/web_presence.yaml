@@ -1,8 +1,8 @@
 # Reference pack "Web presence" (web-presence.md D363): the website of an
 # organization, found, checked and confirmed before anything crawls it.
-# It takes `site_web` and `a_pour_site` over from `quali_watch` (same keys,
+# It takes `website` and `has_website` over from `quali_watch` (same keys,
 # same direction; `hands_over`, no data moved).
-# A website is an `a_pour_site` link; since 1.1.0 a candidate a machine is
+# A website is a `has_website` link; since 1.1.0 a candidate a machine is
 # not sure of is a proposal (proposals.md D375) on the To validate page, and
 # a rejected one is never proposed again; a closed link is never reopened
 # (`link_upsert` `skip_closed`, D362). The link keeps
@@ -16,21 +16,22 @@
 # proposal accepted by the org rule (D377, the threshold is a pack
 # setting), 40 to 79 proposed to a human (page « To validate »),
 # below 40 nothing. A rejected site is never proposed again.
-key: presence_web
+# Since 2.0.0 every identifier is English (breaking).
+key: web_presence
 name: Web presence
 names: {fr: "Présence web"}
-version: "1.6.0"
-requires: [entreprises]
+version: "2.0.0"
+requires: [companies]
 description: "The website of each organization: candidates found by search or from e-mail domains, checked on the site itself, confirmed by a human before any crawl."
 descriptions: {fr: "Le site web de chaque organisation : candidats trouvés par recherche ou par le domaine des e-mails, vérifiés sur le site lui-même, confirmés par un humain avant tout parcours."}
 extends:
   - type: organization
     properties:
-      - { key: site_recherche_le, name: Website searched on, names: {fr: "Site recherché le"}, kind: date }
+      - { key: website_searched_on, name: Website searched on, names: {fr: "Site recherché le"}, kind: date }
 # D368: what an org may set in its own layer (Ontology › Packs), kept across
 # upgrades; read by the functions at the next deploy of their flow.
 settings:
-  - key: seuil_confirme
+  - key: confirm_threshold
     name: Score that confirms a website
     names: {fr: "Score qui confirme un site"}
     description: From this score a website is written without a human.
@@ -39,7 +40,7 @@ settings:
     default: 80
     min: 1
     max: 100
-  - key: seuil_propose
+  - key: propose_threshold
     name: Score that proposes a website
     names: {fr: "Score qui propose un site"}
     description: From this score (and below the confirming one) a website is proposed on the To validate page; below, it is dropped.
@@ -50,54 +51,54 @@ settings:
     max: 100
 
 types:
-  - key: site_web
+  - key: website
     name: Website
     names: {fr: "Site web"}
     icon: globe
     may_be_contained_in: [folder]
     properties:
-      - { key: url_racine, name: Root URL, names: {fr: "URL racine"}, kind: url, required: true }
-      - { key: domaine, name: Domain, names: {fr: "Domaine"}, kind: text, max_len: 255, unique: true }
-      - { key: dernier_crawl, name: Last crawl, names: {fr: "Dernier parcours"}, kind: date_time }
-      - { key: pages_listees, name: Listed pages, names: {fr: "Pages listées"}, kind: number, min: 0 }
-      - { key: pages_pertinentes, name: Relevant pages, names: {fr: "Pages pertinentes"}, kind: number, min: 0 }
-      - { key: etat_collecte, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, bloque, inaccessible, vide], labels: {ok: {fr: "OK", en: "OK"}, bloque: {fr: "Bloqué", en: "Blocked"}, inaccessible: {fr: "Inaccessible", en: "Unreachable"}, vide: {fr: "Vide", en: "Empty"}}, indexed: true }
+      - { key: root_url, name: Root URL, names: {fr: "URL racine"}, kind: url, required: true }
+      - { key: domain, name: Domain, names: {fr: "Domaine"}, kind: text, max_len: 255, unique: true }
+      - { key: last_crawl, name: Last crawl, names: {fr: "Dernier parcours"}, kind: date_time }
+      - { key: listed_pages, name: Listed pages, names: {fr: "Pages listées"}, kind: number, min: 0 }
+      - { key: relevant_pages, name: Relevant pages, names: {fr: "Pages pertinentes"}, kind: number, min: 0 }
+      - { key: crawl_state, name: Collection status, names: {fr: "État de la collecte"}, kind: enum, values: [ok, blocked, unreachable, empty], labels: {ok: {fr: "OK", en: "OK"}, blocked: {fr: "Bloqué", en: "Blocked"}, unreachable: {fr: "Inaccessible", en: "Unreachable"}, empty: {fr: "Vide", en: "Empty"}}, indexed: true }
       - { key: capture, name: Capture (media id), names: {fr: "Capture (id média)"}, kind: text, max_len: 36 }
 link_types:
-  - key: a_pour_site
+  - key: has_website
     name: has as website
     names: {fr: "a pour site"}
     inverse_name: is the website of
     inverse_names: {fr: "est le site de"}
     from_types: [organization]
-    to_types: [site_web]
+    to_types: [website]
     attributes:
       - { key: score, name: Score, names: {fr: "Score"}, kind: number, min: 0, max: 100 }
-      - { key: preuve_siren, name: SIREN found on the site, names: {fr: "SIREN trouvé sur le site"}, kind: bool }
-      - { key: preuve_nda, name: Declaration number found, names: {fr: "NDA trouvé sur le site"}, kind: bool }
-      - { key: preuve_adresse, name: Address found, names: {fr: "Adresse trouvée sur le site"}, kind: bool }
-      - { key: avis_llm, name: Model opinion, names: {fr: "Avis du modèle"}, kind: text, max_len: 2000 }
-      - { key: requete, name: Query, names: {fr: "Requête"}, kind: text, max_len: 400 }
-      - { key: rang, name: Rank, names: {fr: "Rang"}, kind: number, min: 1 }
-      - { key: fournisseur, name: Provider, names: {fr: "Fournisseur"}, kind: text, max_len: 255 }
+      - { key: siren_proof, name: SIREN found on the site, names: {fr: "SIREN trouvé sur le site"}, kind: bool }
+      - { key: nda_proof, name: Declaration number found, names: {fr: "NDA trouvé sur le site"}, kind: bool }
+      - { key: address_proof, name: Address found, names: {fr: "Adresse trouvée sur le site"}, kind: bool }
+      - { key: llm_opinion, name: Model opinion, names: {fr: "Avis du modèle"}, kind: text, max_len: 2000 }
+      - { key: query, name: Query, names: {fr: "Requête"}, kind: text, max_len: 400 }
+      - { key: rank, name: Rank, names: {fr: "Rang"}, kind: number, min: 1 }
+      - { key: provider, name: Provider, names: {fr: "Fournisseur"}, kind: text, max_len: 255 }
       - key: source
         name: Source
         names: {fr: "Source"}
         kind: enum
-        values: [email, recherche, manuel]
-        labels: {email: {fr: "E-mail", en: "Email"}, recherche: {fr: "Recherche", en: "Search"}, manuel: {fr: "Manuel", en: "Manual"}}
-      - { key: valide_par, name: Validated by, names: {fr: "Validé par"}, kind: text, max_len: 255 }
+        values: [email, search, manual]
+        labels: {email: {fr: "E-mail", en: "Email"}, search: {fr: "Recherche", en: "Search"}, manual: {fr: "Manuel", en: "Manual"}}
+      - { key: validated_by, name: Validated by, names: {fr: "Validé par"}, kind: text, max_len: 255 }
 functions:
-  - name: pw_preparer
+  - name: pw_prepare
     language: starlark
     description: "Website search of an organization: the query, the organization marked as searched, a candidate from the domain of its e-mails."
     code: |
       # D365: free candidates first. An e-mail of the organization on its
       # own domain (not a webmail) names its website; the web search is
       # asked with the organization's name. msg.org travels to the end.
-      # @output recherche any "Query for the web search"
-      # @output marque any "The organization, marked as searched today"
-      # @output courriel any "Candidate from the domain of an e-mail"
+      # @output search any "Query for the web search"
+      # @output mark any "The organization, marked as searched today"
+      # @output email any "Candidate from the domain of an e-mail"
       WEBMAIL = ["gmail.com", "googlemail.com", "hotmail.com", "hotmail.fr", "outlook.com",
                  "outlook.fr", "live.com", "live.fr", "msn.com", "yahoo.com", "yahoo.fr",
                  "orange.fr", "wanadoo.fr", "free.fr", "sfr.fr", "neuf.fr", "laposte.net",
@@ -121,14 +122,14 @@ functions:
               d = domain_of(p[k])
               if d:
                   email = {"payload": {"url": "https://" + d + "/"}, "org": org,
-                           "candidat": {"source": "email", "requete": k, "rang": 1, "fournisseur": ""}}
+                           "candidate": {"source": "email", "query": k, "rank": 1, "provider": ""}}
                   break
           return [
               {"payload": o["title"], "org": org},
-              {"payload": {"site_recherche_le": msg.get("today", "")}, "object_id": o["id"]},
+              {"payload": {"website_searched_on": msg.get("today", "")}, "object_id": o["id"]},
               email,
           ]
-  - name: pw_resultats
+  - name: pw_results
     language: starlark
     description: The first three web search results, one candidate each.
     code: |
@@ -141,8 +142,8 @@ functions:
           out = []
           for r in p.get("results", [])[:3]:
               out.append({"payload": {"url": r["url"]},
-                          "candidat": {"source": "recherche", "requete": p.get("query", ""),
-                                       "rang": r.get("rank", 0), "fournisseur": p.get("provider", "")}})
+                          "candidate": {"source": "search", "query": p.get("query", ""),
+                                       "rank": r.get("rank", 0), "provider": p.get("provider", "")}})
           return out + [None] * (3 - len(out))
   - name: pw_score
     language: starlark
@@ -150,7 +151,7 @@ functions:
     code: |
       # Deterministic score of what the site says about itself; the text is
       # data from an unknown site, only searched, never obeyed.
-      # @output confirme any "A website proved by what it says: written"
+      # @output confirmed any "A website proved by what it says: written"
       # @output propose any "A website to check: proposed to a human"
       CONFIRM = 80
       PROPOSE = 40
@@ -165,7 +166,7 @@ functions:
       def handle(inputs, msg):
           p = msg["payload"]
           org = msg.get("org", {})
-          cand = msg.get("candidat", {})
+          cand = msg.get("candidate", {})
           text = (p.get("legal_text", "") + " " + p.get("text", "") + " " + p.get("title", ""))
           nums = digits(text)
           siren = org.get("siren", "") or ""
@@ -185,14 +186,14 @@ functions:
           if named:
               score += 10
           score = min(score, 100)
-          confirm = pack_setting("presence_web.seuil_confirme", CONFIRM)
-          if score < pack_setting("presence_web.seuil_propose", PROPOSE):
+          confirm = pack_setting("web_presence.confirm_threshold", CONFIRM)
+          if score < pack_setting("web_presence.propose_threshold", PROPOSE):
               return None
           root = origin(p.get("final_url", "") or p.get("url", ""))
           host = root.split("//")[-1].split(":")[0]
           if host.startswith("www."):
               host = host[4:]
-          props = {"url_racine": root + "/", "domaine": host}
+          props = {"root_url": root + "/", "domain": host}
           if p.get("screenshot_asset_id", ""):
               props["capture"] = p["screenshot_asset_id"]
           site = {
@@ -200,45 +201,45 @@ functions:
               "title": host,
               "confidence": score,
               # What the org's model reads for its opinion on a proposal.
-              "visite": {"titre": p.get("title", ""), "accueil": p.get("text", "")[:3000],
-                         "mentions": p.get("legal_text", "")[:3000]},
-              "lien": {
+              "visit": {"title": p.get("title", ""), "home": p.get("text", "")[:3000],
+                         "legal": p.get("legal_text", "")[:3000]},
+              "link": {
                   "score": score,
-                  "preuve_siren": proof_siren,
-                  "preuve_nda": proof_nda,
-                  "preuve_adresse": False,
-                  "requete": cand.get("requete", ""),
-                  "rang": cand.get("rang", 0) or 1,
-                  "fournisseur": cand.get("fournisseur", ""),
-                  "source": cand.get("source", "recherche"),
+                  "siren_proof": proof_siren,
+                  "nda_proof": proof_nda,
+                  "address_proof": False,
+                  "query": cand.get("query", ""),
+                  "rank": cand.get("rank", 0) or 1,
+                  "provider": cand.get("provider", ""),
+                  "source": cand.get("source", "search"),
               },
           }
           if score < confirm:
               return [None, site]
           # D377: accepted without a human, the rule kept as the reason.
-          site["accept"] = "presence_web.seuil_confirme >= %d (score %d)" % (confirm, score)
+          site["accept"] = "web_presence.confirm_threshold >= %d (score %d)" % (confirm, score)
           return [site, None]
-  - name: pw_lien_avis
+  - name: pw_link_opinion
     language: starlark
     description: The proposed link, and what the org's model is asked about it.
     code: |
       # @output propose any "The link to propose now"
-      # @output avis any "The question for the org's model"
+      # @output opinion any "The question for the org's model"
       def handle(inputs, msg):
           org = msg["org"]
           link = {"source_id": org["id"], "target_id": msg["object"]["id"],
-                  "attributes": msg.get("lien", {}), "confidence": msg.get("confidence")}
-          ask = {"payload": {"organisation": {"nom": org.get("title", ""), "siren": org.get("siren", "") or ""},
-                             "site": msg.get("visite", {})},
-                 "proposition": link}
+                  "attributes": msg.get("link", {}), "confidence": msg.get("confidence")}
+          ask = {"payload": {"organization": {"name": org.get("title", ""), "siren": org.get("siren", "") or ""},
+                             "site": msg.get("visit", {})},
+                 "proposal": link}
           return [{"payload": link}, ask]
-  - name: pw_avis
+  - name: pw_opinion
     language: starlark
     description: "The model's opinion added to the proposal as evidence: OUI raises its confidence (79 at most), NON lowers it."
     code: |
       # The opinion is evidence for the human, never a decision.
       def handle(inputs, msg):
-          link = msg.get("proposition")
+          link = msg.get("proposal")
           if link == None:
               return None
           answer = (msg["payload"].get("text", "") or "").strip()
@@ -249,15 +250,15 @@ functions:
           elif head.startswith("NON"):
               c = max(c - 20, 0)
           link["confidence"] = c
-          link["evidence"] = {"avis_llm": answer[:2000], "modele": msg["payload"].get("model", "")}
+          link["evidence"] = {"llm_opinion": answer[:2000], "model": msg["payload"].get("model", "")}
           return {"payload": link}
-  - name: pw_lien
+  - name: pw_link
     language: starlark
     description: Link payload from the organization to the website just written.
     code: |
       def handle(inputs, msg):
           return {"payload": {"source_id": msg["org"]["id"], "target_id": msg["object"]["id"],
-                              "attributes": msg.get("lien", {}),
+                              "attributes": msg.get("link", {}),
                               "confidence": msg.get("confidence"),
                               "accept": msg.get("accept", "")}}
 flows:
@@ -270,29 +271,29 @@ flows:
           kind: ontology_query
           config:
             object_type: organization
-            filters: [{ key: site_recherche_le, op: missing }]
+            filters: [{ key: website_searched_on, op: missing }]
             limit: 50
           outputs: [{ port: 0, targets: [prep] }]
         - id: prep
           kind: pnex_function
-          config: { function_name: pw_preparer, language: starlark }
+          config: { function_name: pw_prepare, language: starlark }
           outputs: [{ port: 0, targets: [search] }, { port: 1, targets: [mark] }, { port: 2, targets: [visit] }]
         - { id: mark, kind: object_upsert, config: { object_type: organization, key: id } }
         - { id: search, kind: web_search, config: { limit: 3, country: fr, lang: fr }, outputs: [{ port: 0, targets: [results] }] }
         - id: results
           kind: pnex_function
-          config: { function_name: pw_resultats, language: starlark }
+          config: { function_name: pw_results, language: starlark }
           outputs: [{ port: 0, targets: [visit] }, { port: 1, targets: [visit] }, { port: 2, targets: [visit] }]
         # The capture needs a browser of the org (Organisation page); none = text only.
         - { id: visit, kind: web_visit, config: { screenshot: true }, outputs: [{ port: 0, targets: [score] }] }
         - { id: score, kind: pnex_function, config: { function_name: pw_score, language: starlark }, outputs: [{ port: 0, targets: [site] }, { port: 1, targets: [site_p] }] }
-        - { id: site, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link] }] }
-        - { id: link, kind: pnex_function, config: { function_name: pw_lien, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
+        - { id: site, kind: object_upsert, config: { object_type: website, key: domain }, outputs: [{ port: 0, targets: [link] }] }
+        - { id: link, kind: pnex_function, config: { function_name: pw_link, language: starlark }, outputs: [{ port: 0, targets: [linked] }] }
         # 80 and more: a proposal accepted by the org rule (D377), traced.
-        - { id: linked, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true, keep_best: score } }
+        - { id: linked, kind: link_upsert, config: { link_type: has_website, skip_closed: true, propose: true, keep_best: score } }
         # 40 to 79: the link is a proposal on the To validate page (D375).
-        - { id: site_p, kind: object_upsert, config: { object_type: site_web, key: domaine }, outputs: [{ port: 0, targets: [link_p] }] }
-        - { id: link_p, kind: pnex_function, config: { function_name: pw_lien_avis, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }, { port: 1, targets: [ask] }] }
+        - { id: site_p, kind: object_upsert, config: { object_type: website, key: domain }, outputs: [{ port: 0, targets: [link_p] }] }
+        - { id: link_p, kind: pnex_function, config: { function_name: pw_link_opinion, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }, { port: 1, targets: [ask] }] }
         # A proposal first, then the org's model opinion as its evidence:
         # without an AI provider the proposal stays, without opinion.
         - id: ask
@@ -302,5 +303,5 @@ flows:
             language: fr
             max_chars: 400
           outputs: [{ port: 0, targets: [opinion] }]
-        - { id: opinion, kind: pnex_function, config: { function_name: pw_avis, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }] }
-        - { id: linked_p, kind: link_upsert, config: { link_type: a_pour_site, skip_closed: true, propose: true, keep_best: score } }
+        - { id: opinion, kind: pnex_function, config: { function_name: pw_opinion, language: starlark }, outputs: [{ port: 0, targets: [linked_p] }] }
+        - { id: linked_p, kind: link_upsert, config: { link_type: has_website, skip_closed: true, propose: true, keep_best: score } }

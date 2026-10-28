@@ -1,8 +1,8 @@
-//! Tests référentiels Edge — CRUD wifi-credentials/hosts, **upsert**
-//! (200/201, jamais 409), validations 400 champ-par-champ, isolation org,
+//! Edge reference tests — CRUD wifi-credentials/hosts, **upsert**
+//! (200/201, never 409), field-by-field 400 validations, org isolation,
 //! auth 401.
 //!
-//! Nécessite PostgreSQL (TEST_DATABASE_URL) — base vidée entre tests.
+//! Requires PostgreSQL (TEST_DATABASE_URL) — database emptied between tests.
 
 mod common;
 
@@ -98,7 +98,7 @@ async fn post_host(
     (resp.status_code(), resp.json::<serde_json::Value>())
 }
 
-/// GET liste → tableau `results`.
+/// GET list → `results` array.
 async fn list_edge(
     server: &axum_test::TestServer,
     token: &str,
@@ -139,7 +139,7 @@ async fn wifi_cycle_upsert_et_delete() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Création → 201.
+        // Creation → 201.
         let (status, body) = post_wifi(
             &server,
             &env.alice,
@@ -149,9 +149,9 @@ async fn wifi_cycle_upsert_et_delete() {
         .await;
         assert_eq!(status, 201, "{body}");
         assert_eq!(body["ssid"], "Maison");
-        let id = body["id"].as_i64().expect("id renvoyé");
+        let id = body["id"].as_i64().expect("id returned");
 
-        // Upsert même SSID, autre mot de passe → 200, même id.
+        // Upsert same SSID, other password → 200, same id.
         let (status, body) = post_wifi(
             &server,
             &env.alice,
@@ -163,17 +163,17 @@ async fn wifi_cycle_upsert_et_delete() {
         assert_eq!(
             body["id"].as_i64(),
             Some(id),
-            "upsert = mise à jour, pas de doublon"
+            "upsert = update, no duplicate"
         );
         // The password lives in the vault: only its reference is returned.
         assert!(!body.to_string().contains("secret2"), "{body}");
         assert_eq!(body["password"]["name"], "wifi/Maison/password");
 
-        // Upsert : pas de doublon en base.
+        // Upsert: no duplicate in the database.
         let rows = list_edge(&server, &env.alice, org, "/api/v1/edge/wifi-credentials").await;
         assert_eq!(rows.len(), 1);
 
-        // Delete → 204, puis liste vide et delete → 404.
+        // Delete → 204, then empty list and delete → 404.
         let path = format!("/api/v1/edge/wifi-credentials/{id}");
         assert_eq!(del(&server, &env.alice, org, &path).await, 204);
         let rows = list_edge(&server, &env.alice, org, "/api/v1/edge/wifi-credentials").await;
@@ -189,7 +189,7 @@ async fn wifi_validations_400() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // SSID vide (espaces).
+        // Empty SSID (spaces).
         let (status, body) = post_wifi(
             &server,
             &env.alice,
@@ -213,7 +213,7 @@ async fn wifi_validations_400() {
         assert_eq!(body["error"], "field-invalid", "{body}");
         assert!(body["errors"]["fields"].get("ssid").is_some());
 
-        // Mot de passe vide (réseaux ouverts hors scope v1).
+        // Empty password (open networks out of v1 scope).
         let (status, body) = post_wifi(
             &server,
             &env.alice,
@@ -233,7 +233,7 @@ async fn hosts_cycle_upsert_et_validation() {
     with_app(|server, env| async move {
         let org = personal_org(&server, &env.alice).await;
 
-        // Création → 201.
+        // Creation → 201.
         let (status, body) = post_host(
             &server,
             &env.alice,
@@ -242,7 +242,7 @@ async fn hosts_cycle_upsert_et_validation() {
         )
         .await;
         assert_eq!(status, 201, "{body}");
-        let id = body["id"].as_i64().expect("id renvoyé");
+        let id = body["id"].as_i64().expect("id returned");
         // Devices always use wss: a host carries no scheme flag.
         assert!(body.get("ws_ssl").is_none(), "{body}");
 
@@ -257,8 +257,8 @@ async fn hosts_cycle_upsert_et_validation() {
         assert_eq!(status, 200, "{body}");
         assert_eq!(body["id"].as_i64(), Some(id));
 
-        // Validation : schéma interdit (contrat CreateBuild.pnex_host = hôte
-        // nu), espace interdit, vide interdit.
+        // Validation: scheme forbidden (CreateBuild.pnex_host contract = bare
+        // host), space forbidden, empty forbidden.
         for payload in [
             json!({ "host": "ws://192.168.1.16:5150" }),
             json!({ "host": "192.168.1.16 5150" }),
@@ -296,7 +296,7 @@ async fn isolation_org_et_auth_401() {
         let org_a = personal_org(&server, &env.alice).await;
         let org_b = personal_org(&server, &env.bob).await;
 
-        // Sans token → 401 (les deux domaines).
+        // Without a token → 401 (both domains).
         let anon = server.get("/api/v1/edge/wifi-credentials").await;
         assert_eq!(anon.status_code(), 401);
         let anon = server
@@ -305,7 +305,7 @@ async fn isolation_org_et_auth_401() {
             .await;
         assert_eq!(anon.status_code(), 401);
 
-        // Alice crée sur son org.
+        // Alice creates on her org.
         let (status, body) = post_wifi(
             &server,
             &env.alice,
@@ -314,15 +314,15 @@ async fn isolation_org_et_auth_401() {
         )
         .await;
         assert_eq!(status, 201, "{body}");
-        let id = body["id"].as_i64().expect("id renvoyé");
+        let id = body["id"].as_i64().expect("id returned");
 
-        // Bob (org B) : liste vide + cross delete 404 masqué.
+        // Bob (org B): empty list + cross delete masked 404.
         let rows = list_edge(&server, &env.bob, org_b, "/api/v1/edge/wifi-credentials").await;
         assert_eq!(rows.len(), 0);
         let cross = format!("/api/v1/edge/wifi-credentials/{id}");
         assert_eq!(del(&server, &env.bob, org_b, &cross).await, 404);
 
-        // Bob, viewer de l'org A : lit mais n'écrit pas.
+        // Bob, viewer of org A: reads but does not write.
         server
             .post(&format!("/api/v1/orgs/{org_a}/members"))
             .add_header("Content-Type", "application/json")
@@ -330,9 +330,9 @@ async fn isolation_org_et_auth_401() {
             .json(&json!({ "email": "bob@example.com", "role": "viewer" }))
             .await;
         let rows = list_edge(&server, &env.alice, org_a, "/api/v1/edge/wifi-credentials").await;
-        assert_eq!(rows.len(), 1, "viewer lit le référentiel");
+        assert_eq!(rows.len(), 1, "viewer reads the reference data");
         let (status, _) = post_host(&server, &env.bob, org_a, json!({ "host": "h:1" })).await;
-        assert_eq!(status, 403, "viewer ne peut pas écrire");
+        assert_eq!(status, 403, "viewer cannot write");
 
         // SEC-43: a viewer cannot make the server probe the network.
         let scan = server

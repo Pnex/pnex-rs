@@ -1,10 +1,10 @@
-//! Bibliothèque de widgets (palette à la demande, D41) — templates de
-//! l'org. **Armer-glisser** : pointerdown arme le modèle, le pointerup sur
-//! le canvas pose un **snapshot** (D41 : éditer le modèle n'affecte jamais
-//! les instances). Les « + Nouveau » du panneau historique sont devenus les
-//! items de la palette coquille (clic = widget vide du type, source à
-//! compléter dans l'inspecteur) ; ce fichier porte le pied de popover
-//! (modèles serveur) et le registre types↔icônes.
+//! Widget library (on-demand palette, D41) — the org's templates.
+//! **Arm-and-drag**: pointerdown arms the template, pointerup on the
+//! canvas drops a **snapshot** (D41: editing the template never affects
+//! the instances). The legacy panel's "+ New" buttons became the shell
+//! palette items (click = empty widget of the type, source to fill in
+//! the inspector); this file holds the popover footer (server templates)
+//! and the type↔icon registry.
 
 use crate::api;
 use crate::components::confirm::ConfirmDialog;
@@ -51,7 +51,7 @@ pub fn kind_label(kind: &str) -> String {
     }
 }
 
-/// Icône + tuile d'un type de widget (palette + en-tête d'inspecteur).
+/// Icon + tile of a widget type (palette + inspector header).
 pub fn kind_icon(kind: &str) -> (PaletteIcon, &'static str) {
     match kind {
         "gauge" => (PaletteIcon::Gauge, "bg-signal-50 text-signal-600"),
@@ -151,7 +151,7 @@ fn kind_item(kind: &str, group: &str) -> PaletteItem {
     }
 }
 
-/// Items de la palette coquille — un par type de widget (clic = ajout),
+/// Shell palette items — one per widget type (click = add),
 /// grouped by category (D134).
 pub fn palette_items() -> Vec<PaletteItem> {
     let mut items = vec![
@@ -186,8 +186,8 @@ pub fn palette_items() -> Vec<PaletteItem> {
     items
 }
 
-/// Ajout d'un widget vide du type — ex-boutons « + Nouveau » de la
-/// bibliothèque, désormais déclenchés par le pick de la palette.
+/// Adds an empty widget of the type — formerly the library's "+ New"
+/// buttons, now triggered by the palette pick.
 /// Position used when the canvas has no free area left: a 24 px cascade.
 fn cascade_of(counter: u32) -> (i64, i64) {
     let step = (counter % 8) as i64 * 24;
@@ -280,8 +280,8 @@ pub fn add_symbol(mut cx: EditorCx, shape: &str) {
     cx.selected.set(Some(super::Selection::Widget(id)));
 }
 
-/// Une ligne de la bibliothèque : drag (armer le modèle) + suppression
-/// confirmée. Deux closures `move` par ligne → copie d'id par closure.
+/// A library row: drag (arm the template) + confirmed deletion.
+/// Two `move` closures per row → one id copy per closure.
 fn library_rows(
     loaded: &[pnex_core::VizWidget],
     mut cx: EditorCx,
@@ -298,8 +298,8 @@ fn library_rows(
                     key: "{widget.id}",
                     class: "group flex items-center justify-between px-2 py-1.5 rounded border border-gray-100 hover:border-signal-200 hover:bg-signal-50 cursor-grab select-none",
                     onpointerdown: move |_| {
-                        // Arme le drag : la pose se fait au pointerup
-                        // sur le canvas (snapshot au drop, D41).
+                        // Arms the drag: the drop happens on pointerup
+                        // on the canvas (snapshot at drop, D41).
                         cx.drag_template.set(Some(widget.clone()));
                     },
                     div { class: "min-w-0",
@@ -345,9 +345,9 @@ pub fn TemplateList(mut cx: EditorCx) -> Element {
             if loaded.is_empty() {
                 p { class: "p-2 text-xs text-gray-500", {t!("lib-empty")} }
             }
-            // Lignes précalculées en Vec<Element> : chaque ligne a DEUX
-            // closures `move` qui consomment des copies différentes de
-            // l'id — impossible dans une itération rsx directe.
+            // Rows precomputed as Vec<Element>: each row has TWO `move`
+            // closures consuming different copies of the id —
+            // impossible in a direct rsx iteration.
             for row in library_rows(&loaded, cx, deleting) {
                 {row}
             }

@@ -1,9 +1,9 @@
-//! Sélecteur générique d'objets attachables à un POI (map drawer) —
-//! généralisation de `tour_editor/media_picker.rs` (Modal + recherche +
-//! Pager). Le picker **ne mute rien** : il émet un [`ResourcePick`] et le
-//! détenteur exécute la mutation (POST edge D42 pour média/tour/dashboard,
-//! POST `/pois/{id}/devices` pour un device — D43 : plusieurs devices par
-//! POI, un placement par device, déplacement confirmé s'il est déjà placé).
+//! Generic picker of objects attachable to a POI (map drawer) —
+//! generalisation of `tour_editor/media_picker.rs` (Modal + search +
+//! Pager). The picker **mutates nothing**: it emits a [`ResourcePick`] and the
+//! owner performs the mutation (POST edge D42 for media/tour/dashboard,
+//! POST `/pois/{id}/devices` for a device — D43: several devices per
+//! POI, one placement per device, move confirmed if already placed).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -17,7 +17,7 @@ use crate::components::ui::INPUT;
 
 const PAGE_SIZE: i64 = 8;
 
-/// Choix sorti du picker — le détenteur exécute la mutation.
+/// Choice coming out of the picker — the owner performs the mutation.
 #[derive(Clone, Debug)]
 pub enum ResourcePick {
     MediaAsset { id: String, name: String },
@@ -26,7 +26,7 @@ pub enum ResourcePick {
     Device { slug: String },
 }
 
-/// Onglets du picker (kinds cibles de `placed_on` — registre D42).
+/// Picker tabs (target kinds of `placed_on` — D42 registry).
 #[derive(Clone, Copy, PartialEq)]
 pub enum PickerTab {
     Media,
@@ -35,7 +35,7 @@ pub enum PickerTab {
     Device,
 }
 
-/// Ligne normalisée, tous kinds confondus.
+/// Normalised row, all kinds together.
 #[derive(Clone)]
 struct PickerRow {
     id: String,
@@ -49,8 +49,8 @@ struct PickerPage {
     rows: Vec<PickerRow>,
 }
 
-/// Modal de choix d'un objet à attacher. Onglets Média / Parcours 3D /
-/// Tableau de bord / Device, recherche + pagination D14 (count réel).
+/// Modal for choosing an object to attach. Tabs Media / 3D tour /
+/// Dashboard / Device, search + D14 pagination (real count).
 #[component]
 pub fn ResourcePicker(
     initial_tab: Option<PickerTab>,
@@ -64,9 +64,9 @@ pub fn ResourcePicker(
     let mut search = use_signal(String::new);
     let mut page = use_signal(|| 0i64);
 
-    // Une seule resource pour les 4 onglets : les signaux sont lus DANS la
-    // closure (piège dioxus #2784 — jamais de valeur figée capturée), et le
-    // résultat est normalisé en PickerPage (count réel → Pager fidèle).
+    // A single resource for the 4 tabs: the signals are read INSIDE the
+    // closure (dioxus trap #2784 — never a captured frozen value), and the
+    // result is normalised into PickerPage (real count → faithful Pager).
     let list = use_resource(move || {
         let search = {
             let value = search().trim().to_string();
@@ -76,8 +76,8 @@ pub fn ResourcePicker(
         async move {
             let page: Result<PickerPage, ApiError> = match tab() {
                 PickerTab::Media => {
-                    // Tous kinds (panorama, photo, splat, floorplan) —
-                    // `kinds` vide = tous côté client.
+                    // All kinds (panorama, photo, splat, floorplan) —
+                    // empty `kinds` = all on the client side.
                     api::media::list(&api::media::MediaFilters {
                         kinds: vec![],
                         search,
@@ -92,8 +92,8 @@ pub fn ResourcePicker(
                             .results
                             .into_iter()
                             .map(|a| {
-                                // Sous-titre calculé AVANT le move des
-                                // champs (media_kind lit `a`).
+                                // Subtitle computed BEFORE the move of the
+                                // fields (media_kind reads `a`).
                                 let subtitle =
                                     format!("{:?} · v{}", a.media_kind(), a.latest_version_number);
                                 PickerRow {
@@ -173,8 +173,8 @@ pub fn ResourcePicker(
             max_width: "max-w-lg".to_string(),
             on_close,
             div { class: "space-y-3",
-                // Onglets (pill actif bleu) — tableau const (dioxus : pas de
-                // déstructuration de tuple dans le `for` du rsx).
+                // Tabs (blue active pill) — const array (dioxus: no
+                // tuple destructuring in the rsx `for`).
                 div { class: "flex flex-wrap gap-1", hidden: media_only,
                     for tab_def in [
                         (PickerTab::Media, "poi-picker-tab-media"),
@@ -204,8 +204,8 @@ pub fn ResourcePicker(
                         page.set(0);
                     },
                 }
-                // D43 : un device n'a qu'un placement — l'attacher ici alors
-                // qu'il est placé ailleurs ouvre une confirmation (409).
+                // D43: a device has only one placement — attaching it here while
+                // it is placed elsewhere opens a confirmation (409).
                 if tab() == PickerTab::Device {
                     p { class: "px-3 py-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg",
                         {t!("poi-picker-device-hint")}
@@ -222,9 +222,9 @@ pub fn ResourcePicker(
                                     button {
                                         class: "w-full text-left px-3 py-2 hover:bg-signal-50 transition-colors rounded-lg",
                                         onclick: move |_| {
-                                            // Onglet courant LU au clic
-                                            // (la ligne est rendue sous
-                                            // l'onglet actif).
+                                            // Current tab READ on click
+                                            // (the row is rendered under
+                                            // the active tab).
                                             let pick = match tab() {
                                                 PickerTab::Media => {
                                                     ResourcePick::MediaAsset {

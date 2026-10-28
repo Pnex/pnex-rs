@@ -3,55 +3,55 @@
 
 use super::*;
 
-/// Cible de dépôt : racine du POI ou un dossier.
+/// Drop target: POI root or a folder.
 #[derive(Clone, PartialEq)]
 pub(super) enum DropId {
     Root,
     Folder(String),
 }
 
-/// Objet saisi par la poignée — tout ce qu'il faut pour muter au dépôt.
+/// Object grabbed by the handle — everything needed to mutate on drop.
 #[derive(Clone)]
 pub(super) struct DragItem {
     pub(super) kind: String,
     pub(super) id: String,
-    /// Nom d'affichage courant (recrée le label de l'arête au retour racine).
+    /// Current display name (recreates the edge label on return to root).
     pub(super) label: String,
-    /// Arête `placed_on` d'un objet racine (supprimée si rangé en dossier).
+    /// `placed_on` edge of a root object (deleted if filed in a folder).
     pub(super) edge_id: Option<i64>,
-    /// Emplacement courant — un dépôt identique est un no-op.
+    /// Current location — an identical drop is a no-op.
     pub(super) from: DropId,
 }
 
-/// Payload du bouton Detach.
+/// Payload of the Detach button.
 #[derive(Clone)]
 pub(super) enum Detach {
-    /// Objet racine : l'arête `placed_on` part.
+    /// Root object: the `placed_on` edge goes.
     Edge(i64),
-    /// Objet rangé : éjection vers la racine du POI (containment détaché +
-    /// arête `placed_on` recréée — un détachement pur laissait l'objet
-    /// orphelin, invisible de tous les arbres, constat 2026-09-13). Un device
-    /// rangé n'est que détaché du dossier (placement intact, amendement D43).
+    /// Filed object: ejected to the POI root (containment detached +
+    /// `placed_on` edge recreated — a pure detach left the object
+    /// orphaned, invisible from every tree, observed 2026-09-13). A filed
+    /// device is only detached from the folder (placement intact, D43 amendment).
     Contained { kind: String, id: String },
-    /// Device racine : le placement part — le device redevient libre
-    /// (amendement D43, 2026-09-13).
+    /// Root device: the placement goes — the device becomes free again
+    /// (D43 amendment, 2026-09-13).
     Placement(i64),
 }
 
-/// État de l'arbre du POI (marche containment, noms hydratés par le serveur).
+/// POI tree state (containment walk, names hydrated by the server).
 #[derive(Clone, Default, PartialEq)]
 pub(super) struct TreeModel {
-    /// Dossiers enfants du POI (ordre serveur).
+    /// Child folders of the POI (server order).
     pub(super) root_folders: Vec<RefNode>,
-    /// folder id → enfants (ordre serveur).
+    /// folder id → children (server order).
     pub(super) children: HashMap<String, Vec<RefNode>>,
-    /// Tout ce qui vit sous ≥ 1 dossier (exclu des racines du rendu).
+    /// Everything that lives under ≥ 1 folder (excluded from the render roots).
     pub(super) contained: HashSet<(String, String)>,
 }
 
 // ─────────────────────────── helpers graphe ───────────────────────────
 
-/// Descendants (tous kinds) d'un dossier — garde anti-cycle du drag.
+/// Descendants (all kinds) of a folder — anti-cycle guard of the drag.
 pub(super) fn descendants_of(
     children: &HashMap<String, Vec<RefNode>>,
     root_id: &str,
@@ -102,13 +102,13 @@ pub(super) fn build_views(
     };
 
     let mut rows = Vec::new();
-    // Ordre serveur conservé (tri par sort_key puis kind/id).
+    // Server order kept (sorted by sort_key then kind/id).
     for folder in &model.root_folders {
         push_folder(&ctx, folder, 0, DropId::Root, &mut rows);
     }
 
-    // Objet racine = arête `placed_on` non rangée (liens morts D26 compris,
-    // toujours racine).
+    // Root object = unfiled `placed_on` edge (D26 dead links included,
+    // always root).
     for link in links {
         if model
             .contained
@@ -120,7 +120,7 @@ pub(super) fn build_views(
             .target_label
             .clone()
             .unwrap_or_else(|| link.target_id.clone());
-        // Objet aperçuable (média/tour/dashboard non mort) : clic → panneau.
+        // Previewable object (non-dead media/tour/dashboard): click → panel.
         let target = (!link.target_dead).then(|| PreviewTarget {
             kind: link.target_kind.clone(),
             id: link.target_id.clone(),
@@ -171,8 +171,8 @@ pub(super) fn build_views(
         });
     }
 
-    // Device racine = placement D43 non rangé — résolu via l'index local
-    // slug→(pk, type) construit depuis la liste devices du drawer.
+    // Root device = unfiled D43 placement — resolved via the local
+    // slug→(pk, type) index built from the drawer's device list.
     for p in placements {
         let Some((pk, dtype)) = slug_index.get(&p.device_id) else {
             continue;
@@ -222,7 +222,7 @@ pub(super) fn build_views(
     rows
 }
 
-/// Pousser un dossier puis ses enfants (récursif, branches dépliées).
+/// Push a folder then its children (recursive, expanded branches).
 fn push_folder(
     ctx: &ViewCtx,
     folder: &RefNode,
@@ -277,7 +277,7 @@ fn push_folder(
     if !expanded_now {
         return;
     }
-    // Dossiers d'abord (présentation), ordre serveur dans chaque groupe.
+    // Folders first (presentation), server order within each group.
     let sub_folders: Vec<&RefNode> = children.iter().filter(|c| c.kind == "folder").collect();
     let others: Vec<&RefNode> = children.iter().filter(|c| c.kind != "folder").collect();
     for sub in sub_folders {
@@ -307,7 +307,7 @@ fn push_folder(
                 None,
             )
         };
-        // Objet aperçuable (média/tour/dashboard) : clic → panneau d'aperçu.
+        // Previewable object (media/tour/dashboard): click → preview panel.
         let target = (!is_device).then(|| PreviewTarget {
             kind: child.kind.clone(),
             id: child.id.clone(),

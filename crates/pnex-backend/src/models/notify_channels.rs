@@ -1,6 +1,6 @@
-//! Canal de notification (destination) org-scoped (D50) — `kind` +
-//! `config` JSONB typé par kind (secrets plaintext v1, D54), `name`
-//! unique par org, `enabled`.
+//! Org-scoped notification channel (destination) (D50) — `kind` +
+//! `config` JSONB typed per kind (plaintext secrets v1, D54), `name`
+//! unique per org, `enabled`.
 
 pub use super::_entities::notify_channels::{ActiveModel, Column, Entity, Model};
 use sea_orm::entity::prelude::*;

@@ -1,9 +1,9 @@
-//! Organisations — page nouvelle (multi-tenant Phase 3) : liste, création,
-//! sélection du tenant actif, détail (membres, rôles, renommage, suppression).
+//! Organisations — new page (multi-tenant Phase 3): list, creation,
+//! active tenant selection, detail (members, roles, rename, deletion).
 //!
-//! Le détail est piloté par un signal local `selected` (pas de route
-//! paramétrée — les props de route ne redémarrent pas `use_resource` ;
-//! le `key: "{id}"` force le remontage du détail au changement d'org).
+//! The detail is driven by a local `selected` signal (no parameterized
+//! route — route props do not restart `use_resource`;
+//! `key: "{id}"` forces the detail to remount on org change).
 
 use dioxus::prelude::*;
 use dioxus_i18n::t;
@@ -21,7 +21,7 @@ use crate::components::ui::INPUT;
 use crate::components::ui::{BTN_DANGER, BTN_PRIMARY};
 use crate::state::{org, toasts};
 
-/// Valeur texte d'un champ de formulaire (`FormValue::Text`).
+/// Text value of a form field (`FormValue::Text`).
 pub fn field(event: &dioxus::events::FormEvent, name: &str) -> String {
     event
         .values()
@@ -64,7 +64,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
         api::orgs::list().await
     });
 
-    // Lecture synchrone de la ressource (doctrine socle CRUD).
+    // Synchronous read of the resource (CRUD base doctrine).
     let (list_state, is_empty, count, rows) = match &*list.value().read() {
         None => (None, false, 0, Vec::new()),
         Some(Ok(all)) => (
@@ -80,9 +80,9 @@ fn OrgsPage(initial: Option<i64>) -> Element {
         Some(Err(err)) => (Some(Err(err.clone())), false, 0, Vec::new()),
     };
 
-    // Colonnes de la table — les closures d'action capturent le signal
-    // `selected` de la page ; le badge « current » lit org::current() au
-    // rendu (boucle de rendu du parent, donc réactif).
+    // Table columns — the action closures capture the page's `selected`
+    // signal; the "current" badge reads org::current() at render
+    // (parent render loop, hence reactive).
     let columns = vec![
         Column::new(t!("orgs-col-name").to_string(), move |summary: &pnex_core::OrgSummary| {
             let is_current = org::current() == Some(summary.id);
@@ -144,7 +144,7 @@ fn OrgsPage(initial: Option<i64>) -> Element {
             add_label: selected().is_none().then(|| t!("orgs-new").to_string()),
             on_add: move |_| creating.set(true),
             match selected() {
-                // Détail (remonté à chaque changement d'id via key)
+                // Detail (remounted on every id change via key)
                 Some(org_id) => rsx! {
                     OrgDetail {
                         key: "{org_id}",
@@ -248,7 +248,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
             let name = detail.name.clone();
             rsx! {
                 div { class: "bg-white rounded-lg border border-line",
-                    // En-tête
+                    // Header
                     div { class: "p-4 border-b border-gray-200 flex items-center justify-between gap-4 md:p-6",
                         div { class: "min-w-0",
                             button {
@@ -278,7 +278,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                         form {
                             class: "p-4 border-b border-gray-200 flex gap-2 md:p-6",
                             onsubmit: move |event| {
-                                // Bloque la soumission native (rechargement du SPA).
+                                // Blocks the native submit (SPA reload).
                                 event.prevent_default();
                                 let value = field(&event, "name");
                                 let value = value.trim().to_string();
@@ -314,7 +314,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
                             form {
                                 class: "mb-4 flex flex-wrap gap-2",
                                 onsubmit: move |event| {
-                                    // Bloque la soumission native (rechargement du SPA).
+                                    // Blocks the native submit (SPA reload).
                                     event.prevent_default();
                                     let email = field(&event, "email");
                                     let email = email.trim().to_string();
@@ -466,7 +466,7 @@ fn OrgDetail(org_id: i64, on_back: Callback<()>, on_changed: Callback<()>) -> El
     }
 }
 
-/// Ligne membre : identité, rôle (select si droit d'écriture), retrait.
+/// Member row: identity, role (select if write access), removal.
 fn member_row(
     member: pnex_core::OrgMember,
     org_id: i64,

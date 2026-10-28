@@ -4,7 +4,7 @@
 //! debug screen (generic firmware only), WiFi, review; then the server
 //! build is followed **inside the modal** (polling ~5 s).
 //!
-//! The former Tier 2 « custom_device » path (copy-paste platformio.ini +
+//! The former Tier 2 "custom_device" path (copy-paste platformio.ini +
 //! sketch) is gone: the custom firmware IDE replaces it.
 
 use std::time::Duration;
@@ -45,12 +45,12 @@ fn is_custom(name: &str) -> bool {
 enum Step {
     Identity,
     Model,
-    /// Étape 3 : WiFi / serveur.
+    /// Step 3: WiFi / server.
     Config,
     Review,
-    /// Traditionnel créé : build auto suivi en direct.
+    /// Traditional created: auto build followed live.
     BuildProgress,
-    /// Device inactif connu → réactivation 200 (pas de nouveau token).
+    /// Known inactive device → reactivation 200 (no new token).
     Reactivated,
     /// Edge agent (D95) created: enrollment code + install commands.
     AgentInstall,
@@ -70,15 +70,15 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     let labels = use_signal(pnex_core::resources::LabelSet::new);
     let selected = use_signal(|| None::<pnex_core::PredefinedDevice>);
     let mut model_search = use_signal(String::new);
-    // Variante de board (chips du Model step) — figée à l'enregistrement
-    // via CreateDevice.board_id ; None = board par défaut du modèle.
+    // Board variant (Model step chips) — frozen at registration
+    // via CreateDevice.board_id; None = default board of the model.
     let variant_board_id = use_signal(|| None::<i64>);
-    // Board en aperçu (modale plein format, œil sur la chip) — None = fermée.
+    // Board being previewed (full-size modal, eye on the chip) — None = closed.
     let mut preview_board = use_signal(|| None::<api::boards::Board>);
-    // Écran de debug choisi au wizard (aucun/OLED/TFT — appliqué au device
-    // juste avant le 1er build ; outer None = pas touché, défaut = aucun,
-    // sauf écran soudé seedé côté serveur). Réinitialisé si la variante
-    // change (les options/câblage dépendent de la board).
+    // Debug screen chosen in the wizard (none/OLED/TFT — applied to the device
+    // just before the 1st build; outer None = untouched, default = none,
+    // except a soldered screen seeded server-side). Reset if the variant
+    // changes (options/wiring depend on the board).
     let mut screen_pick = use_signal(|| None::<Option<String>>);
     // Custom firmware chosen at provisioning (D94) — None = generic preset;
     // reset with the variant (compatibility depends on the board chip).
@@ -89,24 +89,24 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         screen_pick.set(None);
         firmware_pick.set(None);
     });
-    // Paramètres de build (étape Config) — piochés dans les référentiels
-    // Edge (wifi_credentials / pnex_hosts, org-scoped) : zéro ressaisie.
-    // Le payload `CreateBuild` est résolu au submit depuis les entrées
-    // sélectionnées (contrat inchangé).
+    // Build parameters (Config step) — picked from the Edge
+    // references (wifi_credentials / pnex_hosts, org-scoped): zero re-typing.
+    // The `CreateBuild` payload is resolved at submit from the selected
+    // entries (contract unchanged).
     let wifi_sel = use_signal(|| None::<pnex_core::WifiCredential>);
     let host_sel = use_signal(|| None::<pnex_core::PnexHost>);
     let mut creating = use_signal(|| false);
     let mut created = use_signal(|| None::<pnex_core::Device>);
     let mut build_record = use_signal(|| None::<pnex_core::BuildRecord>);
     let mut build_launch_error = use_signal(|| None::<String>);
-    // Polling : un seul minuteur à la fois (pattern page Builds).
+    // Polling: a single timer at a time (Builds page pattern).
     let mut polling = use_signal(|| false);
-    // Flash navigateur du firmware fraîchement buildé (Web Serial).
+    // Browser flash of the freshly built firmware (Web Serial).
     let mut flash_open = use_signal(|| false);
-    // Retour visuel des boutons copier (« Copié » pendant 2 s).
+    // Visual feedback of the copy buttons ("Copied" for 2 s).
 
     let catalogue = use_resource(|| async move { api::devices::predefined_devices().await });
-    // Catalogue des variantes de board (GET /boards) — chargé une fois.
+    // Board variant catalogue (GET /boards) — loaded once.
     let boards_resource = use_resource(|| async move { api::boards::list(None).await });
 
     // ── Validation + transitions ──
@@ -173,12 +173,12 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         step.set(Step::Review);
     };
 
-    // ── Création (+ build auto pour les traditionnels) ──
+    // ── Creation (+ auto build for traditional ones) ──
     let submit = move |_| {
         let Some(model) = selected() else { return };
-        // Résolution du référentiel (wifi/host) avant le spawn — les gardes
-        // go_review / garde custom ont déjà validé, ce match est un filet
-        // de sécurité.
+        // Reference resolution (wifi/host) before the spawn — the go_review /
+        // custom guards already validated, this match is a safety
+        // net.
         let (creds, srv) = match (wifi_sel(), host_sel()) {
             (Some(c), Some(h)) => (c, h),
             _ => {
@@ -213,12 +213,12 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                             created.set(Some(device));
                             on_changed.call(());
                             {
-                                // Build automatique, suivi dans la modale —
-                                // les erreurs (403 quota, 429 intervalle) sont
-                                // affichées sans casser l'écran token.
+                                // Automatic build, followed in the modal —
+                                // errors (403 quota, 429 interval) are
+                                // shown without breaking the token screen.
                                 build_record.set(None);
-                                // Écran choisi au wizard : appliqué au device
-                                // AVANT le 1er build (réserves + defines).
+                                // Screen chosen in the wizard: applied to the device
+                                // BEFORE the 1st build (reservations + defines).
                                 // Never with a custom firmware (no screen driver).
                                 if let Some(pick) =
                                     screen_pick().filter(|_| firmware_pick().is_none())
@@ -251,7 +251,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         });
     };
 
-    // ── Polling du build tant qu'il vole (écran BuildProgress) ──
+    // ── Build polling while it is in flight (BuildProgress screen) ──
     if step() == Step::BuildProgress && build_launch_error().is_none() {
         let in_flight = match build_record() {
             None => true,
@@ -266,7 +266,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             spawn(async move {
                 sleep(Duration::from_secs(5)).await;
                 polling.set(false);
-                // Un record par (org, device_id) : limit=1 = build courant.
+                // One record per (org, device_id): limit=1 = current build.
                 let filters = api::builds::BuildFilters {
                     device_id: Some(polled_id),
                     build_phase: None,
@@ -282,13 +282,13 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
         }
     }
 
-    // Cartes du catalogue filtrées par la recherche.
+    // Catalogue cards filtered by the search.
     let visible_models: Vec<pnex_core::PredefinedDevice> = match &*catalogue.read() {
         Some(Ok(models)) => {
             let term = model_search().trim().to_lowercase();
             models
                 .iter()
-                // Tier 2 « custom_device » is superseded by the custom
+                // Tier 2 "custom_device" is superseded by the custom
                 // firmware IDE (custom-firmware.md): never offered.
                 .filter(|pd| !is_custom(&pd.name))
                 .filter(|pd| term.is_empty() || model_matches(pd, &term))
@@ -340,7 +340,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                 }
 
                 match step() {
-                    // ── Étape 1 : identifiant + métadonnées ──
+                    // ── Step 1: identifier + metadata ──
                     Step::Identity => rsx! {
                         div { class: "space-y-4",
                             p { class: "text-sm text-gray-600", {t!("wizard-identity-help")} }
@@ -379,7 +379,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                         }
                     },
 
-                    // ── Étape 2 : modèle (cartes groupées) ──
+                    // ── Step 2: model (grouped cards) ──
                     Step::Model => rsx! {
                         div { class: "space-y-4",
                             div { class: "relative",
@@ -411,8 +411,8 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                 p { class: "text-sm text-gray-500 text-center py-6", {t!("wizard-model-none")} }
                             }
 
-                            // Variantes de board du modèle générique sélectionné
-                            // (chips .chipsel du prototype) — None = défaut.
+                            // Board variants of the selected generic model
+                            // (prototype .chipsel chips) — None = default.
                             {
                                 let variants = variant_list(
                                     boards_resource
@@ -422,9 +422,9 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                     selected().as_ref(),
                                 );
                                 if !variants.is_empty() {
-                                    // Board effective (variante choisie ou
-                                    // défaut du modèle) — porte les écrans
-                                    // proposés au wizard.
+                                    // Effective board (chosen variant or
+                                    // model default) — carries the screens
+                                    // offered in the wizard.
                                     let effective_board = variant_board_id()
                                         .and_then(|id| {
                                             variants.iter().find(|b| b.id == id)
@@ -541,9 +541,9 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                         }
                     },
 
-                    // ── Étape 4 (traditionnel) : revue ──
+                    // ── Step 4 (traditional): review ──
                     Step::Review => {
-                        // Valeurs résolues depuis les entrées du référentiel.
+                        // Values resolved from the reference entries.
                         let (rev_ssid, rev_host) = match (wifi_sel(), host_sel()) {
                             (Some(c), Some(h)) => (Some(c.ssid.clone()), Some(h.host.clone())),
                             _ => (None, None),
@@ -608,9 +608,9 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                                             }
                                             if record.succeeded() {
                                                 div { class: "space-y-2",
-                                                    // Flash direct en Web Serial (Chromium —
-                                                    // le modal avertit sinon). Le binaire reste
-                                                    // téléchargeable depuis la liste des devices.
+                                                    // Direct Web Serial flash (Chromium —
+                                                    // the modal warns otherwise). The binary stays
+                                                    // downloadable from the device list.
                                                     // Android: no flashing path, point to a computer instead.
                                                     if flash::offered() {
                                                         button {
@@ -660,7 +660,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
                         }
                     },
 
-                    // ── Réactivation : pas de nouveau token ──
+                    // ── Reactivation: no new token ──
                     Step::Reactivated => rsx! {
                         div { class: "space-y-4",
                             div { class: "flex items-start gap-3 bg-signal-50 border border-signal-200 rounded-lg p-4 text-sm text-signal-800",
@@ -683,8 +683,8 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
             }
         }
 
-        // Flash navigateur du firmware buildé (Web Serial — la modale se
-        // superpose à celle du wizard, l'état se réinitialise à l'ouverture).
+        // Browser flash of the built firmware (Web Serial — the modal sits
+        // on top of the wizard one, the state resets on open).
         if flash_open() {
             if let Some(device) = created() {
                 FlashModal {
@@ -697,7 +697,7 @@ pub fn DeviceWizard(on_close: Callback<()>, on_changed: Callback<()>) -> Element
     }
 }
 
-/// Stepper numéroté (4 étapes).
+/// Numbered stepper (4 steps).
 fn stepper(current: Step) -> Element {
     let items: Vec<(Step, &'static str)> = vec![
         (Step::Identity, "wizard-step-identity"),
@@ -739,7 +739,7 @@ fn step_label_class(index: usize, current: usize) -> &'static str {
     }
 }
 
-/// Carte de modèle du catalogue — highlight si sélectionnée.
+/// Catalogue model card — highlighted if selected.
 fn model_card(
     pd: pnex_core::PredefinedDevice,
     mut selected: Signal<Option<pnex_core::PredefinedDevice>>,
@@ -764,7 +764,7 @@ fn model_card(
             class: "text-left w-full p-3 rounded-lg border transition-colors hover:border-signal-400 {border} {ring}",
             r#type: "button",
             onclick: move |_| {
-                // Nouveau modèle → variante réinitialisée (None = défaut).
+                // New model → variant reset (None = default).
                 variant_board_id.set(None);
                 selected.set(Some(pd.clone()));
             },
@@ -806,8 +806,8 @@ fn model_card(
     }
 }
 
-/// Variantes de board du modèle sélectionné : boards de même SoC que le
-/// board par défaut du modèle (résolu par nom). Vide hors générique.
+/// Board variants of the selected model: boards with the same SoC as the
+/// model's default board (resolved by name). Empty outside generic.
 fn variant_list(
     boards: Option<Vec<api::boards::Board>>,
     selected: Option<&pnex_core::PredefinedDevice>,
@@ -825,8 +825,8 @@ fn variant_list(
     boards.into_iter().filter(|b| b.soc == soc).collect()
 }
 
-/// Chip de variante (style .chipsel du prototype pnex-pinout.html) —
-/// compacte ; l'œil ouvre la modale plein format (`BoardPreviewModal`).
+/// Variant chip (.chipsel style of the pnex-pinout.html prototype) —
+/// compact; the eye opens the full-size modal (`BoardPreviewModal`).
 #[component]
 fn VariantChip(
     board: api::boards::Board,
@@ -850,9 +850,9 @@ fn VariantChip(
     } else {
         ("border-gray-300", "")
     };
-    // Badge réservé aux écrans VRAIMENT soudés (`builtin: true`, forcés) —
-    // une simple option externe déclarée n'affiche rien : le bloc Screen
-    // du wizard porte déjà ce choix.
+    // Badge reserved for TRULY soldered screens (`builtin: true`, forced) —
+    // a mere declared external option shows nothing: the wizard Screen
+    // block already carries that choice.
     let builtin_screen = board
         .screens()
         .iter()
@@ -888,7 +888,7 @@ fn VariantChip(
     }
 }
 
-/// Panneau de revue (étape 4).
+/// Review panel (step 4).
 #[allow(clippy::too_many_arguments)]
 fn review_panel(
     device_id: &str,

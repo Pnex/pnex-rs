@@ -1,6 +1,6 @@
-//! Barre de filtres canonique — le conteneur et les deux champs dupliqués
-//! verbatim dans les pages historiques (search + refresh). Les champs
-//! spécifiques (selects i18n de la page) restent en rsx page, posés dans le
+//! Canonical filter bar — the container and the two fields duplicated
+//! verbatim in the historical pages (search + refresh). Page-specific
+//! fields (the page's i18n selects) stay in the page rsx, placed inside the
 //! `FilterBar`.
 
 use dioxus::prelude::*;
@@ -8,9 +8,9 @@ use dioxus_i18n::t;
 
 use crate::components::icons;
 
-/// Conteneur des filtres — même classe que le slot `filters` de
-/// [`super::layout::ListLayout`], pour poser la barre dans le corps de page
-/// (filtres propres à la branche liste, masqués dans les sous-vues).
+/// Filter container — same class as the `filters` slot of
+/// [`super::layout::ListLayout`], to place the bar in the page body
+/// (filters specific to the list branch, hidden in the sub-views).
 ///
 /// Below `sm` the search takes a full row of its own (first) and the page's
 /// selects share the next rows evenly (min 8rem each, wrapping cleanly),
@@ -26,15 +26,15 @@ pub fn FilterBar(children: Element) -> Element {
 /// [`super::layout::ListLayout`] expects).
 pub const FILTER_BAR_CLASS: &str = "mb-4 md:mb-6 flex flex-wrap items-center gap-2 [&>select]:min-w-0 [&>select]:grow [&>select]:basis-32 sm:[&>select]:grow-0 sm:[&>select]:basis-auto sm:[&>select]:w-auto";
 
-/// Champ de recherche serveur — saisie **live sans refetch** (le signal
-/// suffit) ; la soumission est explicite : Enter → `prevent_default` +
-/// `on_submit` (côté page : reset de la page courante + reload). Les
-/// nouveaux filtres remettent toujours la page à 0 avant le refetch.
+/// Server search field — **live input without refetch** (the signal is
+/// enough); submission is explicit: Enter → `prevent_default` +
+/// `on_submit` (page side: reset of the current page + reload). New
+/// filters always reset the page to 0 before the refetch.
 #[component]
 pub fn SearchInput(
-    /// Placeholder (i18n résolu par l'appelant).
+    /// Placeholder (i18n resolved by the caller).
     placeholder: String,
-    /// Signal de la requête courante (saisie conservée entre deux rendus).
+    /// Signal of the current query (input kept between two renders).
     mut value: Signal<String>,
     on_submit: Callback<()>,
     /// Current page of a list that refetches as you type: reset to 0 on each

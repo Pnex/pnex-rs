@@ -1,11 +1,11 @@
-//! Fichier d'état `<home>/runtime.json` : c'est le contrat de santé lu par le
-//! superviseur backend (`GET /api/v1/flows/{n}/runtime`). Écriture atomique
-//! (tmp + rename) — un lecteur concurrent ne voit jamais un fichier tronqué.
+//! State file `<home>/runtime.json`: the health contract read by the
+//! backend supervisor (`GET /api/v1/flows/{n}/runtime`). Atomic write
+//! (tmp + rename) — a concurrent reader never sees a truncated file.
 //!
-//! Santé du process **uniquement** (pid, vivant, rechargements) : les
-//! versions par flow ne vivent PAS ici — l'artefact est multi-flows et la
-//! source de vérité « version déployée d'un flow » est la DB
-//! (`flows.deployed_version_id`), tenue à jour par le deploy acquitté.
+//! Process health **only** (pid, alive, reloads): per-flow
+//! versions do NOT live here — the artifact is multi-flow and the
+//! source of truth "deployed version of a flow" is the DB
+//! (`flows.deployed_version_id`), kept up to date by the acknowledged deploy.
 
 use serde::{Deserialize, Serialize};
 
@@ -13,28 +13,25 @@ use serde::{Deserialize, Serialize};
 pub struct RuntimeState {
     pub pid: u32,
     pub running: bool,
-    /// Secondes epoch du démarrage du process.
+    /// Epoch seconds of the process start.
     pub started_at: u64,
-    /// Empreinte du flows.json en exécution (SHA-256 hex, EdgeLinkd).
+    /// Fingerprint of the running flows.json (SHA-256 hex, EdgeLinkd).
     pub flow_rev: Option<String>,
-    /// Nombre de rechargements à chaud réussis depuis le démarrage.
+    /// Number of successful hot reloads since start.
     pub redeploys: u64,
 }
 
-/// Écriture atomique de l'état. Les erreurs sont loguées, jamais fatales :
-/// le fichier d'état est best-effort, il ne doit pas tuer le runtime.
+/// Atomic write of the state. Errors are logged, never fatal:
+/// the state file is best-effort, it must not kill the runtime.
 pub fn write(home: &std::path::Path, state: &RuntimeState) {
     if let Err(e) = std::fs::create_dir_all(home) {
-        log::warn!(
-            "Impossible de créer le répertoire d'état {}: {e}",
-            home.display()
-        );
+        log::warn!("Cannot create the state directory {}: {e}", home.display());
         return;
     }
     let json = match serde_json::to_string_pretty(state) {
         Ok(j) => j,
         Err(e) => {
-            log::warn!("État runtime non sérialisable : {e}");
+            log::warn!("Runtime state not serialisable: {e}");
             return;
         }
     };
@@ -44,7 +41,7 @@ pub fn write(home: &std::path::Path, state: &RuntimeState) {
         .and_then(|_| std::fs::rename(&tmp, &dst))
         .is_err()
     {
-        log::warn!("Écriture de {} impossible", dst.display());
+        log::warn!("Cannot write {}", dst.display());
     }
 }
 
