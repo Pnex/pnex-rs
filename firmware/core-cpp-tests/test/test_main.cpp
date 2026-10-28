@@ -59,12 +59,12 @@ void test_relay_golden_vectors(void) {
     }
 }
 
-void test_tt_deadband_nan_jamais_on(void) {
+void test_tt_deadband_nan_never_on(void) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     TEST_ASSERT_FALSE(pnex_control::tt_step(true, 19.0, nan, false, 10.0));
 }
 
-void test_relay_duty_nan_jamais_on(void) {
+void test_relay_duty_nan_never_on(void) {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     TEST_ASSERT_FALSE(pnex_control::relay_window(nan, 10.0, 0.0));
 }
@@ -243,8 +243,8 @@ int main() {
     RUN_TEST(test_tt_golden_vectors);
     RUN_TEST(test_pid_golden_vectors_replay);
     RUN_TEST(test_relay_golden_vectors);
-    RUN_TEST(test_tt_deadband_nan_jamais_on);
-    RUN_TEST(test_relay_duty_nan_jamais_on);
+    RUN_TEST(test_tt_deadband_nan_never_on);
+    RUN_TEST(test_relay_duty_nan_never_on);
     RUN_TEST(test_pid_dt_nul_d_zero);
     RUN_TEST(test_aead_chacha20_poly1305_rfc8439);
     RUN_TEST(test_camera_header_golden_bytes);

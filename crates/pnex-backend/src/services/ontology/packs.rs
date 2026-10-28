@@ -1200,15 +1200,15 @@ mod tests {
     fn an_org_removal_of_a_pack_colour_survives_the_upgrade() {
         let def = |v: Value| -> PropertyDef { serde_json::from_value(v).unwrap() };
         let pack = def(
-            serde_json::json!({"key": "etat", "kind": "enum", "values": ["ok", "ko"],
+            serde_json::json!({"key": "state", "kind": "enum", "values": ["ok", "ko"],
             "colors": {"ok": "green", "ko": "red"}, "labels": {"ok": {"fr": "Bon"}}}),
         );
         let org = def(
-            serde_json::json!({"key": "etat", "kind": "enum", "values": ["ok", "ko"],
+            serde_json::json!({"key": "state", "kind": "enum", "values": ["ok", "ko"],
             "colors": {"ko": "amber"}}),
         );
         let d = display_diff(&org, &pack).unwrap();
-        let layer = serde_json::json!({ "type:t/etat": d });
+        let layer = serde_json::json!({ "type:t/state": d });
         let mut props = vec![pack];
         apply_display(&layer, "type:t", &mut props);
         assert_eq!(props[0].colors, org.colors);

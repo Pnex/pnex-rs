@@ -481,7 +481,7 @@ async fn test_draft_and_test_webhook_channel() {
             .add_header("X-Org-Id", org.to_string())
             .json(&serde_json::json!({
                 "kind": "webhook",
-                "name": "brouillon",
+                "name": "draft",
                 "config": { "url": url, "secret_header": "x-sig", "secret_value": { "value": "tok" } }
             }))
             .await;
@@ -491,7 +491,7 @@ async fn test_draft_and_test_webhook_channel() {
             headers.get("x-sig").and_then(|v| v.to_str().ok()),
             Some("tok")
         );
-        assert!(body["subject"].as_str().unwrap().contains("brouillon"));
+        assert!(body["subject"].as_str().unwrap().contains("draft"));
         assert_eq!(body["meta"]["test"], true);
 
         // ── Test of a persisted channel: journaled with source test.

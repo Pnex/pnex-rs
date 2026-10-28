@@ -521,8 +521,8 @@ async fn read_model_union_and_dead_device() {
         doc_b["items"] = serde_json::json!([
             {"id": "b1", "media_asset_id": pano_id, "kind": "note",
              "geometry": {"type": "equirect", "yaw": 10.0, "pitch": 0.0},
-             "label": "brouillon",
-             "target": {"type": "note", "text": "brouillon"}}
+             "label": "draft",
+             "target": {"type": "note", "text": "draft"}}
         ]);
         let res = save_layer(&server, &env.alice, org, &b_id, 1, doc_b).await;
         assert_eq!(res.status_code(), 200, "save B : {}", res.text());

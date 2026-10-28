@@ -1,5 +1,5 @@
 //! Change feed of the ontology (external-apps.md D435) on an invented
-//! ontology (`article`, `auteur`, `ecrit_par`): creates, updates, closes,
+//! ontology (`article`, `author`, `written_by`): creates, updates, closes,
 //! one entry per object and page, a transaction that commits late never
 //! skipped, compaction to a full copy, expiry, filters, and a service
 //! account reading it.
@@ -65,7 +65,7 @@ async fn call(
     )
 }
 
-const SCOPE: &str = "types=article,auteur&link_types=ecrit_par";
+const SCOPE: &str = "types=article,author&link_types=written_by";
 
 async fn feed(server: &axum_test::TestServer, token: &str, org: i64, since: &str) -> Value {
     let (st, page) = call(
@@ -115,7 +115,7 @@ async fn the_feed_follows_every_change_without_a_gap() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        for key in ["article", "auteur"] {
+        for key in ["article", "author"] {
             let (st, t) = call(&server, "POST", "/api/v1/ontology/types", &alice, org, Some(json!({"def": {
                 "key": key, "name": key,
                 "properties": [{"key": "lang", "name": "Lang", "kind": "text", "max_len": 8}]
@@ -123,7 +123,7 @@ async fn the_feed_follows_every_change_without_a_gap() {
             assert_eq!(st, 201, "{t}");
         }
         let (st, lt) = call(&server, "POST", "/api/v1/ontology/link-types", &alice, org,
-            Some(json!({"key": "ecrit_par", "name": "written by", "from_types": ["article"], "to_types": ["auteur"]}))).await;
+            Some(json!({"key": "written_by", "name": "written by", "from_types": ["article"], "to_types": ["author"]}))).await;
         assert_eq!(st, 201, "{lt}");
 
         let (st, h) = call(&server, "GET", "/api/v1/ontology/changes/head", &alice, org, None).await;
@@ -134,15 +134,15 @@ async fn the_feed_follows_every_change_without_a_gap() {
         assert_eq!(c0, h["cursor"].as_str().unwrap(), "a short page ends at the head");
 
         let obj = |t: &str, title: &str| json!({"type_key": t, "title": title, "properties": {"lang": "fr"}});
-        let (_, ada) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("auteur", "Ada"))).await;
-        let (_, art) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article", "Moteurs"))).await;
+        let (_, ada) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("author", "Ada"))).await;
+        let (_, art) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article", "Engines"))).await;
         let (st, link) = call(&server, "POST", "/api/v1/ontology/links", &alice, org,
-            Some(json!({"link_type": "ecrit_par", "source_id": art["id"], "target_id": ada["id"]}))).await;
+            Some(json!({"link_type": "written_by", "source_id": art["id"], "target_id": ada["id"]}))).await;
         assert_eq!(st, 201, "{link}");
         let p1 = feed(&server, &alice, org, &c0).await;
         assert_eq!(
             summary(&p1),
-            vec![s("create", "auteur", "Ada"), s("create", "article", "Moteurs"), s("create", "ecrit_par", "ecrit_par")],
+            vec![s("create", "author", "Ada"), s("create", "article", "Engines"), s("create", "written_by", "written_by")],
             "{p1}"
         );
         assert_eq!(p1["more"], false);
@@ -151,11 +151,11 @@ async fn the_feed_follows_every_change_without_a_gap() {
 
         // Two updates in a page: one entry, the current state.
         let url = format!("/api/v1/ontology/objects/{}", art["id"].as_str().unwrap());
-        let (_, v2) = call(&server, "PUT", &url, &alice, org, Some(json!({"title": "Moteurs 2", "properties": {"lang": "fr"}, "expected_version": art["version"]}))).await;
-        let (st, v3) = call(&server, "PUT", &url, &alice, org, Some(json!({"title": "Moteurs 3", "properties": {"lang": "en"}, "expected_version": v2["version"]}))).await;
+        let (_, v2) = call(&server, "PUT", &url, &alice, org, Some(json!({"title": "Engines 2", "properties": {"lang": "fr"}, "expected_version": art["version"]}))).await;
+        let (st, v3) = call(&server, "PUT", &url, &alice, org, Some(json!({"title": "Engines 3", "properties": {"lang": "en"}, "expected_version": v2["version"]}))).await;
         assert_eq!(st, 200, "{v3}");
         let p2 = feed(&server, &alice, org, &c1).await;
-        assert_eq!(summary(&p2), vec![s("update", "article", "Moteurs 3")], "{p2}");
+        assert_eq!(summary(&p2), vec![s("update", "article", "Engines 3")], "{p2}");
         assert_eq!(p2["changes"][0]["object"]["properties"]["lang"], "en");
         let c2 = p2["next"].as_str().unwrap().to_string();
 
@@ -164,24 +164,24 @@ async fn the_feed_follows_every_change_without_a_gap() {
         let late = db.begin().await.unwrap();
         late.execute_unprepared(&format!(
             "INSERT INTO objects (id, org_id, type_key, type_version, title, native_id, properties, version) \
-             SELECT u, {org}, 'auteur', 1, 'Late', u::text, '{{}}'::jsonb, 1 FROM gen_random_uuid() u"
+             SELECT u, {org}, 'author', 1, 'Late', u::text, '{{}}'::jsonb, 1 FROM gen_random_uuid() u"
         ))
         .await
         .unwrap();
-        let (_, _bea) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("auteur", "Bea"))).await;
+        let (_, _bea) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("author", "Bea"))).await;
         let held = feed(&server, &alice, org, &c2).await;
         assert_eq!(held["changes"], json!([]), "Bea waits for the older transaction: {held}");
         assert_eq!(held["next"], c2.as_str());
         late.commit().await.unwrap();
         let p3 = feed(&server, &alice, org, &c2).await;
-        assert_eq!(summary(&p3), vec![s("create", "auteur", "Late"), s("create", "auteur", "Bea")], "{p3}");
+        assert_eq!(summary(&p3), vec![s("create", "author", "Late"), s("create", "author", "Bea")], "{p3}");
         let c3 = p3["next"].as_str().unwrap().to_string();
 
         // A closed link carries its end.
         let (st, _) = call(&server, "POST", &format!("/api/v1/ontology/links/{}/close", link["id"]), &alice, org, Some(json!({}))).await;
         assert_eq!(st, 200);
         let p4 = feed(&server, &alice, org, &c3).await;
-        assert_eq!(summary(&p4), vec![s("close", "ecrit_par", "ecrit_par")], "{p4}");
+        assert_eq!(summary(&p4), vec![s("close", "written_by", "written_by")], "{p4}");
         assert!(p4["changes"][0]["link"]["valid_to"].is_string(), "{p4}");
 
         // Paging: `more` and a cursor per page.
@@ -199,7 +199,7 @@ async fn the_feed_follows_every_change_without_a_gap() {
         got.sort();
         assert_eq!(
             got,
-            vec![s("close", "ecrit_par", "ecrit_par"), s("create", "auteur", "Ada"), s("create", "auteur", "Bea"), s("create", "auteur", "Late"), s("update", "article", "Moteurs 3")],
+            vec![s("close", "written_by", "written_by"), s("create", "author", "Ada"), s("create", "author", "Bea"), s("create", "author", "Late"), s("update", "article", "Engines 3")],
             "{full}"
         );
 
@@ -244,13 +244,13 @@ async fn evidence_follows_evidence_links_only() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        for key in ["article", "page_lue"] {
+        for key in ["article", "read_page"] {
             call(&server, "POST", "/api/v1/ontology/types", &alice, org, Some(json!({"def": {"key": key, "name": key, "properties": []}}))).await;
         }
         for (key, from, to, evidence) in [
-            ("vu_dans", "article", "page_lue", true),
-            ("prouve", "page_lue", "media_asset", true),
-            ("illustre", "article", "media_asset", false),
+            ("seen_in", "article", "read_page", true),
+            ("proves", "read_page", "media_asset", true),
+            ("illustrates", "article", "media_asset", false),
         ] {
             let (st, lt) = call(&server, "POST", "/api/v1/ontology/link-types", &alice, org, Some(json!({
                 "key": key, "name": key, "from_types": [from], "to_types": [to], "evidence": evidence
@@ -268,8 +268,8 @@ async fn evidence_follows_evidence_links_only() {
         }
         let obj = |t: &str| json!({"type_key": t, "title": t, "properties": {}});
         let (_, art) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article"))).await;
-        let (_, page) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("page_lue"))).await;
-        for (lt, s, t) in [("vu_dans", &art["id"], &page["id"]), ("prouve", &page["id"], &json!(media[0])), ("illustre", &art["id"], &json!(media[1]))] {
+        let (_, page) = call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("read_page"))).await;
+        for (lt, s, t) in [("seen_in", &art["id"], &page["id"]), ("proves", &page["id"], &json!(media[0])), ("illustrates", &art["id"], &json!(media[1]))] {
             let (st, l) = call(&server, "POST", "/api/v1/ontology/links", &alice, org, Some(json!({"link_type": lt, "source_id": s, "target_id": t}))).await;
             assert_eq!(st, 201, "{l}");
         }
@@ -277,7 +277,7 @@ async fn evidence_follows_evidence_links_only() {
         assert_eq!(st, 200, "{ev}");
         assert_eq!(ev["count"], 1, "the illustration is no evidence: {ev}");
         assert_eq!(ev["results"][0]["media"]["id"], media[0].as_str());
-        assert_eq!(ev["results"][0]["via"], json!(["vu_dans", "prouve"]));
+        assert_eq!(ev["results"][0]["via"], json!(["seen_in", "proves"]));
         assert!(ev["results"][0]["proof"].is_null(), "no web proof behind it");
     })
     .await;

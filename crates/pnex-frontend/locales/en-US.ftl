@@ -1,5 +1,5 @@
 # PNEX front — English (fallback).
-# Toute clé ajoutée dans un autre locale doit exister ici (test de parité).
+# Every key added in another locale must exist here (parity test).
 
 # Navigation
 nav-dashboard = Home

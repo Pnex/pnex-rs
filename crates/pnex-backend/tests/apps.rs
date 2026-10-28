@@ -75,13 +75,13 @@ async fn an_application_reads_its_scope() {
             .json::<Value>()["orgs"][0]["id"]
             .as_i64()
             .unwrap();
-        for key in ["article", "auteur", "brouillon"] {
+        for key in ["article", "author", "draft"] {
             let (st, t) = call(&server, "POST", "/api/v1/ontology/types", &alice, org,
                 Some(json!({"def": {"key": key, "name": key, "properties": [{"key": "lang", "name": "Lang", "kind": "text", "max_len": 8}]}}))).await;
             assert_eq!(st, 201, "{t}");
         }
         let (st, _) = call(&server, "POST", "/api/v1/ontology/link-types", &alice, org,
-            Some(json!({"key": "ecrit_par", "name": "written by", "from_types": ["article"], "to_types": ["auteur"]}))).await;
+            Some(json!({"key": "written_by", "name": "written by", "from_types": ["article"], "to_types": ["author"]}))).await;
         assert_eq!(st, 201);
         let (_, sa) = call(&server, "POST", "/api/v1/iam/service-accounts", &alice, org, Some(json!({"name": "reader"}))).await;
         let sa_id = sa["id"].as_str().unwrap().to_string();
@@ -101,11 +101,11 @@ async fn an_application_reads_its_scope() {
 
         let decl = json!({
             "key": "reader", "name": "Reader", "service_account_id": sa_id,
-            "scope": {"types": ["auteur", "article"], "link_types": ["ecrit_par"], "media_kinds": ["photo"], "media_max_bytes": 5000000}
+            "scope": {"types": ["author", "article"], "link_types": ["written_by"], "media_kinds": ["photo"], "media_max_bytes": 5000000}
         });
         let (st, app) = call(&server, "POST", "/api/v1/apps", &alice, org, Some(decl.clone())).await;
         assert_eq!(st, 201, "{app}");
-        assert_eq!(app["scope"]["types"], json!(["article", "auteur"]), "sorted: {app}");
+        assert_eq!(app["scope"]["types"], json!(["article", "author"]), "sorted: {app}");
         let mut other = decl.clone();
         other["key"] = json!("other");
         let (st, e) = call(&server, "POST", "/api/v1/apps", &alice, org, Some(other)).await;
@@ -119,14 +119,14 @@ async fn an_application_reads_its_scope() {
         let url = format!("/api/v1/apps/{}", app["id"].as_str().unwrap());
         let mut out = decl.clone();
         out["expected_version"] = json!(1);
-        out["object_sets"] = json!({"drafts": {"query": {"type_key": "brouillon"}}});
+        out["object_sets"] = json!({"drafts": {"query": {"type_key": "draft"}}});
         let (st, e) = call(&server, "PUT", &url, &alice, org, Some(out)).await;
         assert_eq!((st, e["errors"]["fields"]["object_sets.drafts.type_key"].as_str()), (400, Some("out-of-scope")), "{e}");
         let mut v2 = decl.clone();
         v2["description"] = json!("Reads articles");
         v2["object_sets"] = json!({
             "by_lang": {"description": "Articles of a language", "query": {"type_key": "article", "filters": [{"key": "lang", "op": "eq", "value": "$lang"}]}},
-            "authors": {"query": {"type_key": "article", "traverse": [{"link_type": "ecrit_par"}]}}
+            "authors": {"query": {"type_key": "article", "traverse": [{"link_type": "written_by"}]}}
         });
         v2["expected_version"] = json!(1);
         let (st, a2) = call(&server, "PUT", &url, &alice, org, Some(v2.clone())).await;
@@ -137,8 +137,8 @@ async fn an_application_reads_its_scope() {
         // Objects in and out of the scope.
         let obj = |t: &str, title: &str| json!({"type_key": t, "title": title, "properties": {"lang": "fr"}});
         call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("article", "Moteurs"))).await;
-        call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("brouillon", "Secret"))).await;
-        call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("auteur", "Ada"))).await;
+        call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("draft", "Secret"))).await;
+        call(&server, "POST", "/api/v1/ontology/objects", &alice, org, Some(obj("author", "Ada"))).await;
 
         // The application's key.
         let expires = (chrono::Utc::now() + chrono::Duration::days(30)).to_rfc3339();
@@ -157,12 +157,12 @@ async fn an_application_reads_its_scope() {
             t.sort();
             t
         };
-        let (_, all) = call(&server, "GET", "/api/v1/ontology/changes?since=0&types=article,auteur,brouillon", &alice, org, None).await;
+        let (_, all) = call(&server, "GET", "/api/v1/ontology/changes?since=0&types=article,author,draft", &alice, org, None).await;
         assert_eq!(titles(&all), vec!["Ada", "Moteurs", "Secret"], "a person reads every type: {all}");
         let (st, scoped) = call(&server, "GET", "/api/v1/ontology/changes?since=0", &secret, org, None).await;
         assert_eq!(st, 200, "{scoped}");
         assert_eq!(titles(&scoped), vec!["Ada", "Moteurs"], "the application, its scope: {scoped}");
-        let (_, asked) = call(&server, "GET", "/api/v1/ontology/changes?since=0&types=brouillon,article", &secret, org, None).await;
+        let (_, asked) = call(&server, "GET", "/api/v1/ontology/changes?since=0&types=draft,article", &secret, org, None).await;
         assert_eq!(titles(&asked), vec!["Moteurs"], "never past its scope: {asked}");
 
         // Its object sets, with their parameters.
