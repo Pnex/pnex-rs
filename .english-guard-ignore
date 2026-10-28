@@ -1,0 +1,23 @@
+# english_guard.py exemptions: one glob per line, then the reason after '#'.
+# Only for paths whose French is DATA or translation, never to silence a
+# comment: a French comment gets translated.
+*.ftl                          # fr-FR translations (i18n)
+*.md                           # docs: architecture docs stay French (CLAUDE.md)
+*.json                         # data, specs, extension _locales
+*.csv                          # fixtures
+*.ics                          # fixtures
+*.txt                          # fixtures, ASR references
+*.html                         # fixtures and static pages
+*.svg                          # drawings
+vendor/*                       # third-party code
+research/*                     # notes, not code
+graphify-out/*                 # generated
+docs/*                         # French by rule
+firmware/.venv/*               # third-party
+crates/pnex-backend/packs/*    # fr: translations live inline; pack comments are checked by review
+crates/pnex-backend/assistant-kb/*  # knowledge sheets (docs)
+crates/pnex-frontend/src/i18n_guard.rs     # French strings on purpose (detector data)
+crates/pnex-frontend/src/lexicon_guard.rs  # French lexicon on purpose
+crates/pnex-frontend/src/pages/showcase.rs # documented verbatim exception
+crates/pnex-core/src/fold.rs   # accent folding table
+scripts/english_guard.py       # detector data

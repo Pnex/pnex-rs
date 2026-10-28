@@ -8,6 +8,8 @@
   - Refuser consciemment le réflexe « harmonie avec le fichier » : écrire d'abord le commentaire en anglais, même si la ligne du dessus est en français.
   - Ne pas repasser sur l'existant rien que pour la langue (mais si on réécrit une ligne commentée, le nouveau texte est en anglais).
 - Les documents d'architecture, roadmaps et registres de décisions restent en français — on ne les traduit pas
+- **Garde bloquante `scripts/english_guard.py`** (2026-10-27, après le rattrapage complet) : toute ligne AJOUTÉE de commentaire ou de message (log, erreur, expect, panic, echo) en français = échec. Trois niveaux : hook Claude Code PostToolUse (`.claude/settings.json`, bloque dès l'Edit/Write — corriger tout de suite, ne pas accumuler), `task lint:english` avant commit, job CI `english`. Donnée française voulue (tables d'accents, mots-clés, fixtures) : `english-guard: allow (<raison>)` sur la ligne ou chemin dans `.english-guard-ignore` avec sa raison ; jamais pour faire taire un commentaire. `task lint:english:report` = dette restante.
+- **Identifiants aussi en anglais** : clés de packs d'ontologie (types, propriétés, liens, valeurs d'enum, réglages), noms de fonctions, de tests, de variables. Le français vit seulement dans les `fr:` des packs et `fr-FR.ftl`. Couche pays d'un pack = `<pack générique>_<pays>` (`companies_fr`), qui ne contient QUE ce qui est propre au pays.
 
 ## i18n de l'UI (fr-FR / en-US)
 
